@@ -2,7 +2,7 @@
 
 **Project**: MockMate - Real-Time AI Mock Interviews
 **Last Updated**: 2025-11-05
-**Version**: 0.1.0
+**Version**: 0.2.0
 
 ---
 
@@ -31,28 +31,37 @@ This document serves as the single source of truth for:
 ## Tech Stack
 
 ### Frontend
-- **Framework**: Next.js (App Router)
+- **Framework**: Next.js 14+ (App Router)
 - **UI Library**: React
 - **Styling**: Tailwind CSS
 - **Component Library**: shadcn/ui
-- **Language**: TypeScript (to be configured)
+- **Language**: TypeScript
+- **State Management**: Zustand
 
 ### Backend
 - **Runtime**: Node.js (Next.js API routes)
 - **Database**: PostgreSQL (via Supabase)
-- **Auth**: Clerk or NextAuth (decision pending)
-- **ORM**: TBD (Prisma, Drizzle, or raw SQL)
+- **ORM**: Drizzle ORM
+- **Auth**: Supabase Auth
+- **Validation**: Zod
 
 ### Real-time & AI
-- **WebRTC**: LiveKit Cloud
-- **ASR/TTS**: OpenAI Realtime API or Whisper + low-latency TTS
-- **Avatar**: Hedra Video
-- **LLM**: GPT-4 (for dialogue agent and evaluation)
+- **WebRTC**: LiveKit Cloud (audio/video + Agents framework)
+- **ASR**: Deepgram Nova 2 (via LiveKit Agents)
+- **TTS**: Cartesia or PlayHT (via LiveKit Agents)
+- **Dialogue LLM**: GPT-4 Turbo or Claude 3.5 Sonnet (via LiveKit Agents)
+- **Evaluation LLM**: GPT-4 Turbo (post-session scoring)
+- **Avatar**: Hedra Video (lip-sync)
 
-### Infrastructure
-- **Hosting**: Vercel (frontend + API)
+### Infrastructure & Services
+- **Hosting**: Vercel (Next.js)
+- **Agent Hosting**: Railway/Render/Fly.io (LiveKit Agents)
 - **Database Hosting**: Supabase
-- **Real-time**: LiveKit Cloud
+- **Real-time Infrastructure**: LiveKit Cloud
+- **Background Jobs**: Inngest
+- **Error Tracking**: Sentry
+- **Email**: Resend
+- **Analytics**: Vercel Analytics + PostHog
 
 ---
 
@@ -99,6 +108,28 @@ This document serves as the single source of truth for:
 - **Decision**: Store PRD at `.conductor/almaty/.claude/PRD.md`
 - **Rationale**: Keep all project documentation together in version control
 - **Consequences**: Centralized documentation, easy to reference and update
+
+### ADR-003: Tech Stack Finalization
+- **Date**: 2025-11-05
+- **Decision**: Use Next.js 14+, Supabase (Postgres + Auth), Drizzle ORM, LiveKit Agents (with Deepgram ASR + Cartesia/PlayHT TTS + GPT-4/Claude), Hedra for avatars
+- **Rationale**:
+  - Next.js: Fast MVP development, unified frontend/backend, scales to 1K users easily
+  - Supabase Auth: Free, integrated with database RLS, flexible vs Clerk's cost at scale
+  - Drizzle: Lightweight, type-safe, serverless-friendly vs Prisma's bundle size
+  - LiveKit Agents: Integrated ASR/TTS/LLM orchestration with provider flexibility vs OpenAI Realtime's lock-in
+  - Deepgram: Low latency, cost-effective ASR ($0.0043/min)
+  - Cartesia/PlayHT: Better cost/quality than OpenAI TTS
+- **Consequences**:
+  - Need to deploy LiveKit Agents separately (Railway/Render/Fly.io)
+  - More control over AI stack, easier to optimize costs
+  - Learning curve for LiveKit Agents framework
+  - **IMPORTANT**: When making architecture decisions, document them in this file
+
+### ADR-004: Background Jobs with Inngest
+- **Date**: 2025-11-05
+- **Decision**: Use Inngest for post-session evaluation processing
+- **Rationale**: Serverless queue system with retries, no Redis to manage, generous free tier
+- **Consequences**: Async evaluation workflow, don't need to manage queue infrastructure
 
 ---
 
@@ -270,21 +301,28 @@ HEDRA_API_KEY=
 
 ## Iteration Log
 
-### 2025-11-05 - Initial Setup
+### 2025-11-05 - Initial Setup & Tech Stack Decisions
 - Created GitHub repository
 - Added PRD documentation
 - Created CLAUDE.md structure
 - Established documentation workflow
+- Finalized tech stack (Next.js, Supabase, Drizzle, LiveKit Agents)
+- Decided on Supabase Auth over Clerk
+- Chose LiveKit Agents over OpenAI Realtime API for flexibility
+- Selected Drizzle ORM for serverless performance
 
 ---
 
 ## Questions & Open Items
 
-1. **ORM Choice**: Prisma vs Drizzle vs raw SQL?
-2. **Auth Provider**: Clerk vs NextAuth?
-3. **Monorepo vs Single Repo**: Keep everything in one repo or split frontend/backend?
-4. **TypeScript Config**: Strict mode settings?
-5. **Testing Framework**: Jest, Vitest, or other?
+1. ~~**ORM Choice**: Prisma vs Drizzle vs raw SQL?~~ → **RESOLVED**: Drizzle (ADR-003)
+2. ~~**Auth Provider**: Clerk vs NextAuth?~~ → **RESOLVED**: Supabase Auth (ADR-003)
+3. **TTS Provider**: Cartesia vs PlayHT? (need to test latency/quality)
+4. **Dialogue LLM**: GPT-4 Turbo vs Claude 3.5 Sonnet? (need to test conversation quality)
+5. **Agent Hosting**: Railway vs Render vs Fly.io? (evaluate pricing/DX)
+6. **TypeScript Config**: Strict mode settings?
+7. **Testing Framework**: Vitest for unit tests (likely), Playwright for E2E
+8. **Monorepo Structure**: Single repo vs separate agent repo?
 
 ---
 
