@@ -42,10 +42,10 @@ def get_config_from_metadata(metadata: str) -> dict:
         "role": "interviewee",
         "mode": "mock_interview",
         "interview_type": "product_sense",
-        "voice": "79a125e8-cd45-4c13-8a67-188112f4dd22",  # Default Cartesia voice
+        "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",  # Cartesia Tessa voice
         "skill_level": "mid",
-        "stt_model": "deepgram",
-        "llm_model": "openai/gpt-4o-mini",
+        "stt_model": "deepgram/nova-3",
+        "llm_model": "openai/gpt-4.1-mini",
     }
 
     try:
@@ -81,13 +81,13 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Using role: {config['role']}, mode: {config['mode']}, type: {config['interview_type']}")
 
     # Get models from config
-    stt_model = config.get("stt_model", "deepgram")
-    llm_model = config.get("llm_model", "openai/gpt-4o-mini")
-    
-    # For LiveKit inference, TTS format is "cartesia/MODEL:VOICE_ID"
-    # Example: "cartesia/sonic-3:9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
-    voice_id = config.get("voice", "79a125e8-cd45-4c13-8a67-188112f4dd22")
-    tts_model_name = config.get("tts_model", "sonic-3")  # sonic-2, sonic-3, sonic-turbo
+    stt_model = config.get("stt_model", "deepgram/nova-3")
+    llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
+
+    # For LiveKit inference with Cartesia, TTS format is "cartesia/MODEL:VOICE_ID"
+    # Example: "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
+    voice_id = config.get("voice", "6ccbfb76-1fc6-48f7-b71d-91ac6298247b")
+    tts_model_name = config.get("tts_model", "sonic-3")
     tts_model = f"cartesia/{tts_model_name}:{voice_id}"
 
     logger.info(f"STT Model: {stt_model}")
