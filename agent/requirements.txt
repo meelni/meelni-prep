@@ -1,0 +1,8 @@
+# LiveKit Agents Framework
+livekit-agents
+livekit-plugins-openai
+livekit-plugins-deepgram
+livekit-plugins-cartesia
+
+# Core dependencies
+python-dotenv
