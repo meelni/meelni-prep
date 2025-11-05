@@ -33,7 +33,7 @@ const Section = forwardRef<HTMLElement, SectionProps>(
       <section id={id} ref={ref}>
         <div
           className={cn(
-            "relative mx-auto container max-w-[var(--container-max-width)]",
+            "relative w-full",
             className
           )}
         >
@@ -41,7 +41,7 @@ const Section = forwardRef<HTMLElement, SectionProps>(
             <div
               className={cn(
                 alignmentClass,
-                "relative mx-auto border-x border-t overflow-hidden p-2 py-8 md:p-12"
+                "relative mx-auto border-t overflow-hidden p-2 py-8 md:p-12"
               )}
             >
               {title && (
