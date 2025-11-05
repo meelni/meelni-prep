@@ -6,6 +6,7 @@ import { Section } from "@/components/section";
 import { buttonVariants } from "@/components/ui/button";
 import { DotPattern } from "@/components/ui/dot-pattern";
 import { AnimatedBars } from "@/components/ui/animated-bars";
+import CheckeredBackground from "@/components/ui/checkered-background";
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -89,25 +90,93 @@ function HeroTitles() {
 }
 
 function HeroCTA() {
+  // Clara preset configuration
+  const claraInterviewUrl = `/interview?role=interviewee&mode=mock_interview&interview_type=product_sense&voice=6ccbfb76-1fc6-48f7-b71d-91ac6298247b&skill_level=mid&speed=1.0&emotion=Friendly&volume=1.0&tts_model=sonic-3&stt_model=deepgram/nova-3&llm_model=openai/gpt-4.1-mini`;
+
   return (
-    <div className="relative mt-6">
+    <div className="relative mt-8">
       <motion.div
-        className="flex w-full max-w-2xl flex-col items-start justify-start space-y-4 sm:flex-row sm:space-x-4 sm:space-y-0"
+        className="flex w-full max-w-2xl flex-col items-start justify-start gap-4 sm:flex-row"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.8, duration: 0.8, ease }}
       >
+        {/* Primary CTA - Talk to Clara (instant start) */}
+        <Link
+          href={claraInterviewUrl}
+          className="group relative w-full sm:w-auto overflow-hidden rounded-xl bg-gradient-to-r from-primary via-primary/90 to-primary/80 px-8 py-4 text-background font-semibold shadow-lg transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <div className="relative z-10 flex items-center gap-3">
+            <svg
+              className="w-5 h-5 transition-transform duration-300 group-hover:scale-110"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+              />
+            </svg>
+            <span>Talk to Clara</span>
+            <svg
+              className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M13 7l5 5m0 0l-5 5m5-5H6"
+              />
+            </svg>
+          </div>
+          {/* Shimmer effect on hover */}
+          <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-background/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+        </Link>
+
+        {/* Secondary CTA - Customize (full setup) */}
         <Link
           href="/setup"
-          className={cn(
-            buttonVariants({ variant: "default" }),
-            "w-full sm:w-auto text-background flex gap-2 rounded-lg"
-          )}
+          className="group relative w-full sm:w-auto overflow-hidden rounded-xl border-2 border-border bg-background/50 backdrop-blur-sm px-8 py-4 font-semibold transition-all duration-300 hover:border-primary/50 hover:bg-background/80 hover:scale-[1.02] active:scale-[0.98]"
         >
-          <Icons.logo className="h-6 w-6" />
-          {siteConfig.hero.cta}
+          <div className="relative z-10 flex items-center gap-3">
+            <svg
+              className="w-5 h-5 transition-transform duration-300 group-hover:rotate-90"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+            <span>Customize Your Mock</span>
+          </div>
         </Link>
       </motion.div>
+
+      {/* Subtle helper text */}
+      <motion.p
+        className="mt-4 text-sm text-muted-foreground/80"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1.2, duration: 0.6 }}
+      >
+        Start instantly with Clara or customize your interview settings
+      </motion.p>
     </div>
   );
 }
@@ -128,7 +197,27 @@ export function Hero() {
   }, []);
 
   return (
-    <Section id="hero" className="max-w-none relative pb-4 bg-background">
+    <Section id="hero" className="max-w-none relative pb-4 bg-background overflow-hidden">
+      {/* Checkered background layer */}
+      <CheckeredBackground
+        className="absolute inset-0 z-0"
+        cellSize="50px"
+        strokeWidth="1.5px"
+        color="#8b5cf6"
+        opacity={0.25}
+        fade={false}
+      />
+
+      {/* Gradient overlays for text readability */}
+      {/* Top gradient - fades near header */}
+      <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-background via-background/80 to-transparent z-[1]" />
+
+      {/* Left side gradient - protects text area */}
+      <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-background via-background/60 to-transparent z-[1]" />
+
+      {/* Bottom gradient - smooth transition to next section */}
+      <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent z-[1]" />
+
       <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-x-8 w-full px-6 pt-12 pb-4 lg:px-24 lg:pt-16 lg:pb-4 lg:h-[550px] items-center">
         <div className="flex flex-col justify-center items-start lg:col-span-1">
           <HeroTitles />
