@@ -14,19 +14,38 @@ import { UseCases } from '@/components/sections/use-cases';
 
 export default function Home() {
   return (
-    <main>
+    <main className="flex flex-col">
       <Header />
       <Hero />
+      {/* No gap between Hero and Logos */}
       <Logos />
-      <Examples />
-      <UseCases />
-      <Features />
-      <Statistics />
-      <Testimonials />
-      <Pricing />
-      <Community />
-      <Blog />
-      <CTA />
+      <div className="mt-20">
+        <Examples />
+      </div>
+      <div className="mt-20">
+        <UseCases />
+      </div>
+      <div className="mt-20">
+        <Features />
+      </div>
+      <div className="mt-20">
+        <Statistics />
+      </div>
+      <div className="mt-20">
+        <Testimonials />
+      </div>
+      <div className="mt-20">
+        <Pricing />
+      </div>
+      <div className="mt-20">
+        <Community />
+      </div>
+      <div className="mt-20">
+        <Blog />
+      </div>
+      <div className="mt-20">
+        <CTA />
+      </div>
       <Footer />
     </main>
   );
