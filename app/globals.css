@@ -49,6 +49,19 @@
   --text-primary: 24 24 27;
   --text-secondary: 82 82 91;
   --text-tertiary: 161 161 170;
+
+  /* Aurora text colors */
+  --color-1: #ef4444;
+  --color-2: #ec4899;
+  --color-3: #8b5cf6;
+  --color-4: #3b82f6;
+  --color-5: #10b981;
+
+  /* Additional colors */
+  --muted: 244 244 245;
+  --muted-foreground: 113 113 122;
+  --accent: 244 244 245;
+  --accent-foreground: 24 24 27;
 }
 
 .dark {
@@ -67,6 +80,19 @@
   --text-primary: 250 250 250;
   --text-secondary: 161 161 170;
   --text-tertiary: 82 82 91;
+
+  /* Aurora text colors (same for dark mode) */
+  --color-1: #ef4444;
+  --color-2: #ec4899;
+  --color-3: #8b5cf6;
+  --color-4: #3b82f6;
+  --color-5: #10b981;
+
+  /* Additional colors */
+  --muted: 39 39 42;
+  --muted-foreground: 161 161 170;
+  --accent: 39 39 42;
+  --accent-foreground: 250 250 250;
 }
 
 @layer base {
@@ -152,6 +178,34 @@
       transform: scale(1.1);
     }
   }
+
+  /* Aurora animation for gradient text */
+  @keyframes aurora {
+    0% {
+      background-position: 0% 50%;
+      transform: rotate(-5deg) scale(0.9);
+    }
+    25% {
+      background-position: 50% 100%;
+      transform: rotate(5deg) scale(1.1);
+    }
+    50% {
+      background-position: 100% 50%;
+      transform: rotate(-3deg) scale(0.95);
+    }
+    75% {
+      background-position: 50% 0%;
+      transform: rotate(3deg) scale(1.05);
+    }
+    100% {
+      background-position: 0% 50%;
+      transform: rotate(-5deg) scale(0.9);
+    }
+  }
+
+  .animate-aurora {
+    animation: aurora 8s ease-in-out infinite alternate;
+  }
 }
 
 /* Color utilities with RGB */
@@ -164,7 +218,9 @@
   .text-primary { color: rgb(var(--text-primary)); }
   .text-secondary { color: rgb(var(--text-secondary)); }
   .text-tertiary { color: rgb(var(--text-tertiary)); }
+  .text-muted-foreground { color: rgb(var(--muted-foreground)); }
 
   .border-default { border-color: rgba(var(--border)); }
   .border-hover { border-color: rgba(var(--border-hover)); }
+  .border-border { border-color: rgba(var(--border)); }
 }

@@ -2,7 +2,7 @@
 
 **Project**: MockMate - Real-Time AI Mock Interviews
 **Last Updated**: 2025-11-05
-**Version**: 0.4.0
+**Version**: 0.5.0
 
 ---
 
@@ -23,7 +23,7 @@ This document serves as the single source of truth for:
 
 ## Project Status
 
-**Current Phase**: Phase 0.5 - UI Redesign & Model Upgrade Complete ✅
+**Current Phase**: Phase 0.6 - Marketing Landing Page Complete ✅
 **Next Milestone**: Add session persistence (save transcripts to DB), scoring/feedback engine
 
 **Phase 0 Completion Summary**:
@@ -37,6 +37,7 @@ This document serves as the single source of truth for:
 - ✅ UI redesigned with Linear/Notion aesthetic
 - ✅ Component library created (Button, Card, Badge)
 - ✅ Framer Motion animations integrated
+- ✅ Marketing landing page with modular architecture (Header, Hero, Features, CTA, Footer)
 
 ---
 
@@ -105,6 +106,14 @@ This document serves as the single source of truth for:
 │           └── token/
 │               └── route.ts      # LiveKit token generation
 ├── components/                   # React components
+│   ├── sections/                 # Landing page sections
+│   │   ├── header.tsx            # Sticky header with navigation
+│   │   ├── hero.tsx              # Hero section with animated title
+│   │   ├── features.tsx          # Features grid (6 cards)
+│   │   ├── cta.tsx               # Call-to-action section
+│   │   └── footer.tsx            # Footer with links
+│   ├── aurora-text.tsx           # Animated gradient text component
+│   ├── section.tsx               # Reusable section wrapper
 │   ├── ui/                       # UI component library
 │   │   ├── button.tsx            # Button component with CVA variants
 │   │   ├── card.tsx              # Card component
@@ -112,6 +121,7 @@ This document serves as the single source of truth for:
 │   └── README.md                 # Component organization guide
 ├── lib/                          # Shared utilities and configurations
 │   ├── animations.ts             # Framer Motion animation presets
+│   ├── config.tsx                # Site configuration (hero, features, footer)
 │   ├── db/                       # Database (Drizzle ORM)
 │   │   ├── schema.ts             # Database schema (deployed to Supabase)
 │   │   └── index.ts              # DB client
@@ -336,6 +346,38 @@ This document serves as the single source of truth for:
   - Can easily swap voices by changing voice ID in configuration
   - Default voice ID updated in both frontend (`/app/setup/page.tsx`) and backend (`/agent/agent.py`)
 
+### ADR-017: Marketing Landing Page Architecture
+- **Date**: 2025-11-05
+- **Decision**: Implemented modular, component-based landing page architecture adapted from reference UI design
+- **Implementation**:
+  - **Components Structure**: Created `/components/sections/` directory for page sections (header, hero, features, cta, footer)
+  - **Configuration-Driven**: Centralized all copy in `/lib/config.tsx` for easy updates
+  - **Reusable Primitives**: Built `aurora-text.tsx` and `section.tsx` for consistent patterns
+  - **Design System**: Extended `globals.css` with aurora animations and additional color tokens
+- **Rationale**:
+  - Separation of concerns: content (config), structure (sections), styling (CSS)
+  - Easier to maintain and update marketing copy without touching component logic
+  - Reusable components enable rapid iteration on landing page variants
+  - Professional aesthetic (Linear/Notion-inspired) builds trust with PM candidates
+- **Reference Source**:
+  - Adapted from external UI design template in `/ui-design` directory
+  - Extracted and customized relevant components (hero, features, CTA)
+  - Removed unnecessary sections (testimonials, pricing, blog, etc.)
+  - **Recommendation**: External `/ui-design` folder can be deleted from parent directory
+- **Architecture Pattern**:
+  ```
+  /app/page.tsx (orchestrator)
+    → imports sections from /components/sections/
+      → each section imports from /lib/config.tsx
+      → uses primitives (aurora-text, section) for consistency
+  ```
+- **Consequences**:
+  - Clean separation allows marketing team to update copy in config file
+  - Consistent design language across all landing page sections
+  - Easy to A/B test different hero messages or feature sets
+  - Component library can be reused for future marketing pages
+  - External UI template no longer needed (all necessary code extracted)
+
 ---
 
 ## File Boundaries & Responsibilities
@@ -440,7 +482,62 @@ await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.ro
 - Light and dark mode support
 - Design tokens: colors, spacing, typography, radius, timing
 - Gradient utilities (`.gradient-text`, `.gradient-bg`)
+- Aurora animation keyframes for gradient text effects
 - Animation utilities
+
+### `/lib/config.tsx`
+**Purpose**: Centralized site configuration
+**Exports**:
+- `siteConfig`: Object containing all copy for landing page
+  - Hero section (title, description, CTA)
+  - Features list (6 features with icons)
+  - Footer links and branding
+**Usage**: Import in landing page sections for consistency
+
+### `/components/aurora-text.tsx`
+**Purpose**: Animated gradient text component
+**Key Features**:
+- Multi-color gradient animation
+- Configurable colors and speed
+- Uses aurora keyframes from globals.css
+
+### `/components/section.tsx`
+**Purpose**: Reusable section wrapper for landing page
+**Key Features**:
+- Consistent spacing and layout
+- Optional title, subtitle, description
+- Alignment control (left, center, right)
+- Gradient background overlay
+
+### `/components/sections/hero.tsx`
+**Purpose**: Hero section for landing page
+**Key Features**:
+- Animated pill badge ("New" label)
+- Aurora gradient animated title
+- Staggered fade-in animations
+- CTA button linking to /setup
+
+### `/components/sections/features.tsx`
+**Purpose**: Features grid section
+**Key Features**:
+- 6-card grid layout (responsive)
+- Icons from Lucide React
+- Staggered scroll animations
+- Hover effects
+
+### `/components/sections/header.tsx`
+**Purpose**: Sticky header with navigation
+**Key Features**:
+- Sticky positioning with backdrop blur
+- Brand logo with gradient icon
+- CTA button
+
+### `/components/sections/footer.tsx`
+**Purpose**: Footer with links and contact info
+**Key Features**:
+- 3-column grid layout (responsive)
+- Brand, Links, Contact sections
+- Copyright notice
 
 ---
 
