@@ -375,7 +375,7 @@ Use this checklist when updating this document:
 ### ADR-007: LiveKit Voice Interview Integration
 - **Date**: 2025-11-05
 - **Decision**: Implemented LiveKit Agents framework for real-time voice interviews
-- **Rationale**: 
+- **Rationale**:
   - LiveKit Agents provides integrated voice pipeline (Deepgram ASR + GPT-4 + Cartesia TTS)
   - Python agent runs separately, joins LiveKit rooms as programmable participant
   - Next.js frontend generates tokens and connects users to rooms
@@ -387,3 +387,184 @@ Use this checklist when updating this document:
   - Backend: `/api/livekit/token` route for access token generation
   - Agent uses Deepgram (STT), GPT-4 (LLM), Cartesia (TTS)
   - **IMPORTANT**: Document architecture decisions in this file
+
+### ADR-014: Comprehensive Model Selection System
+- **Date**: 2025-11-05
+- **Decision**: Implement full configurability for STT, LLM, and TTS models
+- **Rationale**:
+  - Users need control over speech speed (AI was talking too fast)
+  - Different use cases require different model quality/cost tradeoffs
+  - Voice personalization improves user engagement
+  - Flexibility to experiment with different AI providers
+- **Available Models**:
+  - **STT**: Deepgram Nova-2/3, Cartesia Ink Whisper, AssemblyAI
+  - **LLM**: GPT-4o-mini, GPT-4o, GPT-4.1, Gemini 2.5 Pro/Flash, Gemini 2.0 Flash
+  - **TTS**: Cartesia sonic-2/3/turbo with 100+ voices
+  - **Voice Controls**: Speed (0.6x-1.5x), Emotion (59 options), Volume (0.5x-2.0x)
+- **Consequences**:
+  - All configuration passed via room metadata as JSON
+  - Agent reads config and dynamically configures models
+  - UI provides advanced settings section for model selection
+  - Cost per session varies based on model choices
+
+---
+
+## LiveKit Model Configuration Reference
+
+**Added**: 2025-11-05
+
+### STT (Speech-to-Text) Models
+
+LiveKit Agents supports multiple STT providers. Format: `"provider/model"` or just `"provider"`
+
+**Available Models**:
+1. **Deepgram** (default):
+   - `deepgram/nova-2` - Latest generation, best accuracy
+   - `deepgram/nova-3` - Next generation (if available)
+   - Cost: ~$0.0043/min
+   - Best for: English, low latency
+
+2. **Cartesia Ink Whisper**:
+   - `cartesia/ink-whisper` - Multilingual support
+   - Best for: Non-English languages, multilingual sessions
+
+3. **AssemblyAI**:
+   - `assemblyai` - Alternative STT provider
+   - Best for: Transcription accuracy, speaker diarization
+
+**Current Default**: `deepgram/nova-2`
+
+### LLM (Language Model) Models
+
+LiveKit Agents supports multiple LLM providers via gateway format: `"provider/model"`
+
+**Available Models**:
+
+1. **OpenAI** (via OpenAI gateway):
+   - `openai/gpt-4o-mini` - **Default** - Cost-effective, fast ($0.15/1M input tokens)
+   - `openai/gpt-4o` - Higher quality, more expensive (~$2.50/1M)
+   - `openai/gpt-4.1` - Latest GPT-4 variant (~$10/1M)
+
+2. **Google Gemini** (via Google gateway):
+   - `google/gemini-2.5-pro-experimental` - Highest quality Gemini (~$1.25/1M)
+   - `google/gemini-2.5-flash-preview` - Fast Gemini variant (~$0.075/1M)
+   - `google/gemini-2.0-flash-experimental` - Experimental flash model
+
+**Cost Comparison** (per 1M input tokens):
+- GPT-4o-mini: $0.15
+- Gemini 2.5 Flash: $0.075
+- Gemini 2.5 Pro: $1.25
+- GPT-4o: $2.50
+- GPT-4.1: $10.00
+
+**Current Default**: `openai/gpt-4o-mini`
+
+### TTS (Text-to-Speech) Configuration
+
+**Cartesia TTS Parameters** (from `/agent/venv/lib/python3.12/site-packages/livekit/plugins/cartesia/`):
+
+**Model Options**:
+- `sonic` - Original model
+- `sonic-2` - **Default** - Generation 2
+- `sonic-3` - Latest generation
+- `sonic-lite` - Lightweight variant
+- `sonic-turbo` - Fastest variant
+
+**Voice Controls**:
+- `voice`: Voice ID string (100+ voices available)
+- `speed`: float (0.6 to 1.5) or preset ("fastest", "fast", "normal", "slow", "slowest")
+- `emotion`: List of emotion strings (59 options - see below)
+- `volume`: float (0.5 to 2.0)
+- `language`: 35+ supported languages
+- `sample_rate`: int (default 24000)
+- `word_timestamps`: bool (default True)
+
+**Available Emotions** (59 total):
+Happy, Excited, Enthusiastic, Calm, Confident, Neutral, Anxious, Sad, Angry, Curious, Grateful, Peaceful, Energetic, Serious, Frustrated, Surprised, Amused, Bored, Tired, Sympathetic, Worried, Hopeful, Determined, Relaxed, Joyful, Proud, Inspired, Thoughtful, Playful, Sarcastic, Professional, Warm, Cool, Mysterious, Dramatic, Romantic, Whispering, Shouting, Singing, Laughing, Crying, Sighing, Yawning, Coughing, Sneezing, Hiccupping, Burping, Chewing, Breathing, Humming, Whistling, Clapping, Snapping, Stomping, Knocking, Rustling, Splashing, Crackling
+
+**Voice Selection**:
+- Default: `f786b574-daa5-4673-aa0c-cbe3e8534c02` (Katie - Friendly Fixer)
+- 100+ voices available via API: `GET https://api.cartesia.ai/voices`
+- API endpoint: `/app/api/cartesia/voices/route.ts`
+
+### Model Selection Best Practices
+
+1. **For MVP/Development**: Use `openai/gpt-4o-mini` + `deepgram/nova-2` (cost-effective)
+2. **For Production Quality**: Use `openai/gpt-4o` or `google/gemini-2.5-pro-experimental`
+3. **For Multilingual**: Use `cartesia/ink-whisper` for STT
+4. **For Cost Optimization**: Cache prompts, use mini/flash models for dialogue
+5. **For Speed**: Use `sonic-turbo` TTS + `gemini-2.5-flash-preview` LLM
+
+### Configuration Format
+
+In `agent.py`:
+```python
+# TTS Configuration
+tts_config = {
+    "model": "sonic-2",
+    "voice": "voice-id-string",
+    "speed": 1.0,           # 0.6 to 1.5
+    "emotion": ["Calm"],    # List of emotions
+    "volume": 1.0,          # 0.5 to 2.0
+}
+tts_instance = cartesia.TTS(**tts_config)
+
+# AgentSession with all models
+session = AgentSession(
+    stt="deepgram/nova-2",           # STT model
+    llm="openai/gpt-4o-mini",        # LLM model
+    tts=tts_instance,                # TTS instance
+    vad=ctx.proc.userdata["vad"],    # VAD model
+)
+```
+
+In UI (`setup/page.tsx`):
+```typescript
+const config = {
+  role: "interviewee",
+  mode: "mock_interview",
+  interview_type: "product_sense",
+  skill_level: "mid",
+  voice: "voice-id-string",
+  speed: 1.0,
+  emotion: "Neutral",
+  volume: 1.0,
+  tts_model: "sonic-2",
+  stt_model: "deepgram/nova-2",
+  llm_model: "openai/gpt-4o-mini",
+};
+```
+
+### LiveKit Documentation References
+
+For questions about LiveKit Agents, TTS/STT configuration, and API details:
+
+**Primary Resources**:
+- **LiveKit Agents GitHub**: https://github.com/livekit/agents
+  - Plugin source code and examples
+  - Issue tracker for bugs and feature requests
+  - Latest API changes and updates
+
+- **LiveKit Core GitHub**: https://github.com/livekit/livekit
+  - Core WebRTC infrastructure
+  - Server configuration
+  - Protocol specifications
+
+- **LiveKit Documentation**: https://docs.livekit.io/llms-full.txt
+  - Comprehensive LLM integration guide
+  - Voice agent patterns
+  - Best practices
+
+**Useful Commands**:
+```bash
+# View Cartesia TTS source
+cat /path/to/venv/lib/python3.12/site-packages/livekit/plugins/cartesia/tts.py
+
+# Check available voices
+curl -H "X-API-Key: $CARTESIA_API_KEY" \
+     -H "Cartesia-Version: 2025-04-16" \
+     https://api.cartesia.ai/voices
+
+# View LiveKit Agents STT/LLM configuration
+python -c "from livekit.agents import AgentSession; help(AgentSession)"
+```
