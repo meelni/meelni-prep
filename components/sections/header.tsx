@@ -1,33 +1,43 @@
-'use client';
+"use client";
 
-import { Button } from '@/components/ui/button';
-import { siteConfig } from '@/lib/config';
-import { Sparkles } from 'lucide-react';
-import Link from 'next/link';
+import { Icons } from "@/components/icons";
+import { MobileDrawer } from "@/components/mobile-drawer";
+import { buttonVariants } from "@/components/ui/button";
+import { easeInOutCubic } from "@/lib/animation";
+import { siteConfig } from "@/lib/config";
+import { cn } from "@/lib/utils";
+import { AnimatePresence, motion, useAnimation } from "framer-motion";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 
 export function Header() {
   return (
-    <header className="sticky top-0 h-16 z-50 p-0 bg-background/60 backdrop-blur-xl border-b border-border">
-      <div className="flex justify-between items-center container mx-auto px-6 h-full max-w-6xl">
+    <header className="sticky top-0 h-[var(--header-height)] z-50 p-0 bg-background/60 backdrop-blur">
+      <div className="flex justify-between items-center container mx-auto p-2">
         <Link
           href="/"
-          title="MockMate"
-          className="relative flex items-center space-x-2 group"
+          title="brand-logo"
+          className="relative mr-6 flex items-center space-x-2"
         >
-          <div className="p-1.5 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-bold text-xl tracking-tight">
-            {siteConfig.name}
-          </span>
+          <Icons.logo className="w-auto" />
+          <span className="font-semibold text-lg">{siteConfig.name}</span>
         </Link>
-
-        <Link href="/setup">
-          <Button variant="glow" size="md">
+        <div className="hidden lg:block">
+          <Link
+            href="#"
+            className={cn(
+              buttonVariants({ variant: "default" }),
+              "h-8 text-primary-foreground rounded-lg group tracking-tight font-medium"
+            )}
+          >
             {siteConfig.cta}
-          </Button>
-        </Link>
+          </Link>
+        </div>
+        <div className="mt-2 cursor-pointer block lg:hidden">
+          <MobileDrawer />
+        </div>
       </div>
+      <hr className="absolute w-full bottom-0" />
     </header>
   );
 }
