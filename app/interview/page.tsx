@@ -1,14 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
   useVoiceAssistant,
-  BarVisualizer,
-  VoiceAssistantControlBar,
 } from "@livekit/components-react";
-import "@livekit/components-styles";
 
 export default function InterviewPage() {
   const [token, setToken] = useState<string>("");
@@ -65,39 +62,32 @@ export default function InterviewPage() {
       video={false}
       className="flex min-h-screen items-center justify-center bg-gray-900"
     >
+      <RoomAudioRenderer />
       <InterviewRoom />
     </LiveKitRoom>
   );
 }
 
 function InterviewRoom() {
-  const { state, audioTrack } = useVoiceAssistant();
+  const { state } = useVoiceAssistant();
 
   return (
     <div className="flex flex-col items-center justify-center space-y-8 p-8">
-      <RoomAudioRenderer />
-
       <div className="rounded-lg bg-white p-8 shadow-xl">
         <h2 className="mb-4 text-xl font-semibold">Interview Session</h2>
 
-        <div className="mb-6 flex items-center justify-center">
-          {audioTrack && (
-            <BarVisualizer
-              state={state}
-              barCount={5}
-              trackRef={audioTrack}
-              className="h-24 w-64"
-            />
-          )}
-        </div>
-
         <div className="mb-4 text-center">
+          <div className="mb-2 h-32 flex items-center justify-center">
+            <div className="text-4xl">🎤</div>
+          </div>
           <p className="text-sm text-gray-600">
-            Status: <span className="font-medium">{state}</span>
+            Status: <span className="font-medium capitalize">{state || "connecting"}</span>
           </p>
         </div>
 
-        <VoiceAssistantControlBar />
+        <div className="text-center text-sm text-gray-500">
+          <p>Agent will join automatically and greet you</p>
+        </div>
       </div>
 
       <div className="max-w-md text-center text-white">

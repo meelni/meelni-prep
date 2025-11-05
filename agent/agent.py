@@ -3,7 +3,6 @@ MockMate Interview Agent
 Handles real-time voice interviews using LiveKit Agents framework
 """
 
-import asyncio
 import logging
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -13,8 +12,8 @@ from livekit.agents import (
     cli,
     llm,
 )
-from livekit.agents.voice_assistant import VoiceAssistant
 from livekit.plugins import openai, deepgram, cartesia
+import livekit.agents as agents
 
 # Load environment variables
 load_dotenv()
@@ -41,15 +40,15 @@ async def entrypoint(ctx: JobContext):
             "Your goal is to help the candidate practice and improve. "
             "Ask one question at a time, listen carefully, and ask relevant follow-up questions. "
             "Be professional, supportive, and probe for details like metrics, trade-offs, and reasoning. "
-            "Keep responses concise."
+            "Keep responses concise and conversational."
         ),
     )
     
-    logger.info("Initializing voice assistant...")
+    logger.info("Initializing voice assistant pipeline...")
     
-    # Configure the voice assistant with ASR, LLM, and TTS
-    assistant = VoiceAssistant(
-        vad=ctx.proc.userdata.get("vad"),  # Voice Activity Detection
+    # Configure the voice pipeline
+    assistant = agents.VoiceAssistant(
+        vad=agents.vad.Silero(),  # Voice Activity Detection
         stt=deepgram.STT(),  # Speech-to-Text (Deepgram)
         llm=openai.LLM(model="gpt-4"),  # Language Model
         tts=cartesia.TTS(),  # Text-to-Speech (Cartesia)
@@ -60,7 +59,10 @@ async def entrypoint(ctx: JobContext):
     assistant.start(ctx.room)
     
     # Greet the candidate
-    await assistant.say("Hello! I'm your AI interview coach. I'm here to help you practice for your PM interview. Are you ready to begin?", allow_interruptions=True)
+    await assistant.say(
+        "Hello! I'm your AI interview coach. I'm here to help you practice for your PM interview. Are you ready to begin?", 
+        allow_interruptions=True
+    )
     
     logger.info("Voice assistant started successfully")
 
