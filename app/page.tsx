@@ -10,7 +10,6 @@ import { Logos } from '@/components/sections/logos';
 import { Pricing } from '@/components/sections/pricing';
 import { Statistics } from '@/components/sections/statistics';
 import { Testimonials } from '@/components/sections/testimonials';
-import { UseCases } from '@/components/sections/use-cases';
 
 export default function Home() {
   return (
@@ -21,9 +20,6 @@ export default function Home() {
       <Logos />
       <div className="mt-20">
         <Examples />
-      </div>
-      <div className="mt-20">
-        <UseCases />
       </div>
       <div className="mt-20">
         <Features />
