@@ -6,6 +6,7 @@ import { Section } from "@/components/section";
 import { buttonVariants } from "@/components/ui/button";
 import { DotPattern } from "@/components/ui/dot-pattern";
 import { AnimatedBars } from "@/components/ui/animated-bars";
+import CheckeredBackground from "@/components/ui/checkered-background";
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -128,7 +129,27 @@ export function Hero() {
   }, []);
 
   return (
-    <Section id="hero" className="max-w-none relative pb-4 bg-background">
+    <Section id="hero" className="max-w-none relative pb-4 bg-background overflow-hidden">
+      {/* Checkered background layer */}
+      <CheckeredBackground
+        className="absolute inset-0 z-0"
+        cellSize="50px"
+        strokeWidth="1.5px"
+        color="#8b5cf6"
+        opacity={0.25}
+        fade={false}
+      />
+
+      {/* Gradient overlays for text readability */}
+      {/* Top gradient - fades near header */}
+      <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-background via-background/80 to-transparent z-[1]" />
+
+      {/* Left side gradient - protects text area */}
+      <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-background via-background/60 to-transparent z-[1]" />
+
+      {/* Bottom gradient - smooth transition to next section */}
+      <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent z-[1]" />
+
       <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-x-8 w-full px-6 pt-12 pb-4 lg:px-24 lg:pt-16 lg:pb-4 lg:h-[550px] items-center">
         <div className="flex flex-col justify-center items-start lg:col-span-1">
           <HeroTitles />
