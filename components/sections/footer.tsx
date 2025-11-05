@@ -1,58 +1,49 @@
-'use client';
-
-import { siteConfig } from '@/lib/config';
-import Link from 'next/link';
+import { Icons } from "@/components/icons";
+import { BorderText } from "@/components/ui/border-number";
+import { siteConfig } from "@/lib/config";
 
 export function Footer() {
   return (
-    <footer className="border-t border-border bg-background">
-      <div className="container mx-auto max-w-6xl px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Brand */}
-          <div className="space-y-4">
-            <h3 className="font-bold text-lg">{siteConfig.footer.brandText}</h3>
-            <p className="text-sm text-muted-foreground max-w-xs">
-              {siteConfig.description}
-            </p>
-          </div>
-
-          {/* Links */}
-          <div className="space-y-4">
-            <h4 className="font-semibold text-sm">Links</h4>
-            <ul className="space-y-2">
-              {siteConfig.footer.links.map((link) => (
-                <li key={link.text}>
-                  <Link
-                    href={link.url}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.text}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Contact */}
-          <div className="space-y-4">
-            <h4 className="font-semibold text-sm">Contact</h4>
-            <p className="text-sm text-muted-foreground">
-              <a
-                href={`mailto:${siteConfig.links.email}`}
-                className="hover:text-foreground transition-colors"
-              >
-                {siteConfig.links.email}
-              </a>
-            </p>
-          </div>
+    <footer className="flex flex-col gap-y-5 rounded-lg p-5  container max-w-[var(--container-max-width)] mx-auto">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-x-2">
+          <Icons.logo className="h-5 w-5" />
+          <h2 className="text-lg font-bold text-foreground">
+            {siteConfig.name}
+          </h2>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-border text-center">
-          <p className="text-sm text-muted-foreground">
-            {siteConfig.footer.bottomText}
-          </p>
+        <div className="flex gap-x-2">
+          {siteConfig.footer.socialLinks.map((link, index) => (
+            <a
+              key={index}
+              href={link.url}
+              className="flex h-5 w-5 items-center justify-center text-muted-foreground transition-all duration-100 ease-linear hover:text-foreground hover:underline hover:underline-offset-4"
+            >
+              {link.icon}
+            </a>
+          ))}
         </div>
       </div>
+      <div className="flex flex-col justify-between gap-y-5 md:flex-row md:items-center">
+        <ul className="flex flex-col gap-x-5 gap-y-2 text-muted-foreground md:flex-row md:items-center">
+          {siteConfig.footer.links.map((link, index) => (
+            <li
+              key={index}
+              className="text-[15px]/normal font-medium text-muted-foreground transition-all duration-100 ease-linear hover:text-foreground hover:underline hover:underline-offset-4"
+            >
+              <a href={link.url}>{link.text}</a>
+            </li>
+          ))}
+        </ul>
+        <div className="flex items-center justify-between text-sm font-medium tracking-tight text-muted-foreground">
+          <p>{siteConfig.footer.bottomText}</p>
+        </div>
+      </div>
+      <BorderText
+        text={siteConfig.footer.brandText}
+        className="text-[clamp(3rem,15vw,10rem)] overflow-hidden font-mono tracking-tighter font-medium"
+      />
     </footer>
   );
 }
