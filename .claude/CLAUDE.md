@@ -2,7 +2,7 @@
 
 **Project**: MockMate - Real-Time AI Mock Interviews
 **Last Updated**: 2025-11-05
-**Version**: 0.3.0
+**Version**: 0.4.0
 
 ---
 
@@ -23,7 +23,7 @@ This document serves as the single source of truth for:
 
 ## Project Status
 
-**Current Phase**: Phase 0 Complete - LiveKit Voice Integration Working ✅
+**Current Phase**: Phase 0.5 - UI Redesign & Model Upgrade Complete ✅
 **Next Milestone**: Add session persistence (save transcripts to DB), scoring/feedback engine
 
 **Phase 0 Completion Summary**:
@@ -33,7 +33,10 @@ This document serves as the single source of truth for:
 - ✅ LiveKit Agents Python worker implemented and tested
 - ✅ LiveKit token generation API working
 - ✅ Interview page with real-time voice conversation
-- ✅ End-to-end voice pipeline: User speaks → Deepgram → GPT-4o-mini → Cartesia → User hears
+- ✅ End-to-end voice pipeline: User speaks → Deepgram Nova-3 → GPT-4.1-mini → Cartesia Sonic 3 (Tessa) → User hears
+- ✅ UI redesigned with Linear/Notion aesthetic
+- ✅ Component library created (Button, Card, Badge)
+- ✅ Framer Motion animations integrated
 
 ---
 
@@ -42,8 +45,10 @@ This document serves as the single source of truth for:
 ### Frontend
 - **Framework**: Next.js 14+ (App Router)
 - **UI Library**: React
-- **Styling**: Tailwind CSS
-- **Component Library**: shadcn/ui
+- **Styling**: Tailwind CSS v4
+- **Component Library**: shadcn/ui + custom components (Button, Card, Badge)
+- **Animation**: Framer Motion (spring physics, micro-interactions)
+- **Icons**: Lucide React
 - **Language**: TypeScript
 - **State Management**: Zustand (planned)
 - **Real-time UI**: @livekit/components-react
@@ -58,9 +63,9 @@ This document serves as the single source of truth for:
 
 ### Real-time & AI
 - **WebRTC**: LiveKit Cloud (audio/video + Agents framework)
-- **ASR**: Deepgram Nova 2 (via LiveKit Agents) - $0.0043/min
-- **TTS**: Cartesia (via LiveKit Agents)
-- **Dialogue LLM**: GPT-4o-mini (via LiveKit Agents) - cost-effective choice
+- **ASR**: Deepgram Nova-3 (via LiveKit Inference) - upgraded from Nova-2
+- **TTS**: Cartesia Sonic 3.0 with Tessa voice (via LiveKit Inference) - emotive voice optimized
+- **Dialogue LLM**: GPT-4.1-mini (via LiveKit Inference) - upgraded from GPT-4o-mini
 - **Evaluation LLM**: GPT-4 Turbo (post-session scoring, planned)
 - **Avatar**: Hedra Video (lip-sync, post-MVP)
 - **VAD**: Silero (livekit-plugins-silero)
@@ -100,8 +105,13 @@ This document serves as the single source of truth for:
 │           └── token/
 │               └── route.ts      # LiveKit token generation
 ├── components/                   # React components
+│   ├── ui/                       # UI component library
+│   │   ├── button.tsx            # Button component with CVA variants
+│   │   ├── card.tsx              # Card component
+│   │   └── badge.tsx             # Badge component
 │   └── README.md                 # Component organization guide
 ├── lib/                          # Shared utilities and configurations
+│   ├── animations.ts             # Framer Motion animation presets
 │   ├── db/                       # Database (Drizzle ORM)
 │   │   ├── schema.ts             # Database schema (deployed to Supabase)
 │   │   └── index.ts              # DB client
@@ -126,23 +136,36 @@ This document serves as the single source of truth for:
 
 ## Code Style & Conventions
 
-**Status**: Emerging patterns from Phase 0.
+**Status**: Established patterns from Phase 0 & 0.5.
 
 ### Naming Conventions
 - React components: PascalCase (e.g., `InterviewPage.tsx`)
 - API routes: kebab-case folders (e.g., `app/api/livekit/token/route.ts`)
 - Database tables: snake_case (e.g., `app_user`, `interview_session`)
 - Python: snake_case for functions/variables, PascalCase for classes
+- CSS classes: kebab-case with BEM-style modifiers when needed
 
 ### File Organization
 - Server components by default in Next.js App Router
-- "use client" directive for client components using LiveKit hooks
+- "use client" directive for client components using LiveKit hooks or Framer Motion
 - Colocate related files (e.g., `/interview/page.tsx` for interview UI)
+- Component library in `/components/ui/` for reusable components
+- Shared utilities in `/lib/` (animations, utils, db)
 
 ### TypeScript Guidelines
 - Strict mode enabled in tsconfig.json
 - Type all function parameters and return values
 - Use Zod for runtime validation (planned)
+- Prefer interfaces for props, types for unions/utility types
+
+### Design System Conventions
+- **Colors**: Use RGB format in CSS variables for opacity control (e.g., `rgb(var(--primary) / 0.5)`)
+- **Spacing**: Use Tailwind spacing scale (0.25rem increments)
+- **Typography**: Application-scale sizing (text-sm to text-5xl for UI, avoid 6xl+)
+- **Animations**: Use Framer Motion spring presets from `/lib/animations.ts`
+- **Component Variants**: Use CVA (class-variance-authority) for variant management
+- **Hover Effects**: Subtle scale transforms (1.005x, not 1.02x+) for professional feel
+- **Gradients**: Use gradient utilities (`.gradient-text`, `.gradient-bg`) for consistency
 
 ---
 
@@ -245,6 +268,74 @@ This document serves as the single source of truth for:
   - Clear separation: agent definition vs session orchestration
   - Learning: Always check official examples when docs don't match SDK
 
+### ADR-014: UI Redesign with Linear/Notion Aesthetic
+- **Date**: 2025-11-05
+- **Decision**: Complete UI redesign with modern design system inspired by Linear and Notion
+- **Rationale**:
+  - Previous UI was not intuitive or clean
+  - User requested professional, modern aesthetic
+  - Needed consistent design language across the application
+  - Typography was too large (display-scale vs application-scale)
+- **Implementation**:
+  - Created RGB-based color token system for better opacity control
+  - Built reusable component library using class-variance-authority (CVA)
+  - Integrated Framer Motion with spring physics for 60fps animations
+  - Refined typography from display-scale (6xl-7xl) to application-scale (2xl-5xl)
+  - Implemented gradient backgrounds and micro-interactions
+  - Progressive disclosure UX for setup page
+- **Consequences**:
+  - More polished, professional appearance
+  - Improved user experience and visual feedback
+  - Consistent design tokens enable easier theming
+  - Animation system provides smooth, natural interactions
+  - Component library enables rapid development
+
+### ADR-015: Model Upgrade to Deepgram Nova-3, GPT-4.1-mini, and Cartesia Sonic 3 with Tessa Voice
+- **Date**: 2025-11-05
+- **Decision**: Upgrade all voice pipeline models to latest versions
+- **Models Selected**:
+  - **STT**: Deepgram Nova-3 (upgraded from Nova-2)
+  - **LLM**: OpenAI GPT-4.1-mini (upgraded from GPT-4o-mini)
+  - **TTS**: Cartesia Sonic 3.0 with Tessa voice (voice ID: `6ccbfb76-1fc6-48f7-b71d-91ac6298247b`)
+  - **VAD**: Silero (unchanged)
+- **Rationale**:
+  - Nova-3 offers improved speech recognition accuracy
+  - GPT-4.1-mini provides better reasoning while maintaining cost-effectiveness
+  - Tessa is an emotive voice optimized for Sonic 3, providing more natural conversation
+  - User preference for these specific models
+- **Key Discovery**:
+  - **Cartesia does NOT require separate API key** when using LiveKit Inference
+  - Unlike ElevenLabs, Cartesia is fully integrated with LiveKit Cloud
+  - Only need LIVEKIT_API_KEY/SECRET for Cartesia TTS
+  - ElevenLabs requires separate ELEVENLABS_API_KEY even through LiveKit Inference
+- **Consequences**:
+  - Better voice quality and natural conversation
+  - Simplified configuration (no Cartesia API key needed)
+  - TTS format: `cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
+  - Cost remains similar due to LiveKit Inference pricing
+
+### ADR-016: Cartesia Voice Library and Tessa Voice Selection
+- **Date**: 2025-11-05
+- **Decision**: Use Tessa voice from Cartesia's 150+ voice library
+- **Voice Details**:
+  - **Name**: Tessa
+  - **Voice ID**: `6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
+  - **Characteristics**: Emotive voice with wide emotional range
+  - **Model**: Sonic 3.0 (best-in-class emotional response)
+  - **Emotions Supported**: Happy, Excited, Sad, Angry, Scared, Confident, and 50+ more
+- **Rationale**:
+  - User specifically requested Tessa voice
+  - Tessa is listed among voices with best emotional response in Sonic 3
+  - Natural, engaging voice suitable for interview coaching
+- **Discovery Process**:
+  - Found comprehensive voice list via SignalWire documentation
+  - Cartesia API endpoint: `GET https://api.cartesia.ai/voices`
+  - 150+ voices available (British Male, Professional Female, Sarah, etc.)
+- **Consequences**:
+  - More natural, emotive interview conversations
+  - Can easily swap voices by changing voice ID in configuration
+  - Default voice ID updated in both frontend (`/app/setup/page.tsx`) and backend (`/agent/agent.py`)
+
 ---
 
 ## File Boundaries & Responsibilities
@@ -259,13 +350,18 @@ This document serves as the single source of truth for:
 
 **Critical Code Pattern**:
 ```python
+# Current configuration (as of 2025-11-05)
+stt_model = "deepgram/nova-3"
+llm_model = "openai/gpt-4.1-mini"
+tts_model = "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"  # Tessa voice
+
 session = AgentSession(
-    stt="deepgram",           # Speech-to-Text
-    llm="openai/gpt-4o-mini", # Language Model
-    tts="cartesia",           # Text-to-Speech
-    vad=ctx.proc.userdata["vad"],  # Voice Activity Detection
+    stt=stt_model,
+    llm=llm_model,
+    tts=tts_model,
+    vad=ctx.proc.userdata["vad"],  # Silero VAD
 )
-await session.start(agent=InterviewAgent(), room=ctx.room)
+await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.room)
 ```
 
 ### `/app/api/livekit/token/route.ts`
@@ -289,6 +385,62 @@ await session.start(agent=InterviewAgent(), room=ctx.room)
 - `interviewSession`: Interview metadata
 - `transcriptTurn`: Turn-by-turn conversation data
 - `feedback`: Scored feedback and rubrics
+
+### `/components/ui/button.tsx`
+**Purpose**: Reusable button component with variants
+**Key Features**:
+- CVA (class-variance-authority) for variant management
+- Variants: primary, secondary, glow, ghost, outline
+- Sizes: sm, md, lg
+- TypeScript-first with proper prop typing
+- Framer Motion integration support
+
+### `/components/ui/card.tsx`
+**Purpose**: Card component for content containers
+**Key Features**:
+- Consistent padding and border radius
+- Surface color with subtle borders
+- Hover states and transitions
+
+### `/components/ui/badge.tsx`
+**Purpose**: Badge component for labels and status indicators
+**Key Features**:
+- Multiple variants (default, success, warning, info)
+- Compact sizing for inline use
+
+### `/lib/animations.ts`
+**Purpose**: Centralized Framer Motion animation presets
+**Exports**:
+- `fadeInUp`: Fade and slide up animation
+- `staggerContainer`: Container for staggered children
+- `selectionSpring`: Spring animation for selections (scale + opacity)
+- `pageTransition`: Page-level transition settings
+**Usage**: Import and apply to motion components for consistent animations
+
+### `/app/setup/page.tsx`
+**Purpose**: Interview configuration and setup flow
+**Key Features**:
+- Interview type selection (Product Sense, Analytical, Leadership, Strategy)
+- Mode selection (Mock Interview, Practice, Learning)
+- Optimal defaults configuration (hidden from user)
+- Progressive disclosure UX with visual feedback
+- Navigates to `/interview` with query parameters
+**Configuration Passed**:
+```typescript
+{
+  role, mode, interview_type, voice, skill_level,
+  speed, emotion, volume, tts_model, stt_model, llm_model
+}
+```
+
+### `/app/globals.css`
+**Purpose**: Global styles and design system tokens
+**Key Features**:
+- RGB-based color variables for better opacity control
+- Light and dark mode support
+- Design tokens: colors, spacing, typography, radius, timing
+- Gradient utilities (`.gradient-text`, `.gradient-bg`)
+- Animation utilities
 
 ---
 
@@ -464,14 +616,14 @@ LIVEKIT_API_KEY=your_api_key
 LIVEKIT_API_SECRET=your_api_secret
 NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud  # or LIVEKIT_URL
 
-# OpenAI (for GPT-4o-mini)
+# OpenAI (for GPT-4.1-mini)
 OPENAI_API_KEY=your_openai_key
 
-# Deepgram (ASR)
+# Deepgram (ASR - Nova-3)
 DEEPGRAM_API_KEY=your_deepgram_key
 
-# Cartesia (TTS)
-CARTESIA_API_KEY=your_cartesia_key
+# Cartesia (TTS) - NOT REQUIRED when using LiveKit Inference
+# CARTESIA_API_KEY=your_cartesia_key  # Only needed for direct API access
 ```
 
 ### Planned
@@ -570,14 +722,18 @@ RESEND_API_KEY=
 
 ## Known Issues & Technical Debt
 
-### Resolved Issues (Phase 0)
+### Resolved Issues (Phase 0 & 0.5)
 - ✅ SSL Certificate Error: Python 3.12 on macOS needed certificate installation
 - ✅ LiveKit Components Styles: Removed unused import
 - ✅ VoiceAssistant API: Switched to AgentSession pattern
 - ✅ ChatContext API: Simplified to string-based model config
 - ✅ Silero VAD Plugin: Installed missing package
-- ✅ GPT-4 Model Name: Changed to `openai/gpt-4o-mini`
+- ✅ GPT-4 Model Name: Changed to `openai/gpt-4o-mini` (later upgraded to `gpt-4.1-mini`)
 - ✅ Agent Auto-Reload: Restart needed for prewarm function changes
+- ✅ Typography Scale: Fixed overly large fonts (display-scale → application-scale)
+- ✅ ElevenLabs Authentication: Discovered requires separate API key; switched to Cartesia
+- ✅ Interview Page Loading: Resolved by agent restart after configuration changes
+- ✅ Cartesia API Key Confusion: Clarified that Cartesia doesn't need separate key with LiveKit Inference
 
 ### Current Technical Debt
 - No session persistence (transcripts not saved to DB yet)
@@ -656,6 +812,57 @@ RESEND_API_KEY=
 - ✅ Deepgram ASR + GPT-4o-mini + Cartesia TTS pipeline
 - ✅ Database schema ready for session persistence
 - ✅ Monorepo structure with Next.js + Python agent
+
+### 2025-11-05 - Phase 0.5: UI Redesign & Model Upgrade Complete ✅
+
+**UI/UX Redesign**
+- Implemented complete design system overhaul with Linear/Notion aesthetic
+- Created RGB-based color token system in `globals.css` for better opacity control
+- Built reusable component library: Button, Card, Badge (using CVA)
+- Integrated Framer Motion for smooth animations with spring physics
+- Created animation utilities in `lib/animations.ts` (fadeInUp, staggerContainer, selectionSpring)
+- Redesigned home page with gradient backgrounds and animated feature cards
+- Redesigned setup page with progressive disclosure UX and visual feedback
+- Refined typography from display-scale (6xl-7xl) to application-scale (2xl-5xl)
+- Added Lucide React for consistent iconography
+- Removed social proof section per user request
+
+**Voice Pipeline Upgrade**
+- Upgraded STT: Deepgram Nova-2 → Nova-3
+- Upgraded LLM: GPT-4o-mini → GPT-4.1-mini
+- Upgraded TTS: Default Cartesia voice → Sonic 3.0 with Tessa voice
+- Tessa voice ID: `6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
+- Maintained Silero VAD (unchanged)
+
+**Key Technical Discoveries**
+- **Cartesia Integration**: Cartesia does NOT require separate API key with LiveKit Inference
+- Cartesia is fully integrated with LiveKit Cloud (unlike ElevenLabs)
+- Only LIVEKIT_API_KEY/SECRET needed for Cartesia TTS
+- ElevenLabs requires separate ELEVENLABS_API_KEY even through LiveKit Inference
+- Found comprehensive Cartesia voice library (150+ voices) via SignalWire documentation
+- Tessa identified as emotive voice optimized for Sonic 3 with wide emotional range
+
+**Configuration Updates**
+- Updated `OPTIMAL_DEFAULTS` in `/app/setup/page.tsx` with Tessa voice ID and new models
+- Updated default config in `/agent/agent.py` with Tessa voice ID and new models
+- Updated TTS format to: `cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
+- Updated STT format to: `deepgram/nova-3`
+- Updated LLM format to: `openai/gpt-4.1-mini`
+
+**Testing & Debugging**
+- Tested ElevenLabs integration (discovered API key requirement issue)
+- Switched to Cartesia per user preference
+- Verified Tessa voice working correctly
+- Agent restart required after configuration changes
+
+**Deliverables**
+- ✅ Modern, professional UI with consistent design language
+- ✅ Component library for rapid development
+- ✅ Smooth 60fps animations with spring physics
+- ✅ Upgraded voice pipeline with better quality models
+- ✅ Tessa voice providing natural, emotive conversation
+- ✅ Simplified configuration (no Cartesia API key needed)
+- ✅ Committed and pushed to GitHub (feat: redesign UI and upgrade models)
 
 ---
 
