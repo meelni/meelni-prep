@@ -3,6 +3,13 @@
 echo "🚀 Starting MockMate development servers..."
 echo ""
 
+# Get the directory where this script is located (workspace root)
+WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$WORKSPACE_DIR"
+
+echo "📂 Working directory: $WORKSPACE_DIR"
+echo ""
+
 # Function to cleanup background processes on exit
 cleanup() {
     echo ""
@@ -13,7 +20,14 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM EXIT
 
-# Start Next.js dev server
+# Ensure dependencies are installed
+if [ ! -d "node_modules" ]; then
+    echo "📦 Installing Node.js dependencies..."
+    npm install
+    echo ""
+fi
+
+# Start Next.js dev server from workspace directory
 echo "▶️  Starting Next.js dev server on http://localhost:3000"
 npm run dev &
 NEXT_PID=$!
@@ -21,20 +35,35 @@ NEXT_PID=$!
 # Wait a moment for Next.js to start
 sleep 2
 
-# Start Python agent
+# Start Python agent from parent project (where venv actually exists)
 echo "▶️  Starting Python LiveKit agent"
-cd agent
-source venv/bin/activate
-python agent.py dev &
-AGENT_PID=$!
-cd ..
+PARENT_DIR="$(dirname "$(dirname "$WORKSPACE_DIR")")"
+if [ -d "$PARENT_DIR/agent" ]; then
+    cd "$PARENT_DIR/agent"
+    if [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+        python agent.py dev &
+        AGENT_PID=$!
+        cd "$WORKSPACE_DIR"
+        echo "   ✓ Agent started from $PARENT_DIR/agent"
+    else
+        echo "   ⚠️  Python venv not found. Skipping agent startup."
+        echo "   Run: cd $PARENT_DIR/agent && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
+    fi
+else
+    echo "   ⚠️  Agent directory not found. Skipping agent startup."
+fi
 
 echo ""
-echo "✅ Both servers running:"
+echo "✅ Servers status:"
 echo "   - Next.js: http://localhost:3000 (PID: $NEXT_PID)"
-echo "   - Agent: LiveKit worker (PID: $AGENT_PID)"
+if [ ! -z "$AGENT_PID" ]; then
+    echo "   - Agent: LiveKit worker (PID: $AGENT_PID)"
+else
+    echo "   - Agent: Not running (manual start required)"
+fi
 echo ""
-echo "Press Ctrl+C to stop both servers"
+echo "Press Ctrl+C to stop servers"
 
-# Wait for both processes
+# Wait for processes
 wait
