@@ -70,11 +70,32 @@ This document serves as the single source of truth for:
 ```
 /
 ├── .conductor/almaty/.claude/   # Project documentation (PRD, CLAUDE.md)
-├── src/                          # TBD - Source code (not created yet)
-├── public/                       # TBD - Static assets
-├── package.json                  # TBD - Dependencies
-└── README.md                     # TBD - Project overview
+├── app/                          # Next.js App Router pages
+│   ├── layout.tsx                # Root layout
+│   ├── page.tsx                  # Home page
+│   └── globals.css               # Global styles
+├── components/                   # React components
+│   └── README.md                 # Component organization guide
+├── lib/                          # Shared utilities and configurations
+│   ├── db/                       # Database (Drizzle ORM)
+│   │   ├── schema.ts             # Database schema
+│   │   ├── index.ts              # DB client
+│   │   └── migrations/           # Migration files
+│   ├── supabase/                 # Supabase clients
+│   │   ├── client.ts             # Browser client
+│   │   └── server.ts             # Server client
+│   ├── api/                      # API client helpers (LiveKit, Hedra, etc.)
+│   └── utils/                    # Utility functions
+├── public/                       # Static assets
+├── .env.example                  # Environment variables template
+├── drizzle.config.ts             # Drizzle ORM configuration
+├── components.json               # shadcn/ui configuration
+├── tsconfig.json                 # TypeScript configuration (strict mode)
+├── .prettierrc                   # Prettier configuration
+└── package.json                  # Dependencies and scripts
 ```
+
+**Status**: Initial structure created. Ready for feature development.
 
 **Status**: Initial structure to be created in next iteration.
 
