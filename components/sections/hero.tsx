@@ -5,11 +5,12 @@ import { Icons } from "@/components/icons";
 import { Section } from "@/components/section";
 import { buttonVariants } from "@/components/ui/button";
 import { DotPattern } from "@/components/ui/dot-pattern";
+import { AnimatedBars } from "@/components/ui/animated-bars";
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 const ease = [0.16, 1, 0.3, 1];
 
@@ -110,24 +111,14 @@ function HeroCTA() {
     </div>
   );
 }
-const LazySpline = lazy(() => import("@splinetool/react-spline"));
 
 export function Hero() {
-  const [showSpline, setShowSpline] = useState(false);
   const [isMobile, setIsMobile] = useState(true);
 
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
-
-      // Show Spline on desktop after delay
-      if (!mobile) {
-        const timer = setTimeout(() => {
-          setShowSpline(true);
-        }, 1000);
-        return () => clearTimeout(timer);
-      }
     };
 
     checkMobile();
@@ -144,26 +135,15 @@ export function Hero() {
           <HeroCTA />
         </div>
         {!isMobile && (
-          <div className="relative h-[500px] lg:col-span-1 overflow-hidden">
-            <Suspense fallback={<div className="w-full h-full flex items-center justify-center text-muted-foreground">Loading...</div>}>
-              {showSpline && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.8, delay: 1 }}
-                  className="absolute inset-0 flex items-center justify-center"
-                >
-                  <div className="w-full h-full relative">
-                    <LazySpline
-                      scene="https://prod.spline.design/mZBrYNcnoESGlTUG/scene.splinecode"
-                      className="w-full h-full"
-                    />
-                    {/* Overlay to cover watermark at bottom right */}
-                    <div className="absolute bottom-0 right-0 w-48 h-16 bg-background z-50 pointer-events-none" />
-                  </div>
-                </motion.div>
-              )}
-            </Suspense>
+          <div className="relative h-[500px] lg:col-span-1 flex items-center justify-center">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.8, delay: 0.5 }}
+              className="flex items-center justify-center"
+            >
+              <AnimatedBars barCount={60} />
+            </motion.div>
           </div>
         )}
       </div>
