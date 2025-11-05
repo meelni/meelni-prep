@@ -1,4 +1,4 @@
-# CLOD: Codebase Living Operational Document
+# CLAUDE.md: Codebase Living Operational Document
 
 **Project**: MockMate - Real-Time AI Mock Interviews
 **Last Updated**: 2025-11-05
@@ -60,7 +60,7 @@ This document serves as the single source of truth for:
 
 ```
 /
-├── .conductor/almaty/.claude/   # Project documentation (PRD, CLOD)
+├── .conductor/almaty/.claude/   # Project documentation (PRD, CLAUDE.md)
 ├── src/                          # TBD - Source code (not created yet)
 ├── public/                       # TBD - Static assets
 ├── package.json                  # TBD - Dependencies
@@ -273,7 +273,7 @@ HEDRA_API_KEY=
 ### 2025-11-05 - Initial Setup
 - Created GitHub repository
 - Added PRD documentation
-- Created CLOD.md structure
+- Created CLAUDE.md structure
 - Established documentation workflow
 
 ---
