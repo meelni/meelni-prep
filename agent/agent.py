@@ -84,10 +84,11 @@ async def entrypoint(ctx: JobContext):
     stt_model = config.get("stt_model", "deepgram")
     llm_model = config.get("llm_model", "openai/gpt-4o-mini")
     
-    # For LiveKit inference, TTS is just "cartesia" (provider name only)
-    # Voice ID is passed separately in the format "cartesia:{voice_id}"
+    # For LiveKit inference, TTS format is "cartesia/MODEL:VOICE_ID"
+    # Example: "cartesia/sonic-3:9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
     voice_id = config.get("voice", "79a125e8-cd45-4c13-8a67-188112f4dd22")
-    tts_model = f"cartesia:{voice_id}"
+    tts_model_name = config.get("tts_model", "sonic-3")  # sonic-2, sonic-3, sonic-turbo
+    tts_model = f"cartesia/{tts_model_name}:{voice_id}"
 
     logger.info(f"STT Model: {stt_model}")
     logger.info(f"LLM Model: {llm_model}")
