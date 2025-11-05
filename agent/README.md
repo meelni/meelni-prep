@@ -2,77 +2,329 @@
 
 Python-based LiveKit Agent for conducting real-time AI mock interviews.
 
-## Architecture
+**Parent Documentation:** [Root README](../README.md) | [Project Architecture](../.claude/CLAUDE.md)
 
-This agent:
+---
+
+## 🏗️ Architecture
+
+This agent is the **backend brain** of MockMate. It:
 - Joins LiveKit rooms as a programmable participant
-- Uses Deepgram for Speech-to-Text (ASR)
-- Uses GPT-4 for conversational responses
-- Uses Cartesia for Text-to-Speech (TTS)
-- Handles interruptions and natural conversation flow
+- Orchestrates the real-time voice pipeline (STT → LLM → TTS)
+- Manages interview conversation state and flow
+- Handles interruptions and natural conversation dynamics
 
-## Setup
+### Voice Pipeline Components
 
-1. **Create virtual environment:**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your credentials
-   ```
-
-## Running the Agent
-
-**Development mode (with auto-reload):**
-```bash
-source venv/bin/activate
-python agent.py dev
+```
+User speaks → Deepgram Nova-3 (STT) → GPT-4.1-mini (LLM) → Cartesia Sonic 3.0 (TTS) → User hears
+                                              ↓
+                                    Silero VAD (interruption detection)
 ```
 
-**Production mode:**
+| Component | Provider | Purpose |
+|-----------|----------|---------|
+| **STT** | Deepgram Nova-3 | Speech-to-text with low latency |
+| **LLM** | OpenAI GPT-4.1-mini | Conversational intelligence |
+| **TTS** | Cartesia Sonic 3.0 (Tessa voice) | Natural, emotive speech synthesis |
+| **VAD** | Silero | Voice activity detection for barge-in |
+
+---
+
+## ⚡ Quick Start
+
+### Prerequisites
+- Python 3.10 or higher
+- pip (Python package manager)
+- Active LiveKit Cloud project
+- API keys: OpenAI, Deepgram (Cartesia key not required when using LiveKit Inference)
+
+### 1. Create Virtual Environment
 ```bash
-source venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+### 2. Install Dependencies
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 3. Configure Environment
+```bash
+cp .env.example .env
+# Edit .env with your credentials (see Environment Variables below)
+```
+
+### 4. Run Agent
+```bash
+# Development mode (auto-reload on file changes)
+python agent.py dev
+
+# Production mode
 python agent.py start
 ```
 
-## How It Works
+---
 
-1. User joins interview room from Next.js frontend
-2. Agent worker detects new participant and launches agent instance
-3. Agent joins the same room
-4. Voice pipeline: User audio → Deepgram STT → GPT-4 → Cartesia TTS → User
-5. Agent manages interview state and saves transcript to database
+## 🔐 Environment Variables
 
-## Environment Variables
+The agent reads from the same `.env.local` file as the Next.js frontend (symlinked by Conductor automation). Required variables:
 
-- `LIVEKIT_URL` - LiveKit server URL (e.g., wss://your-project.livekit.cloud)
-- `LIVEKIT_API_KEY` - LiveKit API key
-- `LIVEKIT_API_SECRET` - LiveKit API secret
-- `OPENAI_API_KEY` - OpenAI API key for GPT-4
-- `DEEPGRAM_API_KEY` - Deepgram API key for ASR
-- `CARTESIA_API_KEY` - Cartesia API key for TTS
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LIVEKIT_URL` | ✅ | LiveKit WebSocket URL (e.g., `wss://your-project.livekit.cloud`) |
+| `LIVEKIT_API_KEY` | ✅ | LiveKit API key |
+| `LIVEKIT_API_SECRET` | ✅ | LiveKit API secret |
+| `OPENAI_API_KEY` | ✅ | OpenAI API key (for GPT-4.1-mini) |
+| `DEEPGRAM_API_KEY` | ✅ | Deepgram API key (for Nova-3 ASR) |
+| `CARTESIA_API_KEY` | ❌ | **Not required** when using LiveKit Inference |
 
-## Deployment
+**Note:** If running outside of Conductor, create a `.env` file in the `agent/` directory.
 
-Deploy to Railway, Render, or Fly.io:
+---
 
+## 📖 How It Works
+
+### 1. Room Connection
+When a user starts an interview:
+1. Next.js frontend generates a LiveKit access token via `/api/livekit/token`
+2. User joins a room with unique ID (e.g., `interview-abc123`)
+3. Agent worker detects new participant event
+4. Agent spawns instance and joins the same room
+
+### 2. Voice Pipeline Orchestration
+The agent uses LiveKit's `AgentSession` API to orchestrate the voice pipeline:
+
+```python
+session = AgentSession(
+    stt="deepgram/nova-3",           # Speech-to-Text
+    llm="openai/gpt-4.1-mini",       # Language Model
+    tts="cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",  # Text-to-Speech (Tessa voice)
+    vad=silero_vad,                  # Voice Activity Detection
+)
+await session.start(agent=InterviewAgent(instructions=prompt), room=room)
+```
+
+### 3. Conversation Flow
+- User speaks → Deepgram transcribes audio in real-time
+- Transcript sent to GPT-4.1-mini → LLM generates response
+- Response synthesized by Cartesia TTS → Audio played to user
+- Silero VAD monitors audio → Detects when user interrupts (barge-in)
+
+### 4. Interview State Management (Planned)
+- Track conversation turns and timestamps
+- Save transcript to Supabase database
+- Trigger post-session evaluation job (Inngest)
+
+---
+
+## 🎛️ Configuration Options
+
+The agent accepts dynamic configuration via room metadata (passed from frontend setup page):
+
+### Interview Configuration
+- **Role**: `interviewee` (user being interviewed) or `interviewer` (user conducting interview)
+- **Interview Type**: `product_sense`, `analytical`, `leadership`, `strategy`
+- **Mode**: `mock_interview`, `practice`, `learning`, etc.
+- **Voice Model**: Cartesia voice ID (default: Tessa)
+- **Advanced**: Speed, emotion, volume, difficulty, time limits
+
+### Dynamic Prompt System
+The agent adapts its instructions based on configuration:
+- **Interviewee mode**: Acts as experienced PM interviewer
+- **Interviewer mode**: Acts as candidate being interviewed
+- **Learning mode**: Teaches frameworks step-by-step
+- **Mock Interview mode**: Realistic 45-minute session with pacing
+
+See [`agent.py`](./agent.py) for prompt templates.
+
+---
+
+## 🧪 Development
+
+### Dev Mode (Auto-Reload)
 ```bash
-# Railway
+python agent.py dev
+```
+- Watches `agent.py` for changes
+- Automatically restarts worker on file save
+- Ideal for rapid iteration
+
+**Note:** Changes to the `prewarm` function require manual restart.
+
+### Testing Voice Pipeline
+1. Start agent: `python agent.py dev`
+2. Open frontend: `http://localhost:3000`
+3. Start interview and speak
+4. Check agent logs for STT/LLM/TTS flow
+
+### Debugging
+- **Verbose logging**: Set `LOG_LEVEL=debug` in `.env`
+- **LiveKit logs**: Check [LiveKit Dashboard](https://cloud.livekit.io) for room events
+- **Audio issues**: Verify microphone permissions in browser
+- **Agent not joining**: Check `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
+
+---
+
+## 🚀 Deployment
+
+### Railway
+```bash
 railway up
+```
+Set environment variables in Railway dashboard.
 
-# Render
-# Connect your git repo and set build command: pip install -r agent/requirements.txt
-# Start command: cd agent && python agent.py start
+### Render
+1. Connect git repository
+2. Build command: `pip install -r agent/requirements.txt`
+3. Start command: `cd agent && python agent.py start`
+4. Add environment variables in Render dashboard
 
-# Fly.io
+### Fly.io
+```bash
 fly deploy
 ```
+Configure `fly.toml` with agent start command.
+
+### Docker (Custom)
+```dockerfile
+FROM python:3.10-slim
+WORKDIR /app
+COPY agent/requirements.txt .
+RUN pip install -r requirements.txt
+COPY agent/ .
+CMD ["python", "agent.py", "start"]
+```
+
+---
+
+## 🔧 Customization
+
+### Changing Voice Model
+Edit `agent.py` and update the TTS configuration:
+```python
+tts_model = "cartesia/sonic-3:<VOICE_ID>"
+```
+
+Find voice IDs:
+- [Cartesia Voice Library](https://docs.cartesia.ai/voices) (150+ voices)
+- API: `GET https://api.cartesia.ai/voices`
+
+### Adjusting Speech Speed/Emotion
+Modify TTS parameters in session config:
+```python
+tts = {
+    "model": "sonic-3",
+    "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+    "speed": 1.0,      # 0.6 to 1.5
+    "emotion": ["Confident", "Calm"],
+    "volume": 1.0,     # 0.5 to 2.0
+}
+```
+
+### Custom Interviewer Instructions
+Edit the `InterviewAgent` class in `agent.py`:
+```python
+class InterviewAgent(Agent):
+    def __init__(self, instructions: str):
+        super().__init__(instructions=instructions)
+```
+
+See [LiveKit Agents Docs](https://docs.livekit.io/agents) for advanced customization.
+
+---
+
+## 📊 Performance Considerations
+
+### Latency Optimization
+- **Target**: <1.2s end-to-end per turn
+- **Deepgram Nova-3**: ~200ms STT latency
+- **GPT-4.1-mini**: ~400-600ms LLM response time
+- **Cartesia Sonic 3**: ~300ms TTS synthesis
+
+### Cost Per Session (20 minutes)
+- **Deepgram ASR**: ~$0.09
+- **GPT-4.1-mini**: ~$0.05
+- **Cartesia TTS**: ~$0.10
+- **Total**: ~$0.24/session
+
+### Scaling
+- Each agent instance handles 1 concurrent interview
+- Deploy multiple workers for horizontal scaling
+- LiveKit Cloud handles WebRTC infrastructure
+
+---
+
+## 🐛 Troubleshooting
+
+### "Agent not connecting to LiveKit"
+- Verify `LIVEKIT_URL` format: `wss://your-project.livekit.cloud` (not `https://`)
+- Check API key/secret in `.env`
+- Ensure LiveKit project is active (check dashboard)
+
+### "SSL Certificate Error" (macOS)
+```bash
+# Install Python SSL certificates
+cd /Applications/Python\ 3.12/
+./Install\ Certificates.command
+```
+
+### "Module not found" errors
+```bash
+# Reinstall dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### "Agent joins but doesn't speak"
+- Check `OPENAI_API_KEY` and `CARTESIA_API_KEY` (if using direct API)
+- Verify model names: `deepgram/nova-3`, `openai/gpt-4.1-mini`, `cartesia/sonic-3:VOICE_ID`
+- Check agent logs for API errors
+
+### "Silero VAD not loading"
+```bash
+# Install missing plugin
+pip install livekit-plugins-silero
+```
+
+### "Prewarm function changes not taking effect"
+Restart agent manually (auto-reload doesn't catch prewarm changes):
+```bash
+# Kill and restart
+python agent.py dev
+```
+
+---
+
+## 📚 Resources
+
+### LiveKit Documentation
+- [LiveKit Agents GitHub](https://github.com/livekit/agents) - Source code and examples
+- [LiveKit Agents Docs](https://docs.livekit.io/agents) - Official documentation
+- [LiveKit Dashboard](https://cloud.livekit.io) - Manage projects and monitor rooms
+
+### Voice Provider Docs
+- [Deepgram Nova-3](https://developers.deepgram.com/docs/nova-3) - ASR documentation
+- [Cartesia Sonic 3](https://docs.cartesia.ai) - TTS and voice models
+- [OpenAI GPT-4.1-mini](https://platform.openai.com/docs/models/gpt-4-1-mini) - LLM documentation
+
+### Related Files
+- [Root README](../README.md) - Full project setup and architecture
+- [CLAUDE.md](../.claude/CLAUDE.md) - Living operational document
+- [PRD.md](../.claude/PRD.md) - Product requirements
+
+---
+
+## 🤝 Contributing
+
+This is a solo project. For architectural decisions and conventions, see:
+- [`.claude/CLAUDE.md`](../.claude/CLAUDE.md) - Architecture decisions (ADRs)
+- [Code style guide](../.claude/CLAUDE.md#code-style--conventions)
+
+---
+
+## 📄 License
+
+Private project. All rights reserved.
