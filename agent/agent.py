@@ -1,9 +1,10 @@
 """
 MockMate Interview Agent
-Handles real-time voice interviews using LiveKit Agents framework
+Handles real-time voice interviews with LiveKit inference platform
 """
 
 import logging
+import json
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
@@ -15,24 +16,19 @@ from livekit.agents import (
     cli,
 )
 from livekit.plugins import silero
+from prompts import get_prompt
 
-# Load environment variables
 load_dotenv()
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class InterviewAgent(Agent):
-    """PM Interview Coach Agent"""
-    
-    def __init__(self) -> None:
-        super().__init__(
-            instructions="You are an experienced PM interviewer. Conduct a realistic, time-boxed mock interview. "
-            "Ask one question at a time, use brief backchannels, probe for metrics, constraints, trade-offs, and risks. "
-            "Keep tone professional but supportive. Speak naturally without using emojis, asterisks, or markdown."
-        )
+    """PM Interview Coach Agent with dynamic instructions"""
+
+    def __init__(self, instructions: str) -> None:
+        super().__init__(instructions=instructions)
 
 
 def prewarm(proc: JobProcess):
@@ -40,33 +36,82 @@ def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
 
+def get_config_from_metadata(metadata: str) -> dict:
+    """Parse configuration from room metadata"""
+    default_config = {
+        "role": "interviewee",
+        "mode": "mock_interview",
+        "interview_type": "product_sense",
+        "voice": "79a125e8-cd45-4c13-8a67-188112f4dd22",  # Default Cartesia voice
+        "skill_level": "mid",
+        "stt_model": "deepgram",
+        "llm_model": "openai/gpt-4o-mini",
+    }
+
+    try:
+        if metadata:
+            config = json.loads(metadata)
+            return {**default_config, **config}
+    except json.JSONDecodeError:
+        logger.warning(f"Failed to parse metadata: {metadata}. Using defaults.")
+    except Exception as e:
+        logger.warning(f"Error parsing metadata: {e}. Using defaults.")
+
+    return default_config
+
+
 async def entrypoint(ctx: JobContext):
-    """
-    Entrypoint for the agent - called when a new participant joins
-    """
+    """Entrypoint - reads configuration and starts agent"""
     logger.info(f"Starting agent for room: {ctx.room.name}")
 
-    # Wait for the first participant to connect
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    logger.info("Initializing voice agent session...")
+    config = get_config_from_metadata(ctx.room.metadata)
 
-    # Create agent session with model specifications
-    session = AgentSession(
-        stt="deepgram",  # Speech-to-Text
-        llm="openai/gpt-4o-mini",  # Language Model (using gpt-4o-mini which is available)
-        tts="cartesia",  # Text-to-Speech
-        vad=ctx.proc.userdata["vad"],  # Voice Activity Detection
+    logger.info(f"Configuration: {config}")
+
+    # Generate prompt
+    instructions = get_prompt(
+        role=config["role"],
+        mode=config["mode"],
+        interview_type=config["interview_type"],
+        skill_level=config["skill_level"]
     )
 
-    # Start the session
-    await session.start(agent=InterviewAgent(), room=ctx.room)
+    logger.info(f"Using role: {config['role']}, mode: {config['mode']}, type: {config['interview_type']}")
 
-    logger.info("Voice agent started successfully")
+    # Get models from config
+    stt_model = config.get("stt_model", "deepgram")
+    llm_model = config.get("llm_model", "openai/gpt-4o-mini")
+    
+    # For LiveKit inference, TTS is just "cartesia" (provider name only)
+    # Voice ID is passed separately in the format "cartesia:{voice_id}"
+    voice_id = config.get("voice", "79a125e8-cd45-4c13-8a67-188112f4dd22")
+    tts_model = f"cartesia:{voice_id}"
+
+    logger.info(f"STT Model: {stt_model}")
+    logger.info(f"LLM Model: {llm_model}")
+    logger.info(f"TTS Model: {tts_model}")
+    logger.info("Initializing voice agent session with LiveKit inference...")
+
+    # Create agent session with string-based model configuration
+    # LiveKit inference handles all the API routing
+    session = AgentSession(
+        stt=stt_model,
+        llm=llm_model,
+        tts=tts_model,
+        vad=ctx.proc.userdata["vad"],
+    )
+
+    await session.start(
+        agent=InterviewAgent(instructions=instructions),
+        room=ctx.room
+    )
+
+    logger.info("Voice agent started successfully with LiveKit inference")
 
 
 if __name__ == "__main__":
-    # Run the agent worker
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
