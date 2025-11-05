@@ -4,11 +4,13 @@ import { AuroraText } from "@/components/aurora-text";
 import { Icons } from "@/components/icons";
 import { Section } from "@/components/section";
 import { buttonVariants } from "@/components/ui/button";
+import { DotPattern } from "@/components/ui/dot-pattern";
+import { AnimatedBars } from "@/components/ui/animated-bars";
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 const ease = [0.16, 1, 0.3, 1];
 
@@ -22,10 +24,10 @@ function HeroPill() {
       transition={{ duration: 0.8, ease }}
     >
       <div className="w-fit rounded-full bg-accent px-2 py-0.5 text-left text-xs font-medium text-primary sm:text-sm">
-        🛠️ New
+        ✨ New
       </div>
       <p className="text-xs font-medium text-primary sm:text-sm">
-        Introducing AI Agent SDK
+        AI-Powered Mock Interviews
       </p>
       <svg
         width="12"
@@ -46,9 +48,9 @@ function HeroPill() {
 
 function HeroTitles() {
   return (
-    <div className="flex w-full max-w-3xl flex-col overflow-hidden pt-8">
+    <div className="flex w-full max-w-3xl flex-col pt-8">
       <motion.h1
-        className="text-left text-4xl font-semibold leading-tighter text-foreground sm:text-5xl md:text-6xl tracking-tighter"
+        className="text-left text-4xl font-bold leading-tight text-foreground sm:text-5xl md:text-6xl tracking-tight"
         initial={{ filter: "blur(10px)", opacity: 0, y: 50 }}
         animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
         transition={{
@@ -58,7 +60,7 @@ function HeroTitles() {
         }}
       >
         <motion.span
-          className="inline-block text-balance"
+          className="inline-block text-balance bg-gradient-to-r from-foreground via-foreground/90 to-foreground/80 bg-clip-text text-transparent"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{
@@ -67,13 +69,11 @@ function HeroTitles() {
             ease,
           }}
         >
-          <AuroraText className="leading-normal font-bold">
-            {siteConfig.hero.title}
-          </AuroraText>{" "}
+          {siteConfig.hero.title}
         </motion.span>
       </motion.h1>
       <motion.p
-        className="text-left max-w-xl leading-normal text-muted-foreground sm:text-lg sm:leading-normal text-balance"
+        className="text-left max-w-xl mt-4 leading-relaxed text-muted-foreground sm:text-lg sm:leading-relaxed text-balance"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{
@@ -98,7 +98,7 @@ function HeroCTA() {
         transition={{ delay: 0.8, duration: 0.8, ease }}
       >
         <Link
-          href="/download"
+          href="/setup"
           className={cn(
             buttonVariants({ variant: "default" }),
             "w-full sm:w-auto text-background flex gap-2 rounded-lg"
@@ -108,26 +108,17 @@ function HeroCTA() {
           {siteConfig.hero.cta}
         </Link>
       </motion.div>
-      <motion.p
-        className="mt-3 text-sm text-muted-foreground text-left"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.0, duration: 0.8 }}
-      >
-        {siteConfig.hero.ctaDescription}
-      </motion.p>
     </div>
   );
 }
-const LazySpline = lazy(() => import("@splinetool/react-spline"));
 
 export function Hero() {
-  const [showSpline, setShowSpline] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(true);
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024); // Assuming 1024px is the breakpoint for lg
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
     };
 
     checkMobile();
@@ -136,41 +127,23 @@ export function Hero() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  useEffect(() => {
-    // Don't show on mobile
-    if (!isMobile) {
-      const timer = setTimeout(() => {
-        setShowSpline(true);
-      }, 1000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [isMobile]);
-
   return (
-    <Section id="hero">
-      <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-x-8 w-full p-6 lg:p-12 border-x overflow-hidden">
-        <div className="flex flex-col justify-start items-start lg:col-span-1">
-          <HeroPill />
+    <Section id="hero" className="max-w-none relative pb-4 bg-background">
+      <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-x-8 w-full px-6 pt-12 pb-4 lg:px-24 lg:pt-16 lg:pb-4 lg:h-[550px] items-center">
+        <div className="flex flex-col justify-center items-start lg:col-span-1">
           <HeroTitles />
           <HeroCTA />
         </div>
         {!isMobile && (
-          <div className="relative lg:h-full lg:col-span-1">
-            <Suspense>
-              {showSpline && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.8, delay: 1 }}
-                >
-                  <LazySpline
-                    scene="https://prod.spline.design/mZBrYNcnoESGlTUG/scene.splinecode"
-                    className="absolute inset-0 w-full h-full origin-top-left flex items-center justify-center"
-                  />
-                </motion.div>
-              )}
-            </Suspense>
+          <div className="relative h-[500px] lg:col-span-1 flex items-center justify-center">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.8, delay: 0.5 }}
+              className="flex items-center justify-center"
+            >
+              <AnimatedBars barCount={60} />
+            </motion.div>
           </div>
         )}
       </div>

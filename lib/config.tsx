@@ -11,29 +11,29 @@ import {
 export const BLUR_FADE_DELAY = 0.15;
 
 export const siteConfig = {
-  name: "AI Agent SDK",
-  description: "Create AI Agents with just a few lines of code.",
-  cta: "Get Started",
+  name: "Meelni",
+  description: "Practice the interview. Land the offer.",
+  cta: "Start a mock",
   url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   keywords: [
-    "AI Agent SDK",
-    "Multi-Agent Systems",
-    "Tool Integration",
-    "Workflow Automation",
+    "Mock Interviews",
+    "Interview Practice",
+    "Product Management",
+    "Interview Preparation",
   ],
   links: {
-    email: "support@aiagentsdk.com",
-    twitter: "https://twitter.com/aiagentsdk",
-    discord: "https://discord.gg/aiagentsdk",
-    github: "https://github.com/aiagentsdk",
-    instagram: "https://instagram.com/aiagentsdk",
+    email: "support@meelni.com",
+    twitter: "https://twitter.com/meelni",
+    discord: "https://discord.gg/meelni",
+    github: "https://github.com/meelni",
+    instagram: "https://instagram.com/meelni",
   },
   hero: {
-    title: "AI Agent SDK",
+    title: "Ace your PM interview",
     description:
-      "Create powerful AI agent workflows with just a few lines of code, enabling complex task automation and decision-making processes.",
-    cta: "Get Started",
-    ctaDescription: "Available for all major programming languages",
+      "The AI interview coach that helps you land your dream PM role.",
+    cta: "Start a mock",
+    ctaDescription: "Explore question bank",
   },
   features: [
     {
