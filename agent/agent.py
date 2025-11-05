@@ -6,14 +6,15 @@ Handles real-time voice interviews using LiveKit Agents framework
 import logging
 from dotenv import load_dotenv
 from livekit.agents import (
+    Agent,
+    AgentSession,
     AutoSubscribe,
     JobContext,
+    JobProcess,
     WorkerOptions,
     cli,
-    llm,
 )
-from livekit.plugins import openai, deepgram, cartesia
-import livekit.agents as agents
+from livekit.plugins import silero
 
 # Load environment variables
 load_dotenv()
@@ -23,48 +24,45 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+class InterviewAgent(Agent):
+    """PM Interview Coach Agent"""
+    
+    def __init__(self) -> None:
+        super().__init__(
+            instructions="You are an experienced PM interviewer. Conduct a realistic, time-boxed mock interview. "
+            "Ask one question at a time, use brief backchannels, probe for metrics, constraints, trade-offs, and risks. "
+            "Keep tone professional but supportive. Speak naturally without using emojis, asterisks, or markdown."
+        )
+
+
+def prewarm(proc: JobProcess):
+    """Prewarm function to load VAD model before agent starts"""
+    proc.userdata["vad"] = silero.VAD.load()
+
+
 async def entrypoint(ctx: JobContext):
     """
     Entrypoint for the agent - called when a new participant joins
     """
     logger.info(f"Starting agent for room: {ctx.room.name}")
-    
+
     # Wait for the first participant to connect
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    
-    # Create initial context for the interviewer
-    initial_context = llm.ChatContext().append(
-        role="system",
-        text=(
-            "You are an experienced product manager interviewer conducting a mock interview. "
-            "Your goal is to help the candidate practice and improve. "
-            "Ask one question at a time, listen carefully, and ask relevant follow-up questions. "
-            "Be professional, supportive, and probe for details like metrics, trade-offs, and reasoning. "
-            "Keep responses concise and conversational."
-        ),
+
+    logger.info("Initializing voice agent session...")
+
+    # Create agent session with model specifications
+    session = AgentSession(
+        stt="deepgram",  # Speech-to-Text
+        llm="openai/gpt-4o-mini",  # Language Model (using gpt-4o-mini which is available)
+        tts="cartesia",  # Text-to-Speech
+        vad=ctx.proc.userdata["vad"],  # Voice Activity Detection
     )
-    
-    logger.info("Initializing voice assistant pipeline...")
-    
-    # Configure the voice pipeline
-    assistant = agents.VoiceAssistant(
-        vad=agents.vad.Silero(),  # Voice Activity Detection
-        stt=deepgram.STT(),  # Speech-to-Text (Deepgram)
-        llm=openai.LLM(model="gpt-4"),  # Language Model
-        tts=cartesia.TTS(),  # Text-to-Speech (Cartesia)
-        chat_ctx=initial_context,
-    )
-    
-    # Start the assistant
-    assistant.start(ctx.room)
-    
-    # Greet the candidate
-    await assistant.say(
-        "Hello! I'm your AI interview coach. I'm here to help you practice for your PM interview. Are you ready to begin?", 
-        allow_interruptions=True
-    )
-    
-    logger.info("Voice assistant started successfully")
+
+    # Start the session
+    await session.start(agent=InterviewAgent(), room=ctx.room)
+
+    logger.info("Voice agent started successfully")
 
 
 if __name__ == "__main__":
@@ -72,5 +70,6 @@ if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
+            prewarm_fnc=prewarm,
         ),
     )
