@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       agent_type: "demo",
       // Request specific agent
       lk_agent: {
-        agent_name: "CA_bL5fHYqjCTrA",
+        agent_name: "CA_Wp8bi3bRroE2",
       },
     };
 
@@ -62,15 +62,15 @@ export async function POST(req: NextRequest) {
       console.log(`Demo room created: ${roomName}`);
 
       // Dispatch the LiveKit Cloud demo agent to this room
-      // Agent ID: CA_bL5fHYqjCTrA (deployed to LiveKit Cloud)
-      const DEMO_AGENT_ID = "CA_bL5fHYqjCTrA";
+      // Agent ID: CA_Wp8bi3bRroE2 (deployed to LiveKit Cloud - Enterprise Account)
+      const DEMO_AGENT_ID = "CA_Wp8bi3bRroE2";
 
       try {
         // Use AgentDispatchClient from SDK
         const dispatchClient = new AgentDispatchClient(livekit_url, apiKey, apiSecret);
 
         const dispatch = await dispatchClient.createDispatch(roomName, DEMO_AGENT_ID);
-        console.log(`Demo agent (${DEMO_AGENT_ID}) dispatched to room: ${roomName}`, dispatch);
+        console.log(`Demo agent (CA_Wp8bi3bRroE2) dispatched to room: ${roomName}`, dispatch);
       } catch (dispatchError: any) {
         console.error('Agent dispatch error:', dispatchError.message);
       }
