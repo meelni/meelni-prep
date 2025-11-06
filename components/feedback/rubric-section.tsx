@@ -6,7 +6,7 @@ import type { RubricScores } from "@/lib/types/feedback";
 import { RUBRIC_DESCRIPTIONS } from "@/lib/types/feedback";
 
 interface RubricSectionProps {
-  rubricScores: RubricScores;
+  scores: RubricScores;
 }
 
 const RUBRIC_ICONS = {
@@ -17,8 +17,10 @@ const RUBRIC_ICONS = {
   leadership: TrendingUp,
 };
 
-export function RubricSection({ rubricScores }: RubricSectionProps) {
-  const dimensions = Object.entries(rubricScores) as [keyof RubricScores, number][];
+export function RubricSection({ scores }: RubricSectionProps) {
+  // Filter out 'overall' and only show the 5 dimension scores
+  const dimensions = Object.entries(scores)
+    .filter(([dimension]) => dimension !== "overall") as [keyof Omit<RubricScores, "overall">, number][];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

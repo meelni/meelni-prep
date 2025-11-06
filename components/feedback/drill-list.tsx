@@ -3,11 +3,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dumbbell, Clock, ArrowRight } from "lucide-react";
-import type { Drill } from "@/lib/types/feedback";
+import { Dumbbell, Lightbulb, ArrowRight } from "lucide-react";
+import type { DrillSuggestion } from "@/lib/types/feedback";
 
 interface DrillListProps {
-  drills: Drill[];
+  drills: DrillSuggestion[];
 }
 
 export function DrillList({ drills }: DrillListProps) {
@@ -15,7 +15,7 @@ export function DrillList({ drills }: DrillListProps) {
     return null;
   }
 
-  const handleDrillClick = (drill: Drill) => {
+  const handleDrillClick = (drill: DrillSuggestion) => {
     // Placeholder for future drill navigation
     console.log("Starting drill:", drill.title);
     alert(`Practice drill "${drill.title}" is coming soon! This will navigate you to a focused practice session.`);
@@ -42,25 +42,41 @@ export function DrillList({ drills }: DrillListProps) {
             onClick={() => handleDrillClick(drill)}
           >
             <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge
-                    variant="default"
-                    className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-                  >
-                    Drill {index + 1}
-                  </Badge>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>{drill.duration}</span>
+              <div className="flex-1 space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge
+                      variant="default"
+                      className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                    >
+                      Drill {index + 1}
+                    </Badge>
                   </div>
+                  <h3 className="text-base font-display font-light text-foreground group-hover:text-primary transition-colors">
+                    {drill.title}
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {drill.description}
+                  </p>
                 </div>
-                <h3 className="text-base font-display font-light text-foreground group-hover:text-primary transition-colors">
-                  {drill.title}
-                </h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {drill.description}
-                </p>
+
+                {/* Tips */}
+                {drill.tips && drill.tips.length > 0 && (
+                  <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70 uppercase tracking-wide font-display font-light">
+                      <Lightbulb className="w-3.5 h-3.5" />
+                      <span>Tips</span>
+                    </div>
+                    <ul className="space-y-1">
+                      {drill.tips.map((tip, tipIndex) => (
+                        <li key={tipIndex} className="text-xs text-muted-foreground leading-relaxed flex items-start gap-2">
+                          <span className="text-primary mt-0.5">•</span>
+                          <span>{tip}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
               <Button
                 variant="ghost"

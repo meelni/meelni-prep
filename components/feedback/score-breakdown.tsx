@@ -13,18 +13,17 @@ import {
 import type { RubricScores } from "@/lib/types/feedback";
 
 interface ScoreBreakdownProps {
-  rubricScores: RubricScores;
-  overallScore: number;
+  scores: RubricScores;
 }
 
-export function ScoreBreakdown({ rubricScores, overallScore }: ScoreBreakdownProps) {
+export function ScoreBreakdown({ scores }: ScoreBreakdownProps) {
   // Convert rubric scores to radar chart format
   const radarData = [
-    { competency: "Structure", score: rubricScores.structure, fullMark: 10 },
-    { competency: "Clarity", score: rubricScores.clarity, fullMark: 10 },
-    { competency: "Insight", score: rubricScores.insight, fullMark: 10 },
-    { competency: "Communication", score: rubricScores.communication, fullMark: 10 },
-    { competency: "Leadership", score: rubricScores.leadership, fullMark: 10 },
+    { competency: "Structure", score: scores.structure, fullMark: 10 },
+    { competency: "Clarity", score: scores.clarity, fullMark: 10 },
+    { competency: "Insight", score: scores.insight, fullMark: 10 },
+    { competency: "Communication", score: scores.communication, fullMark: 10 },
+    { competency: "Leadership", score: scores.leadership, fullMark: 10 },
   ];
 
   return (
@@ -41,7 +40,7 @@ export function ScoreBreakdown({ rubricScores, overallScore }: ScoreBreakdownPro
           </div>
           <div className="text-right">
             <div className="text-3xl font-display font-light text-primary">
-              {overallScore.toFixed(1)}
+              {scores.overall.toFixed(1)}
             </div>
             <div className="text-xs text-muted-foreground uppercase tracking-wide">
               Overall
