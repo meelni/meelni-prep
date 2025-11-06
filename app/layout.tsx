@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { Public_Sans } from "next/font/google";
+import { Public_Sans, Outfit } from "next/font/google";
 import "./globals.css";
 
-const everett = localFont({
-  src: [
-    {
-      path: "../public/fonts/everett-light.woff2",
-      weight: "300",
-      style: "normal",
-    },
-  ],
+// Using Outfit as a free alternative to Everett - similar elegant, geometric feel
+const outfit = Outfit({
+  subsets: ["latin"],
+  weight: ["300"],
   variable: "--font-everett",
   display: "swap",
 });
@@ -47,7 +43,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${everett.variable} ${publicSans.variable} ${commitMono.variable} antialiased`}
+        className={`${outfit.variable} ${publicSans.variable} ${commitMono.variable} antialiased`}
       >
         {children}
       </body>
