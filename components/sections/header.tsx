@@ -2,42 +2,144 @@
 
 import { Icons } from "@/components/icons";
 import { MobileDrawer } from "@/components/mobile-drawer";
-import { buttonVariants } from "@/components/ui/button";
-import { easeInOutCubic } from "@/lib/animation";
+import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion, useAnimation } from "framer-motion";
+import { motion } from "framer-motion";
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
 
+const navLinks = [
+  { name: "Features", href: "#features" },
+  { name: "Pricing", href: "#pricing" },
+  { name: "Blog", href: "#blog" },
+];
+
 export function Header() {
+  const [activeSection, setActiveSection] = useState("");
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 20);
+
+      // Determine active section
+      const sections = ["features", "pricing", "blog"];
+      const current = sections.find((section) => {
+        const element = document.getElementById(section);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          return rect.top <= 100 && rect.bottom >= 100;
+        }
+        return false;
+      });
+      setActiveSection(current || "");
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const handleSmoothScroll = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    e.preventDefault();
+    const target = document.querySelector(href);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   return (
-    <header className="sticky top-0 h-[var(--header-height)] z-50 p-0 bg-background/60 backdrop-blur">
-      <div className="flex justify-between items-center container mx-auto p-2">
-        <Link
-          href="/"
-          title="brand-logo"
-          className="relative mr-6 flex items-center space-x-2"
-        >
-          <Icons.logo className="w-auto" />
-          <span className="font-sans font-semibold text-[18px] leading-[24px]">{siteConfig.name}</span>
-        </Link>
-        <div className="hidden lg:block">
+    <motion.header
+      className={cn(
+        "sticky top-0 z-50 w-full transition-all duration-300",
+        isScrolled
+          ? "h-[60px] bg-background/80 backdrop-blur-md border-b border-border/50"
+          : "h-[72px] bg-background/60 backdrop-blur-sm"
+      )}
+      initial={{ y: -100 }}
+      animate={{ y: 0 }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <div className="container max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-full">
+          {/* Logo */}
           <Link
-            href="#"
-            className={cn(
-              buttonVariants({ variant: "default" }),
-              "h-8 text-primary-foreground rounded-lg group tracking-tight font-medium"
-            )}
+            href="/"
+            className="relative flex items-center gap-3 group"
           >
-            {siteConfig.cta}
+            <motion.div
+              initial={{ rotate: -180, opacity: 0 }}
+              animate={{ rotate: 0, opacity: 1 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <Icons.logo className="w-7 h-7 text-primary transition-transform duration-300 group-hover:scale-110" />
+            </motion.div>
+            <span className="font-sans font-semibold text-[20px] text-foreground">
+              {siteConfig.name}
+            </span>
           </Link>
-        </div>
-        <div className="mt-2 cursor-pointer block lg:hidden">
-          <MobileDrawer />
+
+          {/* Desktop Navigation */}
+          <nav className="hidden lg:flex items-center gap-8">
+            {navLinks.map((link, index) => {
+              const isActive = activeSection === link.href.slice(1);
+              return (
+                <motion.div
+                  key={link.name}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: 0.1 + index * 0.1 }}
+                >
+                  <a
+                    href={link.href}
+                    onClick={(e) => handleSmoothScroll(e, link.href)}
+                    className="relative text-[15px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 group"
+                  >
+                    {link.name}
+
+                    {/* Underline animation */}
+                    <span
+                      className={cn(
+                        "absolute -bottom-1 left-1/2 h-[2px] bg-primary transition-all duration-300 ease-out",
+                        isActive
+                          ? "w-full -translate-x-1/2"
+                          : "w-0 -translate-x-1/2 group-hover:w-full"
+                      )}
+                    />
+                  </a>
+                </motion.div>
+              );
+            })}
+          </nav>
+
+          {/* CTA Button (Desktop) */}
+          <motion.div
+            className="hidden lg:block"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, delay: 0.4 }}
+          >
+            <Link href="/setup">
+              <Button
+                size="sm"
+                className="group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-[14px] px-5 shadow-sm hover:shadow-md transition-all duration-300"
+              >
+                {siteConfig.cta}
+                <ArrowRight className="ml-1.5 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+              </Button>
+            </Link>
+          </motion.div>
+
+          {/* Mobile Menu */}
+          <div className="lg:hidden">
+            <MobileDrawer />
+          </div>
         </div>
       </div>
-      <hr className="absolute w-full bottom-0" />
-    </header>
+
+      {/* Subtle gradient border */}
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-border/50 to-transparent" />
+    </motion.header>
   );
 }
