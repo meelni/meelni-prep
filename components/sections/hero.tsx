@@ -90,9 +90,12 @@ function HeroTitles() {
   );
 }
 
-function HeroCTA() {
-  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+interface HeroCTAProps {
+  isDemoModalOpen: boolean;
+  setIsDemoModalOpen: (open: boolean) => void;
+}
 
+function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
   return (
     <>
       <div className="relative mt-8">
@@ -186,7 +189,12 @@ function HeroCTA() {
   );
 }
 
-export function Hero() {
+interface HeroProps {
+  isDemoModalOpen: boolean;
+  setIsDemoModalOpen: (open: boolean) => void;
+}
+
+export function Hero({ isDemoModalOpen, setIsDemoModalOpen }: HeroProps) {
   const [isMobile, setIsMobile] = useState(true);
 
   useEffect(() => {
@@ -226,7 +234,10 @@ export function Hero() {
       <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-x-8 w-full px-6 pt-12 pb-4 lg:px-24 lg:pt-16 lg:pb-4 lg:h-[550px] items-center">
         <div className="flex flex-col justify-center items-start lg:col-span-1">
           <HeroTitles />
-          <HeroCTA />
+          <HeroCTA
+            isDemoModalOpen={isDemoModalOpen}
+            setIsDemoModalOpen={setIsDemoModalOpen}
+          />
         </div>
         {!isMobile && (
           <div className="relative h-[500px] lg:col-span-1 flex items-center justify-center">
