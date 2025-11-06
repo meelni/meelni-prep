@@ -11,9 +11,9 @@ export function CTA() {
     <Section id="cta">
       <div className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          {/* Top border */}
+          {/* Top border with glow */}
           <motion.div
-            className="h-px w-full bg-gradient-to-r from-transparent via-border to-transparent mb-12"
+            className="h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent mb-12 shadow-[0_0_8px_rgba(var(--primary),0.3)]"
             initial={{ opacity: 0, scaleX: 0 }}
             whileInView={{ opacity: 1, scaleX: 1 }}
             viewport={{ once: true }}
@@ -49,9 +49,9 @@ export function CTA() {
             </motion.div>
           </div>
 
-          {/* Bottom border */}
+          {/* Bottom border with glow */}
           <motion.div
-            className="h-px w-full bg-gradient-to-r from-transparent via-border to-transparent mt-12"
+            className="h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent mt-12 shadow-[0_0_8px_rgba(var(--primary),0.3)]"
             initial={{ opacity: 0, scaleX: 0 }}
             whileInView={{ opacity: 1, scaleX: 1 }}
             viewport={{ once: true }}

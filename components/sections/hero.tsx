@@ -108,7 +108,7 @@ function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
           {/* Primary CTA - Start A Mock (routes to dashboard with auth) */}
           <Link
             href="/dashboard"
-            className="group relative w-full sm:w-auto overflow-hidden rounded-xl bg-gradient-to-r from-primary via-primary/90 to-primary/80 px-8 py-4 text-background font-semibold shadow-lg transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98]"
+            className="group relative w-full sm:w-auto overflow-hidden rounded-xl bg-gradient-to-r from-primary via-primary/90 to-primary/80 px-8 py-4 text-primary-foreground font-semibold shadow-lg shadow-primary/30 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.98]"
           >
             <div className="relative z-10 flex items-center gap-3">
               <svg
@@ -151,7 +151,7 @@ function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
           {/* Secondary CTA - Talk to Meelni (opens demo modal, no auth) */}
           <button
             onClick={() => setIsDemoModalOpen(true)}
-            className="group relative w-full sm:w-auto overflow-hidden rounded-xl border-2 border-border bg-background/50 backdrop-blur-sm px-8 py-4 font-semibold transition-all duration-300 hover:border-primary/50 hover:bg-background/80 hover:scale-[1.02] active:scale-[0.98]"
+            className="group relative w-full sm:w-auto overflow-hidden rounded-xl border-2 border-border/60 bg-card/40 backdrop-blur-md px-8 py-4 font-semibold transition-all duration-300 hover:border-primary/70 hover:bg-card/60 hover:scale-[1.02] active:scale-[0.98]"
           >
             <div className="relative z-10 flex items-center gap-3">
               <svg
@@ -211,22 +211,25 @@ export function Hero({ isDemoModalOpen, setIsDemoModalOpen }: HeroProps) {
 
   return (
     <Section id="hero" className="max-w-none relative pb-4 bg-background overflow-hidden">
-      {/* Checkered background layer */}
+      {/* Checkered background layer - vibrant purple glow */}
       <CheckeredBackground
         className="absolute inset-0 z-0"
         cellSize="50px"
         strokeWidth="1.5px"
-        color="#8b5cf6"
-        opacity={0.25}
+        color="hsl(var(--primary))"
+        opacity={0.15}
         fade={false}
       />
 
-      {/* Gradient overlays for text readability */}
-      {/* Top gradient - fades near header */}
-      <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-background via-background/80 to-transparent z-[1]" />
+      {/* Radial glow effect for depth */}
+      <div className="absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
 
-      {/* Left side gradient - protects text area */}
-      <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-background via-background/60 to-transparent z-[1]" />
+      {/* Gradient overlays for visual depth */}
+      {/* Top gradient - fades near header */}
+      <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-background via-background/90 to-transparent z-[1]" />
+
+      {/* Left side gradient - creates depth */}
+      <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-background via-background/70 to-transparent z-[1]" />
 
       {/* Bottom gradient - smooth transition to next section */}
       <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent z-[1]" />
