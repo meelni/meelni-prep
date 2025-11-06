@@ -40,6 +40,11 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
   const [isInView, setIsInView] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isPausedRef = useRef<boolean>(false);
+  const messageIndexRef = useRef<number>(0);
+  const charIndexRef = useRef<number>(0);
+  const messagesRef = useRef<Message[]>([]);
 
   // Extract plain text from HTML
   const getPlainText = (html: string): string => {
@@ -95,43 +100,46 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
     };
   }, []);
 
-  // Reset animation when tab changes
-  const resetAnimation = () => {
-    setDisplayedMessages([]);
-    setCurrentMessageIndex(0);
-    setCurrentCharIndex(0);
-    setIsTyping(true);
-    setIsPaused(false);
-  };
-
-  useEffect(() => {
-    // Guard: Skip if features aren't loaded yet or not in view
-    if (!features || features.length === 0 || !features[selectedIndex] || !isInView) {
+  // Start or restart the typing animation
+  const startTyping = () => {
+    if (!features || features.length === 0 || !features[selectedIndex]) {
       return;
+    }
+
+    // Clear any existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
     }
 
     const plainText = getPlainText(features[selectedIndex].code);
     const messages = parseMessages(plainText);
+    messagesRef.current = messages;
 
-    resetAnimation();
+    // Reset state
+    messageIndexRef.current = 0;
+    charIndexRef.current = 0;
+    setDisplayedMessages([]);
+    setIsTyping(true);
+    isPausedRef.current = false;
+    setIsPaused(false);
 
-    let msgIndex = 0;
-    let charIndex = 0;
-    const typingSpeed = 8; // milliseconds per character (slightly faster)
+    const typingSpeed = 8;
 
-    const typeInterval = setInterval(() => {
-      if (isPaused) return; // Pause functionality
+    intervalRef.current = setInterval(() => {
+      if (isPausedRef.current) return;
+
+      const msgIndex = messageIndexRef.current;
+      const charIndex = charIndexRef.current;
 
       if (msgIndex < messages.length) {
         const currentMessage = messages[msgIndex];
 
         if (charIndex < currentMessage.content.length) {
           // Still typing current message
-          charIndex++;
-          setCurrentCharIndex(charIndex);
+          charIndexRef.current++;
           setDisplayedMessages([
             ...messages.slice(0, msgIndex),
-            { ...currentMessage, content: currentMessage.content.substring(0, charIndex) }
+            { ...currentMessage, content: currentMessage.content.substring(0, charIndex + 1) }
           ]);
 
           // Auto-scroll to bottom
@@ -140,19 +148,40 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
           }
         } else {
           // Move to next message
-          msgIndex++;
-          charIndex = 0;
-          setCurrentMessageIndex(msgIndex);
-          setCurrentCharIndex(0);
+          messageIndexRef.current++;
+          charIndexRef.current = 0;
         }
       } else {
         setIsTyping(false);
-        clearInterval(typeInterval);
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
       }
     }, typingSpeed);
+  };
 
-    return () => clearInterval(typeInterval);
-  }, [selectedIndex, features, isInView, isPaused]);
+  // Handle pause/resume
+  const togglePause = () => {
+    isPausedRef.current = !isPausedRef.current;
+    setIsPaused(isPausedRef.current);
+  };
+
+  // Handle reset
+  const handleReset = () => {
+    startTyping();
+  };
+
+  // Start animation when in view or tab changes
+  useEffect(() => {
+    if (!isInView) return;
+    startTyping();
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [selectedIndex, features, isInView]);
 
   return (
     <div ref={containerRef} className="max-w-6xl mx-auto">
@@ -186,22 +215,6 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
             );
           })}
         </div>
-
-        {/* Progress indicator */}
-        {isTyping && (
-          <motion.div
-            className="absolute -bottom-2 left-0 right-0 h-0.5 bg-primary/30 rounded-full overflow-hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-          >
-            <motion.div
-              className="h-full bg-primary rounded-full"
-              initial={{ width: "0%" }}
-              animate={{ width: "100%" }}
-              transition={{ duration: 15, ease: "linear" }}
-            />
-          </motion.div>
-        )}
       </div>
 
       {/* Modern Chat Interface */}
@@ -216,7 +229,7 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setIsPaused(!isPaused)}
+              onClick={togglePause}
               className="p-2 rounded-lg hover:bg-primary/10 transition-colors"
               title={isPaused ? "Resume" : "Pause"}
             >
@@ -227,7 +240,7 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
               )}
             </button>
             <button
-              onClick={resetAnimation}
+              onClick={handleReset}
               className="p-2 rounded-lg hover:bg-primary/10 transition-colors"
               title="Restart"
             >
