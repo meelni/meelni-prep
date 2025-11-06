@@ -5,7 +5,7 @@ import { MobileDrawer } from "@/components/mobile-drawer";
 import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -16,7 +16,11 @@ const navLinks = [
   { name: "Blog", href: "#blog" },
 ];
 
-export function Header() {
+interface HeaderProps {
+  isDemoModalOpen?: boolean;
+}
+
+export function Header({ isDemoModalOpen = false }: HeaderProps) {
   const [activeSection, setActiveSection] = useState("");
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -50,17 +54,20 @@ export function Header() {
   };
 
   return (
-    <motion.header
-      className={cn(
-        "sticky top-0 z-50 w-full transition-all duration-300",
-        isScrolled
-          ? "h-[60px] bg-background/80 backdrop-blur-md border-b border-border/50"
-          : "h-[72px] bg-background/60 backdrop-blur-sm"
-      )}
-      initial={{ y: -100 }}
-      animate={{ y: 0 }}
-      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-    >
+    <AnimatePresence>
+      {!isDemoModalOpen && (
+        <motion.header
+          className={cn(
+            "sticky top-0 z-50 w-full transition-all duration-300",
+            isScrolled
+              ? "h-[60px] bg-background/80 backdrop-blur-md border-b border-border/50"
+              : "h-[72px] bg-background/60 backdrop-blur-sm"
+          )}
+          initial={{ y: -100 }}
+          animate={{ y: 0 }}
+          exit={{ y: -100, opacity: 0 }}
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+        >
       <div className="container max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-full">
           {/* Logo */}
@@ -141,5 +148,7 @@ export function Header() {
       {/* Subtle gradient border */}
       <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-border/50 to-transparent" />
     </motion.header>
+      )}
+    </AnimatePresence>
   );
 }
