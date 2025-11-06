@@ -2,15 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SessionList } from "@/components/dashboard/session-list";
-
-interface Session {
-  id: string;
-  roundType: string;
-  mode: string;
-  startedAt: string;
-  endedAt: string | null;
-  config?: any;
-}
+import type { Session } from "@/lib/api/queries";
 
 interface HistorySectionProps {
   sessions: Session[];

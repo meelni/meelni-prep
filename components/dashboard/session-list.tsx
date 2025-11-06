@@ -5,15 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
 import { Clock, Calendar, MessageSquare } from "lucide-react";
 import Link from "next/link";
-
-interface Session {
-  id: string;
-  roundType: string;
-  mode: string;
-  startedAt: Date | string;
-  endedAt: Date | string | null;
-  config?: any;
-}
+import type { Session } from "@/lib/api/queries";
 
 interface SessionListProps {
   sessions: Session[];
