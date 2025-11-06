@@ -10,7 +10,8 @@ ENV/
 
 # Environment files (secrets managed by LiveKit Cloud)
 .env
-.env.*
+.env.local
+.env.demo
 
 # Development
 .vscode/
@@ -23,9 +24,9 @@ ENV/
 .git/
 .gitignore
 
-# Other agents (only include demo_agent.py)
-agent.py
-prompts.py
+# Exclude demo agent files (this is for main interview agent)
+demo_agent.py
+Dockerfile.demo
 
 # Logs
 *.log

@@ -90,11 +90,24 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            prewarm_fnc=prewarm,
-            num_idle_processes=2,  # Keep 2 idle processes ready for new jobs
-            load_threshold=0.9,  # Increase threshold to accept more jobs (default: 0.7)
-        ),
-    )
+    # Detect if running on LiveKit Cloud (Cloud provides LIVEKIT_URL automatically)
+    import os
+    is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
+
+    # Cloud doesn't support num_idle_processes or load_threshold
+    if is_cloud:
+        cli.run_app(
+            WorkerOptions(
+                entrypoint_fnc=entrypoint,
+                prewarm_fnc=prewarm,
+            ),
+        )
+    else:
+        cli.run_app(
+            WorkerOptions(
+                entrypoint_fnc=entrypoint,
+                prewarm_fnc=prewarm,
+                num_idle_processes=2,  # Keep 2 idle processes ready for new jobs
+                load_threshold=0.9,  # Increase threshold to accept more jobs (default: 0.7)
+            ),
+        )
