@@ -1,4 +1,4 @@
-import { Blog } from '@/components/sections/blog';
+// import { Blog } from '@/components/sections/blog'; // Temporarily disabled due to fs module issue
 import { CTA } from '@/components/sections/cta';
 import { Examples } from '@/components/sections/examples';
 import { Features } from '@/components/sections/features';
@@ -22,9 +22,10 @@ export default function Home() {
       <div className="mt-20">
         <Pricing />
       </div>
-      <div className="mt-20">
+      {/* TODO: Fix blog.ts fs module issue - temporarily disabled */}
+      {/* <div className="mt-20">
         <Blog />
-      </div>
+      </div> */}
         <div className="mt-20">
           <CTA />
         </div>

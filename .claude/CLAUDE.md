@@ -2,7 +2,7 @@
 
 **Project**: MockMate - Real-Time AI Mock Interviews
 **Last Updated**: 2025-11-06
-**Version**: 0.7.1
+**Version**: 0.8.0
 
 ---
 
@@ -23,13 +23,16 @@ This document serves as the single source of truth for:
 
 ## Project Status
 
-**Current Phase**: Phase 0.7 - Demo Modal with LiveKit Cloud Agent Complete ✅
+**Current Phase**: Phase 0.8 - Google OAuth Authentication Complete ✅
 **Next Milestone**: Add session persistence (save transcripts to DB), scoring/feedback engine
 
 **Phase 0 Completion Summary**:
 - ✅ Next.js 14+ project initialized with TypeScript, Tailwind, shadcn/ui
 - ✅ Database schema deployed to Supabase (4 tables verified)
 - ✅ Supabase Auth configured (browser + server clients)
+- ✅ **Google OAuth authentication fully working**
+- ✅ **Protected routes with Next.js middleware**
+- ✅ **Dashboard page with personalized welcome**
 - ✅ LiveKit Agents Python worker implemented and tested
 - ✅ LiveKit token generation API working
 - ✅ Interview page with real-time voice conversation
@@ -40,6 +43,7 @@ This document serves as the single source of truth for:
 - ✅ Marketing landing page with modular architecture (Header, Hero, Features, CTA, Footer)
 - ✅ Demo modal with LiveKit Cloud agent deployment
 - ✅ Explicit agent dispatch system configured
+- ✅ **"Start A Mock" button routes to authenticated dashboard**
 
 ---
 
@@ -472,6 +476,49 @@ This document serves as the single source of truth for:
   - Easier debugging: dispatch logs show which agent was assigned
   - Supports multi-tenant scenarios (assign agents by customer/use-case)
 
+### ADR-020: Google OAuth Authentication Implementation
+- **Date**: 2025-11-06
+- **Decision**: Implemented full Google OAuth authentication with Supabase Auth
+- **Rationale**:
+  - **User Requirement**: Authentication needed for "Start A Mock" flow
+  - **Provider Choice**: Google OAuth only (initially) for simplicity
+  - **No Onboarding**: Direct to dashboard after sign-in per user request
+  - **Demo Separation**: Keep demo modal auth-free for instant testing
+- **Implementation**:
+  - **AuthProvider** (`app/providers/auth-provider.tsx`): React Context for session management
+  - **Sign-in Page** (`app/auth/signin/page.tsx`): Google OAuth button with polished UI
+  - **Callback Route** (`app/auth/callback/route.ts`): Exchanges OAuth code for session
+  - **Middleware** (`middleware.ts`): Protects `/dashboard`, `/setup`, `/interview` routes
+  - **Dashboard** (`app/dashboard/page.tsx`): Personalized welcome + "Start Mock Interview" CTA
+- **User Flow**:
+  ```
+  Landing Page → "Start A Mock" button
+      ↓
+  /dashboard (middleware checks auth)
+      ↓
+  If not logged in → /auth/signin
+      ↓
+  Google OAuth consent screen
+      ↓
+  /auth/callback (code exchange)
+      ↓
+  /dashboard (authenticated)
+      ↓
+  "Start Mock Interview" → /setup → /interview
+  ```
+- **Key Features**:
+  - Personalized greeting with user's first name from Google profile
+  - Auto-redirect if already authenticated
+  - Sign out functionality from dashboard
+  - Preserves redirect URL for post-login navigation
+  - Demo modal remains auth-free (no friction for trying the product)
+- **Consequences**:
+  - Authentication gate for full interview experience
+  - User data (name, email) stored in Supabase Auth
+  - Need to add RLS policies later for data security
+  - Easy to add email/password auth later if needed
+  - Google Cloud Console OAuth credentials required (already configured)
+
 ---
 
 ## File Boundaries & Responsibilities
@@ -742,6 +789,94 @@ function DemoControls() {
 - Manages connection status (idle, connecting, connected)
 - Handles mic muting/unmuting via LocalAudioTrack
 - Displays agent state from useVoiceAssistant hook
+
+### `/app/providers/auth-provider.tsx` (NEWLY ADDED)
+**Purpose**: React Context provider for authentication state management
+**Key Responsibilities**:
+- Manage user session state with Supabase Auth
+- Provide `useAuth()` hook for accessing user, session, isLoading
+- Implement `signInWithGoogle()` and `signOut()` methods
+- Listen to auth state changes via Supabase subscription
+- Handle initial session fetch on mount
+
+**Critical Code Pattern**:
+```typescript
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const signInWithGoogle = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+  };
+
+  return <AuthContext.Provider value={{ user, session, isLoading, signInWithGoogle, signOut }}>
+    {children}
+  </AuthContext.Provider>;
+}
+```
+
+### `/app/auth/signin/page.tsx` (NEWLY ADDED)
+**Purpose**: Google OAuth sign-in page with polished UI
+**Key Features**:
+- Beautiful glass morphism design matching app aesthetic
+- "Continue with Google" button with OAuth flow
+- Auto-redirect if already authenticated
+- Loading states and error handling
+- Trust signals ("Free forever • No credit card")
+- Back to home link
+
+### `/app/auth/callback/route.ts` (NEWLY ADDED)
+**Purpose**: OAuth callback handler for code exchange
+**Input**: `code` query parameter from Google OAuth redirect
+**Output**: Redirect to `/dashboard` or `/auth/signin?error=auth_failed`
+**Key Responsibilities**:
+- Exchange authorization code for Supabase session
+- Handle errors gracefully
+- Redirect to dashboard on success
+
+### `/app/dashboard/page.tsx` (NEWLY ADDED)
+**Purpose**: Dashboard landing page for authenticated users
+**Key Features**:
+- Personalized welcome message with user's first name
+- "Start Mock Interview" CTA button → routes to `/setup`
+- Sign out functionality
+- Coming soon cards (Interview History, Performance Analytics)
+- Auto-redirect to signin if not authenticated
+- Loading state with spinner
+
+### `/middleware.ts` (NEWLY ADDED)
+**Purpose**: Next.js middleware for route protection
+**Protected Routes**: `/dashboard`, `/setup`, `/interview`
+**Key Responsibilities**:
+- Check Supabase session for authentication
+- Redirect unauthenticated users to `/auth/signin`
+- Preserve redirect URL in query parameter
+- Allow public routes to pass through
+
+**Critical Code Pattern**:
+```typescript
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const protectedRoutes = ["/dashboard", "/setup", "/interview"];
+
+  if (protectedRoutes.some(route => pathname.startsWith(route))) {
+    const supabase = await createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session) {
+      const redirectUrl = new URL("/auth/signin", request.url);
+      redirectUrl.searchParams.set("redirectTo", pathname);
+      return NextResponse.redirect(redirectUrl);
+    }
+  }
+
+  return NextResponse.next();
+}
+```
 
 ---
 
@@ -1446,6 +1581,50 @@ RESEND_API_KEY=
 - ✅ Comprehensive deployment documentation
 - ✅ Troubleshooting guide for common issues
 - ✅ Committed and pushed to branch `saviii/landing-demo-modal`
+
+### 2025-11-06 - Phase 0.8: Google OAuth Authentication Complete ✅
+
+**Authentication Setup**
+- Configured Google OAuth in Google Cloud Console
+- Added OAuth credentials to Supabase Dashboard
+- Enabled Google provider in Supabase Auth
+
+**Code Implementation**
+- Created `app/providers/auth-provider.tsx` with React Context for session management
+- Implemented `useAuth()` hook for accessing user, session, isLoading, signInWithGoogle, signOut
+- Built `app/auth/signin/page.tsx` with beautiful glass morphism UI and Google OAuth button
+- Created `app/auth/callback/route.ts` to exchange OAuth code for session
+- Implemented `middleware.ts` to protect `/dashboard`, `/setup`, `/interview` routes
+- Built `app/dashboard/page.tsx` with personalized welcome and "Start Mock Interview" CTA
+
+**User Experience**
+- "Start A Mock" button now primary CTA on landing page (routes to /dashboard with auth)
+- "Talk to Meelni" button secondary CTA (opens demo modal, no auth)
+- Removed "Customize Your Mock" button per user request
+- Seamless OAuth flow: landing → signin → Google consent → dashboard
+- Personalized greeting with user's first name from Google profile
+- Sign out functionality from dashboard
+- Auto-redirect if already authenticated
+- Preserves redirect URL for post-login navigation
+
+**Bug Fixes**
+- Temporarily disabled Blog section due to fs module import issue in client component
+- Fixed hero button layout and routing
+
+**Key Learnings**
+- Supabase Auth SSR with @supabase/ssr works seamlessly in Next.js 14
+- Middleware provides clean route protection pattern
+- OAuth redirect flow requires careful URL management
+- React Context perfect for auth state management
+- Google Cloud Console setup straightforward for OAuth 2.0
+
+**Deliverables**
+- ✅ Full Google OAuth authentication working
+- ✅ Protected routes with middleware
+- ✅ Dashboard with personalized welcome
+- ✅ Sign in/sign out flows complete
+- ✅ Updated landing page CTAs
+- ✅ Committed and pushed to branch `saviii/petra`
 
 ---
 
