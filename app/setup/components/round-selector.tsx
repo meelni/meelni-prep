@@ -74,8 +74,13 @@ export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
                 {/* Title */}
                 <h3 className="text-lg font-semibold">{config.label}</h3>
 
+                {/* Subtitle */}
+                <p className="text-sm font-medium text-foreground/80">
+                  {config.subtitle}
+                </p>
+
                 {/* Description */}
-                <p className="text-sm text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   {config.description}
                 </p>
 
