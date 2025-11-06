@@ -14,7 +14,8 @@ import { TimerDisplay } from "./components/timer-display";
 import { EndSessionModal } from "./components/end-session-modal";
 import { useLocalParticipant } from "@livekit/components-react";
 import { RoomAudioRenderer } from "@livekit/components-react";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
+import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
 
 interface InterviewSession {
   id: string;
@@ -53,6 +54,8 @@ export default function InterviewPage() {
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [transcriptSaveErrors, setTranscriptSaveErrors] = useState(0);
+  const [transcriptQueue] = useState(() => getTranscriptQueue());
 
   // Invalidate queries when component unmounts (user leaves interview)
   useEffect(() => {
@@ -165,26 +168,34 @@ export default function InterviewPage() {
   };
 
   const handleTranscriptUpdate = async (turn: TranscriptTurn) => {
+    // Update UI immediately
     setTranscript((prev) => [...prev, turn]);
 
-    // Save to database
+    // Save to database with automatic retry queue
     try {
-      await fetch("/api/session/transcript", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          speaker: turn.speaker,
-          text: turn.text,
-          startedAt: turn.startedAt.toISOString(),
-          endedAt: turn.endedAt.toISOString(),
-          audioMs: turn.audioMs,
-          latencyMs: turn.latencyMs,
-          section: turn.section,
-        }),
+      const result = await transcriptQueue.save({
+        sessionId: sessionId!,
+        speaker: turn.speaker,
+        text: turn.text,
+        startedAt: turn.startedAt,
+        endedAt: turn.endedAt,
+        audioMs: turn.audioMs,
+        latencyMs: turn.latencyMs,
+        section: turn.section,
       });
+
+      if (!result.success) {
+        // Failed, but queued for retry
+        setTranscriptSaveErrors((prev) => prev + 1);
+        console.warn("[Interview] Transcript save failed, queued for retry:", result.error);
+      } else if (transcriptSaveErrors > 0) {
+        // Success after previous errors - reset error count
+        setTranscriptSaveErrors(0);
+      }
     } catch (error) {
-      console.error("Failed to save transcript turn:", error);
+      // Unexpected error
+      console.error("[Interview] Unexpected error saving transcript:", error);
+      setTranscriptSaveErrors((prev) => prev + 1);
     }
   };
 
@@ -272,6 +283,7 @@ export default function InterviewPage() {
         agentState={agentState}
         transcript={transcript}
         isMuted={isMuted}
+        transcriptSaveErrors={transcriptSaveErrors}
         onToggleMute={() => setIsMuted(!isMuted)}
         onEndSession={() => setShowEndModal(true)}
       />
@@ -290,6 +302,7 @@ interface InterviewRoomContentProps {
   agentState: "idle" | "listening" | "thinking" | "speaking";
   transcript: TranscriptTurn[];
   isMuted: boolean;
+  transcriptSaveErrors: number;
   onToggleMute: () => void;
   onEndSession: () => void;
 }
@@ -299,6 +312,7 @@ function InterviewRoomContent({
   agentState,
   transcript,
   isMuted,
+  transcriptSaveErrors,
   onToggleMute,
   onEndSession,
 }: InterviewRoomContentProps) {
@@ -331,6 +345,13 @@ function InterviewRoomContent({
                       <span>{session.config.mode.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}</span>
                     </>
                   )}
+                </div>
+              )}
+              {transcriptSaveErrors > 0 && (
+                <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950/30 px-3 py-1 rounded-full border border-amber-200 dark:border-amber-800">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Saving transcript...</span>
+                  <span className="sm:hidden">{transcriptSaveErrors}</span>
                 </div>
               )}
             </div>
