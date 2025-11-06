@@ -3,7 +3,6 @@
 import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { HistorySection } from "@/components/dashboard/sections/history";
@@ -16,18 +15,7 @@ import { DashboardError } from "@/components/dashboard/error";
 import { useSessions } from "@/lib/api/queries";
 import { motion } from "framer-motion";
 
-// Create QueryClient with proper configuration
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      refetchOnWindowFocus: true,
-      staleTime: 5 * 60 * 1000, // 5 minutes
-    },
-  },
-});
-
-function DashboardContent() {
+export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const [activeSection, setActiveSection] = useState("overview");
@@ -136,13 +124,5 @@ function DashboardContent() {
     >
       {renderSection()}
     </DashboardLayout>
-  );
-}
-
-export default function DashboardPage() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <DashboardContent />
-    </QueryClientProvider>
   );
 }
