@@ -6,8 +6,8 @@ export function FeedbackSection() {
   return (
     <div className="p-6 space-y-6">
       <div className="space-y-2">
-        <h2 className="text-2xl font-semibold text-foreground">Feedback & Insights</h2>
-        <p className="text-muted-foreground">
+        <h2 className="text-2xl font-display font-light text-foreground">Feedback & Insights</h2>
+        <p className="text-muted-foreground font-sans">
           Get personalized feedback and actionable insights to improve your interview performance.
         </p>
       </div>
@@ -19,8 +19,8 @@ export function FeedbackSection() {
               <div className="text-4xl">💡</div>
             </div>
             <div className="space-y-2">
-              <h3 className="text-lg font-semibold text-foreground">Coming Soon</h3>
-              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              <h3 className="text-lg font-display font-light text-foreground">Coming Soon</h3>
+              <p className="text-sm text-muted-foreground font-sans max-w-md mx-auto">
                 AI-powered feedback and coaching insights are currently in development. Check back
                 soon!
               </p>

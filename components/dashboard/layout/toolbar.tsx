@@ -48,7 +48,7 @@ export function Toolbar({ activeSection }: ToolbarProps) {
   return (
     <div className="h-16 bg-muted border-b border-border flex items-center justify-between px-6">
       <div className="flex items-center gap-4">
-        <div className="text-sm text-muted-foreground font-mono">
+        <div className="text-sm text-muted-foreground font-display font-light tracking-wide">
           DASHBOARD / <span className="text-primary">{getSectionLabel(activeSection)}</span>
         </div>
       </div>
@@ -56,7 +56,7 @@ export function Toolbar({ activeSection }: ToolbarProps) {
         <div className="text-xs text-muted-foreground font-mono hidden sm:block">
           LAST UPDATE: {formattedDate} {formattedTime} UTC
         </div>
-        <div className="text-sm text-foreground font-medium hidden md:block">
+        <div className="text-sm text-foreground font-display font-light hidden md:block">
           {displayName}
         </div>
         <Button

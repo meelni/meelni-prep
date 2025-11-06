@@ -21,8 +21,8 @@ export function HistorySection({ sessions, loadingSessions }: HistorySectionProp
   return (
     <div className="p-6 space-y-6">
       <div className="space-y-2">
-        <h2 className="text-2xl font-semibold text-foreground">Interview History</h2>
-        <p className="text-muted-foreground">
+        <h2 className="text-2xl font-display font-light text-foreground">Interview History</h2>
+        <p className="text-muted-foreground font-sans">
           View all your past mock interviews and track your progress over time.
         </p>
       </div>
