@@ -254,14 +254,14 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
           ref={scrollRef}
           className="p-6 overflow-y-auto scroll-smooth h-[500px] font-mono text-sm"
         >
-          <div className="space-y-3">
+          <div key={selectedIndex} className="space-y-3">
             {displayedMessages.map((message, index) => {
               const isLastMessage = index === displayedMessages.length - 1;
 
               if (message.type === "checkpoint") {
                 return (
                   <div
-                    key={`${selectedIndex}-${index}`}
+                    key={index}
                     className="my-3 flex justify-center"
                   >
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs font-medium text-amber-400">
@@ -277,7 +277,7 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
               if (message.type === "interviewer") {
                 return (
                   <div
-                    key={`${selectedIndex}-${index}`}
+                    key={index}
                     className="leading-relaxed"
                   >
                     <span className="text-cyan-400 font-semibold">Interviewer:</span>{" "}
@@ -298,7 +298,7 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
               if (message.type === "you") {
                 return (
                   <div
-                    key={`${selectedIndex}-${index}`}
+                    key={index}
                     className="leading-relaxed"
                   >
                     <span className="text-primary font-semibold">You:</span>{" "}
