@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Lightbulb, Target, TrendingUp, Users, Pause, Play, RotateCcw } from "lucide-react";
 
 interface FeatureOption {
   id: number;
@@ -19,6 +20,14 @@ interface Message {
   content: string;
 }
 
+// Icon mapping for interview types
+const interviewIcons = {
+  "Product Sense": Lightbulb,
+  "Product Execution": Target,
+  "Product Strategy": TrendingUp,
+  "Behavioral": Users,
+};
+
 export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
   features,
 }) => {
@@ -27,7 +36,10 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
   const [currentMessageIndex, setCurrentMessageIndex] = useState<number>(0);
   const [currentCharIndex, setCurrentCharIndex] = useState<number>(0);
   const [isTyping, setIsTyping] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [isInView, setIsInView] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Extract plain text from HTML
   const getPlainText = (html: string): string => {
@@ -63,25 +75,53 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
     return messages;
   };
 
+  // Intersection Observer - only animate when in view
   useEffect(() => {
-    // Guard: Skip if features aren't loaded yet
-    if (!features || features.length === 0 || !features[selectedIndex]) {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsInView(entry.isIntersecting);
+      },
+      { threshold: 0.3 } // Trigger when 30% visible
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => {
+      if (containerRef.current) {
+        observer.unobserve(containerRef.current);
+      }
+    };
+  }, []);
+
+  // Reset animation when tab changes
+  const resetAnimation = () => {
+    setDisplayedMessages([]);
+    setCurrentMessageIndex(0);
+    setCurrentCharIndex(0);
+    setIsTyping(true);
+    setIsPaused(false);
+  };
+
+  useEffect(() => {
+    // Guard: Skip if features aren't loaded yet or not in view
+    if (!features || features.length === 0 || !features[selectedIndex] || !isInView) {
       return;
     }
 
     const plainText = getPlainText(features[selectedIndex].code);
     const messages = parseMessages(plainText);
 
-    setDisplayedMessages([]);
-    setCurrentMessageIndex(0);
-    setCurrentCharIndex(0);
-    setIsTyping(true);
+    resetAnimation();
 
     let msgIndex = 0;
     let charIndex = 0;
-    const typingSpeed = 10; // milliseconds per character
+    const typingSpeed = 8; // milliseconds per character (slightly faster)
 
     const typeInterval = setInterval(() => {
+      if (isPaused) return; // Pause functionality
+
       if (msgIndex < messages.length) {
         const currentMessage = messages[msgIndex];
 
@@ -112,44 +152,97 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
     }, typingSpeed);
 
     return () => clearInterval(typeInterval);
-  }, [selectedIndex, features]);
+  }, [selectedIndex, features, isInView, isPaused]);
 
   return (
-    <div className="max-w-6xl mx-auto">
-      {/* Tab Selector with Sliding Animation */}
+    <div ref={containerRef} className="max-w-6xl mx-auto">
+      {/* Enhanced Tab Selector with Icons */}
       <div className="relative mb-8">
         <div className="flex flex-wrap gap-3 justify-center">
-          {features.map((option, index) => (
-            <button
-              key={option.id}
-              onClick={() => setSelectedIndex(index)}
-              className={`relative px-6 py-3 rounded-lg font-medium transition-all duration-300 ${
-                selectedIndex === index
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {selectedIndex === index && (
-                <motion.div
-                  layoutId="activeTab"
-                  className="absolute inset-0 bg-primary/10 border-2 border-primary rounded-lg"
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                />
-              )}
-              <span className="relative z-10">{option.title}</span>
-            </button>
-          ))}
+          {features.map((option, index) => {
+            const Icon = interviewIcons[option.title as keyof typeof interviewIcons];
+            return (
+              <button
+                key={option.id}
+                onClick={() => setSelectedIndex(index)}
+                className={`group relative px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+                  selectedIndex === index
+                    ? "text-primary scale-105"
+                    : "text-muted-foreground hover:text-foreground hover:scale-102"
+                }`}
+              >
+                {selectedIndex === index && (
+                  <motion.div
+                    layoutId="activeTab"
+                    className="absolute inset-0 bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-2 border-primary/50 rounded-xl shadow-lg shadow-primary/20"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-2">
+                  {Icon && <Icon className="w-4 h-4" />}
+                  {option.title}
+                </span>
+              </button>
+            );
+          })}
         </div>
+
+        {/* Progress indicator */}
+        {isTyping && (
+          <motion.div
+            className="absolute -bottom-2 left-0 right-0 h-0.5 bg-primary/30 rounded-full overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <motion.div
+              className="h-full bg-primary rounded-full"
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{ duration: 15, ease: "linear" }}
+            />
+          </motion.div>
+        )}
       </div>
 
-      {/* Terminal/Script Area - Only This Has Border */}
-      <div className="relative rounded-xl border-2 border-border bg-background shadow-lg overflow-hidden">
+      {/* Modern Chat Interface */}
+      <div className="relative rounded-2xl border border-border/60 bg-gradient-to-br from-card/50 to-card/30 backdrop-blur-md shadow-2xl overflow-hidden">
+        {/* Playback Controls */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-border/60 bg-background/40 backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-red-500/80" />
+            <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+            <div className="w-3 h-3 rounded-full bg-green-500/80" />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsPaused(!isPaused)}
+              className="p-2 rounded-lg hover:bg-primary/10 transition-colors"
+              title={isPaused ? "Resume" : "Pause"}
+            >
+              {isPaused ? (
+                <Play className="w-4 h-4 text-primary" />
+              ) : (
+                <Pause className="w-4 h-4 text-primary" />
+              )}
+            </button>
+            <button
+              onClick={resetAnimation}
+              className="p-2 rounded-lg hover:bg-primary/10 transition-colors"
+              title="Restart"
+            >
+              <RotateCcw className="w-4 h-4 text-primary" />
+            </button>
+          </div>
+        </div>
+
+        {/* Chat Messages */}
         <div
           ref={scrollRef}
-          className="p-6 overflow-y-auto scroll-smooth h-[440px] font-mono"
+          className="p-6 overflow-y-auto scroll-smooth h-[500px] bg-gradient-to-b from-background/5 to-transparent"
         >
           <AnimatePresence mode="wait">
-            <div key={selectedIndex} className="space-y-3">
+            <div key={selectedIndex} className="space-y-4">
               {displayedMessages.map((message, index) => {
                 const isLastMessage = index === displayedMessages.length - 1;
 
@@ -157,12 +250,15 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                   return (
                     <motion.div
                       key={`${selectedIndex}-${index}`}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.3 }}
-                      className="my-3 flex justify-center"
+                      initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      transition={{ duration: 0.3, type: "spring" }}
+                      className="flex justify-center my-4"
                     >
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/10 dark:bg-amber-400/10 border border-amber-500/30 dark:border-amber-400/30 text-xs font-medium text-amber-600 dark:text-amber-400">
+                      <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-amber-500/15 to-orange-500/15 border border-amber-500/40 text-sm font-medium text-amber-400 shadow-lg shadow-amber-500/10">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
                         {message.content}
                       </span>
                     </motion.div>
@@ -173,22 +269,30 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                   return (
                     <motion.div
                       key={`${selectedIndex}-${index}`}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.2 }}
-                      className="leading-relaxed"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="flex items-start gap-3"
                     >
-                      <span className="text-cyan-500 dark:text-cyan-400">Interviewer:</span>{" "}
-                      <span className="text-foreground">
-                        {message.content}
-                        {isLastMessage && isTyping && (
-                          <motion.span
-                            animate={{ opacity: [1, 0, 1] }}
-                            transition={{ duration: 0.8, repeat: Infinity }}
-                            className="inline-block w-1.5 h-4 bg-cyan-500 dark:bg-cyan-400 ml-1 align-middle"
-                          />
-                        )}
-                      </span>
+                      {/* Interviewer Avatar */}
+                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-semibold shadow-lg shadow-cyan-500/30">
+                        M
+                      </div>
+                      {/* Message Bubble */}
+                      <div className="flex-1 max-w-[80%]">
+                        <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 shadow-lg">
+                          <p className="text-sm leading-relaxed text-foreground">
+                            {message.content}
+                            {isLastMessage && isTyping && (
+                              <motion.span
+                                animate={{ opacity: [1, 0.3, 1] }}
+                                transition={{ duration: 1, repeat: Infinity }}
+                                className="inline-block w-1.5 h-4 bg-cyan-400 ml-1.5 rounded-sm align-middle"
+                              />
+                            )}
+                          </p>
+                        </div>
+                      </div>
                     </motion.div>
                   );
                 }
@@ -197,22 +301,30 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                   return (
                     <motion.div
                       key={`${selectedIndex}-${index}`}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.2 }}
-                      className="leading-relaxed"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="flex items-start gap-3 justify-end"
                     >
-                      <span className="text-green-500 dark:text-green-400">You:</span>{" "}
-                      <span className="text-foreground">
-                        {message.content}
-                        {isLastMessage && isTyping && (
-                          <motion.span
-                            animate={{ opacity: [1, 0, 1] }}
-                            transition={{ duration: 0.8, repeat: Infinity }}
-                            className="inline-block w-1.5 h-4 bg-green-500 dark:bg-green-400 ml-1 align-middle"
-                          />
-                        )}
-                      </span>
+                      {/* Message Bubble */}
+                      <div className="flex-1 max-w-[80%] flex justify-end">
+                        <div className="px-4 py-3 rounded-2xl rounded-tr-sm bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/40 shadow-lg shadow-primary/10">
+                          <p className="text-sm leading-relaxed text-foreground">
+                            {message.content}
+                            {isLastMessage && isTyping && (
+                              <motion.span
+                                animate={{ opacity: [1, 0.3, 1] }}
+                                transition={{ duration: 1, repeat: Infinity }}
+                                className="inline-block w-1.5 h-4 bg-primary ml-1.5 rounded-sm align-middle"
+                              />
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Your Avatar */}
+                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-semibold shadow-lg shadow-primary/30">
+                        U
+                      </div>
                     </motion.div>
                   );
                 }
@@ -220,10 +332,22 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
             </div>
           </AnimatePresence>
         </div>
-        {/* Fade gradient overlays */}
-        <div className="pointer-events-none absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-background to-transparent" />
-        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background to-transparent" />
+
+        {/* Gradient Overlays for depth */}
+        <div className="pointer-events-none absolute top-[60px] left-0 right-0 h-20 bg-gradient-to-b from-background/20 to-transparent" />
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-background/40 to-transparent" />
       </div>
+
+      {/* Helper Text */}
+      {!isInView && (
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center text-sm text-muted-foreground mt-4"
+        >
+          Scroll to view the conversation
+        </motion.p>
+      )}
     </div>
   );
 };
