@@ -236,13 +236,13 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
           </div>
         </div>
 
-        {/* Chat Messages */}
+        {/* Terminal-style conversation */}
         <div
           ref={scrollRef}
-          className="p-6 overflow-y-auto scroll-smooth h-[500px] bg-gradient-to-b from-background/5 to-transparent"
+          className="p-6 overflow-y-auto scroll-smooth h-[500px] font-mono text-sm"
         >
           <AnimatePresence mode="wait">
-            <div key={selectedIndex} className="space-y-4">
+            <div key={selectedIndex} className="space-y-3">
               {displayedMessages.map((message, index) => {
                 const isLastMessage = index === displayedMessages.length - 1;
 
@@ -250,13 +250,13 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                   return (
                     <motion.div
                       key={`${selectedIndex}-${index}`}
-                      initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      transition={{ duration: 0.3, type: "spring" }}
-                      className="flex justify-center my-4"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.3 }}
+                      className="my-3 flex justify-center"
                     >
-                      <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-amber-500/15 to-orange-500/15 border border-amber-500/40 text-sm font-medium text-amber-400 shadow-lg shadow-amber-500/10">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs font-medium text-amber-400">
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                         </svg>
                         {message.content}
@@ -269,30 +269,22 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                   return (
                     <motion.div
                       key={`${selectedIndex}-${index}`}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="flex items-start gap-3"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.2 }}
+                      className="leading-relaxed"
                     >
-                      {/* Interviewer Avatar */}
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-semibold shadow-lg shadow-cyan-500/30">
-                        M
-                      </div>
-                      {/* Message Bubble */}
-                      <div className="flex-1 max-w-[80%]">
-                        <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 shadow-lg">
-                          <p className="text-sm leading-relaxed text-foreground">
-                            {message.content}
-                            {isLastMessage && isTyping && (
-                              <motion.span
-                                animate={{ opacity: [1, 0.3, 1] }}
-                                transition={{ duration: 1, repeat: Infinity }}
-                                className="inline-block w-1.5 h-4 bg-cyan-400 ml-1.5 rounded-sm align-middle"
-                              />
-                            )}
-                          </p>
-                        </div>
-                      </div>
+                      <span className="text-cyan-400 font-semibold">Interviewer:</span>{" "}
+                      <span className="text-foreground">
+                        {message.content}
+                        {isLastMessage && isTyping && (
+                          <motion.span
+                            animate={{ opacity: [1, 0, 1] }}
+                            transition={{ duration: 0.8, repeat: Infinity }}
+                            className="inline-block w-1.5 h-4 bg-cyan-400 ml-1 align-middle"
+                          />
+                        )}
+                      </span>
                     </motion.div>
                   );
                 }
@@ -301,30 +293,22 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                   return (
                     <motion.div
                       key={`${selectedIndex}-${index}`}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="flex items-start gap-3 justify-end"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.2 }}
+                      className="leading-relaxed"
                     >
-                      {/* Message Bubble */}
-                      <div className="flex-1 max-w-[80%] flex justify-end">
-                        <div className="px-4 py-3 rounded-2xl rounded-tr-sm bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/40 shadow-lg shadow-primary/10">
-                          <p className="text-sm leading-relaxed text-foreground">
-                            {message.content}
-                            {isLastMessage && isTyping && (
-                              <motion.span
-                                animate={{ opacity: [1, 0.3, 1] }}
-                                transition={{ duration: 1, repeat: Infinity }}
-                                className="inline-block w-1.5 h-4 bg-primary ml-1.5 rounded-sm align-middle"
-                              />
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                      {/* Your Avatar */}
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-semibold shadow-lg shadow-primary/30">
-                        U
-                      </div>
+                      <span className="text-primary font-semibold">You:</span>{" "}
+                      <span className="text-foreground">
+                        {message.content}
+                        {isLastMessage && isTyping && (
+                          <motion.span
+                            animate={{ opacity: [1, 0, 1] }}
+                            transition={{ duration: 0.8, repeat: Infinity }}
+                            className="inline-block w-1.5 h-4 bg-primary ml-1 align-middle"
+                          />
+                        )}
+                      </span>
                     </motion.div>
                   );
                 }
