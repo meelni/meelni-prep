@@ -110,29 +110,38 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
   }, [selectedIndex, features]);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 relative">
-      <div className="md:col-span-2 border-b md:border-b-0 bg-background md:border-r border-border sticky lg:relative top-[var(--header-height)] lg:top-0">
-        <div className="flex md:flex-col feature-btn-container overflow-x-auto p-4 pb-2">
+    <div className="max-w-6xl mx-auto">
+      {/* Tab Selector with Sliding Animation */}
+      <div className="relative mb-8">
+        <div className="flex flex-wrap gap-3 justify-center">
           {features.map((option, index) => (
             <button
               key={option.id}
               onClick={() => setSelectedIndex(index)}
-              className={`flex-shrink-0 w-64 md:w-full text-left p-4 mb-2 mr-2 last:mr-0 md:mr-0 rounded border border-border transition-colors ${
-                selectedIndex === index ? "bg-accent/70" : "hover:bg-muted/50"
+              className={`relative px-6 py-3 rounded-lg font-medium transition-all duration-300 ${
+                selectedIndex === index
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <h3 className="font-medium tracking-tight">{option.title}</h3>
-              <p className="text-sm text-muted-foreground">
-                {option.description}
-              </p>
+              {selectedIndex === index && (
+                <motion.div
+                  layoutId="activeTab"
+                  className="absolute inset-0 bg-primary/10 border-2 border-primary rounded-lg"
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                />
+              )}
+              <span className="relative z-10">{option.title}</span>
             </button>
           ))}
         </div>
       </div>
-      <div className="col-span-1 md:col-span-3 self-start relative">
+
+      {/* Terminal/Script Area - Only This Has Border */}
+      <div className="relative rounded-xl border-2 border-border bg-background shadow-lg overflow-hidden">
         <div
           ref={scrollRef}
-          className="bg-background p-6 overflow-y-auto scroll-smooth h-[440px] font-mono"
+          className="p-6 overflow-y-auto scroll-smooth h-[440px] font-mono"
         >
           <AnimatePresence mode="wait">
             <div key={selectedIndex} className="space-y-3">

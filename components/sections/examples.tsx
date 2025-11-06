@@ -160,15 +160,40 @@ export async function Examples() {
 
   return (
     <Section id="examples">
-      <div className="pt-16 pb-8 px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
-          See it in action
-        </h2>
-        <p className="mt-3 text-lg text-muted-foreground max-w-2xl mx-auto">
-          Watch how our AI coach helps you master PM frameworks through realistic interview conversations
-        </p>
+      <div className="pt-16 pb-6 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto text-center">
+          {/* Header with inline voice preview button */}
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
+              Practice with Meelni
+            </h2>
+            <button className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 hover:bg-primary/10 hover:border-primary/40 transition-all duration-300 hover:scale-105 active:scale-95">
+              <svg
+                className="w-4 h-4 text-primary transition-transform duration-300 group-hover:scale-110"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                />
+              </svg>
+              <span className="text-xs font-medium text-primary/80 group-hover:text-primary transition-colors">
+                Preview voice
+              </span>
+            </button>
+          </div>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
+            Experience AI-powered coaching across different PM interview types
+          </p>
+        </div>
       </div>
-      <div className="border-x border-t">
+
+      {/* Feature Selector - no outer borders */}
+      <div className="px-4 sm:px-6 lg:px-8">
         <FeatureSelector features={features} />
       </div>
     </Section>
