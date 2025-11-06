@@ -12,6 +12,11 @@ import { AudioVisualizer } from "./components/audio-visualizer";
 import { InterviewControls } from "./components/interview-controls";
 import { TimerDisplay } from "./components/timer-display";
 import { EndSessionModal } from "./components/end-session-modal";
+import {
+  NudgeOverlay,
+  Nudge,
+  FrameworkCoverage,
+} from "@/components/interview/nudge-overlay";
 import { useLocalParticipant } from "@livekit/components-react";
 import { RoomAudioRenderer } from "@livekit/components-react";
 import { Loader2, AlertCircle } from "lucide-react";
@@ -56,6 +61,8 @@ export default function InterviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [transcriptSaveErrors, setTranscriptSaveErrors] = useState(0);
   const [transcriptQueue] = useState(() => getTranscriptQueue());
+  const [currentNudge, setCurrentNudge] = useState<Nudge | null>(null);
+  const [frameworkCoverage, setFrameworkCoverage] = useState<FrameworkCoverage>([]);
 
   // Invalidate queries when component unmounts (user leaves interview)
   useEffect(() => {
@@ -181,7 +188,7 @@ export default function InterviewPage() {
         endedAt: turn.endedAt,
         audioMs: turn.audioMs,
         latencyMs: turn.latencyMs,
-        section: turn.section,
+        section: turn.section || undefined,
       });
 
       if (!result.success) {
@@ -196,6 +203,57 @@ export default function InterviewPage() {
       // Unexpected error
       console.error("[Interview] Unexpected error saving transcript:", error);
       setTranscriptSaveErrors((prev) => prev + 1);
+    }
+
+    // Analyze for nudges (only when user finishes speaking)
+    if (turn.speaker === "user" && sessionId && session?.config?.roundType) {
+      analyzeForNudges(turn);
+    }
+  };
+
+  const analyzeForNudges = async (turn: TranscriptTurn) => {
+    try {
+      const timeElapsed = Math.floor(
+        (new Date().getTime() - new Date(session!.started_at).getTime()) / 1000
+      );
+
+      const response = await fetch("/api/nudges/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: sessionId!,
+          interviewType: session!.config.roundType,
+          currentTurn: {
+            speaker: turn.speaker,
+            text: turn.text,
+            timestamp: turn.timestamp,
+          },
+          timeElapsed,
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn("[Interview] Nudge analysis failed:", response.statusText);
+        return;
+      }
+
+      const data = await response.json();
+
+      // Update framework coverage
+      if (data.frameworkCoverage) {
+        setFrameworkCoverage(data.frameworkCoverage);
+      }
+
+      // Display nudge if applicable
+      if (data.shouldNudge && data.nudgeType && data.message) {
+        setCurrentNudge({
+          type: data.nudgeType,
+          message: data.message,
+        });
+      }
+    } catch (error) {
+      console.error("[Interview] Error analyzing for nudges:", error);
+      // Don't show error to user - nudges are optional enhancement
     }
   };
 
@@ -286,6 +344,11 @@ export default function InterviewPage() {
         transcriptSaveErrors={transcriptSaveErrors}
         onToggleMute={() => setIsMuted(!isMuted)}
         onEndSession={() => setShowEndModal(true)}
+      />
+      <NudgeOverlay
+        nudge={currentNudge}
+        frameworkCoverage={frameworkCoverage}
+        onDismiss={() => setCurrentNudge(null)}
       />
       <EndSessionModal
         isOpen={showEndModal}
