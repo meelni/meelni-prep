@@ -48,8 +48,8 @@ export function Sidebar({
             <Link href="/dashboard" className="flex items-center gap-2 group">
               <Icons.logo className="w-6 h-6 text-primary transition-transform duration-300 group-hover:scale-110" />
               <div>
-                <h1 className="text-primary font-semibold text-lg tracking-tight">Meelni</h1>
-                <p className="text-muted-foreground text-xs">Interview Coach</p>
+                <h1 className="text-primary font-display font-light text-xl tracking-tight">Meelni</h1>
+                <p className="text-muted-foreground text-xs font-sans">Interview Coach</p>
               </div>
             </Link>
           </div>
@@ -86,9 +86,9 @@ export function Sidebar({
           <div className="mt-8 p-4 bg-muted border border-border rounded">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-              <span className="text-xs text-foreground font-medium">READY TO PRACTICE</span>
+              <span className="text-xs text-foreground font-display font-light tracking-wide">READY TO PRACTICE</span>
             </div>
-            <div className="text-xs text-muted-foreground space-y-1">
+            <div className="text-xs text-muted-foreground space-y-1 font-mono">
               <div>SESSIONS: {totalSessions} COMPLETED</div>
               <div>TOTAL TIME: {formatMinutes(totalMinutes)}</div>
               {avgScore > 0 && <div>AVG SCORE: {avgScore.toFixed(1)}/10</div>}

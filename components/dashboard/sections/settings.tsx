@@ -6,8 +6,8 @@ export function SettingsSection() {
   return (
     <div className="p-6 space-y-6">
       <div className="space-y-2">
-        <h2 className="text-2xl font-semibold text-foreground">Settings</h2>
-        <p className="text-muted-foreground">
+        <h2 className="text-2xl font-display font-light text-foreground">Settings</h2>
+        <p className="text-muted-foreground font-sans">
           Manage your account preferences and application settings.
         </p>
       </div>
@@ -19,8 +19,8 @@ export function SettingsSection() {
               <div className="text-4xl">⚙️</div>
             </div>
             <div className="space-y-2">
-              <h3 className="text-lg font-semibold text-foreground">Coming Soon</h3>
-              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              <h3 className="text-lg font-display font-light text-foreground">Coming Soon</h3>
+              <p className="text-sm text-muted-foreground font-sans max-w-md mx-auto">
                 User settings and preferences are currently in development. Check back soon!
               </p>
             </div>

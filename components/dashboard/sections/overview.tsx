@@ -101,7 +101,7 @@ export function OverviewSection({
         {/* Recent Activity */}
         <Card className="lg:col-span-4 bg-card border-border">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground tracking-wider uppercase">
+            <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
               Recent Activity
             </CardTitle>
           </CardHeader>
@@ -149,7 +149,7 @@ export function OverviewSection({
         {/* Interview Type Breakdown */}
         <Card className="lg:col-span-4 bg-card border-border">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground tracking-wider uppercase">
+            <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
               Interview Type Breakdown
             </CardTitle>
           </CardHeader>
@@ -158,7 +158,7 @@ export function OverviewSection({
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-2 h-2 bg-primary rounded-full"></div>
-                  <span className="text-xs text-foreground font-medium">Completed Interviews</span>
+                  <span className="text-xs text-foreground font-display font-light">Completed Interviews</span>
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs">
@@ -198,12 +198,12 @@ export function OverviewSection({
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-primary" />
-                  <span className="text-sm font-medium text-primary">Ready to practice?</span>
+                  <span className="text-sm font-display font-light text-primary">Ready to practice?</span>
                 </div>
-                <h2 className="text-2xl font-semibold text-foreground">
+                <h2 className="text-2xl font-display font-light text-foreground">
                   Start Your Mock Interview
                 </h2>
-                <p className="text-muted-foreground">
+                <p className="text-muted-foreground font-sans">
                   Choose your interview type, difficulty, and voice settings. Practice product
                   sense, analytical thinking, leadership, or strategy interviews with our AI coach.
                 </p>
@@ -213,7 +213,7 @@ export function OverviewSection({
                 <Link href="/setup" className="flex-1">
                   <Button
                     size="lg"
-                    className="w-full group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold shadow-sm hover:shadow-md transition-all duration-300"
+                    className="w-full group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-display font-light shadow-sm hover:shadow-md transition-all duration-300"
                   >
                     Start Mock Interview
                     <ArrowRight className="ml-2 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
