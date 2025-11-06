@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Lightbulb, Target, TrendingUp, Users, Pause, Play, RotateCcw } from "lucide-react";
 
 interface FeatureOption {
@@ -254,80 +254,69 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
           ref={scrollRef}
           className="p-6 overflow-y-auto scroll-smooth h-[500px] font-mono text-sm"
         >
-          <AnimatePresence mode="wait">
-            <div key={selectedIndex} className="space-y-3">
-              {displayedMessages.map((message, index) => {
-                const isLastMessage = index === displayedMessages.length - 1;
+          <div className="space-y-3">
+            {displayedMessages.map((message, index) => {
+              const isLastMessage = index === displayedMessages.length - 1;
 
-                if (message.type === "checkpoint") {
-                  return (
-                    <motion.div
-                      key={`${selectedIndex}-${index}`}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.3 }}
-                      className="my-3 flex justify-center"
-                    >
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs font-medium text-amber-400">
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                        {message.content}
-                      </span>
-                    </motion.div>
-                  );
-                }
+              if (message.type === "checkpoint") {
+                return (
+                  <div
+                    key={`${selectedIndex}-${index}`}
+                    className="my-3 flex justify-center"
+                  >
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs font-medium text-amber-400">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      {message.content}
+                    </span>
+                  </div>
+                );
+              }
 
-                if (message.type === "interviewer") {
-                  return (
-                    <motion.div
-                      key={`${selectedIndex}-${index}`}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.2 }}
-                      className="leading-relaxed"
-                    >
-                      <span className="text-cyan-400 font-semibold">Interviewer:</span>{" "}
-                      <span className="text-foreground">
-                        {message.content}
-                        {isLastMessage && isTyping && (
-                          <motion.span
-                            animate={{ opacity: [1, 0, 1] }}
-                            transition={{ duration: 0.8, repeat: Infinity }}
-                            className="inline-block w-1.5 h-4 bg-cyan-400 ml-1 align-middle"
-                          />
-                        )}
-                      </span>
-                    </motion.div>
-                  );
-                }
+              if (message.type === "interviewer") {
+                return (
+                  <div
+                    key={`${selectedIndex}-${index}`}
+                    className="leading-relaxed"
+                  >
+                    <span className="text-cyan-400 font-semibold">Interviewer:</span>{" "}
+                    <span className="text-foreground">
+                      {message.content}
+                      {isLastMessage && isTyping && (
+                        <motion.span
+                          animate={{ opacity: [1, 0, 1] }}
+                          transition={{ duration: 0.8, repeat: Infinity }}
+                          className="inline-block w-1.5 h-4 bg-cyan-400 ml-1 align-middle"
+                        />
+                      )}
+                    </span>
+                  </div>
+                );
+              }
 
-                if (message.type === "you") {
-                  return (
-                    <motion.div
-                      key={`${selectedIndex}-${index}`}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.2 }}
-                      className="leading-relaxed"
-                    >
-                      <span className="text-primary font-semibold">You:</span>{" "}
-                      <span className="text-foreground">
-                        {message.content}
-                        {isLastMessage && isTyping && (
-                          <motion.span
-                            animate={{ opacity: [1, 0, 1] }}
-                            transition={{ duration: 0.8, repeat: Infinity }}
-                            className="inline-block w-1.5 h-4 bg-primary ml-1 align-middle"
-                          />
-                        )}
-                      </span>
-                    </motion.div>
-                  );
-                }
-              })}
-            </div>
-          </AnimatePresence>
+              if (message.type === "you") {
+                return (
+                  <div
+                    key={`${selectedIndex}-${index}`}
+                    className="leading-relaxed"
+                  >
+                    <span className="text-primary font-semibold">You:</span>{" "}
+                    <span className="text-foreground">
+                      {message.content}
+                      {isLastMessage && isTyping && (
+                        <motion.span
+                          animate={{ opacity: [1, 0, 1] }}
+                          transition={{ duration: 0.8, repeat: Infinity }}
+                          className="inline-block w-1.5 h-4 bg-primary ml-1 align-middle"
+                        />
+                      )}
+                    </span>
+                  </div>
+                );
+              }
+            })}
+          </div>
         </div>
 
         {/* Gradient Overlays for depth */}
