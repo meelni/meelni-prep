@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icons } from "@/components/icons";
+import { FeedbackDisplay } from "@/components/feedback/feedback-display";
 import { motion } from "framer-motion";
 import { ArrowLeft, Calendar, Clock, MessageSquare } from "lucide-react";
 import Link from "next/link";
@@ -45,7 +46,9 @@ export default function FeedbackPage() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
+  const [feedback, setFeedback] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -75,6 +78,13 @@ export default function FeedbackPage() {
           const transcriptData = await transcriptRes.json();
           setTranscript(transcriptData.turns || []);
         }
+
+        // Fetch feedback if it exists
+        const feedbackRes = await fetch(`/api/feedback/${sessionId}`);
+        if (feedbackRes.ok) {
+          const feedbackData = await feedbackRes.json();
+          setFeedback(feedbackData.feedback);
+        }
       } catch (err) {
         console.error("Error fetching session:", err);
         setError("Failed to load session data");
@@ -85,6 +95,29 @@ export default function FeedbackPage() {
 
     fetchSessionData();
   }, [user, authLoading, sessionId, router]);
+
+  const handleGenerateFeedback = async () => {
+    try {
+      setGenerating(true);
+      const res = await fetch("/api/feedback/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to generate feedback");
+      }
+
+      const data = await res.json();
+      setFeedback(data.feedback);
+    } catch (error) {
+      console.error("Error generating feedback:", error);
+      alert("Failed to generate feedback. Please try again.");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   if (authLoading || loading) {
     return (
@@ -202,22 +235,11 @@ export default function FeedbackPage() {
 
           {/* Feedback Section */}
           <motion.div variants={fadeInUp}>
-            <Card className="p-8 bg-surface/30 border-border/30">
-              <div className="text-center space-y-4">
-                <div className="w-16 h-16 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
-                  <MessageSquare className="w-8 h-8 text-muted-foreground/50" />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-lg font-semibold text-foreground">
-                    Feedback Coming Soon
-                  </h3>
-                  <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                    We're building an AI-powered feedback engine to analyze your performance
-                    and provide detailed scores and suggestions.
-                  </p>
-                </div>
-              </div>
-            </Card>
+            <FeedbackDisplay
+              feedback={feedback}
+              onGenerate={handleGenerateFeedback}
+              generating={generating}
+            />
           </motion.div>
 
           {/* Transcript */}
