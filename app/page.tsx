@@ -1,5 +1,4 @@
 import { Blog } from '@/components/sections/blog';
-import { Community } from '@/components/sections/community';
 import { CTA } from '@/components/sections/cta';
 import { Examples } from '@/components/sections/examples';
 import { Features } from '@/components/sections/features';
@@ -8,8 +7,6 @@ import { Header } from '@/components/sections/header';
 import { Hero } from '@/components/sections/hero';
 import { Logos } from '@/components/sections/logos';
 import { Pricing } from '@/components/sections/pricing';
-import { Statistics } from '@/components/sections/statistics';
-import { Testimonials } from '@/components/sections/testimonials';
 
 export default function Home() {
   return (
@@ -25,16 +22,7 @@ export default function Home() {
         <Features />
       </div>
       <div className="mt-20">
-        <Statistics />
-      </div>
-      <div className="mt-20">
-        <Testimonials />
-      </div>
-      <div className="mt-20">
         <Pricing />
-      </div>
-      <div className="mt-20">
-        <Community />
       </div>
       <div className="mt-20">
         <Blog />
