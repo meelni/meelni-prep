@@ -1,11 +1,66 @@
+/**
+ * Demo Token Generation API
+ *
+ * Generates LiveKit access tokens specifically for 60-second demo conversations
+ * on the landing page. Creates ephemeral rooms that auto-delete after 2 minutes
+ * and dispatches a Cloud-hosted demo agent to conduct a brief product demo.
+ *
+ * @route POST /api/livekit/demo-token
+ * @access Public (no authentication required - for landing page demo)
+ *
+ * @request {Object} body - Request payload
+ * @request.participantName {string} Required - Display name for the participant (e.g., "Guest")
+ *
+ * @response {Object} response - Demo session credentials
+ * @response.token {string} - JWT access token for LiveKit room (expires in 2 minutes)
+ * @response.url {string} - LiveKit server WebSocket URL
+ * @response.roomName {string} - Generated demo room name (format: demo-{timestamp}-{random})
+ *
+ * @throws {400} Bad Request - Missing participantName
+ * @throws {500} Internal Server Error - LiveKit credentials not configured, room creation failed, or agent dispatch failed
+ *
+ * @implementation_details
+ * - Room naming: demo-{timestamp}-{random} for tracking and analytics
+ * - Room lifetime: Auto-deletes 2 minutes after last participant leaves
+ * - Max participants: 2 (user + demo agent only)
+ * - Agent: Cloud-hosted demo agent (CA_Wp8bi3bRroE2) explicitly dispatched via AgentDispatchClient
+ * - Agent behavior: 60-second product demo with one quick question and feedback
+ * - Token TTL: 2 minutes (matches demo duration)
+ *
+ * @example
+ * // Request
+ * POST /api/livekit/demo-token
+ * Headers:
+ *   Content-Type: application/json
+ * Body:
+ * {
+ *   "participantName": "Guest"
+ * }
+ *
+ * // Response (200 OK)
+ * {
+ *   "token": "eyJhbGciOiJIUzI1NiIs...",
+ *   "url": "wss://mockmate.livekit.cloud",
+ *   "roomName": "demo-1699999999999-abc123"
+ * }
+ *
+ * // Error Response (400 Bad Request)
+ * {
+ *   "error": "Missing participantName"
+ * }
+ *
+ * // Error Response (500 Internal Server Error)
+ * {
+ *   "error": "Failed to generate demo token"
+ * }
+ *
+ * @see /agent/demo_agent.py for Cloud agent implementation
+ * @see /components/demo-modal.tsx for frontend demo UI
+ */
+
 import { AccessToken, RoomServiceClient, AgentDispatchClient } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
 
-/**
- * Demo Token API
- * Generates LiveKit access tokens for demo rooms only
- * Demo rooms are ephemeral and auto-expire after 2 minutes
- */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
