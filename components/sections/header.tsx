@@ -20,7 +20,7 @@ export function Header() {
           className="relative mr-6 flex items-center space-x-2"
         >
           <Icons.logo className="w-auto" />
-          <span className="font-semibold text-lg">{siteConfig.name}</span>
+          <span className="font-sans font-semibold text-[18px] leading-[24px]">{siteConfig.name}</span>
         </Link>
         <div className="hidden lg:block">
           <Link

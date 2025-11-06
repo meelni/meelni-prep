@@ -8,7 +8,7 @@ export function Footer() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-x-2">
           <Icons.logo className="h-5 w-5" />
-          <h2 className="text-lg font-bold text-foreground">
+          <h2 className="text-[18px] leading-[24px] font-sans font-semibold text-foreground">
             {siteConfig.name}
           </h2>
         </div>
@@ -30,13 +30,13 @@ export function Footer() {
           {siteConfig.footer.links.map((link, index) => (
             <li
               key={index}
-              className="text-[15px]/normal font-medium text-muted-foreground transition-all duration-100 ease-linear hover:text-foreground hover:underline hover:underline-offset-4"
+              className="text-body font-sans font-normal text-muted-foreground transition-all duration-100 ease-linear hover:text-foreground hover:underline hover:underline-offset-4"
             >
               <a href={link.url}>{link.text}</a>
             </li>
           ))}
         </ul>
-        <div className="flex items-center justify-between text-sm font-medium tracking-tight text-muted-foreground">
+        <div className="flex items-center justify-between text-body font-sans font-normal tracking-tight text-muted-foreground">
           <p>{siteConfig.footer.bottomText}</p>
         </div>
       </div>

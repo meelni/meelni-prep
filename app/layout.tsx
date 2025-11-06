@@ -1,15 +1,33 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
+import { Public_Sans, Outfit } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Using Outfit as a free alternative to Everett - similar elegant, geometric feel
+const outfit = Outfit({
   subsets: ["latin"],
+  weight: ["300"],
+  variable: "--font-everett",
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const publicSans = Public_Sans({
   subsets: ["latin"],
+  weight: ["400", "600"],
+  variable: "--font-public-sans",
+  display: "swap",
+});
+
+const commitMono = localFont({
+  src: [
+    {
+      path: "../public/fonts/commit-mono-regular.otf",
+      weight: "400",
+      style: "normal",
+    },
+  ],
+  variable: "--font-commit-mono",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -25,7 +43,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${outfit.variable} ${publicSans.variable} ${commitMono.variable} antialiased`}
       >
         {children}
       </body>
