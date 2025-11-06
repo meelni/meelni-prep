@@ -1,352 +1,294 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
-import {
-  LiveKitRoom,
-  RoomAudioRenderer,
-  useVoiceAssistant,
-  useRoomContext,
-} from "@livekit/components-react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useAuth } from "@/app/providers/auth-provider";
+import { LiveKitRoomWrapper, TranscriptTurn } from "@/components/interview/livekit-room";
+import { AgentStatus } from "./components/agent-status";
+import { TranscriptPanel } from "./components/transcript-panel";
+import { AudioVisualizer } from "./components/audio-visualizer";
+import { InterviewControls } from "./components/interview-controls";
+import { TimerDisplay } from "./components/timer-display";
+import { EndSessionModal } from "./components/end-session-modal";
+import { useLocalParticipant } from "@livekit/components-react";
+import { RoomAudioRenderer } from "@livekit/components-react";
+import { Loader2 } from "lucide-react";
+
+interface InterviewSession {
+  id: string;
+  livekit_room_name: string;
+  started_at: string;
+  config: any;
+}
 
 export default function InterviewPage() {
+  const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const sessionId = searchParams.get("sessionId");
+
+  const [session, setSession] = useState<InterviewSession | null>(null);
   const [token, setToken] = useState<string>("");
   const [url, setUrl] = useState<string>("");
-  const [sessionId, setSessionId] = useState<string>("");
-  const [connecting, setConnecting] = useState(false);
-  const [config, setConfig] = useState<any>(null);
-  const [sessionEnded, setSessionEnded] = useState(false);
+  const [agentState, setAgentState] = useState<
+    "idle" | "listening" | "thinking" | "speaking"
+  >("idle");
+  const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
+  const [isMuted, setIsMuted] = useState(false);
+  const [showEndModal, setShowEndModal] = useState(false);
+  const [isEndingSession, setIsEndingSession] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const role = searchParams.get("role") || "interviewee";
-    const mode = searchParams.get("mode") || "mock_interview";
-    const interview_type = searchParams.get("interview_type") || "product_sense";
-    const voice = searchParams.get("voice") || "";
-    const skill_level = searchParams.get("skill_level") || "mid";
-    const speed = parseFloat(searchParams.get("speed") || "1.0");
-    const emotion = searchParams.get("emotion") || "Neutral";
-    const volume = parseFloat(searchParams.get("volume") || "1.0");
-    const tts_model = searchParams.get("tts_model") || "sonic-2";
-    const stt_model = searchParams.get("stt_model") || "deepgram/nova-2";
-    const llm_model = searchParams.get("llm_model") || "openai/gpt-4o-mini";
+    if (authLoading) return;
 
-    setConfig({
-      role,
-      mode,
-      interview_type,
-      voice,
-      skill_level,
-      speed,
-      emotion,
-      volume,
-      tts_model,
-      stt_model,
-      llm_model,
-    });
-  }, [searchParams]);
+    if (!user) {
+      router.push("/auth/signin?redirectTo=/interview");
+      return;
+    }
 
-  const connectToRoom = async () => {
-    if (!config) return;
+    if (!sessionId) {
+      router.push("/setup");
+      return;
+    }
 
-    setConnecting(true);
-    setSessionEnded(false);
+    fetchSessionDetails();
+  }, [sessionId, user, authLoading]);
+
+  const fetchSessionDetails = async () => {
+    if (!sessionId) return;
+
     try {
-      // Create session and get LiveKit token
-      const response = await fetch("/api/session/start", {
+      setLoading(true);
+      const response = await fetch(`/api/session/${sessionId}`);
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch session details");
+      }
+
+      const sessionData = await response.json();
+      setSession(sessionData);
+
+      // Generate LiveKit token for this session
+      const tokenResponse = await fetch("/api/livekit/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          roundType: config.interview_type,
-          mode: "voice_video",
-          role: config.role,
-          config: config,
+          roomName: sessionData.livekit_room_name,
+          participantName: user?.user_metadata?.full_name || user?.email || "User",
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to start session");
+      if (!tokenResponse.ok) {
+        throw new Error("Failed to get LiveKit token");
       }
 
-      const data = await response.json();
-      setSessionId(data.sessionId);
-      setToken(data.token);
-      setUrl(data.url);
+      const tokenData = await tokenResponse.json();
+      setToken(tokenData.token);
+      setUrl(tokenData.url || process.env.NEXT_PUBLIC_LIVEKIT_URL || "");
+      setLoading(false);
+    } catch (err) {
+      console.error("Error fetching session:", err);
+      setError(err instanceof Error ? err.message : "Failed to load interview");
+      setLoading(false);
+    }
+  };
+
+  const handleTranscriptUpdate = async (turn: TranscriptTurn) => {
+    setTranscript((prev) => [...prev, turn]);
+
+    // Save to database
+    try {
+      await fetch("/api/session/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          speaker: turn.speaker,
+          text: turn.text,
+          startedAt: turn.startedAt.toISOString(),
+          endedAt: turn.endedAt.toISOString(),
+          audioMs: turn.audioMs,
+          latencyMs: turn.latencyMs,
+          section: turn.section,
+        }),
+      });
     } catch (error) {
-      console.error("Failed to connect:", error);
-      alert("Failed to start interview session. Please try again.");
-      setConnecting(false);
+      console.error("Failed to save transcript turn:", error);
     }
   };
 
-  const handleDisconnect = async () => {
-    // End the session in database
-    if (sessionId) {
-      try {
-        await fetch("/api/session/end", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId }),
-        });
-      } catch (error) {
-        console.error("Failed to end session:", error);
-      }
+  const handleAgentStateChange = (state: string) => {
+    const normalizedState = state.toLowerCase() as
+      | "idle"
+      | "listening"
+      | "thinking"
+      | "speaking";
+    setAgentState(normalizedState);
+  };
+
+  const handleEndSession = async () => {
+    setIsEndingSession(true);
+    try {
+      // End session in database
+      await fetch("/api/session/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      setShowEndModal(false);
+      setIsEndingSession(false);
+
+      // Navigate to feedback page
+      router.push(`/feedback/${sessionId}`);
+    } catch (error) {
+      console.error("Failed to end session:", error);
+      setIsEndingSession(false);
     }
-
-    setToken("");
-    setUrl("");
-    setSessionId("");
-    setConnecting(false);
-    setSessionEnded(true);
   };
 
-  const handleStartNewSession = () => {
-    setSessionEnded(false);
-    connectToRoom();
-  };
-
-  if (!config) {
+  if (authLoading || loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <div className="text-gray-600">Loading configuration...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/20">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading interview room...</p>
+        </div>
       </div>
     );
   }
 
-  if (!token) {
+  if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-        <div className="rounded-lg bg-gray-800 p-8 shadow-lg border border-gray-700 max-w-md">
-          <h1 className="mb-4 text-2xl font-bold text-white">
-            {sessionEnded ? "Session Ended" : "Ready to Start?"}
-          </h1>
-
-          {sessionEnded && (
-            <div className="mb-4 p-3 bg-green-900/20 border border-green-700 rounded-lg text-green-300 text-sm">
-              ✓ Interview session completed successfully
-            </div>
-          )}
-          
-          <div className="mb-6 space-y-2 text-sm text-gray-300">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Role:</span>
-              <span className="font-medium">
-                {config.role === "interviewee" ? "Interviewee" : "Interviewer"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Type:</span>
-              <span className="font-medium">
-                {config.interview_type.replace("_", " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
-              </span>
-            </div>
-            {config.role === "interviewee" && (
-              <div className="flex justify-between">
-                <span className="text-gray-400">Mode:</span>
-                <span className="font-medium">
-                  {config.mode.replace("_", " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                </span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-gray-400">Speed:</span>
-              <span className="font-medium">{config.speed}x</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">LLM:</span>
-              <span className="font-medium text-xs">{config.llm_model}</span>
-            </div>
-          </div>
-
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/20">
+        <div className="max-w-md text-center">
+          <h1 className="text-2xl font-bold mb-4">Failed to Load Interview</h1>
+          <p className="text-muted-foreground mb-6">{error}</p>
           <button
-            onClick={sessionEnded ? handleStartNewSession : connectToRoom}
-            disabled={connecting}
-            className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-3 text-white hover:from-blue-500 hover:to-purple-500 disabled:from-gray-600 disabled:to-gray-600 transition-all font-semibold"
+            onClick={() => router.push("/setup")}
+            className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
           >
-            {connecting ? "Connecting..." : sessionEnded ? "Start New Interview" : "Start Interview"}
+            Back to Setup
           </button>
+        </div>
+      </div>
+    );
+  }
 
-          <div className="mt-4 text-center">
-            <a
-              href="/setup"
-              className="text-sm text-blue-400 hover:text-blue-300"
-            >
-              ← Change Configuration
-            </a>
-          </div>
+  if (!session || !token || !url) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/20">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Connecting to room...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <LiveKitRoom
+    <LiveKitRoomWrapper
       token={token}
-      serverUrl={url}
-      connect={true}
-      audio={true}
-      video={false}
-      onDisconnected={handleDisconnect}
-      className="flex min-h-screen items-center justify-center bg-gray-900"
+      url={url}
+      roomName={session.livekit_room_name}
+      sessionId={sessionId!}
+      onTranscriptUpdate={handleTranscriptUpdate}
+      onAgentStateChange={handleAgentStateChange}
     >
       <RoomAudioRenderer />
-      <InterviewRoom config={config} sessionId={sessionId} onEndSession={handleDisconnect} />
-    </LiveKitRoom>
+      <InterviewRoomContent
+        session={session}
+        agentState={agentState}
+        transcript={transcript}
+        isMuted={isMuted}
+        onToggleMute={() => setIsMuted(!isMuted)}
+        onEndSession={() => setShowEndModal(true)}
+      />
+      <EndSessionModal
+        isOpen={showEndModal}
+        isLoading={isEndingSession}
+        onClose={() => setShowEndModal(false)}
+        onConfirm={handleEndSession}
+      />
+    </LiveKitRoomWrapper>
   );
 }
 
-function InterviewRoom({ config, sessionId, onEndSession }: { config: any; sessionId: string; onEndSession: () => void }) {
-  const { state } = useVoiceAssistant();
-  const room = useRoomContext();
-  const [transcriptBuffer, setTranscriptBuffer] = useState<any[]>([]);
+interface InterviewRoomContentProps {
+  session: InterviewSession;
+  agentState: "idle" | "listening" | "thinking" | "speaking";
+  transcript: TranscriptTurn[];
+  isMuted: boolean;
+  onToggleMute: () => void;
+  onEndSession: () => void;
+}
 
-  // Save transcript turns to database
+function InterviewRoomContent({
+  session,
+  agentState,
+  transcript,
+  isMuted,
+  onToggleMute,
+  onEndSession,
+}: InterviewRoomContentProps) {
+  const { localParticipant } = useLocalParticipant();
+
   useEffect(() => {
-    if (!sessionId || !room) return;
-
-    const saveTranscript = async (turn: any) => {
-      try {
-        await fetch("/api/session/transcript", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            speaker: turn.speaker,
-            text: turn.text,
-            startedAt: turn.startedAt,
-            endedAt: turn.endedAt,
-          }),
-        });
-      } catch (error) {
-        console.error("Failed to save transcript:", error);
-      }
-    };
-
-    // Listen for agent transcript events
-    const handleAgentTranscript = (event: any) => {
-      if (event.text) {
-        saveTranscript({
-          speaker: "interviewer",
-          text: event.text,
-          startedAt: new Date(),
-          endedAt: new Date(),
-        });
-      }
-    };
-
-    // Listen for user transcript events
-    const handleUserTranscript = (event: any) => {
-      if (event.text) {
-        saveTranscript({
-          speaker: "user",
-          text: event.text,
-          startedAt: new Date(),
-          endedAt: new Date(),
-        });
-      }
-    };
-
-    // Subscribe to events (Note: actual event names may differ based on LiveKit version)
-    // This is a placeholder - you may need to adjust based on actual LiveKit events
-    room.on("transcript", handleUserTranscript as any);
-
-    return () => {
-      room.off("transcript", handleUserTranscript as any);
-    };
-  }, [sessionId, room]);
-
-  const getStatusColor = (state: string) => {
-    switch (state) {
-      case "listening":
-        return "text-green-400";
-      case "thinking":
-        return "text-yellow-400";
-      case "speaking":
-        return "text-blue-400";
-      default:
-        return "text-gray-400";
+    if (localParticipant) {
+      localParticipant.setMicrophoneEnabled(!isMuted);
     }
-  };
+  }, [isMuted, localParticipant]);
 
-  const getStatusIcon = (state: string) => {
-    switch (state) {
-      case "listening":
-        return "🎤";
-      case "thinking":
-        return "🤔";
-      case "speaking":
-        return "💬";
-      default:
-        return "⏳";
-    }
-  };
+  const estimatedDuration = session.config?.duration || 30;
 
   return (
-    <div className="flex flex-col items-center justify-center space-y-8 p-8">
-      <div className="rounded-lg bg-gray-800 p-8 shadow-xl border border-gray-700 min-w-[400px]">
-        <h2 className="mb-6 text-xl font-semibold text-white text-center">
-          {config.role === "interviewee" ? "Interview Session" : "Conducting Interview"}
-        </h2>
-
-        <div className="mb-6 text-center">
-          <div className="mb-4 h-32 flex items-center justify-center">
-            <div className="text-6xl animate-pulse">{getStatusIcon(state || "connecting")}</div>
-          </div>
-          <p className="text-sm text-gray-400">
-            Status: <span className={"font-medium capitalize " + getStatusColor(state || "connecting")}>{state || "connecting"}</span>
-          </p>
-        </div>
-
-        <div className="space-y-2 text-sm text-gray-300 border-t border-gray-700 pt-4">
-          <div className="flex justify-between">
-            <span className="text-gray-500">Interview:</span>
-            <span className="font-medium text-xs">
-              {config.interview_type.replace("_", " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Speed:</span>
-            <span className="font-medium">{config.speed}x</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">LLM:</span>
-            <span className="font-medium text-xs">{config.llm_model}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">STT:</span>
-            <span className="font-medium text-xs">{config.stt_model}</span>
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
+      {/* Header */}
+      <header className="sticky top-0 z-40 w-full bg-background/80 backdrop-blur-md border-b border-border/50">
+        <div className="container max-w-7xl mx-auto h-16 px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-full">
+            <AgentStatus state={agentState} />
+            <TimerDisplay
+              startedAt={new Date(session.started_at)}
+              estimatedDuration={estimatedDuration}
+            />
           </div>
         </div>
+      </header>
 
-        <div className="mt-6 text-center text-sm text-gray-500">
-          <p>
-            {config.role === "interviewee"
-              ? "Agent will join and start the interview"
-              : "AI candidate is ready for your questions"}
-          </p>
+      {/* Main Content */}
+      <main className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
+          {/* Center: Audio Visualizer */}
+          <div className="lg:col-span-2 flex items-center justify-center">
+            <div className="w-full h-full max-h-[500px]">
+              <AudioVisualizer />
+            </div>
+          </div>
+
+          {/* Right Sidebar: Transcript */}
+          <div className="lg:col-span-1 bg-surface border border-border rounded-xl overflow-hidden">
+            <div className="p-4 border-b border-border bg-muted/50">
+              <h2 className="text-lg font-semibold">Transcript</h2>
+              <p className="text-xs text-muted-foreground">
+                Live conversation transcript
+              </p>
+            </div>
+            <div className="h-[calc(100%-80px)]">
+              <TranscriptPanel turns={transcript} />
+            </div>
+          </div>
         </div>
-      </div>
+      </main>
 
-      <div className="max-w-md text-center text-gray-400">
-        <p className="text-sm">
-          💡 You can interrupt at any time - the agent will stop and listen to you
-        </p>
-      </div>
-
-      <div className="flex gap-3">
-        <button
-          onClick={onEndSession}
-          className="px-6 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg transition-all text-sm font-medium"
-        >
-          End Session
-        </button>
-        <button
-          onClick={() => window.location.href = "/setup"}
-          className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-all text-sm"
-        >
-          Change Settings
-        </button>
-      </div>
+      {/* Controls */}
+      <InterviewControls
+        isMuted={isMuted}
+        onToggleMute={onToggleMute}
+        onEndSession={onEndSession}
+      />
     </div>
   );
 }
