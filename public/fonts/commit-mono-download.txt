@@ -1,0 +1,35 @@
+COMMITMONO FONT - FREE & OPEN SOURCE ✅
+
+CommitMono is completely free to download and use!
+
+HOW TO DOWNLOAD:
+
+Option 1: Official Website (Recommended)
+1. Visit: https://commitmono.com/
+2. Click "Download" button
+3. Extract the zip file
+4. Find the file: CommitMono-400-Regular.woff2 (or similar)
+5. Rename to: commit-mono-regular.woff2
+6. Place in this folder: /public/fonts/
+
+Option 2: GitHub
+1. Visit: https://github.com/eigilnikolajsen/commit-mono
+2. Go to Releases
+3. Download latest release
+4. Extract and find .woff2 files
+
+Option 3: Use a Font Converter
+If you only have .ttf or .otf files:
+1. Visit: https://cloudconvert.com/ttf-to-woff2
+2. Upload the TTF file
+3. Convert to WOFF2
+4. Download and rename to commit-mono-regular.woff2
+
+WHAT YOU NEED:
+- CommitMono Regular (weight 400)
+- In .woff2 format
+- File name: commit-mono-regular.woff2
+
+COST: FREE (Apache 2.0 License)
+
+Once downloaded, place it in this folder and restart your dev server!
