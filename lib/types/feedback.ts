@@ -1,56 +1,26 @@
-// Type definitions for feedback data structures
+// Type definitions for feedback UI components
+// Re-exports and extends types from evaluation.ts
 
-export interface RubricScores {
-  structure: number; // 0-10
-  clarity: number; // 0-10
-  insight: number; // 0-10
-  communication: number; // 0-10
-  leadership: number; // 0-10
-}
+import type {
+  RubricScores,
+  FeedbackItem,
+  DrillSuggestion,
+  EvaluationResponse,
+  TranscriptTurn as EvalTranscriptTurn,
+} from "./evaluation";
 
-export interface Strength {
-  title: string;
-  description: string;
-  evidence: string; // Quote from transcript
-}
+// Re-export evaluation types for use in feedback components
+export type { RubricScores, FeedbackItem, DrillSuggestion, EvaluationResponse };
 
-export interface Improvement {
-  title: string;
-  description: string;
-  example: string;
-}
-
-export interface Drill {
-  title: string;
-  description: string;
-  duration: string; // e.g., "15 min"
-}
-
-export interface FeedbackData {
-  sessionId: string;
-  overallScore: number; // 0-10
-  rubricScores: RubricScores;
-  strengths: Strength[];
-  improvements: Improvement[];
-  drills: Drill[];
-  summary: string; // Overall feedback summary
-}
-
-export interface TranscriptTurn {
+// Extended transcript type for UI display with additional properties
+export interface TranscriptTurn extends Omit<EvalTranscriptTurn, "startedAt" | "endedAt"> {
   id: string;
-  speaker: "user" | "interviewer";
-  text: string;
-  timestamp: string; // ISO 8601
-  highlighted?: boolean;
+  timestamp: string; // ISO 8601 format for display
+  highlighted?: boolean; // For highlighting key moments referenced in feedback
 }
 
-export interface SessionWithTranscript {
-  feedback: FeedbackData;
-  transcript: TranscriptTurn[];
-}
-
-// Rubric dimension descriptions
-export const RUBRIC_DESCRIPTIONS: Record<keyof RubricScores, string> = {
+// Rubric dimension descriptions for UI display
+export const RUBRIC_DESCRIPTIONS: Record<keyof Omit<RubricScores, "overall">, string> = {
   structure: "Organized thinking with clear frameworks",
   clarity: "Clear communication and articulation",
   insight: "Deep analysis and creative solutions",
