@@ -1,301 +1,351 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, Clock } from 'lucide-react';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { fadeInUp, staggerContainer, selectionSpring } from '@/lib/animations';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/app/providers/auth-provider";
+import {
+  DEFAULT_CONFIG,
+  InterviewConfig,
+  RoundType,
+  DifficultyLevel,
+  getDefaultDuration,
+} from "@/lib/interview-config";
+import { validateSessionStart } from "@/lib/validation/setup-schema";
+import { RoundSelector } from "./components/round-selector";
+import { DifficultySelector } from "./components/difficulty-selector";
+import { VoiceSelector } from "./components/voice-selector";
+import { AdvancedSettings } from "./components/advanced-settings";
+import { SetupSummary } from "./components/setup-summary";
+import { fadeInUp, staggerContainer } from "@/lib/animations";
 
-// Optimal defaults (not exposed to user)
-const OPTIMAL_DEFAULTS = {
-  voice: '6ccbfb76-1fc6-48f7-b71d-91ac6298247b',  // Tessa - emotive voice
-  speed: 1.0,
-  emotion: 'Confident',
-  volume: 1.0,
-  ttsModel: 'sonic-3',
-  sttModel: 'deepgram/nova-3',
-  llmModel: 'openai/gpt-4.1-mini',
+const VOICE_NAMES: Record<string, string> = {
+  "6ccbfb76-1fc6-48f7-b71d-91ac6298247b": "Tessa",
+  "f9e3eb4c-ab3f-4db1-9c48-c7b806b080b1": "British Male",
+  "63ff761f-c1e8-414b-b969-d1833d1c870c": "Conversational Male",
+  "821fb995-1ba6-4dc9-ab71-7df7c1fe4710": "Professional Female",
 };
 
-// Interview type configurations
-const INTERVIEW_TYPES = [
-  {
-    value: 'product_sense',
-    label: 'Product Sense',
-    icon: '💡',
-    description: 'Design features and improve products',
-    duration: '45 min',
-  },
-  {
-    value: 'analytical_thinking',
-    label: 'Analytical Thinking',
-    icon: '📊',
-    description: 'Define metrics and analyze performance',
-    duration: '45 min',
-  },
-  {
-    value: 'leadership_drive',
-    label: 'Leadership & Drive',
-    icon: '🎯',
-    description: 'Behavioral questions using STAR',
-    duration: '30 min',
-  },
-  {
-    value: 'strategy',
-    label: 'Strategy',
-    icon: '🗺️',
-    description: 'Business and strategic discussions',
-    duration: '45 min',
-  },
-];
-
-// Interview modes
-const INTERVIEW_MODES = [
-  {
-    value: 'mock_interview',
-    label: 'Mock Interview',
-    icon: '🎬',
-    description: 'Full realistic interview experience',
-  },
-  {
-    value: 'practice',
-    label: 'Quick Practice',
-    icon: '⚡',
-    description: 'Focused practice on specific areas',
-  },
-  {
-    value: 'learning',
-    label: 'Learning Mode',
-    icon: '📚',
-    description: 'Learn frameworks step-by-step',
-  },
-];
-
-export default function InterviewSetup() {
+export default function SetupPage() {
+  const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
-  const [selectedType, setSelectedType] = useState('product_sense');
-  const [selectedMode, setSelectedMode] = useState('mock_interview');
 
-  const handleStartInterview = () => {
-    const params = new URLSearchParams({
-      role: 'interviewee',
-      mode: selectedMode,
-      interview_type: selectedType,
-      voice: OPTIMAL_DEFAULTS.voice,
-      skill_level: 'mid',
-      speed: OPTIMAL_DEFAULTS.speed.toString(),
-      emotion: OPTIMAL_DEFAULTS.emotion,
-      volume: OPTIMAL_DEFAULTS.volume.toString(),
-      tts_model: OPTIMAL_DEFAULTS.ttsModel,
-      stt_model: OPTIMAL_DEFAULTS.sttModel,
-      llm_model: OPTIMAL_DEFAULTS.llmModel,
-    });
+  // Multi-step state
+  const [step, setStep] = useState(1);
+  const [roundType, setRoundType] = useState<RoundType | null>(null);
+  const [difficulty, setDifficulty] = useState<DifficultyLevel | null>(null);
+  const [config, setConfig] = useState<InterviewConfig>(DEFAULT_CONFIG);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    router.push('/interview?' + params.toString());
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/auth/signin?redirectTo=/setup");
+    }
+  }, [user, authLoading, router]);
+
+  // Update duration when round type changes
+  useEffect(() => {
+    if (roundType) {
+      setConfig((prev) => ({
+        ...prev,
+        duration: getDefaultDuration(roundType),
+      }));
+    }
+  }, [roundType]);
+
+  const handleConfigChange = (updates: Partial<InterviewConfig>) => {
+    setConfig((prev) => ({ ...prev, ...updates }));
   };
 
-  const selectedTypeData = INTERVIEW_TYPES.find((t) => t.value === selectedType);
-  const selectedModeData = INTERVIEW_MODES.find((m) => m.value === selectedMode);
+  const handleStartInterview = async () => {
+    if (!roundType || !difficulty) {
+      setError("Please complete all required fields");
+      return;
+    }
+
+    setIsCreatingSession(true);
+    setError(null);
+
+    try {
+      // Prepare session data
+      const sessionData = {
+        roundType,
+        mode: "voice_video" as const,
+        persona: undefined,
+        config,
+      };
+
+      // Validate data
+      const validation = validateSessionStart(sessionData);
+      if (!validation.success) {
+        setError(validation.error);
+        setIsCreatingSession(false);
+        return;
+      }
+
+      // Call session start API (Agent 3's endpoint)
+      const response = await fetch("/api/session/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validation.data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to start session");
+      }
+
+      const { sessionId, livekitToken, livekitUrl, roomName } =
+        await response.json();
+
+      // Navigate to interview page with session data
+      router.push(
+        `/interview?sessionId=${sessionId}&token=${encodeURIComponent(
+          livekitToken
+        )}&url=${encodeURIComponent(livekitUrl)}&room=${roomName}`
+      );
+    } catch (err) {
+      console.error("Failed to start session:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to start interview"
+      );
+      setIsCreatingSession(false);
+    }
+  };
+
+  const canProceedToStep2 = roundType !== null;
+  const canProceedToStep3 = canProceedToStep2 && difficulty !== null;
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="border-b border-default backdrop-blur-sm bg-background/80 sticky top-0 z-50"
+        className="sticky top-0 z-50 w-full bg-background/80 backdrop-blur-md border-b border-border/50"
       >
-        <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs text-secondary hover:text-primary transition-colors group"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
-            Back
-          </Link>
-
-          <Badge variant="primary" size="sm">
-            <Clock className="w-3 h-3" />
-            ~45 min
-          </Badge>
+        <div className="container max-w-4xl mx-auto h-16 px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-full">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors group"
+            >
+              <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
+              Back to Dashboard
+            </Link>
+          </div>
         </div>
       </motion.header>
 
-      <motion.div
-        initial="initial"
-        animate="animate"
-        variants={staggerContainer}
-        className="max-w-4xl mx-auto px-6 py-8"
-      >
-        {/* Title Section */}
-        <motion.div variants={fadeInUp} className="mb-8">
-          <h1 className="text-2xl font-bold mb-2 tracking-tight">
-            <span className="gradient-text">Start your session</span>
-          </h1>
-          <p className="text-sm text-secondary">Choose your interview type and practice mode</p>
-        </motion.div>
+      {/* Main Content */}
+      <main className="container max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <motion.div
+          initial="initial"
+          animate="animate"
+          variants={staggerContainer}
+          className="space-y-8"
+        >
+          {/* Title */}
+          <motion.div variants={fadeInUp} className="space-y-2">
+            <h1 className="text-4xl font-bold tracking-tight">
+              <span className="gradient-text">Setup Your Interview</span>
+            </h1>
+            <p className="text-muted-foreground">
+              Customize your practice session in just a few steps
+            </p>
+          </motion.div>
 
-        {/* Progress Indicator */}
-        <motion.div variants={fadeInUp} className="mb-8">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-semibold">
-                1
-              </div>
-              <span className="text-xs font-medium hidden sm:inline">Interview Type</span>
-            </div>
-            <div className="flex-1 h-px bg-surface rounded-full overflow-hidden">
-              <div className="h-full bg-indigo-500 w-1/2" />
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-surface text-secondary flex items-center justify-center text-xs font-semibold">
-                2
-              </div>
-              <span className="text-xs font-medium text-secondary hidden sm:inline">Mode</span>
-            </div>
-          </div>
-        </motion.div>
-
-        <div className="space-y-6">
-          {/* Interview Type Selection */}
-          <motion.section variants={fadeInUp}>
-            <h2 className="text-[10px] font-semibold text-tertiary uppercase tracking-wider mb-3">
-              Interview Type
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              {INTERVIEW_TYPES.map((type) => (
-                <motion.button
-                  key={type.value}
-                  onClick={() => setSelectedType(type.value)}
-                  whileHover={{ scale: 1.005 }}
-                  whileTap={{ scale: 0.995 }}
-                  transition={selectionSpring}
-                  className={`
-                    relative p-3.5 rounded-lg text-left transition-all
-                    ${
-                      selectedType === type.value
-                        ? 'bg-surface border-2 border-indigo-500 shadow-md shadow-indigo-500/10'
-                        : 'bg-surface border border-default hover:border-hover'
-                    }
-                  `}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="text-xl mt-0.5">{type.icon}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <h3 className="font-semibold text-sm text-primary leading-tight">
-                          {type.label}
-                        </h3>
-                        {selectedType === type.value && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                            className="w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0"
-                          >
-                            <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
-                          </motion.div>
-                        )}
-                      </div>
-                      <p className="text-xs text-secondary mb-1.5 leading-snug">
-                        {type.description}
-                      </p>
-                      <div className="flex items-center gap-1 text-[10px] text-tertiary">
-                        <Clock className="w-2.5 h-2.5" />
-                        {type.duration}
-                      </div>
-                    </div>
-                  </div>
-                </motion.button>
-              ))}
-            </div>
-          </motion.section>
-
-          {/* Practice Mode Selection */}
-          <motion.section variants={fadeInUp}>
-            <h2 className="text-[10px] font-semibold text-tertiary uppercase tracking-wider mb-3">
-              Practice Mode
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-              {INTERVIEW_MODES.map((mode) => (
-                <motion.button
-                  key={mode.value}
-                  onClick={() => setSelectedMode(mode.value)}
-                  whileHover={{ scale: 1.005 }}
-                  whileTap={{ scale: 0.995 }}
-                  transition={selectionSpring}
-                  className={`
-                    p-3.5 rounded-lg text-left transition-all
-                    ${
-                      selectedMode === mode.value
-                        ? 'bg-surface border-2 border-indigo-500 shadow-md shadow-indigo-500/10'
-                        : 'bg-surface border border-default hover:border-hover'
-                    }
-                  `}
-                >
-                  <div className="text-xl mb-2.5">{mode.icon}</div>
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-semibold text-sm text-primary leading-tight">
-                      {mode.label}
-                    </h3>
-                    {selectedMode === mode.value && (
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        className="w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center"
-                      >
-                        <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
-                      </motion.div>
+          {/* Progress Indicator */}
+          <motion.div variants={fadeInUp} className="flex items-center gap-3">
+            {[
+              { num: 1, label: "Type" },
+              { num: 2, label: "Difficulty" },
+              { num: 3, label: "Voice" },
+              { num: 4, label: "Review" },
+            ].map((s, i) => (
+              <div key={s.num} className="flex items-center gap-3 flex-1">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`
+                      w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all
+                      ${
+                        step >= s.num
+                          ? "bg-primary text-white"
+                          : "bg-muted text-muted-foreground"
+                      }
+                    `}
+                  >
+                    {step > s.num ? (
+                      <Check className="w-4 h-4" strokeWidth={3} />
+                    ) : (
+                      s.num
                     )}
                   </div>
-                  <p className="text-xs text-secondary leading-snug">{mode.description}</p>
-                </motion.button>
-              ))}
-            </div>
-          </motion.section>
-
-          {/* Summary & Start Button */}
-          <motion.section variants={fadeInUp}>
-            <Card variant="glow" padding="md" className="backdrop-blur-sm">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-primary mb-1.5">Ready to begin?</h3>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-secondary">
-                    <span className="flex items-center gap-1">
-                      <span className="text-sm">{selectedTypeData?.icon}</span>
-                      {selectedTypeData?.label}
-                    </span>
-                    <span className="text-tertiary">•</span>
-                    <span>{selectedModeData?.label}</span>
-                    <span className="text-tertiary">•</span>
-                    <span className="flex items-center gap-0.5">
-                      <Clock className="w-3 h-3" />
-                      {selectedTypeData?.duration}
-                    </span>
-                  </div>
+                  <span
+                    className={`text-sm font-medium hidden sm:inline ${
+                      step >= s.num ? "text-foreground" : "text-muted-foreground"
+                    }`}
+                  >
+                    {s.label}
+                  </span>
                 </div>
-
-                <Button
-                  onClick={handleStartInterview}
-                  variant="glow"
-                  size="sm"
-                  className="group whitespace-nowrap w-full sm:w-auto"
-                >
-                  Start interview
-                  <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
-                </Button>
+                {i < 3 && (
+                  <div className="flex-1 h-0.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full bg-primary transition-all duration-300 ${
+                        step > s.num ? "w-full" : "w-0"
+                      }`}
+                    />
+                  </div>
+                )}
               </div>
-            </Card>
-          </motion.section>
-        </div>
-      </motion.div>
+            ))}
+          </motion.div>
+
+          {/* Error Message */}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 text-sm"
+              >
+                {error}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Step Content */}
+          <AnimatePresence mode="wait">
+            {/* Step 1: Round Type */}
+            {step === 1 && (
+              <motion.div
+                key="step1"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-semibold">
+                    Choose Interview Type
+                  </h2>
+                  <p className="text-muted-foreground">
+                    Select the type of interview you want to practice
+                  </p>
+                </div>
+                <RoundSelector
+                  selected={roundType}
+                  onSelect={setRoundType}
+                />
+              </motion.div>
+            )}
+
+            {/* Step 2: Difficulty */}
+            {step === 2 && (
+              <motion.div
+                key="step2"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <DifficultySelector
+                  selected={difficulty}
+                  onSelect={setDifficulty}
+                />
+              </motion.div>
+            )}
+
+            {/* Step 3: Voice & Advanced Settings */}
+            {step === 3 && (
+              <motion.div
+                key="step3"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <VoiceSelector
+                  selected={config.voice}
+                  onSelect={(voice) => handleConfigChange({ voice })}
+                />
+                <AdvancedSettings
+                  config={config}
+                  onChange={handleConfigChange}
+                />
+              </motion.div>
+            )}
+
+            {/* Step 4: Summary */}
+            {step === 4 && roundType && difficulty && (
+              <motion.div
+                key="step4"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <SetupSummary
+                  roundType={roundType}
+                  difficulty={difficulty}
+                  config={config}
+                  voiceName={VOICE_NAMES[config.voice] || "Tessa"}
+                  onStart={handleStartInterview}
+                  isLoading={isCreatingSession}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Navigation Buttons */}
+          {step < 4 && (
+            <motion.div
+              variants={fadeInUp}
+              className="flex items-center gap-3 pt-4"
+            >
+              {step > 1 && (
+                <Button
+                  variant="outline"
+                  onClick={() => setStep(step - 1)}
+                  className="flex-1"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back
+                </Button>
+              )}
+              <Button
+                onClick={() => setStep(step + 1)}
+                disabled={
+                  (step === 1 && !canProceedToStep2) ||
+                  (step === 2 && !canProceedToStep3)
+                }
+                className="flex-1"
+              >
+                Continue
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </motion.div>
+          )}
+        </motion.div>
+      </main>
     </div>
   );
 }
