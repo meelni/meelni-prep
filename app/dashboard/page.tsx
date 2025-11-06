@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { HistorySection } from "@/components/dashboard/sections/history";
@@ -34,10 +34,11 @@ export default function DashboardPage() {
   } = useSessions(20);
 
   // Redirect to signin if not authenticated
-  if (!authLoading && !user) {
-    router.push("/auth/signin");
-    return null;
-  }
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/auth/signin");
+    }
+  }, [authLoading, user, router]);
 
   // Loading state for auth
   if (authLoading) {
