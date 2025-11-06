@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getSessionTranscript } from "@/lib/db/transcripts";
 import { createFeedback, feedbackExists } from "@/lib/db/feedback";
@@ -8,7 +8,7 @@ import { generateFeedback } from "@/lib/evaluation/scorer";
 export async function POST(req: NextRequest) {
   try {
     // Verify authentication
-    const supabase = await createServerClient();
+    const supabase = await createClient();
     const {
       data: { user },
       error: authError,
