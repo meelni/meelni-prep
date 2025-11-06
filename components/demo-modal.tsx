@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LiveKitRoom,
@@ -541,7 +542,17 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
     onClose();
   };
 
-  return (
+  // Only render portal on client-side after mount
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
@@ -615,6 +626,7 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

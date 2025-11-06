@@ -1,6 +1,10 @@
+"use client";
+
 import { FeatureSelector } from "@/components/feature-selector";
 import { Section } from "@/components/section";
 import { codeToHtml } from "shiki";
+import { useEffect, useState } from "react";
+import { useDemoModal } from "@/components/home-wrapper";
 
 interface FeatureOption {
   id: number;
@@ -147,16 +151,25 @@ const featureOptions: FeatureOption[] = [
   },
 ];
 
-export async function Examples() {
-  const features = await Promise.all(
-    featureOptions.map(async (feature) => ({
-      ...feature,
-      code: await codeToHtml(feature.code, {
-        lang: "text",
-        theme: "github-dark",
-      }),
-    }))
-  );
+export function Examples() {
+  const setIsDemoModalOpen = useDemoModal();
+  const [features, setFeatures] = useState<Array<FeatureOption & { code: string }>>([]);
+
+  useEffect(() => {
+    const loadFeatures = async () => {
+      const loadedFeatures = await Promise.all(
+        featureOptions.map(async (feature) => ({
+          ...feature,
+          code: await codeToHtml(feature.code, {
+            lang: "text",
+            theme: "github-dark",
+          }),
+        }))
+      );
+      setFeatures(loadedFeatures);
+    };
+    loadFeatures();
+  }, []);
 
   return (
     <Section id="examples">
@@ -167,7 +180,10 @@ export async function Examples() {
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
               Practice with Meelni
             </h2>
-            <button className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 hover:bg-primary/10 hover:border-primary/40 transition-all duration-300 hover:scale-105 active:scale-95">
+            <button
+              onClick={() => setIsDemoModalOpen(true)}
+              className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 hover:bg-primary/10 hover:border-primary/40 transition-all duration-300 hover:scale-105 active:scale-95"
+            >
               <svg
                 className="w-4 h-4 text-primary transition-transform duration-300 group-hover:scale-110"
                 fill="none"

@@ -64,6 +64,11 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
   };
 
   useEffect(() => {
+    // Guard: Skip if features aren't loaded yet
+    if (!features || features.length === 0 || !features[selectedIndex]) {
+      return;
+    }
+
     const plainText = getPlainText(features[selectedIndex].code);
     const messages = parseMessages(plainText);
 
