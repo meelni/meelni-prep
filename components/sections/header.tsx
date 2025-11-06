@@ -7,8 +7,9 @@ import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, LayoutDashboard } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/app/providers/auth-provider";
 
 const navLinks = [
   { name: "Features", href: "#features" },
@@ -23,6 +24,7 @@ interface HeaderProps {
 export function Header({ isDemoModalOpen = false }: HeaderProps) {
   const [activeSection, setActiveSection] = useState("");
   const [isScrolled, setIsScrolled] = useState(false);
+  const { user, isLoading } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -120,22 +122,50 @@ export function Header({ isDemoModalOpen = false }: HeaderProps) {
             })}
           </nav>
 
-          {/* CTA Button (Desktop) */}
+          {/* Auth-Aware CTA Buttons (Desktop) */}
           <motion.div
-            className="hidden lg:block"
+            className="hidden lg:flex items-center gap-3"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.4, delay: 0.4 }}
           >
-            <Link href="/setup">
-              <Button
-                size="sm"
-                className="group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-[14px] px-5 shadow-sm hover:shadow-md transition-all duration-300"
-              >
-                {siteConfig.cta}
-                <ArrowRight className="ml-1.5 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
-              </Button>
-            </Link>
+            {isLoading ? (
+              // Loading skeleton
+              <div className="w-[180px] h-[36px] bg-muted/50 animate-pulse rounded-lg" />
+            ) : user ? (
+              // Logged in: Show Dashboard button only
+              <Link href="/dashboard">
+                <Button
+                  size="sm"
+                  className="group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-[14px] px-5 shadow-sm hover:shadow-md transition-all duration-300"
+                >
+                  <LayoutDashboard className="mr-1.5 w-4 h-4" />
+                  Dashboard
+                </Button>
+              </Link>
+            ) : (
+              // Logged out: Show Log In + Start A Mock
+              <>
+                <Link href="/auth/signin">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-[14px] font-medium hover:text-primary transition-colors duration-200"
+                  >
+                    Log In
+                  </Button>
+                </Link>
+                <Link href="/dashboard">
+                  <Button
+                    size="sm"
+                    className="group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-[14px] px-5 shadow-sm hover:shadow-md transition-all duration-300"
+                  >
+                    {siteConfig.cta}
+                    <ArrowRight className="ml-1.5 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+                  </Button>
+                </Link>
+              </>
+            )}
           </motion.div>
 
           {/* Mobile Menu */}

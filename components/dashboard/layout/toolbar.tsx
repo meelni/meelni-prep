@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter } from "next/navigation";
 import { useSetupModal } from "@/lib/hooks/use-setup-modal";
+import { toast } from "sonner";
 
 interface ToolbarProps {
   activeSection: string;
@@ -17,6 +18,13 @@ export function Toolbar({ activeSection }: ToolbarProps) {
 
   const handleSignOut = async () => {
     await signOut();
+    toast.success("Signed out successfully", {
+      description: "You can sign back in anytime.",
+      action: {
+        label: "Sign In",
+        onClick: () => router.push("/auth/signin"),
+      },
+    });
     router.push("/");
   };
 
