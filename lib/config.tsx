@@ -43,34 +43,22 @@ export const siteConfig = {
       icon: <MicIcon className="h-6 w-6" />,
     },
     {
-      name: "7 Practice Modes",
-      description:
-        "From mock interviews to interactive coaching. Choose the mode that fits your learning style—realistic, guided, or framework-focused.",
-      icon: <LayoutGridIcon className="h-6 w-6" />,
-    },
-    {
       name: "4 PM Interview Types",
       description:
         "Master Product Sense, Execution, Behavioral, and Strategy interviews. Each with proven frameworks tailored to top tech companies.",
       icon: <TargetIcon className="h-6 w-6" />,
     },
     {
-      name: "Real-time Feedback",
+      name: "Post-Interview Feedback",
       description:
-        "Get instant guidance on structure, pacing, and framework usage. Know exactly where you are in your answer and what to improve.",
+        "Receive comprehensive feedback after each session. Get insights on structure, clarity, and framework usage to improve your next interview.",
       icon: <SparklesIcon className="h-6 w-6" />,
     },
     {
-      name: "Detailed Analytics",
+      name: "Performance Dashboard",
       description:
-        "Track progress with rubric scores, transcript reviews, and personalized improvement plans. See your scores trend over time.",
+        "Track your interview practice sessions and monitor your progress. Review transcripts and see your preparation journey over time.",
       icon: <TrendingUpIcon className="h-6 w-6" />,
-    },
-    {
-      name: "Company-Specific Prep",
-      description:
-        "Practice with interview styles from Google, Meta, Amazon, and more. Target your preparation for the exact role you want.",
-      icon: <MessageSquareIcon className="h-6 w-6" />,
     },
   ],
   pricing: [
