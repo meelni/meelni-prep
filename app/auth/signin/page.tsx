@@ -87,7 +87,7 @@ export default function SignInPage() {
             </motion.div>
             <h1 className="text-2xl font-bold text-foreground">Welcome to Meelni</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Sign in to start practicing interviews
+              Save your progress and track improvement over time
             </p>
           </div>
 
