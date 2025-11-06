@@ -1,38 +1,77 @@
-# Font Files Required
+# Font Files - Quick Setup Guide
 
-This directory needs the following font files:
+Place your font files in this directory for the typography system to work.
 
-## Everett Font
-- **File**: `everett-light.woff2`
-- **Weight**: 300 (Light)
-- **Usage**: Display headings (h1, h2)
-- **Specs**: 48px/48px line-height for XL, 36px/40px for LG
+## ✅ What's Already Working
 
-## CommitMono Font
-- **File**: `commit-mono-regular.woff2`
-- **Weight**: 400 (Regular)
-- **Usage**: Code blocks, monospace elements, number badges
-- **Specs**: 16px/24px or 14px/21px line-height
+**Public Sans** - No action needed!
+- Loaded automatically from Google Fonts
+- Used for body text, labels, and UI elements
 
-## Public Sans
-This font is loaded from Google Fonts, so no file is needed.
-- **Weights**: 400 (Regular), 600 (Semibold)
-- **Usage**: Body text, labels, UI elements
-- **Specs**:
-  - Labels: 12px/16px, weight 600
-  - Body: 14px/20px, weight 400
+## 📦 What You Need to Download
 
-## Installation Instructions
+### 1. CommitMono (FREE - 5 minutes)
 
-1. Obtain the font files from the appropriate source
-2. Convert to `.woff2` format if needed (for optimal web performance)
-3. Place the files in this directory:
-   - `everett-light.woff2`
-   - `commit-mono-regular.woff2`
-4. Verify the font loading in the browser dev tools
+**Download**: https://commitmono.com/
 
-## Fallback Configuration
+**Steps**:
+1. Click "Download" on the website
+2. Extract the ZIP file
+3. Find: `CommitMono-400-Regular.woff2` (or similar name)
+4. Rename to: `commit-mono-regular.woff2`
+5. Place in this folder
 
-Until the actual font files are added, the system uses these fallbacks:
-- **Everett** → Public Sans (via Google Fonts)
-- **CommitMono** → system monospace fonts
+**File name required**: `commit-mono-regular.woff2`
+
+### 2. Everett (PAID or use alternative)
+
+**Option A**: Purchase/License Required
+- Adobe Fonts (if you have Creative Cloud)
+- MyFonts.com (~$40-200)
+- Ask your design team if company has license
+
+**Option B**: Use Free Alternative
+- The system falls back to Public Sans automatically
+- Or replace with Outfit/Montserrat from Google Fonts
+
+**File name required** (if using): `everett-light.woff2`
+
+## 🚀 Quick Start (Minimum Setup)
+
+**Just need CommitMono**:
+1. Download from https://commitmono.com/
+2. Rename to `commit-mono-regular.woff2`
+3. Place in this folder
+4. Restart dev server
+
+**For Everett**:
+- Either add the font file (if you have license)
+- Or skip it - system uses Public Sans as fallback
+
+## 📁 Final File Structure
+
+```
+/public/fonts/
+├── commit-mono-regular.woff2  ← Download from commitmono.com
+├── everett-light.woff2         ← Optional (falls back to Public Sans)
+└── README.md                   ← This file
+```
+
+## ❓ Troubleshooting
+
+**Font not loading?**
+- Check file names match exactly (lowercase, hyphens)
+- Verify files are in `/public/fonts/` directory
+- Restart dev server: `npm run dev`
+
+**Don't have Everett license?**
+- No problem! System falls back to Public Sans
+- Everything still looks professional
+
+## 📚 More Info
+
+See `FONT_SOURCES.md` in project root for:
+- Detailed download instructions
+- Font licensing information
+- Alternative font options
+- Full troubleshooting guide
