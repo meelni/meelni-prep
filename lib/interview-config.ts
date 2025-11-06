@@ -40,6 +40,7 @@ export const ROUND_TYPES = {
   behavioral: {
     label: "Behavioral",
     description: "Leadership, teamwork, and past experiences using STAR method",
+    subtitle: "Demonstrate influence, resilience, and team leadership",
     icon: "Users",
     duration: 30,
     color: "from-blue-500 to-cyan-500",
@@ -47,6 +48,7 @@ export const ROUND_TYPES = {
   product_sense: {
     label: "Product Sense",
     description: "Design thinking, user empathy, and product strategy",
+    subtitle: "Design solutions and prioritize features for user problems",
     icon: "Lightbulb",
     duration: 45,
     color: "from-purple-500 to-pink-500",
@@ -54,6 +56,7 @@ export const ROUND_TYPES = {
   execution: {
     label: "Execution",
     description: "Metrics, roadmapping, and technical execution",
+    subtitle: "Define metrics and analyze data to drive decisions",
     icon: "Target",
     duration: 40,
     color: "from-orange-500 to-red-500",
@@ -61,6 +64,7 @@ export const ROUND_TYPES = {
   strategy: {
     label: "Strategy",
     description: "Business thinking, market analysis, and long-term vision",
+    subtitle: "Think long-term about market positioning and competitive advantage",
     icon: "TrendingUp",
     duration: 45,
     color: "from-green-500 to-emerald-500",

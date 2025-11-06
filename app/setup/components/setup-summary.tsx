@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ArrowRight, Clock, Settings, Mic } from "lucide-react";
+import { ArrowRight, ArrowLeft, Clock, Settings, Mic } from "lucide-react";
 import { Users, Lightbulb, Target, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,6 +21,7 @@ interface SetupSummaryProps {
   config: InterviewConfig;
   voiceName?: string;
   onStart: () => void;
+  onBack?: () => void;
   isLoading?: boolean;
 }
 
@@ -37,6 +38,7 @@ export function SetupSummary({
   config,
   voiceName = "Tessa",
   onStart,
+  onBack,
   isLoading = false,
 }: SetupSummaryProps) {
   const roundConfig = ROUND_TYPES[roundType];
@@ -56,7 +58,13 @@ export function SetupSummary({
           <div className="space-y-6">
             {/* Title */}
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold">Ready to start?</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold">Ready to start?</h2>
+                <Badge className="text-xs px-3 py-1">
+                  <Clock className="w-3 h-3 mr-1" />
+                  30-45 min
+                </Badge>
+              </div>
               <p className="text-muted-foreground">
                 Review your interview setup before beginning
               </p>
@@ -155,6 +163,18 @@ export function SetupSummary({
 
       {/* Start Button */}
       <motion.div variants={fadeInUp} className="flex gap-3">
+        {onBack && (
+          <Button
+            onClick={onBack}
+            variant="outline"
+            size="lg"
+            className="h-14 px-6"
+            disabled={isLoading}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+        )}
         <Button
           onClick={onStart}
           disabled={isLoading}

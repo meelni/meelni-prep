@@ -21,6 +21,7 @@ import { VoiceSelector } from "./components/voice-selector";
 import { AdvancedSettings } from "./components/advanced-settings";
 import { SetupSummary } from "./components/setup-summary";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
+import { useSetupPersistence } from "@/lib/hooks/use-setup-persistence";
 
 const VOICE_NAMES: Record<string, string> = {
   "6ccbfb76-1fc6-48f7-b71d-91ac6298247b": "Tessa",
@@ -40,6 +41,30 @@ export default function SetupPage() {
   const [config, setConfig] = useState<InterviewConfig>(DEFAULT_CONFIG);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Setup persistence hook
+  const { loadState, saveState, clearState, isInitialized, setIsInitialized } = useSetupPersistence();
+
+  // Load persisted state on mount
+  useEffect(() => {
+    if (!isInitialized) {
+      const savedState = loadState();
+      if (savedState) {
+        setStep(savedState.step);
+        setRoundType(savedState.roundType);
+        setDifficulty(savedState.difficulty);
+        setConfig(savedState.config);
+      }
+      setIsInitialized(true);
+    }
+  }, [isInitialized, loadState, setIsInitialized]);
+
+  // Save state whenever it changes
+  useEffect(() => {
+    if (isInitialized) {
+      saveState({ step, roundType, difficulty, config });
+    }
+  }, [step, roundType, difficulty, config, isInitialized, saveState]);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -102,6 +127,9 @@ export default function SetupPage() {
 
       const { sessionId, token, url, roomName } =
         await response.json();
+
+      // Clear saved state since we're starting the interview
+      clearState();
 
       // Navigate to interview page with session data
       router.push(
@@ -309,6 +337,7 @@ export default function SetupPage() {
                   config={config}
                   voiceName={VOICE_NAMES[config.voice] || "Tessa"}
                   onStart={handleStartInterview}
+                  onBack={() => setStep(3)}
                   isLoading={isCreatingSession}
                 />
               </motion.div>
