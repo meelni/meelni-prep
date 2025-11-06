@@ -17,6 +17,8 @@ export const interviewSession = pgTable("interview_session", {
   roundType: text("round_type").notNull(),
   mode: text("mode").notNull(),
   persona: text("persona"),
+  livekitRoomName: text("livekit_room_name"),
+  config: jsonb("config"),
   startedAt: timestamp("started_at", { withTimezone: true }).defaultNow(),
   endedAt: timestamp("ended_at", { withTimezone: true }),
 }, (table) => ({
