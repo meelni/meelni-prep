@@ -24,17 +24,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create room with metadata and agent dispatch
+    // Create room with metadata (agent will auto-dispatch)
     if (metadata) {
       const roomClient = new RoomServiceClient(livekit_url, apiKey, apiSecret);
-      
+
       try {
-        // Create room with agent dispatch request
         await roomClient.createRoom({
           name: roomName,
           metadata: JSON.stringify(metadata),
         });
-        
+
         console.log("Room created with metadata");
       } catch (error: any) {
         if (error.message?.includes("already exists")) {
