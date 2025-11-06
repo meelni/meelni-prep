@@ -8,8 +8,7 @@ import { ScoreChart } from "@/components/dashboard/score-chart";
 import { CompetencyRadar } from "@/components/dashboard/competency-radar";
 import { SessionList } from "@/components/dashboard/session-list";
 import { EmptyStateCard } from "@/components/dashboard/empty-state-card";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useSetupModal } from "@/lib/hooks/use-setup-modal";
 import type { Session } from "@/lib/api/queries";
 
 interface OverviewSectionProps {
@@ -29,7 +28,7 @@ export function OverviewSection({
   totalMinutes,
   completionRate,
 }: OverviewSectionProps) {
-  const router = useRouter();
+  const setupModal = useSetupModal();
 
   // Mock score data (will be real once feedback engine is built)
   const scoreData = sessions.slice(0, 10).map((session, index) => ({
@@ -127,7 +126,7 @@ export function OverviewSection({
                   description="Your recent interview activity will appear here once you complete your first mock interview."
                   cta={{
                     label: "Start Your First Interview",
-                    action: () => router.push("/setup"),
+                    action: setupModal.open,
                   }}
                 />
               )}
@@ -211,15 +210,14 @@ export function OverviewSection({
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/setup" className="flex-1">
-                  <Button
-                    size="lg"
-                    className="w-full group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-display font-light shadow-sm hover:shadow-md transition-all duration-300"
-                  >
-                    Start Mock Interview
-                    <ArrowRight className="ml-2 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
-                  </Button>
-                </Link>
+                <Button
+                  size="lg"
+                  onClick={setupModal.open}
+                  className="w-full group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-display font-light shadow-sm hover:shadow-md transition-all duration-300"
+                >
+                  Start Mock Interview
+                  <ArrowRight className="ml-2 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+                </Button>
               </div>
             </div>
           </CardContent>

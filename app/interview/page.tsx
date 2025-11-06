@@ -28,6 +28,15 @@ export default function InterviewPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
+
+  // Config from Setup Modal (query params)
+  const roundType = searchParams.get("roundType");
+  const mode = searchParams.get("mode");
+  const voice = searchParams.get("voice");
+  const speed = searchParams.get("speed");
+  const emotion = searchParams.get("emotion");
+
+  // Session info (after session is created)
   const sessionId = searchParams.get("sessionId");
   const tokenParam = searchParams.get("token");
   const urlParam = searchParams.get("url");
@@ -62,13 +71,77 @@ export default function InterviewPage() {
       return;
     }
 
-    if (!sessionId || !tokenParam || !urlParam) {
-      router.push("/setup");
+    // Case 1: Config params present (from Setup Modal) → create session
+    if (roundType && mode && !sessionId) {
+      createSession();
       return;
     }
 
-    fetchSessionDetails();
-  }, [sessionId, tokenParam, urlParam, user, authLoading]);
+    // Case 2: Session ID present → fetch session details
+    if (sessionId && tokenParam && urlParam) {
+      fetchSessionDetails();
+      return;
+    }
+
+    // Case 3: No config and no session → redirect to dashboard
+    router.push("/dashboard");
+  }, [roundType, mode, sessionId, tokenParam, urlParam, user, authLoading]);
+
+  const createSession = async () => {
+    if (!roundType || !mode || !user) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch("/api/session/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roundType,
+          mode,
+          config: {
+            voice,
+            speed: speed ? parseFloat(speed) : 1.0,
+            emotion: emotion || "confident",
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create session");
+      }
+
+      const data = await response.json();
+
+      // Update URL with session info (replace current history entry)
+      const newParams = new URLSearchParams({
+        sessionId: data.sessionId,
+        token: data.token,
+        url: data.url,
+      });
+      router.replace(`/interview?${newParams.toString()}`);
+
+      // Set state
+      setToken(data.token);
+      setUrl(data.url);
+      setSession({
+        id: data.sessionId,
+        livekit_room_name: data.roomName,
+        started_at: new Date().toISOString(),
+        config: {
+          ...data.config,
+          roundType,
+          mode,
+        },
+      });
+      setLoading(false);
+    } catch (err) {
+      console.error("Error creating session:", err);
+      setError(err instanceof Error ? err.message : "Failed to create interview session");
+      setLoading(false);
+    }
+  };
 
   const fetchSessionDetails = async () => {
     if (!sessionId || !user) return;
@@ -163,10 +236,10 @@ export default function InterviewPage() {
           <h1 className="text-2xl font-bold mb-4">Failed to Load Interview</h1>
           <p className="text-muted-foreground mb-6">{error}</p>
           <button
-            onClick={() => router.push("/setup")}
+            onClick={() => router.push("/dashboard")}
             className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
           >
-            Back to Setup
+            Back to Dashboard
           </button>
         </div>
       </div>
@@ -245,7 +318,22 @@ function InterviewRoomContent({
       <header className="sticky top-0 z-40 w-full bg-background/80 backdrop-blur-md border-b border-border/50">
         <div className="container max-w-7xl mx-auto h-16 px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-full">
-            <AgentStatus state={agentState} />
+            <div className="flex items-center gap-4">
+              <AgentStatus state={agentState} />
+              {session.config?.roundType && (
+                <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="text-primary font-medium">
+                    {session.config.roundType.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                  </span>
+                  {session.config.mode && (
+                    <>
+                      <span>•</span>
+                      <span>{session.config.mode.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             <TimerDisplay
               startedAt={new Date(session.started_at)}
               estimatedDuration={estimatedDuration}
