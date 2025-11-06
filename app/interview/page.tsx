@@ -6,12 +6,14 @@ import {
   LiveKitRoom,
   RoomAudioRenderer,
   useVoiceAssistant,
+  useRoomContext,
 } from "@livekit/components-react";
 
 export default function InterviewPage() {
   const searchParams = useSearchParams();
   const [token, setToken] = useState<string>("");
   const [url, setUrl] = useState<string>("");
+  const [sessionId, setSessionId] = useState<string>("");
   const [connecting, setConnecting] = useState(false);
   const [config, setConfig] = useState<any>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
@@ -50,28 +52,50 @@ export default function InterviewPage() {
     setConnecting(true);
     setSessionEnded(false);
     try {
-      const response = await fetch("/api/livekit/token", {
+      // Create session and get LiveKit token
+      const response = await fetch("/api/session/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          roomName: "interview-" + Date.now(),
-          participantName: "user-" + Math.random().toString(36).substring(7),
-          metadata: config,
+          roundType: config.interview_type,
+          mode: "voice_video",
+          role: config.role,
+          config: config,
         }),
       });
 
+      if (!response.ok) {
+        throw new Error("Failed to start session");
+      }
+
       const data = await response.json();
+      setSessionId(data.sessionId);
       setToken(data.token);
       setUrl(data.url);
     } catch (error) {
       console.error("Failed to connect:", error);
+      alert("Failed to start interview session. Please try again.");
       setConnecting(false);
     }
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
+    // End the session in database
+    if (sessionId) {
+      try {
+        await fetch("/api/session/end", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        });
+      } catch (error) {
+        console.error("Failed to end session:", error);
+      }
+    }
+
     setToken("");
     setUrl("");
+    setSessionId("");
     setConnecting(false);
     setSessionEnded(true);
   };
@@ -166,13 +190,70 @@ export default function InterviewPage() {
       className="flex min-h-screen items-center justify-center bg-gray-900"
     >
       <RoomAudioRenderer />
-      <InterviewRoom config={config} onEndSession={handleDisconnect} />
+      <InterviewRoom config={config} sessionId={sessionId} onEndSession={handleDisconnect} />
     </LiveKitRoom>
   );
 }
 
-function InterviewRoom({ config, onEndSession }: { config: any; onEndSession: () => void }) {
+function InterviewRoom({ config, sessionId, onEndSession }: { config: any; sessionId: string; onEndSession: () => void }) {
   const { state } = useVoiceAssistant();
+  const room = useRoomContext();
+  const [transcriptBuffer, setTranscriptBuffer] = useState<any[]>([]);
+
+  // Save transcript turns to database
+  useEffect(() => {
+    if (!sessionId || !room) return;
+
+    const saveTranscript = async (turn: any) => {
+      try {
+        await fetch("/api/session/transcript", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            speaker: turn.speaker,
+            text: turn.text,
+            startedAt: turn.startedAt,
+            endedAt: turn.endedAt,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to save transcript:", error);
+      }
+    };
+
+    // Listen for agent transcript events
+    const handleAgentTranscript = (event: any) => {
+      if (event.text) {
+        saveTranscript({
+          speaker: "interviewer",
+          text: event.text,
+          startedAt: new Date(),
+          endedAt: new Date(),
+        });
+      }
+    };
+
+    // Listen for user transcript events
+    const handleUserTranscript = (event: any) => {
+      if (event.text) {
+        saveTranscript({
+          speaker: "user",
+          text: event.text,
+          startedAt: new Date(),
+          endedAt: new Date(),
+        });
+      }
+    };
+
+    // Subscribe to events (Note: actual event names may differ based on LiveKit version)
+    // This is a placeholder - you may need to adjust based on actual LiveKit events
+    room.on("transcript", handleUserTranscript as any);
+
+    return () => {
+      room.off("transcript", handleUserTranscript as any);
+    };
+  }, [sessionId, room]);
 
   const getStatusColor = (state: string) => {
     switch (state) {
