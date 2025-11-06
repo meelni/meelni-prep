@@ -5,14 +5,14 @@ import { siteConfig } from "@/lib/config";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-// Color schemes for each feature (for unique glows)
+// Color schemes for each feature - vibrant for dark backgrounds
 const featureColors = [
-  { gradient: "from-cyan-500 to-blue-500", glow: "via-cyan-500", iconBg: "bg-gradient-to-br from-cyan-500 to-blue-500" },
-  { gradient: "from-purple-500 to-pink-500", glow: "via-purple-500", iconBg: "bg-gradient-to-br from-purple-500 to-pink-500" },
-  { gradient: "from-orange-500 to-red-500", glow: "via-orange-500", iconBg: "bg-gradient-to-br from-orange-500 to-red-500" },
-  { gradient: "from-green-500 to-emerald-500", glow: "via-green-500", iconBg: "bg-gradient-to-br from-green-500 to-emerald-500" },
-  { gradient: "from-blue-500 to-indigo-500", glow: "via-blue-500", iconBg: "bg-gradient-to-br from-blue-500 to-indigo-500" },
-  { gradient: "from-pink-500 to-purple-500", glow: "via-pink-500", iconBg: "bg-gradient-to-br from-pink-500 to-purple-500" },
+  { gradient: "from-cyan-400 to-blue-500", glow: "shadow-cyan-500/20", iconBg: "bg-gradient-to-br from-cyan-400 to-blue-500" },
+  { gradient: "from-purple-400 to-pink-500", glow: "shadow-purple-500/20", iconBg: "bg-gradient-to-br from-purple-400 to-pink-500" },
+  { gradient: "from-orange-400 to-red-500", glow: "shadow-orange-500/20", iconBg: "bg-gradient-to-br from-orange-400 to-red-500" },
+  { gradient: "from-green-400 to-emerald-500", glow: "shadow-green-500/20", iconBg: "bg-gradient-to-br from-green-400 to-emerald-500" },
+  { gradient: "from-blue-400 to-indigo-500", glow: "shadow-blue-500/20", iconBg: "bg-gradient-to-br from-blue-400 to-indigo-500" },
+  { gradient: "from-pink-400 to-purple-500", glow: "shadow-pink-500/20", iconBg: "bg-gradient-to-br from-pink-400 to-purple-500" },
 ];
 
 
@@ -62,10 +62,11 @@ export function Features() {
                   bounce: 0.3
                 }}
               >
-                {/* Card with glass morphism */}
+                {/* Card with glass morphism and glow */}
                 <div className={cn(
-                  "relative w-full p-6 rounded-2xl border border-border bg-background/60 backdrop-blur-sm shadow-[2px_4px_12px_0px_rgba(0,0,0,0.1)_inset] transition-all duration-300 hover:shadow-xl hover:-translate-y-2",
-                  "hover:border-primary/30"
+                  "relative w-full p-6 rounded-2xl border border-border/60 bg-card/50 backdrop-blur-md transition-all duration-300 hover:-translate-y-2",
+                  "hover:border-primary/50 hover:shadow-2xl",
+                  featureColors[index].glow
                 )}>
                   {/* Number Badge */}
                   <div className="absolute top-6 right-6 opacity-30 group-hover:opacity-100 transition-opacity duration-300 z-20">
