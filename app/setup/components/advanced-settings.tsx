@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Settings2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Settings2, Info } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,6 +20,7 @@ interface AdvancedSettingsProps {
 
 export function AdvancedSettings({ config, onChange }: AdvancedSettingsProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
 
   return (
     <Card className="overflow-hidden">
@@ -33,7 +34,40 @@ export function AdvancedSettings({ config, onChange }: AdvancedSettingsProps) {
             <Settings2 className="w-4 h-4 text-muted-foreground" />
           </div>
           <div className="text-left">
-            <h3 className="font-semibold">Advanced Settings</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold">Advanced Settings</h3>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowTooltip(!showTooltip);
+                  }}
+                  onMouseEnter={() => setShowTooltip(true)}
+                  onMouseLeave={() => setShowTooltip(false)}
+                  className="p-0.5 rounded-full hover:bg-muted transition-colors"
+                >
+                  <Info className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+                <AnimatePresence>
+                  {showTooltip && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="absolute left-0 top-6 z-50 w-64 p-3 bg-popover border border-border rounded-lg shadow-lg text-xs text-popover-foreground"
+                    >
+                      <p className="font-medium mb-1">What's this?</p>
+                      <p className="text-muted-foreground">
+                        Fine-tune your interview with custom duration, speech speed,
+                        voice emotion, volume, and feedback preferences. These are optional
+                        - we've set smart defaults for you.
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
             <p className="text-xs text-muted-foreground">
               Optional: Customize voice, feedback, and timing
             </p>
