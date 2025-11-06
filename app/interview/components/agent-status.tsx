@@ -39,7 +39,8 @@ export function AgentStatus({ state }: AgentStatusProps) {
     },
   };
 
-  const config = stateConfig[state];
+  // Fallback to idle if state is invalid
+  const config = stateConfig[state] || stateConfig.idle;
   const Icon = config.icon;
 
   return (
