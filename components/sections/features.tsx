@@ -27,7 +27,7 @@ export function Features() {
           {/* Section Header */}
           <div className="text-center mb-16">
             <motion.h2
-              className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground mb-4"
+              className="text-display-lg font-display font-light text-foreground mb-4"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -36,7 +36,7 @@ export function Features() {
               Everything you need to ace your PM interview
             </motion.h2>
             <motion.p
-              className="text-lg text-muted-foreground max-w-2xl mx-auto"
+              className="text-body text-muted-foreground max-w-2xl mx-auto"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -70,7 +70,7 @@ export function Features() {
                   {/* Number Badge */}
                   <div className="absolute top-6 right-6 opacity-30 group-hover:opacity-100 transition-opacity duration-300 z-20">
                     <span className={cn(
-                      "text-sm font-mono font-bold bg-gradient-to-r bg-clip-text text-transparent",
+                      "text-code-sm font-mono font-normal bg-gradient-to-r bg-clip-text text-transparent",
                       featureColors[index].gradient
                     )}>
                       {String(index + 1).padStart(2, '0')}
@@ -80,13 +80,13 @@ export function Features() {
                   {/* Content */}
                   <div className="relative z-10">
                     <h3 className={cn(
-                      "text-xl font-semibold text-foreground mb-2 transition-all duration-300 tracking-tight",
+                      "text-[20px] leading-[28px] font-sans font-semibold text-foreground mb-2 transition-all duration-300 tracking-tight",
                       "group-hover:bg-gradient-to-r group-hover:bg-clip-text group-hover:text-transparent",
                       featureColors[index].gradient
                     )}>
                       {feature.name}
                     </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
+                    <p className="text-body text-muted-foreground">
                       {feature.description}
                     </p>
                   </div>

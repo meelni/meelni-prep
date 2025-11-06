@@ -75,7 +75,7 @@ const TabsTrigger = ({
       )}
       <span
         className={cn(
-          "relative block text-sm font-medium duration-200",
+          "relative block text-body font-sans font-medium duration-200",
           isActive ? "delay-100 text-primary" : ""
         )}
       >
@@ -102,19 +102,19 @@ function PricingTier({
       <div className="flex flex-col h-full">
         <CardHeader className="border-b p-4 grid grid-rows-2 h-fit">
           <CardTitle className="flex items-center justify-between">
-            <span className="text-sm font-medium text-muted-foreground">
+            <span className="text-body font-sans font-medium text-muted-foreground">
               {tier.name}
             </span>
             {tier.popular && (
               <Badge
                 variant="secondary"
-                className="bg-primary text-primary-foreground hover:bg-secondary-foreground"
+                className="bg-primary text-primary-foreground hover:bg-secondary-foreground text-label"
               >
                 Most Popular
               </Badge>
             )}
           </CardTitle>
-          <div className="pt-2 text-3xl font-bold">
+          <div className="pt-2 text-display-lg font-display font-light">
             <motion.div
               key={tier.price[billingCycle]}
               initial={{
@@ -129,12 +129,12 @@ function PricingTier({
               }}
             >
               {tier.price[billingCycle]}
-              <span className="text-sm font-medium text-muted-foreground">
+              <span className="text-body font-sans font-medium text-muted-foreground">
                 / {tier.frequency[billingCycle]}
               </span>
             </motion.div>
           </div>
-          <p className="text-[15px] font-medium text-muted-foreground">
+          <p className="text-body font-sans font-medium text-muted-foreground">
             {tier.description}
           </p>
         </CardHeader>
@@ -144,7 +144,7 @@ function PricingTier({
             {tier.features.map((feature, featureIndex) => (
               <li key={featureIndex} className="flex items-center">
                 <Check className="mr-2 size-4 text-green-500" />
-                <span className="font-medium">{feature}</span>
+                <span className="text-body font-sans font-normal">{feature}</span>
               </li>
             ))}
           </ul>
@@ -180,11 +180,11 @@ export function Pricing() {
       <div className="border border-b-0 grid grid-rows-1">
         <div className="grid grid-rows-1 gap-y-10 p-10">
           <div className="text-center">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tighter text-balance">
+            <h2 className="text-display-lg md:text-display-xl font-display font-light text-balance">
               Simple pricing for everyone.
             </h2>
 
-            <p className="mt-6 text-balance text-muted-foreground">
+            <p className="mt-6 text-balance text-body text-muted-foreground">
               Choose an <strong>affordable plan</strong> that&apos;s packed with
               the best features for engaging your audience, creating customer
               loyalty, and driving sales.

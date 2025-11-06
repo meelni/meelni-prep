@@ -24,10 +24,10 @@ function HeroPill() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, ease }}
     >
-      <div className="w-fit rounded-full bg-accent px-2 py-0.5 text-left text-xs font-medium text-primary sm:text-sm">
+      <div className="w-fit rounded-full bg-accent px-2 py-0.5 text-left text-label text-primary">
         ✨ New
       </div>
-      <p className="text-xs font-medium text-primary sm:text-sm">
+      <p className="text-label text-primary">
         AI-Powered Mock Interviews
       </p>
       <svg
@@ -51,7 +51,7 @@ function HeroTitles() {
   return (
     <div className="flex w-full max-w-3xl flex-col pt-8">
       <motion.h1
-        className="text-left text-4xl font-bold leading-tight text-foreground sm:text-5xl md:text-6xl tracking-tight"
+        className="text-left text-display-xl md:text-[56px] md:leading-[56px] font-display font-light text-foreground tracking-tight"
         initial={{ filter: "blur(10px)", opacity: 0, y: 50 }}
         animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
         transition={{
@@ -74,7 +74,7 @@ function HeroTitles() {
         </motion.span>
       </motion.h1>
       <motion.p
-        className="text-left max-w-xl mt-4 leading-relaxed text-muted-foreground sm:text-lg sm:leading-relaxed text-balance"
+        className="text-left max-w-xl mt-4 text-body text-muted-foreground text-balance"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{
@@ -170,7 +170,7 @@ function HeroCTA() {
 
       {/* Subtle helper text */}
       <motion.p
-        className="mt-4 text-sm text-muted-foreground/80"
+        className="mt-4 text-body text-muted-foreground/80"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.2, duration: 0.6 }}
