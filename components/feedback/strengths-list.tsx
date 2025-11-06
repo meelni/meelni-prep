@@ -3,10 +3,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Quote } from "lucide-react";
-import type { Strength } from "@/lib/types/feedback";
+import type { FeedbackItem } from "@/lib/types/feedback";
 
 interface StrengthsListProps {
-  strengths: Strength[];
+  strengths: FeedbackItem[];
 }
 
 export function StrengthsList({ strengths }: StrengthsListProps) {
@@ -28,39 +28,46 @@ export function StrengthsList({ strengths }: StrengthsListProps) {
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {strengths.map((strength, index) => (
-          <div
-            key={index}
-            className="group border border-border/50 rounded-lg p-4 hover:border-primary/30 transition-all duration-300 space-y-3"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Badge
-                    variant="default"
-                    className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-                  >
-                    Strength {index + 1}
-                  </Badge>
-                  <h3 className="text-base font-display font-light text-foreground">
-                    {strength.title}
-                  </h3>
-                </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {strength.description}
-                </p>
-              </div>
-            </div>
+        {strengths.map((strength, index) => {
+          // Extract title from dimension + text (capitalize dimension)
+          const dimensionLabel = strength.dimension.charAt(0).toUpperCase() + strength.dimension.slice(1);
 
-            {/* Evidence quote */}
-            <div className="relative border-l-2 border-primary/30 pl-4 bg-muted/30 p-3 rounded-r-lg">
-              <Quote className="w-4 h-4 text-primary/50 absolute -left-2 top-3" />
-              <p className="text-xs text-muted-foreground italic leading-relaxed">
-                "{strength.evidence}"
-              </p>
+          return (
+            <div
+              key={index}
+              className="group border border-border/50 rounded-lg p-4 hover:border-primary/30 transition-all duration-300 space-y-3"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="default"
+                      className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                    >
+                      {dimensionLabel}
+                    </Badge>
+                    <h3 className="text-base font-display font-light text-foreground">
+                      Strength {index + 1}
+                    </h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {strength.text}
+                  </p>
+                </div>
+              </div>
+
+              {/* Evidence quote */}
+              {strength.evidence_quote && (
+                <div className="relative border-l-2 border-primary/30 pl-4 bg-muted/30 p-3 rounded-r-lg">
+                  <Quote className="w-4 h-4 text-primary/50 absolute -left-2 top-3" />
+                  <p className="text-xs text-muted-foreground italic leading-relaxed">
+                    "{strength.evidence_quote}"
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
