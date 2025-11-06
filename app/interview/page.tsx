@@ -26,10 +26,12 @@ export default function InterviewPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("sessionId");
+  const tokenParam = searchParams.get("token");
+  const urlParam = searchParams.get("url");
 
   const [session, setSession] = useState<InterviewSession | null>(null);
-  const [token, setToken] = useState<string>("");
-  const [url, setUrl] = useState<string>("");
+  const [token, setToken] = useState<string>(tokenParam || "");
+  const [url, setUrl] = useState<string>(urlParam || "");
   const [agentState, setAgentState] = useState<
     "idle" | "listening" | "thinking" | "speaking"
   >("idle");
@@ -48,16 +50,16 @@ export default function InterviewPage() {
       return;
     }
 
-    if (!sessionId) {
+    if (!sessionId || !tokenParam || !urlParam) {
       router.push("/setup");
       return;
     }
 
     fetchSessionDetails();
-  }, [sessionId, user, authLoading]);
+  }, [sessionId, tokenParam, urlParam, user, authLoading]);
 
   const fetchSessionDetails = async () => {
-    if (!sessionId) return;
+    if (!sessionId || !user) return;
 
     try {
       setLoading(true);
@@ -69,24 +71,6 @@ export default function InterviewPage() {
 
       const sessionData = await response.json();
       setSession(sessionData);
-
-      // Generate LiveKit token for this session
-      const tokenResponse = await fetch("/api/livekit/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roomName: sessionData.livekit_room_name,
-          participantName: user?.user_metadata?.full_name || user?.email || "User",
-        }),
-      });
-
-      if (!tokenResponse.ok) {
-        throw new Error("Failed to get LiveKit token");
-      }
-
-      const tokenData = await tokenResponse.json();
-      setToken(tokenData.token);
-      setUrl(tokenData.url || process.env.NEXT_PUBLIC_LIVEKIT_URL || "");
       setLoading(false);
     } catch (err) {
       console.error("Error fetching session:", err);

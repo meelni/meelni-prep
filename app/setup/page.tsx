@@ -100,14 +100,14 @@ export default function SetupPage() {
         throw new Error(errorData.error || "Failed to start session");
       }
 
-      const { sessionId, livekitToken, livekitUrl, roomName } =
+      const { sessionId, token, url, roomName } =
         await response.json();
 
       // Navigate to interview page with session data
       router.push(
         `/interview?sessionId=${sessionId}&token=${encodeURIComponent(
-          livekitToken
-        )}&url=${encodeURIComponent(livekitUrl)}&room=${roomName}`
+          token
+        )}&url=${encodeURIComponent(url)}&room=${roomName}`
       );
     } catch (err) {
       console.error("Failed to start session:", err);
