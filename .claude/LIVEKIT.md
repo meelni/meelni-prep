@@ -1,6 +1,6 @@
 # LiveKit Agents Architecture & Guide
 
-**Last Updated**: 2025-11-05
+**Last Updated**: 2025-11-06
 **LiveKit Agents Version**: 1.2.18
 **Project**: MockMate - Real-Time AI Mock Interviews
 
@@ -240,7 +240,7 @@ python agent.py start
 1. **Demo Agent** (`demo_agent.py`): Deployed to LiveKit Cloud
    - 60-second product demos on landing page
    - Auto-scales based on demand
-   - Agent ID: `CA_bL5fHYqjCTrA`
+   - Agent ID: `CA_Wp8bi3bRroE2`
 
 2. **Main Interview Agent** (`agent.py`): Self-hosted (local dev)
    - Full interview sessions
@@ -302,7 +302,7 @@ CMD ["python", "demo_agent.py", "start"]
 # Create and deploy new agent (first time)
 lk agent create --secrets-file .env.demo .
 
-# Output will include agent ID (e.g., CA_bL5fHYqjCTrA)
+# Output will include agent ID (e.g., CA_Wp8bi3bRroE2)
 # This is automatically saved to livekit.toml
 ```
 
@@ -316,7 +316,7 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="CA_bL5fHYqjCTrA",  # Use your agent ID from Step 3
+            agent_name="CA_Wp8bi3bRroE2",  # Use your agent ID from Step 3
         ),
     )
 ```
@@ -337,7 +337,7 @@ lk agent deploy .
 **Step 6: Update Frontend with Agent ID**
 ```typescript
 // Update /app/api/livekit/demo-token/route.ts
-const DEMO_AGENT_ID = "CA_bL5fHYqjCTrA"; // Your agent ID from Step 3
+const DEMO_AGENT_ID = "CA_Wp8bi3bRroE2"; // Your agent ID from Step 3
 ```
 
 ### Updating Existing Agent
@@ -524,7 +524,7 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="CA_bL5fHYqjCTrA",  # CRITICAL: enables explicit dispatch
+            agent_name="CA_Wp8bi3bRroE2",  # CRITICAL: enables explicit dispatch
         ),
     )
 ```
@@ -540,7 +540,7 @@ if __name__ == "__main__":
 // /app/api/livekit/demo-token/route.ts
 import { AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
 
-const DEMO_AGENT_ID = "CA_bL5fHYqjCTrA"; // Must match agent_name
+const DEMO_AGENT_ID = "CA_Wp8bi3bRroE2"; // Must match agent_name
 
 // Create room
 const roomClient = new RoomServiceClient(livekit_url, apiKey, apiSecret);
@@ -603,7 +603,7 @@ async def entrypoint(ctx: JobContext):
 **Example Architecture**:
 ```typescript
 // Demo modal
-const DEMO_AGENT_ID = "CA_bL5fHYqjCTrA";
+const DEMO_AGENT_ID = "CA_Wp8bi3bRroE2";
 await dispatchClient.createDispatch(demoRoomName, DEMO_AGENT_ID);
 
 // Full interview
@@ -626,7 +626,7 @@ async def request_fnc(ctx: JobRequest) -> bool:
 **Check 1: Agent has `agent_name` configured**
 ```bash
 grep -A5 "WorkerOptions" demo_agent.py
-# Should see: agent_name="CA_bL5fHYqjCTrA"
+# Should see: agent_name="CA_Wp8bi3bRroE2"
 ```
 
 **Check 2: Frontend uses correct agent ID**
@@ -704,7 +704,7 @@ lk agent logs
 │     - emptyTimeout: 120 (auto-delete after 2 min)           │
 │     - maxParticipants: 2 (user + agent only)                │
 │  3. Dispatch Cloud agent with AgentDispatchClient            │
-│     - agentId: "CA_bL5fHYqjCTrA"                            │
+│     - agentId: "CA_Wp8bi3bRroE2"                            │
 │  4. Generate participant access token                        │
 │  5. Return { token, url, roomName }                          │
 └──────────────────────┬───────────────────────────────────────┘
@@ -796,7 +796,7 @@ export async function POST(request: Request) {
 
   // Dispatch Cloud agent
   const dispatchClient = new AgentDispatchClient(livekit_url, apiKey, apiSecret);
-  await dispatchClient.createDispatch(roomName, "CA_bL5fHYqjCTrA");
+  await dispatchClient.createDispatch(roomName, "CA_Wp8bi3bRroE2");
 
   // Generate token
   const token = new AccessToken(apiKey, apiSecret, { identity: participantName });
@@ -824,7 +824,7 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="CA_bL5fHYqjCTrA",  # Required for explicit dispatch
+            agent_name="CA_Wp8bi3bRroE2",  # Required for explicit dispatch
         ),
     )
 ```
@@ -932,7 +932,7 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="CA_bL5fHYqjCTrA",  # Your agent ID from livekit.toml
+            agent_name="CA_Wp8bi3bRroE2",  # Your agent ID from livekit.toml
         ),
     )
 ```

@@ -1,8 +1,8 @@
 # CLAUDE.md: Codebase Living Operational Document
 
 **Project**: MockMate - Real-Time AI Mock Interviews
-**Last Updated**: 2025-11-05
-**Version**: 0.7.0
+**Last Updated**: 2025-11-06
+**Version**: 0.7.1
 
 ---
 
@@ -76,7 +76,7 @@ This document serves as the single source of truth for:
 ### Infrastructure & Services
 - **Hosting**: Vercel (Next.js)
 - **Agent Hosting**:
-  - **Demo Agent**: LiveKit Cloud (deployed, agent ID: CA_bL5fHYqjCTrA)
+  - **Demo Agent**: LiveKit Cloud (deployed, agent ID: CA_Wp8bi3bRroE2)
   - **Main Agent**: Local dev, Railway/Render/Fly.io for production (planned)
 - **Database Hosting**: Supabase
 - **Real-time Infrastructure**: LiveKit Cloud
@@ -407,7 +407,7 @@ This document serves as the single source of truth for:
   POST /api/livekit/demo-token
       ↓
   1. Create unique room: demo-{timestamp}-{random}
-  2. AgentDispatchClient.createDispatch(roomName, "CA_bL5fHYqjCTrA")
+  2. AgentDispatchClient.createDispatch(roomName, "CA_Wp8bi3bRroE2")
   3. Return token + url
       ↓
   LiveKit Cloud Agent Receives Dispatch
@@ -426,7 +426,7 @@ This document serves as the single source of truth for:
 - **Critical Configuration**:
   - **MUST set `agent_name` in WorkerOptions**: Required for explicit dispatch via AgentDispatchClient
   - **Room Name Pattern**: `demo-*` prefix for filtering/analytics
-  - **Agent ID**: `CA_bL5fHYqjCTrA` (deployed to LiveKit Cloud)
+  - **Agent ID**: `CA_Wp8bi3bRroE2` (deployed to LiveKit Cloud)
   - **Auto-cleanup**: `emptyTimeout: 120` (room deleted 2 min after last participant)
 - **Consequences**:
   - Separate deployment pipeline for demo agent (uses `Dockerfile.demo`)
@@ -450,7 +450,7 @@ This document serves as the single source of truth for:
       WorkerOptions(
           entrypoint_fnc=entrypoint,
           prewarm_fnc=prewarm,
-          agent_name="CA_bL5fHYqjCTrA",  # Required for explicit dispatch!
+          agent_name="CA_Wp8bi3bRroE2",  # Required for explicit dispatch!
       ),
   )
   ```
@@ -638,7 +638,7 @@ await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.ro
 **Key Responsibilities**:
 - Define `DemoAgent` class with 60-second demo prompt
 - Configure for LiveKit Cloud deployment (no custom parameters)
-- Set `agent_name="CA_bL5fHYqjCTrA"` for explicit dispatch
+- Set `agent_name="CA_Wp8bi3bRroE2"` for explicit dispatch
 - Uses same voice pipeline as main agent (Deepgram Nova-3, GPT-4.1-mini, Cartesia Sonic 3)
 
 **Critical Configuration**:
@@ -659,7 +659,7 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="CA_bL5fHYqjCTrA",  # Required for explicit dispatch!
+            agent_name="CA_Wp8bi3bRroE2",  # Required for explicit dispatch!
         ),
     )
 ```
@@ -687,7 +687,7 @@ if __name__ == "__main__":
 import { AgentDispatchClient } from "livekit-server-sdk";
 
 const roomName = `demo-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-const DEMO_AGENT_ID = "CA_bL5fHYqjCTrA";
+const DEMO_AGENT_ID = "CA_Wp8bi3bRroE2";
 
 // Create room with auto-cleanup
 await roomClient.createRoom({
@@ -862,7 +862,7 @@ cp Dockerfile.demo Dockerfile
 # Create and deploy new agent (first time)
 lk agent create --secrets-file .env.demo .
 
-# Output will include agent ID (e.g., CA_bL5fHYqjCTrA)
+# Output will include agent ID (e.g., CA_Wp8bi3bRroE2)
 # This is automatically saved to livekit.toml
 ```
 
@@ -874,7 +874,7 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="CA_bL5fHYqjCTrA",  # Use your agent ID from Step 3
+            agent_name="CA_Wp8bi3bRroE2",  # Use your agent ID from Step 3
         ),
     )
 ```
@@ -890,7 +890,7 @@ lk agent deploy .
 **Step 6: Update Frontend with Agent ID**
 ```typescript
 // Update /app/api/livekit/demo-token/route.ts
-const DEMO_AGENT_ID = "CA_bL5fHYqjCTrA"; // Your agent ID from Step 3
+const DEMO_AGENT_ID = "CA_Wp8bi3bRroE2"; // Your agent ID from Step 3
 ```
 
 #### Updating Existing Agent
@@ -1030,7 +1030,7 @@ lk agent delete
   - Input: `{ participantName: string }`
   - Output: `{ token: string, url: string, roomName: string }`
   - Creates unique demo room: `demo-{timestamp}-{random}`
-  - Dispatches Cloud agent (CA_bL5fHYqjCTrA) using AgentDispatchClient
+  - Dispatches Cloud agent (CA_Wp8bi3bRroE2) using AgentDispatchClient
   - Room auto-deletes 2 minutes after last participant leaves
 
 ### Planned (see PRD Section 12)
@@ -1383,7 +1383,7 @@ RESEND_API_KEY=
 - Created `/agent/demo_agent.py` with 60-second optimized prompt
 - Separate agent from main interview agent (isolated deployment)
 - Deployed to LiveKit Cloud using `lk agent create`
-- Agent ID: `CA_bL5fHYqjCTrA` (saved in `livekit.toml`)
+- Agent ID: `CA_Wp8bi3bRroE2` (saved in `livekit.toml`)
 - Created `Dockerfile.demo` for Cloud deployment
 - Configured `.dockerignore` to exclude main agent files
 
