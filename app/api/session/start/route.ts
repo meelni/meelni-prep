@@ -1,3 +1,82 @@
+/**
+ * Start Interview Session API
+ *
+ * Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
+ * and returns credentials for the user to join the interview.
+ *
+ * @route POST /api/session/start
+ * @access Protected (requires Supabase Auth JWT)
+ * @authentication Bearer token in Authorization header
+ *
+ * @request {Object} body - Request payload
+ * @request.roundType {string} Required - Interview round type. One of: behavioral, product_sense, execution, strategy
+ * @request.mode {string} Optional - Interview mode (default: voice_video). One of: voice_video, text
+ * @request.role {string} Optional - User's role (default: pm)
+ * @request.persona {string} Optional - Custom interviewer persona description
+ * @request.config {Object} Optional - Session configuration (voice settings, models, etc.)
+ * @request.config.voice {string} Optional - Cartesia voice ID (default: Tessa voice)
+ * @request.config.stt_model {string} Optional - Speech-to-Text model (default: deepgram/nova-3)
+ * @request.config.llm_model {string} Optional - Language model (default: openai/gpt-4.1-mini)
+ * @request.config.tts_model {string} Optional - Text-to-Speech model with voice
+ * @request.config.speed {number} Optional - Voice speed multiplier (0.6-1.5)
+ * @request.config.emotion {string} Optional - Voice emotion (Happy, Calm, Confident, etc.)
+ * @request.config.volume {number} Optional - Voice volume multiplier (0.5-2.0)
+ *
+ * @response {Object} response - Session credentials and info
+ * @response.sessionId {string} - UUID of created session
+ * @response.roomName {string} - LiveKit room name (format: interview-{timestamp}-{random})
+ * @response.token {string} - JWT access token for LiveKit room
+ * @response.url {string} - LiveKit server WebSocket URL
+ * @response.config {Object} - Session configuration used
+ *
+ * @throws {401} Unauthorized - Missing or invalid authentication token
+ * @throws {400} Bad Request - Missing roundType or invalid roundType value
+ * @throws {500} Internal Server Error - Database error, LiveKit configuration error, or agent dispatch failure
+ *
+ * @example
+ * // Request
+ * POST /api/session/start
+ * Headers:
+ *   Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+ *   Content-Type: application/json
+ * Body:
+ * {
+ *   "roundType": "product_sense",
+ *   "persona": "Friendly Google PM interviewer",
+ *   "config": {
+ *     "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+ *     "speed": 1.0,
+ *     "emotion": "Calm"
+ *   }
+ * }
+ *
+ * // Response (200 OK)
+ * {
+ *   "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+ *   "roomName": "interview-1699999999999-abc123",
+ *   "token": "eyJhbGciOiJIUzI1NiIs...",
+ *   "url": "wss://mockmate.livekit.cloud",
+ *   "config": {
+ *     "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+ *     "stt_model": "deepgram/nova-3",
+ *     "llm_model": "openai/gpt-4.1-mini",
+ *     "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+ *     "speed": 1.0,
+ *     "emotion": "Calm"
+ *   }
+ * }
+ *
+ * // Error Response (400 Bad Request)
+ * {
+ *   "error": "roundType is required"
+ * }
+ *
+ * // Error Response (401 Unauthorized)
+ * {
+ *   "error": "Unauthorized"
+ * }
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createSession } from "@/lib/db/sessions";
