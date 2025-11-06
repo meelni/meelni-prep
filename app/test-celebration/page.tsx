@@ -122,6 +122,26 @@ export default function TestCelebration() {
             )}
           </div>
         </div>
+
+        <div className="border-t border-border pt-6 space-y-3">
+          <h3 className="font-semibold">Confetti Animation:</h3>
+          <div className="text-sm text-muted-foreground space-y-2">
+            {scenario === 'first' && (
+              <div className="flex items-center gap-2">
+                <span className="text-primary">🎊</span> Confetti will burst from
+                bottom-center (150 particles, 3s duration)
+              </div>
+            )}
+            {scenario !== 'first' && (
+              <div className="text-muted-foreground italic">
+                No confetti (only on first session)
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground/60">
+              Note: Confetti respects prefers-reduced-motion setting
+            </div>
+          </div>
+        </div>
       </div>
 
       <CelebrationModal

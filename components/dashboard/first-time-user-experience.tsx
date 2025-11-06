@@ -65,7 +65,7 @@ export function FirstTimeUserExperience({ onStartInterview }: FirstTimeUserExper
 
           <motion.div variants={fadeInUp}>
             <Button
-              onClick={onStartInterview || (() => router.push("/setup"))}
+              onClick={onStartInterview}
               size="lg"
               className="text-lg px-8 py-6 h-auto bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300"
             >

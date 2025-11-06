@@ -105,6 +105,7 @@ export function SetupModal({
   onUseSmartDefaults,
 }: SetupModalProps) {
   const [step, setStep] = useState(1);
+  const [direction, setDirection] = useState(0);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
 
   // Reset step when modal opens
@@ -144,6 +145,7 @@ export function SetupModal({
 
   const handleNext = () => {
     if (step < 3) {
+      setDirection(1); // Moving forward
       setStep(step + 1);
     } else {
       // Final step: submit
@@ -153,6 +155,7 @@ export function SetupModal({
 
   const handleBack = () => {
     if (step > 1) {
+      setDirection(-1); // Moving backward
       setStep(step - 1);
     }
   };
@@ -223,15 +226,31 @@ export function SetupModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="wait" custom={direction}>
             {/* Step 1: Interview Type */}
             {step === 1 && (
               <motion.div
                 key="step1"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
+                custom={direction}
+                initial={{
+                  x: direction > 0 ? 20 : -20,
+                  opacity: 0,
+                  scale: 0.95,
+                }}
+                animate={{
+                  x: 0,
+                  opacity: 1,
+                  scale: 1,
+                }}
+                exit={{
+                  x: direction < 0 ? 20 : -20,
+                  opacity: 0,
+                  scale: 0.95,
+                }}
+                transition={{
+                  duration: 0.4,
+                  ease: [0.34, 1.56, 0.64, 1],
+                }}
                 className="space-y-4"
               >
                 {/* Smart Defaults Card */}
@@ -248,43 +267,83 @@ export function SetupModal({
 
                 {/* Interview Type Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {INTERVIEW_TYPES.map((type) => (
-                    <motion.button
-                      key={type.id}
-                      onClick={() => selectInterviewType(type.id)}
-                      className={`
-                        group relative p-4 rounded-lg border-2 text-left transition-all
-                        ${
-                          config.roundType === type.id
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/30 hover:bg-accent/50"
-                        }
-                      `}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={`
-                          p-2 rounded-lg transition-colors
+                  {INTERVIEW_TYPES.map((type) => {
+                    const isSelected = config.roundType === type.id;
+                    return (
+                      <motion.button
+                        key={type.id}
+                        onClick={() => selectInterviewType(type.id)}
+                        className={`
+                          group relative p-4 rounded-lg border-2 text-left overflow-hidden
                           ${
-                            config.roundType === type.id
-                              ? "bg-primary/10 text-primary"
-                              : "bg-muted text-muted-foreground group-hover:text-primary"
+                            isSelected
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:border-primary/30 hover:bg-accent/50"
                           }
                         `}
-                        >
-                          <type.icon className="w-5 h-5" />
+                        whileHover={{
+                          y: -2,
+                          scale: 1.01,
+                          boxShadow: isSelected
+                            ? '0 8px 30px rgb(var(--primary) / 0.25)'
+                            : '0 4px 20px rgb(0 0 0 / 0.1)',
+                        }}
+                        whileTap={{ scale: 0.98, y: 0 }}
+                        transition={{
+                          type: 'spring',
+                          stiffness: 400,
+                          damping: 30,
+                        }}
+                        animate={isSelected ? {
+                          boxShadow: '0 4px 20px rgb(var(--primary) / 0.15)',
+                        } : {}}
+                      >
+                        {/* Selection Glow Effect */}
+                        {isSelected && (
+                          <motion.div
+                            className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/10 to-primary/0"
+                            animate={{
+                              x: ['-100%', '100%'],
+                            }}
+                            transition={{
+                              duration: 2,
+                              repeat: Infinity,
+                              ease: 'linear',
+                            }}
+                          />
+                        )}
+
+                        <div className="relative flex items-start gap-3">
+                          <motion.div
+                            className={`
+                              p-2 rounded-lg transition-colors
+                              ${
+                                isSelected
+                                  ? "bg-primary/10 text-primary"
+                                  : "bg-muted text-muted-foreground group-hover:text-primary"
+                              }
+                            `}
+                            whileHover={{
+                              scale: 1.05,
+                            }}
+                            transition={{
+                              type: 'spring',
+                              stiffness: 400,
+                              damping: 25,
+                            }}
+                          >
+                            <type.icon className="w-5 h-5" />
+                          </motion.div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-sm mb-1">{type.title}</h3>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                              {type.description}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-sm mb-1">{type.title}</h3>
-                          <p className="text-xs text-muted-foreground leading-relaxed">
-                            {type.description}
-                          </p>
-                        </div>
-                      </div>
-                    </motion.button>
-                  ))}
+                      </motion.button>
+                    );
+                  })}
                 </div>
               </motion.div>
             )}
@@ -293,10 +352,26 @@ export function SetupModal({
             {step === 2 && (
               <motion.div
                 key="step2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
+                custom={direction}
+                initial={{
+                  x: direction > 0 ? 20 : -20,
+                  opacity: 0,
+                  scale: 0.95,
+                }}
+                animate={{
+                  x: 0,
+                  opacity: 1,
+                  scale: 1,
+                }}
+                exit={{
+                  x: direction < 0 ? 20 : -20,
+                  opacity: 0,
+                  scale: 0.95,
+                }}
+                transition={{
+                  duration: 0.4,
+                  ease: [0.34, 1.56, 0.64, 1],
+                }}
                 className="space-y-3"
               >
                 <div className="space-y-2 mb-4">
@@ -306,43 +381,95 @@ export function SetupModal({
                   </p>
                 </div>
 
-                {MODE_OPTIONS.map((mode) => (
-                  <motion.button
-                    key={mode.id}
-                    onClick={() => selectMode(mode.id)}
-                    className={`
-                      w-full p-4 rounded-lg border-2 text-left transition-all
-                      ${
-                        config.mode === mode.id
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/30 hover:bg-accent/50"
-                      }
-                    `}
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`
-                        w-5 h-5 rounded-full border-2 flex items-center justify-center
+                {MODE_OPTIONS.map((mode) => {
+                  const isSelected = config.mode === mode.id;
+                  return (
+                    <motion.button
+                      key={mode.id}
+                      onClick={() => selectMode(mode.id)}
+                      className={`
+                        w-full p-4 rounded-lg border-2 text-left overflow-hidden relative
                         ${
-                          config.mode === mode.id
-                            ? "border-primary bg-primary"
-                            : "border-muted-foreground"
+                          isSelected
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/30 hover:bg-accent/50"
                         }
                       `}
-                      >
-                        {config.mode === mode.id && (
-                          <div className="w-2 h-2 rounded-full bg-white" />
-                        )}
+                      whileHover={{
+                        y: -2,
+                        scale: 1.005,
+                        boxShadow: isSelected
+                          ? '0 6px 25px rgb(var(--primary) / 0.2)'
+                          : '0 4px 15px rgb(0 0 0 / 0.08)',
+                      }}
+                      whileTap={{ scale: 0.99, y: 0 }}
+                      transition={{
+                        type: 'spring',
+                        stiffness: 400,
+                        damping: 30,
+                      }}
+                      animate={isSelected ? {
+                        boxShadow: '0 4px 15px rgb(var(--primary) / 0.12)',
+                      } : {}}
+                    >
+                      {/* Selection Glow */}
+                      {isSelected && (
+                        <motion.div
+                          className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/8 to-primary/0"
+                          animate={{
+                            x: ['-100%', '100%'],
+                          }}
+                          transition={{
+                            duration: 2,
+                            repeat: Infinity,
+                            ease: 'linear',
+                          }}
+                        />
+                      )}
+
+                      <div className="relative flex items-center gap-3">
+                        <motion.div
+                          className={`
+                            w-5 h-5 rounded-full border-2 flex items-center justify-center
+                            ${
+                              isSelected
+                                ? "border-primary bg-primary"
+                                : "border-muted-foreground"
+                            }
+                          `}
+                          animate={isSelected ? {
+                            scale: [1, 1.1, 1],
+                          } : {}}
+                          transition={{
+                            duration: 0.3,
+                            ease: [0.34, 1.56, 0.64, 1],
+                          }}
+                        >
+                          <AnimatePresence mode="wait">
+                            {isSelected && (
+                              <motion.div
+                                key="selected-dot"
+                                className="w-2 h-2 rounded-full bg-white"
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                exit={{ scale: 0 }}
+                                transition={{
+                                  type: 'spring',
+                                  stiffness: 400,
+                                  damping: 25,
+                                }}
+                              />
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-sm mb-0.5">{mode.title}</h4>
+                          <p className="text-xs text-muted-foreground">{mode.description}</p>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-sm mb-0.5">{mode.title}</h4>
-                        <p className="text-xs text-muted-foreground">{mode.description}</p>
-                      </div>
-                    </div>
-                  </motion.button>
-                ))}
+                    </motion.button>
+                  );
+                })}
               </motion.div>
             )}
 
@@ -350,10 +477,26 @@ export function SetupModal({
             {step === 3 && (
               <motion.div
                 key="step3"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
+                custom={direction}
+                initial={{
+                  x: direction > 0 ? 20 : -20,
+                  opacity: 0,
+                  scale: 0.95,
+                }}
+                animate={{
+                  x: 0,
+                  opacity: 1,
+                  scale: 1,
+                }}
+                exit={{
+                  x: direction < 0 ? 20 : -20,
+                  opacity: 0,
+                  scale: 0.95,
+                }}
+                transition={{
+                  duration: 0.4,
+                  ease: [0.34, 1.56, 0.64, 1],
+                }}
                 className="space-y-4"
               >
                 <div className="space-y-2">
@@ -364,22 +507,43 @@ export function SetupModal({
                 </div>
 
                 {/* Collapsible Advanced Settings */}
-                <button
+                <motion.button
                   onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
                   className="w-full p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors flex items-center justify-between"
+                  whileHover={{
+                    borderColor: 'rgb(var(--primary) / 0.3)',
+                  }}
+                  whileTap={{ scale: 0.98 }}
                 >
                   <div className="flex items-center gap-3">
-                    <Mic className="w-5 h-5 text-muted-foreground" />
+                    <motion.div
+                      animate={showAdvancedSettings ? {
+                        rotate: [0, -10, 10, 0],
+                      } : {}}
+                      transition={{
+                        duration: 0.5,
+                        ease: [0.34, 1.56, 0.64, 1],
+                      }}
+                    >
+                      <Mic className="w-5 h-5 text-muted-foreground" />
+                    </motion.div>
                     <span className="font-medium text-sm">
                       {showAdvancedSettings ? "Hide" : "Show"} Advanced Settings
                     </span>
                   </div>
-                  <ChevronDown
-                    className={`w-5 h-5 text-muted-foreground transition-transform ${
-                      showAdvancedSettings ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
+                  <motion.div
+                    animate={{
+                      rotate: showAdvancedSettings ? 180 : 0,
+                    }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 300,
+                      damping: 25,
+                    }}
+                  >
+                    <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                  </motion.div>
+                </motion.button>
 
                 <AnimatePresence>
                   {showAdvancedSettings && (

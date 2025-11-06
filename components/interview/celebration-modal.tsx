@@ -4,6 +4,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { SessionStatsCard } from './session-stats-card';
 import { BadgesEarned } from './badges-earned';
+import { Confetti } from '@/components/ui/confetti';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Home, Plus, Sparkles } from 'lucide-react';
 
@@ -72,7 +73,10 @@ export function CelebrationModal({
               transition={{ duration: 0.3 }}
               className="relative"
             >
-              {/* Confetti placeholder - will be added in Task 2.2 */}
+              {/* Confetti - only on first session */}
+              {sessionData.isFirstSession && (
+                <Confetti trigger={isOpen} duration={3000} particleCount={150} />
+              )}
 
               {/* Header */}
               <div className="bg-gradient-to-br from-primary/20 via-primary/5 to-transparent p-8 pb-6">
