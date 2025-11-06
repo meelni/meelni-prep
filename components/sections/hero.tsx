@@ -105,9 +105,9 @@ function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8, duration: 0.8, ease }}
         >
-          {/* Primary CTA - Talk to Meelni (opens demo modal) */}
-          <button
-            onClick={() => setIsDemoModalOpen(true)}
+          {/* Primary CTA - Start A Mock (routes to dashboard with auth) */}
+          <Link
+            href="/dashboard"
             className="group relative w-full sm:w-auto overflow-hidden rounded-xl bg-gradient-to-r from-primary via-primary/90 to-primary/80 px-8 py-4 text-background font-semibold shadow-lg transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98]"
           >
             <div className="relative z-10 flex items-center gap-3">
@@ -121,10 +121,15 @@ function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <span>Talk to Meelni</span>
+              <span>Start A Mock</span>
               <svg
                 className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1"
                 fill="none"
@@ -141,35 +146,30 @@ function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
             </div>
             {/* Shimmer effect on hover */}
             <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-background/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-          </button>
+          </Link>
 
-        {/* Secondary CTA - Customize (routes to dashboard) */}
-        <Link
-          href="/dashboard"
-          className="group relative w-full sm:w-auto overflow-hidden rounded-xl border-2 border-border bg-background/50 backdrop-blur-sm px-8 py-4 font-semibold transition-all duration-300 hover:border-primary/50 hover:bg-background/80 hover:scale-[1.02] active:scale-[0.98]"
-        >
-          <div className="relative z-10 flex items-center gap-3">
-            <svg
-              className="w-5 h-5 transition-transform duration-300 group-hover:rotate-90"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-            <span>Customize Your Mock</span>
-          </div>
-        </Link>
+          {/* Secondary CTA - Talk to Meelni (opens demo modal, no auth) */}
+          <button
+            onClick={() => setIsDemoModalOpen(true)}
+            className="group relative w-full sm:w-auto overflow-hidden rounded-xl border-2 border-border bg-background/50 backdrop-blur-sm px-8 py-4 font-semibold transition-all duration-300 hover:border-primary/50 hover:bg-background/80 hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <div className="relative z-10 flex items-center gap-3">
+              <svg
+                className="w-5 h-5 transition-transform duration-300 group-hover:scale-110"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                />
+              </svg>
+              <span>Talk to Meelni</span>
+            </div>
+          </button>
       </motion.div>
 
         {/* Subtle helper text */}
