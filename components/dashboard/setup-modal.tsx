@@ -20,8 +20,8 @@ import { SmartDefaultsCard } from "./setup-modal/smart-defaults-card";
 
 // Types
 export interface InterviewConfig {
-  roundType: "product_sense" | "analytical" | "leadership" | "strategy";
-  mode: "mock_interview" | "practice" | "learning";
+  roundType: "product_sense" | "analytical" | "leadership" | "strategy" | null;
+  mode: "mock_interview" | "practice" | "learning" | null;
   voiceSettings: {
     voice: string;
     speed: number;
@@ -32,19 +32,12 @@ export interface InterviewConfig {
 interface SetupModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (config: InterviewConfig) => void;
+  config: InterviewConfig;
+  updateConfig: (partial: Partial<InterviewConfig>) => void;
+  canProceedToNextStep: (step: number) => boolean;
+  onSubmit: () => void;
+  onUseSmartDefaults: () => void;
 }
-
-// Smart defaults configuration
-const SMART_DEFAULTS: InterviewConfig = {
-  roundType: "product_sense",
-  mode: "mock_interview",
-  voiceSettings: {
-    voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", // Tessa
-    speed: 1.0,
-    emotion: "confident",
-  },
-};
 
 // Interview type options
 const INTERVIEW_TYPES = [
@@ -102,28 +95,22 @@ const EMOTION_OPTIONS = [
   { value: "neutral", label: "Neutral" },
 ];
 
-export function SetupModal({ isOpen, onClose, onSubmit }: SetupModalProps) {
+export function SetupModal({
+  isOpen,
+  onClose,
+  config,
+  updateConfig,
+  canProceedToNextStep,
+  onSubmit,
+  onUseSmartDefaults,
+}: SetupModalProps) {
   const [step, setStep] = useState(1);
-  const [config, setConfig] = useState<Partial<InterviewConfig>>({
-    voiceSettings: {
-      voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-      speed: 1.0,
-      emotion: "confident",
-    },
-  });
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
 
-  // Reset state when modal opens
+  // Reset step when modal opens
   useEffect(() => {
     if (isOpen) {
       setStep(1);
-      setConfig({
-        voiceSettings: {
-          voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-          speed: 1.0,
-          emotion: "confident",
-        },
-      });
       setShowAdvancedSettings(false);
     }
   }, [isOpen]);
@@ -152,17 +139,15 @@ export function SetupModal({ isOpen, onClose, onSubmit }: SetupModalProps) {
   }, [isOpen]);
 
   const handleSmartDefaults = useCallback(() => {
-    onSubmit(SMART_DEFAULTS);
-  }, [onSubmit]);
+    onUseSmartDefaults();
+  }, [onUseSmartDefaults]);
 
   const handleNext = () => {
     if (step < 3) {
       setStep(step + 1);
     } else {
       // Final step: submit
-      if (config.roundType && config.mode && config.voiceSettings) {
-        onSubmit(config as InterviewConfig);
-      }
+      onSubmit();
     }
   };
 
@@ -172,26 +157,19 @@ export function SetupModal({ isOpen, onClose, onSubmit }: SetupModalProps) {
     }
   };
 
-  const selectInterviewType = (type: InterviewConfig["roundType"]) => {
-    setConfig((prev) => ({ ...prev, roundType: type }));
+  const selectInterviewType = (type: NonNullable<InterviewConfig["roundType"]>) => {
+    updateConfig({ roundType: type });
   };
 
-  const selectMode = (mode: InterviewConfig["mode"]) => {
-    setConfig((prev) => ({ ...prev, mode }));
+  const selectMode = (mode: NonNullable<InterviewConfig["mode"]>) => {
+    updateConfig({ mode });
   };
 
   const updateVoiceSettings = (updates: Partial<InterviewConfig["voiceSettings"]>) => {
-    setConfig((prev) => ({
-      ...prev,
-      voiceSettings: { ...prev.voiceSettings!, ...updates },
-    }));
+    updateConfig({
+      voiceSettings: { ...config.voiceSettings, ...updates },
+    });
   };
-
-  // Validation
-  const canProceed =
-    (step === 1 && config.roundType) ||
-    (step === 2 && config.mode) ||
-    step === 3;
 
   if (!isOpen) return null;
 
@@ -479,7 +457,7 @@ export function SetupModal({ isOpen, onClose, onSubmit }: SetupModalProps) {
           )}
           <Button
             onClick={handleNext}
-            disabled={!canProceed}
+            disabled={!canProceedToNextStep(step)}
             className="flex-1"
             variant="glow"
           >

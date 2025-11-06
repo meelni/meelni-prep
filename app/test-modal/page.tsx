@@ -1,18 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SetupModal, InterviewConfig } from "@/components/dashboard/setup-modal";
+import { useSetupModal } from "@/lib/hooks/use-setup-modal";
 import { Button } from "@/components/ui/button";
 
 export default function TestModalPage() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [submittedConfig, setSubmittedConfig] = useState<InterviewConfig | null>(null);
+  const setupModal = useSetupModal();
+  const [lastConfig, setLastConfig] = useState<InterviewConfig | null>(null);
 
-  const handleSubmit = (config: InterviewConfig) => {
-    console.log("Submitted config:", config);
-    setSubmittedConfig(config);
-    setIsOpen(false);
-  };
+  // Track when config changes
+  useEffect(() => {
+    if (!setupModal.isOpen && setupModal.config.roundType && setupModal.config.mode) {
+      setLastConfig(setupModal.config);
+    }
+  }, [setupModal.isOpen, setupModal.config]);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-8">
@@ -24,28 +26,35 @@ export default function TestModalPage() {
           </p>
         </div>
 
-        <div className="flex justify-center">
-          <Button onClick={() => setIsOpen(true)} size="lg" variant="glow">
+        <div className="flex justify-center gap-3">
+          <Button onClick={setupModal.open} size="lg" variant="glow">
             Open Setup Modal
+          </Button>
+          <Button onClick={setupModal.resetConfig} size="lg" variant="outline">
+            Reset Config
           </Button>
         </div>
 
-        {submittedConfig && (
+        {lastConfig && (
           <div className="p-6 bg-card border border-border rounded-lg space-y-4">
-            <h2 className="text-xl font-semibold">Submitted Configuration</h2>
+            <h2 className="text-xl font-semibold">Last Configuration</h2>
             <pre className="p-4 bg-muted rounded-lg text-sm overflow-auto">
-              {JSON.stringify(submittedConfig, null, 2)}
+              {JSON.stringify(lastConfig, null, 2)}
             </pre>
-            <Button onClick={() => setSubmittedConfig(null)} variant="outline">
+            <Button onClick={() => setLastConfig(null)} variant="outline">
               Clear
             </Button>
           </div>
         )}
 
         <SetupModal
-          isOpen={isOpen}
-          onClose={() => setIsOpen(false)}
-          onSubmit={handleSubmit}
+          isOpen={setupModal.isOpen}
+          onClose={setupModal.close}
+          config={setupModal.config}
+          updateConfig={setupModal.updateConfig}
+          canProceedToNextStep={setupModal.canProceedToNextStep}
+          onSubmit={setupModal.submitConfig}
+          onUseSmartDefaults={setupModal.useSmartDefaults}
         />
       </div>
     </div>

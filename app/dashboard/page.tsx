@@ -12,13 +12,18 @@ import { SettingsSection } from "@/components/dashboard/sections/settings";
 import { FirstTimeUserExperience } from "@/components/dashboard/first-time-user-experience";
 import { DashboardLoading } from "@/components/dashboard/loading";
 import { DashboardError } from "@/components/dashboard/error";
+import { SetupModal } from "@/components/dashboard/setup-modal";
 import { useSessions } from "@/lib/api/queries";
+import { useSetupModal } from "@/lib/hooks/use-setup-modal";
 import { motion } from "framer-motion";
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const [activeSection, setActiveSection] = useState("overview");
+
+  // Setup modal hook
+  const setupModal = useSetupModal();
 
   // Fetch sessions using React Query
   const {
@@ -77,7 +82,7 @@ export default function DashboardPage() {
   const renderSection = () => {
     // Show FTUE for first-time users on overview
     if (activeSection === "overview" && isFirstTimeUser) {
-      return <FirstTimeUserExperience />;
+      return <FirstTimeUserExperience onStartInterview={setupModal.open} />;
     }
 
     switch (activeSection) {
@@ -115,14 +120,27 @@ export default function DashboardPage() {
   };
 
   return (
-    <DashboardLayout
-      activeSection={activeSection}
-      setActiveSection={setActiveSection}
-      totalSessions={stats.totalSessions}
-      totalMinutes={stats.totalMinutes}
-      avgScore={stats.avgScore || undefined}
-    >
-      {renderSection()}
-    </DashboardLayout>
+    <>
+      <DashboardLayout
+        activeSection={activeSection}
+        setActiveSection={setActiveSection}
+        totalSessions={stats.totalSessions}
+        totalMinutes={stats.totalMinutes}
+        avgScore={stats.avgScore || undefined}
+      >
+        {renderSection()}
+      </DashboardLayout>
+
+      {/* Setup Modal */}
+      <SetupModal
+        isOpen={setupModal.isOpen}
+        onClose={setupModal.close}
+        config={setupModal.config}
+        updateConfig={setupModal.updateConfig}
+        canProceedToNextStep={setupModal.canProceedToNextStep}
+        onSubmit={setupModal.submitConfig}
+        onUseSmartDefaults={setupModal.useSmartDefaults}
+      />
+    </>
   );
 }
