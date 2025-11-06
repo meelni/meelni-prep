@@ -2,7 +2,7 @@
 
 **Project**: MockMate - Real-Time AI Mock Interviews
 **Last Updated**: 2025-11-05
-**Version**: 0.5.0
+**Version**: 0.7.0
 
 ---
 
@@ -23,7 +23,7 @@ This document serves as the single source of truth for:
 
 ## Project Status
 
-**Current Phase**: Phase 0.6 - Marketing Landing Page Complete ✅
+**Current Phase**: Phase 0.7 - Demo Modal with LiveKit Cloud Agent Complete ✅
 **Next Milestone**: Add session persistence (save transcripts to DB), scoring/feedback engine
 
 **Phase 0 Completion Summary**:
@@ -38,6 +38,8 @@ This document serves as the single source of truth for:
 - ✅ Component library created (Button, Card, Badge)
 - ✅ Framer Motion animations integrated
 - ✅ Marketing landing page with modular architecture (Header, Hero, Features, CTA, Footer)
+- ✅ Demo modal with LiveKit Cloud agent deployment
+- ✅ Explicit agent dispatch system configured
 
 ---
 
@@ -73,7 +75,9 @@ This document serves as the single source of truth for:
 
 ### Infrastructure & Services
 - **Hosting**: Vercel (Next.js)
-- **Agent Hosting**: Local dev, Railway/Render/Fly.io for production
+- **Agent Hosting**:
+  - **Demo Agent**: LiveKit Cloud (deployed, agent ID: CA_bL5fHYqjCTrA)
+  - **Main Agent**: Local dev, Railway/Render/Fly.io for production (planned)
 - **Database Hosting**: Supabase
 - **Real-time Infrastructure**: LiveKit Cloud
 - **Background Jobs**: Inngest (planned for evaluation)
@@ -92,9 +96,14 @@ This document serves as the single source of truth for:
 │   └── CLAUDE.md                 # This file - living operational doc
 ├── agent/                        # Python LiveKit Agents worker
 │   ├── venv/                     # Python virtual environment
-│   ├── agent.py                  # Main agent entrypoint
+│   ├── agent.py                  # Main agent entrypoint (self-hosted)
+│   ├── demo_agent.py             # Demo agent for landing page (LiveKit Cloud)
+│   ├── Dockerfile.demo           # Docker config for Cloud deployment
+│   ├── livekit.toml              # LiveKit CLI configuration
+│   ├── DEPLOY_DEMO.md            # Cloud deployment guide
 │   ├── requirements.txt          # Python dependencies
-│   └── .env                      # Agent environment variables
+│   ├── .env                      # Agent environment variables
+│   └── .dockerignore             # Docker ignore rules
 ├── app/                          # Next.js App Router pages
 │   ├── layout.tsx                # Root layout
 │   ├── page.tsx                  # Home page
@@ -103,15 +112,18 @@ This document serves as the single source of truth for:
 │   │   └── page.tsx              # LiveKit room UI
 │   └── api/                      # API routes
 │       └── livekit/
-│           └── token/
-│               └── route.ts      # LiveKit token generation
+│           ├── token/
+│           │   └── route.ts      # LiveKit token generation (main)
+│           └── demo-token/
+│               └── route.ts      # Demo token generation + agent dispatch
 ├── components/                   # React components
 │   ├── sections/                 # Landing page sections
 │   │   ├── header.tsx            # Sticky header with navigation
-│   │   ├── hero.tsx              # Hero section with animated title
+│   │   ├── hero.tsx              # Hero section with animated title and demo modal
 │   │   ├── features.tsx          # Features grid (6 cards)
 │   │   ├── cta.tsx               # Call-to-action section
 │   │   └── footer.tsx            # Footer with links
+│   ├── demo-modal.tsx            # Demo modal with LiveKit audio visualizer
 │   ├── aurora-text.tsx           # Animated gradient text component
 │   ├── section.tsx               # Reusable section wrapper
 │   ├── ui/                       # UI component library
@@ -378,6 +390,88 @@ This document serves as the single source of truth for:
   - Component library can be reused for future marketing pages
   - External UI template no longer needed (all necessary code extracted)
 
+### ADR-018: Demo Modal with LiveKit Cloud Agent
+- **Date**: 2025-11-05
+- **Decision**: Implemented demo modal on landing page with separate LiveKit Cloud-deployed agent
+- **Rationale**:
+  - **User Experience**: Allow visitors to instantly try voice AI without signup
+  - **Isolation**: Demo agent separate from main interview agent (different prompt, duration)
+  - **Scalability**: Cloud-hosted agent auto-scales, no local infrastructure needed
+  - **Cost Optimization**: Cloud agent only active during demo sessions (~60 seconds)
+- **Architecture**:
+  ```
+  Landing Page → "Talk to Meelni" Button
+      ↓
+  DemoModal Component Opens
+      ↓
+  POST /api/livekit/demo-token
+      ↓
+  1. Create unique room: demo-{timestamp}-{random}
+  2. AgentDispatchClient.createDispatch(roomName, "CA_bL5fHYqjCTrA")
+  3. Return token + url
+      ↓
+  LiveKit Cloud Agent Receives Dispatch
+      ↓
+  Agent joins room (cold start ~2-3 seconds)
+      ↓
+  60-second demo conversation
+      ↓
+  Room auto-deletes after 2 minutes (emptyTimeout)
+  ```
+- **Key Components**:
+  - **Demo Agent** (`/agent/demo_agent.py`): 60-second optimized prompt, separate from main agent
+  - **Demo Token API** (`/app/api/livekit/demo-token/route.ts`): Creates room + dispatches Cloud agent
+  - **DemoModal** (`/components/demo-modal.tsx`): LiveKit audio visualizer UI with mic toggle
+  - **Hero Integration** (`/components/sections/hero.tsx`): Modal trigger button
+- **Critical Configuration**:
+  - **MUST set `agent_name` in WorkerOptions**: Required for explicit dispatch via AgentDispatchClient
+  - **Room Name Pattern**: `demo-*` prefix for filtering/analytics
+  - **Agent ID**: `CA_bL5fHYqjCTrA` (deployed to LiveKit Cloud)
+  - **Auto-cleanup**: `emptyTimeout: 120` (room deleted 2 min after last participant)
+- **Consequences**:
+  - Separate deployment pipeline for demo agent (uses `Dockerfile.demo`)
+  - Cloud agent scales to zero when not in use (cost-effective)
+  - No competition with self-hosted agents (isolated dispatch)
+  - Faster iteration: update demo agent without affecting production interviews
+  - **Important**: Agent requires `agent_name` parameter to receive dispatches
+
+### ADR-019: Explicit Agent Dispatch Pattern
+- **Date**: 2025-11-05
+- **Decision**: Use LiveKit's explicit agent dispatch instead of automatic dispatch
+- **Rationale**:
+  - **Control**: Choose which agent joins which room (demo vs interview)
+  - **Multi-Agent Support**: Run multiple agent types simultaneously
+  - **Room Filtering**: Agents can filter by room name patterns
+  - **Dispatch Metadata**: Pass context to agents via metadata
+- **Implementation**:
+  ```python
+  # Agent Configuration (CRITICAL)
+  cli.run_app(
+      WorkerOptions(
+          entrypoint_fnc=entrypoint,
+          prewarm_fnc=prewarm,
+          agent_name="CA_bL5fHYqjCTrA",  # Required for explicit dispatch!
+      ),
+  )
+  ```
+  ```typescript
+  // Backend Dispatch (Next.js API)
+  import { AgentDispatchClient } from "livekit-server-sdk";
+
+  const dispatchClient = new AgentDispatchClient(livekit_url, apiKey, apiSecret);
+  const dispatch = await dispatchClient.createDispatch(roomName, agentId);
+  ```
+- **Key Discovery**:
+  - Setting `agent_name` in WorkerOptions **disables automatic dispatch**
+  - Agent will ONLY join rooms when explicitly dispatched via AgentDispatchClient
+  - Without `agent_name`, multiple self-hosted agents compete for job dispatches
+  - Explicit dispatch provides full control over agent assignment
+- **Consequences**:
+  - More complex setup (must configure agent_name + dispatch API)
+  - Better isolation: demo agent never joins interview rooms
+  - Easier debugging: dispatch logs show which agent was assigned
+  - Supports multi-tenant scenarios (assign agents by customer/use-case)
+
 ---
 
 ## File Boundaries & Responsibilities
@@ -539,6 +633,116 @@ await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.ro
 - Brand, Links, Contact sections
 - Copyright notice
 
+### `/agent/demo_agent.py`
+**Purpose**: Separate demo agent for landing page 60-second demos
+**Key Responsibilities**:
+- Define `DemoAgent` class with 60-second demo prompt
+- Configure for LiveKit Cloud deployment (no custom parameters)
+- Set `agent_name="CA_bL5fHYqjCTrA"` for explicit dispatch
+- Uses same voice pipeline as main agent (Deepgram Nova-3, GPT-4.1-mini, Cartesia Sonic 3)
+
+**Critical Configuration**:
+```python
+DEMO_AGENT_INSTRUCTIONS = """You are Meelni, an AI interview coach giving a 60-second product demo.
+
+Structure (keep under 60 seconds total):
+1. Introduce yourself briefly (10s): "Hi! I'm Meelni, your AI interview coach."
+2. Ask ONE quick product sense question (10s)
+3. Listen to their response (max 20s)
+4. Give very brief feedback (10s): one strength, one improvement
+5. End with: "Ready for a full mock interview? Click 'Start Full Interview' on the page!"
+
+Keep responses SHORT and FAST. This is a quick preview, not a full interview."""
+
+if __name__ == "__main__":
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            prewarm_fnc=prewarm,
+            agent_name="CA_bL5fHYqjCTrA",  # Required for explicit dispatch!
+        ),
+    )
+```
+
+**Deployment**:
+- Uses `Dockerfile.demo` for Cloud deployment
+- Deployed with `lk agent create --secrets-file .env.demo .`
+- Update with `lk agent deploy .`
+- Agent ID stored in `livekit.toml`
+
+### `/app/api/livekit/demo-token/route.ts`
+**Purpose**: Generate tokens and dispatch Cloud agent for demo sessions
+**Input**: `{ participantName: string }`
+**Output**: `{ token: string, url: string, roomName: string }`
+
+**Key Responsibilities**:
+1. Generate unique room name: `demo-{timestamp}-{random}`
+2. Create room with metadata and auto-cleanup settings
+3. Dispatch Cloud agent using AgentDispatchClient
+4. Generate participant access token
+5. Return credentials for LiveKit connection
+
+**Critical Code Pattern**:
+```typescript
+import { AgentDispatchClient } from "livekit-server-sdk";
+
+const roomName = `demo-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+const DEMO_AGENT_ID = "CA_bL5fHYqjCTrA";
+
+// Create room with auto-cleanup
+await roomClient.createRoom({
+  name: roomName,
+  emptyTimeout: 120, // Auto-delete 2 min after last participant
+  maxParticipants: 2, // User + agent only
+});
+
+// Dispatch Cloud agent
+const dispatchClient = new AgentDispatchClient(livekit_url, apiKey, apiSecret);
+await dispatchClient.createDispatch(roomName, DEMO_AGENT_ID);
+```
+
+### `/components/demo-modal.tsx`
+**Purpose**: Modal UI for demo voice conversation with audio visualizer
+**Key Features**:
+- Full-screen modal with backdrop blur
+- LiveKit room connection with `useVoiceAssistant` hook
+- BarVisualizer for real-time audio visualization
+- Mic toggle with mute/unmute functionality
+- Connection status indicator
+- Agent state indicator (listening, thinking, speaking)
+- "Start Full Interview" button to redirect to /setup
+
+**Key Components**:
+```typescript
+<LiveKitRoom
+  token={token}
+  serverUrl={url}
+  connect={true}
+  audio={true}
+  video={false}
+>
+  <DemoControls onClose={onClose} />
+</LiveKitRoom>
+
+function DemoControls() {
+  const { state, audioTrack } = useVoiceAssistant();
+
+  return (
+    <BarVisualizer
+      state={agentState}
+      barCount={30}
+      trackRef={audioTrack}
+    />
+  );
+}
+```
+
+**State Management**:
+- Fetches token on mount via `/api/livekit/demo-token`
+- Manages connection status (idle, connecting, connected)
+- Handles mic muting/unmuting via LocalAudioTrack
+- Displays agent state from useVoiceAssistant hook
+
 ---
 
 ## Important Constraints
@@ -620,14 +824,214 @@ git commit -m "Your message
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
+### LiveKit Cloud Agent Deployment
+
+#### Prerequisites
+```bash
+# Install LiveKit CLI
+brew install livekit-cli  # macOS
+# or download from: https://docs.livekit.io/home/cli/
+
+# Authenticate with LiveKit Cloud
+lk cloud auth
+```
+
+#### First-Time Deployment
+
+**Step 1: Prepare Environment File**
+```bash
+cd agent
+
+# Create .env.demo with your API keys
+cat > .env.demo << EOF
+OPENAI_API_KEY=your_openai_key_here
+DEEPGRAM_API_KEY=your_deepgram_key_here
+EOF
+
+# Note: CARTESIA_API_KEY not needed when using LiveKit Inference!
+```
+
+**Step 2: Ensure Dockerfile Exists**
+```bash
+# Copy Dockerfile.demo to Dockerfile (CLI expects this name)
+cp Dockerfile.demo Dockerfile
+```
+
+**Step 3: Deploy Agent**
+```bash
+# Create and deploy new agent (first time)
+lk agent create --secrets-file .env.demo .
+
+# Output will include agent ID (e.g., CA_bL5fHYqjCTrA)
+# This is automatically saved to livekit.toml
+```
+
+**Step 4: Configure Agent Name for Explicit Dispatch**
+```python
+# CRITICAL: Update demo_agent.py to include agent_name
+if __name__ == "__main__":
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            prewarm_fnc=prewarm,
+            agent_name="CA_bL5fHYqjCTrA",  # Use your agent ID from Step 3
+        ),
+    )
+```
+
+**Step 5: Redeploy with Agent Name**
+```bash
+# Deploy updated agent with agent_name configured
+lk agent deploy .
+
+# Wait for deployment to complete (~30-60 seconds)
+```
+
+**Step 6: Update Frontend with Agent ID**
+```typescript
+// Update /app/api/livekit/demo-token/route.ts
+const DEMO_AGENT_ID = "CA_bL5fHYqjCTrA"; // Your agent ID from Step 3
+```
+
+#### Updating Existing Agent
+
+```bash
+cd agent
+
+# Ensure Dockerfile exists
+cp Dockerfile.demo Dockerfile
+
+# Deploy new version (rolling deployment)
+lk agent deploy .
+
+# Old instances stay active up to 1 hour to complete sessions
+```
+
+#### Monitoring
+
+```bash
+# View agent status
+lk agent status
+
+# View runtime logs (agent activity)
+lk agent logs
+
+# View deployment logs (build/deploy events)
+lk agent logs --log-type=deploy
+
+# View build logs (Docker build output)
+lk agent logs --log-type=build
+
+# List all agents in project
+lk agent list
+```
+
+#### Troubleshooting
+
+**Issue: Agent not receiving dispatches**
+```bash
+# Check: Is agent_name set in WorkerOptions?
+grep -A5 "WorkerOptions" demo_agent.py
+
+# Should see: agent_name="CA_xxxxxxxxxxxx"
+
+# View agent status
+lk agent status
+
+# Check dispatch in LiveKit dashboard
+# Go to: https://cloud.livekit.io/projects/{project}/agents
+```
+
+**Issue: Build failed**
+```bash
+# View build logs
+lk agent logs --log-type=build
+
+# Common causes:
+# - Missing dependencies in requirements.txt
+# - Dockerfile syntax error
+# - Secrets not set correctly
+```
+
+**Issue: Runtime errors**
+```bash
+# View runtime logs
+lk agent logs
+
+# Common causes:
+# - Missing environment variables
+# - Invalid model names
+# - API key issues
+```
+
+**Issue: Update secrets**
+```bash
+# Update environment variables
+lk agent update-secrets \
+  --secrets OPENAI_API_KEY=sk-new-key \
+  --secrets DEEPGRAM_API_KEY=new-key
+```
+
+#### Rollback
+
+```bash
+# Rollback to previous version
+lk agent rollback
+```
+
+#### Delete Agent
+
+```bash
+# Remove agent from LiveKit Cloud
+lk agent delete
+```
+
+#### Critical Configuration Requirements
+
+**MUST HAVE**:
+1. **`agent_name` in WorkerOptions**: Required for explicit dispatch via AgentDispatchClient
+2. **Matching agent ID in frontend**: DEMO_AGENT_ID must match agent_name
+3. **Dockerfile named exactly `Dockerfile`**: CLI requires this name
+4. **Secrets file with required keys**: OPENAI_API_KEY, DEEPGRAM_API_KEY
+
+**DO NOT USE** (Cloud limitations):
+- `load_threshold` - Not supported on Cloud
+- `num_idle_processes` - Not supported on Cloud
+- `request_fnc` - Not supported on Cloud
+
+**ONLY USE**:
+- `entrypoint_fnc` - Your agent entrypoint
+- `prewarm_fnc` - Prewarm function for VAD
+- `agent_name` - Agent ID for explicit dispatch
+
+#### Cost Considerations
+
+**LiveKit Cloud Agent Hosting**:
+- Auto-scales based on demand
+- Charges per active agent instance hour
+- Scales to zero when no sessions active
+- Cold start: ~2-3 seconds
+
+**Demo Use Case** (60-second sessions):
+- Agent only active during demo
+- Most cost-effective for sporadic usage
+- No 24/7 server costs vs self-hosted
+
 ---
 
 ## API Endpoints
 
 ### Implemented
-- ✅ `POST /api/livekit/token` - Generate LiveKit access token
+- ✅ `POST /api/livekit/token` - Generate LiveKit access token (main interview)
   - Input: `{ roomName: string, participantName: string }`
   - Output: `{ token: string, url: string }`
+
+- ✅ `POST /api/livekit/demo-token` - Generate demo token and dispatch Cloud agent
+  - Input: `{ participantName: string }`
+  - Output: `{ token: string, url: string, roomName: string }`
+  - Creates unique demo room: `demo-{timestamp}-{random}`
+  - Dispatches Cloud agent (CA_bL5fHYqjCTrA) using AgentDispatchClient
+  - Room auto-deletes 2 minutes after last participant leaves
 
 ### Planned (see PRD Section 12)
 
@@ -819,7 +1223,7 @@ RESEND_API_KEY=
 
 ## Known Issues & Technical Debt
 
-### Resolved Issues (Phase 0 & 0.5)
+### Resolved Issues (Phase 0, 0.5, 0.7)
 - ✅ SSL Certificate Error: Python 3.12 on macOS needed certificate installation
 - ✅ LiveKit Components Styles: Removed unused import
 - ✅ VoiceAssistant API: Switched to AgentSession pattern
@@ -831,6 +1235,9 @@ RESEND_API_KEY=
 - ✅ ElevenLabs Authentication: Discovered requires separate API key; switched to Cartesia
 - ✅ Interview Page Loading: Resolved by agent restart after configuration changes
 - ✅ Cartesia API Key Confusion: Clarified that Cartesia doesn't need separate key with LiveKit Inference
+- ✅ Multiple Agents Competing: Self-hosted agents competing for dispatches; resolved with explicit dispatch
+- ✅ Cloud Agent Not Joining: Missing `agent_name` in WorkerOptions; required for explicit dispatch
+- ✅ Demo Modal Muted Button: Text logic was inverted; fixed to show correct state
 
 ### Current Technical Debt
 - No session persistence (transcripts not saved to DB yet)
@@ -960,6 +1367,85 @@ RESEND_API_KEY=
 - ✅ Tessa voice providing natural, emotive conversation
 - ✅ Simplified configuration (no Cartesia API key needed)
 - ✅ Committed and pushed to GitHub (feat: redesign UI and upgrade models)
+
+### 2025-11-05 - Phase 0.7: Demo Modal with LiveKit Cloud Agent Complete ✅
+
+**Demo Modal Implementation**
+- Created `/components/demo-modal.tsx` with LiveKit audio visualizer
+- Integrated DemoModal into Hero section with button trigger
+- Implemented full-screen modal UI with backdrop blur
+- Added BarVisualizer for real-time audio visualization (30 bars)
+- Built mic toggle with mute/unmute functionality
+- Added connection status and agent state indicators
+- Included "Start Full Interview" CTA button
+
+**LiveKit Cloud Agent Deployment**
+- Created `/agent/demo_agent.py` with 60-second optimized prompt
+- Separate agent from main interview agent (isolated deployment)
+- Deployed to LiveKit Cloud using `lk agent create`
+- Agent ID: `CA_bL5fHYqjCTrA` (saved in `livekit.toml`)
+- Created `Dockerfile.demo` for Cloud deployment
+- Configured `.dockerignore` to exclude main agent files
+
+**Explicit Agent Dispatch System**
+- Created `/app/api/livekit/demo-token/route.ts` API endpoint
+- Implemented AgentDispatchClient for programmatic agent dispatch
+- Unique room names: `demo-{timestamp}-{random}` pattern
+- Room auto-cleanup: `emptyTimeout: 120` (2 minutes)
+- Dispatch metadata for agent context
+
+**Critical Technical Discoveries**
+- **agent_name Required**: Must set `agent_name` in WorkerOptions for explicit dispatch
+- Without `agent_name`, agents compete for automatic dispatch (6 self-hosted workers issue)
+- AgentDispatchClient.createDispatch() requires matching agent_name
+- Setting agent_name **disables automatic dispatch** entirely
+- Cloud agents support cold start (~2-3 seconds)
+
+**Testing & Debugging**
+- Fixed muted button text logic (`isMuted ? "Unmute" : "Microphone On"`)
+- Debugged dispatch issues (multiple self-hosted agents competing)
+- Resolved Cloud agent not receiving jobs (missing agent_name)
+- Tested rolling deployment with `lk agent deploy`
+- Verified demo flow end-to-end: modal → token → dispatch → agent join → conversation
+
+**Configuration**
+- Updated `.env.demo` with OPENAI_API_KEY, DEEPGRAM_API_KEY only
+- Removed unsupported Cloud parameters (load_threshold, num_idle_processes)
+- Configured explicit dispatch via agent_name parameter
+- Updated DEMO_AGENT_ID in frontend to match Cloud agent ID
+
+**Documentation**
+- Created `/agent/DEPLOY_DEMO.md` with step-by-step Cloud deployment guide
+- Updated CLAUDE.md with comprehensive LiveKit Cloud deployment section
+- Added ADR-018 (Demo Modal Architecture)
+- Added ADR-019 (Explicit Agent Dispatch Pattern)
+- Documented file responsibilities for demo-related files
+- Added troubleshooting guide for common deployment issues
+
+**Key Learnings**
+- LiveKit Cloud auto-scales agents based on demand
+- Explicit dispatch provides full control over agent assignment
+- Room name patterns enable filtering and analytics
+- AgentDispatchClient requires proper authentication (API key + secret)
+- Cloud agents have different parameter restrictions vs self-hosted
+- Rolling deployments keep old instances active for up to 1 hour
+
+**Architecture Benefits**
+- Isolated demo agent: no interference with main interview agent
+- Cost-effective: Cloud agent scales to zero when not in use
+- Fast iteration: update demo agent without touching production
+- Better UX: instant voice demo for landing page visitors
+- Scalable: auto-scales based on concurrent demo sessions
+
+**Deliverables**
+- ✅ Working demo modal with voice conversation
+- ✅ LiveKit Cloud agent deployment pipeline
+- ✅ Explicit agent dispatch system configured
+- ✅ Demo token API with AgentDispatchClient
+- ✅ Audio visualizer with mic controls
+- ✅ Comprehensive deployment documentation
+- ✅ Troubleshooting guide for common issues
+- ✅ Committed and pushed to branch `saviii/landing-demo-modal`
 
 ---
 
