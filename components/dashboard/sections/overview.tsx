@@ -2,21 +2,15 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, Calendar } from "lucide-react";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { ScoreChart } from "@/components/dashboard/score-chart";
 import { CompetencyRadar } from "@/components/dashboard/competency-radar";
 import { SessionList } from "@/components/dashboard/session-list";
+import { EmptyStateCard } from "@/components/dashboard/empty-state-card";
 import Link from "next/link";
-
-interface Session {
-  id: string;
-  roundType: string;
-  mode: string;
-  startedAt: string;
-  endedAt: string | null;
-  config?: any;
-}
+import { useRouter } from "next/navigation";
+import type { Session } from "@/lib/api/queries";
 
 interface OverviewSectionProps {
   sessions: Session[];
@@ -35,6 +29,8 @@ export function OverviewSection({
   totalMinutes,
   completionRate,
 }: OverviewSectionProps) {
+  const router = useRouter();
+
   // Mock score data (will be real once feedback engine is built)
   const scoreData = sessions.slice(0, 10).map((session, index) => ({
     date: new Date(session.startedAt).toLocaleDateString("en-US", {
@@ -125,10 +121,15 @@ export function OverviewSection({
                   </div>
                 ))
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p className="text-sm">No activity yet</p>
-                  <p className="text-xs mt-2">Start your first mock interview!</p>
-                </div>
+                <EmptyStateCard
+                  icon={<Calendar className="w-8 h-8" />}
+                  title="No activity yet"
+                  description="Your recent interview activity will appear here once you complete your first mock interview."
+                  cta={{
+                    label: "Start Your First Interview",
+                    action: () => router.push("/setup"),
+                  }}
+                />
               )}
             </div>
           </CardContent>
