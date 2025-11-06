@@ -133,7 +133,7 @@ function VisualizerPanel({
           {isConnected ? (
             <div className="relative h-48 flex items-center justify-center">
               <BarVisualizer
-                state={agentState}
+                state={agentState as any}
                 barCount={40}
                 trackRef={audioTrack}
                 className="h-full"
@@ -286,9 +286,9 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   }, [room]);
 
   const toggleMute = () => {
-    if (audioTrack) {
+    if (audioTrack && 'setMuted' in audioTrack) {
       const newMutedState = !isMuted;
-      audioTrack.setMuted(newMutedState);
+      (audioTrack as any).setMuted(newMutedState);
       setIsMuted(newMutedState);
     }
   };
