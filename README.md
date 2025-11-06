@@ -260,7 +260,125 @@ npm run db:migrate
 - **PRD:** [`.claude/PRD.md`](./.claude/PRD.md) - Product requirements and feature specs
 - **CLAUDE.md:** [`.claude/CLAUDE.md`](./.claude/CLAUDE.md) - Living operational document (architecture, decisions, workflows)
 - **Agent Docs:** [`agent/README.md`](./agent/README.md) - Python worker setup and deployment
+- **API Documentation:** [`docs/API.md`](./docs/API.md) - Complete API reference guide
+- **Authentication Guide:** [`docs/AUTHENTICATION.md`](./docs/AUTHENTICATION.md) - Supabase Auth setup and flows
+- **Testing Guide:** [`docs/TESTING.md`](./docs/TESTING.md) - API testing examples and best practices
 - **LiveKit Docs:** https://docs.livekit.io/agents - Official LiveKit Agents documentation
+
+---
+
+## 🌐 API Overview
+
+MockMate provides a RESTful API for managing interview sessions, transcripts, and AI-generated feedback.
+
+### Quick Links
+- **API Documentation**: [`docs/API.md`](./docs/API.md) - Complete endpoint reference
+- **OpenAPI Spec**: [`docs/openapi.yaml`](./docs/openapi.yaml) - Machine-readable API specification
+- **TypeScript Types**: [`types/api.ts`](./types/api.ts) - Type definitions for all API schemas
+
+### Base URL
+- **Production**: `https://mockmate.vercel.app`
+- **Development**: `http://localhost:3000`
+
+### Authentication
+All protected endpoints require Supabase Auth JWT tokens:
+```bash
+Authorization: Bearer <your_jwt_token>
+```
+
+See [Authentication Guide](./docs/AUTHENTICATION.md) for detailed setup instructions.
+
+### Key Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/session/start` | POST | Start a new interview session |
+| `/api/session/end` | POST | End an interview session |
+| `/api/session/:id` | GET | Get session details |
+| `/api/sessions` | GET | List user sessions |
+| `/api/session/transcript` | POST | Save transcript turns (single or batch) |
+| `/api/session/:id/transcript` | GET | Get session transcript |
+| `/api/feedback/generate` | POST | Generate AI feedback (GPT-4 Turbo) |
+| `/api/feedback/:id` | GET | Get session feedback |
+| `/api/livekit/token` | POST | Generate LiveKit access token |
+| `/api/livekit/demo-token` | POST | Generate demo token (60-second preview) |
+| `/api/cartesia/voices` | GET | List available TTS voices |
+
+### Example: Start Interview Session
+
+```bash
+curl -X POST http://localhost:3000/api/session/start \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "roundType": "product_sense",
+    "config": {
+      "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+      "speed": 1.0
+    }
+  }'
+```
+
+### Example: Generate Feedback
+
+```bash
+curl -X POST http://localhost:3000/api/feedback/generate \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
+### TypeScript Usage
+
+```typescript
+import type { StartSessionRequest, StartSessionResponse } from '@/types/api';
+
+async function startInterview(config: StartSessionRequest): Promise<StartSessionResponse> {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  const response = await fetch('/api/session/start', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session?.access_token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(config)
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error);
+  }
+
+  return response.json();
+}
+```
+
+### API Features
+
+- ✅ **RESTful design** with standard HTTP methods
+- ✅ **JWT authentication** via Supabase Auth
+- ✅ **Type-safe** with TypeScript definitions
+- ✅ **Comprehensive error handling** with standard HTTP status codes
+- ✅ **Rate limiting** (100 req/min for authenticated endpoints)
+- ✅ **Batch operations** for transcript saves
+- ✅ **Idempotent operations** (e.g., feedback generation)
+- ✅ **OpenAPI 3.0 specification** for tooling integration
+
+### Testing the API
+
+```bash
+# Interactive Swagger UI (after setup)
+open http://localhost:3000/docs
+
+# cURL examples
+# See docs/TESTING.md for comprehensive examples
+
+# Postman collection
+# Import docs/openapi.yaml into Postman
+```
 
 ---
 
