@@ -2,61 +2,45 @@
 
 import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { useState } from "react";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { HistorySection } from "@/components/dashboard/sections/history";
 import { AnalyticsSection } from "@/components/dashboard/sections/analytics";
 import { FeedbackSection } from "@/components/dashboard/sections/feedback";
 import { SettingsSection } from "@/components/dashboard/sections/settings";
-
-interface Session {
-  id: string;
-  roundType: string;
-  mode: string;
-  startedAt: string;
-  endedAt: string | null;
-  config?: any;
-}
+import { FirstTimeUserExperience } from "@/components/dashboard/first-time-user-experience";
+import { DashboardLoading } from "@/components/dashboard/loading";
+import { DashboardError } from "@/components/dashboard/error";
+import { SetupModal } from "@/components/dashboard/setup-modal";
+import { useSessions } from "@/lib/api/queries";
+import { useSetupModal } from "@/lib/hooks/use-setup-modal";
+import { motion } from "framer-motion";
 
 export default function DashboardPage() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(true);
   const [activeSection, setActiveSection] = useState("overview");
 
-  // Fetch sessions
-  useEffect(() => {
-    if (!user) return;
+  // Setup modal hook
+  const setupModal = useSetupModal();
 
-    const fetchSessions = async () => {
-      try {
-        setLoadingSessions(true);
-        const res = await fetch("/api/sessions?limit=20");
-        if (res.ok) {
-          const data = await res.json();
-          setSessions(data.sessions || []);
-        }
-      } catch (error) {
-        console.error("Failed to fetch sessions:", error);
-      } finally {
-        setLoadingSessions(false);
-      }
-    };
-
-    fetchSessions();
-  }, [user]);
+  // Fetch sessions using React Query
+  const {
+    data,
+    isLoading: sessionsLoading,
+    error,
+    refetch,
+  } = useSessions(20);
 
   // Redirect to signin if not authenticated
-  if (!isLoading && !user) {
+  if (!authLoading && !user) {
     router.push("/auth/signin");
     return null;
   }
 
-  // Loading state
-  if (isLoading) {
+  // Loading state for auth
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <motion.div
@@ -72,48 +56,49 @@ export default function DashboardPage() {
     );
   }
 
-  // Calculate stats from sessions
-  const completedSessions = sessions.filter((s) => s.endedAt);
-  const totalMinutes = completedSessions.reduce((sum, session) => {
-    const duration = Math.round(
-      (new Date(session.endedAt!).getTime() - new Date(session.startedAt).getTime()) / 60000
-    );
-    return sum + duration;
-  }, 0);
-  const completionRate = sessions.length > 0
-    ? (completedSessions.length / sessions.length) * 100
-    : 0;
+  // Loading state for sessions
+  if (sessionsLoading) {
+    return <DashboardLoading />;
+  }
 
-  // Mock score data (will be real once feedback engine is built)
-  const scoreData = sessions.slice(0, 10).map((session, index) => ({
-    date: new Date(session.startedAt).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    }),
-    score: 7 + Math.random() * 2, // Mock score
-    roundType: session.roundType,
-  }));
+  // Error state
+  if (error) {
+    return <DashboardError error={error as Error} reset={() => refetch()} />;
+  }
 
-  const avgScore = scoreData.length > 0
-    ? scoreData.reduce((sum, d) => sum + d.score, 0) / scoreData.length
-    : undefined;
+  // Extract data from React Query response
+  const sessions = data?.sessions || [];
+  const stats = data?.stats || {
+    totalSessions: 0,
+    totalMinutes: 0,
+    avgScore: 0,
+    completionRate: 0,
+  };
+
+  // Check if first-time user
+  const isFirstTimeUser = stats.totalSessions === 0;
 
   // Render section based on activeSection
   const renderSection = () => {
+    // Show FTUE for first-time users on overview
+    if (activeSection === "overview" && isFirstTimeUser) {
+      return <FirstTimeUserExperience onStartInterview={setupModal.open} />;
+    }
+
     switch (activeSection) {
       case "overview":
         return (
           <OverviewSection
             sessions={sessions}
-            loadingSessions={loadingSessions}
-            totalSessions={sessions.length}
-            avgScore={avgScore}
-            totalMinutes={totalMinutes}
-            completionRate={completionRate}
+            loadingSessions={false}
+            totalSessions={stats.totalSessions}
+            avgScore={stats.avgScore || undefined}
+            totalMinutes={stats.totalMinutes}
+            completionRate={stats.completionRate}
           />
         );
       case "history":
-        return <HistorySection sessions={sessions} loadingSessions={loadingSessions} />;
+        return <HistorySection sessions={sessions} loadingSessions={false} />;
       case "analytics":
         return <AnalyticsSection />;
       case "feedback":
@@ -124,25 +109,38 @@ export default function DashboardPage() {
         return (
           <OverviewSection
             sessions={sessions}
-            loadingSessions={loadingSessions}
-            totalSessions={sessions.length}
-            avgScore={avgScore}
-            totalMinutes={totalMinutes}
-            completionRate={completionRate}
+            loadingSessions={false}
+            totalSessions={stats.totalSessions}
+            avgScore={stats.avgScore || undefined}
+            totalMinutes={stats.totalMinutes}
+            completionRate={stats.completionRate}
           />
         );
     }
   };
 
   return (
-    <DashboardLayout
-      activeSection={activeSection}
-      setActiveSection={setActiveSection}
-      totalSessions={sessions.length}
-      totalMinutes={totalMinutes}
-      avgScore={avgScore}
-    >
-      {renderSection()}
-    </DashboardLayout>
+    <>
+      <DashboardLayout
+        activeSection={activeSection}
+        setActiveSection={setActiveSection}
+        totalSessions={stats.totalSessions}
+        totalMinutes={stats.totalMinutes}
+        avgScore={stats.avgScore || undefined}
+      >
+        {renderSection()}
+      </DashboardLayout>
+
+      {/* Setup Modal */}
+      <SetupModal
+        isOpen={setupModal.isOpen}
+        onClose={setupModal.close}
+        config={setupModal.config}
+        updateConfig={setupModal.updateConfig}
+        canProceedToNextStep={setupModal.canProceedToNextStep}
+        onSubmit={setupModal.submitConfig}
+        onUseSmartDefaults={setupModal.useSmartDefaults}
+      />
+    </>
   );
 }
