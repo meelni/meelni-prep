@@ -34,7 +34,7 @@ export function Logos() {
           {/* First box - static intro text */}
           <div className="flex col-span-2 sm:col-span-1 items-center justify-center p-4 border-r border-t [&:nth-child(-n+2)]:border-t-0 sm:[&:nth-child(-n+3)]:border-t-0 md:[&:nth-child(-n+6)]:border-t-0 bg-gradient-to-br from-accent/5 to-transparent">
             <p className="text-sm font-semibold text-foreground/90 text-center leading-snug tracking-tight">
-              Helping PMs prepare for interviews at
+              Helping PMs ace interviews at top companies like
             </p>
           </div>
 
