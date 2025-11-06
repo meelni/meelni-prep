@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Public_Sans, Outfit } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/app/providers/auth-provider";
 
 // Using Outfit as a free alternative to Everett - similar elegant, geometric feel
 const outfit = Outfit({
@@ -45,7 +46,7 @@ export default function RootLayout({
       <body
         className={`${outfit.variable} ${publicSans.variable} ${commitMono.variable} antialiased`}
       >
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
