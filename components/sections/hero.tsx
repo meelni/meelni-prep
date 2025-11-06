@@ -143,9 +143,9 @@ function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
             <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-background/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
           </button>
 
-        {/* Secondary CTA - Customize (full setup) */}
+        {/* Secondary CTA - Customize (routes to dashboard) */}
         <Link
-          href="/setup"
+          href="/dashboard"
           className="group relative w-full sm:w-auto overflow-hidden rounded-xl border-2 border-border bg-background/50 backdrop-blur-sm px-8 py-4 font-semibold transition-all duration-300 hover:border-primary/50 hover:bg-background/80 hover:scale-[1.02] active:scale-[0.98]"
         >
           <div className="relative z-10 flex items-center gap-3">
