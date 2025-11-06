@@ -33,7 +33,7 @@ export function Card1() {
       transition: {
         delay: 0.05,
         duration: 0.2,
-        ease: "linear",
+        ease: "linear" as const,
       },
     },
     whileHover: {
@@ -43,7 +43,7 @@ export function Card1() {
       transition: {
         delay: 0.05,
         duration: 0.2,
-        ease: "linear",
+        ease: "linear" as const,
       },
     },
   };
@@ -54,7 +54,7 @@ export function Card1() {
       transition: {
         delay: 0,
         duration: 0.2,
-        ease: "linear",
+        ease: "linear" as const,
       },
     },
     whileHover: {
@@ -65,7 +65,7 @@ export function Card1() {
       transition: {
         delay: 0,
         duration: 0.2,
-        ease: "linear",
+        ease: "linear" as const,
       },
     },
   };
@@ -77,7 +77,7 @@ export function Card1() {
       transition: {
         delay: 0.05,
         duration: 0.2,
-        ease: "linear",
+        ease: "linear" as const,
       },
     },
     whileHover: {
@@ -89,7 +89,7 @@ export function Card1() {
       transition: {
         delay: 0.05,
         duration: 0.2,
-        ease: "easeInOut",
+        ease: "easeInOut" as const,
       },
     },
   };

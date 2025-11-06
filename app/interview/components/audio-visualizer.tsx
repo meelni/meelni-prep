@@ -13,7 +13,7 @@ export function AudioVisualizer() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { localParticipant } = useLocalParticipant();
   const remoteParticipants = useRemoteParticipants();
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
 
   const userAudioTrack = localParticipant?.getTrackPublication(
     Track.Source.Microphone
@@ -23,8 +23,8 @@ export function AudioVisualizer() {
     Track.Source.Microphone
   );
 
-  const userVolume = useTrackVolume(userAudioTrack?.track);
-  const agentVolume = useTrackVolume(agentAudioTrack?.track);
+  const userVolume = useTrackVolume(userAudioTrack?.track as any);
+  const agentVolume = useTrackVolume(agentAudioTrack?.track as any);
 
   useEffect(() => {
     const canvas = canvasRef.current;
