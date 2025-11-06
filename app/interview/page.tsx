@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers/auth-provider";
+import { useQueryClient } from "@tanstack/react-query";
+import { sessionKeys } from "@/lib/api/queries";
 import { LiveKitRoomWrapper, TranscriptTurn } from "@/components/interview/livekit-room";
 import { AgentStatus } from "./components/agent-status";
 import { TranscriptPanel } from "./components/transcript-panel";
@@ -24,6 +26,7 @@ interface InterviewSession {
 export default function InterviewPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("sessionId");
   const tokenParam = searchParams.get("token");
@@ -41,6 +44,15 @@ export default function InterviewPage() {
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Invalidate queries when component unmounts (user leaves interview)
+  useEffect(() => {
+    return () => {
+      console.log("Interview page unmounting, invalidating sessions queries");
+      queryClient.invalidateQueries({ queryKey: sessionKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: sessionKeys.all });
+    };
+  }, [queryClient]);
 
   useEffect(() => {
     if (authLoading) return;
