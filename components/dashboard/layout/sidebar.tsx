@@ -25,12 +25,15 @@ export function Sidebar({
   avgScore = 0,
 }: SidebarProps) {
   const navigationItems = [
-    { id: "overview", icon: Monitor, label: "Overview" },
-    { id: "history", icon: History, label: "Interview History" },
-    { id: "analytics", icon: BarChart3, label: "Analytics" },
-    { id: "feedback", icon: Lightbulb, label: "Feedback & Insights" },
-    { id: "settings", icon: Settings, label: "Settings" },
+    { id: "overview", icon: Monitor, label: "Overview", minSessions: 0 },
+    { id: "history", icon: History, label: "Interview History", minSessions: 1 },
+    { id: "analytics", icon: BarChart3, label: "Analytics", minSessions: 3 },
+    { id: "feedback", icon: Lightbulb, label: "Feedback & Insights", minSessions: 5 },
+    { id: "settings", icon: Settings, label: "Settings", minSessions: 0 },
   ];
+
+  // Filter navigation items based on progressive disclosure
+  const visibleNavItems = navigationItems.filter((item) => totalSessions >= item.minSessions);
 
   const formatMinutes = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
@@ -66,7 +69,7 @@ export function Sidebar({
         </div>
 
         <nav className="space-y-2">
-          {navigationItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveSection(item.id)}

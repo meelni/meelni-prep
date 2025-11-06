@@ -398,5 +398,5 @@ export function isAPIError(response: any): response is APIError {
  * Type guard to check if response is a validation error
  */
 export function isValidationError(response: any): response is ValidationError {
-  return isAPIError(response) && typeof response.fields === 'object';
+  return isAPIError(response) && ('fields' in response ? typeof response.fields === 'object' : true);
 }

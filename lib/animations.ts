@@ -151,3 +151,99 @@ export const progressBar: Variants = {
     },
   },
 };
+
+// Directional step transition variants
+export const stepTransition = (direction: number): Variants => ({
+  enter: {
+    x: direction > 0 ? 20 : -20,
+    opacity: 0,
+    scale: 0.95,
+  },
+  center: {
+    x: 0,
+    opacity: 1,
+    scale: 1,
+    transition: {
+      duration: 0.4,
+      ease: [0.34, 1.56, 0.64, 1],
+    },
+  },
+  exit: {
+    x: direction < 0 ? 20 : -20,
+    opacity: 0,
+    scale: 0.95,
+    transition: {
+      duration: 0.3,
+      ease: [0.4, 0, 0.2, 1],
+    },
+  },
+});
+
+// Breathing pulse animation for smart defaults card
+export const breathingPulse = {
+  animate: {
+    boxShadow: [
+      '0 4px 20px rgb(var(--primary) / 0.2)',
+      '0 6px 30px rgb(var(--primary) / 0.35)',
+      '0 4px 20px rgb(var(--primary) / 0.2)',
+    ],
+    transition: {
+      duration: 2.5,
+      repeat: Infinity,
+      ease: 'easeInOut',
+    },
+  },
+};
+
+// Card lift hover effect
+export const cardLift = {
+  hover: {
+    y: -2,
+    scale: 1.01,
+    transition: {
+      type: 'spring',
+      stiffness: 400,
+      damping: 30,
+    },
+  },
+  tap: {
+    scale: 0.98,
+    y: 0,
+  },
+};
+
+// Icon scale animation
+export const iconScale = {
+  hover: {
+    scale: 1.05,
+    transition: {
+      type: 'spring',
+      stiffness: 400,
+      damping: 25,
+    },
+  },
+};
+
+// Button loading spinner
+export const spinnerRotation = {
+  animate: {
+    rotate: 360,
+    transition: {
+      duration: 1,
+      repeat: Infinity,
+      ease: 'linear',
+    },
+  },
+};
+
+// Focus ring animation
+export const focusRing = {
+  focus: {
+    boxShadow: '0 0 0 3px rgb(var(--primary) / 0.3)',
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 20,
+    },
+  },
+};

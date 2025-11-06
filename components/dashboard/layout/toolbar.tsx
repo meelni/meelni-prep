@@ -1,9 +1,10 @@
 "use client";
 
-import { Bell, RefreshCw, LogOut } from "lucide-react";
+import { Bell, RefreshCw, LogOut, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter } from "next/navigation";
+import { useSetupModal } from "@/lib/hooks/use-setup-modal";
 
 interface ToolbarProps {
   activeSection: string;
@@ -12,6 +13,7 @@ interface ToolbarProps {
 export function Toolbar({ activeSection }: ToolbarProps) {
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const setupModal = useSetupModal();
 
   const handleSignOut = async () => {
     await signOut();
@@ -59,6 +61,15 @@ export function Toolbar({ activeSection }: ToolbarProps) {
         <div className="text-sm text-foreground font-display font-light hidden md:block">
           {displayName}
         </div>
+        <Button
+          variant="glow"
+          size="sm"
+          onClick={setupModal.open}
+          className="hidden md:flex"
+        >
+          <Mic className="h-4 w-4 mr-2" />
+          New Interview
+        </Button>
         <Button
           variant="ghost"
           size="icon"
