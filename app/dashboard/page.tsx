@@ -4,15 +4,53 @@ import { useAuth } from "@/app/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icons } from "@/components/icons";
+import { StatsCards } from "@/components/dashboard/stats-cards";
+import { SessionList } from "@/components/dashboard/session-list";
+import { ScoreChart } from "@/components/dashboard/score-chart";
+import { CompetencyRadar } from "@/components/dashboard/competency-radar";
 import { motion } from "framer-motion";
 import { ArrowRight, LogOut, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
+
+interface Session {
+  id: string;
+  roundType: string;
+  mode: string;
+  startedAt: string;
+  endedAt: string | null;
+  config?: any;
+}
 
 export default function DashboardPage() {
   const { user, isLoading, signOut } = useAuth();
   const router = useRouter();
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
+
+  // Fetch sessions
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchSessions = async () => {
+      try {
+        setLoadingSessions(true);
+        const res = await fetch("/api/sessions?limit=20");
+        if (res.ok) {
+          const data = await res.json();
+          setSessions(data.sessions || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch sessions:", error);
+      } finally {
+        setLoadingSessions(false);
+      }
+    };
+
+    fetchSessions();
+  }, [user]);
 
   // Redirect to signin if not authenticated
   if (!isLoading && !user) {
@@ -45,6 +83,41 @@ export default function DashboardPage() {
   // Get user's first name or email
   const displayName = user?.user_metadata?.full_name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
 
+  // Calculate stats from sessions
+  const completedSessions = sessions.filter((s) => s.endedAt);
+  const totalMinutes = completedSessions.reduce((sum, session) => {
+    const duration = Math.round(
+      (new Date(session.endedAt!).getTime() - new Date(session.startedAt).getTime()) / 60000
+    );
+    return sum + duration;
+  }, 0);
+  const completionRate = sessions.length > 0
+    ? (completedSessions.length / sessions.length) * 100
+    : 0;
+
+  // Mock score data (will be real once feedback engine is built)
+  const scoreData = sessions.slice(0, 10).map((session, index) => ({
+    date: new Date(session.startedAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
+    score: 7 + Math.random() * 2, // Mock score
+    roundType: session.roundType,
+  }));
+
+  // Mock competency data (will be real once feedback engine is built)
+  const competencyData = [
+    { competency: "Structure", score: 7.5, fullMark: 10 },
+    { competency: "Clarity", score: 8.2, fullMark: 10 },
+    { competency: "Insight", score: 7.8, fullMark: 10 },
+    { competency: "Communication", score: 8.5, fullMark: 10 },
+    { competency: "Leadership", score: 7.2, fullMark: 10 },
+  ];
+
+  const avgScore = scoreData.length > 0
+    ? scoreData.reduce((sum, d) => sum + d.score, 0) / scoreData.length
+    : undefined;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       {/* Header */}
@@ -74,7 +147,7 @@ export default function DashboardPage() {
       </header>
 
       {/* Main Content */}
-      <main className="container max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-20">
+      <main className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <motion.div
           variants={staggerContainer}
           initial="initial"
@@ -91,9 +164,27 @@ export default function DashboardPage() {
               Hey {displayName} 👋
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl">
-              Ready to practice your PM interviews? Start a mock interview session below.
+              Track your progress and keep improving your interview skills
             </p>
           </motion.div>
+
+          {/* Stats Cards */}
+          <motion.div variants={fadeInUp}>
+            <StatsCards
+              totalSessions={sessions.length}
+              averageScore={avgScore}
+              totalMinutes={totalMinutes}
+              completionRate={completionRate}
+            />
+          </motion.div>
+
+          {/* Charts Row */}
+          {sessions.length > 0 && (
+            <motion.div variants={fadeInUp} className="grid gap-6 lg:grid-cols-2">
+              <ScoreChart data={scoreData} />
+              <CompetencyRadar data={competencyData} />
+            </motion.div>
+          )}
 
           {/* Start Mock Card */}
           <motion.div variants={fadeInUp}>
@@ -124,27 +215,16 @@ export default function DashboardPage() {
             </Card>
           </motion.div>
 
-          {/* Coming Soon Section */}
+          {/* Interview History */}
           <motion.div variants={fadeInUp} className="space-y-4">
-            <h3 className="text-lg font-semibold text-foreground">Coming Soon</h3>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card className="p-6 bg-surface/30 border-border/30">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-muted-foreground">Interview History</div>
-                  <p className="text-sm text-muted-foreground/70">
-                    Review your past sessions and track your progress over time
-                  </p>
-                </div>
+            <h3 className="text-2xl font-semibold text-foreground">Interview History</h3>
+            {loadingSessions ? (
+              <Card className="p-12 bg-surface/30 border-border/30 text-center">
+                <div className="w-8 h-8 mx-auto border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </Card>
-              <Card className="p-6 bg-surface/30 border-border/30">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-muted-foreground">Performance Analytics</div>
-                  <p className="text-sm text-muted-foreground/70">
-                    See detailed feedback and scores from your mock interviews
-                  </p>
-                </div>
-              </Card>
-            </div>
+            ) : (
+              <SessionList sessions={sessions} />
+            )}
           </motion.div>
         </motion.div>
       </main>
