@@ -25,7 +25,7 @@ const publicSans = Public_Sans({
 const commitMono = localFont({
   src: [
     {
-      path: "../public/fonts/commit-mono-regular.woff2",
+      path: "../public/fonts/commit-mono-regular.otf",
       weight: "400",
       style: "normal",
     },
