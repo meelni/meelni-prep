@@ -14,6 +14,7 @@ export default function InterviewPage() {
   const [url, setUrl] = useState<string>("");
   const [connecting, setConnecting] = useState(false);
   const [config, setConfig] = useState<any>(null);
+  const [sessionEnded, setSessionEnded] = useState(false);
 
   useEffect(() => {
     const role = searchParams.get("role") || "interviewee";
@@ -47,6 +48,7 @@ export default function InterviewPage() {
     if (!config) return;
 
     setConnecting(true);
+    setSessionEnded(false);
     try {
       const response = await fetch("/api/livekit/token", {
         method: "POST",
@@ -67,6 +69,18 @@ export default function InterviewPage() {
     }
   };
 
+  const handleDisconnect = () => {
+    setToken("");
+    setUrl("");
+    setConnecting(false);
+    setSessionEnded(true);
+  };
+
+  const handleStartNewSession = () => {
+    setSessionEnded(false);
+    connectToRoom();
+  };
+
   if (!config) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100">
@@ -79,7 +93,15 @@ export default function InterviewPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
         <div className="rounded-lg bg-gray-800 p-8 shadow-lg border border-gray-700 max-w-md">
-          <h1 className="mb-4 text-2xl font-bold text-white">Ready to Start?</h1>
+          <h1 className="mb-4 text-2xl font-bold text-white">
+            {sessionEnded ? "Session Ended" : "Ready to Start?"}
+          </h1>
+
+          {sessionEnded && (
+            <div className="mb-4 p-3 bg-green-900/20 border border-green-700 rounded-lg text-green-300 text-sm">
+              ✓ Interview session completed successfully
+            </div>
+          )}
           
           <div className="mb-6 space-y-2 text-sm text-gray-300">
             <div className="flex justify-between">
@@ -113,11 +135,11 @@ export default function InterviewPage() {
           </div>
 
           <button
-            onClick={connectToRoom}
+            onClick={sessionEnded ? handleStartNewSession : connectToRoom}
             disabled={connecting}
             className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-3 text-white hover:from-blue-500 hover:to-purple-500 disabled:from-gray-600 disabled:to-gray-600 transition-all font-semibold"
           >
-            {connecting ? "Connecting..." : "Start Interview"}
+            {connecting ? "Connecting..." : sessionEnded ? "Start New Interview" : "Start Interview"}
           </button>
 
           <div className="mt-4 text-center">
@@ -140,15 +162,16 @@ export default function InterviewPage() {
       connect={true}
       audio={true}
       video={false}
+      onDisconnected={handleDisconnect}
       className="flex min-h-screen items-center justify-center bg-gray-900"
     >
       <RoomAudioRenderer />
-      <InterviewRoom config={config} />
+      <InterviewRoom config={config} onEndSession={handleDisconnect} />
     </LiveKitRoom>
   );
 }
 
-function InterviewRoom({ config }: { config: any }) {
+function InterviewRoom({ config, onEndSession }: { config: any; onEndSession: () => void }) {
   const { state } = useVoiceAssistant();
 
   const getStatusColor = (state: string) => {
@@ -229,12 +252,20 @@ function InterviewRoom({ config }: { config: any }) {
         </p>
       </div>
 
-      <button
-        onClick={() => window.location.href = "/setup"}
-        className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-all text-sm"
-      >
-        End Session
-      </button>
+      <div className="flex gap-3">
+        <button
+          onClick={onEndSession}
+          className="px-6 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg transition-all text-sm font-medium"
+        >
+          End Session
+        </button>
+        <button
+          onClick={() => window.location.href = "/setup"}
+          className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-all text-sm"
+        >
+          Change Settings
+        </button>
+      </div>
     </div>
   );
 }
