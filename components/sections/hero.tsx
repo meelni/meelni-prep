@@ -7,6 +7,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { DotPattern } from "@/components/ui/dot-pattern";
 import { AnimatedBars } from "@/components/ui/animated-bars";
 import CheckeredBackground from "@/components/ui/checkered-background";
+import { DemoModal } from "@/components/demo-modal";
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -90,54 +91,54 @@ function HeroTitles() {
 }
 
 function HeroCTA() {
-  // Meelni preset configuration
-  const meelniInterviewUrl = `/interview?role=interviewee&mode=mock_interview&interview_type=product_sense&voice=6ccbfb76-1fc6-48f7-b71d-91ac6298247b&skill_level=mid&speed=1.0&emotion=Friendly&volume=1.0&tts_model=sonic-3&stt_model=deepgram/nova-3&llm_model=openai/gpt-4.1-mini`;
+  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
 
   return (
-    <div className="relative mt-8">
-      <motion.div
-        className="flex w-full max-w-2xl flex-col items-start justify-start gap-4 sm:flex-row"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.8, duration: 0.8, ease }}
-      >
-        {/* Primary CTA - Talk to Meelni (instant start) */}
-        <Link
-          href={meelniInterviewUrl}
-          className="group relative w-full sm:w-auto overflow-hidden rounded-xl bg-gradient-to-r from-primary via-primary/90 to-primary/80 px-8 py-4 text-background font-semibold shadow-lg transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98]"
+    <>
+      <div className="relative mt-8">
+        <motion.div
+          className="flex w-full max-w-2xl flex-col items-start justify-start gap-4 sm:flex-row"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8, duration: 0.8, ease }}
         >
-          <div className="relative z-10 flex items-center gap-3">
-            <svg
-              className="w-5 h-5 transition-transform duration-300 group-hover:scale-110"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-              />
-            </svg>
-            <span>Talk to Meelni</span>
-            <svg
-              className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M13 7l5 5m0 0l-5 5m5-5H6"
-              />
-            </svg>
-          </div>
-          {/* Shimmer effect on hover */}
-          <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-background/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-        </Link>
+          {/* Primary CTA - Talk to Meelni (opens demo modal) */}
+          <button
+            onClick={() => setIsDemoModalOpen(true)}
+            className="group relative w-full sm:w-auto overflow-hidden rounded-xl bg-gradient-to-r from-primary via-primary/90 to-primary/80 px-8 py-4 text-background font-semibold shadow-lg transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <div className="relative z-10 flex items-center gap-3">
+              <svg
+                className="w-5 h-5 transition-transform duration-300 group-hover:scale-110"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                />
+              </svg>
+              <span>Talk to Meelni</span>
+              <svg
+                className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M13 7l5 5m0 0l-5 5m5-5H6"
+                />
+              </svg>
+            </div>
+            {/* Shimmer effect on hover */}
+            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-background/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+          </button>
 
         {/* Secondary CTA - Customize (full setup) */}
         <Link
@@ -168,16 +169,20 @@ function HeroCTA() {
         </Link>
       </motion.div>
 
-      {/* Subtle helper text */}
-      <motion.p
-        className="mt-4 text-body text-muted-foreground/80"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.2, duration: 0.6 }}
-      >
-        Start instantly with Meelni or customize your interview settings
-      </motion.p>
-    </div>
+        {/* Subtle helper text */}
+        <motion.p
+          className="mt-4 text-body text-muted-foreground/80"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.2, duration: 0.6 }}
+        >
+          Try a quick demo or customize your full interview
+        </motion.p>
+      </div>
+
+      {/* Demo Modal */}
+      <DemoModal isOpen={isDemoModalOpen} onClose={() => setIsDemoModalOpen(false)} />
+    </>
   );
 }
 
