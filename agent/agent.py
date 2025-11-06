@@ -117,5 +117,7 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
+            num_idle_processes=2,  # Keep 2 idle processes ready for new jobs
+            load_threshold=0.9,  # Increase threshold to accept more jobs (default: 0.7)
         ),
     )
