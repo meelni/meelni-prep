@@ -196,8 +196,8 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                 onClick={() => setSelectedIndex(index)}
                 className={`group relative px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
                   selectedIndex === index
-                    ? "text-primary scale-105"
-                    : "text-muted-foreground hover:text-foreground hover:scale-102"
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {selectedIndex === index && (
