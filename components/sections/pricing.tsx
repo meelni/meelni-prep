@@ -107,10 +107,10 @@ function PricingTier({
         bounce: 0.3
       }}
       className={cn(
-        "group relative w-full h-full rounded-2xl border transition-all duration-300 backdrop-blur-sm",
+        "group relative w-full h-full rounded-2xl border transition-all duration-300 backdrop-blur-md",
         isPopular
-          ? "border-primary/50 bg-primary/5 hover:border-primary/70 hover:-translate-y-1"
-          : "border-border bg-background/60 hover:border-primary/40 hover:bg-background/80 hover:-translate-y-1"
+          ? "border-primary/60 bg-primary/10 hover:border-primary/80 hover:-translate-y-1 shadow-lg shadow-primary/10"
+          : "border-border/60 bg-card/50 hover:border-primary/50 hover:bg-card/70 hover:-translate-y-1"
       )}
     >
       {/* Popular badge */}

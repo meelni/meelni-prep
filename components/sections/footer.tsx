@@ -5,7 +5,7 @@ export function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-border bg-background/50 backdrop-blur-sm mt-20">
+    <footer className="border-t border-border/60 bg-background/95 backdrop-blur-lg mt-20">
       <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           {/* Brand Column */}
@@ -64,7 +64,7 @@ export function Footer() {
                 <a
                   key={index}
                   href={link.url}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background/50 text-muted-foreground transition-all duration-200 hover:text-foreground hover:border-primary/50 hover:bg-primary/5"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-card/40 text-muted-foreground transition-all duration-200 hover:text-primary hover:border-primary/60 hover:bg-primary/10"
                 >
                   {link.icon}
                 </a>

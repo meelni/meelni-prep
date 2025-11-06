@@ -60,8 +60,8 @@ export function Header({ isDemoModalOpen = false }: HeaderProps) {
           className={cn(
             "sticky top-0 z-50 w-full transition-all duration-300",
             isScrolled
-              ? "h-[60px] bg-background/80 backdrop-blur-md border-b border-border/50"
-              : "h-[72px] bg-background/60 backdrop-blur-sm"
+              ? "h-[60px] bg-background/95 backdrop-blur-xl border-b border-border/60"
+              : "h-[72px] bg-background/80 backdrop-blur-lg"
           )}
           initial={{ y: -100 }}
           animate={{ y: 0 }}
