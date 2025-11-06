@@ -47,15 +47,15 @@ export function Testimonials() {
                     />
                   )}
                   <div>
-                    <h3 className="text-lg font-medium text-foreground">
+                    <h3 className="text-[16px] leading-[24px] font-sans font-semibold text-foreground">
                       {testimonial.name}
                     </h3>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-label text-muted-foreground">
                       {testimonial.company}
                     </p>
                   </div>
                 </div>
-                <p>{testimonial.text}</p>
+                <p className="text-body font-sans font-normal">{testimonial.text}</p>
               </div>
             </motion.div>
           ))}
