@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 
-export function FirstTimeUserExperience() {
+interface FirstTimeUserExperienceProps {
+  onStartInterview?: () => void;
+}
+
+export function FirstTimeUserExperience({ onStartInterview }: FirstTimeUserExperienceProps) {
   const router = useRouter();
   const { user } = useAuth();
 
@@ -61,7 +65,7 @@ export function FirstTimeUserExperience() {
 
           <motion.div variants={fadeInUp}>
             <Button
-              onClick={() => router.push("/setup")}
+              onClick={onStartInterview || (() => router.push("/setup"))}
               size="lg"
               className="text-lg px-8 py-6 h-auto bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300"
             >
