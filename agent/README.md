@@ -236,6 +236,174 @@ See [LiveKit Agents Docs](https://docs.livekit.io/agents) for advanced customiza
 
 ---
 
+## 🎯 Dynamic Prompt System (New!)
+
+The agent now supports **round-specific interview prompts** that adapt to different PM interview types and difficulty levels.
+
+### Architecture
+
+```
+agent/
+├── prompts/                    # Prompt templates by round type
+│   ├── behavioral.py           # STAR method prompts
+│   ├── product_sense.py        # 5-step framework prompts
+│   ├── execution.py            # Metrics & trade-offs prompts
+│   └── strategy.py             # Business strategy prompts
+├── utils/
+│   └── prompt_builder.py       # Dynamic prompt generator
+└── config.py                   # Room metadata parser
+```
+
+### Supported Round Types
+
+#### 1. **Behavioral** (STAR Method)
+Assesses leadership, collaboration, conflict resolution, decision making, and learning.
+
+**Framework**:
+- Situation: Context and background
+- Task: What needed to be done
+- Action: What YOU specifically did
+- Result: Outcome with metrics
+
+**Difficulty Adjustments**:
+- **Beginner**: High guidance, reminds of STAR framework explicitly
+- **Intermediate**: Moderate guidance, probes for missing elements
+- **Advanced**: Bar-raiser mode, expects polished answers with metrics
+
+#### 2. **Product Sense** (5-Step Framework)
+Assesses user empathy, creative thinking, prioritization, and business understanding.
+
+**Framework**:
+1. Clarify & Scope
+2. Identify Users
+3. Understand Pain Points
+4. Generate Solutions
+5. Prioritize & Recommend
+
+**Difficulty Adjustments**:
+- **Beginner**: Actively guides through 5 steps, suggests frameworks
+- **Intermediate**: Lets candidate drive, probes for missing elements
+- **Advanced**: Interrupts and challenges, expects PM maturity
+
+#### 3. **Execution** (Metrics & Trade-offs)
+Assesses analytical thinking, prioritization, technical depth, stakeholder management.
+
+**Key Areas**:
+- Metrics definition (North Star, leading/lagging)
+- Trade-off analysis (speed vs quality)
+- Technical understanding (APIs, scalability)
+- Execution planning (roadmap, rollout)
+
+**Difficulty Adjustments**:
+- **Beginner**: Guides through metrics step-by-step, provides examples
+- **Intermediate**: Expects framework knowledge (AARRR, RICE)
+- **Advanced**: Senior PM thinking, challenges metrics, expects unit economics
+
+#### 4. **Strategy** (Business Thinking)
+Assesses business acumen, market understanding, competitive analysis, long-term vision.
+
+**Key Areas**:
+- Market sizing (TAM, SAM, SOM)
+- Competitive landscape and moats
+- Business model evaluation
+- 3-5 year vision
+
+**Difficulty Adjustments**:
+- **Beginner**: Guides through frameworks (SWOT, Porter's 5 Forces)
+- **Intermediate**: Expects basic strategy frameworks
+- **Advanced**: Executive-level thinking, challenges assumptions with data
+
+### Feedback Modes
+
+#### end_only (default)
+- No feedback during interview
+- Brief 2-3 sentence summary at end if asked
+- Saves detailed feedback for post-interview
+
+#### real_time
+- Provides brief feedback after each response
+- 1-2 sentences, concise
+- Balances positive and constructive
+- Example: "Good use of STAR method. Try to include more specific metrics."
+
+#### silent
+- Zero feedback during interview
+- Pure evaluation mode
+- All feedback in post-interview report
+
+### Room Metadata Configuration
+
+Pass configuration via room metadata (JSON):
+
+```json
+{
+  "round_type": "product_sense",
+  "config": {
+    "difficulty": "intermediate",
+    "duration": 45,
+    "feedback_mode": "end_only",
+    "persona": null,
+    "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+    "speed": 1.0,
+    "emotion": "professional",
+    "volume": 1.0,
+    "stt_model": "deepgram/nova-3",
+    "llm_model": "openai/gpt-4.1-mini",
+    "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
+  }
+}
+```
+
+### Testing Different Configurations
+
+```python
+# Test behavioral interview, beginner difficulty
+metadata = json.dumps({
+    "round_type": "behavioral",
+    "config": {
+        "difficulty": "beginner",
+        "duration": 30,
+        "feedback_mode": "real_time"
+    }
+})
+
+# Test product sense, advanced difficulty
+metadata = json.dumps({
+    "round_type": "product_sense",
+    "config": {
+        "difficulty": "advanced",
+        "duration": 45,
+        "feedback_mode": "silent"
+    }
+})
+```
+
+### Logs
+
+The agent now logs configuration details on startup:
+
+```
+INFO:__main__:Starting agent for room: session-1234
+INFO:__main__:Room: session-1234
+INFO:__main__:Round Type: product_sense
+INFO:__main__:Difficulty: intermediate
+INFO:__main__:Feedback Mode: end_only
+INFO:__main__:Duration: 45 minutes
+INFO:__main__:Generated prompt for product_sense interview (difficulty: intermediate)
+INFO:__main__:STT Model: deepgram/nova-3
+INFO:__main__:LLM Model: openai/gpt-4.1-mini
+INFO:__main__:TTS Model: cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b
+INFO:__main__:Voice agent started successfully - product_sense interview with intermediate difficulty
+```
+
+### Error Handling
+
+- **Invalid round_type**: Falls back to product_sense with logged warning
+- **Malformed metadata**: Uses default configuration
+- **Missing config keys**: Populated with defaults from `config.py`
+
+---
+
 ## 📊 Performance Considerations
 
 ### Latency Optimization
