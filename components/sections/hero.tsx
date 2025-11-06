@@ -90,8 +90,8 @@ function HeroTitles() {
 }
 
 function HeroCTA() {
-  // Clara preset configuration
-  const claraInterviewUrl = `/interview?role=interviewee&mode=mock_interview&interview_type=product_sense&voice=6ccbfb76-1fc6-48f7-b71d-91ac6298247b&skill_level=mid&speed=1.0&emotion=Friendly&volume=1.0&tts_model=sonic-3&stt_model=deepgram/nova-3&llm_model=openai/gpt-4.1-mini`;
+  // Meelni preset configuration
+  const meelniInterviewUrl = `/interview?role=interviewee&mode=mock_interview&interview_type=product_sense&voice=6ccbfb76-1fc6-48f7-b71d-91ac6298247b&skill_level=mid&speed=1.0&emotion=Friendly&volume=1.0&tts_model=sonic-3&stt_model=deepgram/nova-3&llm_model=openai/gpt-4.1-mini`;
 
   return (
     <div className="relative mt-8">
@@ -101,9 +101,9 @@ function HeroCTA() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.8, duration: 0.8, ease }}
       >
-        {/* Primary CTA - Talk to Clara (instant start) */}
+        {/* Primary CTA - Talk to Meelni (instant start) */}
         <Link
-          href={claraInterviewUrl}
+          href={meelniInterviewUrl}
           className="group relative w-full sm:w-auto overflow-hidden rounded-xl bg-gradient-to-r from-primary via-primary/90 to-primary/80 px-8 py-4 text-background font-semibold shadow-lg transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98]"
         >
           <div className="relative z-10 flex items-center gap-3">
@@ -120,7 +120,7 @@ function HeroCTA() {
                 d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
               />
             </svg>
-            <span>Talk to Clara</span>
+            <span>Talk to Meelni</span>
             <svg
               className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1"
               fill="none"
@@ -175,7 +175,7 @@ function HeroCTA() {
         animate={{ opacity: 1 }}
         transition={{ delay: 1.2, duration: 0.6 }}
       >
-        Start instantly with Clara or customize your interview settings
+        Start instantly with Meelni or customize your interview settings
       </motion.p>
     </div>
   );

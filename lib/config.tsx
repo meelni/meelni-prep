@@ -1,11 +1,11 @@
 import { Icons } from "@/components/icons";
 import {
-  BrainIcon,
-  CodeIcon,
-  GlobeIcon,
-  PlugIcon,
-  UsersIcon,
-  ZapIcon,
+  MicIcon,
+  MessageSquareIcon,
+  TrendingUpIcon,
+  TargetIcon,
+  SparklesIcon,
+  LayoutGridIcon,
 } from "lucide-react";
 
 export const BLUR_FADE_DELAY = 0.15;
@@ -37,40 +37,40 @@ export const siteConfig = {
   },
   features: [
     {
-      name: "Simple Agent Workflows",
+      name: "Natural Voice Conversations",
       description:
-        "Easily create and manage AI agent workflows with intuitive APIs.",
-      icon: <BrainIcon className="h-6 w-6" />,
+        "Practice with Meelni through realistic voice interviews. Natural interruptions, real-time responses, and conversational flow that feels human.",
+      icon: <MicIcon className="h-6 w-6" />,
     },
     {
-      name: "Multi-Agent Systems",
+      name: "7 Practice Modes",
       description:
-        "Build complex systems with multiple AI agents working together.",
-      icon: <UsersIcon className="h-6 w-6" />,
+        "From mock interviews to interactive coaching. Choose the mode that fits your learning style—realistic, guided, or framework-focused.",
+      icon: <LayoutGridIcon className="h-6 w-6" />,
     },
     {
-      name: "Tool Integration",
+      name: "4 PM Interview Types",
       description:
-        "Seamlessly integrate external tools and APIs into your agent workflows.",
-      icon: <PlugIcon className="h-6 w-6" />,
+        "Master Product Sense, Execution, Behavioral, and Strategy interviews. Each with proven frameworks tailored to top tech companies.",
+      icon: <TargetIcon className="h-6 w-6" />,
     },
     {
-      name: "Cross-Language Support",
+      name: "Real-time Feedback",
       description:
-        "Available in all major programming languages for maximum flexibility.",
-      icon: <GlobeIcon className="h-6 w-6" />,
+        "Get instant guidance on structure, pacing, and framework usage. Know exactly where you are in your answer and what to improve.",
+      icon: <SparklesIcon className="h-6 w-6" />,
     },
     {
-      name: "Customizable Agents",
+      name: "Detailed Analytics",
       description:
-        "Design and customize agents to fit your specific use case and requirements.",
-      icon: <CodeIcon className="h-6 w-6" />,
+        "Track progress with rubric scores, transcript reviews, and personalized improvement plans. See your scores trend over time.",
+      icon: <TrendingUpIcon className="h-6 w-6" />,
     },
     {
-      name: "Efficient Execution",
+      name: "Company-Specific Prep",
       description:
-        "Optimize agent performance with built-in efficiency and scalability features.",
-      icon: <ZapIcon className="h-6 w-6" />,
+        "Practice with interview styles from Google, Meta, Amazon, and more. Target your preparation for the exact role you want.",
+      icon: <MessageSquareIcon className="h-6 w-6" />,
     },
   ],
   pricing: [
