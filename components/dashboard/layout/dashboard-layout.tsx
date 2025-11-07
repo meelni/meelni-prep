@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Sidebar } from "./sidebar";
-import { Toolbar } from "./toolbar";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -11,6 +10,8 @@ interface DashboardLayoutProps {
   totalSessions?: number;
   totalMinutes?: number;
   avgScore?: number;
+  user?: any;
+  onSignOut?: () => void;
 }
 
 export function DashboardLayout({
@@ -20,6 +21,8 @@ export function DashboardLayout({
   totalSessions,
   totalMinutes,
   avgScore,
+  user,
+  onSignOut,
 }: DashboardLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -34,6 +37,8 @@ export function DashboardLayout({
         totalSessions={totalSessions}
         totalMinutes={totalMinutes}
         avgScore={avgScore}
+        user={user}
+        onSignOut={onSignOut}
       />
 
       {/* Mobile Overlay */}
@@ -44,15 +49,9 @@ export function DashboardLayout({
         />
       )}
 
-      {/* Main Content */}
-      <div className={`flex-1 flex flex-col ${!sidebarCollapsed ? "md:ml-0" : ""}`}>
-        {/* Top Toolbar */}
-        <Toolbar activeSection={activeSection} />
-
-        {/* Dashboard Content */}
-        <div className="flex-1 overflow-auto">
-          {children}
-        </div>
+      {/* Main Content - NO TOOLBAR */}
+      <div className="flex-1 overflow-auto">
+        {children}
       </div>
     </div>
   );
