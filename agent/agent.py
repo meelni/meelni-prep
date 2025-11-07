@@ -3,6 +3,7 @@ Meelni Interview Agent
 Handles real-time voice interviews with LiveKit inference platform
 """
 
+import json
 import logging
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -13,8 +14,10 @@ from livekit.agents import (
     JobProcess,
     WorkerOptions,
     cli,
+    UserInputTranscribedEvent,
+    SpeechCreatedEvent,
 )
-from livekit.plugins import silero
+from livekit.plugins import silero, cartesia
 from config import parse_room_metadata
 from utils.prompt_builder import build_agent_prompt
 
@@ -67,19 +70,102 @@ async def entrypoint(ctx: JobContext):
     llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
     tts_model = config.get("tts_model", "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b")
 
+    # Extract TTS parameters from config
+    voice_id = config.get("voice", "6ccbfb76-1fc6-48f7-b71d-91ac6298247b")
+    speed = config.get("speed", 1.0)
+    emotion = config.get("emotion", "professional")
+    volume = config.get("volume", 1.0)
+
     logger.info(f"STT Model: {stt_model}")
     logger.info(f"LLM Model: {llm_model}")
     logger.info(f"TTS Model: {tts_model}")
+    logger.info(f"TTS Config: voice={voice_id}, speed={speed}, emotion={emotion}, volume={volume}")
     logger.info("Initializing voice agent session with LiveKit inference...")
 
-    # Create agent session with string-based model configuration
-    # LiveKit inference handles all the API routing
+    # Note: Using string-based TTS model with LiveKit Inference
+    # cartesia.TTS() requires CARTESIA_API_KEY even with LiveKit Inference
+    # String format works without API key and voice is embedded in tts_model string
+    # TODO: Add CARTESIA_API_KEY to .env if we need per-user voice/speed/emotion customization
     session = AgentSession(
         stt=stt_model,
         llm=llm_model,
-        tts=tts_model,
+        tts=tts_model,  # String format: "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
         vad=ctx.proc.userdata["vad"],
     )
+
+    # Subscribe to transcript events for real-time capture
+    @session.on("user_input_transcribed")
+    def on_user_transcript(event: UserInputTranscribedEvent):
+        """Capture user speech transcript and publish to frontend"""
+        if event.is_final:  # Only publish final transcripts, not interim
+            transcript_data = {
+                "speaker": "user",
+                "text": event.transcript,
+                "timestamp": event.created_at,
+                "is_final": event.is_final,
+            }
+
+            # Publish via LiveKit data track
+            logger.info(f"[Transcript] User: {event.transcript[:50]}...")
+
+            # Use asyncio.create_task for async operation within sync callback
+            import asyncio
+            asyncio.create_task(
+                ctx.room.local_participant.publish_data(
+                    json.dumps(transcript_data).encode("utf-8"),
+                    topic="transcript"
+                )
+            )
+
+    @session.on("speech_created")
+    def on_agent_speech(event: SpeechCreatedEvent):
+        """Capture agent speech transcript when created"""
+        # The speech_handle contains chat_items which have the agent's responses
+        speech_handle = event.speech_handle
+
+        # Add a callback to get the full text when speech is done
+        def on_speech_done(handle):
+            try:
+                # Extract text from chat items
+                agent_text = ""
+                for chat_item in handle.chat_items:
+                    if hasattr(chat_item, 'content'):
+                        # Content might be a string or a list of content items
+                        content = chat_item.content
+                        if isinstance(content, str):
+                            agent_text += content + " "
+                        elif isinstance(content, list):
+                            # If it's a list, concatenate all string items
+                            for item in content:
+                                if isinstance(item, str):
+                                    agent_text += item + " "
+                                elif hasattr(item, 'text'):
+                                    agent_text += item.text + " "
+
+                if agent_text.strip():
+                    transcript_data = {
+                        "speaker": "interviewer",  # Frontend expects "interviewer" not "agent"
+                        "text": agent_text.strip(),
+                        "timestamp": event.created_at,
+                        "is_final": True,
+                    }
+
+                    logger.info(f"[Transcript] Agent: {agent_text[:50].strip()}...")
+
+                    # Use asyncio.create_task for async operation within sync callback
+                    import asyncio
+                    asyncio.create_task(
+                        ctx.room.local_participant.publish_data(
+                            json.dumps(transcript_data).encode("utf-8"),
+                            topic="transcript"
+                        )
+                    )
+            except Exception as e:
+                logger.error(f"Error extracting agent transcript: {e}")
+
+        speech_handle.add_done_callback(on_speech_done)
+
+    logger.info("Transcript event handlers registered successfully")
 
     await session.start(
         agent=InterviewAgent(instructions=instructions),

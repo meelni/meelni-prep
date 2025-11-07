@@ -1,65 +1,66 @@
 /**
  * List User Sessions API
  *
- * Retrieves a list of the authenticated user's interview sessions, with optional
- * filtering by round type. Results are ordered by most recent first.
+ * Retrieves a list of the authenticated user's interview sessions with stats,
+ * optional filtering by round type, and pagination support.
  *
  * @route GET /api/sessions
  * @access Protected (requires Supabase Auth JWT)
  * @authentication Bearer token in Authorization header
  *
  * @query {string} roundType Optional - Filter by interview type (behavioral | product_sense | execution | strategy)
- * @query {number} limit Optional - Maximum number of results (1-100, default: 50)
+ * @query {number} limit Optional - Maximum number of results per page (1-100, default: 20)
+ * @query {number} offset Optional - Number of results to skip (default: 0)
+ * @query {string} sort Optional - Sort order: 'desc' (newest first, default) or 'asc' (oldest first)
  *
- * @response {Object} response - List of sessions
+ * @response {Object} response - Sessions data with stats and pagination
  * @response.sessions {Array<Object>} - Array of session objects
- * @response.count {number} - Number of sessions returned
+ * @response.pagination {Object} - Pagination metadata
+ * @response.pagination.total {number} - Total number of sessions
+ * @response.pagination.limit {number} - Limit parameter
+ * @response.pagination.offset {number} - Offset parameter
+ * @response.pagination.hasMore {boolean} - Whether there are more sessions
+ * @response.stats {Object} - User session statistics
+ * @response.stats.totalSessions {number} - Total count of sessions
+ * @response.stats.totalMinutes {number} - Sum of completed session durations
+ * @response.stats.avgScore {number} - Average score (0 until feedback engine is built)
+ * @response.stats.completionRate {number} - Percentage of completed sessions
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
  * @throws {400} Bad Request - Invalid roundType or limit out of range
  * @throws {500} Internal Server Error - Database query failed
  *
  * @example
- * // Request (All Sessions)
- * GET /api/sessions?limit=10
+ * // Request (All Sessions with Stats)
+ * GET /api/sessions?limit=10&offset=0
  * Headers:
  *   Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
  *
  * // Response (200 OK)
  * {
- *   "sessions": [
- *     {
- *       "id": "session-1",
- *       "userId": "user-123",
- *       "roundType": "product_sense",
- *       "mode": "voice_video",
- *       "startedAt": "2025-11-05T10:30:00Z",
- *       "endedAt": "2025-11-05T11:15:00Z",
- *       ...
- *     },
- *     {
- *       "id": "session-2",
- *       "roundType": "behavioral",
- *       "startedAt": "2025-11-04T14:20:00Z",
- *       "endedAt": null,
- *       ...
- *     }
- *   ],
- *   "count": 2
- * }
- *
- * // Request (Filtered by Round Type)
- * GET /api/sessions?roundType=product_sense&limit=20
- *
- * // Error Response (400 Bad Request)
- * {
- *   "error": "Limit must be between 1 and 100"
+ *   "sessions": [...],
+ *   "pagination": {
+ *     "total": 15,
+ *     "limit": 10,
+ *     "offset": 0,
+ *     "hasMore": true
+ *   },
+ *   "stats": {
+ *     "totalSessions": 15,
+ *     "totalMinutes": 450,
+ *     "avgScore": 0,
+ *     "completionRate": 80
+ *   }
  * }
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserSessions, getUserSessionsByRoundType } from "@/lib/db/sessions";
+import {
+  getUserSessionsPaginated,
+  getUserSessionsByRoundTypePaginated,
+  getUserSessionStats,
+} from "@/lib/db/sessions";
 
 export async function GET(req: NextRequest) {
   try {
@@ -78,7 +79,9 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams;
     const roundType = searchParams.get("roundType");
     const limitParam = searchParams.get("limit");
-    const limit = limitParam ? parseInt(limitParam, 10) : 50;
+    const offsetParam = searchParams.get("offset");
+    const limit = limitParam ? parseInt(limitParam, 10) : 20;
+    const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 
     // Validate limit
     if (limit < 1 || limit > 100) {
@@ -88,8 +91,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Get sessions
-    let sessions;
+    // Validate offset
+    if (offset < 0) {
+      return NextResponse.json(
+        { error: "Offset must be non-negative" },
+        { status: 400 }
+      );
+    }
+
+    // Get sessions with pagination
+    let result;
     if (roundType) {
       // Validate roundType
       const validRoundTypes = [
@@ -105,18 +116,33 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      sessions = await getUserSessionsByRoundType(
+      result = await getUserSessionsByRoundTypePaginated(
         user.id,
         roundType as "behavioral" | "product_sense" | "execution" | "strategy",
-        limit
+        limit,
+        offset
       );
     } else {
-      sessions = await getUserSessions(user.id, limit);
+      result = await getUserSessionsPaginated(user.id, limit, offset);
     }
+
+    const { sessions, total } = result;
+
+    // Get user stats from all sessions (not just paginated results)
+    const stats = await getUserSessionStats(user.id);
+
+    // Pagination metadata
+    const pagination = {
+      total,
+      limit,
+      offset,
+      hasMore: offset + sessions.length < total,
+    };
 
     return NextResponse.json({
       sessions,
-      count: sessions.length,
+      pagination,
+      stats,
     });
   } catch (error) {
     console.error("Error fetching sessions:", error);

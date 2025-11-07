@@ -56,7 +56,7 @@ export function validateInterviewConfig(
     if (error instanceof z.ZodError) {
       return {
         success: false,
-        error: error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join(", "),
+        error: error.issues.map((e) => `${e.path.join(".")}: ${e.message}`).join(", "),
       };
     }
     return { success: false, error: "Validation failed" };
@@ -76,7 +76,7 @@ export function validateSessionStart(
     if (error instanceof z.ZodError) {
       return {
         success: false,
-        error: error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join(", "),
+        error: error.issues.map((e) => `${e.path.join(".")}: ${e.message}`).join(", "),
       };
     }
     return { success: false, error: "Validation failed" };

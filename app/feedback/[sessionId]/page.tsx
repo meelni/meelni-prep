@@ -1,288 +1,223 @@
 "use client";
 
-import { useAuth } from "@/app/providers/auth-provider";
+import { useParams } from "next/navigation";
+import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Icons } from "@/components/icons";
-import { FeedbackDisplay } from "@/components/feedback/feedback-display";
-import { motion } from "framer-motion";
-import { ArrowLeft, Calendar, Clock, MessageSquare } from "lucide-react";
+import { ArrowLeft, Download, Share2, Calendar, Loader2, GitCompare } from "lucide-react";
+import { ScoreBreakdown } from "@/components/feedback/score-breakdown";
+import { RubricSection } from "@/components/feedback/rubric-section";
+import { StrengthsList } from "@/components/feedback/strengths-list";
+import { ImprovementsList } from "@/components/feedback/improvements-list";
+import { DrillList } from "@/components/feedback/drill-list";
+import { TranscriptViewer } from "@/components/feedback/transcript-viewer";
+import type { EvaluationResponse, TranscriptTurn } from "@/lib/types/feedback";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { fadeInUp, staggerContainer } from "@/lib/animations";
 
-interface Session {
-  id: string;
-  roundType: string;
-  mode: string;
-  startedAt: string;
-  endedAt: string | null;
-  config?: any;
+// Loading state component
+function LoadingState() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <Card className="p-8 text-center">
+        <Loader2 className="w-12 h-12 text-primary mx-auto mb-4 animate-spin" />
+        <p className="text-foreground font-display font-light mb-2">
+          Generating Feedback
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Analyzing your interview performance...
+        </p>
+      </Card>
+    </div>
+  );
 }
 
-interface TranscriptTurn {
-  id: string;
-  speaker: "user" | "interviewer";
-  text: string;
-  startedAt: string;
-  endedAt: string;
+// Error state component
+function ErrorState({ error }: { error: string | null }) {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <Card className="p-8 text-center max-w-md">
+        <p className="text-destructive mb-4 font-display font-light text-lg">
+          Failed to load feedback
+        </p>
+        <p className="text-sm text-muted-foreground mb-6">
+          {error || "An unexpected error occurred"}
+        </p>
+        <Button asChild>
+          <Link href="/dashboard">Return to Dashboard</Link>
+        </Button>
+      </Card>
+    </div>
+  );
 }
-
-const roundTypeLabels: Record<string, string> = {
-  product_sense: "Product Sense",
-  analytical_thinking: "Analytical Thinking",
-  behavioral: "Behavioral",
-  execution: "Execution",
-  strategy: "Strategy",
-};
 
 export default function FeedbackPage() {
-  const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
   const params = useParams();
   const sessionId = params.sessionId as string;
 
-  const [session, setSession] = useState<Session | null>(null);
+  const [evaluation, setEvaluation] = useState<EvaluationResponse | null>(null);
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
-  const [feedback, setFeedback] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/auth/signin");
-      return;
-    }
-
-    if (!user || !sessionId) return;
-
-    const fetchSessionData = async () => {
+    async function fetchFeedback() {
       try {
         setLoading(true);
-        setError(null);
 
-        // Fetch session details
-        const sessionRes = await fetch(`/api/session/${sessionId}`);
-        if (!sessionRes.ok) {
-          throw new Error("Failed to fetch session");
-        }
-        const sessionData = await sessionRes.json();
-        setSession(sessionData.session);
+        // Call evaluation API
+        const response = await fetch(`/api/eval/${sessionId}`, {
+          method: "POST",
+        });
 
-        // Fetch transcript
-        const transcriptRes = await fetch(`/api/session/${sessionId}/transcript`);
-        if (transcriptRes.ok) {
-          const transcriptData = await transcriptRes.json();
-          setTranscript(transcriptData.turns || []);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: response.statusText }));
+          throw new Error(errorData.error || `Failed to fetch feedback: ${response.statusText}`);
         }
 
-        // Fetch feedback if it exists
-        const feedbackRes = await fetch(`/api/feedback/${sessionId}`);
-        if (feedbackRes.ok) {
-          const feedbackData = await feedbackRes.json();
-          setFeedback(feedbackData.feedback);
-        }
+        const data: EvaluationResponse = await response.json();
+        setEvaluation(data);
+
+        // TODO: Fetch transcript from separate endpoint when WS #3 completes
+        // For now, use empty transcript
+        setTranscript([]);
       } catch (err) {
-        console.error("Error fetching session:", err);
-        setError("Failed to load session data");
+        console.error("Error fetching feedback:", err);
+        setError(err instanceof Error ? err.message : "Failed to load feedback");
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchSessionData();
-  }, [user, authLoading, sessionId, router]);
-
-  const handleGenerateFeedback = async () => {
-    try {
-      setGenerating(true);
-      const res = await fetch("/api/feedback/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to generate feedback");
-      }
-
-      const data = await res.json();
-      setFeedback(data.feedback);
-    } catch (error) {
-      console.error("Error generating feedback:", error);
-      alert("Failed to generate feedback. Please try again.");
-    } finally {
-      setGenerating(false);
     }
+
+    fetchFeedback();
+  }, [sessionId]);
+
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  if (error || !evaluation) {
+    return <ErrorState error={error} />;
+  }
+
+  const handleDownload = () => {
+    alert("Download PDF feature coming soon!");
   };
 
-  if (authLoading || loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3 }}
-          className="flex flex-col items-center gap-4"
-        >
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading session...</p>
-        </motion.div>
-      </div>
-    );
-  }
-
-  if (error || !session) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center">
-        <Card className="p-8 max-w-md">
-          <div className="text-center space-y-4">
-            <p className="text-lg font-medium text-foreground">
-              {error || "Session not found"}
-            </p>
-            <Link href="/dashboard">
-              <Button>
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Dashboard
-              </Button>
-            </Link>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  const startDate = new Date(session.startedAt);
-  const duration = session.endedAt
-    ? Math.round(
-        (new Date(session.endedAt).getTime() - startDate.getTime()) / 60000
-      )
-    : null;
+  const handleShare = () => {
+    alert("Share feedback feature coming soon!");
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full bg-background/80 backdrop-blur-md border-b border-border/50">
-        <div className="container max-w-7xl mx-auto h-16 px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-full">
-            <Link href="/dashboard" className="flex items-center gap-3 group">
-              <Icons.logo className="w-6 h-6 text-primary transition-transform duration-300 group-hover:scale-110" />
-              <span className="font-sans font-semibold text-lg text-foreground">
-                Meelni
-              </span>
-            </Link>
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Dashboard
+      <div className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="container max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/dashboard">
+                <Button variant="ghost" size="sm">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to Dashboard
+                </Button>
+              </Link>
+              <div className="h-6 w-px bg-border" />
+              <div className="space-y-1">
+                <h1 className="text-xl font-display font-light text-foreground">
+                  Interview Feedback
+                </h1>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Session {sessionId}</span>
+                  <Badge variant="secondary" className="ml-2">
+                    Product Sense
+                  </Badge>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href={`/feedback/${sessionId}/compare`}>
+                <Button variant="outline" size="sm">
+                  <GitCompare className="w-4 h-4 mr-2" />
+                  Compare Attempts
+                </Button>
+              </Link>
+              <Button variant="outline" size="sm" onClick={handleShare}>
+                <Share2 className="w-4 h-4 mr-2" />
+                Share
               </Button>
-            </Link>
+              <Button variant="outline" size="sm" onClick={handleDownload}>
+                <Download className="w-4 h-4 mr-2" />
+                Download PDF
+              </Button>
+            </div>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
-      <main className="container max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <motion.div
-          variants={staggerContainer}
-          initial="initial"
-          animate="animate"
-          className="space-y-8"
-        >
-          {/* Session Header */}
-          <motion.div variants={fadeInUp} className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Badge className="bg-primary/10 text-primary border-primary/20">
-                {roundTypeLabels[session.roundType] || session.roundType}
-              </Badge>
-              {!session.endedAt && (
-                <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
-                  In Progress
-                </Badge>
-              )}
-            </div>
-
-            <h1 className="text-4xl font-bold tracking-tight text-foreground">
-              Interview Session
-            </h1>
-
-            <div className="flex items-center gap-6 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                <span>
-                  {startDate.toLocaleDateString("en-US", {
-                    month: "long",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </span>
-              </div>
-              {duration !== null && (
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  <span>{duration} minutes</span>
+      <div className="container max-w-7xl mx-auto px-4 py-8">
+        <div className="space-y-8">
+          {/* Summary Card */}
+          <Card className="bg-gradient-to-br from-card via-card to-card/80 border-primary/20">
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 flex-1">
+                    <h2 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
+                      Overall Assessment
+                    </h2>
+                    <p className="text-sm text-foreground leading-relaxed">
+                      {evaluation.summary}
+                    </p>
+                  </div>
+                  <div className="text-right ml-8">
+                    <div className="text-5xl font-display font-light text-primary mb-1">
+                      {evaluation.scores.overall.toFixed(1)}
+                    </div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide">
+                      out of 10
+                    </div>
+                  </div>
                 </div>
-              )}
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" />
-                <span>{transcript.length} messages</span>
               </div>
-            </div>
-          </motion.div>
+            </CardContent>
+          </Card>
 
-          {/* Feedback Section */}
-          <motion.div variants={fadeInUp}>
-            <FeedbackDisplay
-              feedback={feedback}
-              onGenerate={handleGenerateFeedback}
-              generating={generating}
-            />
-          </motion.div>
+          {/* Score Breakdown */}
+          <ScoreBreakdown scores={evaluation.scores} />
+
+          {/* Rubric Cards */}
+          <div className="space-y-3">
+            <h2 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
+              Detailed Scores
+            </h2>
+            <RubricSection scores={evaluation.scores} />
+          </div>
+
+          {/* Strengths and Improvements Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <StrengthsList strengths={evaluation.strengths} />
+            <ImprovementsList improvements={evaluation.improvements} />
+          </div>
+
+          {/* Practice Drills */}
+          <DrillList drills={evaluation.drills} />
 
           {/* Transcript */}
-          {transcript.length > 0 && (
-            <motion.div variants={fadeInUp} className="space-y-4">
-              <h2 className="text-2xl font-semibold text-foreground">
-                Conversation Transcript
-              </h2>
-              <Card className="p-6 bg-surface/50 border-border/50">
-                <div className="space-y-4">
-                  {transcript.map((turn, index) => (
-                    <div
-                      key={turn.id}
-                      className={`flex gap-3 ${
-                        turn.speaker === "user" ? "flex-row-reverse" : "flex-row"
-                      }`}
-                    >
-                      <div
-                        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                          turn.speaker === "user"
-                            ? "bg-primary/10 text-primary"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {turn.speaker === "user" ? "U" : "AI"}
-                      </div>
-                      <div
-                        className={`flex-1 p-4 rounded-lg ${
-                          turn.speaker === "user"
-                            ? "bg-primary/5 border border-primary/10"
-                            : "bg-muted/30 border border-border/30"
-                        }`}
-                      >
-                        <p className="text-sm text-foreground">{turn.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </motion.div>
+          {transcript.length > 0 ? (
+            <TranscriptViewer transcript={transcript} />
+          ) : (
+            <Card className="bg-card border-border">
+              <CardContent className="p-8 text-center">
+                <p className="text-muted-foreground text-sm">
+                  Transcript will be available once session recording is complete
+                </p>
+              </CardContent>
+            </Card>
           )}
-        </motion.div>
-      </main>
+        </div>
+      </div>
     </div>
   );
 }

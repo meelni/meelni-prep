@@ -91,14 +91,14 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { createTranscriptTurn, batchCreateTranscriptTurns } from "@/lib/db/transcripts";
 import { isSessionOwnedByUser } from "@/lib/db/sessions";
 
 export async function POST(req: NextRequest) {
   try {
     // Verify authentication
-    const supabase = await createServerClient();
+    const supabase = await createClient();
     const {
       data: { user },
       error: authError,

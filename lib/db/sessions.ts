@@ -1,6 +1,6 @@
 import { db } from "./index";
 import { interviewSession, appUser } from "./schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 
 export interface CreateSessionInput {
   userId: string;
@@ -106,6 +106,34 @@ export async function getUserSessions(userId: string, limit = 50) {
 }
 
 /**
+ * Get sessions for a user with pagination and total count
+ */
+export async function getUserSessionsPaginated(
+  userId: string,
+  limit = 20,
+  offset = 0
+) {
+  // Get sessions with pagination
+  const sessions = await db
+    .select()
+    .from(interviewSession)
+    .where(eq(interviewSession.userId, userId))
+    .orderBy(desc(interviewSession.startedAt))
+    .limit(limit)
+    .offset(offset);
+
+  // Get total count
+  const countResult = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(interviewSession)
+    .where(eq(interviewSession.userId, userId));
+
+  const total = Number(countResult[0]?.count || 0);
+
+  return { sessions, total };
+}
+
+/**
  * Get sessions for a user filtered by round type
  */
 export async function getUserSessionsByRoundType(
@@ -126,6 +154,88 @@ export async function getUserSessionsByRoundType(
     .limit(limit);
 
   return sessions;
+}
+
+/**
+ * Get sessions for a user filtered by round type with pagination
+ */
+export async function getUserSessionsByRoundTypePaginated(
+  userId: string,
+  roundType: "behavioral" | "product_sense" | "execution" | "strategy",
+  limit = 20,
+  offset = 0
+) {
+  // Get sessions with pagination
+  const sessions = await db
+    .select()
+    .from(interviewSession)
+    .where(
+      and(
+        eq(interviewSession.userId, userId),
+        eq(interviewSession.roundType, roundType)
+      )
+    )
+    .orderBy(desc(interviewSession.startedAt))
+    .limit(limit)
+    .offset(offset);
+
+  // Get total count
+  const countResult = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(interviewSession)
+    .where(
+      and(
+        eq(interviewSession.userId, userId),
+        eq(interviewSession.roundType, roundType)
+      )
+    );
+
+  const total = Number(countResult[0]?.count || 0);
+
+  return { sessions, total };
+}
+
+/**
+ * Get user session stats (all sessions for stats calculation)
+ */
+export async function getUserSessionStats(userId: string) {
+  // Get all sessions for the user
+  const allSessions = await db
+    .select({
+      id: interviewSession.id,
+      startedAt: interviewSession.startedAt,
+      endedAt: interviewSession.endedAt,
+    })
+    .from(interviewSession)
+    .where(eq(interviewSession.userId, userId));
+
+  const totalSessions = allSessions.length;
+  const completedSessions = allSessions.filter((s) => s.endedAt !== null);
+
+  // Calculate total minutes from completed sessions
+  const totalMinutes = completedSessions.reduce((sum, session) => {
+    if (session.startedAt && session.endedAt) {
+      const durationMs =
+        new Date(session.endedAt).getTime() -
+        new Date(session.startedAt).getTime();
+      const durationMinutes = Math.round(durationMs / 60000);
+      return sum + durationMinutes;
+    }
+    return sum;
+  }, 0);
+
+  // Calculate completion rate
+  const completionRate =
+    totalSessions > 0
+      ? Math.round((completedSessions.length / totalSessions) * 100)
+      : 0;
+
+  return {
+    totalSessions,
+    totalMinutes,
+    avgScore: 0, // Will be calculated from feedback table when implemented
+    completionRate,
+  };
 }
 
 /**

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
-export default function SignInPage() {
+function SignInContent() {
   const { signInWithGoogle, user, isLoading: authLoading } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +87,7 @@ export default function SignInPage() {
             </motion.div>
             <h1 className="text-2xl font-bold text-foreground">Welcome to Meelni</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Sign in to start practicing interviews
+              Save your progress and track improvement over time
             </p>
           </div>
 
@@ -161,5 +161,19 @@ export default function SignInPage() {
         </motion.div>
       </motion.div>
     </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <SignInContent />
+    </Suspense>
   );
 }
