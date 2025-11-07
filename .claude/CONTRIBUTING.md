@@ -4,7 +4,7 @@
 **Status**: Placeholder (to be populated when onboarding team)
 
 ## Purpose
-Guidelines for contributing to the MockMate codebase.
+Guidelines for contributing to the Meelni codebase.
 
 ## Local Development Setup
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e  # Exit on any error
 
-echo "🚀 Setting up MockMate workspace..."
+echo "🚀 Setting up Meelni workspace..."
 
 # Verify package managers exist
 if ! command -v npm &> /dev/null; then

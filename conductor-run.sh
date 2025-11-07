@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Starting MockMate development servers..."
+echo "🚀 Starting Meelni development servers..."
 echo ""
 
 # Get the directory where this script is located (workspace root)

@@ -1,4 +1,4 @@
-# MockMate API Documentation
+# Meelni API Documentation
 
 **Version**: 1.0.0
 **Base URL**: `https://mockmate.vercel.app` (production) | `http://localhost:3000` (development)
@@ -28,7 +28,7 @@
 
 ## Overview
 
-The MockMate API provides programmatic access to real-time AI-powered mock interviews for product managers. The API enables you to:
+The Meelni API provides programmatic access to real-time AI-powered mock interviews for product managers. The API enables you to:
 
 - **Start and manage interview sessions** with AI coaches
 - **Save and retrieve conversation transcripts** turn-by-turn

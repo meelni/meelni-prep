@@ -1,12 +1,12 @@
-# MockMate - Real-Time AI Mock Interviews
+# Meelni - Real-Time AI Mock Interviews
 
-MockMate is an AI-powered interview practice platform that helps users prepare for PM interviews through realistic, real-time voice conversations. Built with Next.js, LiveKit Agents, and Supabase.
+Meelni is an AI-powered interview practice platform that helps users prepare for PM interviews through realistic, real-time voice conversations. Built with Next.js, LiveKit Agents, and Supabase.
 
 ---
 
 ## 🏗️ Architecture Overview
 
-MockMate consists of three interconnected systems:
+Meelni consists of three interconnected systems:
 
 ### 1. **Frontend** (Next.js 14+ App Router)
 - Modern UI with Tailwind CSS, shadcn/ui, and Framer Motion animations
@@ -269,7 +269,7 @@ npm run db:migrate
 
 ## 🌐 API Overview
 
-MockMate provides a RESTful API for managing interview sessions, transcripts, and AI-generated feedback.
+Meelni provides a RESTful API for managing interview sessions, transcripts, and AI-generated feedback.
 
 ### Quick Links
 - **API Documentation**: [`docs/API.md`](./docs/API.md) - Complete endpoint reference

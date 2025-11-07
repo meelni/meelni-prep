@@ -1,6 +1,6 @@
 # API Testing Guide
 
-**MockMate API Testing Examples and Best Practices**
+**Meelni API Testing Examples and Best Practices**
 
 ---
 
@@ -18,11 +18,11 @@
 
 ## Overview
 
-This guide provides practical examples for testing the MockMate API using various tools and programming languages.
+This guide provides practical examples for testing the Meelni API using various tools and programming languages.
 
 ### Prerequisites
 
-- MockMate account (for authenticated endpoints)
+- Meelni account (for authenticated endpoints)
 - Valid authentication token (see [Authentication Guide](./AUTHENTICATION.md))
 - API base URL:
   - **Production**: `https://mockmate.vercel.app`
@@ -459,7 +459,7 @@ def get_feedback(session_id: str) -> Dict[str, Any]:
 ```python
 #!/usr/bin/env python3
 """
-MockMate API Test Script
+Meelni API Test Script
 Runs a full interview flow test
 """
 
@@ -540,7 +540,7 @@ if __name__ == '__main__':
 ```json
 {
   "info": {
-    "name": "MockMate API",
+    "name": "Meelni API",
     "description": "Real-time AI mock interview platform API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

@@ -1,9 +1,9 @@
-# MockMate: Real‑Time AI Mock Interviews (MVP PRD + Tech Spec)
+# Meelni: Real‑Time AI Mock Interviews (MVP PRD + Tech Spec)
 
 _Last updated: 2025-11-05_
 
 ## 0) TL;DR
-MockMate is a real-time AI mock interview platform for technology roles (starting with Product Management). It runs **natural back‑and‑forth conversations** via **LiveKit** for low-latency audio and **Hedra Video** for photoreal, lip‑synced interviewer avatars—so practice feels like a real onsite/virtual loop. After each session, MockMate generates **scored feedback** on structure, clarity, insight, and delivery, with concrete next steps and a longitudinal progress dashboard.
+Meelni is a real-time AI mock interview platform for technology roles (starting with Product Management). It runs **natural back‑and‑forth conversations** via **LiveKit** for low-latency audio and **Hedra Video** for photoreal, lip‑synced interviewer avatars—so practice feels like a real onsite/virtual loop. After each session, Meelni generates **scored feedback** on structure, clarity, insight, and delivery, with concrete next steps and a longitudinal progress dashboard.
 
 ---
 
