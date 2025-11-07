@@ -23,7 +23,7 @@ interface OverviewSectionProps {
 }
 
 interface UserSummary {
-  stats: {
+  summary: {
     totalSessions: number;
     avgScore: number;
     totalMinutes: number;
@@ -238,10 +238,10 @@ export function OverviewSection({
         {/* Stats Cards Overview */}
         <div className="lg:col-span-12">
           <StatsCards
-            totalSessions={userSummary?.stats.totalSessions || totalSessions}
-            averageScore={userSummary?.stats.avgScore || avgScore}
-            totalMinutes={userSummary?.stats.totalMinutes || totalMinutes}
-            completionRate={userSummary?.stats.completionRate || completionRate}
+            totalSessions={userSummary?.summary?.totalSessions || totalSessions}
+            averageScore={userSummary?.summary?.avgScore || avgScore}
+            totalMinutes={userSummary?.summary?.totalMinutes || totalMinutes}
+            completionRate={userSummary?.summary?.completionRate || completionRate}
             trends={userSummary?.trends}
           />
         </div>
