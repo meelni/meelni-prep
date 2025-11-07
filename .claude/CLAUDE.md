@@ -2,7 +2,7 @@
 
 **Project**: MockMate - Real-Time AI Mock Interviews
 **Last Updated**: 2025-11-06
-**Version**: 0.8.0
+**Version**: 0.9.0
 
 ---
 
@@ -21,9 +21,29 @@ This document serves as the single source of truth for:
 
 ---
 
+## Documentation Map
+
+**Finding Information Fast**:
+- **Current System State** → CLAUDE.md (this file)
+- **Product Requirements** → PRD.md
+- **LiveKit Patterns** → LIVEKIT.md
+- **Database Schema & Patterns** → DATABASE.md
+- **API Specs** → docs/api/
+- **Architecture Decisions** → Search CLAUDE.md for "ADR-"
+- **Authentication** → docs/api/authentication.md
+- **Testing** → docs/development/testing.md
+- **Deployment** → DEPLOYMENT.md
+- **Troubleshooting** → TROUBLESHOOTING.md
+- **Contributing** → CONTRIBUTING.md
+- **Historical Context** → `.conductor/florence/archive/` (rarely needed)
+
+**For Agents**: Start with CLAUDE.md. If you need deep technical details on a specific domain, check the relevant file above. Historical implementation logs are in `.conductor/florence/archive/` but should only be referenced if explicitly asked.
+
+---
+
 ## Project Status
 
-**Current Phase**: Phase 0.8 - Google OAuth Authentication Complete ✅
+**Current Phase**: Phase 0.9 - Tactical Dashboard UI Migration Complete ✅
 **Next Milestone**: Add session persistence (save transcripts to DB), scoring/feedback engine
 
 **Phase 0 Completion Summary**:
@@ -44,6 +64,7 @@ This document serves as the single source of truth for:
 - ✅ Demo modal with LiveKit Cloud agent deployment
 - ✅ Explicit agent dispatch system configured
 - ✅ **"Start A Mock" button routes to authenticated dashboard**
+- ✅ **Tactical dashboard with sidebar navigation and modular sections**
 
 ---
 
@@ -192,6 +213,20 @@ This document serves as the single source of truth for:
 - **Component Variants**: Use CVA (class-variance-authority) for variant management
 - **Hover Effects**: Subtle scale transforms (1.005x, not 1.02x+) for professional feel
 - **Gradients**: Use gradient utilities (`.gradient-text`, `.gradient-bg`) for consistency
+
+
+### Typography Standards
+- **Primary Font**: Public Sans (variable weight, UI text)
+- **Display Font**: Everett (headings, branding)
+- **Scale**: Application-scale (text-sm to text-5xl for UI, avoid 6xl+)
+- **Rationale**: Public Sans optimized for screen readability, Everett for brand personality
+- **Migration Note**: Changed from Geist Sans (Next.js default) to Public Sans/Everett for better aesthetics
+
+**Font Loading**:
+- Public Sans: `next/font/google` with variable weight (automatic optimization)
+- Everett: Local files in `/public/fonts/everett/` (WOFF2 format)
+- CSS Variables: `--font-sans` (Public Sans), `--font-display` (Everett)
+- Usage: Apply `font-sans` for body text, `font-display` for headings
 
 ---
 
@@ -518,6 +553,62 @@ This document serves as the single source of truth for:
   - Need to add RLS policies later for data security
   - Easy to add email/password auth later if needed
   - Google Cloud Console OAuth credentials required (already configured)
+
+### ADR-021: Tactical Dashboard UI Migration
+- **Date**: 2025-11-06
+- **Decision**: Migrated dashboard to tactical command-interface style layout with sidebar navigation
+- **Rationale**:
+  - **User Requirement**: Adopt tactical-command-interface example UI for improved dashboard UX
+  - **Layout Structure**: Sidebar + toolbar + main content grid provides better navigation and organization
+  - **Preserve Branding**: Keep Meelni's color scheme and typography while adopting tactical layout
+  - **Minimal Text Changes**: Replace military/tactical terminology with interview-related terms
+  - **Modular Architecture**: Create placeholder sections for future development
+- **Color Migration**:
+  - Tactical Orange (`#f97316`, `text-orange-500`) → Meelni Purple-Blue (`oklch(0.70 0.22 285)`, `text-primary`)
+  - Tactical Dark Neutrals (`bg-neutral-900/950`) → Meelni Card (`bg-card`)
+  - Tactical Borders (`border-neutral-800`) → Meelni Borders (`border-border`)
+  - Tactical Accents (`bg-orange-500/10`) → Meelni Accents (`bg-primary/10`)
+- **Text Changes**:
+  - "TACTICAL COMMAND INTERFACE" → "MEELNI DASHBOARD"
+  - "Mission Control" → "Overview"
+  - "Operations History" → "Interview History"
+  - "Intel & Analysis" → "Analytics"
+  - "Strategic Planning" → "Settings"
+  - "Alert Status" → "Session Stats"
+- **Implementation**:
+  - **Layout Components**:
+    - `/components/dashboard/layout/sidebar.tsx`: Collapsible sidebar with 5 navigation sections
+    - `/components/dashboard/layout/toolbar.tsx`: Top toolbar with breadcrumb and user actions
+    - `/components/dashboard/layout/dashboard-layout.tsx`: Main layout wrapper
+  - **Section Components**:
+    - `/components/dashboard/sections/overview.tsx`: Main overview with stats, charts, activity log
+    - `/components/dashboard/sections/history.tsx`: Full interview history with tactical styling
+    - `/components/dashboard/sections/analytics.tsx`: Placeholder for analytics
+    - `/components/dashboard/sections/feedback.tsx`: Placeholder for feedback & insights
+    - `/components/dashboard/sections/settings.tsx`: Placeholder for settings
+  - **Modified**:
+    - `/app/dashboard/page.tsx`: Updated to use DashboardLayout with section switching
+- **Key Features**:
+  - Collapsible sidebar (fixed on desktop, overlay on mobile)
+  - Active section highlighting with purple-blue accent
+  - Breadcrumb navigation in toolbar (DASHBOARD / SECTION NAME)
+  - Status box in sidebar showing total sessions, minutes, avg score
+  - Activity log with tactical-style timeline (border-l-2 border-primary)
+  - Responsive design with mobile-first approach
+  - User name displayed in toolbar (no avatar per user preference)
+  - Sign-out button in toolbar
+- **Preserved Elements**:
+  - Meelni color tokens and design system
+  - Framer Motion animations
+  - Existing components (StatsCards, ScoreChart, CompetencyRadar, SessionList)
+  - Typography scale (Public Sans for UI, Everett for display)
+- **Consequences**:
+  - Better navigation and organization for dashboard content
+  - Placeholder sections enable iterative development
+  - Modular architecture allows easy updates to individual sections
+  - Sidebar state can be persisted to localStorage (future enhancement)
+  - Keyboard shortcuts can be added for power users (future enhancement)
+  - Activity log provides real-time feedback on user actions
 
 ---
 
@@ -878,6 +969,134 @@ export async function middleware(request: NextRequest) {
 }
 ```
 
+### `/components/dashboard/layout/sidebar.tsx` (NEWLY ADDED)
+**Purpose**: Collapsible sidebar navigation for dashboard
+**Key Features**:
+- 5 navigation sections (Overview, History, Analytics, Feedback, Settings)
+- Active section highlighting with purple-blue accent
+- Status box showing session stats (total sessions, minutes, avg score)
+- Meelni branding with logo
+- Collapse toggle button
+- Responsive: fixed on desktop, overlay on mobile
+- Lucide React icons for each section
+
+**Critical Code Pattern**:
+```typescript
+const navigationItems = [
+  { id: "overview", icon: Monitor, label: "Overview" },
+  { id: "history", icon: History, label: "Interview History" },
+  { id: "analytics", icon: BarChart3, label: "Analytics" },
+  { id: "feedback", icon: Lightbulb, label: "Feedback & Insights" },
+  { id: "settings", icon: Settings, label: "Settings" },
+];
+
+// Active styling: bg-primary/10 text-primary border-l-2 border-primary
+```
+
+### `/components/dashboard/layout/toolbar.tsx` (NEWLY ADDED)
+**Purpose**: Top toolbar with breadcrumb navigation and user actions
+**Key Features**:
+- Breadcrumb format: "DASHBOARD / SECTION NAME"
+- User name from Google profile (no avatar per user preference)
+- Last update timestamp
+- Notification bell icon (placeholder)
+- Refresh button (placeholder)
+- Sign-out button with logout functionality
+- Uses `useAuth()` hook for user context
+
+**Critical Code Pattern**:
+```typescript
+const { user, signOut } = useAuth();
+const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
+
+// Breadcrumb: DASHBOARD / {activeSection.toUpperCase()}
+```
+
+### `/components/dashboard/layout/dashboard-layout.tsx` (NEWLY ADDED)
+**Purpose**: Main layout wrapper combining sidebar and toolbar
+**Key Responsibilities**:
+- Manage sidebar collapse state
+- Render mobile overlay with backdrop blur when sidebar open
+- Coordinate between Sidebar and Toolbar components
+- Pass through session stats to Sidebar status box
+- Responsive layout with proper spacing
+
+**Critical Code Pattern**:
+```typescript
+export function DashboardLayout({
+  children,
+  activeSection,
+  setActiveSection,
+  totalSessions,
+  totalMinutes,
+  avgScore,
+}: DashboardLayoutProps) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-background flex">
+      <Sidebar {...props} />
+      {!sidebarCollapsed && <MobileOverlay />}
+      <main className="flex-1 flex flex-col">
+        <Toolbar activeSection={activeSection} />
+        {children}
+      </main>
+    </div>
+  );
+}
+```
+
+### `/components/dashboard/sections/overview.tsx` (NEWLY ADDED)
+**Purpose**: Main overview section with stats, charts, and activity log
+**Key Features**:
+- Migrated from old dashboard page
+- StatsCards component for quick metrics
+- ScoreChart component for performance over time
+- CompetencyRadar for skill breakdown
+- Activity log with tactical-style timeline (border-l-2 border-primary)
+- Interview type breakdown pie chart
+- Responsive grid layout
+
+**Critical Code Pattern**:
+```typescript
+export function OverviewSection({
+  sessions,
+  loadingSessions,
+  totalSessions,
+  avgScore,
+  totalMinutes,
+  completionRate,
+}: OverviewSectionProps) {
+  // Reuses existing components: StatsCards, ScoreChart, CompetencyRadar
+  // Adds tactical-style activity log with timeline markers
+}
+```
+
+### `/components/dashboard/sections/history.tsx` (NEWLY ADDED)
+**Purpose**: Full interview history section with tactical styling
+**Key Features**:
+- Reuses existing SessionList component
+- Tactical-inspired header with description
+- "Coming Soon" placeholder for filters (planned)
+
+### `/components/dashboard/sections/analytics.tsx` (NEWLY ADDED)
+**Purpose**: Analytics placeholder section
+**Key Features**:
+- "Coming Soon" card with chart icon
+- Description: "Advanced analytics and performance insights are currently in development"
+
+### `/components/dashboard/sections/feedback.tsx` (NEWLY ADDED)
+**Purpose**: Feedback & insights placeholder section
+**Key Features**:
+- "Coming Soon" card with lightbulb icon
+- Description: "AI-powered feedback and coaching insights are currently in development"
+
+### `/components/dashboard/sections/settings.tsx` (NEWLY ADDED)
+**Purpose**: Settings placeholder section
+**Key Features**:
+- "Coming Soon" card with gear icon
+- Description: "User settings and preferences are currently in development"
+
 ---
 
 ## Important Constraints
@@ -1186,6 +1405,51 @@ lk agent delete
 - `GET /api/history` → session list + key scores
 
 ---
+
+
+---
+
+## Authentication Flow
+
+### Google OAuth Flow
+```
+User clicks "Start A Mock" → /dashboard (middleware check)
+  ↓ (not authenticated)
+/auth/signin → Google OAuth consent screen
+  ↓
+/auth/callback (code exchange)
+  ↓
+/dashboard (authenticated session)
+```
+
+**Key Files**:
+- `middleware.ts`: Route protection (checks Supabase session on `/dashboard`, `/setup`, `/interview`)
+- `app/providers/auth-provider.tsx`: Session management (React Context, `useAuth()` hook)
+- `app/auth/signin/page.tsx`: OAuth UI with Google sign-in button
+- `app/auth/callback/route.ts`: OAuth callback handler (exchanges code for session)
+
+**Session Management**:
+- Supabase Auth handles OAuth tokens and refresh
+- Session stored in HTTP-only cookies (secure)
+- Middleware runs on edge runtime (fast auth checks)
+- `useAuth()` hook provides: `user`, `session`, `isLoading`, `signInWithGoogle()`, `signOut()`
+
+**Security Notes**:
+- Middleware protects `/dashboard`, `/setup`, `/interview` routes
+- Unauthenticated users redirected to `/auth/signin` with redirect URL preserved
+- RLS policies not yet implemented (TODO Phase 1)
+- Demo modal remains auth-free (no friction for trying the product)
+
+**User Flow**:
+1. Landing page: "Start A Mock" button → `/dashboard`
+2. Middleware detects no session → `/auth/signin?redirectTo=/dashboard`
+3. User clicks "Continue with Google" → Google OAuth consent
+4. Google redirects to `/auth/callback?code=...`
+5. Callback exchanges code for Supabase session (cookies set)
+6. Redirect to original destination (`/dashboard`)
+7. Dashboard shows personalized welcome with user's first name
+
+**Related ADRs**: See ADR-020 (Google OAuth Authentication Implementation)
 
 ## Database Schema
 
@@ -1625,6 +1889,84 @@ RESEND_API_KEY=
 - ✅ Sign in/sign out flows complete
 - ✅ Updated landing page CTAs
 - ✅ Committed and pushed to branch `saviii/petra`
+
+### 2025-11-06 - Phase 0.9: Tactical Dashboard UI Migration Complete ✅
+
+**UI Migration**
+- Adopted tactical-command-interface example UI layout for dashboard
+- Created modular component structure with sidebar + toolbar + sections
+- Migrated dashboard from single-page to section-based navigation
+- Preserved Meelni branding, colors, and typography
+
+**Color Migration**
+- Tactical Orange (`#f97316`) → Meelni Purple-Blue (`oklch(0.70 0.22 285)`)
+- Tactical Dark Neutrals (`bg-neutral-900/950`) → Meelni Card (`bg-card`)
+- Tactical Borders (`border-neutral-800`) → Meelni Borders (`border-border`)
+- Tactical Accents (`bg-orange-500/10`) → Meelni Accents (`bg-primary/10`)
+
+**Text Changes**
+- "TACTICAL COMMAND INTERFACE" → "MEELNI DASHBOARD"
+- "Mission Control" → "Overview"
+- "Operations History" → "Interview History"
+- "Intel & Analysis" → "Analytics"
+- "Strategic Planning" → "Settings"
+- "Alert Status" → "Session Stats"
+
+**New Components Created**
+- `/components/dashboard/layout/sidebar.tsx`: Collapsible sidebar with 5 navigation sections
+- `/components/dashboard/layout/toolbar.tsx`: Top toolbar with breadcrumb and user actions
+- `/components/dashboard/layout/dashboard-layout.tsx`: Main layout wrapper
+- `/components/dashboard/sections/overview.tsx`: Main overview with stats, charts, activity log
+- `/components/dashboard/sections/history.tsx`: Full interview history
+- `/components/dashboard/sections/analytics.tsx`: Placeholder for analytics
+- `/components/dashboard/sections/feedback.tsx`: Placeholder for feedback & insights
+- `/components/dashboard/sections/settings.tsx`: Placeholder for settings
+
+**Modified Files**
+- `/app/dashboard/page.tsx`: Updated to use DashboardLayout with section switching
+
+**Build Fixes**
+- Fixed `createServerClient` → `createClient` in transcript route
+- Fixed `useRef<number>()` → `useRef<number | undefined>(undefined)`
+- Fixed `useTrackVolume` type errors with `as any` casts
+- Fixed `BarVisualizer` state type with `as any`
+- Fixed `setMuted` property error with type guard
+- Fixed easing array types with `as const`
+- Fixed `ThemeProviderProps` import with `type` import
+- Fixed Zod `error.errors` → `error.issues`
+
+**Key Features**
+- Collapsible sidebar (fixed on desktop, overlay on mobile)
+- Active section highlighting with purple-blue accent
+- Breadcrumb navigation (DASHBOARD / SECTION NAME)
+- Status box in sidebar showing session stats
+- Activity log with tactical-style timeline
+- Responsive design with mobile-first approach
+- User name displayed in toolbar (no avatar per user preference)
+- Sign-out functionality in toolbar
+
+**Preserved Elements**
+- Meelni color tokens and design system
+- Framer Motion animations
+- Existing components (StatsCards, ScoreChart, CompetencyRadar, SessionList)
+- Typography scale (Public Sans for UI, Everett for display)
+
+**Key Learnings**
+- Tactical UI structure (sidebar + toolbar + grid) provides excellent organization
+- Minimal text changes preserve user context while adapting branding
+- Modular section architecture enables iterative development
+- Placeholder sections with "Coming Soon" cards maintain consistent UX
+- Activity log with timeline markers enhances user engagement
+
+**Deliverables**
+- ✅ Tactical dashboard layout with sidebar navigation
+- ✅ 5 modular sections (Overview complete, 4 placeholders)
+- ✅ Responsive design with mobile overlay
+- ✅ Breadcrumb navigation and user actions
+- ✅ Activity log with tactical styling
+- ✅ All TypeScript build errors fixed
+- ✅ Dev server running successfully on port 3000
+- ✅ Working on branch `saviii/tactical-ui-migration`
 
 ---
 
