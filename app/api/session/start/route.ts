@@ -171,8 +171,8 @@ export async function POST(req: NextRequest) {
       await roomClient.createRoom({
         name: roomName,
         metadata: JSON.stringify({
-          sessionId: session.id,
-          roundType,
+          session_id: session.id,
+          round_type: roundType,
           mode,
           config: config || {},
         }),

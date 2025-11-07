@@ -97,6 +97,17 @@ export default function SetupPage() {
     setError(null);
 
     try {
+      // Request microphone permission before starting interview
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log("[Setup] Microphone permission granted");
+      } catch (permError) {
+        console.error("[Setup] Microphone permission denied:", permError);
+        setError("Microphone access is required for voice interviews. Please grant permission and try again.");
+        setIsCreatingSession(false);
+        return;
+      }
+
       // Prepare session data
       const sessionData = {
         roundType,

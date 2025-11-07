@@ -1,6 +1,6 @@
 "use client";
 
-import { LiveKitRoom, useVoiceAssistant } from "@livekit/components-react";
+import { LiveKitRoom, useVoiceAssistant, useDataChannel } from "@livekit/components-react";
 import { useEffect, useState } from "react";
 
 export interface TranscriptTurn {
@@ -87,6 +87,7 @@ function RoomContent({
   children,
 }: RoomContentProps) {
   const { state, audioTrack } = useVoiceAssistant();
+  const { message } = useDataChannel("transcript");
 
   // Subscribe to agent state changes
   useEffect(() => {
@@ -95,9 +96,36 @@ function RoomContent({
     }
   }, [state, onAgentStateChange]);
 
-  // TODO: Subscribe to transcript updates from LiveKit
-  // This will require integration with LiveKit's transcript events
-  // For now, we'll handle this in the interview page
+  // Subscribe to transcript data from agent
+  useEffect(() => {
+    if (message) {
+      try {
+        // Decode the data message (comes as Uint8Array)
+        const decoder = new TextDecoder();
+        const jsonString = decoder.decode(message.payload);
+        const transcriptData = JSON.parse(jsonString);
+
+        console.log("[Transcript] Received:", transcriptData);
+
+        // Convert to TranscriptTurn format
+        const turn: TranscriptTurn = {
+          speaker: transcriptData.speaker === "user" ? "user" : "interviewer",
+          text: transcriptData.text,
+          timestamp: new Date(transcriptData.timestamp * 1000), // Convert from seconds to ms
+          startedAt: new Date(transcriptData.timestamp * 1000),
+          endedAt: new Date(transcriptData.timestamp * 1000),
+          audioMs: 0, // TODO: Calculate actual audio duration
+          latencyMs: 0, // TODO: Calculate actual latency
+          section: null, // TODO: Add section tracking
+        };
+
+        // Call the parent callback to save to database
+        onTranscriptUpdate(turn);
+      } catch (error) {
+        console.error("[Transcript] Failed to parse transcript data:", error);
+      }
+    }
+  }, [message, onTranscriptUpdate]);
 
   return <>{children}</>;
 }
