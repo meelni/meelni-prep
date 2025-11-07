@@ -65,7 +65,7 @@ export async function fetchSheetAsCSV(csvUrl: string): Promise<SheetRow[]> {
  */
 export async function fetchSheetViaAPI(
   spreadsheetId: string,
-  range: string = 'Sheet1!A1:G1000'
+  range: string = 'Sheet1'
 ): Promise<SheetRow[]> {
   try {
     const apiKey = process.env.GOOGLE_SHEETS_API_KEY;

@@ -5,6 +5,11 @@
  * including voice settings, interview parameters, and model configurations.
  */
 
+export interface QuestionPreference {
+  recency: "all" | "recent" | "very_recent";
+  recentDays?: number; // Number of days for filtering (365, 730, or undefined for all)
+}
+
 export interface InterviewConfig {
   // Voice settings
   voice: string;           // Cartesia voice ID
@@ -16,6 +21,9 @@ export interface InterviewConfig {
   difficulty: 'beginner' | 'intermediate' | 'advanced';
   duration: number;        // minutes (15, 30, 45)
   feedback_mode: 'real_time' | 'end_only' | 'silent';
+
+  // Question preferences
+  questionPreference?: QuestionPreference;
 
   // Model settings
   stt_model: string;       // e.g., "deepgram/nova-3"
@@ -31,6 +39,10 @@ export const DEFAULT_CONFIG: InterviewConfig = {
   difficulty: "intermediate",
   duration: 30,
   feedback_mode: "end_only",
+  questionPreference: {
+    recency: "very_recent",
+    recentDays: 365,
+  },
   stt_model: "deepgram/nova-3",
   llm_model: "openai/gpt-4.1-mini",
   tts_model: "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
@@ -124,6 +136,20 @@ export const EMOTION_OPTIONS = [
   { value: "confident", label: "Confident" },
   { value: "curious", label: "Curious" },
 ] as const;
+
+/**
+ * Convert recency selection to days for API query
+ */
+export function getRecentDays(recency: "very_recent" | "recent" | "all"): number | undefined {
+  switch (recency) {
+    case "very_recent":
+      return 365; // 1 year (2024)
+    case "recent":
+      return 730; // 2 years (2023-2024)
+    case "all":
+      return undefined; // No filter
+  }
+}
 
 /**
  * Get the appropriate duration for a round type

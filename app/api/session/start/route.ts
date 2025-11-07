@@ -81,6 +81,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createSession } from "@/lib/db/sessions";
 import { upsertUser } from "@/lib/db/users";
+import { getRandomQuestion, getRandomRecentQuestion, recordQuestionUsage } from "@/lib/db/questions";
 import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
 
 const livekit_api_key = process.env.LIVEKIT_API_KEY;
@@ -142,6 +143,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Fetch a random question from the question bank for this round type
+    const QUESTION_TYPE_MAP: Record<string, string> = {
+      behavioral: "Behavioral",
+      product_sense: "Product Sense",
+      execution: "Execution",
+      strategy: "Product Strategy",
+    };
+
+    const dbQuestionType = QUESTION_TYPE_MAP[roundType];
+
+    // Check if user has question preference (recent questions)
+    const recentDays = config?.questionPreference?.recentDays;
+    const question = recentDays
+      ? await getRandomRecentQuestion(recentDays, dbQuestionType)
+      : await getRandomQuestion(dbQuestionType);
+
+    if (!question) {
+      console.warn(`No questions found for type: ${dbQuestionType}${recentDays ? ` within last ${recentDays} days` : ''}`);
+    }
+
     // Ensure user exists in app_user table (for existing authenticated users)
     await upsertUser({
       id: user.id,
@@ -165,6 +186,11 @@ export async function POST(req: NextRequest) {
       config: config || {},
     });
 
+    // Record question usage if a question was selected
+    if (question) {
+      await recordQuestionUsage(session.id, question.id);
+    }
+
     // Create LiveKit room with metadata
     const roomClient = new RoomServiceClient(livekit_url, livekit_api_key, livekit_api_secret);
     try {
@@ -175,6 +201,13 @@ export async function POST(req: NextRequest) {
           round_type: roundType,
           mode,
           config: config || {},
+          question: question ? {
+            id: question.id,
+            text: question.questionText,
+            company: question.company,
+            type: question.questionType,
+            askedAt: question.askedAt,
+          } : null,
         }),
         emptyTimeout: 3600, // Room auto-deletes 1 hour after last participant
         maxParticipants: 2, // User + agent only
@@ -218,6 +251,11 @@ export async function POST(req: NextRequest) {
       token,
       url: livekit_url,
       config: session.config,
+      question: question ? {
+        id: question.id,
+        text: question.questionText,
+        company: question.company,
+      } : null,
     });
   } catch (error) {
     console.error("Error starting session:", error);
