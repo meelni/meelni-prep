@@ -10,13 +10,16 @@ import { useAuth } from "@/app/providers/auth-provider";
 import {
   DEFAULT_CONFIG,
   InterviewConfig,
+  QuestionPreference,
   RoundType,
   DifficultyLevel,
   getDefaultDuration,
+  getRecentDays,
 } from "@/lib/interview-config";
 import { validateSessionStart } from "@/lib/validation/setup-schema";
 import { RoundSelector } from "./components/round-selector";
 import { DifficultySelector } from "./components/difficulty-selector";
+import { QuestionPoolSelector } from "./components/question-pool-selector";
 import { VoiceSelector } from "./components/voice-selector";
 import { AdvancedSettings } from "./components/advanced-settings";
 import { SetupSummary } from "./components/setup-summary";
@@ -87,6 +90,15 @@ export default function SetupPage() {
     setConfig((prev) => ({ ...prev, ...updates }));
   };
 
+  const handleQuestionPrefChange = (recency: "all" | "recent" | "very_recent") => {
+    handleConfigChange({
+      questionPreference: {
+        recency,
+        recentDays: getRecentDays(recency),
+      },
+    });
+  };
+
   const handleStartInterview = async () => {
     if (!roundType || !difficulty) {
       setError("Please complete all required fields");
@@ -144,9 +156,7 @@ export default function SetupPage() {
 
       // Navigate to interview page with session data
       router.push(
-        `/interview?sessionId=${sessionId}&token=${encodeURIComponent(
-          token
-        )}&url=${encodeURIComponent(url)}&room=${roomName}`
+        "/interview?sessionId=" + sessionId + "&token=" + encodeURIComponent(token) + "&url=" + encodeURIComponent(url) + "&room=" + roomName
       );
     } catch (err) {
       console.error("Failed to start session:", err);
@@ -216,20 +226,14 @@ export default function SetupPage() {
             {[
               { num: 1, label: "Type" },
               { num: 2, label: "Difficulty" },
-              { num: 3, label: "Voice" },
-              { num: 4, label: "Review" },
+              { num: 3, label: "Questions" },
+              { num: 4, label: "Voice" },
+              { num: 5, label: "Review" },
             ].map((s, i) => (
               <div key={s.num} className="flex items-center gap-3 flex-1">
                 <div className="flex items-center gap-2">
                   <div
-                    className={`
-                      w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all
-                      ${
-                        step >= s.num
-                          ? "bg-primary text-white"
-                          : "bg-muted text-muted-foreground"
-                      }
-                    `}
+                    className={"w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all " + (step >= s.num ? "bg-primary text-white" : "bg-muted text-muted-foreground")}
                   >
                     {step > s.num ? (
                       <Check className="w-4 h-4" strokeWidth={3} />
@@ -238,19 +242,15 @@ export default function SetupPage() {
                     )}
                   </div>
                   <span
-                    className={`text-sm font-medium hidden sm:inline ${
-                      step >= s.num ? "text-foreground" : "text-muted-foreground"
-                    }`}
+                    className={"text-sm font-medium hidden sm:inline " + (step >= s.num ? "text-foreground" : "text-muted-foreground")}
                   >
                     {s.label}
                   </span>
                 </div>
-                {i < 3 && (
+                {i < 4 && (
                   <div className="flex-1 h-0.5 bg-muted rounded-full overflow-hidden">
                     <div
-                      className={`h-full bg-primary transition-all duration-300 ${
-                        step > s.num ? "w-full" : "w-0"
-                      }`}
+                      className={"h-full bg-primary transition-all duration-300 " + (step > s.num ? "w-full" : "w-0")}
                     />
                   </div>
                 )}
@@ -314,10 +314,26 @@ export default function SetupPage() {
               </motion.div>
             )}
 
-            {/* Step 3: Voice & Advanced Settings */}
+            {/* Step 3: Question Pool */}
             {step === 3 && (
               <motion.div
                 key="step3"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <QuestionPoolSelector
+                  selected={config.questionPreference?.recency || "very_recent"}
+                  onSelect={handleQuestionPrefChange}
+                />
+              </motion.div>
+            )}
+
+            {/* Step 4: Voice & Advanced Settings */}
+            {step === 4 && (
+              <motion.div
+                key="step4"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
@@ -334,10 +350,10 @@ export default function SetupPage() {
               </motion.div>
             )}
 
-            {/* Step 4: Summary */}
-            {step === 4 && roundType && difficulty && (
+            {/* Step 5: Summary */}
+            {step === 5 && roundType && difficulty && (
               <motion.div
-                key="step4"
+                key="step5"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
@@ -348,7 +364,7 @@ export default function SetupPage() {
                   config={config}
                   voiceName={VOICE_NAMES[config.voice] || "Tessa"}
                   onStart={handleStartInterview}
-                  onBack={() => setStep(3)}
+                  onBack={() => setStep(4)}
                   isLoading={isCreatingSession}
                 />
               </motion.div>
@@ -356,7 +372,7 @@ export default function SetupPage() {
           </AnimatePresence>
 
           {/* Navigation Buttons */}
-          {step < 4 && (
+          {step < 5 && (
             <motion.div
               variants={fadeInUp}
               className="flex items-center gap-3 pt-4"

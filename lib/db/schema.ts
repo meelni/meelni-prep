@@ -97,3 +97,18 @@ export const interviewQuestion = pgTable("interview_question", {
   // Index for filtering by when question was asked (for recent/trending questions)
   askedAtIdx: index("interview_question_asked_at_idx").on(table.askedAt),
 }));
+
+// Track which questions have been used in sessions
+export const sessionQuestion = pgTable("session_question", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id").references(() => interviewSession.id).notNull(),
+  questionId: uuid("question_id").references(() => interviewQuestion.id).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  // Index for looking up questions by session
+  sessionIdx: index("session_question_session_idx").on(table.sessionId),
+  // Index for looking up which sessions used a question
+  questionIdx: index("session_question_question_idx").on(table.questionId),
+  // Unique constraint: one question per session
+  sessionQuestionUnique: index("session_question_session_question_idx").on(table.sessionId, table.questionId),
+}));

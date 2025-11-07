@@ -234,3 +234,23 @@ export async function getRandomRecentQuestion(
 
   return question || null;
 }
+
+/**
+ * Record that a question was used in a session
+ */
+export async function recordQuestionUsage(
+  sessionId: string,
+  questionId: string
+): Promise<void> {
+  const { sessionQuestion } = await import("./schema");
+
+  try {
+    await db.insert(sessionQuestion).values({
+      sessionId,
+      questionId,
+    });
+  } catch (error) {
+    // Ignore duplicate errors (question already recorded for this session)
+    console.error("Error recording question usage:", error);
+  }
+}
