@@ -21,6 +21,26 @@ This document serves as the single source of truth for:
 
 ---
 
+## Documentation Map
+
+**Finding Information Fast**:
+- **Current System State** → CLAUDE.md (this file)
+- **Product Requirements** → PRD.md
+- **LiveKit Patterns** → LIVEKIT.md
+- **Database Schema & Patterns** → DATABASE.md
+- **API Specs** → docs/api/
+- **Architecture Decisions** → Search CLAUDE.md for "ADR-"
+- **Authentication** → docs/api/authentication.md
+- **Testing** → docs/development/testing.md
+- **Deployment** → DEPLOYMENT.md
+- **Troubleshooting** → TROUBLESHOOTING.md
+- **Contributing** → CONTRIBUTING.md
+- **Historical Context** → `.conductor/florence/archive/` (rarely needed)
+
+**For Agents**: Start with CLAUDE.md. If you need deep technical details on a specific domain, check the relevant file above. Historical implementation logs are in `.conductor/florence/archive/` but should only be referenced if explicitly asked.
+
+---
+
 ## Project Status
 
 **Current Phase**: Phase 0.9 - Tactical Dashboard UI Migration Complete ✅
@@ -193,6 +213,20 @@ This document serves as the single source of truth for:
 - **Component Variants**: Use CVA (class-variance-authority) for variant management
 - **Hover Effects**: Subtle scale transforms (1.005x, not 1.02x+) for professional feel
 - **Gradients**: Use gradient utilities (`.gradient-text`, `.gradient-bg`) for consistency
+
+
+### Typography Standards
+- **Primary Font**: Public Sans (variable weight, UI text)
+- **Display Font**: Everett (headings, branding)
+- **Scale**: Application-scale (text-sm to text-5xl for UI, avoid 6xl+)
+- **Rationale**: Public Sans optimized for screen readability, Everett for brand personality
+- **Migration Note**: Changed from Geist Sans (Next.js default) to Public Sans/Everett for better aesthetics
+
+**Font Loading**:
+- Public Sans: `next/font/google` with variable weight (automatic optimization)
+- Everett: Local files in `/public/fonts/everett/` (WOFF2 format)
+- CSS Variables: `--font-sans` (Public Sans), `--font-display` (Everett)
+- Usage: Apply `font-sans` for body text, `font-display` for headings
 
 ---
 
@@ -1371,6 +1405,51 @@ lk agent delete
 - `GET /api/history` → session list + key scores
 
 ---
+
+
+---
+
+## Authentication Flow
+
+### Google OAuth Flow
+```
+User clicks "Start A Mock" → /dashboard (middleware check)
+  ↓ (not authenticated)
+/auth/signin → Google OAuth consent screen
+  ↓
+/auth/callback (code exchange)
+  ↓
+/dashboard (authenticated session)
+```
+
+**Key Files**:
+- `middleware.ts`: Route protection (checks Supabase session on `/dashboard`, `/setup`, `/interview`)
+- `app/providers/auth-provider.tsx`: Session management (React Context, `useAuth()` hook)
+- `app/auth/signin/page.tsx`: OAuth UI with Google sign-in button
+- `app/auth/callback/route.ts`: OAuth callback handler (exchanges code for session)
+
+**Session Management**:
+- Supabase Auth handles OAuth tokens and refresh
+- Session stored in HTTP-only cookies (secure)
+- Middleware runs on edge runtime (fast auth checks)
+- `useAuth()` hook provides: `user`, `session`, `isLoading`, `signInWithGoogle()`, `signOut()`
+
+**Security Notes**:
+- Middleware protects `/dashboard`, `/setup`, `/interview` routes
+- Unauthenticated users redirected to `/auth/signin` with redirect URL preserved
+- RLS policies not yet implemented (TODO Phase 1)
+- Demo modal remains auth-free (no friction for trying the product)
+
+**User Flow**:
+1. Landing page: "Start A Mock" button → `/dashboard`
+2. Middleware detects no session → `/auth/signin?redirectTo=/dashboard`
+3. User clicks "Continue with Google" → Google OAuth consent
+4. Google redirects to `/auth/callback?code=...`
+5. Callback exchanges code for Supabase session (cookies set)
+6. Redirect to original destination (`/dashboard`)
+7. Dashboard shows personalized welcome with user's first name
+
+**Related ADRs**: See ADR-020 (Google OAuth Authentication Implementation)
 
 ## Database Schema
 
