@@ -144,7 +144,7 @@ async def entrypoint(ctx: JobContext):
 
                 if agent_text.strip():
                     transcript_data = {
-                        "speaker": "agent",
+                        "speaker": "interviewer",  # Frontend expects "interviewer" not "agent"
                         "text": agent_text.strip(),
                         "timestamp": event.created_at,
                         "is_final": True,
