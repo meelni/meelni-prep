@@ -18,9 +18,15 @@ import { useSetupModal } from "@/lib/hooks/use-setup-modal";
 import { motion } from "framer-motion";
 
 export default function DashboardPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
   const [activeSection, setActiveSection] = useState("overview");
+
+  // Handle sign out
+  const handleSignOut = async () => {
+    await signOut();
+    router.push("/");
+  };
 
   // Setup modal hook
   const setupModal = useSetupModal();
@@ -128,6 +134,8 @@ export default function DashboardPage() {
         totalSessions={stats.totalSessions}
         totalMinutes={stats.totalMinutes}
         avgScore={stats.avgScore || undefined}
+        user={user}
+        onSignOut={handleSignOut}
       >
         {renderSection()}
       </DashboardLayout>

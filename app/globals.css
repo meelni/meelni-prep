@@ -361,4 +361,22 @@
     font-size: 14px;
     line-height: 21px;
   }
+
+  /* Custom scrollbar utilities */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-track-transparent::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thumb-border::-webkit-scrollbar-thumb {
+    background: rgb(var(--border));
+    border-radius: 3px;
+  }
+
+  .scrollbar-thumb-border:hover::-webkit-scrollbar-thumb {
+    background: rgb(var(--primary) / 0.5);
+  }
 }
