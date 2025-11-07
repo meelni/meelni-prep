@@ -45,11 +45,12 @@ async def entrypoint(ctx: JobContext):
 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    # Parse room metadata to get round type and config
+    # Parse room metadata to get round type, question, and config
     room_metadata = ctx.room.metadata or "{}"
     metadata = parse_room_metadata(room_metadata)
     round_type = metadata["round_type"]
     config = metadata["config"]
+    question = metadata.get("question")  # NEW: Extract question from metadata
 
     logger.info(f"Room: {ctx.room.name}")
     logger.info(f"Round Type: {round_type}")
@@ -57,13 +58,23 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Feedback Mode: {config['feedback_mode']}")
     logger.info(f"Duration: {config['duration']} minutes")
 
-    # Build dynamic prompt based on round type and config
+    # NEW: Log question info if provided
+    if question:
+        question_text = question.get("question_text", "")
+        company = question.get("company", "N/A")
+        logger.info(f"Question from bank: '{question_text[:60]}...' (Company: {company})")
+    else:
+        logger.info("No specific question provided - agent will generate questions")
+
+    # Build dynamic prompt based on round type, config, and question
     try:
-        instructions = build_agent_prompt(round_type, config)
+        # NEW: Pass question to prompt builder
+        instructions = build_agent_prompt(round_type, config, question)
         logger.info(f"Generated prompt for {round_type} interview (difficulty: {config['difficulty']})")
     except ValueError as e:
         logger.error(f"Failed to build prompt: {e}. Using fallback product_sense prompt.")
-        instructions = build_agent_prompt("product_sense", config)
+        # NEW: Pass question to fallback prompt as well
+        instructions = build_agent_prompt("product_sense", config, question)
 
     # Extract model settings from config
     stt_model = config.get("stt_model", "deepgram/nova-3")
