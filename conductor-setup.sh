@@ -24,6 +24,8 @@ else
 fi
 
 # Verify required environment variables
+# NOTE: DEEPGRAM_API_KEY and CARTESIA_API_KEY are NOT required when using LiveKit Inference
+# LiveKit Cloud provides these services through its Inference API using LIVEKIT_API_KEY/SECRET
 source "$CONDUCTOR_ROOT_PATH/.env" 2>/dev/null || true
 REQUIRED_VARS=("DATABASE_URL" "LIVEKIT_API_KEY" "LIVEKIT_API_SECRET" "OPENAI_API_KEY")
 MISSING_VARS=()
