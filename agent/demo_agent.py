@@ -1,5 +1,5 @@
 """
-MockMate Demo Agent
+Meelni Demo Agent
 Quick 60-second product demo for landing page visitors
 """
 

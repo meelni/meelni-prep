@@ -1,6 +1,6 @@
 # VERIFICATION PLAN: System-Wide Testing & Quality Assurance
 
-**Project**: MockMate - Real-Time AI Mock Interviews
+**Project**: Meelni - Real-Time AI Mock Interviews
 **Date**: 2025-11-06
 **Purpose**: Comprehensive testing strategy to verify all agent work integrates correctly
 **Status**: Ready for execution

@@ -1,5 +1,5 @@
 """
-MockMate Interview Prompt Templates
+Meelni Interview Prompt Templates
 Modular prompt system for different interview modes and types
 """
 

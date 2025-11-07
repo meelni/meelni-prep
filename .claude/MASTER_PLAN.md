@@ -1,5 +1,5 @@
 # MASTER PLAN: 6 Parallel AI Agent Workstreams
-**Project**: MockMate - Real-Time AI Mock Interviews
+**Project**: Meelni - Real-Time AI Mock Interviews
 **Phase**: 1.0 - Core Interview Experience
 **Date**: 2025-11-06
 **Timeline**: 1 week parallel development

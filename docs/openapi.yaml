@@ -1,12 +1,12 @@
 openapi: 3.0.0
 info:
-  title: MockMate API
+  title: Meelni API
   version: 1.0.0
   description: |
     Real-time AI-powered mock interview platform API for product managers.
 
     ## Overview
-    MockMate provides comprehensive interview practice with AI coaches, including:
+    Meelni provides comprehensive interview practice with AI coaches, including:
     - Real-time voice interviews via LiveKit
     - AI-powered feedback using GPT-4 Turbo
     - Multiple interview types (Product Sense, Behavioral, Execution, Strategy)
