@@ -41,21 +41,21 @@ export function CompetencyRadar({ data }: CompetencyRadarProps) {
           </p>
         </div>
 
-        <div className="h-[300px] w-full">
+        <div className="h-[360px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <RadarChart data={data}>
+            <RadarChart data={data} margin={{ top: 30, right: 40, bottom: 30, left: 40 }}>
               <PolarGrid stroke="rgba(128, 128, 128, 0.2)" />
               <PolarAngleAxis
                 dataKey="competency"
                 stroke="rgba(128, 128, 128, 0.5)"
-                fontSize={12}
-                tick={{ fill: "rgba(255, 255, 255, 0.7)" }}
+                fontSize={11}
+                tick={{ fill: "rgba(255, 255, 255, 0.7)", width: 60 }}
               />
               <PolarRadiusAxis
                 angle={90}
                 domain={[0, 10]}
                 stroke="rgba(128, 128, 128, 0.3)"
-                fontSize={10}
+                tick={false}
               />
               <Tooltip
                 contentStyle={{
@@ -64,7 +64,8 @@ export function CompetencyRadar({ data }: CompetencyRadarProps) {
                   borderRadius: "8px",
                   padding: "12px",
                 }}
-                labelStyle={{ color: "rgba(255, 255, 255, 0.9)", marginBottom: "4px" }}
+                formatter={(value: number) => [`${value.toFixed(1)}/10`, "Score"]}
+                labelStyle={{ color: "rgba(255, 255, 255, 0.9)", marginBottom: "4px", fontWeight: 600 }}
                 itemStyle={{ color: "rgba(34, 197, 94, 1)" }}
               />
               <Radar
