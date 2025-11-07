@@ -3,12 +3,19 @@
 import { Card } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { Calendar, Clock, TrendingUp, Target } from "lucide-react";
+import { TrendIndicator } from "./stats/trend-indicator";
 
 interface StatsCardsProps {
   totalSessions: number;
   averageScore?: number;
   totalMinutes?: number;
   completionRate?: number;
+  trends?: {
+    sessionsChange: number | null;
+    scoreChange: number | null;
+    minutesChange: number | null;
+    completionRateChange?: number | null;
+  };
 }
 
 export function StatsCards({
@@ -16,6 +23,7 @@ export function StatsCards({
   averageScore,
   totalMinutes,
   completionRate,
+  trends,
 }: StatsCardsProps) {
   const stats = [
     {
@@ -24,6 +32,7 @@ export function StatsCards({
       icon: Calendar,
       color: "text-blue-500",
       bgColor: "bg-blue-500/10",
+      trend: trends?.sessionsChange,
     },
     {
       label: "Avg Score",
@@ -31,6 +40,7 @@ export function StatsCards({
       icon: Target,
       color: "text-green-500",
       bgColor: "bg-green-500/10",
+      trend: trends?.scoreChange,
     },
     {
       label: "Total Practice",
@@ -38,6 +48,7 @@ export function StatsCards({
       icon: Clock,
       color: "text-purple-500",
       bgColor: "bg-purple-500/10",
+      trend: trends?.minutesChange,
     },
     {
       label: "Completion Rate",
@@ -45,6 +56,7 @@ export function StatsCards({
       icon: TrendingUp,
       color: "text-orange-500",
       bgColor: "bg-orange-500/10",
+      trend: trends?.completionRateChange,
     },
   ];
 
@@ -66,6 +78,12 @@ export function StatsCards({
                 <p className="text-2xl font-bold text-foreground">
                   {stat.value}
                 </p>
+                {stat.trend !== undefined && stat.trend !== null && (
+                  <TrendIndicator
+                    value={stat.trend}
+                    isNew={totalSessions === 0 && index === 0}
+                  />
+                )}
               </div>
               <div className={`${stat.bgColor} p-2 rounded-lg`}>
                 <stat.icon className={`w-5 h-5 ${stat.color}`} />
