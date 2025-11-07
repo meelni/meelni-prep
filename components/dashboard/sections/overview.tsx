@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles, Calendar, Loader2 } from "lucide-react";
@@ -10,7 +11,6 @@ import { CompetencyRadar } from "@/components/dashboard/competency-radar";
 import { SessionList } from "@/components/dashboard/session-list";
 import { EmptyStateCard } from "@/components/dashboard/empty-state-card";
 import { MilestoneBadges, MilestoneType } from "@/components/dashboard/stats/milestone-badge";
-import { useSetupModal } from "@/lib/hooks/use-setup-modal";
 import type { Session } from "@/lib/api/queries";
 
 interface OverviewSectionProps {
@@ -56,7 +56,7 @@ export function OverviewSection({
   totalMinutes,
   completionRate,
 }: OverviewSectionProps) {
-  const setupModal = useSetupModal();
+  const router = useRouter();
   const [userSummary, setUserSummary] = useState<UserSummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
 
@@ -182,7 +182,7 @@ export function OverviewSection({
               <div className="space-y-4">
                 <Button
                   size="lg"
-                  onClick={setupModal.open}
+                  onClick={() => router.push("/setup")}
                   className="w-full sm:w-auto group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-display font-light shadow-md hover:shadow-lg transition-all duration-300"
                 >
                   Start Your First Interview
@@ -213,11 +213,11 @@ export function OverviewSection({
 
   return (
     <div className="p-6 space-y-6">
-      {/* Main Dashboard Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Milestone Badges */}
+      {/* Main Dashboard Grid - Improved Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Milestone Badges - Full Width */}
         {milestoneBadges.length > 0 && (
-          <div className="lg:col-span-12">
+          <div className="lg:col-span-3">
             <Card className="p-4 bg-card border-border">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
@@ -235,8 +235,8 @@ export function OverviewSection({
           </div>
         )}
 
-        {/* Stats Cards Overview */}
-        <div className="lg:col-span-12">
+        {/* Stats Cards Overview - Full Width */}
+        <div className="lg:col-span-3">
           <StatsCards
             totalSessions={userSummary?.summary?.totalSessions || totalSessions}
             averageScore={userSummary?.summary?.avgScore || avgScore}
@@ -246,8 +246,20 @@ export function OverviewSection({
           />
         </div>
 
+        {/* Charts Row - Only show if we have real feedback scores */}
+        {scoreData.length > 0 && (
+          <>
+            <div className="lg:col-span-2">
+              <ScoreChart data={scoreData} />
+            </div>
+            <div className="lg:col-span-1">
+              <CompetencyRadar data={competencyData} />
+            </div>
+          </>
+        )}
+
         {/* Recent Activity */}
-        <Card className="lg:col-span-4 bg-card border-border">
+        <Card className="lg:col-span-1 bg-card border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
               Recent Activity
@@ -280,7 +292,7 @@ export function OverviewSection({
                   description="Your recent interview activity will appear here once you complete your first mock interview."
                   cta={{
                     label: "Start Your First Interview",
-                    action: setupModal.open,
+                    action: () => router.push("/setup"),
                   }}
                 />
               )}
@@ -288,20 +300,8 @@ export function OverviewSection({
           </CardContent>
         </Card>
 
-        {/* Charts Row - Only show if we have real feedback scores */}
-        {scoreData.length > 0 && (
-          <>
-            <div className="lg:col-span-4">
-              <ScoreChart data={scoreData} />
-            </div>
-            <div className="lg:col-span-4">
-              <CompetencyRadar data={competencyData} />
-            </div>
-          </>
-        )}
-
         {/* Interview Type Breakdown */}
-        <Card className="lg:col-span-4 bg-card border-border">
+        <Card className="lg:col-span-2 bg-card border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
               Interview Type Breakdown
@@ -314,30 +314,34 @@ export function OverviewSection({
                   <div className="w-2 h-2 bg-primary rounded-full"></div>
                   <span className="text-xs text-foreground font-display font-light">Completed Interviews</span>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Product Sense</span>
-                    <span className="text-foreground font-bold font-mono">
-                      {interviewTypeBreakdown.productSense}
-                    </span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Product Sense</span>
+                      <span className="text-foreground font-bold font-mono">
+                        {interviewTypeBreakdown.productSense}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Analytical Thinking</span>
+                      <span className="text-foreground font-bold font-mono">
+                        {interviewTypeBreakdown.analytical}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Analytical Thinking</span>
-                    <span className="text-foreground font-bold font-mono">
-                      {interviewTypeBreakdown.analytical}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Leadership & Drive</span>
-                    <span className="text-foreground font-bold font-mono">
-                      {interviewTypeBreakdown.leadership}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Strategy</span>
-                    <span className="text-foreground font-bold font-mono">
-                      {interviewTypeBreakdown.strategy}
-                    </span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Leadership & Drive</span>
+                      <span className="text-foreground font-bold font-mono">
+                        {interviewTypeBreakdown.leadership}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Strategy</span>
+                      <span className="text-foreground font-bold font-mono">
+                        {interviewTypeBreakdown.strategy}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -345,11 +349,11 @@ export function OverviewSection({
           </CardContent>
         </Card>
 
-        {/* Start Mock Card */}
-        <Card className="lg:col-span-8 bg-card border-border hover:border-primary/30 transition-all duration-300">
-          <CardContent className="p-8 md:p-10">
-            <div className="space-y-6">
-              <div className="space-y-3">
+        {/* Start Mock Card - Full Width */}
+        <Card className="lg:col-span-3 bg-card border-border hover:border-primary/30 transition-all duration-300">
+          <CardContent className="p-8">
+            <div className="flex items-center justify-between">
+              <div className="space-y-3 flex-1">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-primary" />
                   <span className="text-sm font-display font-light text-primary">Ready to practice?</span>
@@ -357,17 +361,16 @@ export function OverviewSection({
                 <h2 className="text-2xl font-display font-light text-foreground">
                   Start Your Mock Interview
                 </h2>
-                <p className="text-muted-foreground font-sans">
+                <p className="text-muted-foreground font-sans max-w-2xl">
                   Choose your interview type, difficulty, and voice settings. Practice product
                   sense, analytical thinking, leadership, or strategy interviews with our AI coach.
                 </p>
               </div>
-
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="ml-6">
                 <Button
                   size="lg"
-                  onClick={setupModal.open}
-                  className="w-full group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-display font-light shadow-sm hover:shadow-md transition-all duration-300"
+                  onClick={() => router.push("/setup")}
+                  className="group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-display font-light shadow-sm hover:shadow-md transition-all duration-300"
                 >
                   Start Mock Interview
                   <ArrowRight className="ml-2 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
