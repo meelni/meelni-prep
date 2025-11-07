@@ -64,6 +64,12 @@ export function AnimatedNumber({
     damping: 20,
   });
 
+  // Use state to track the current display value for SSR compatibility
+  const [displayValue, setDisplayValue] = useState(() => {
+    const formatted = (0).toFixed(decimals);
+    return useThousandsSeparator ? "0" : formatted;
+  });
+
   // Transform the spring value to formatted string
   const display = useTransform(spring, (latest) => {
     // Format the number with proper decimals
@@ -84,7 +90,15 @@ export function AnimatedNumber({
     }
 
     return formatted;
-  }) as any; // MotionValue<string> needs type assertion for React children
+  });
+
+  // Subscribe to display changes and update state for SSR
+  useEffect(() => {
+    const unsubscribe = display.on("change", (latest) => {
+      setDisplayValue(latest);
+    });
+    return unsubscribe;
+  }, [display]);
 
   // Start animation when component mounts or value changes
   useEffect(() => {
@@ -147,7 +161,7 @@ export function AnimatedNumber({
       }}
     >
       {prefix}
-      {display}
+      {displayValue}
       {suffix}
     </motion.span>
   );

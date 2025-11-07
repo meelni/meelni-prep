@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useQueryClient } from "@tanstack/react-query";
@@ -29,7 +29,7 @@ interface InterviewSession {
   config: any;
 }
 
-export default function InterviewPage() {
+function InterviewPageContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -175,8 +175,27 @@ export default function InterviewPage() {
   };
 
   const handleTranscriptUpdate = async (turn: TranscriptTurn) => {
-    // Update UI immediately
-    setTranscript((prev) => [...prev, turn]);
+    // Check for duplicates first
+    let isDuplicate = false;
+    setTranscript((prev) => {
+      // Check if this exact text already exists in the last few entries
+      const lastFew = prev.slice(-5); // Check last 5 entries
+      isDuplicate = lastFew.some(
+        (t) => t.text === turn.text && t.speaker === turn.speaker
+      );
+
+      if (isDuplicate) {
+        console.log("[Interview] Skipping duplicate transcript:", turn.text.substring(0, 50));
+        return prev; // Don't add duplicate
+      }
+
+      return [...prev, turn];
+    });
+
+    // Skip database save if duplicate
+    if (isDuplicate) {
+      return;
+    }
 
     // Save to database with automatic retry queue
     try {
@@ -265,6 +284,30 @@ export default function InterviewPage() {
       | "speaking";
     setAgentState(normalizedState);
   };
+
+  // Auto-end session after configured duration
+  useEffect(() => {
+    if (!session?.started_at || !session?.config?.duration) return;
+
+    const durationMs = session.config.duration * 60 * 1000; // Convert minutes to ms
+    const startTime = new Date(session.started_at).getTime();
+    const endTime = startTime + durationMs;
+    const now = Date.now();
+    const remaining = endTime - now;
+
+    if (remaining <= 0) {
+      // Duration already passed
+      return;
+    }
+
+    // Set timer to auto-end session
+    const timer = setTimeout(() => {
+      console.log(`[Interview] Auto-ending session after ${session.config.duration} minutes`);
+      setShowEndModal(true);
+    }, remaining);
+
+    return () => clearTimeout(timer);
+  }, [session]);
 
   const handleEndSession = async () => {
     setIsEndingSession(true);
@@ -431,7 +474,7 @@ function InterviewRoomContent({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
           {/* Center: Audio Visualizer */}
           <div className="lg:col-span-2 flex items-center justify-center">
-            <div className="w-full h-full max-h-[500px]">
+            <div className="w-full h-full max-h-[400px]">
               <AudioVisualizer />
             </div>
           </div>
@@ -458,5 +501,22 @@ function InterviewRoomContent({
         onEndSession={onEndSession}
       />
     </div>
+  );
+}
+
+export default function InterviewPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-8 h-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-muted-foreground">Loading interview...</p>
+          </div>
+        </div>
+      }
+    >
+      <InterviewPageContent />
+    </Suspense>
   );
 }
