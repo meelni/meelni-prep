@@ -23,7 +23,7 @@ interface OverviewSectionProps {
 }
 
 interface UserSummary {
-  stats: {
+  summary: {
     totalSessions: number;
     avgScore: number;
     totalMinutes: number;
