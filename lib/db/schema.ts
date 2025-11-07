@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, numeric, jsonb, check } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, integer, numeric, jsonb, check, boolean, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // Users
@@ -66,3 +66,34 @@ export const feedback = pgTable("feedback", {
   summary: text("summary"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
+
+// Question bank for interview questions
+export const interviewQuestion = pgTable("interview_question", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  company: text("company"),
+  questionText: text("question_text").notNull(),
+  questionType: text("question_type").notNull(),
+  difficulty: text("difficulty"),
+  askedAt: timestamp("asked_at", { withTimezone: true }), // When the question was asked in a real interview
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  // Check constraint for valid question types
+  questionTypeCheck: check(
+    "question_type_check",
+    sql`${table.questionType} IN ('A/B Testing', 'Product design/strategy', 'Behavioral', 'Execution', 'Product Sense', 'Pricing', 'Estimation', 'Product Strategy')`
+  ),
+  // Check constraint for valid difficulty levels
+  difficultyCheck: check(
+    "difficulty_check",
+    sql`${table.difficulty} IS NULL OR ${table.difficulty} IN ('Easy', 'Medium', 'Hard')`
+  ),
+  // Index for frequent filtering by question type
+  questionTypeIdx: index("interview_question_question_type_idx").on(table.questionType),
+  // Index for filtering active questions
+  isActiveIdx: index("interview_question_is_active_idx").on(table.isActive),
+  // Composite index for common query pattern: active questions of a specific type
+  activeTypeIdx: index("interview_question_active_type_idx").on(table.isActive, table.questionType),
+  // Index for filtering by when question was asked (for recent/trending questions)
+  askedAtIdx: index("interview_question_asked_at_idx").on(table.askedAt),
+}));

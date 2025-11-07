@@ -18,7 +18,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:check": "drizzle-kit check"
+    "db:check": "drizzle-kit check",
+    "sync:questions": "tsx scripts/sync-questions-from-sheet.ts",
+    "test:sheets": "tsx scripts/test-google-sheets-connection.ts"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.15",
@@ -38,6 +40,7 @@
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.44.7",
     "framer-motion": "^12.23.24",
+    "googleapis": "^165.0.0",
     "livekit-client": "^2.15.14",
     "livekit-server-sdk": "^2.14.0",
     "lucide-react": "^0.552.0",
