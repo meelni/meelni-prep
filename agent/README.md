@@ -1,4 +1,4 @@
-# MockMate Interview Agent
+# Meelni Interview Agent
 
 Python-based LiveKit Agent for conducting real-time AI mock interviews.
 
@@ -8,7 +8,7 @@ Python-based LiveKit Agent for conducting real-time AI mock interviews.
 
 ## 🏗️ Architecture
 
-This agent is the **backend brain** of MockMate. It:
+This agent is the **backend brain** of Meelni. It:
 - Joins LiveKit rooms as a programmable participant
 - Orchestrates the real-time voice pipeline (STT → LLM → TTS)
 - Manages interview conversation state and flow

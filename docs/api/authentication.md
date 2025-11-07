@@ -1,6 +1,6 @@
 # Authentication Guide
 
-**MockMate API Authentication with Supabase Auth**
+**Meelni API Authentication with Supabase Auth**
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## Overview
 
-MockMate uses **Supabase Auth** for authentication, providing a secure, scalable authentication system with support for multiple providers.
+Meelni uses **Supabase Auth** for authentication, providing a secure, scalable authentication system with support for multiple providers.
 
 ### Key Features
 
@@ -148,7 +148,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key # server-side only
 
 ### 2. Google Cloud Console Setup
 
-**Already configured for MockMate**, but for reference:
+**Already configured for Meelni**, but for reference:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select existing

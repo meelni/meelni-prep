@@ -1,7 +1,7 @@
 /**
  * API Type Definitions
  *
- * TypeScript types for all MockMate API request/response schemas.
+ * TypeScript types for all Meelni API request/response schemas.
  * These types ensure type safety across the application and serve as documentation.
  */
 

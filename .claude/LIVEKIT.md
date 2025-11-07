@@ -2,7 +2,7 @@
 
 **Last Updated**: 2025-11-06
 **LiveKit Agents Version**: 1.2.18
-**Project**: MockMate - Real-Time AI Mock Interviews
+**Project**: Meelni - Real-Time AI Mock Interviews
 
 ---
 
@@ -235,7 +235,7 @@ python agent.py start
 
 **Overview**: LiveKit Cloud provides managed hosting for agents with auto-scaling, rolling deployments, and zero-downtime updates.
 
-### Agent Types in MockMate
+### Agent Types in Meelni
 
 1. **Demo Agent** (`demo_agent.py`): Deployed to LiveKit Cloud
    - 60-second product demos on landing page

@@ -43,9 +43,9 @@ export default function APIDocsPage() {
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">MockMate API Documentation</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Meelni API Documentation</h1>
               <p className="mt-2 text-gray-600">
-                Comprehensive API reference for the MockMate interview platform
+                Comprehensive API reference for the Meelni interview platform
               </p>
             </div>
             <a
@@ -119,7 +119,7 @@ export default function APIDocsPage() {
         <div className="container mx-auto px-4">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <p className="text-sm text-gray-600">
-              © 2025 MockMate. All rights reserved.
+              © 2025 Meelni. All rights reserved.
             </p>
             <div className="flex gap-6">
               <a
