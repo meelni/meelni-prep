@@ -43,28 +43,22 @@ This document serves as the single source of truth for:
 
 ## Project Status
 
-**Current Phase**: Phase 0.9 - Tactical Dashboard UI Migration Complete ✅
-**Next Milestone**: Add session persistence (save transcripts to DB), scoring/feedback engine
+**Current Phase**: Phase 1.0 - MVP Complete ✅
+**Next Milestone**: Production deployment and user testing
 
-**Phase 0 Completion Summary**:
-- ✅ Next.js 14+ project initialized with TypeScript, Tailwind, shadcn/ui
-- ✅ Database schema deployed to Supabase (4 tables verified)
-- ✅ Supabase Auth configured (browser + server clients)
-- ✅ **Google OAuth authentication fully working**
-- ✅ **Protected routes with Next.js middleware**
-- ✅ **Dashboard page with personalized welcome**
-- ✅ LiveKit Agents Python worker implemented and tested
-- ✅ LiveKit token generation API working
-- ✅ Interview page with real-time voice conversation
-- ✅ End-to-end voice pipeline: User speaks → Deepgram Nova-3 → GPT-4.1-mini → Cartesia Sonic 3 (Tessa) → User hears
-- ✅ UI redesigned with Linear/Notion aesthetic
-- ✅ Component library created (Button, Card, Badge)
-- ✅ Framer Motion animations integrated
-- ✅ Marketing landing page with modular architecture (Header, Hero, Features, CTA, Footer)
-- ✅ Demo modal with LiveKit Cloud agent deployment
-- ✅ Explicit agent dispatch system configured
-- ✅ **"Start A Mock" button routes to authenticated dashboard**
-- ✅ **Tactical dashboard with sidebar navigation and modular sections**
+**MVP Features Complete**:
+- ✅ Next.js 14+ project with TypeScript, Tailwind, shadcn/ui
+- ✅ Google OAuth authentication with Supabase Auth
+- ✅ Protected routes with Next.js middleware
+- ✅ LiveKit real-time voice pipeline (Deepgram Nova-3 → GPT-4.1-mini → Cartesia Sonic 3)
+- ✅ Question bank with 2,879 PM interview questions (timestamp-filtered)
+- ✅ Question recency preference UI (Current Trends / Broader Practice / All Questions)
+- ✅ **Real-time transcript capture and persistence**
+- ✅ **AI-powered feedback engine with GPT-4 Turbo evaluation**
+- ✅ **Row Level Security (RLS) policies on all user data**
+- ✅ Tactical dashboard with sidebar navigation
+- ✅ Marketing landing page with demo modal
+- ✅ LiveKit Cloud agent deployment (explicit dispatch)
 
 ---
 
@@ -1665,21 +1659,36 @@ RESEND_API_KEY=
 - ✅ Demo Modal Muted Button: Text logic was inverted; fixed to show correct state
 
 ### Current Technical Debt
-- No session persistence (transcripts not saved to DB yet)
-- No authentication (Supabase Auth configured but not integrated)
-- No feedback/scoring engine
-- No error handling in LiveKit token API
-- No RLS (Row Level Security) policies on database
+- ✅ ~~No session persistence~~ → **DONE** - Transcripts save in real-time during interviews
+- ✅ ~~No authentication~~ → **DONE** - Google OAuth fully integrated
+- ✅ ~~No feedback/scoring engine~~ → **DONE** - GPT-4 Turbo evaluation implemented
+- ✅ ~~No error handling in APIs~~ → **DONE** - All APIs have proper validation and error responses
+- ✅ ~~No RLS policies~~ → **DONE** - 12 policies enforcing user data isolation
+
+**Remaining Minor Items**:
+- Consider adding email/password auth alongside Google OAuth (optional)
+- Add feedback UI in dashboard to display evaluation results
+- Consider implementing real-time nudges during interviews (optional)
 
 ---
 
 ## Future Considerations
 
-### Phase 1 (Next)
-- Session persistence: Save transcripts to database
-- Feedback/scoring engine: Post-session evaluation
-- User authentication: Supabase Auth integration
-- Dashboard: View past sessions and progress
+### Phase 1 (Complete) ✅
+- ✅ Session persistence: Real-time transcript saving
+- ✅ Feedback/scoring engine: GPT-4 Turbo evaluation with rubrics
+- ✅ User authentication: Google OAuth with Supabase Auth
+- ✅ Dashboard: Tactical UI with session history
+- ✅ Question bank: 2,879 questions with recency filtering
+- ✅ RLS policies: Database-level security
+
+### Phase 2 (Production Polish)
+- Feedback display UI in dashboard
+- Interview history with detailed scores
+- Performance analytics visualization
+- Email notifications for completed evaluations
+- Error tracking and monitoring (Sentry)
+- Production deployment to Vercel + Supabase
 
 ### Phase 2+
 - Custom company-specific interview loops
