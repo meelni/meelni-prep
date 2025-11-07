@@ -28,16 +28,290 @@ import { eq, sql } from "drizzle-orm";
 import { fetchSheetAsCSV, fetchSheetViaAPI, validateSheetRow, type SheetRow } from "@/lib/google-sheets-client";
 
 // Question type mapping from Google Sheet to database
+// Maps various input formats to canonical database types
 const QUESTION_TYPE_MAPPING: Record<string, string> = {
+  // A/B Testing
   "A/B Testing": "A/B Testing",
+  "ab testing": "A/B Testing",
+  "a/b testing": "A/B Testing",
+
+  // Product design/strategy
   "Product design / strategy": "Product design/strategy",
   "Product design/strategy": "Product design/strategy",
+  "Product Design": "Product design/strategy",
+  "Product design": "Product design/strategy",
+  "Product Design/Strategy": "Product design/strategy",
+  "Product Design and Strategy": "Product design/strategy",
+  "Product Design & Strategy": "Product design/strategy",
+  "Design": "Product design/strategy",
+  "design": "Product design/strategy",
+  "Design & Strategy": "Product design/strategy",
+  "Strategy/Design": "Product design/strategy",
+  "strategy + design": "Product design/strategy",
+  "strategy + product design": "Product design/strategy",
+
+  // Behavioral
   "Behavioral": "Behavioral",
+  "behavioral": "Behavioral",
+  "Behavioural": "Behavioral",
+  "Behavior": "Behavioral",
+  "behavior": "Behavioral",
+  "Behav": "Behavioral",
+  "Leadership & Drive": "Behavioral",
+  "Leadership and Drive": "Behavioral",
+  "Leadership": "Behavioral",
+  "L&D": "Behavioral",
+
+  // Execution
   "Execution": "Execution",
+  "execution": "Execution",
+  "Product Execution": "Execution",
+  "Product execution": "Execution",
+  "Craft & Execution": "Execution",
+  "Craft and Execution": "Execution",
+  "Craft and Exec": "Execution",
+  "Execute with Judgement": "Execution",
+
+  // Product Sense
   "Product Sense": "Product Sense",
+  "Product sense": "Product Sense",
+  "product sense": "Product Sense",
+  "Produce Sense": "Product Sense",
+  "Sense": "Product Sense",
+  "Product": "Product Sense",
+  "product": "Product Sense",
+  "Product Insights": "Product Sense",
+  "Product Thinking": "Product Sense",
+
+  // Pricing
   "Pricing": "Pricing",
+  "pricing": "Pricing",
+
+  // Estimation
   "Estimation": "Estimation",
+  "estimation": "Estimation",
+
+  // Product Strategy
   "Product Strategy": "Product Strategy",
+  "Product strategy": "Product Strategy",
+  "product strategy": "Product Strategy",
+  "Strategy": "Product Strategy",
+  "strategy": "Product Strategy",
+  "Strategic insights": "Product Strategy",
+
+  // Analytical/Analytics (map to Execution for now)
+  "Analytical Thinking": "Execution",
+  "Analytical thinking": "Execution",
+  "analytical thinking": "Execution",
+  "Analytical": "Execution",
+  "analytical": "Execution",
+  "Analytics": "Execution",
+  "analytics": "Execution",
+  "Product Analytics": "Execution",
+  "Product analytics": "Execution",
+  "Product Analysis": "Execution",
+  "Metrics": "Execution",
+  "Analytical Execution": "Execution",
+  "Analytical/Execution": "Execution",
+  "Analytical / Execution": "Execution",
+
+  // Product Prioritization (map to Execution)
+  "Product Prioritization": "Execution",
+  "Product prioritization": "Execution",
+  "Product Priortization": "Execution",
+
+  // System Design / Technical (map to Product design/strategy)
+  "System Design": "Product design/strategy",
+  "System design": "Product design/strategy",
+  "Technical": "Product design/strategy",
+  "technical": "Product design/strategy",
+
+  // Various product-related categories (map to Product Sense)
+  "Product Improvement": "Product Sense",
+  "Product Values": "Product Sense",
+  "Product Retrospective": "Product Sense",
+  "Product Metrics": "Product Sense",
+  "Product Launch": "Product Sense",
+  "Product Analytical": "Product Sense",
+  "Product Prioritisation": "Execution",
+
+  // Compound types (map to primary category)
+  "Product/Strategy": "Product Strategy",
+  "Product, Strategy": "Product Strategy",
+  "Strategy, Product Sense": "Product Strategy",
+  "Product Strategy and Design": "Product design/strategy",
+  "Product strategy and design": "Product design/strategy",
+  "Product Insights / Strategy": "Product Strategy",
+  "Product Strategy/Execution": "Product Strategy",
+  "Strategy/Estimation": "Product Strategy",
+  "Execution, Tradeoff": "Execution",
+  "Analytical Thinking / Product Execution": "Execution",
+  "Analytical Thinking / Binary Tradeoff": "Execution",
+  "Analytics / Execution": "Execution",
+
+  // Googleyness/Culture fit (map to Behavioral)
+  "Googleyness": "Behavioral",
+  "Googlines": "Behavioral",
+  "GCA, RRK": "Behavioral",
+
+  // GTM/Strategy (map to Product Strategy)
+  "GTM": "Product Strategy",
+  "Roadmap": "Product Strategy",
+
+  // Market Research (map to Product Sense)
+  "Market Research": "Product Sense",
+
+  // Various/All/Traditional (map to Product Sense as default)
+  "Various": "Product Sense",
+  "various": "Product Sense",
+  "All": "Product Sense",
+  "Traditional": "Product Sense",
+  "Past Experience and": "Behavioral",
+  "-": "Product Sense",
+
+  // More variations with spaces/typos
+  "Product design ": "Product design/strategy",
+  "Product ": "Product Sense",
+  "Analytics ": "Execution",
+  "analytics ": "Execution",
+  "Analytical ": "Execution",
+  "analytical ": "Execution",
+  "Strategy ": "Product Strategy",
+  "strategy ": "Product Strategy",
+  "Execution ": "Execution",
+  "execution ": "Execution",
+  "sense": "Product Sense",
+  "sense ": "Product Sense",
+  "Sense ": "Product Sense",
+  "Product sense ": "Product Sense",
+  "Product Sense. ": "Product Sense",
+  "Design ": "Product design/strategy",
+  "design ": "Product design/strategy",
+
+  // Typos and misspellings
+  "Startegy": "Product Strategy",
+  "startegy": "Product Strategy",
+  "Stategy": "Product Strategy",
+  "Straegy": "Product Strategy",
+  "Stratigic": "Product Strategy",
+  "Prodcut Strategy": "Product Strategy",
+  "Product Startegy": "Product Strategy",
+  "Produce Execution": "Execution",
+  "Product Executio": "Execution",
+  "Product Exectuion": "Execution",
+  "exection": "Execution",
+  "excution": "Execution",
+  "Produce Design": "Product design/strategy",
+  "Prouct design": "Product design/strategy",
+  "behavorial": "Behavioral",
+  "Behaviorial": "Behavioral",
+  "Beehavioral": "Behavioral",
+  "Behaviour": "Behavioral",
+  "behavior ": "Behavioral",
+  "behaviour": "Behavioral",
+  "Analytic": "Execution",
+  "Analitical": "Execution",
+  "Analutical": "Execution",
+  "Analytican Thinking": "Execution",
+  "Analytical Thnking": "Execution",
+
+  // More compound types
+  "Product Sense + Execution": "Execution",
+  "Product Sense/Execution": "Execution",
+  "Product Sense/Strategy": "Product Strategy",
+  "Product Sense/Design": "Product design/strategy",
+  "Product Sense and Strategy": "Product Strategy",
+  "product sense, execution": "Execution",
+  "Product design, execution": "Execution",
+  "product design, execution ": "Execution",
+  "Strategy and Design": "Product design/strategy",
+  "Strategy + design": "Product design/strategy",
+  "Strategy & product sense": "Product Strategy",
+  "Product and Strategy": "Product Strategy",
+  "Product + Strategy": "Product Strategy",
+  "Product & Strategy": "Product Strategy",
+  "Product & Strategy both": "Product Strategy",
+  "strategy / behavioral": "Product Strategy",
+
+  // Additional mappings for common variations
+  "Product Prioritization/Sense": "Execution",
+  "product prioritization": "Execution",
+  "Prioritization": "Execution",
+  "craft & execution": "Execution",
+  "craft and execution": "Execution",
+  "Problem space understanding": "Product Sense",
+  "product analytics": "Execution",
+  "Prod Analytics": "Execution",
+  "Prod Analytics ": "Execution",
+  "Product Insights, Strategic Insights": "Product Strategy",
+  "Product Insights, Strategic Insights ": "Product Strategy",
+  "Strategic Insights": "Product Strategy",
+  "test": "Product Sense",
+  "analytics/execution ": "Execution",
+
+  // Estimation combinations
+  "Strategy, Estimation": "Product Strategy",
+  "Strategy, Estimation, Pricing": "Product Strategy",
+  "Product, Estimation": "Estimation",
+  "Product + Estimation": "Estimation",
+
+  // Leadership/Behavioral variations
+  "Leadership and drive": "Behavioral",
+  "Leadership & drive": "Behavioral",
+  "Leadership + Drive": "Behavioral",
+  "Leadership, Behavioral": "Behavioral",
+  "Leadership/Behavioral": "Behavioral",
+  "Behavioural - AZ LP": "Behavioral",
+
+  // System Design variations
+  "System Design (PM)": "Product design/strategy",
+  "System Design (PM interview)": "Product design/strategy",
+  "Pseudo system design": "Product design/strategy",
+
+  // Product Insights variations
+  "Product insight": "Product Sense",
+  "Product Insights, Product Sense": "Product Sense",
+  "Product Insight/Vision": "Product Sense",
+  "Product Insight/Design": "Product design/strategy",
+
+  // Other specific cases
+  "Customer pain point": "Product Sense",
+  "Problem solving": "Product Sense",
+  "Root cause analysis": "Execution",
+  "RCA / Execution": "Execution",
+  "Troubleshooting": "Execution",
+  "NA": "Product Sense",
+  "Feature Design": "Product design/strategy",
+  "New Product Launch": "Product Sense",
+  "Product Development Life Cycle": "Product Sense",
+  "product design": "Product design/strategy",
+  "Product Strategy (Mission Driven, Ecosystem Thinking)": "Product Strategy",
+  "Product Design, Execution, Tradeoff": "Product design/strategy",
+  "Product Design (Technical)": "Product design/strategy",
+  "Data orientation": "Execution",
+  "Data orientation ": "Execution",
+  "Leadership/ behavioral": "Behavioral",
+  "Leadership/ behavioral ": "Behavioral",
+  "Design, Strategy": "Product design/strategy",
+  "Behavioral + Product Sense": "Behavioral",
+  "Product Roadmap and Prioritisation": "Execution",
+  "Engineering": "Product design/strategy",
+  "Engineering ": "Product design/strategy",
+  "Analytics + Strategy": "Execution",
+  "Designing products and compatible products": "Product design/strategy",
+  "Estimation, Design, Metrics": "Estimation",
+  "Program Management": "Execution",
+  "Program Management ": "Execution",
+  "Execution, Statistics": "Execution",
+  "Analytics/Stratergy": "Execution",
+  "Product- technical": "Product design/strategy",
+  "Design, Product Roadmap": "Product design/strategy",
+  "Product Design, Improvement, Estimation": "Product design/strategy",
+  "Product Strategy, sense, and design": "Product Strategy",
+  "Product Strategy, sense, and design ": "Product Strategy",
+  "Product Execution and Metrics and Hypothetical Question Evaluation": "Execution",
+  "Execution and metrics": "Execution",
+  "Execution and metrics ": "Execution",
 };
 
 // Valid question types in our database
@@ -58,6 +332,7 @@ interface SyncStats {
   deactivatedQuestions: number;
   skippedQuestions: number;
   errors: number;
+  skipReasons: Map<string, number>;
 }
 
 interface SyncOptions {
@@ -78,6 +353,7 @@ async function syncQuestions(options: SyncOptions): Promise<void> {
     deactivatedQuestions: 0,
     skippedQuestions: 0,
     errors: 0,
+    skipReasons: new Map<string, number>(),
   };
 
   try {
@@ -94,15 +370,24 @@ async function syncQuestions(options: SyncOptions): Promise<void> {
     // Step 2: Process each question
     const validQuestions: ProcessedQuestion[] = [];
 
-    for (const row of sheetRows) {
+    for (let i = 0; i < sheetRows.length; i++) {
+      const row = sheetRows[i];
       const result = await processSheetRow(row, options);
 
       if (result.valid) {
         validQuestions.push(result.question!);
       } else {
         stats.skippedQuestions++;
+
+        // Track skip reasons
+        const reason = result.reason || 'Unknown reason';
+        stats.skipReasons.set(reason, (stats.skipReasons.get(reason) || 0) + 1);
+
         if (options.verbose) {
-          console.log(`⏭️  Skipped: ${result.reason}`);
+          console.log(`⏭️  Row ${i + 2}: Skipped - ${result.reason}`);
+          console.log(`   Question text: "${row.questionText?.substring(0, 80) || '(empty)'}..."`);
+          console.log(`   Question type: "${row.questionType || '(empty)'}"`);
+          console.log(`   Company: "${row.company || '(empty)'}"`);
         }
       }
     }
@@ -173,7 +458,7 @@ async function fetchSheetData(): Promise<SheetRow[]> {
     return await fetchSheetAsCSV(csvUrl);
   } else if (apiKey && sheetId) {
     console.log("📡 Using Method B: Fetching via Google Sheets API");
-    return await fetchSheetViaAPI(sheetId, `${sheetName}!A1:G1000`);
+    return await fetchSheetViaAPI(sheetId, sheetName);
   } else {
     throw new Error(
       "Missing environment variables. Set either:\n" +
@@ -380,6 +665,19 @@ function printSummary(stats: SyncStats, isDryRun: boolean) {
   console.log(`   Deactivated questions: ${stats.deactivatedQuestions}`);
   console.log(`   Skipped questions:     ${stats.skippedQuestions}`);
   console.log(`   Errors:                ${stats.errors}`);
+
+  // Show skip reasons breakdown
+  if (stats.skippedQuestions > 0 && stats.skipReasons.size > 0) {
+    console.log(`\n   Skip reasons breakdown:`);
+    // Sort by count (descending)
+    const sortedReasons = Array.from(stats.skipReasons.entries())
+      .sort((a, b) => b[1] - a[1]);
+
+    for (const [reason, count] of sortedReasons) {
+      console.log(`      • ${reason}: ${count}`);
+    }
+  }
+
   console.log("─".repeat(50) + "\n");
 
   if (isDryRun) {
