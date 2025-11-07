@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, Share2, Calendar, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Share2, Calendar, Loader2, GitCompare } from "lucide-react";
 import { ScoreBreakdown } from "@/components/feedback/score-breakdown";
 import { RubricSection } from "@/components/feedback/rubric-section";
 import { StrengthsList } from "@/components/feedback/strengths-list";
@@ -136,6 +136,12 @@ export default function FeedbackPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Link href={`/feedback/${sessionId}/compare`}>
+                <Button variant="outline" size="sm">
+                  <GitCompare className="w-4 h-4 mr-2" />
+                  Compare Attempts
+                </Button>
+              </Link>
               <Button variant="outline" size="sm" onClick={handleShare}>
                 <Share2 className="w-4 h-4 mr-2" />
                 Share
