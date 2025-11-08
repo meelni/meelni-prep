@@ -450,8 +450,17 @@ export function SettingsSection() {
             <Select
               value={theme || settings.theme}
               onValueChange={(value) => {
+                // Update both immediately
                 setTheme(value);
-                setSettings({ ...settings, theme: value });
+                const newSettings = { ...settings, theme: value };
+                setSettings(newSettings);
+
+                // Save to database immediately
+                fetch('/api/user/settings', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(newSettings)
+                }).catch(err => console.error('Failed to save theme:', err));
               }}
             >
               <SelectTrigger id="theme">

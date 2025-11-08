@@ -1,12 +1,14 @@
 "use client";
 
-import { ChevronLeft, Monitor, History, BarChart3, Lightbulb, Settings, Sparkles, LogOut } from "lucide-react";
+import { ChevronLeft, Monitor, History, BarChart3, Lightbulb, Settings, Sparkles, LogOut, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Icons } from "@/components/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 interface SidebarProps {
   activeSection: string;
@@ -32,6 +34,13 @@ export function Sidebar({
   onSignOut,
 }: SidebarProps) {
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // Avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const navigationItems = [
     { id: "overview", icon: Monitor, label: "Overview", minSessions: 0 },
@@ -221,6 +230,29 @@ export function Sidebar({
               </div>
             )}
           </motion.div>
+        )}
+
+        {/* Theme Toggle */}
+        {mounted && (
+          <motion.button
+            variants={itemVariants}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            className={cn(
+              "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200",
+              "text-muted-foreground hover:text-foreground hover:bg-card/50"
+            )}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          >
+            {theme === "dark" ? (
+              <Sun size={18} className="transition-opacity opacity-70" aria-hidden="true" />
+            ) : (
+              <Moon size={18} className="transition-opacity opacity-70" aria-hidden="true" />
+            )}
+            {!collapsed && <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>}
+          </motion.button>
         )}
 
         {/* Flexible Spacer */}
