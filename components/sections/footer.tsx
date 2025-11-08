@@ -25,37 +25,26 @@ export function Footer() {
             </div>
 
             {/* Product Links */}
-            <div>
-              <h3 className="text-[15px] font-sans font-semibold text-foreground mb-4">
-                Product
-              </h3>
-              <ul className="space-y-3">
-                <li>
-                  <a
-                    href="#features"
-                    className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                  >
-                    Features
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="#pricing"
-                    className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                  >
-                    Pricing
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/blog"
-                    className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                  >
-                    Blog
-                  </a>
-                </li>
-              </ul>
-            </div>
+            <nav className="flex flex-col gap-3">
+              <a
+                href="#features"
+                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+              >
+                Features
+              </a>
+              <a
+                href="#pricing"
+                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+              >
+                Pricing
+              </a>
+              <a
+                href="/blog"
+                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+              >
+                Blog
+              </a>
+            </nav>
           </div>
 
           {/* Right Side: Connect - aligns with header CTA button */}
