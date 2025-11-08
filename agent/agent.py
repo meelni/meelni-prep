@@ -119,9 +119,9 @@ async def entrypoint(ctx: JobContext):
             # Publish via LiveKit data track
             logger.info(f"[Transcript] User: {event.transcript[:50]}...")
 
-            # Use asyncio.create_task for async operation within sync callback
+            # Schedule async operation safely using ensure_future
             import asyncio
-            asyncio.create_task(
+            asyncio.ensure_future(
                 ctx.room.local_participant.publish_data(
                     json.dumps(transcript_data).encode("utf-8"),
                     topic="transcript"
@@ -163,9 +163,9 @@ async def entrypoint(ctx: JobContext):
 
                     logger.info(f"[Transcript] Agent: {agent_text[:50].strip()}...")
 
-                    # Use asyncio.create_task for async operation within sync callback
+                    # Schedule async operation safely using ensure_future
                     import asyncio
-                    asyncio.create_task(
+                    asyncio.ensure_future(
                         ctx.room.local_participant.publish_data(
                             json.dumps(transcript_data).encode("utf-8"),
                             topic="transcript"
@@ -178,12 +178,53 @@ async def entrypoint(ctx: JobContext):
 
     logger.info("Transcript event handlers registered successfully")
 
-    await session.start(
+    # Start session (non-blocking - returns immediately)
+    session_task = session.start(
         agent=InterviewAgent(instructions=instructions),
         room=ctx.room
     )
 
     logger.info(f"Voice agent started successfully - {round_type} interview with {config['difficulty']} difficulty")
+
+    # Send initial greeting after agent joins
+    # This makes the agent speak first instead of waiting for user
+    import asyncio
+
+    async def send_initial_greeting():
+        # Wait a brief moment for session to fully initialize
+        await asyncio.sleep(0.5)
+
+        mode_name = config.get("mode", "mock_interview").replace("_", " ").title()
+        interview_type_name = round_type.replace("_", " ").title()
+
+        # Check if question was provided
+        if question and question.get("question_text"):
+            # Include question in greeting
+            greeting = (
+                f"Hey! I'm Meelni, your AI interview coach. "
+                f"Today we're doing a {interview_type_name} interview in {mode_name} mode. "
+                f"I'll be asking you about: {question['question_text']} "
+                f"Take a moment to think, then let me know when you're ready to start."
+            )
+        else:
+            # Generic greeting without specific question
+            greeting = (
+                f"Hey! I'm Meelni, your AI interview coach. "
+                f"Today we're doing a {interview_type_name} interview in {mode_name} mode. "
+                f"I'll ask questions and give you feedback as we go. Ready to start?"
+            )
+
+        try:
+            session.say(greeting, allow_interruptions=True)
+            logger.info(f"Agent sent initial greeting: {greeting[:60]}...")
+        except Exception as e:
+            logger.error(f"Failed to send initial greeting: {e}")
+
+    # Schedule the greeting task
+    asyncio.create_task(send_initial_greeting())
+
+    # Await the session task (this keeps the agent running)
+    await session_task
 
 
 if __name__ == "__main__":
