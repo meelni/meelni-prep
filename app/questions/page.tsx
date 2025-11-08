@@ -25,6 +25,7 @@ import {
   Play,
   Calendar,
   Building2,
+  Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSessions } from "@/lib/api/queries";
@@ -297,53 +298,6 @@ export default function QuestionBankPage() {
       onSignOut={handleSignOut}
     >
       <div className="min-h-screen bg-background">
-        {/* Simplified Search & Filter Bar */}
-        <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex flex-col sm:flex-row gap-4">
-              {/* Search - Full width on left */}
-              <div className="flex-1">
-                <SearchAutocomplete
-                  questions={questions}
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  onSelect={handleAutocompleteSelect}
-                />
-              </div>
-
-              {/* Desktop Filters Button */}
-              <div className="hidden sm:block">
-                <FilterPopover
-                  quickFilters={quickFilters}
-                  onToggleQuickFilter={toggleQuickFilter}
-                  selectedType={selectedType}
-                  onSelectType={setSelectedType}
-                  sortBy={sortBy}
-                  onSortChange={setSortBy}
-                  onClearAll={clearAllFilters}
-                />
-              </div>
-
-              {/* Mobile Filter Button */}
-              <button
-                onClick={() => setIsFilterDrawerOpen(true)}
-                className="sm:hidden px-4 py-2.5 bg-card border border-border rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors min-h-[44px]"
-                aria-label="Open filters"
-              >
-                <span>Filters</span>
-                {(quickFilters.size > 0 || selectedType !== "All Types") && (
-                  <Badge
-                    variant="default"
-                    className="h-5 min-w-5 px-1.5 text-xs rounded-full"
-                  >
-                    {quickFilters.size + (selectedType !== "All Types" ? 1 : 0)}
-                  </Badge>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Questions Content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {emptyStateType ? (
@@ -359,13 +313,40 @@ export default function QuestionBankPage() {
           ) : (
             <>
               {/* Desktop Table View (≥768px) */}
-              <div className="hidden md:block rounded-lg border border-border overflow-hidden bg-card">
-                <div className="overflow-x-auto max-h-[calc(100vh-16rem)]">
-                  <Table className="border-separate border-spacing-0 [&_td]:border-border [&_th]:border-b [&_th]:border-border [&_tr]:border-none [&_tr:not(:last-child)_td]:border-b">
-                    <TableHeader className="sticky top-0 z-10 bg-card/90 backdrop-blur-xs">
+              <div className="hidden md:block rounded-lg border border-border overflow-hidden bg-card shadow-sm">
+                {/* Integrated Search/Filter Toolbar */}
+                <div className="px-6 py-4 border-b border-border/50 bg-card/40 backdrop-blur-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <SearchAutocomplete
+                        questions={questions}
+                        value={searchQuery}
+                        onChange={setSearchQuery}
+                        onSelect={handleAutocompleteSelect}
+                      />
+                    </div>
+                    <FilterPopover
+                      quickFilters={quickFilters}
+                      onToggleQuickFilter={toggleQuickFilter}
+                      selectedType={selectedType}
+                      onSelectType={setSelectedType}
+                      sortBy={sortBy}
+                      onSortChange={setSortBy}
+                      onClearAll={clearAllFilters}
+                    />
+                  </div>
+                </div>
+
+                {/* Table with Sticky Header */}
+                <div className="relative overflow-x-auto max-h-[calc(100vh-16rem)] scroll-smooth">
+                  {/* Bottom fade gradient */}
+                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-card to-transparent z-10" />
+
+                  <Table className="border-separate border-spacing-0">
+                    <TableHeader className="sticky top-0 z-20 bg-gradient-to-b from-card via-card/98 to-card/95 backdrop-blur-md border-b border-border/60 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.08)]">
                       <TableRow className="hover:bg-transparent">
                         {/* Checkbox column */}
-                        <TableHead className="w-12">
+                        <TableHead className="w-12 h-11 px-4">
                           <input
                             type="checkbox"
                             checked={
@@ -377,11 +358,11 @@ export default function QuestionBankPage() {
                             aria-label="Select all questions"
                           />
                         </TableHead>
-                        <TableHead>Question</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Company</TableHead>
-                        <TableHead>Asked Date</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
+                        <TableHead className="h-11 px-4">Question</TableHead>
+                        <TableHead className="h-11 px-4">Type</TableHead>
+                        <TableHead className="h-11 px-4">Company</TableHead>
+                        <TableHead className="h-11 px-4">Asked Date</TableHead>
+                        <TableHead className="h-11 px-4 text-right">Action</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -391,8 +372,9 @@ export default function QuestionBankPage() {
                           <TableRow
                             key={question.id}
                             className={cn(
-                              "transition-all duration-150 hover:bg-primary/3",
-                              isSelected && "bg-primary/5 border-l-2 border-l-primary"
+                              "transition-all duration-200 hover:bg-primary/[0.02]",
+                              "border-b border-border/40 last:border-0",
+                              isSelected && "bg-primary/[0.04] border-l-2 border-l-primary shadow-[inset_0_0_0_1px_rgb(var(--primary)/0.08)]"
                             )}
                             style={{
                               opacity: index < 20 ? 0 : 1,
@@ -400,7 +382,7 @@ export default function QuestionBankPage() {
                             }}
                           >
                             {/* Checkbox */}
-                            <TableCell>
+                            <TableCell className="px-4 py-3.5">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -412,7 +394,7 @@ export default function QuestionBankPage() {
                             </TableCell>
 
                             {/* Question with hover preview */}
-                            <TableCell>
+                            <TableCell className="px-4 py-3.5">
                               <HoverPreview
                                 question={question}
                                 badgeClassName={
@@ -428,7 +410,7 @@ export default function QuestionBankPage() {
                             </TableCell>
 
                             {/* Type */}
-                            <TableCell>
+                            <TableCell className="px-4 py-3.5">
                               <Badge
                                 variant="subtle"
                                 className={cn(
@@ -442,7 +424,7 @@ export default function QuestionBankPage() {
                             </TableCell>
 
                             {/* Company */}
-                            <TableCell>
+                            <TableCell className="px-4 py-3.5">
                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <Building2 className="w-4 h-4 opacity-60" />
                                 <span>{question.company || "N/A"}</span>
@@ -450,7 +432,7 @@ export default function QuestionBankPage() {
                             </TableCell>
 
                             {/* Date */}
-                            <TableCell>
+                            <TableCell className="px-4 py-3.5">
                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <Calendar className="w-4 h-4 opacity-60" />
                                 <span>
@@ -462,7 +444,7 @@ export default function QuestionBankPage() {
                             </TableCell>
 
                             {/* Action */}
-                            <TableCell className="text-right">
+                            <TableCell className="px-4 py-3.5 text-right">
                               <Button
                                 size="sm"
                                 onClick={() => handleTryQuestion(question.id, question.questionType)}
@@ -481,22 +463,56 @@ export default function QuestionBankPage() {
               </div>
 
               {/* Mobile Card Grid (<768px) */}
-              <div className="md:hidden grid gap-4 grid-cols-1 sm:grid-cols-2">
-                {filteredQuestions.map((question, index) => (
-                  <QuestionCard
-                    key={question.id}
-                    question={question}
-                    selected={selectedQuestions.has(question.id)}
-                    onToggleSelect={() => toggleQuestionSelection(question.id)}
-                    onTryQuestion={() => handleTryQuestion(question.id, question.questionType)}
-                    badgeClassName={
-                      QUESTION_TYPE_COLORS[
-                        question.questionType as keyof typeof QUESTION_TYPE_COLORS
-                      ]
-                    }
-                    index={index}
-                  />
-                ))}
+              <div className="md:hidden space-y-4">
+                {/* Mobile Search/Filter Toolbar */}
+                <div className="rounded-lg border border-border overflow-hidden bg-card shadow-sm">
+                  <div className="px-4 py-4 border-b border-border/50 bg-card/40">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <SearchAutocomplete
+                          questions={questions}
+                          value={searchQuery}
+                          onChange={setSearchQuery}
+                          onSelect={handleAutocompleteSelect}
+                        />
+                      </div>
+                      <button
+                        onClick={() => setIsFilterDrawerOpen(true)}
+                        className="px-4 py-2.5 bg-card border border-border rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-muted/50 transition-colors min-h-[44px]"
+                        aria-label="Open filters"
+                      >
+                        <Filter className="w-4 h-4" />
+                        {(quickFilters.size > 0 || selectedType !== "All Types") && (
+                          <Badge
+                            variant="default"
+                            className="h-5 min-w-5 px-1.5 text-xs rounded-full"
+                          >
+                            {quickFilters.size + (selectedType !== "All Types" ? 1 : 0)}
+                          </Badge>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mobile Question Cards */}
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                  {filteredQuestions.map((question, index) => (
+                    <QuestionCard
+                      key={question.id}
+                      question={question}
+                      selected={selectedQuestions.has(question.id)}
+                      onToggleSelect={() => toggleQuestionSelection(question.id)}
+                      onTryQuestion={() => handleTryQuestion(question.id, question.questionType)}
+                      badgeClassName={
+                        QUESTION_TYPE_COLORS[
+                          question.questionType as keyof typeof QUESTION_TYPE_COLORS
+                        ]
+                      }
+                      index={index}
+                    />
+                  ))}
+                </div>
               </div>
             </>
           )}
