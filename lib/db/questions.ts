@@ -61,7 +61,7 @@ export async function getQuestions(
     ? [eq(interviewQuestion.questionType, questionType)]
     : [];
 
-  // Get questions with pagination
+  // Get questions with pagination, ordered by askedAt DESC (most recent first)
   const questions = await db
     .select({
       id: interviewQuestion.id,
@@ -74,6 +74,7 @@ export async function getQuestions(
     })
     .from(interviewQuestion)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(sql`${interviewQuestion.askedAt} DESC NULLS LAST`)
     .limit(limit)
     .offset(offset);
 

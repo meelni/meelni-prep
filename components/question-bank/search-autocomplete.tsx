@@ -162,7 +162,7 @@ export function SearchAutocomplete({
   }, []);
 
   return (
-    <div className="relative flex-1">
+    <div className="relative flex-1 z-50">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
       <input
         ref={inputRef}
@@ -187,7 +187,7 @@ export function SearchAutocomplete({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full mt-2 w-full bg-popover border border-border rounded-lg shadow-lg max-h-80 overflow-y-auto divide-y divide-border z-50"
+            className="absolute top-full mt-2 w-full bg-card border border-border rounded-lg shadow-lg max-h-80 overflow-y-auto divide-y divide-border z-50 backdrop-blur-xl"
             role="listbox"
           >
             {/* Company results */}
