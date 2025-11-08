@@ -6,7 +6,15 @@ import { useAuth } from "@/app/providers/auth-provider";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FilterPill } from "@/components/ui/filter-pill";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { FilterPopover } from "@/components/question-bank/filter-popover";
 import { SearchAutocomplete } from "@/components/question-bank/search-autocomplete";
 import { HoverPreview } from "@/components/question-bank/hover-preview";
 import { BulkActionToolbar } from "@/components/question-bank/bulk-action-toolbar";
@@ -14,16 +22,10 @@ import { EmptyState } from "@/components/question-bank/empty-state";
 import { QuestionCard } from "@/components/question-bank/question-card";
 import { MobileFilterDrawer } from "@/components/question-bank/mobile-filter-drawer";
 import {
-  Search,
-  Filter,
-  ArrowUpDown,
   Play,
   Calendar,
   Building2,
-  Tag,
-  Sparkles,
 } from "lucide-react";
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useSessions } from "@/lib/api/queries";
 import { useDebounce } from "@/lib/hooks/use-debounce";
@@ -44,14 +46,6 @@ const QUESTION_TYPE_COLORS = {
   Execution: "bg-green-500/8 text-green-600 dark:text-green-400 border-green-500/20",
   "Product Strategy": "bg-orange-500/8 text-orange-600 dark:text-orange-400 border-orange-500/20",
 };
-
-const QUESTION_TYPES = [
-  "All Types",
-  "Behavioral",
-  "Product Sense",
-  "Execution",
-  "Product Strategy",
-];
 
 const FAANG_COMPANIES = ["Meta", "Amazon", "Apple", "Netflix", "Google"];
 
@@ -303,115 +297,49 @@ export default function QuestionBankPage() {
       onSignOut={handleSignOut}
     >
       <div className="min-h-screen bg-background">
-        {/* Header */}
+        {/* Simplified Search & Filter Bar */}
         <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h1 className="text-3xl font-display font-bold text-foreground">
-                  Question Bank
-                </h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {filteredQuestions.length} questions available
-                </p>
-              </div>
-            </div>
-
-            {/* Quick Filters - Desktop only */}
-            <div className="mb-4 hidden md:block">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Quick Filters
-                </span>
-                <FilterPill
-                  active={quickFilters.has("recent")}
-                  onClick={() => toggleQuickFilter("recent")}
-                  aria-label="Filter by recent questions"
-                >
-                  Recent Questions
-                </FilterPill>
-                <FilterPill
-                  active={quickFilters.has("faang")}
-                  onClick={() => toggleQuickFilter("faang")}
-                  aria-label="Filter by FAANG companies"
-                >
-                  FAANG Companies
-                </FilterPill>
-                <FilterPill
-                  active={quickFilters.has("weak-areas")}
-                  onClick={() => toggleQuickFilter("weak-areas")}
-                  aria-label="Filter by weak areas"
-                  title="Coming soon - based on your performance data"
-                >
-                  My Weak Areas
-                </FilterPill>
-                {(quickFilters.size > 0 || selectedType !== "All Types") && (
-                  <button
-                    onClick={clearAllFilters}
-                    className="text-xs text-primary hover:underline ml-2"
-                  >
-                    Clear all
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Search and Filters */}
             <div className="flex flex-col sm:flex-row gap-4">
-              {/* Search with Autocomplete */}
-              <div className="flex-1 flex gap-2">
+              {/* Search - Full width on left */}
+              <div className="flex-1">
                 <SearchAutocomplete
                   questions={questions}
                   value={searchQuery}
                   onChange={setSearchQuery}
                   onSelect={handleAutocompleteSelect}
                 />
-
-                {/* Mobile Filter Button */}
-                <button
-                  onClick={() => setIsFilterDrawerOpen(true)}
-                  className="md:hidden px-4 py-2.5 bg-card border border-border rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-muted/50 transition-colors min-h-[44px]"
-                  aria-label="Open filters"
-                >
-                  <Filter className="w-4 h-4" />
-                  {(quickFilters.size > 0 || selectedType !== "All Types") && (
-                    <span className="px-1.5 py-0.5 bg-primary text-primary-foreground rounded-full text-xs font-semibold min-w-[20px] text-center">
-                      {quickFilters.size + (selectedType !== "All Types" ? 1 : 0)}
-                    </span>
-                  )}
-                </button>
               </div>
 
-              {/* Type Filter - Desktop only */}
-              <div className="hidden md:flex gap-2 overflow-x-auto">
-                {QUESTION_TYPES.map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setSelectedType(type)}
-                    className={cn(
-                      "px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors",
-                      selectedType === type
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-card border border-border text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {type}
-                  </button>
-                ))}
+              {/* Desktop Filters Button */}
+              <div className="hidden sm:block">
+                <FilterPopover
+                  quickFilters={quickFilters}
+                  onToggleQuickFilter={toggleQuickFilter}
+                  selectedType={selectedType}
+                  onSelectType={setSelectedType}
+                  sortBy={sortBy}
+                  onSortChange={setSortBy}
+                  onClearAll={clearAllFilters}
+                />
               </div>
 
-              {/* Sort - Desktop only */}
-              <select
-                value={sortBy}
-                onChange={(e) =>
-                  setSortBy(e.target.value as "recent" | "company" | "type")
-                }
-                className="hidden md:block px-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              {/* Mobile Filter Button */}
+              <button
+                onClick={() => setIsFilterDrawerOpen(true)}
+                className="sm:hidden px-4 py-2.5 bg-card border border-border rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors min-h-[44px]"
+                aria-label="Open filters"
               >
-                <option value="recent">Most Recent</option>
-                <option value="company">Company</option>
-                <option value="type">Type</option>
-              </select>
+                <span>Filters</span>
+                {(quickFilters.size > 0 || selectedType !== "All Types") && (
+                  <Badge
+                    variant="default"
+                    className="h-5 min-w-5 px-1.5 text-xs rounded-full"
+                  >
+                    {quickFilters.size + (selectedType !== "All Types" ? 1 : 0)}
+                  </Badge>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -432,12 +360,12 @@ export default function QuestionBankPage() {
             <>
               {/* Desktop Table View (≥768px) */}
               <div className="hidden md:block rounded-lg border border-border overflow-hidden bg-card">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead className="sticky top-0 z-10 bg-card/80 backdrop-blur-md border-b border-border">
-                      <tr>
+                <div className="overflow-x-auto max-h-[calc(100vh-16rem)]">
+                  <Table className="border-separate border-spacing-0 [&_td]:border-border [&_th]:border-b [&_th]:border-border [&_tr]:border-none [&_tr:not(:last-child)_td]:border-b">
+                    <TableHeader className="sticky top-0 z-10 bg-card/90 backdrop-blur-xs">
+                      <TableRow className="hover:bg-transparent">
                         {/* Checkbox column */}
-                        <th className="text-left px-6 py-3 w-12">
+                        <TableHead className="w-12">
                           <input
                             type="checkbox"
                             checked={
@@ -448,40 +376,31 @@ export default function QuestionBankPage() {
                             className="w-4 h-4 rounded border-border text-primary focus:ring-2 focus:ring-primary/20"
                             aria-label="Select all questions"
                           />
-                        </th>
-                        <th className="text-left px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          Question
-                        </th>
-                        <th className="text-left px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          Type
-                        </th>
-                        <th className="text-left px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          Company
-                        </th>
-                        <th className="text-left px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          Asked Date
-                        </th>
-                        <th className="text-right px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          Action
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                        </TableHead>
+                        <TableHead>Question</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Company</TableHead>
+                        <TableHead>Asked Date</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {filteredQuestions.map((question, index) => {
                         const isSelected = selectedQuestions.has(question.id);
                         return (
-                          <motion.tr
+                          <TableRow
                             key={question.id}
-                            initial={index < 20 ? { opacity: 0, y: 10 } : { opacity: 1, y: 0 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={index < 20 ? { delay: index * 0.015 } : { duration: 0 }}
                             className={cn(
-                              "border-b border-border last:border-b-0 transition-all duration-150 hover:bg-primary/3",
+                              "transition-all duration-150 hover:bg-primary/3",
                               isSelected && "bg-primary/5 border-l-2 border-l-primary"
                             )}
+                            style={{
+                              opacity: index < 20 ? 0 : 1,
+                              animation: index < 20 ? `fadeInUp 0.3s ease-out ${index * 0.015}s forwards` : 'none',
+                            }}
                           >
                             {/* Checkbox */}
-                            <td className="px-6 py-4">
+                            <TableCell>
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -490,10 +409,10 @@ export default function QuestionBankPage() {
                                 aria-label={`Select question: ${question.questionText}`}
                                 aria-checked={isSelected}
                               />
-                            </td>
+                            </TableCell>
 
                             {/* Question with hover preview */}
-                            <td className="px-6 py-4">
+                            <TableCell>
                               <HoverPreview
                                 question={question}
                                 badgeClassName={
@@ -506,10 +425,10 @@ export default function QuestionBankPage() {
                                   {question.questionText}
                                 </p>
                               </HoverPreview>
-                            </td>
+                            </TableCell>
 
                             {/* Type */}
-                            <td className="px-6 py-4">
+                            <TableCell>
                               <Badge
                                 variant="subtle"
                                 className={cn(
@@ -520,18 +439,18 @@ export default function QuestionBankPage() {
                               >
                                 {question.questionType}
                               </Badge>
-                            </td>
+                            </TableCell>
 
                             {/* Company */}
-                            <td className="px-6 py-4">
+                            <TableCell>
                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <Building2 className="w-4 h-4 opacity-60" />
                                 <span>{question.company || "N/A"}</span>
                               </div>
-                            </td>
+                            </TableCell>
 
                             {/* Date */}
-                            <td className="px-6 py-4">
+                            <TableCell>
                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <Calendar className="w-4 h-4 opacity-60" />
                                 <span>
@@ -540,10 +459,10 @@ export default function QuestionBankPage() {
                                     : "N/A"}
                                 </span>
                               </div>
-                            </td>
+                            </TableCell>
 
                             {/* Action */}
-                            <td className="px-6 py-4 text-right">
+                            <TableCell className="text-right">
                               <Button
                                 size="sm"
                                 onClick={() => handleTryQuestion(question.id, question.questionType)}
@@ -552,12 +471,12 @@ export default function QuestionBankPage() {
                                 <Play className="w-4 h-4" />
                                 Try Question
                               </Button>
-                            </td>
-                          </motion.tr>
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
 

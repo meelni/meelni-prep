@@ -385,4 +385,16 @@
   .scrollbar-thumb-border:hover::-webkit-scrollbar-thumb {
     background: rgb(var(--primary) / 0.5);
   }
+
+  /* Fade in up animation for table rows */
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }

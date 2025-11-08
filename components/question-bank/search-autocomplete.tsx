@@ -167,7 +167,7 @@ export function SearchAutocomplete({
       <input
         ref={inputRef}
         type="text"
-        placeholder="Search questions or companies..."
+        placeholder="Search questions by text or company..."
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
