@@ -160,8 +160,24 @@ export async function POST(req: NextRequest) {
       : await getRandomQuestion(dbQuestionType);
 
     if (!question) {
-      console.warn(`No questions found for type: ${dbQuestionType}${recentDays ? ` within last ${recentDays} days` : ''}`);
+      const errorMsg = `No ${dbQuestionType} questions available${recentDays ? ` from the last ${recentDays} days` : ''}. Try selecting "All Questions" or a different interview type.`;
+      console.warn(`[Session Start] ${errorMsg}`);
+
+      return NextResponse.json(
+        { error: errorMsg },
+        { status: 404 }
+      );
     }
+
+    // Log question selection for debugging
+    console.log(`[Session Start] Question selected:`, {
+      id: question.id,
+      type: question.questionType,
+      company: question.company,
+      text_preview: question.questionText.substring(0, 100) + "...",
+      user_selected_round_type: roundType,
+      mapped_db_type: dbQuestionType,
+    });
 
     // Ensure user exists in app_user table (for existing authenticated users)
     await upsertUser({
