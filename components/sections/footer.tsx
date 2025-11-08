@@ -7,55 +7,58 @@ export function Footer() {
   return (
     <footer className="border-t border-border/60 bg-background/95 backdrop-blur-lg mt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Main Footer Content */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
-          {/* Brand Column */}
-          <div>
-            <div className="flex items-center gap-x-2 mb-4">
-              <Icons.logo className="h-6 w-6 text-primary" />
-              <h2 className="text-[20px] font-sans font-semibold text-foreground">
-                {siteConfig.name}
-              </h2>
+        {/* Main Footer Content - matches header justify-between layout */}
+        <div className="flex flex-col md:flex-row justify-between gap-12 mb-12">
+          {/* Left Side: Brand + Product Links */}
+          <div className="flex flex-col md:flex-row gap-12 md:gap-16">
+            {/* Brand Column */}
+            <div>
+              <div className="flex items-center gap-x-2 mb-4">
+                <Icons.logo className="h-6 w-6 text-primary" />
+                <h2 className="text-[20px] font-sans font-semibold text-foreground">
+                  {siteConfig.name}
+                </h2>
+              </div>
+              <p className="text-[15px] text-muted-foreground leading-relaxed max-w-xs">
+                {siteConfig.description}
+              </p>
             </div>
-            <p className="text-[15px] text-muted-foreground leading-relaxed">
-              {siteConfig.description}
-            </p>
+
+            {/* Product Links */}
+            <div>
+              <h3 className="text-[15px] font-sans font-semibold text-foreground mb-4">
+                Product
+              </h3>
+              <ul className="space-y-3">
+                <li>
+                  <a
+                    href="#features"
+                    className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+                  >
+                    Features
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="#pricing"
+                    className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+                  >
+                    Pricing
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/blog"
+                    className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+                  >
+                    Blog
+                  </a>
+                </li>
+              </ul>
+            </div>
           </div>
 
-          {/* Product Links */}
-          <div>
-            <h3 className="text-[15px] font-sans font-semibold text-foreground mb-4">
-              Product
-            </h3>
-            <ul className="space-y-3">
-              <li>
-                <a
-                  href="#features"
-                  className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                >
-                  Features
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#pricing"
-                  className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                >
-                  Pricing
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/blog"
-                  className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                >
-                  Blog
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          {/* Connect */}
+          {/* Right Side: Connect - aligns with header CTA button */}
           <div>
             <h3 className="text-[15px] font-sans font-semibold text-foreground mb-4">
               Connect
