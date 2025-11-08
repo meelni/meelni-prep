@@ -16,17 +16,23 @@ fi
 
 # Step 1: Copy environment variables
 echo "📋 Setting up environment variables..."
-if [ -f "$CONDUCTOR_ROOT_PATH/.env" ]; then
-    ln -sf "$CONDUCTOR_ROOT_PATH/.env" .env.local
+
+# Determine the root path (Conductor sets CONDUCTOR_ROOT_PATH, otherwise use parent dir)
+ROOT_PATH="${CONDUCTOR_ROOT_PATH:-$(cd "$(dirname "$0")/../.." && pwd)}"
+
+if [ -f "$ROOT_PATH/.env" ]; then
+    ln -sf "$ROOT_PATH/.env" .env.local
     echo "✅ Linked .env from root to .env.local"
 else
-    echo "⚠️  Warning: .env not found in root. You'll need to create it manually."
+    echo "⚠️  Warning: .env not found at $ROOT_PATH/.env. You'll need to create it manually."
 fi
 
 # Verify required environment variables
 # NOTE: DEEPGRAM_API_KEY and CARTESIA_API_KEY are NOT required when using LiveKit Inference
 # LiveKit Cloud provides these services through its Inference API using LIVEKIT_API_KEY/SECRET
-source "$CONDUCTOR_ROOT_PATH/.env" 2>/dev/null || true
+if [ -f "$ROOT_PATH/.env" ]; then
+    source "$ROOT_PATH/.env" 2>/dev/null || true
+fi
 REQUIRED_VARS=("DATABASE_URL" "LIVEKIT_API_KEY" "LIVEKIT_API_SECRET" "OPENAI_API_KEY")
 MISSING_VARS=()
 
@@ -39,7 +45,7 @@ done
 if [ ${#MISSING_VARS[@]} -ne 0 ]; then
     echo "❌ Error: Missing required environment variables:"
     printf '   - %s\n' "${MISSING_VARS[@]}"
-    echo "Please add these to $CONDUCTOR_ROOT_PATH/.env"
+    echo "Please add these to $ROOT_PATH/.env"
     exit 1
 fi
 
