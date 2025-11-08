@@ -24,7 +24,7 @@ export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
       variants={staggerContainer}
       initial="initial"
       animate="animate"
-      className="grid gap-4 md:grid-cols-2"
+      className="grid gap-3 md:grid-cols-2"
     >
       {(Object.keys(ROUND_TYPES) as RoundType[]).map((roundType) => {
         const config = ROUND_TYPES[roundType];
@@ -35,7 +35,7 @@ export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
           <motion.div key={roundType} variants={fadeInUp} className="h-full">
             <Card
               className={`
-                relative cursor-pointer transition-all duration-200 p-6 h-full
+                relative cursor-pointer transition-all duration-200 p-4 h-full
                 hover:scale-[1.02] hover:shadow-lg
                 ${
                   isSelected
@@ -58,29 +58,29 @@ export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
                 {/* Icon */}
                 <div
                   className={`
-                    inline-flex p-3 rounded-lg w-fit
+                    inline-flex p-2 rounded-lg w-fit
                     ${isSelected ? "bg-primary/10" : "bg-muted"}
                     transition-colors duration-200
                   `}
                 >
                   <Icon
                     className={`
-                      w-6 h-6
+                      w-5 h-5
                       ${isSelected ? "text-primary" : "text-muted-foreground"}
                     `}
                   />
                 </div>
 
                 {/* Title */}
-                <h3 className="text-lg font-semibold mt-3">{config.label}</h3>
+                <h3 className="text-base font-semibold mt-2">{config.label}</h3>
 
                 {/* Subtitle */}
-                <p className="text-sm font-medium text-foreground/80 mt-2">
+                <p className="text-xs font-medium text-foreground/80 mt-1">
                   {config.subtitle}
                 </p>
 
                 {/* Description - fixed min-height for consistency */}
-                <p className="text-xs text-muted-foreground leading-relaxed mt-2 min-h-[2.5rem] flex-1">
+                <p className="text-xs text-muted-foreground leading-relaxed mt-1.5 min-h-[2rem] flex-1">
                   {config.description}
                 </p>
 

@@ -146,19 +146,19 @@ export default function SetupPage() {
       </motion.header>
 
       {/* Main Content */}
-      <main className="container max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <main className="container max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <motion.div
           initial="initial"
           animate="animate"
           variants={staggerContainer}
-          className="space-y-8"
+          className="space-y-6"
         >
           {/* Title */}
-          <motion.div variants={fadeInUp} className="space-y-2">
-            <h1 className="text-4xl font-bold tracking-tight">
+          <motion.div variants={fadeInUp} className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight">
               <span className="gradient-text">Setup Your Interview</span>
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Two quick choices and you're ready to practice
             </p>
           </motion.div>
@@ -229,13 +229,13 @@ export default function SetupPage() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
+                className="space-y-4"
               >
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-semibold">
+                <div className="space-y-1">
+                  <h2 className="text-xl font-semibold">
                     Choose Interview Type
                   </h2>
-                  <p className="text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     Select the type of interview you want to practice
                   </p>
                 </div>
