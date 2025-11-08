@@ -102,6 +102,11 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
   const [sessionEnded, setSessionEnded] = useState(false);
 
+  // Debounced agent state to prevent flickering during speech pauses
+  const [debouncedAgentState, setDebouncedAgentState] = useState<string>("idle");
+  const stateChangeTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const lastSpeakingTimeRef = useRef<number>(0);
+
   // Audio reactivity for Orb (same as interview page)
   const userVolume = useTrackVolume(audioTrack?.track, 50);
   const agentAudioTrack = room?.remoteParticipants?.[0]?.getTrack(Track.Source.Microphone)?.track;
@@ -110,6 +115,59 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   // Normalize volumes from 0-100
   const normalizedUserVolume = Math.min(userVolume, 100) / 100;
   const normalizedAgentVolume = Math.min(agentVolume, 100) / 100;
+
+  // Debounce agent state changes to prevent flickering during natural pauses
+  useEffect(() => {
+    const currentState = state || "idle";
+    const GRACE_PERIOD_MS = 600; // 600ms grace period for natural pauses
+
+    // If agent is speaking, update timestamp
+    if (currentState === "speaking") {
+      lastSpeakingTimeRef.current = Date.now();
+
+      // Immediately show speaking state
+      if (debouncedAgentState !== "speaking") {
+        setDebouncedAgentState("speaking");
+      }
+
+      // Clear any pending state change
+      if (stateChangeTimerRef.current) {
+        clearTimeout(stateChangeTimerRef.current);
+        stateChangeTimerRef.current = undefined;
+      }
+    } else if (currentState !== "speaking" && debouncedAgentState === "speaking") {
+      // Agent stopped speaking - check if we should wait before transitioning
+      const timeSinceLastSpeaking = Date.now() - lastSpeakingTimeRef.current;
+
+      if (timeSinceLastSpeaking < GRACE_PERIOD_MS) {
+        // Within grace period - delay the state change
+        if (!stateChangeTimerRef.current) {
+          stateChangeTimerRef.current = setTimeout(() => {
+            setDebouncedAgentState(currentState);
+            stateChangeTimerRef.current = undefined;
+          }, GRACE_PERIOD_MS - timeSinceLastSpeaking);
+        }
+      } else {
+        // Grace period passed - update immediately
+        setDebouncedAgentState(currentState);
+      }
+    } else if (currentState !== "speaking") {
+      // Non-speaking states (thinking, listening, idle) - update immediately
+      setDebouncedAgentState(currentState);
+
+      // Clear any pending timer
+      if (stateChangeTimerRef.current) {
+        clearTimeout(stateChangeTimerRef.current);
+        stateChangeTimerRef.current = undefined;
+      }
+    }
+
+    return () => {
+      if (stateChangeTimerRef.current) {
+        clearTimeout(stateChangeTimerRef.current);
+      }
+    };
+  }, [state, debouncedAgentState]);
 
   // Timer effect - start countdown when connected
   useEffect(() => {
@@ -220,7 +278,8 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   };
 
   const isConnected = connectionState === ConnectionState.Connected;
-  const agentState = state || "idle";
+  // Use debounced state for UI display to prevent flickering
+  const agentState = debouncedAgentState;
 
   // Format time as MM:SS
   const formatTime = (seconds: number): string => {
