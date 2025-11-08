@@ -14,7 +14,7 @@ export const blogPosts: BlogPost[] = [
   {
     id: "building-product-intuition",
     title: "Building Product Intuition: The Daily Practice Top PMs Use",
-    excerpt: "Product sense isn't innate—it's trained. Here's the observation framework I teach candidates to develop world-class product intuition in weeks, not years.",
+    excerpt: "Product sense isn't innate—it's trained. Here's an observation framework that helps candidates develop world-class product intuition in weeks, not years.",
     author: "Meelni Team",
     date: "November 10, 2025",
     readTime: "8 min read",
@@ -24,11 +24,11 @@ export const blogPosts: BlogPost[] = [
 
 "You just have really strong product sense."
 
-I hear this all the time when coaching candidates after they nail a product interview. And every time, I push back: **Product sense isn't something you're born with—it's something you build.**
+This is a common compliment after a successful product interview. But here's the truth: **Product sense isn't something you're born with—it's something you build.**
 
 The PMs who consistently crush product interviews aren't lucky. They're not magically intuitive. They're **systematically observant**. They've trained themselves to dissect every product they encounter, and over time, that practice becomes instinct.
 
-Today I'm sharing the exact observation framework I teach—the one that helps candidates develop interview-ready product intuition in weeks instead of years.
+This post shares an observation framework that helps candidates develop interview-ready product intuition in weeks instead of years.
 
 ## What Product Intuition Really Means
 
@@ -41,7 +41,7 @@ The good news? You're already equipped to build this skill. You're a person. You
 
 ## The Product Critique Framework
 
-Every time you try a new app, visit a website, or experience any product, run through this framework. I promise: if you do this 10 times, you'll start seeing patterns. After 50 times, your interviews will transform.
+Every time you try a new app, visit a website, or experience any product, run through this framework. Do this 10 times and you'll start seeing patterns. After 50 times, your interviews will transform.
 
 ### Phase 1: Before You Even Open It
 
@@ -187,18 +187,18 @@ The combination is powerful: **critique builds intuition, Meelni builds intervie
   },
   {
     id: "mastering-product-sense-interviews",
-    title: "Mastering Product Sense Interviews: A Coach's Framework",
-    excerpt: "After coaching hundreds of PMs, I've distilled the product sense interview into a 5-step framework that works consistently across Meta, Google, and Amazon.",
+    title: "Mastering Product Sense Interviews: A Proven Framework",
+    excerpt: "A clear pattern emerges from successful product interviews: candidates who excel aren't lacking creativity—they're using structure. Here's a 5-step framework that works consistently across Meta, Google, and Amazon.",
     author: "Meelni Team",
     date: "November 8, 2025",
     readTime: "6 min read",
     category: "Product Sense",
     content: `
-# Mastering Product Sense Interviews: A Coach's Framework
+# Mastering Product Sense Interviews: A Proven Framework
 
-After coaching hundreds of product managers through their interview prep, I've seen a clear pattern: candidates who struggle with product sense interviews aren't lacking creativity or product thinking—they're lacking **structure**.
+A clear pattern emerges from successful product interviews: candidates who struggle with product sense interviews aren't lacking creativity or product thinking—they're lacking **structure**.
 
-Today, I'm sharing the exact 5-step framework I teach my students that's helped them land offers at Meta, Google, Amazon, and top startups.
+This post breaks down a 5-step framework that's helped candidates land offers at Meta, Google, Amazon, and top startups.
 
 ## What Makes Product Sense So Hard?
 
@@ -208,7 +208,7 @@ The hard truth? **You need to think on your feet and respond quickly**. That's w
 
 ## The 5-Step Product Sense Framework
 
-Here's the framework I teach, refined from patterns I've observed across successful candidates:
+Here's a framework refined from patterns observed across successful candidates:
 
 ### 1. **Clarify the Prompt**
 
@@ -255,11 +255,11 @@ Now put yourself in your prioritized user's shoes:
 
 ### 5. **Brainstorm & Prioritize Solutions**
 
-Generate 3-5 solution ideas, then prioritize one using a consistent framework. Here's the gotcha I see constantly: **candidates use different criteria to prioritize users, needs, and solutions**. This creates a disconnected narrative.
+Generate 3-5 solution ideas, then prioritize one using a consistent framework. Here's a common gotcha: **candidates use different criteria to prioritize users, needs, and solutions**. This creates a disconnected narrative.
 
 **Stay consistent.** If you prioritized a user segment based on impact and feasibility, use the same lens for solutions.
 
-## Common Pitfalls I See (And How to Avoid Them)
+## Common Pitfalls (And How to Avoid Them)
 
 **Rushing clarification:** Take your time. Thoughtful questions demonstrate strategic thinking, not indecision.
 
@@ -288,7 +288,7 @@ Ready to practice? [Start your first mock interview](/setup).
   {
     id: "execution-interviews-metrics-that-matter",
     title: "Execution Interviews: The Metrics That Actually Matter",
-    excerpt: "Most candidates pick vanity metrics. Here's how to identify metrics that show you understand the business, backed by frameworks from my coaching practice.",
+    excerpt: "Most candidates pick vanity metrics. Here's how to identify metrics that show you understand the business, backed by proven PM frameworks.",
     author: "Meelni Team",
     date: "November 5, 2025",
     readTime: "5 min read",
@@ -296,7 +296,7 @@ Ready to practice? [Start your first mock interview](/setup).
     content: `
 # Execution Interviews: The Metrics That Actually Matter
 
-I've coached over 200 PMs through execution interviews, and there's one mistake I see more than any other: **picking vanity metrics**.
+There's one mistake that shows up repeatedly in execution interviews: **picking vanity metrics**.
 
 A candidate will design a brilliant feature, lay out a solid roadmap, and then say something like: "We'll measure success with daily active users."
 
@@ -311,11 +311,11 @@ Execution interviews aren't about your ability to list metrics. They're testing 
 3. **Identify leading vs. lagging indicators** (can you course-correct fast?)
 4. **Make trade-offs** (when do you ship vs. iterate?)
 
-Let's break down how I coach candidates to nail each piece.
+Let's break down each piece.
 
 ## The 3-Tier Metric Framework
 
-When I work with PMs, I teach them to think about metrics in three tiers:
+Strong execution answers think about metrics in three tiers:
 
 ### Tier 1: North Star Metric
 This is the ONE metric that captures value delivered to users. It should:
@@ -337,9 +337,9 @@ These ensure you're not breaking things while optimizing for your goal:
 - Performance (is load time suffering?)
 - Quality (are error rates spiking?)
 
-## The Goal-Setting Framework I Teach
+## The Goal-Setting Framework
 
-Here's the structure I walk every candidate through:
+Here's a proven structure for setting meaningful goals:
 
 **1. Start with the user problem you're solving**
 
@@ -403,7 +403,7 @@ That's why we built Meelni's execution mode:
   {
     id: "star-method-leadership-interviews",
     title: "Beyond STAR: How Top PMs Tell Leadership Stories",
-    excerpt: "STAR is table stakes. Here's the advanced storytelling framework that separates senior PM offers from 'not enough leadership' rejections.",
+    excerpt: "STAR is table stakes. Here's an advanced storytelling framework that separates senior PM offers from 'not enough leadership' rejections.",
     author: "Meelni Team",
     date: "November 1, 2025",
     readTime: "7 min read",
@@ -413,11 +413,11 @@ That's why we built Meelni's execution mode:
 
 Every PM knows the STAR method: Situation, Task, Action, Result. It's the baseline for behavioral interviews.
 
-But after coaching hundreds of senior PM candidates, I've noticed something: **STAR alone doesn't cut it for L5+ roles**.
+But a pattern emerges from senior PM interviews: **STAR alone doesn't cut it for L5+ roles**.
 
 Candidates who only use STAR get feedback like "not enough strategic thinking" or "didn't demonstrate senior-level leadership." Why? Because STAR is transactional—it describes what you did, not **how you think**.
 
-Today I'm sharing the framework I teach senior candidates that transforms good STAR stories into compelling leadership narratives.
+This post shares a framework that transforms good STAR stories into compelling leadership narratives.
 
 ## The Problem with STAR at Senior Levels
 
@@ -432,7 +432,7 @@ Standard STAR stories miss these dimensions entirely.
 
 ## The STAR+ Framework for Senior PMs
 
-Here's how I coach candidates to elevate their stories:
+Here's how to elevate your stories for senior roles:
 
 ### Add "Context & Stakes"
 Before jumping into Situation, set up:
@@ -466,7 +466,7 @@ Within Result, go beyond metrics:
 
 ## The 4 Leadership Dimensions Interviewers Assess
 
-When I prep candidates, we ensure their story bank covers these four areas:
+Ensure your story bank covers these four areas:
 
 ### 1. **Influencing Without Authority**
 Senior PMs rarely have direct reports. Show you can:
@@ -524,7 +524,7 @@ Specificity builds credibility.
 
 ## How to Build Your Story Bank
 
-I tell every candidate: **You need 8-10 stories that cover all leadership dimensions**. Here's how:
+**You need 8-10 stories that cover all leadership dimensions**. Here's how:
 
 1. **Audit your experience** across these categories:
    - Cross-functional influence
