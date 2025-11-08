@@ -1,10 +1,12 @@
 """
 Meelni Demo Agent
-Quick 60-second product demo for landing page visitors
+Quick 5-minute product demo for landing page visitors
 """
 
+import asyncio
 import json
 import logging
+import time
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
@@ -36,7 +38,7 @@ def build_demo_instructions(question: dict = None) -> str:
     # Base demo prompt - designed to feel spontaneous, not scripted
     base_instructions = """You're Meelni, an AI interview coach. A visitor just clicked to try a quick demo.
 
-Your goal: Give them a 60-second taste of what real interview practice feels like. Be direct, energetic, natural.
+Your goal: Give them a 5-minute taste of what real interview practice feels like. Be direct, energetic, natural.
 
 ## Opening (pick one spontaneously, don't script it):
 - "Hey—got a minute? Let's do a quick round."
@@ -90,11 +92,12 @@ Mention the CTA naturally: "That's what practicing with AI gets you—instant fe
 
 ## Important:
 - NO emojis, asterisks, or markdown in speech
-- Keep total time under 60 seconds
+- Keep total time under 5 minutes (you will receive automatic time warnings)
 - One question only—no follow-ups
-- Don't mention time constraints explicitly
 - Don't apologize or hedge
 - Handle interruptions smoothly
+- When you receive a time warning, acknowledge it naturally and wrap up
+- When you receive the ending message, deliver the closing remarks smoothly
 
 ## Example flow (for reference, don't copy):
 "Alright, quick one. How would you improve Spotify's Discover Weekly?"
@@ -108,15 +111,93 @@ Mention the CTA naturally: "That's what practicing with AI gets you—instant fe
 
 
 class DemoAgent(Agent):
-    """Demo agent with dynamic instructions based on question"""
+    """Demo agent with dynamic instructions based on question and time tracking"""
 
     def __init__(self, instructions: str) -> None:
         super().__init__(instructions=instructions)
+        self.start_time = None
+        self.warning_sent = False
+        self.ending_sent = False
+        self.session_ended = False
 
 
 def prewarm(proc: JobProcess):
     """Prewarm function to load VAD model before agent starts"""
     proc.userdata["vad"] = silero.VAD.load()
+
+
+async def monitor_session_time(ctx: JobContext, demo_agent: DemoAgent, session: AgentSession):
+    """
+    Background task to monitor session duration and inject time warnings.
+
+    Args:
+        ctx: Job context for room access
+        demo_agent: DemoAgent instance with time tracking state
+        session: AgentSession for sending messages
+    """
+    WARNING_TIME = 285  # 4 minutes 45 seconds
+    END_TIME = 300      # 5 minutes
+    CHECK_INTERVAL = 5  # Check every 5 seconds
+
+    logger.info("Time monitoring started for demo session")
+
+    try:
+        while not demo_agent.session_ended:
+            await asyncio.sleep(CHECK_INTERVAL)
+
+            if demo_agent.start_time is None:
+                continue
+
+            elapsed = time.time() - demo_agent.start_time
+
+            # Send warning at 4:45 mark
+            if elapsed >= WARNING_TIME and not demo_agent.warning_sent:
+                demo_agent.warning_sent = True
+                logger.info(f"Demo session at {elapsed:.1f}s - sending warning message")
+
+                warning_msg = "We're running out of time in this demo. Let me wrap up with some quick feedback."
+
+                # Send message via data channel to notify agent
+                await ctx.room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "time_warning",
+                        "message": warning_msg,
+                        "elapsed": elapsed
+                    }).encode("utf-8"),
+                    topic="demo_control"
+                )
+
+            # End session at 5:00 mark
+            elif elapsed >= END_TIME and not demo_agent.ending_sent:
+                demo_agent.ending_sent = True
+                demo_agent.session_ended = True
+                logger.info(f"Demo session at {elapsed:.1f}s - sending ending message and terminating")
+
+                ending_msg = "Our 5-minute demo has concluded! Ready for a full interview? Click 'Start Full Interview' to continue practicing."
+
+                # Send ending message via data channel
+                await ctx.room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "session_end",
+                        "message": ending_msg,
+                        "elapsed": elapsed
+                    }).encode("utf-8"),
+                    topic="demo_control"
+                )
+
+                # Give a moment for the message to be delivered
+                await asyncio.sleep(2)
+
+                # Gracefully disconnect from the room
+                logger.info("Demo agent disconnecting from room")
+                await ctx.room.disconnect()
+                break
+
+    except asyncio.CancelledError:
+        logger.info("Time monitoring task cancelled")
+        raise
+    except Exception as e:
+        logger.error(f"Error in time monitoring: {e}", exc_info=True)
 
 
 async def entrypoint(ctx: JobContext):
@@ -168,13 +249,33 @@ async def entrypoint(ctx: JobContext):
         vad=ctx.proc.userdata["vad"],
     )
 
-    # NEW: Pass built instructions to DemoAgent
+    # NEW: Create DemoAgent instance with time tracking
+    demo_agent = DemoAgent(instructions=instructions)
+
+    # Initialize start time when agent is ready
+    demo_agent.start_time = time.time()
+    logger.info(f"Demo session timer started at {demo_agent.start_time}")
+
+    # Start background time monitoring task
+    monitoring_task = asyncio.create_task(
+        monitor_session_time(ctx, demo_agent, session)
+    )
+
+    # NEW: Pass demo_agent instance to session
     await session.start(
-        agent=DemoAgent(instructions=instructions),
+        agent=demo_agent,
         room=ctx.room
     )
 
     logger.info("Demo agent started successfully")
+
+    # Wait for monitoring task to complete (when session ends)
+    try:
+        await monitoring_task
+    except asyncio.CancelledError:
+        logger.info("Monitoring task cancelled")
+    except Exception as e:
+        logger.error(f"Monitoring task error: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
@@ -182,6 +283,6 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="CA_Wp8bi3bRroE2",  # Required for explicit dispatch - Enterprise Account
+            agent_name="CA_t3sKQEihMQ7x",  # Required for explicit dispatch
         ),
     )
