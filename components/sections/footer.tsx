@@ -78,30 +78,28 @@ export function Footer() {
         <div className="pt-8 border-t border-border/40">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             {/* Left: Copyright + Legal Links */}
-            <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6">
-              <p className="text-[13px] text-muted-foreground">
-                © {currentYear} {siteConfig.name}. All rights reserved.
-              </p>
-              <div className="flex gap-x-6">
-                <a
-                  href="/privacy"
-                  className="text-[13px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                >
-                  Privacy Policy
-                </a>
-                <a
-                  href="/terms"
-                  className="text-[13px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                >
-                  Terms of Service
-                </a>
-              </div>
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-2 text-[13px] text-muted-foreground">
+              <span>© {currentYear} {siteConfig.name}. All rights reserved.</span>
+              <span className="hidden md:inline">|</span>
+              <a
+                href="/terms"
+                className="hover:text-foreground transition-colors duration-200"
+              >
+                Terms of Service
+              </a>
+              <span className="hidden md:inline">|</span>
+              <a
+                href="/privacy"
+                className="hover:text-foreground transition-colors duration-200"
+              >
+                Privacy Policy
+              </a>
             </div>
 
             {/* Right: Status */}
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[13px] text-muted-foreground">All systems operational</span>
+              <span className="text-[13px] text-muted-foreground uppercase tracking-wider">All systems operational</span>
             </div>
           </div>
         </div>
