@@ -235,10 +235,11 @@ async def entrypoint(ctx: JobContext):
     stt_model = "deepgram/nova-3"
     llm_model = "openai/gpt-4.1-mini"
 
-    # Natasha - Calm British Female (ElevenLabs)
+    # Natasha - Calm British Female (ElevenLabs via LiveKit Inference)
     # https://elevenlabs.io/app/voice-library?voiceId=56bWURjYFHyYyVf490Dp
+    # Format: elevenlabs/model:voiceId
     voice_id = "56bWURjYFHyYyVf490Dp"
-    tts_model = f"elevenlabs/{voice_id}"
+    tts_model = f"elevenlabs/eleven_turbo_v2_5:{voice_id}"
 
     logger.info(f"Demo Configuration - STT: {stt_model}, LLM: {llm_model}, TTS: {tts_model}")
 

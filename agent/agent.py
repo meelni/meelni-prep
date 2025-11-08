@@ -86,10 +86,11 @@ async def entrypoint(ctx: JobContext):
     stt_model = config.get("stt_model", "deepgram/nova-3")
     llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
 
-    # Default to ElevenLabs Natasha voice
+    # Default to ElevenLabs Natasha voice (via LiveKit Inference - no API key needed)
     # https://elevenlabs.io/app/voice-library?voiceId=56bWURjYFHyYyVf490Dp
+    # Format: elevenlabs/model:voiceId
     default_voice_id = "56bWURjYFHyYyVf490Dp"
-    tts_model = config.get("tts_model", f"elevenlabs/{default_voice_id}")
+    tts_model = config.get("tts_model", f"elevenlabs/eleven_turbo_v2_5:{default_voice_id}")
 
     # Extract TTS parameters from config
     voice_id = config.get("voice", default_voice_id)
@@ -104,13 +105,13 @@ async def entrypoint(ctx: JobContext):
     logger.info("Initializing voice agent session with LiveKit inference...")
 
     # Note: Using string-based TTS model with LiveKit Inference
-    # ElevenLabs requires ELEVENLABS_API_KEY even with LiveKit Inference
-    # String format: "elevenlabs/{voice_id}"
-    # TODO: Add stability and similarity_boost parameters if needed for voice customization
+    # ElevenLabs is available through LiveKit Inference - NO API KEY NEEDED!
+    # String format: "elevenlabs/model:voiceId"
+    # Supports all default ElevenLabs voices (custom/cloned voices require ElevenLabs plugin)
     session = AgentSession(
         stt=stt_model,
         llm=llm_model,
-        tts=tts_model,  # String format: "elevenlabs/56bWURjYFHyYyVf490Dp"
+        tts=tts_model,  # String format: "elevenlabs/eleven_turbo_v2_5:56bWURjYFHyYyVf490Dp"
         vad=ctx.proc.userdata["vad"],
     )
 
