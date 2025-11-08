@@ -153,7 +153,7 @@ export function Sidebar({
           )}
           aria-label="Start new interview"
         >
-          <Sparkles size={18} aria-hidden="true" />
+          <Sparkles size={collapsed ? 20 : 18} aria-hidden="true" />
           {!collapsed && "New Interview"}
         </button>
 
@@ -167,7 +167,8 @@ export function Sidebar({
               key={item.id}
               onClick={() => setActiveSection(item.id)}
               className={cn(
-                "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200",
+                "relative flex items-center gap-3 rounded-lg text-sm transition-all duration-200",
+                collapsed ? "px-3 py-3 justify-center" : "px-3 py-2",
                 activeSection === item.id
                   ? "bg-primary/5 text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-card/50"
@@ -176,11 +177,11 @@ export function Sidebar({
               aria-current={activeSection === item.id ? "page" : undefined}
             >
               {/* Subtle gradient accent for active state */}
-              {activeSection === item.id && (
+              {activeSection === item.id && !collapsed && (
                 <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary/50 via-primary to-primary/50 rounded-r" />
               )}
               <item.icon
-                size={18}
+                size={collapsed ? 20 : 18}
                 className={cn(
                   "transition-opacity",
                   activeSection === item.id ? "opacity-100" : "opacity-70"
