@@ -85,19 +85,22 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
               __html: post.content
                 .split("\n")
                 .map((line) => {
+                  // First, handle bold text globally (before any other processing)
+                  let processedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>');
+
                   // Handle headings
                   if (line.startsWith("# ")) {
-                    return `<h1 class="text-[40px] font-display font-bold mt-12 mb-6 leading-tight">${line.slice(2)}</h1>`;
+                    return `<h1 class="text-[40px] font-display font-bold mt-12 mb-6 leading-tight">${processedLine.slice(2)}</h1>`;
                   }
                   if (line.startsWith("## ")) {
-                    return `<h2 class="text-[32px] font-display font-semibold mt-10 mb-4 leading-tight">${line.slice(3)}</h2>`;
+                    return `<h2 class="text-[32px] font-display font-semibold mt-10 mb-4 leading-tight">${processedLine.slice(3)}</h2>`;
                   }
                   if (line.startsWith("### ")) {
-                    return `<h3 class="text-[24px] font-display font-semibold mt-8 mb-3 leading-tight">${line.slice(4)}</h3>`;
+                    return `<h3 class="text-[24px] font-display font-semibold mt-8 mb-3 leading-tight">${processedLine.slice(4)}</h3>`;
                   }
 
-                  // Handle bold text
-                  const boldText = line.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>');
+                  // Use processedLine for the rest
+                  const boldText = processedLine;
 
                   // Handle list items
                   if (line.startsWith("- ")) {
