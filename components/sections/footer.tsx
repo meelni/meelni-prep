@@ -7,21 +7,22 @@ export function Footer() {
   return (
     <footer className="border-t border-border/60 bg-background/95 backdrop-blur-lg mt-20">
       <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+        {/* Main Footer Content */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
           {/* Brand Column */}
-          <div className="md:col-span-2">
+          <div>
             <div className="flex items-center gap-x-2 mb-4">
               <Icons.logo className="h-6 w-6 text-primary" />
               <h2 className="text-[20px] font-sans font-semibold text-foreground">
                 {siteConfig.name}
               </h2>
             </div>
-            <p className="text-[15px] text-muted-foreground leading-relaxed max-w-md">
+            <p className="text-[15px] text-muted-foreground leading-relaxed">
               {siteConfig.description}
             </p>
           </div>
 
-          {/* Links Column */}
+          {/* Product Links */}
           <div>
             <h3 className="text-[15px] font-sans font-semibold text-foreground mb-4">
               Product
@@ -54,7 +55,7 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Contact Column */}
+          {/* Connect */}
           <div>
             <h3 className="text-[15px] font-sans font-semibold text-foreground mb-4">
               Connect
@@ -74,8 +75,9 @@ export function Footer() {
         </div>
 
         {/* Bottom Bar */}
-        <div className="pt-8 border-t border-border">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="pt-8 border-t border-border/40">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            {/* Left: Copyright + Legal Links */}
             <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6">
               <p className="text-[13px] text-muted-foreground">
                 © {currentYear} {siteConfig.name}. All rights reserved.
@@ -95,6 +97,8 @@ export function Footer() {
                 </a>
               </div>
             </div>
+
+            {/* Right: Status */}
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
               <span className="text-[13px] text-muted-foreground">All systems operational</span>
