@@ -76,9 +76,15 @@ export function Footer() {
         {/* Bottom Bar */}
         <div className="pt-8 border-t border-border">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-[13px] text-muted-foreground">
-              © {currentYear} {siteConfig.name}. All rights reserved.
-            </p>
+            <div className="flex flex-col md:flex-row items-center gap-4">
+              <p className="text-[13px] text-muted-foreground">
+                © {currentYear} {siteConfig.name}. All rights reserved.
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[13px] text-muted-foreground">All systems operational</span>
+              </div>
+            </div>
             <div className="flex gap-x-6">
               <a
                 href="/privacy"
