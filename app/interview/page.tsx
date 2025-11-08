@@ -27,6 +27,11 @@ interface InterviewSession {
   livekit_room_name: string;
   started_at: string;
   config: any;
+  question?: {
+    id: string;
+    text: string;
+    company: string | null;
+  } | null;
 }
 
 function InterviewPageContent() {
@@ -144,6 +149,7 @@ function InterviewPageContent() {
           roundType,
           mode,
         },
+        question: data.question || null,
       });
       setLoading(false);
     } catch (err) {
@@ -471,6 +477,31 @@ function InterviewRoomContent({
 
       {/* Main Content */}
       <main className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Question Display */}
+        {session.question && (
+          <div className="mb-6 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 border border-primary/20 rounded-xl p-6 shadow-sm">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="flex items-center gap-3">
+                <div className="px-3 py-1 bg-primary/10 border border-primary/30 rounded-full">
+                  <span className="text-xs font-semibold text-primary uppercase tracking-wider">
+                    Interview Question
+                  </span>
+                </div>
+                {session.question.company && (
+                  <div className="px-3 py-1 bg-background/50 border border-border rounded-full">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {session.question.company}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-wrap">
+              {session.question.text}
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
           {/* Center: Audio Visualizer */}
           <div className="lg:col-span-2 flex items-center justify-center">
