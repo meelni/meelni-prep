@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { useTheme } from "next-themes";
 import {
   User,
   Bell,
@@ -43,11 +44,11 @@ interface SettingsState {
 
   // Appearance
   theme: string;
-  compactMode: boolean;
 }
 
 export function SettingsSection() {
   const { user, signOut } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [settings, setSettings] = useState<SettingsState>({
     displayName: user?.user_metadata?.full_name || "",
     email: user?.email || "",
@@ -62,44 +63,73 @@ export function SettingsSection() {
     shareAnonymousData: true,
     saveTranscripts: true,
     theme: "system",
-    compactMode: false,
   });
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
-    // Load saved settings from localStorage
-    const savedSettings = localStorage.getItem("meelni-settings");
-    if (savedSettings) {
+    // Load settings from database
+    const loadSettings = async () => {
       try {
-        const parsed = JSON.parse(savedSettings);
-        setSettings(prev => ({ ...prev, ...parsed }));
-      } catch (e) {
-        console.error("Failed to parse saved settings:", e);
+        const response = await fetch("/api/user/settings");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.settings) {
+            setSettings(prev => ({ ...prev, ...data.settings }));
+            // Apply theme if it exists in settings
+            if (data.settings.theme) {
+              setTheme(data.settings.theme);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load settings:", error);
+        // Fallback to localStorage if API fails
+        const savedSettings = localStorage.getItem("meelni-settings");
+        if (savedSettings) {
+          try {
+            const parsed = JSON.parse(savedSettings);
+            setSettings(prev => ({ ...prev, ...parsed }));
+            if (parsed.theme) {
+              setTheme(parsed.theme);
+            }
+          } catch (e) {
+            console.error("Failed to parse saved settings:", e);
+          }
+        }
       }
-    }
-  }, []);
+    };
+
+    loadSettings();
+  }, [setTheme]);
 
   const handleSaveSettings = async () => {
     setIsSaving(true);
     setSaveSuccess(false);
 
     try {
-      // Save to localStorage
+      // Save to database via API
+      const response = await fetch('/api/user/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save settings');
+      }
+
+      // Also save to localStorage as backup
       localStorage.setItem("meelni-settings", JSON.stringify(settings));
 
-      // TODO: Save to backend API when implemented
-      // await fetch('/api/user/settings', {
-      //   method: 'PUT',
-      //   body: JSON.stringify(settings)
-      // });
-
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error("Failed to save settings:", error);
+      alert("Failed to save settings. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -418,8 +448,20 @@ export function SettingsSection() {
           <div className="space-y-2">
             <Label htmlFor="theme">Theme</Label>
             <Select
-              value={settings.theme}
-              onValueChange={(value) => setSettings({ ...settings, theme: value })}
+              value={theme || settings.theme}
+              onValueChange={(value) => {
+                // Update both immediately
+                setTheme(value);
+                const newSettings = { ...settings, theme: value };
+                setSettings(newSettings);
+
+                // Save to database immediately
+                fetch('/api/user/settings', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(newSettings)
+                }).catch(err => console.error('Failed to save theme:', err));
+              }}
             >
               <SelectTrigger id="theme">
                 <SelectValue />
@@ -433,19 +475,6 @@ export function SettingsSection() {
             <p className="text-xs text-muted-foreground">
               Choose your preferred color scheme. System will match your device settings.
             </p>
-          </div>
-
-          <div className="flex items-center justify-between py-2">
-            <div className="space-y-0.5">
-              <Label>Compact Mode</Label>
-              <p className="text-sm text-muted-foreground">
-                Use a more condensed layout for dashboard components
-              </p>
-            </div>
-            <Switch
-              checked={settings.compactMode}
-              onCheckedChange={(checked) => setSettings({ ...settings, compactMode: checked })}
-            />
           </div>
         </CardContent>
       </Card>

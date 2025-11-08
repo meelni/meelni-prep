@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
+import { userSettings } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 // Schema for settings validation
@@ -16,7 +19,6 @@ const settingsSchema = z.object({
   shareAnonymousData: z.boolean().optional(),
   saveTranscripts: z.boolean().optional(),
   theme: z.enum(["light", "dark", "system"]).optional(),
-  compactMode: z.boolean().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -36,11 +38,40 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // TODO: Fetch settings from database when user_settings table is created
-    // For now, return empty object (settings will be loaded from localStorage on frontend)
+    // Fetch settings from database
+    const settings = await db
+      .select()
+      .from(userSettings)
+      .where(eq(userSettings.userId, user.id))
+      .limit(1);
+
+    if (settings.length === 0) {
+      // No settings found, return defaults
+      return NextResponse.json({
+        settings: null,
+        message: "No settings found. Using defaults.",
+      });
+    }
+
+    // Convert database field names to camelCase for frontend
+    const setting = settings[0];
+    const formattedSettings = {
+      displayName: setting.displayName,
+      defaultInterviewType: setting.defaultInterviewType,
+      defaultDifficulty: setting.defaultDifficulty,
+      questionRecency: setting.questionRecency,
+      autoSaveTranscripts: setting.autoSaveTranscripts,
+      emailNotifications: setting.emailNotifications,
+      sessionCompletionEmail: setting.sessionCompletionEmail,
+      feedbackReadyEmail: setting.feedbackReadyEmail,
+      weeklyProgressReport: setting.weeklyProgressReport,
+      shareAnonymousData: setting.shareAnonymousData,
+      saveTranscripts: setting.saveTranscripts,
+      theme: setting.theme,
+    };
+
     return NextResponse.json({
-      settings: {},
-      message: "Settings endpoint ready. Database persistence coming soon.",
+      settings: formattedSettings,
     });
   } catch (error) {
     console.error("Error fetching settings:", error);
@@ -85,20 +116,37 @@ export async function PUT(request: NextRequest) {
 
     const settings = validationResult.data;
 
-    // TODO: Save settings to database when user_settings table is created
-    // For now, just acknowledge the request
-    // Example:
-    // await supabase
-    //   .from("user_settings")
-    //   .upsert({
-    //     user_id: user.id,
-    //     ...settings,
-    //     updated_at: new Date().toISOString(),
-    //   });
+    // Convert camelCase to snake_case for database
+    const dbSettings: any = {
+      userId: user.id,
+      updatedAt: new Date(),
+    };
+
+    if (settings.displayName !== undefined) dbSettings.displayName = settings.displayName;
+    if (settings.defaultInterviewType !== undefined) dbSettings.defaultInterviewType = settings.defaultInterviewType;
+    if (settings.defaultDifficulty !== undefined) dbSettings.defaultDifficulty = settings.defaultDifficulty;
+    if (settings.questionRecency !== undefined) dbSettings.questionRecency = settings.questionRecency;
+    if (settings.autoSaveTranscripts !== undefined) dbSettings.autoSaveTranscripts = settings.autoSaveTranscripts;
+    if (settings.emailNotifications !== undefined) dbSettings.emailNotifications = settings.emailNotifications;
+    if (settings.sessionCompletionEmail !== undefined) dbSettings.sessionCompletionEmail = settings.sessionCompletionEmail;
+    if (settings.feedbackReadyEmail !== undefined) dbSettings.feedbackReadyEmail = settings.feedbackReadyEmail;
+    if (settings.weeklyProgressReport !== undefined) dbSettings.weeklyProgressReport = settings.weeklyProgressReport;
+    if (settings.shareAnonymousData !== undefined) dbSettings.shareAnonymousData = settings.shareAnonymousData;
+    if (settings.saveTranscripts !== undefined) dbSettings.saveTranscripts = settings.saveTranscripts;
+    if (settings.theme !== undefined) dbSettings.theme = settings.theme;
+
+    // Upsert settings (insert or update)
+    await db
+      .insert(userSettings)
+      .values(dbSettings)
+      .onConflictDoUpdate({
+        target: userSettings.userId,
+        set: dbSettings,
+      });
 
     return NextResponse.json({
       success: true,
-      message: "Settings updated successfully (localStorage only for now)",
+      message: "Settings updated successfully",
       settings,
     });
   } catch (error) {
