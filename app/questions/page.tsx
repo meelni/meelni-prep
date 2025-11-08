@@ -15,7 +15,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FilterPopover } from "@/components/question-bank/filter-popover";
-import { SearchAutocomplete } from "@/components/question-bank/search-autocomplete";
 import { BulkActionToolbar } from "@/components/question-bank/bulk-action-toolbar";
 import { EmptyState } from "@/components/question-bank/empty-state";
 import { QuestionCard } from "@/components/question-bank/question-card";
@@ -25,6 +24,7 @@ import {
   Calendar,
   Building2,
   Filter,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSessions } from "@/lib/api/queries";
@@ -213,16 +213,6 @@ export default function QuestionBankPage() {
     setSelectedQuestions(new Set());
   };
 
-  // Handle autocomplete select
-  const handleAutocompleteSelect = (questionId?: string) => {
-    if (questionId) {
-      const question = questions.find((q) => q.id === questionId);
-      if (question) {
-        handleTryQuestion(question.id, question.questionType);
-      }
-    }
-  };
-
   // Determine empty state type
   const getEmptyStateType = (): "no-search" | "no-filter" | "first-time" | null => {
     if (filteredQuestions.length > 0) return null;
@@ -277,12 +267,15 @@ export default function QuestionBankPage() {
                 {/* Integrated Search/Filter Toolbar */}
                 <div className="px-6 py-4 border-b border-border/50 bg-card/40 backdrop-blur-sm">
                   <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <SearchAutocomplete
-                        questions={questions}
+                    <div className="flex-1 relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search questions by text or company..."
                         value={searchQuery}
-                        onChange={setSearchQuery}
-                        onSelect={handleAutocompleteSelect}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150"
+                        aria-label="Search questions"
                       />
                     </div>
                     <FilterPopover
@@ -417,12 +410,15 @@ export default function QuestionBankPage() {
                 <div className="rounded-lg border border-border overflow-hidden bg-card shadow-sm">
                   <div className="px-4 py-4 border-b border-border/50 bg-card/40">
                     <div className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <SearchAutocomplete
-                          questions={questions}
+                      <div className="flex-1 relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="Search questions..."
                           value={searchQuery}
-                          onChange={setSearchQuery}
-                          onSelect={handleAutocompleteSelect}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150 min-h-[44px]"
+                          aria-label="Search questions"
                         />
                       </div>
                       <button
