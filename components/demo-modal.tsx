@@ -273,45 +273,8 @@ function DemoControls({ onClose }: { onClose: () => void }) {
           </div>
         </motion.div>
 
-        {/* Status indicator (top-center) */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="absolute top-12 left-1/2 -translate-x-1/2"
-        >
-          {!isConnected ? (
-            <div className="flex items-center gap-3 bg-white/5 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10">
-              <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
-              <span className="text-white/70 text-sm font-medium">Connecting to Meelni...</span>
-            </div>
-          ) : sessionEnded ? (
-            <div className="flex items-center gap-3 bg-orange-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-orange-500/20">
-              <span className="text-orange-100 text-sm font-medium">Demo session ended</span>
-            </div>
-          ) : agentState === "listening" ? (
-            <div className="flex items-center gap-3 bg-blue-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-blue-500/20">
-              <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-              <span className="text-blue-100 text-sm font-medium">Listening</span>
-            </div>
-          ) : agentState === "thinking" ? (
-            <div className="flex items-center gap-3 bg-purple-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-purple-500/20">
-              <div className="flex gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" />
-                <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0.1s" }} />
-                <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0.2s" }} />
-              </div>
-              <span className="text-purple-100 text-sm font-medium">Thinking</span>
-            </div>
-          ) : agentState === "speaking" ? (
-            <div className="flex items-center gap-3 bg-green-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-green-500/20">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-green-100 text-sm font-medium">Speaking</span>
-            </div>
-          ) : null}
-        </motion.div>
-
         {/* Central visual area */}
-        <div className="flex flex-col items-center justify-center">
+        <div className="flex flex-col items-center justify-center gap-8">
           {/* Orb Visualizer */}
           <AnimatePresence mode="wait">
             {sessionEnded ? (
@@ -374,6 +337,41 @@ function DemoControls({ onClose }: { onClose: () => void }) {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Agent Status - below orb */}
+          {!sessionEnded && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              {!isConnected ? (
+                <div className="flex items-center gap-3 bg-white/5 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10">
+                  <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
+                  <span className="text-white/70 text-sm font-medium">Connecting to Meelni...</span>
+                </div>
+              ) : agentState === "listening" ? (
+                <div className="flex items-center gap-3 bg-blue-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-blue-500/20">
+                  <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                  <span className="text-blue-100 text-sm font-medium">Listening</span>
+                </div>
+              ) : agentState === "thinking" ? (
+                <div className="flex items-center gap-3 bg-purple-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-purple-500/20">
+                  <div className="flex gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0.1s" }} />
+                    <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0.2s" }} />
+                  </div>
+                  <span className="text-purple-100 text-sm font-medium">Thinking</span>
+                </div>
+              ) : agentState === "speaking" ? (
+                <div className="flex items-center gap-3 bg-green-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-green-500/20">
+                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-green-100 text-sm font-medium">Speaking</span>
+                </div>
+              ) : null}
+            </motion.div>
+          )}
         </div>
 
         {/* Bottom controls */}
