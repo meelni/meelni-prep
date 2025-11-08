@@ -235,9 +235,10 @@ async def entrypoint(ctx: JobContext):
     stt_model = "deepgram/nova-3"
     llm_model = "openai/gpt-4.1-mini"
 
-    # Tessa voice (emotive, friendly)
-    voice_id = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
-    tts_model = f"cartesia/sonic-3:{voice_id}"
+    # Natasha - Calm British Female (ElevenLabs)
+    # https://elevenlabs.io/app/voice-library?voiceId=56bWURjYFHyYyVf490Dp
+    voice_id = "56bWURjYFHyYyVf490Dp"
+    tts_model = f"elevenlabs/{voice_id}"
 
     logger.info(f"Demo Configuration - STT: {stt_model}, LLM: {llm_model}, TTS: {tts_model}")
 

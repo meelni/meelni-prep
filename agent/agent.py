@@ -85,10 +85,14 @@ async def entrypoint(ctx: JobContext):
     # Extract model settings from config
     stt_model = config.get("stt_model", "deepgram/nova-3")
     llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
-    tts_model = config.get("tts_model", "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b")
+
+    # Default to ElevenLabs Natasha voice
+    # https://elevenlabs.io/app/voice-library?voiceId=56bWURjYFHyYyVf490Dp
+    default_voice_id = "56bWURjYFHyYyVf490Dp"
+    tts_model = config.get("tts_model", f"elevenlabs/{default_voice_id}")
 
     # Extract TTS parameters from config
-    voice_id = config.get("voice", "6ccbfb76-1fc6-48f7-b71d-91ac6298247b")
+    voice_id = config.get("voice", default_voice_id)
     speed = config.get("speed", 1.0)
     emotion = config.get("emotion", "professional")
     volume = config.get("volume", 1.0)
@@ -100,13 +104,13 @@ async def entrypoint(ctx: JobContext):
     logger.info("Initializing voice agent session with LiveKit inference...")
 
     # Note: Using string-based TTS model with LiveKit Inference
-    # cartesia.TTS() requires CARTESIA_API_KEY even with LiveKit Inference
-    # String format works without API key and voice is embedded in tts_model string
-    # TODO: Add CARTESIA_API_KEY to .env if we need per-user voice/speed/emotion customization
+    # ElevenLabs requires ELEVENLABS_API_KEY even with LiveKit Inference
+    # String format: "elevenlabs/{voice_id}"
+    # TODO: Add stability and similarity_boost parameters if needed for voice customization
     session = AgentSession(
         stt=stt_model,
         llm=llm_model,
-        tts=tts_model,  # String format: "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
+        tts=tts_model,  # String format: "elevenlabs/56bWURjYFHyYyVf490Dp"
         vad=ctx.proc.userdata["vad"],
     )
 
