@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Smile, Zap, Award } from "lucide-react";
+import { Sprout, Zap, Trophy } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DIFFICULTY_LEVELS, DifficultyLevel } from "@/lib/interview-config";
@@ -13,9 +13,9 @@ interface DifficultySelectorProps {
 }
 
 const iconMap = {
-  Smile,
+  Sprout,
   Zap,
-  Award,
+  Trophy,
 };
 
 const difficultyColors = {
@@ -50,10 +50,10 @@ export function DifficultySelector({
             const isSelected = selected === difficulty;
 
             return (
-              <motion.div key={difficulty} variants={fadeInUp}>
+              <motion.div key={difficulty} variants={fadeInUp} className="h-full">
                 <Card
                   className={`
-                    relative cursor-pointer transition-all duration-200 p-5
+                    relative cursor-pointer transition-all duration-200 p-5 h-full
                     hover:scale-[1.02]
                     ${
                       isSelected
@@ -72,7 +72,7 @@ export function DifficultySelector({
                     `}
                   />
 
-                  <div className="relative space-y-3">
+                  <div className="relative h-full flex flex-col">
                     {/* Icon and badge */}
                     <div className="flex items-center justify-between">
                       <div
@@ -116,12 +116,19 @@ export function DifficultySelector({
                     </div>
 
                     {/* Title */}
-                    <h4 className="font-semibold">{config.label}</h4>
+                    <h4 className="font-semibold mt-3">{config.label}</h4>
 
-                    {/* Description */}
-                    <p className="text-xs text-muted-foreground leading-relaxed">
+                    {/* Description - fixed min-height for consistency */}
+                    <p className="text-xs text-muted-foreground leading-relaxed mt-2 min-h-[2.5rem]">
                       {config.description}
                     </p>
+
+                    {/* Subtitle */}
+                    {config.subtitle && (
+                      <p className="text-xs text-muted-foreground/80 leading-relaxed mt-2 flex-1">
+                        {config.subtitle}
+                      </p>
+                    )}
                   </div>
                 </Card>
               </motion.div>
