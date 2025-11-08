@@ -154,12 +154,9 @@ export const generateFeedback = inngest.createFunction(
       });
     });
 
-    // Step 5: Evaluate with GPT-4 (with timeout)
+    // Step 5: Evaluate with GPT-4
     const evaluation = await step.run(
       "evaluate-session",
-      {
-        timeout: "120s", // 2 minutes max for GPT-4 call
-      },
       async () => {
         const startTime = Date.now();
         const result = await evaluateWithGPT4(transcript, validation.tier);

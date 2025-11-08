@@ -108,9 +108,10 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   const lastSpeakingTimeRef = useRef<number>(0);
 
   // Audio reactivity for Orb (same as interview page)
-  const userVolume = useTrackVolume(audioTrack?.track, 50);
-  const agentAudioTrack = room?.remoteParticipants?.[0]?.getTrack(Track.Source.Microphone)?.track;
-  const agentVolume = useTrackVolume(agentAudioTrack as any, 50);
+  const userVolume = useTrackVolume(audioTrack?.publication?.track as any);
+  const firstRemoteParticipant = room?.remoteParticipants ? Array.from(room.remoteParticipants.values())[0] : undefined;
+  const agentAudioTrack = firstRemoteParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
+  const agentVolume = useTrackVolume(agentAudioTrack as any);
 
   // Normalize volumes from 0-100
   const normalizedUserVolume = Math.min(userVolume, 100) / 100;
@@ -118,7 +119,7 @@ function DemoControls({ onClose }: { onClose: () => void }) {
 
   // Debounce agent state changes to prevent flickering during natural pauses
   useEffect(() => {
-    const currentState = state || "idle";
+    const currentState = (state as string) || "idle";
     const GRACE_PERIOD_MS = 600; // 600ms grace period for natural pauses
 
     // If agent is speaking, update timestamp
