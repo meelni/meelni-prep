@@ -46,6 +46,7 @@ function InterviewPageContent() {
   const voice = searchParams.get("voice");
   const speed = searchParams.get("speed");
   const emotion = searchParams.get("emotion");
+  const questionId = searchParams.get("questionId"); // Optional: pre-selected question
 
   // Session info (after session is created)
   const sessionId = searchParams.get("sessionId");
@@ -115,6 +116,7 @@ function InterviewPageContent() {
         body: JSON.stringify({
           roundType,
           mode,
+          questionId: questionId || undefined, // Include questionId if present
           config: {
             voice,
             speed: speed ? parseFloat(speed) : 1.0,
