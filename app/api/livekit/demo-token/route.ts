@@ -123,15 +123,15 @@ export async function POST(req: NextRequest) {
       console.log(`Demo room created: ${roomName}`);
 
       // Dispatch the LiveKit Cloud demo agent to this room
-      // Agent ID: CA_Wp8bi3bRroE2 (deployed to LiveKit Cloud - Enterprise Account)
-      const DEMO_AGENT_ID = "CA_Wp8bi3bRroE2";
+      // Agent ID: CA_t3sKQEihMQ7x (deployed to LiveKit Cloud)
+      const DEMO_AGENT_ID = "CA_t3sKQEihMQ7x";
 
       try {
         // Use AgentDispatchClient from SDK
         const dispatchClient = new AgentDispatchClient(livekit_url, apiKey, apiSecret);
 
         const dispatch = await dispatchClient.createDispatch(roomName, DEMO_AGENT_ID);
-        console.log(`Demo agent (CA_Wp8bi3bRroE2) dispatched to room: ${roomName}`, dispatch);
+        console.log(`Demo agent (${DEMO_AGENT_ID}) dispatched to room: ${roomName}`, dispatch);
       } catch (dispatchError: any) {
         console.error('Agent dispatch error:', dispatchError.message);
       }

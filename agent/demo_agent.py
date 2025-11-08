@@ -283,6 +283,6 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="CA_Wp8bi3bRroE2",  # Required for explicit dispatch - Enterprise Account
+            agent_name="CA_t3sKQEihMQ7x",  # Required for explicit dispatch
         ),
     )
