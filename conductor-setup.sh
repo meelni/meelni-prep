@@ -31,7 +31,15 @@ fi
 # NOTE: DEEPGRAM_API_KEY and CARTESIA_API_KEY are NOT required when using LiveKit Inference
 # LiveKit Cloud provides these services through its Inference API using LIVEKIT_API_KEY/SECRET
 if [ -f "$ROOT_PATH/.env" ]; then
-    source "$ROOT_PATH/.env" 2>/dev/null || true
+    # Load .env variables safely without executing unquoted values
+    # This prevents exit 127 errors from lines like: GOOGLE_SHEET_NAME=Form Responses 1
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        [[ "$key" =~ ^#.*$ ]] && continue
+        [[ -z "$key" ]] && continue
+        # Export the variable (handles unquoted values safely)
+        export "$key=$value"
+    done < "$ROOT_PATH/.env"
 fi
 REQUIRED_VARS=("DATABASE_URL" "LIVEKIT_API_KEY" "LIVEKIT_API_SECRET" "OPENAI_API_KEY")
 MISSING_VARS=()
