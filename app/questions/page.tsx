@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/table";
 import { FilterPopover } from "@/components/question-bank/filter-popover";
 import { SearchAutocomplete } from "@/components/question-bank/search-autocomplete";
-import { HoverPreview } from "@/components/question-bank/hover-preview";
 import { BulkActionToolbar } from "@/components/question-bank/bulk-action-toolbar";
 import { EmptyState } from "@/components/question-bank/empty-state";
 import { QuestionCard } from "@/components/question-bank/question-card";
@@ -393,20 +392,11 @@ export default function QuestionBankPage() {
                               />
                             </TableCell>
 
-                            {/* Question with hover preview */}
+                            {/* Question */}
                             <TableCell className="px-4 py-3.5">
-                              <HoverPreview
-                                question={question}
-                                badgeClassName={
-                                  QUESTION_TYPE_COLORS[
-                                    question.questionType as keyof typeof QUESTION_TYPE_COLORS
-                                  ]
-                                }
-                              >
-                                <p className="text-sm font-medium text-foreground line-clamp-2 transition-colors duration-150 cursor-help">
-                                  {question.questionText}
-                                </p>
-                              </HoverPreview>
+                              <p className="text-sm font-medium text-foreground line-clamp-2">
+                                {question.questionText}
+                              </p>
                             </TableCell>
 
                             {/* Type */}
