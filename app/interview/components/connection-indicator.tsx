@@ -6,13 +6,13 @@ import { useConnectionQualityIndicator, useLocalParticipant } from "@livekit/com
 
 export function ConnectionIndicator() {
   const { localParticipant } = useLocalParticipant();
-  const connectionQuality = useConnectionQualityIndicator({ participant: localParticipant });
+  const { quality } = useConnectionQualityIndicator({ participant: localParticipant });
 
   // Map LiveKit connection quality (0-3) to our UI states
   const getQualityState = () => {
-    if (connectionQuality === "unknown") return { color: "text-muted-foreground", label: "Connecting...", Icon: Wifi };
-    if (connectionQuality === "poor") return { color: "text-red-500", label: "Poor connection", Icon: WifiOff };
-    if (connectionQuality === "good") return { color: "text-amber-500", label: "Good connection", Icon: Wifi };
+    if (quality === "unknown") return { color: "text-muted-foreground", label: "Connecting...", Icon: Wifi };
+    if (quality === "poor") return { color: "text-red-500", label: "Poor connection", Icon: WifiOff };
+    if (quality === "good") return { color: "text-amber-500", label: "Good connection", Icon: Wifi };
     return { color: "text-green-500", label: "Excellent connection", Icon: Wifi };
   };
 

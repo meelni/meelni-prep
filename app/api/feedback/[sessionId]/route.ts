@@ -1,9 +1,10 @@
 /**
- * Get Session Feedback API
+ * Get Session Feedback API (with Polling Support)
  *
- * Retrieves the AI-generated feedback for a completed interview session.
- * User must own the session to access feedback. Feedback must have been
- * previously generated via POST /api/feedback/generate.
+ * Retrieves the AI-generated feedback for an interview session, supporting
+ * real-time status polling. Returns feedback status (pending, processing,
+ * completed, failed, skipped) with estimated time remaining for incomplete
+ * feedback. Includes cache headers based on feedback status.
  *
  * @route GET /api/feedback/:sessionId
  * @access Protected (requires Supabase Auth JWT)
@@ -11,25 +12,16 @@
  *
  * @param {string} sessionId - UUID of the session (URL parameter)
  *
- * @response {Object} response - Feedback data
- * @response.feedback {Object} - Complete feedback object
- * @response.feedback.id {string} - Feedback UUID
- * @response.feedback.sessionId {string} - Session UUID
- * @response.feedback.structureScore {number} - Structure score (0-10)
- * @response.feedback.clarityScore {number} - Clarity score (0-10)
- * @response.feedback.insightScore {number} - Insight score (0-10)
- * @response.feedback.communicationScore {number} - Communication score (0-10)
- * @response.feedback.leadershipScore {number} - Leadership score (0-10)
- * @response.feedback.overallScore {number} - Overall weighted score (0-10)
- * @response.feedback.strengths {Array<string>} - List of strength statements
- * @response.feedback.improvements {Array<string>} - List of improvement suggestions
- * @response.feedback.drills {Array<string>} - List of practice drill recommendations
- * @response.feedback.summary {string} - Executive summary of performance
- * @response.feedback.createdAt {string} - ISO 8601 timestamp
+ * @response {Object} response - Feedback status and data
+ * @response.status {string} - Feedback status (pending|processing|completed|failed|skipped)
+ * @response.estimatedTimeRemaining {number} - Seconds remaining (if pending/processing)
+ * @response.skipReason {string} - Reason for skipping (if skipped)
+ * @response.error {string} - Error message (if failed)
+ * @response.feedback {Object} - Complete feedback object (if completed)
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
  * @throws {403} Forbidden - User does not own this session
- * @throws {404} Not Found - Feedback not found for this session (hasn't been generated yet)
+ * @throws {404} Not Found - Session not found or feedback not initialized
  * @throws {500} Internal Server Error - Database query failed
  *
  * @example
@@ -38,8 +30,23 @@
  * Headers:
  *   Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
  *
- * // Response (200 OK)
+ * // Response (200 OK - Pending)
  * {
+ *   "status": "pending",
+ *   "estimatedTimeRemaining": 42
+ * }
+ * Cache-Control: no-cache
+ *
+ * // Response (200 OK - Processing)
+ * {
+ *   "status": "processing",
+ *   "estimatedTimeRemaining": 25
+ * }
+ * Cache-Control: no-cache
+ *
+ * // Response (200 OK - Completed)
+ * {
+ *   "status": "completed",
  *   "feedback": {
  *     "id": "feedback-abc123",
  *     "sessionId": "550e8400-e29b-41d4-a716-446655440000",
@@ -49,26 +56,33 @@
  *     "communicationScore": 8,
  *     "leadershipScore": 7,
  *     "overallScore": 7.8,
- *     "strengths": [
- *       "Strong use of STAR framework in behavioral responses",
- *       "Clear articulation of product metrics"
- *     ],
- *     "improvements": [
- *       "Could dig deeper into trade-offs",
- *       "Add more quantitative data"
- *     ],
- *     "drills": [
- *       "Practice 5-10 product sense questions with timer",
- *       "Record yourself and review for filler words"
- *     ],
- *     "summary": "Solid product sense interview with clear structure...",
+ *     "strengths": ["..."],
+ *     "improvements": ["..."],
+ *     "drills": ["..."],
+ *     "summary": "...",
+ *     "rubricVersion": "1.0.0",
  *     "createdAt": "2025-11-05T11:20:00Z"
  *   }
  * }
+ * Cache-Control: public, max-age=3600
+ *
+ * // Response (200 OK - Skipped)
+ * {
+ *   "status": "skipped",
+ *   "skipReason": "Session too short: 2 minutes < 5 minutes minimum"
+ * }
+ * Cache-Control: public, max-age=300
+ *
+ * // Response (200 OK - Failed)
+ * {
+ *   "status": "failed",
+ *   "error": "GPT-4 API timeout"
+ * }
+ * Cache-Control: public, max-age=300
  *
  * // Error Response (404 Not Found)
  * {
- *   "error": "Feedback not found for this session"
+ *   "error": "Session not found or access denied"
  * }
  */
 
@@ -76,6 +90,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
+
+// Estimated total processing time (seconds)
+const ESTIMATED_PROCESSING_TIME = 45;
 
 export async function GET(
   req: NextRequest,
@@ -100,21 +117,129 @@ export async function GET(
     if (!isOwner) {
       return NextResponse.json(
         { error: "Session not found or access denied" },
-        { status: 403 }
+        { status: 404 } // Use 404 to avoid leaking session existence
       );
     }
 
     // Get feedback
-    const feedback = await getFeedbackBySessionId(sessionId);
+    const feedbackRecord = await getFeedbackBySessionId(sessionId);
 
-    if (!feedback) {
+    if (!feedbackRecord) {
       return NextResponse.json(
         { error: "Feedback not found for this session" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ feedback });
+    // Build response based on status
+    const status = feedbackRecord.status || "pending";
+
+    // Case 1: Pending - waiting to start processing
+    if (status === "pending") {
+      return NextResponse.json(
+        {
+          status: "pending",
+          estimatedTimeRemaining: ESTIMATED_PROCESSING_TIME,
+        },
+        {
+          headers: {
+            "Cache-Control": "no-cache",
+          },
+        }
+      );
+    }
+
+    // Case 2: Processing - calculate time remaining
+    if (status === "processing") {
+      let estimatedTimeRemaining = ESTIMATED_PROCESSING_TIME;
+
+      if (feedbackRecord.processingStartedAt) {
+        const elapsed = Math.floor(
+          (Date.now() - new Date(feedbackRecord.processingStartedAt).getTime()) / 1000
+        );
+        estimatedTimeRemaining = Math.max(0, ESTIMATED_PROCESSING_TIME - elapsed);
+      }
+
+      return NextResponse.json(
+        {
+          status: "processing",
+          estimatedTimeRemaining,
+        },
+        {
+          headers: {
+            "Cache-Control": "no-cache",
+          },
+        }
+      );
+    }
+
+    // Case 3: Completed - return full feedback with cache
+    if (status === "completed") {
+      return NextResponse.json(
+        {
+          status: "completed",
+          feedback: {
+            id: feedbackRecord.id,
+            sessionId: feedbackRecord.sessionId,
+            structureScore: feedbackRecord.structureScore,
+            clarityScore: feedbackRecord.clarityScore,
+            insightScore: feedbackRecord.insightScore,
+            communicationScore: feedbackRecord.communicationScore,
+            leadershipScore: feedbackRecord.leadershipScore,
+            overallScore: feedbackRecord.overallScore
+              ? parseFloat(feedbackRecord.overallScore)
+              : null,
+            strengths: feedbackRecord.strengths as string[],
+            improvements: feedbackRecord.improvements as string[],
+            drills: feedbackRecord.drills as string[],
+            summary: feedbackRecord.summary,
+            rubricVersion: feedbackRecord.rubricVersion,
+            createdAt: feedbackRecord.createdAt,
+          },
+        },
+        {
+          headers: {
+            "Cache-Control": "public, max-age=3600", // Cache for 1 hour
+          },
+        }
+      );
+    }
+
+    // Case 4: Skipped - return skip reason with short cache
+    if (status === "skipped") {
+      return NextResponse.json(
+        {
+          status: "skipped",
+          skipReason: feedbackRecord.statusReason || "Feedback generation was skipped",
+        },
+        {
+          headers: {
+            "Cache-Control": "public, max-age=300", // Cache for 5 minutes
+          },
+        }
+      );
+    }
+
+    // Case 5: Failed - return error with short cache
+    if (status === "failed") {
+      return NextResponse.json(
+        {
+          status: "failed",
+          error: feedbackRecord.statusReason || "Feedback generation failed",
+        },
+        {
+          headers: {
+            "Cache-Control": "public, max-age=300", // Cache for 5 minutes
+          },
+        }
+      );
+    }
+
+    // Unknown status (shouldn't happen)
+    return NextResponse.json(
+      { error: "Invalid feedback status" },
+      { status: 500 }
+    );
   } catch (error) {
     console.error("Error fetching feedback:", error);
     return NextResponse.json(
