@@ -42,6 +42,22 @@ export function Sidebar({
     setMounted(true);
   }, []);
 
+  const handleThemeToggle = async () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+
+    // Save to database immediately
+    try {
+      await fetch('/api/user/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: newTheme })
+      });
+    } catch (err) {
+      console.error('Failed to save theme:', err);
+    }
+  };
+
   const navigationItems = [
     { id: "overview", icon: Monitor, label: "Overview", minSessions: 0 },
     { id: "history", icon: History, label: "Interview History", minSessions: 1 },
@@ -116,7 +132,7 @@ export function Sidebar({
       animate={collapsed ? "collapsed" : "expanded"}
       className="relative h-screen bg-card border-r border-border flex flex-col"
     >
-      {/* Header Section - Branding + Collapse Toggle */}
+      {/* Header Section - Branding + Theme + Collapse Toggle */}
       <div className="flex items-center justify-between px-4 py-6 border-b border-border/30">
         {!collapsed && (
           <Link href="/dashboard" className="block">
@@ -125,19 +141,37 @@ export function Sidebar({
             </div>
           </Link>
         )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className={cn(
-            "p-2 rounded-lg hover:bg-muted/50 transition-colors",
-            collapsed && "mx-auto"
+        <div className="flex items-center gap-1">
+          {/* Theme Toggle */}
+          {mounted && (
+            <button
+              onClick={handleThemeToggle}
+              className="p-2 rounded-lg hover:bg-muted/50 transition-colors"
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            >
+              {theme === "dark" ? (
+                <Sun size={16} className="transition-opacity" aria-hidden="true" />
+              ) : (
+                <Moon size={16} className="transition-opacity" aria-hidden="true" />
+              )}
+            </button>
           )}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          <ChevronLeft
-            className={cn("transition-transform duration-300", collapsed && "rotate-180")}
-            size={16}
-          />
-        </button>
+          {/* Collapse Toggle */}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className={cn(
+              "p-2 rounded-lg hover:bg-muted/50 transition-colors",
+              collapsed && !mounted && "mx-auto"
+            )}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <ChevronLeft
+              className={cn("transition-transform duration-300", collapsed && "rotate-180")}
+              size={16}
+            />
+          </button>
+        </div>
       </div>
 
       <motion.div
@@ -230,29 +264,6 @@ export function Sidebar({
               </div>
             )}
           </motion.div>
-        )}
-
-        {/* Theme Toggle */}
-        {mounted && (
-          <motion.button
-            variants={itemVariants}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className={cn(
-              "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200",
-              "text-muted-foreground hover:text-foreground hover:bg-card/50"
-            )}
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-          >
-            {theme === "dark" ? (
-              <Sun size={18} className="transition-opacity opacity-70" aria-hidden="true" />
-            ) : (
-              <Moon size={18} className="transition-opacity opacity-70" aria-hidden="true" />
-            )}
-            {!collapsed && <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>}
-          </motion.button>
         )}
 
         {/* Flexible Spacer */}
