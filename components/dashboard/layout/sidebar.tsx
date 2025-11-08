@@ -153,7 +153,7 @@ export function Sidebar({
           )}
           aria-label="Start new interview"
         >
-          <Sparkles size={18} aria-hidden="true" />
+          <Sparkles size={18} className="flex-shrink-0 w-[18px] h-[18px]" aria-hidden="true" />
           {!collapsed && <span className="ml-2">New Interview</span>}
         </button>
 
@@ -183,7 +183,7 @@ export function Sidebar({
               <item.icon
                 size={18}
                 className={cn(
-                  "transition-opacity",
+                  "flex-shrink-0 w-[18px] h-[18px] transition-opacity",
                   activeSection === item.id ? "opacity-100" : "opacity-70"
                 )}
                 aria-hidden="true"
