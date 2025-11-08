@@ -1,3 +1,6 @@
+# .dockerignore for Demo Agent
+# Use this when deploying the demo agent
+
 # Python
 __pycache__/
 *.py[cod]
@@ -11,7 +14,6 @@ ENV/
 # Environment files (secrets managed by LiveKit Cloud)
 .env
 .env.local
-.env.demo
 
 # Development
 .vscode/
@@ -32,6 +34,7 @@ config.py
 show_sample_prompt.py
 test_greeting.py
 test_prompts.py
+utils/
 
 # Logs
 *.log

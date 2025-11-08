@@ -148,6 +148,20 @@ async def entrypoint(ctx: JobContext):
         # Add a callback to get the full text when speech is done
         def on_speech_done(handle):
             try:
+                # Only send transcript if speech was actually delivered (not interrupted)
+                # Check if the speech was cancelled/interrupted
+                if hasattr(handle, 'interrupted') and handle.interrupted:
+                    logger.info("[Transcript] Agent speech interrupted - not sending to transcript")
+                    return
+
+                # Additional check: verify speech_duration indicates actual delivery
+                # If speech_duration is 0 or very small, it was likely interrupted
+                if hasattr(handle, 'speech_duration'):
+                    duration = getattr(handle, 'speech_duration', 0)
+                    if duration < 0.1:  # Less than 100ms means not actually spoken
+                        logger.info(f"[Transcript] Agent speech too short ({duration}s) - likely interrupted")
+                        return
+
                 # Extract text from chat items
                 agent_text = ""
                 for chat_item in handle.chat_items:

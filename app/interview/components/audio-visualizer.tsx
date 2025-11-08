@@ -18,12 +18,14 @@ export function AudioVisualizer() {
 
   // Track agent connection state
   const [agentConnected, setAgentConnected] = useState(false);
-  const [agentState, setAgentState] = useState<string>("idle");
 
   // Debounced agent state to prevent flickering during speech pauses
   const [debouncedAgentState, setDebouncedAgentState] = useState<string>("idle");
   const agentStateTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastAgentSpeakingTimeRef = useRef<number>(0);
+
+  // Raw state detection with its own debouncing
+  const rawStateDetectionTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const userAudioTrack = localParticipant?.getTrackPublication(
     Track.Source.Microphone
@@ -73,7 +75,7 @@ export function AudioVisualizer() {
     };
   }, [normalizedUserVolume, userAudioTrack, isUserSpeakingDebounced]);
 
-  // Detect agent connection and state via audio activity
+  // Detect agent connection
   useEffect(() => {
     const agentParticipant = remoteParticipants[0];
 
@@ -81,44 +83,31 @@ export function AudioVisualizer() {
       console.log('[AudioVisualizer] Agent connected:', agentParticipant.identity);
       setAgentConnected(true);
     }
+  }, [remoteParticipants, agentConnected]);
 
-    // Detect agent state based on audio activity since useVoiceAssistant() doesn't work with AgentSession
-    if (agentConnected) {
-      if (normalizedAgentVolume > 0.15) {
-        // Agent is speaking (higher volume detected)
-        if (agentState !== "speaking") {
-          console.log('[AudioVisualizer] Agent state: speaking (audio detected)');
-          setAgentState("speaking");
-          lastAgentSpeakingTimeRef.current = Date.now();
-        }
-      } else if (normalizedUserVolume > 0.3) {
-        // User is speaking, agent should be listening
-        if (agentState !== "listening") {
-          console.log('[AudioVisualizer] Agent state: listening (user speaking)');
-          setAgentState("listening");
-        }
-      } else {
-        // No significant audio activity
-        if (agentState !== "idle") {
-          console.log('[AudioVisualizer] Agent state: idle');
-          setAgentState("idle");
-        }
-      }
-    }
-
-    // Debug logging
-    console.log('[AudioVisualizer] State:', agentState, '| User Vol:', normalizedUserVolume.toFixed(2), '| Agent Vol:', normalizedAgentVolume.toFixed(2), '| Participants:', remoteParticipants.length);
-  }, [normalizedUserVolume, normalizedAgentVolume, remoteParticipants, agentConnected, agentState]);
-
-  // Debounce agent state changes to prevent flickering during natural pauses
+  // Detect and debounce agent state based on audio activity
   useEffect(() => {
+    if (!agentConnected) return;
+
     const GRACE_PERIOD_MS = 700; // 700ms grace period for natural pauses in speech
 
-    // If agent is speaking, immediately update debounced state
-    if (agentState === "speaking") {
+    // Determine desired state based on audio activity
+    let rawState = "idle";
+
+    if (normalizedAgentVolume > 0.15) {
+      // Agent is speaking (higher volume detected)
+      rawState = "speaking";
+    } else if (normalizedUserVolume > 0.3) {
+      // User is speaking, agent should be listening
+      rawState = "listening";
+    }
+
+    // Immediate update when agent starts speaking
+    if (rawState === "speaking") {
       lastAgentSpeakingTimeRef.current = Date.now();
 
       if (debouncedAgentState !== "speaking") {
+        console.log('[AudioVisualizer] Agent started speaking');
         setDebouncedAgentState("speaking");
       }
 
@@ -127,26 +116,30 @@ export function AudioVisualizer() {
         clearTimeout(agentStateTimerRef.current);
         agentStateTimerRef.current = undefined;
       }
-    } else if (agentState !== "speaking" && debouncedAgentState === "speaking") {
-      // Agent stopped speaking - apply grace period before transitioning
+    }
+    // Apply grace period when stopping speaking
+    else if (rawState !== "speaking" && debouncedAgentState === "speaking") {
       const timeSinceLastSpeaking = Date.now() - lastAgentSpeakingTimeRef.current;
 
       if (timeSinceLastSpeaking < GRACE_PERIOD_MS) {
-        // Within grace period - delay the state change
+        // Within grace period - delay the state change (only set timer once)
         if (!agentStateTimerRef.current) {
+          const remainingTime = GRACE_PERIOD_MS - timeSinceLastSpeaking;
           agentStateTimerRef.current = setTimeout(() => {
-            console.log('[AudioVisualizer] Grace period expired, changing state from speaking to', agentState);
-            setDebouncedAgentState(agentState);
+            console.log('[AudioVisualizer] Grace period expired, changing state from speaking to', rawState);
+            setDebouncedAgentState(rawState);
             agentStateTimerRef.current = undefined;
-          }, GRACE_PERIOD_MS - timeSinceLastSpeaking);
+          }, remainingTime);
         }
       } else {
         // Grace period already passed - update immediately
-        setDebouncedAgentState(agentState);
+        setDebouncedAgentState(rawState);
       }
-    } else {
-      // Non-speaking states (listening, idle) - update immediately
-      setDebouncedAgentState(agentState);
+    }
+    // For other state transitions (listening/idle), update immediately
+    else if (rawState !== debouncedAgentState) {
+      console.log('[AudioVisualizer] State change:', debouncedAgentState, '→', rawState);
+      setDebouncedAgentState(rawState);
 
       // Clear any pending timer
       if (agentStateTimerRef.current) {
@@ -160,7 +153,7 @@ export function AudioVisualizer() {
         clearTimeout(agentStateTimerRef.current);
       }
     };
-  }, [agentState, debouncedAgentState]);
+  }, [normalizedUserVolume, normalizedAgentVolume, agentConnected, debouncedAgentState]);
 
   // Map LiveKit agent state to Orb agent state
   // Use debounced state for UI display to prevent flickering
@@ -179,6 +172,10 @@ export function AudioVisualizer() {
   // Meelni purple-blue colors
   const meelniColors: [string, string] = ["oklch(0.70 0.22 285)", "oklch(0.55 0.22 285)"];
 
+  // Only pass volume to Orb when actually speaking (above threshold) to prevent flickering
+  const displayUserVolume = normalizedUserVolume > 0.3 ? normalizedUserVolume : 0;
+  const displayAgentVolume = normalizedAgentVolume > 0.15 ? normalizedAgentVolume : 0;
+
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center gap-8 p-6 interview-container">
       {/* Large Orb with Audio Reactivity */}
@@ -186,8 +183,9 @@ export function AudioVisualizer() {
         <Orb
           colors={meelniColors}
           agentState={orbAgentState}
-          getInputVolume={() => normalizedUserVolume}
-          getOutputVolume={() => normalizedAgentVolume}
+          volumeMode="manual"
+          getInputVolume={() => displayUserVolume}
+          getOutputVolume={() => displayAgentVolume}
           className="w-full h-full"
         />
       </div>

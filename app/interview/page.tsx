@@ -389,7 +389,6 @@ function InterviewPageContent() {
       <RoomAudioRenderer />
       <InterviewRoomContent
         session={session}
-        agentState={agentState}
         transcript={transcript}
         isMuted={isMuted}
         transcriptSaveErrors={transcriptSaveErrors}
@@ -413,7 +412,6 @@ function InterviewPageContent() {
 
 interface InterviewRoomContentProps {
   session: InterviewSession;
-  agentState: "idle" | "listening" | "thinking" | "speaking";
   transcript: TranscriptTurn[];
   isMuted: boolean;
   transcriptSaveErrors: number;
@@ -423,7 +421,6 @@ interface InterviewRoomContentProps {
 
 function InterviewRoomContent({
   session,
-  agentState,
   transcript,
   isMuted,
   transcriptSaveErrors,
@@ -504,21 +501,25 @@ function InterviewRoomContent({
           </div>
         )}
 
+        {/* Grid Layout: AudioVisualizer (with Orb) + Transcript Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
-          {/* Center: Audio Visualizer */}
-          <div className="lg:col-span-2 flex items-center justify-center">
-            <div className="w-full h-full max-h-[400px]">
+          {/* Center: AudioVisualizer (contains Orb + state indicators) + Controls */}
+          <div className="lg:col-span-2 flex flex-col items-center justify-center gap-12">
+            <div className="w-full h-full max-h-[500px]">
               <AudioVisualizer />
             </div>
+            <InterviewControls
+              isMuted={isMuted}
+              onToggleMute={onToggleMute}
+              onEndSession={onEndSession}
+            />
           </div>
 
           {/* Right Sidebar: Transcript */}
           <div className="lg:col-span-1 bg-surface border border-border rounded-xl overflow-hidden">
             <div className="p-4 border-b border-border bg-muted/50">
               <h2 className="text-lg font-semibold">Transcript</h2>
-              <p className="text-xs text-muted-foreground">
-                Live conversation transcript
-              </p>
+              <p className="text-xs text-muted-foreground">Live conversation transcript</p>
             </div>
             <div className="h-[calc(100%-80px)]">
               <TranscriptPanel turns={transcript} />
@@ -526,13 +527,6 @@ function InterviewRoomContent({
           </div>
         </div>
       </main>
-
-      {/* Controls */}
-      <InterviewControls
-        isMuted={isMuted}
-        onToggleMute={onToggleMute}
-        onEndSession={onEndSession}
-      />
     </div>
   );
 }
