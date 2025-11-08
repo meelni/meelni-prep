@@ -14,14 +14,20 @@ export interface QuestionBankRecord {
 
 /**
  * Get a random active question, optionally filtered by type
+ * Supports multiple question types via array or comma-separated string
  */
 export async function getRandomQuestion(
-  questionType?: string
+  questionType?: string | string[]
 ): Promise<QuestionBankRecord | null> {
   const conditions = [eq(interviewQuestion.isActive, true)];
 
   if (questionType) {
-    conditions.push(eq(interviewQuestion.questionType, questionType));
+    const types = Array.isArray(questionType) ? questionType : questionType.split(',').map(t => t.trim());
+    if (types.length === 1) {
+      conditions.push(eq(interviewQuestion.questionType, types[0]));
+    } else {
+      conditions.push(sql`${interviewQuestion.questionType} IN (${sql.join(types.map(t => sql`${t}`), sql`, `)})`);
+    }
   }
 
   const [question] = await db
@@ -200,10 +206,11 @@ export async function getQuestionsByDateRange(
 
 /**
  * Get a random question from the most recent questions (trending/current)
+ * Supports multiple question types via array or comma-separated string
  */
 export async function getRandomRecentQuestion(
   days = 365,
-  questionType?: string
+  questionType?: string | string[]
 ): Promise<QuestionBankRecord | null> {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - days);
@@ -214,7 +221,12 @@ export async function getRandomRecentQuestion(
   ];
 
   if (questionType) {
-    conditions.push(eq(interviewQuestion.questionType, questionType));
+    const types = Array.isArray(questionType) ? questionType : questionType.split(',').map(t => t.trim());
+    if (types.length === 1) {
+      conditions.push(eq(interviewQuestion.questionType, types[0]));
+    } else {
+      conditions.push(sql`${interviewQuestion.questionType} IN (${sql.join(types.map(t => sql`${t}`), sql`, `)})`);
+    }
   }
 
   const [question] = await db
