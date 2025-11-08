@@ -19,7 +19,6 @@ const settingsSchema = z.object({
   shareAnonymousData: z.boolean().optional(),
   saveTranscripts: z.boolean().optional(),
   theme: z.enum(["light", "dark", "system"]).optional(),
-  compactMode: z.boolean().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -69,7 +68,6 @@ export async function GET(request: NextRequest) {
       shareAnonymousData: setting.shareAnonymousData,
       saveTranscripts: setting.saveTranscripts,
       theme: setting.theme,
-      compactMode: setting.compactMode,
     };
 
     return NextResponse.json({
@@ -136,7 +134,6 @@ export async function PUT(request: NextRequest) {
     if (settings.shareAnonymousData !== undefined) dbSettings.shareAnonymousData = settings.shareAnonymousData;
     if (settings.saveTranscripts !== undefined) dbSettings.saveTranscripts = settings.saveTranscripts;
     if (settings.theme !== undefined) dbSettings.theme = settings.theme;
-    if (settings.compactMode !== undefined) dbSettings.compactMode = settings.compactMode;
 
     // Upsert settings (insert or update)
     await db

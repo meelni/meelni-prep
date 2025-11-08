@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { useTheme } from "next-themes";
 import {
   User,
   Bell,
@@ -43,11 +44,11 @@ interface SettingsState {
 
   // Appearance
   theme: string;
-  compactMode: boolean;
 }
 
 export function SettingsSection() {
   const { user, signOut } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [settings, setSettings] = useState<SettingsState>({
     displayName: user?.user_metadata?.full_name || "",
     email: user?.email || "",
@@ -62,7 +63,6 @@ export function SettingsSection() {
     shareAnonymousData: true,
     saveTranscripts: true,
     theme: "system",
-    compactMode: false,
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -77,6 +77,10 @@ export function SettingsSection() {
           const data = await response.json();
           if (data.settings) {
             setSettings(prev => ({ ...prev, ...data.settings }));
+            // Apply theme if it exists in settings
+            if (data.settings.theme) {
+              setTheme(data.settings.theme);
+            }
           }
         }
       } catch (error) {
@@ -87,6 +91,9 @@ export function SettingsSection() {
           try {
             const parsed = JSON.parse(savedSettings);
             setSettings(prev => ({ ...prev, ...parsed }));
+            if (parsed.theme) {
+              setTheme(parsed.theme);
+            }
           } catch (e) {
             console.error("Failed to parse saved settings:", e);
           }
@@ -95,7 +102,7 @@ export function SettingsSection() {
     };
 
     loadSettings();
-  }, []);
+  }, [setTheme]);
 
   const handleSaveSettings = async () => {
     setIsSaving(true);
@@ -441,8 +448,11 @@ export function SettingsSection() {
           <div className="space-y-2">
             <Label htmlFor="theme">Theme</Label>
             <Select
-              value={settings.theme}
-              onValueChange={(value) => setSettings({ ...settings, theme: value })}
+              value={theme || settings.theme}
+              onValueChange={(value) => {
+                setTheme(value);
+                setSettings({ ...settings, theme: value });
+              }}
             >
               <SelectTrigger id="theme">
                 <SelectValue />
@@ -456,19 +466,6 @@ export function SettingsSection() {
             <p className="text-xs text-muted-foreground">
               Choose your preferred color scheme. System will match your device settings.
             </p>
-          </div>
-
-          <div className="flex items-center justify-between py-2">
-            <div className="space-y-0.5">
-              <Label>Compact Mode</Label>
-              <p className="text-sm text-muted-foreground">
-                Use a more condensed layout for dashboard components
-              </p>
-            </div>
-            <Switch
-              checked={settings.compactMode}
-              onCheckedChange={(checked) => setSettings({ ...settings, compactMode: checked })}
-            />
           </div>
         </CardContent>
       </Card>

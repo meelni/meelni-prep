@@ -129,7 +129,6 @@ export const userSettings = pgTable("user_settings", {
   shareAnonymousData: boolean("share_anonymous_data").default(true).notNull(),
   saveTranscripts: boolean("save_transcripts").default(true).notNull(),
   theme: text("theme").default("system"),
-  compactMode: boolean("compact_mode").default(false).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (table) => ({
