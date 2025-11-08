@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FilterPill } from "@/components/ui/filter-pill";
 import {
   Popover,
   PopoverContent,
@@ -11,8 +10,6 @@ import {
 } from "@/components/ui/popover";
 import { Filter, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type QuickFilter = "recent" | "faang" | "weak-areas";
 
 const QUESTION_TYPES = [
   "All Types",
@@ -29,8 +26,6 @@ const SORT_OPTIONS = [
 ];
 
 interface FilterPopoverProps {
-  quickFilters: Set<QuickFilter>;
-  onToggleQuickFilter: (filter: QuickFilter) => void;
   selectedType: string;
   onSelectType: (type: string) => void;
   sortBy: "recent" | "company" | "type";
@@ -39,8 +34,6 @@ interface FilterPopoverProps {
 }
 
 export function FilterPopover({
-  quickFilters,
-  onToggleQuickFilter,
   selectedType,
   onSelectType,
   sortBy,
@@ -50,8 +43,7 @@ export function FilterPopover({
   const [isOpen, setIsOpen] = useState(false);
 
   // Calculate active filter count
-  const activeFilterCount =
-    quickFilters.size + (selectedType !== "All Types" ? 1 : 0);
+  const activeFilterCount = selectedType !== "All Types" ? 1 : 0;
 
   const handleApply = () => {
     setIsOpen(false);
@@ -107,37 +99,6 @@ export function FilterPopover({
 
         {/* Content */}
         <div className="px-4 py-4 space-y-6 max-h-[60vh] overflow-y-auto">
-          {/* Quick Filters */}
-          <div>
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Quick Filters
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              <FilterPill
-                active={quickFilters.has("recent")}
-                onClick={() => onToggleQuickFilter("recent")}
-                aria-label="Filter by recent questions"
-              >
-                Recent Questions
-              </FilterPill>
-              <FilterPill
-                active={quickFilters.has("faang")}
-                onClick={() => onToggleQuickFilter("faang")}
-                aria-label="Filter by FAANG companies"
-              >
-                FAANG Companies
-              </FilterPill>
-              <FilterPill
-                active={quickFilters.has("weak-areas")}
-                onClick={() => onToggleQuickFilter("weak-areas")}
-                aria-label="Filter by weak areas"
-                title="Coming soon - based on your performance data"
-              >
-                My Weak Areas
-              </FilterPill>
-            </div>
-          </div>
-
           {/* Question Type */}
           <div>
             <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">

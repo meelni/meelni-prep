@@ -47,10 +47,6 @@ const QUESTION_TYPE_COLORS = {
   "Product Strategy": "bg-orange-500/8 text-orange-600 dark:text-orange-400 border-orange-500/20",
 };
 
-const FAANG_COMPANIES = ["Meta", "Amazon", "Apple", "Netflix", "Google"];
-
-type QuickFilter = "recent" | "faang" | "weak-areas";
-
 export default function QuestionBankPage() {
   const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
@@ -61,7 +57,6 @@ export default function QuestionBankPage() {
   const [selectedType, setSelectedType] = useState("All Types");
   const [sortBy, setSortBy] = useState<"recent" | "company" | "type">("recent");
   const [activeSection, setActiveSection] = useState("questions");
-  const [quickFilters, setQuickFilters] = useState<Set<QuickFilter>>(new Set());
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
 
@@ -120,24 +115,10 @@ export default function QuestionBankPage() {
     fetchQuestions();
   }, [selectedType]);
 
-  // Toggle quick filter
-  const toggleQuickFilter = (filter: QuickFilter) => {
-    setQuickFilters((prev) => {
-      const newFilters = new Set(prev);
-      if (newFilters.has(filter)) {
-        newFilters.delete(filter);
-      } else {
-        newFilters.add(filter);
-      }
-      return newFilters;
-    });
-  };
-
   // Clear all filters
   const clearAllFilters = () => {
     setSearchQuery("");
     setSelectedType("All Types");
-    setQuickFilters(new Set());
   };
 
   // Filter and sort questions
@@ -152,29 +133,9 @@ export default function QuestionBankPage() {
 
         if (!matchesSearch) return false;
 
-        // Quick filters
-        if (quickFilters.size > 0) {
-          // Recent questions (last 12 months)
-          if (quickFilters.has("recent")) {
-            const oneYearAgo = new Date();
-            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-            if (!q.askedAt || new Date(q.askedAt) < oneYearAgo) {
-              return false;
-            }
-          }
-
-          // FAANG companies
-          if (quickFilters.has("faang")) {
-            if (!q.company || !FAANG_COMPANIES.includes(q.company)) {
-              return false;
-            }
-          }
-
-          // Weak areas (placeholder - just filter out for now)
-          if (quickFilters.has("weak-areas")) {
-            // TODO: Implement based on user performance data
-            return false;
-          }
+        // Type filter
+        if (selectedType !== "All Types" && q.questionType !== selectedType) {
+          return false;
         }
 
         return true;
@@ -191,7 +152,7 @@ export default function QuestionBankPage() {
           return a.questionType.localeCompare(b.questionType);
         }
       });
-  }, [questions, debouncedSearchQuery, quickFilters, sortBy]);
+  }, [questions, debouncedSearchQuery, selectedType, sortBy]);
 
   const handleTryQuestion = (questionId: string, questionType: string) => {
     // Map display question type to roundType
@@ -266,7 +227,7 @@ export default function QuestionBankPage() {
   const getEmptyStateType = (): "no-search" | "no-filter" | "first-time" | null => {
     if (filteredQuestions.length > 0) return null;
     if (debouncedSearchQuery) return "no-search";
-    if (quickFilters.size > 0 || selectedType !== "All Types") return "no-filter";
+    if (selectedType !== "All Types") return "no-filter";
     if (questions.length === 0) return "first-time";
     return "no-filter";
   };
@@ -325,8 +286,6 @@ export default function QuestionBankPage() {
                       />
                     </div>
                     <FilterPopover
-                      quickFilters={quickFilters}
-                      onToggleQuickFilter={toggleQuickFilter}
                       selectedType={selectedType}
                       onSelectType={setSelectedType}
                       sortBy={sortBy}
@@ -472,12 +431,12 @@ export default function QuestionBankPage() {
                         aria-label="Open filters"
                       >
                         <Filter className="w-4 h-4" />
-                        {(quickFilters.size > 0 || selectedType !== "All Types") && (
+                        {selectedType !== "All Types" && (
                           <Badge
                             variant="default"
                             className="h-5 min-w-5 px-1.5 text-xs rounded-full"
                           >
-                            {quickFilters.size + (selectedType !== "All Types" ? 1 : 0)}
+                            1
                           </Badge>
                         )}
                       </button>
@@ -521,8 +480,6 @@ export default function QuestionBankPage() {
       <MobileFilterDrawer
         isOpen={isFilterDrawerOpen}
         onClose={() => setIsFilterDrawerOpen(false)}
-        quickFilters={quickFilters}
-        onToggleQuickFilter={toggleQuickFilter}
         selectedType={selectedType}
         onSelectType={setSelectedType}
         onClearAll={clearAllFilters}
