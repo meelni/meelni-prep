@@ -299,7 +299,7 @@ export default function QuestionBankPage() {
     >
       <div className="min-h-screen bg-background">
         {/* Questions Content */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-8">
           {emptyStateType ? (
             <div className="rounded-lg border border-border overflow-hidden bg-card">
               <EmptyState
@@ -338,7 +338,7 @@ export default function QuestionBankPage() {
                 </div>
 
                 {/* Table with Sticky Header */}
-                <div className="relative overflow-x-auto max-h-[calc(100vh-16rem)] scroll-smooth">
+                <div className="relative overflow-x-auto max-h-[calc(100vh-12rem)] scroll-smooth">
                   {/* Bottom fade gradient */}
                   <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-card to-transparent z-10" />
 

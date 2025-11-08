@@ -85,7 +85,10 @@ export function FilterPopover({
       <PopoverContent
         className="w-80 p-0"
         align="end"
+        side="bottom"
         sideOffset={8}
+        alignOffset={-8}
+        collisionPadding={16}
         onEscapeKeyDown={() => setIsOpen(false)}
       >
         {/* Header */}
