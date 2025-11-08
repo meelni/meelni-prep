@@ -362,9 +362,9 @@ This document serves as the single source of truth for:
   - User preference for these specific models
 - **Key Discovery**:
   - **Cartesia does NOT require separate API key** when using LiveKit Inference
-  - Unlike ElevenLabs, Cartesia is fully integrated with LiveKit Cloud
-  - Only need LIVEKIT_API_KEY/SECRET for Cartesia TTS
-  - ElevenLabs requires separate ELEVENLABS_API_KEY even through LiveKit Inference
+  - Cartesia is fully integrated with LiveKit Cloud
+  - **ElevenLabs also does NOT require separate API key** when using LiveKit Inference
+  - Both Cartesia and ElevenLabs work with only LIVEKIT_API_KEY/SECRET for TTS
 - **Consequences**:
   - Better voice quality and natural conversation
   - Simplified configuration (no Cartesia API key needed)
@@ -1634,8 +1634,9 @@ OPENAI_API_KEY=your_openai_key
 # Deepgram (ASR - Nova-3)
 DEEPGRAM_API_KEY=your_deepgram_key
 
-# Cartesia (TTS) - NOT REQUIRED when using LiveKit Inference
-# CARTESIA_API_KEY=your_cartesia_key  # Only needed for direct API access
+# TTS Providers (Cartesia/ElevenLabs) - NOT REQUIRED when using LiveKit Inference
+# CARTESIA_API_KEY=your_cartesia_key  # Only needed for direct API access or custom voices
+# ELEVENLABS_API_KEY=your_elevenlabs_key  # Only needed for direct API access or voice cloning
 ```
 
 ### Planned
@@ -1743,7 +1744,7 @@ RESEND_API_KEY=
 - ✅ GPT-4 Model Name: Changed to `openai/gpt-4o-mini` (later upgraded to `gpt-4.1-mini`)
 - ✅ Agent Auto-Reload: Restart needed for prewarm function changes
 - ✅ Typography Scale: Fixed overly large fonts (display-scale → application-scale)
-- ✅ ElevenLabs Authentication: Discovered requires separate API key; switched to Cartesia
+- ✅ ElevenLabs Voice ID: Invalid voice ID caused TTS failures; fixed with valid default voice
 - ✅ Interview Page Loading: Resolved by agent restart after configuration changes
 - ✅ Cartesia API Key Confusion: Clarified that Cartesia doesn't need separate key with LiveKit Inference
 - ✅ Multiple Agents Competing: Self-hosted agents competing for dispatches; resolved with explicit dispatch
@@ -1866,9 +1867,9 @@ RESEND_API_KEY=
 
 **Key Technical Discoveries**
 - **Cartesia Integration**: Cartesia does NOT require separate API key with LiveKit Inference
-- Cartesia is fully integrated with LiveKit Cloud (unlike ElevenLabs)
-- Only LIVEKIT_API_KEY/SECRET needed for Cartesia TTS
-- ElevenLabs requires separate ELEVENLABS_API_KEY even through LiveKit Inference
+- Cartesia is fully integrated with LiveKit Cloud
+- **ElevenLabs Integration**: ElevenLabs also does NOT require separate API key with LiveKit Inference
+- Both Cartesia and ElevenLabs work with only LIVEKIT_API_KEY/SECRET for TTS through LiveKit Inference
 - Found comprehensive Cartesia voice library (150+ voices) via SignalWire documentation
 - Tessa identified as emotive voice optimized for Sonic 3 with wide emotional range
 
@@ -1880,8 +1881,8 @@ RESEND_API_KEY=
 - Updated LLM format to: `openai/gpt-4.1-mini`
 
 **Testing & Debugging**
-- Tested ElevenLabs integration (discovered API key requirement issue)
-- Switched to Cartesia per user preference
+- Initially tested with invalid ElevenLabs voice ID
+- Fixed voice ID to use valid ElevenLabs default voices (Rachel: 21m00Tcm4TlvDq8ikWAM)
 - Verified Tessa voice working correctly
 - Agent restart required after configuration changes
 

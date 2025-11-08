@@ -236,9 +236,10 @@ async def entrypoint(ctx: JobContext):
     llm_model = "openai/gpt-4.1-mini"
 
     # ElevenLabs voice via LiveKit Inference (no API key needed)
-    # Voice ID: s3TPKV1kjDlVtZbl4Ksh
+    # Voice: Rachel (professional female voice)
+    # Voice ID: 21m00Tcm4TlvDq8ikWAM
     # Format: elevenlabs/model:voiceId
-    voice_id = "s3TPKV1kjDlVtZbl4Ksh"
+    voice_id = "21m00Tcm4TlvDq8ikWAM"
     tts_model = f"elevenlabs/eleven_turbo_v2_5:{voice_id}"
 
     logger.info(f"Demo Configuration - STT: {stt_model}, LLM: {llm_model}, TTS: {tts_model}")
