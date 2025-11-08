@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Environment files (secrets managed by LiveKit Cloud)
+.env
+.env.local
+.env.demo
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Exclude demo agent files (this is for main interview agent)
+demo_agent.py
+Dockerfile.demo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
