@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Icons } from "@/components/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -75,7 +75,7 @@ export function Sidebar({
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
   };
 
-  // Animation variants - OPACITY ONLY (no x-translations)
+  // Animation variants - width only for smooth collapse/expand
   const sidebarVariants = {
     expanded: {
       width: 280,
@@ -92,37 +92,6 @@ export function Sidebar({
         stiffness: 400,
         damping: 30,
       },
-    },
-  };
-
-  const contentVariants = {
-    expanded: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.03,
-        delayChildren: 0.1,
-      },
-    },
-    collapsed: {
-      opacity: 0,
-      transition: {
-        staggerChildren: 0.02,
-        staggerDirection: -1,
-      },
-    },
-  };
-
-  const itemVariants = {
-    expanded: {
-      opacity: 1,
-      transition: {
-        type: "spring" as const,
-        stiffness: 500,
-        damping: 35,
-      },
-    },
-    collapsed: {
-      opacity: 0,
     },
   };
 
@@ -171,18 +140,9 @@ export function Sidebar({
         </div>
       </div>
 
-      <motion.div
-        variants={contentVariants}
-        className="flex flex-col h-full px-4 py-6 gap-6"
-      >
+      <div className="flex flex-col h-full px-4 py-6 gap-6">
         {/* New Interview CTA - Gradient Glow */}
-        <motion.button
-          variants={itemVariants}
-          whileHover={{
-            scale: 1.05,
-            transition: { duration: 0.3, ease: "easeOut" }
-          }}
-          whileTap={{ scale: 0.98 }}
+        <button
           onClick={() => router.push("/setup")}
           className={cn(
             "relative rounded-lg text-white font-medium text-sm transition-all duration-300 flex items-center gap-2",
@@ -195,21 +155,16 @@ export function Sidebar({
         >
           <Sparkles size={18} aria-hidden="true" />
           {!collapsed && "New Interview"}
-        </motion.button>
+        </button>
 
         {/* Divider */}
-        <motion.div variants={itemVariants} className="h-px bg-border/50" />
+        <div className="h-px bg-border/50" />
 
         {/* Navigation Items */}
-        <motion.nav variants={itemVariants} className="flex flex-col gap-1">
+        <nav className="flex flex-col gap-1">
           {visibleNavItems.map((item) => (
-            <motion.button
+            <button
               key={item.id}
-              variants={itemVariants}
-              whileHover={{
-                scale: 1.02,
-                transition: { duration: 0.2, ease: "easeOut" }
-              }}
               onClick={() => setActiveSection(item.id)}
               className={cn(
                 "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200",
@@ -233,19 +188,16 @@ export function Sidebar({
                 aria-hidden="true"
               />
               {!collapsed && <span>{item.label}</span>}
-            </motion.button>
+            </button>
           ))}
-        </motion.nav>
+        </nav>
 
         {/* Divider */}
-        <motion.div variants={itemVariants} className="h-px bg-border/50" />
+        <div className="h-px bg-border/50" />
 
         {/* Stats Card - Compact */}
         {!collapsed && (
-          <motion.div
-            variants={itemVariants}
-            className="p-4 rounded-lg bg-card/50 border border-border/50 space-y-2"
-          >
+          <div className="p-4 rounded-lg bg-card/50 border border-border/50 space-y-2">
             <div className="flex justify-between items-center">
               <span className="text-xs text-muted-foreground">Sessions</span>
               <span className="text-sm font-semibold text-foreground">{totalSessions}</span>
@@ -260,7 +212,7 @@ export function Sidebar({
                 <span className="text-sm font-semibold text-foreground">{avgScore.toFixed(1)}/10</span>
               </div>
             )}
-          </motion.div>
+          </div>
         )}
 
         {/* Flexible Spacer */}
@@ -268,10 +220,7 @@ export function Sidebar({
 
         {/* User Section - Card Design at Bottom */}
         {!collapsed ? (
-          <motion.div
-            variants={itemVariants}
-            className="p-4 rounded-lg bg-card/50 border border-border/50 space-y-3"
-          >
+          <div className="p-4 rounded-lg bg-card/50 border border-border/50 space-y-3">
             {user && (
               <div className="flex items-center gap-3">
                 {/* Avatar Circle */}
@@ -305,9 +254,9 @@ export function Sidebar({
                 Sign out
               </button>
             )}
-          </motion.div>
+          </div>
         ) : (
-          <motion.div variants={itemVariants} className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-3">
             {/* User Avatar Circle */}
             {user && (
               <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
@@ -332,9 +281,9 @@ export function Sidebar({
                 <LogOut size={16} />
               </button>
             )}
-          </motion.div>
+          </div>
         )}
-      </motion.div>
+      </div>
     </motion.aside>
   );
 }
