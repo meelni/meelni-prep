@@ -84,13 +84,6 @@ export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
                   {config.description}
                 </p>
 
-                {/* Duration badge */}
-                <div className="flex items-center gap-2 pt-2">
-                  <div className="text-xs text-muted-foreground">
-                    ~{config.duration} min
-                  </div>
-                </div>
-
                 {/* Selection indicator */}
                 {isSelected && (
                   <motion.div

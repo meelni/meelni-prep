@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Smile, Zap, Award } from "lucide-react";
+import { Sprout, Zap, Trophy } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DIFFICULTY_LEVELS, DifficultyLevel } from "@/lib/interview-config";
@@ -13,9 +13,9 @@ interface DifficultySelectorProps {
 }
 
 const iconMap = {
-  Smile,
+  Sprout,
   Zap,
-  Award,
+  Trophy,
 };
 
 const difficultyColors = {
@@ -122,6 +122,13 @@ export function DifficultySelector({
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       {config.description}
                     </p>
+
+                    {/* Subtitle */}
+                    {config.subtitle && (
+                      <p className="text-xs text-muted-foreground/80 leading-relaxed pt-1">
+                        {config.subtitle}
+                      </p>
+                    )}
                   </div>
                 </Card>
               </motion.div>
