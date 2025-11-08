@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Environment files (secrets managed by LiveKit Cloud)
+.env
+.env.local
+.env.demo
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Exclude main agent files (this is for demo agent)
+agent.py
+Dockerfile.main
+prompts.py
+config.py
+show_sample_prompt.py
+test_greeting.py
+test_prompts.py
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
