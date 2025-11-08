@@ -141,9 +141,9 @@ export function Sidebar({
             </div>
           </Link>
         )}
-        <div className="flex items-center gap-1">
-          {/* Theme Toggle */}
-          {mounted && (
+        <div className={cn("flex items-center gap-1", collapsed && "mx-auto")}>
+          {/* Theme Toggle - Only show when expanded */}
+          {mounted && !collapsed && (
             <button
               onClick={handleThemeToggle}
               className="p-2 rounded-lg hover:bg-muted/50 transition-colors"
@@ -160,10 +160,7 @@ export function Sidebar({
           {/* Collapse Toggle */}
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className={cn(
-              "p-2 rounded-lg hover:bg-muted/50 transition-colors",
-              collapsed && !mounted && "mx-auto"
-            )}
+            className="p-2 rounded-lg hover:bg-muted/50 transition-colors"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             <ChevronLeft
