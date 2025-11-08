@@ -32,10 +32,10 @@ export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
         const isSelected = selected === roundType;
 
         return (
-          <motion.div key={roundType} variants={fadeInUp}>
+          <motion.div key={roundType} variants={fadeInUp} className="h-full">
             <Card
               className={`
-                relative cursor-pointer transition-all duration-200 p-6
+                relative cursor-pointer transition-all duration-200 p-6 h-full
                 hover:scale-[1.02] hover:shadow-lg
                 ${
                   isSelected
@@ -54,11 +54,11 @@ export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
                 `}
               />
 
-              <div className="relative space-y-3">
+              <div className="relative h-full flex flex-col">
                 {/* Icon */}
                 <div
                   className={`
-                    inline-flex p-3 rounded-lg
+                    inline-flex p-3 rounded-lg w-fit
                     ${isSelected ? "bg-primary/10" : "bg-muted"}
                     transition-colors duration-200
                   `}
@@ -72,15 +72,15 @@ export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
                 </div>
 
                 {/* Title */}
-                <h3 className="text-lg font-semibold">{config.label}</h3>
+                <h3 className="text-lg font-semibold mt-3">{config.label}</h3>
 
                 {/* Subtitle */}
-                <p className="text-sm font-medium text-foreground/80">
+                <p className="text-sm font-medium text-foreground/80 mt-2">
                   {config.subtitle}
                 </p>
 
-                {/* Description */}
-                <p className="text-xs text-muted-foreground leading-relaxed">
+                {/* Description - fixed min-height for consistency */}
+                <p className="text-xs text-muted-foreground leading-relaxed mt-2 min-h-[2.5rem] flex-1">
                   {config.description}
                 </p>
 

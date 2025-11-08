@@ -300,16 +300,6 @@ export default function SetupPage() {
               </Button>
             )}
           </motion.div>
-
-          {/* System Optimization Notice */}
-          <motion.div
-            variants={fadeInUp}
-            className="mt-8 p-4 rounded-lg bg-muted/50 border border-border/50"
-          >
-            <p className="text-sm text-muted-foreground text-center">
-              ✨ Voice, speech speed, and all technical settings are automatically optimized for the best experience
-            </p>
-          </motion.div>
         </motion.div>
       </main>
     </div>
