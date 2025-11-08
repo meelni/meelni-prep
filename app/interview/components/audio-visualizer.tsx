@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import {
   useLocalParticipant,
   useRemoteParticipants,
-  BarVisualizer,
   useVoiceAssistant,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
+import { Orb, AgentState as OrbAgentState } from "@/components/ui/orb";
+import { useTrackVolume } from "@livekit/components-react";
 
 export function AudioVisualizer() {
   const { localParticipant } = useLocalParticipant();
   const remoteParticipants = useRemoteParticipants();
-  const { state: agentState } = useVoiceAssistant();
+  const { state: agentStateFromHook } = useVoiceAssistant();
+
+  // Track agent connection state
+  const [agentConnected, setAgentConnected] = useState(false);
+  const [agentState, setAgentState] = useState<string>("idle");
 
   const userAudioTrack = localParticipant?.getTrackPublication(
     Track.Source.Microphone
@@ -24,93 +29,144 @@ export function AudioVisualizer() {
     Track.Source.Microphone
   )?.track;
 
-  // Determine if audio is active
-  const isUserSpeaking = userAudioTrack && userAudioTrack.isMuted === false;
+  // Get audio volumes for reactivity
+  const userVolume = useTrackVolume(userAudioTrack as any);
+  const agentVolume = useTrackVolume(agentAudioTrack as any);
+
+  // Normalize volumes to 0-1 range
+  const normalizedUserVolume = Math.min(userVolume / 0.5, 1);
+  const normalizedAgentVolume = Math.min(agentVolume / 0.5, 1);
+
+  // Debounced user speaking state
+  const [isUserSpeakingDebounced, setIsUserSpeakingDebounced] = useState(false);
+  const speakingTimeoutRef = useRef<NodeJS.Timeout>();
+
+  useEffect(() => {
+    // Higher threshold (0.3) to reduce false positives from background noise
+    const isSpeaking = userAudioTrack && userAudioTrack.isMuted === false && normalizedUserVolume > 0.3;
+
+    if (isSpeaking) {
+      // Immediately show "Your Turn" when speaking detected
+      if (!isUserSpeakingDebounced) {
+        setIsUserSpeakingDebounced(true);
+      }
+      // Clear any pending timeout
+      if (speakingTimeoutRef.current) {
+        clearTimeout(speakingTimeoutRef.current);
+      }
+    } else if (isUserSpeakingDebounced) {
+      // Delay hiding "Your Turn" by 500ms to prevent flickering
+      speakingTimeoutRef.current = setTimeout(() => {
+        setIsUserSpeakingDebounced(false);
+      }, 500);
+    }
+
+    return () => {
+      if (speakingTimeoutRef.current) {
+        clearTimeout(speakingTimeoutRef.current);
+      }
+    };
+  }, [normalizedUserVolume, userAudioTrack, isUserSpeakingDebounced]);
+
+  // Detect agent connection and state via audio activity
+  useEffect(() => {
+    const agentParticipant = remoteParticipants[0];
+
+    if (agentParticipant && !agentConnected) {
+      console.log('[AudioVisualizer] Agent connected:', agentParticipant.identity);
+      setAgentConnected(true);
+    }
+
+    // Detect agent state based on audio activity since useVoiceAssistant() doesn't work with AgentSession
+    if (agentConnected) {
+      if (normalizedAgentVolume > 0.15) {
+        // Agent is speaking (higher volume detected)
+        if (agentState !== "speaking") {
+          console.log('[AudioVisualizer] Agent state: speaking (audio detected)');
+          setAgentState("speaking");
+        }
+      } else if (normalizedUserVolume > 0.3) {
+        // User is speaking, agent should be listening
+        if (agentState !== "listening") {
+          console.log('[AudioVisualizer] Agent state: listening (user speaking)');
+          setAgentState("listening");
+        }
+      } else {
+        // No significant audio activity
+        if (agentState !== "idle") {
+          console.log('[AudioVisualizer] Agent state: idle');
+          setAgentState("idle");
+        }
+      }
+    }
+
+    // Debug logging
+    console.log('[AudioVisualizer] State:', agentState, '| User Vol:', normalizedUserVolume.toFixed(2), '| Agent Vol:', normalizedAgentVolume.toFixed(2), '| Participants:', remoteParticipants.length);
+  }, [normalizedUserVolume, normalizedAgentVolume, remoteParticipants, agentConnected, agentState]);
+
+  // Map LiveKit agent state to Orb agent state
+  const orbAgentState: OrbAgentState =
+    agentState === "thinking" ? "thinking" :
+    agentState === "listening" ? "listening" :
+    agentState === "speaking" ? "talking" :
+    null;
+
+  // Use debounced state for UI
+  const isUserSpeaking = isUserSpeakingDebounced;
   const isAgentActive = agentState === "speaking" || agentState === "thinking";
 
+  // Meelni purple-blue colors
+  const meelniColors: [string, string] = ["oklch(0.70 0.22 285)", "oklch(0.55 0.22 285)"];
+
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-center gap-8 p-6">
-      {/* Agent Avatar */}
-      <motion.div
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 200 }}
-        className="relative"
-      >
-        {/* Subtle glow when agent is active */}
-        <div
-          className={`absolute inset-0 rounded-full bg-gradient-to-br from-primary to-primary/80 blur-xl transition-all duration-500 ${
-            isAgentActive ? "opacity-20 scale-110" : "opacity-5 scale-100"
-          }`}
+    <div className="relative w-full h-full flex flex-col items-center justify-center gap-8 p-6 interview-container">
+      {/* Large Orb with Audio Reactivity */}
+      <div className="relative w-full max-w-md aspect-square">
+        <Orb
+          colors={meelniColors}
+          agentState={orbAgentState}
+          getInputVolume={() => normalizedUserVolume}
+          getOutputVolume={() => normalizedAgentVolume}
+          className="w-full h-full"
         />
+      </div>
 
-        {/* Avatar */}
-        <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-primary via-primary/90 to-primary/80 flex items-center justify-center shadow-lg border border-border">
-          <span className="text-4xl font-bold text-background">M</span>
-        </div>
+      {/* Turn Indicator - Agent Active States */}
+      {isAgentActive && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 10 }}
+          className="relative text-center space-y-2 px-6 py-4 rounded-2xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 backdrop-blur-sm shadow-lg"
+        >
+          <p className="text-2xl font-sans font-medium text-primary">
+            {agentState === "thinking" ? "Meelni is thinking..." : "Meelni is speaking"}
+          </p>
+          <p className="text-sm font-sans text-muted-foreground">
+            {agentState === "thinking" ? "Preparing response" : "Listen carefully"}
+          </p>
+        </motion.div>
+      )}
 
-        {/* Pulse ring when agent is speaking */}
-        {agentState === "speaking" && (
-          <motion.div
-            className="absolute inset-0 rounded-full border-2 border-primary/50"
-            initial={{ scale: 1, opacity: 0.4 }}
-            animate={{ scale: 1.3, opacity: 0 }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-          />
-        )}
-      </motion.div>
-
-      {/* Agent Visualizer - Only show when active */}
-      <AnimatePresence>
-        {isAgentActive && agentAudioTrack && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8, y: 20 }}
-            transition={{ duration: 0.4, type: "spring" }}
-            className="w-full max-w-2xl"
-          >
-            <div className="relative">
-              <BarVisualizer
-                state={agentState as any}
-                barCount={60}
-                trackRef={agentAudioTrack as any}
-                className="h-32"
-              />
-              <div className="absolute -top-6 left-0 flex items-center gap-2 text-xs text-muted-foreground">
-                <div className="w-2 h-2 rounded-full bg-primary" />
-                <span>Agent</span>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* User Visualizer - Only show when speaking */}
-      <AnimatePresence>
-        {isUserSpeaking && userAudioTrack && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8, y: -20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8, y: -20 }}
-            transition={{ duration: 0.4, type: "spring" }}
-            className="w-full max-w-2xl"
-          >
-            <div className="relative">
-              <BarVisualizer
-                state="speaking"
-                barCount={60}
-                trackRef={userAudioTrack as any}
-                className="h-32"
-              />
-              <div className="absolute -top-6 left-0 flex items-center gap-2 text-xs text-muted-foreground">
-                <div className="w-2 h-2 rounded-full bg-blue-500" />
-                <span>You</span>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Turn Indicator - User's Turn */}
+      {isUserSpeaking && !isAgentActive && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 10 }}
+          className="relative text-center space-y-2 px-6 py-4 rounded-2xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 backdrop-blur-sm shadow-lg"
+        >
+          <div className="flex items-center justify-center gap-2">
+            <motion.div
+              className="w-2 h-2 rounded-full bg-primary"
+              animate={{ scale: [1, 1.2, 1], opacity: [0.6, 1, 0.6] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <p className="text-2xl font-sans font-medium text-primary">Your Turn</p>
+          </div>
+          <p className="text-sm font-sans text-muted-foreground">Meelni is listening</p>
+        </motion.div>
+      )}
 
       {/* Ready state message */}
       {!isAgentActive && !isUserSpeaking && (
@@ -119,8 +175,8 @@ export function AudioVisualizer() {
           animate={{ opacity: 1 }}
           className="text-center space-y-2"
         >
-          <p className="text-lg font-medium text-foreground/80">Ready to begin</p>
-          <p className="text-sm text-muted-foreground">Start speaking to continue the interview</p>
+          <p className="text-lg font-display font-medium text-foreground/80">Ready to begin</p>
+          <p className="text-sm font-sans text-muted-foreground">Start speaking to continue the interview</p>
         </motion.div>
       )}
     </div>
