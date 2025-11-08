@@ -105,13 +105,11 @@ export function Sidebar({
     >
       {/* Header Section - Branding + Theme + Collapse Toggle */}
       <div className="flex items-center justify-between px-4 py-6 border-b border-border/30">
-        {!collapsed && (
-          <Link href="/dashboard" className="block">
-            <div className="text-xl font-display font-semibold text-foreground tracking-tight hover:text-primary transition-colors">
-              meelni
-            </div>
-          </Link>
-        )}
+        <Link href="/dashboard" className={cn("block", collapsed && "hidden")}>
+          <div className="text-xl font-display font-semibold text-foreground tracking-tight hover:text-primary transition-colors">
+            meelni
+          </div>
+        </Link>
         <div className={cn("flex items-center gap-1", collapsed && "mx-auto")}>
           {/* Theme Toggle - Only show when expanded */}
           {mounted && !collapsed && (

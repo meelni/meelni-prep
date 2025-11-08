@@ -36,7 +36,13 @@ class InterviewAgent(Agent):
 
 def prewarm(proc: JobProcess):
     """Prewarm function to load VAD model before agent starts"""
-    proc.userdata["vad"] = silero.VAD.load()
+    # Configure VAD with explicit thresholds to match frontend sensitivity
+    proc.userdata["vad"] = silero.VAD.load(
+        min_speech_duration=0.2,      # Minimum speech duration in seconds
+        min_silence_duration=0.6,     # Wait 600ms of silence before end-of-speech
+        padding_duration=0.1,          # Padding before/after speech
+        activation_threshold=0.5,      # Voice activity threshold (0-1), balanced sensitivity
+    )
 
 
 async def entrypoint(ctx: JobContext):

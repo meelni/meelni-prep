@@ -6,12 +6,12 @@ import { useAuth } from "@/app/providers/auth-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { sessionKeys } from "@/lib/api/queries";
 import { LiveKitRoomWrapper, TranscriptTurn } from "@/components/interview/livekit-room";
-import { AgentStatus } from "./components/agent-status";
 import { TranscriptPanel } from "./components/transcript-panel";
 import { AudioVisualizer } from "./components/audio-visualizer";
 import { InterviewControls } from "./components/interview-controls";
 import { TimerDisplay } from "./components/timer-display";
 import { EndSessionModal } from "./components/end-session-modal";
+import { ConnectionIndicator } from "./components/connection-indicator";
 import {
   NudgeOverlay,
   Nudge,
@@ -447,7 +447,7 @@ function InterviewRoomContent({
         <div className="container max-w-7xl mx-auto h-16 px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-full">
             <div className="flex items-center gap-4">
-              <AgentStatus state={agentState} />
+              <ConnectionIndicator />
               {session.config?.roundType && (
                 <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
                   <span className="text-primary font-medium">
