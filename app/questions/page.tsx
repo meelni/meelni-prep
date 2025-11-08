@@ -15,8 +15,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FilterPopover } from "@/components/question-bank/filter-popover";
-import { SearchAutocomplete } from "@/components/question-bank/search-autocomplete";
-import { HoverPreview } from "@/components/question-bank/hover-preview";
 import { BulkActionToolbar } from "@/components/question-bank/bulk-action-toolbar";
 import { EmptyState } from "@/components/question-bank/empty-state";
 import { QuestionCard } from "@/components/question-bank/question-card";
@@ -26,6 +24,7 @@ import {
   Calendar,
   Building2,
   Filter,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSessions } from "@/lib/api/queries";
@@ -48,10 +47,6 @@ const QUESTION_TYPE_COLORS = {
   "Product Strategy": "bg-orange-500/8 text-orange-600 dark:text-orange-400 border-orange-500/20",
 };
 
-const FAANG_COMPANIES = ["Meta", "Amazon", "Apple", "Netflix", "Google"];
-
-type QuickFilter = "recent" | "faang" | "weak-areas";
-
 export default function QuestionBankPage() {
   const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
@@ -62,7 +57,6 @@ export default function QuestionBankPage() {
   const [selectedType, setSelectedType] = useState("All Types");
   const [sortBy, setSortBy] = useState<"recent" | "company" | "type">("recent");
   const [activeSection, setActiveSection] = useState("questions");
-  const [quickFilters, setQuickFilters] = useState<Set<QuickFilter>>(new Set());
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
 
@@ -121,24 +115,10 @@ export default function QuestionBankPage() {
     fetchQuestions();
   }, [selectedType]);
 
-  // Toggle quick filter
-  const toggleQuickFilter = (filter: QuickFilter) => {
-    setQuickFilters((prev) => {
-      const newFilters = new Set(prev);
-      if (newFilters.has(filter)) {
-        newFilters.delete(filter);
-      } else {
-        newFilters.add(filter);
-      }
-      return newFilters;
-    });
-  };
-
   // Clear all filters
   const clearAllFilters = () => {
     setSearchQuery("");
     setSelectedType("All Types");
-    setQuickFilters(new Set());
   };
 
   // Filter and sort questions
@@ -153,29 +133,9 @@ export default function QuestionBankPage() {
 
         if (!matchesSearch) return false;
 
-        // Quick filters
-        if (quickFilters.size > 0) {
-          // Recent questions (last 12 months)
-          if (quickFilters.has("recent")) {
-            const oneYearAgo = new Date();
-            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-            if (!q.askedAt || new Date(q.askedAt) < oneYearAgo) {
-              return false;
-            }
-          }
-
-          // FAANG companies
-          if (quickFilters.has("faang")) {
-            if (!q.company || !FAANG_COMPANIES.includes(q.company)) {
-              return false;
-            }
-          }
-
-          // Weak areas (placeholder - just filter out for now)
-          if (quickFilters.has("weak-areas")) {
-            // TODO: Implement based on user performance data
-            return false;
-          }
+        // Type filter
+        if (selectedType !== "All Types" && q.questionType !== selectedType) {
+          return false;
         }
 
         return true;
@@ -192,7 +152,7 @@ export default function QuestionBankPage() {
           return a.questionType.localeCompare(b.questionType);
         }
       });
-  }, [questions, debouncedSearchQuery, quickFilters, sortBy]);
+  }, [questions, debouncedSearchQuery, selectedType, sortBy]);
 
   const handleTryQuestion = (questionId: string, questionType: string) => {
     // Map display question type to roundType
@@ -253,21 +213,11 @@ export default function QuestionBankPage() {
     setSelectedQuestions(new Set());
   };
 
-  // Handle autocomplete select
-  const handleAutocompleteSelect = (questionId?: string) => {
-    if (questionId) {
-      const question = questions.find((q) => q.id === questionId);
-      if (question) {
-        handleTryQuestion(question.id, question.questionType);
-      }
-    }
-  };
-
   // Determine empty state type
   const getEmptyStateType = (): "no-search" | "no-filter" | "first-time" | null => {
     if (filteredQuestions.length > 0) return null;
     if (debouncedSearchQuery) return "no-search";
-    if (quickFilters.size > 0 || selectedType !== "All Types") return "no-filter";
+    if (selectedType !== "All Types") return "no-filter";
     if (questions.length === 0) return "first-time";
     return "no-filter";
   };
@@ -317,17 +267,18 @@ export default function QuestionBankPage() {
                 {/* Integrated Search/Filter Toolbar */}
                 <div className="px-6 py-4 border-b border-border/50 bg-card/40 backdrop-blur-sm">
                   <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <SearchAutocomplete
-                        questions={questions}
+                    <div className="flex-1 relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search questions by text or company..."
                         value={searchQuery}
-                        onChange={setSearchQuery}
-                        onSelect={handleAutocompleteSelect}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150"
+                        aria-label="Search questions"
                       />
                     </div>
                     <FilterPopover
-                      quickFilters={quickFilters}
-                      onToggleQuickFilter={toggleQuickFilter}
                       selectedType={selectedType}
                       onSelectType={setSelectedType}
                       sortBy={sortBy}
@@ -393,20 +344,11 @@ export default function QuestionBankPage() {
                               />
                             </TableCell>
 
-                            {/* Question with hover preview */}
+                            {/* Question */}
                             <TableCell className="px-4 py-3.5">
-                              <HoverPreview
-                                question={question}
-                                badgeClassName={
-                                  QUESTION_TYPE_COLORS[
-                                    question.questionType as keyof typeof QUESTION_TYPE_COLORS
-                                  ]
-                                }
-                              >
-                                <p className="text-sm font-medium text-foreground line-clamp-2 transition-colors duration-150 cursor-help">
-                                  {question.questionText}
-                                </p>
-                              </HoverPreview>
+                              <p className="text-sm font-medium text-foreground line-clamp-2">
+                                {question.questionText}
+                              </p>
                             </TableCell>
 
                             {/* Type */}
@@ -468,12 +410,15 @@ export default function QuestionBankPage() {
                 <div className="rounded-lg border border-border overflow-hidden bg-card shadow-sm">
                   <div className="px-4 py-4 border-b border-border/50 bg-card/40">
                     <div className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <SearchAutocomplete
-                          questions={questions}
+                      <div className="flex-1 relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="Search questions..."
                           value={searchQuery}
-                          onChange={setSearchQuery}
-                          onSelect={handleAutocompleteSelect}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150 min-h-[44px]"
+                          aria-label="Search questions"
                         />
                       </div>
                       <button
@@ -482,12 +427,12 @@ export default function QuestionBankPage() {
                         aria-label="Open filters"
                       >
                         <Filter className="w-4 h-4" />
-                        {(quickFilters.size > 0 || selectedType !== "All Types") && (
+                        {selectedType !== "All Types" && (
                           <Badge
                             variant="default"
                             className="h-5 min-w-5 px-1.5 text-xs rounded-full"
                           >
-                            {quickFilters.size + (selectedType !== "All Types" ? 1 : 0)}
+                            1
                           </Badge>
                         )}
                       </button>
@@ -531,8 +476,6 @@ export default function QuestionBankPage() {
       <MobileFilterDrawer
         isOpen={isFilterDrawerOpen}
         onClose={() => setIsFilterDrawerOpen(false)}
-        quickFilters={quickFilters}
-        onToggleQuickFilter={toggleQuickFilter}
         selectedType={selectedType}
         onSelectType={setSelectedType}
         onClearAll={clearAllFilters}

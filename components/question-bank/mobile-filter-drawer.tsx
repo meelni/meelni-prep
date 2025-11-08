@@ -2,11 +2,8 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { FilterPill } from "@/components/ui/filter-pill";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type QuickFilter = "recent" | "faang" | "weak-areas";
 
 const QUESTION_TYPES = [
   "All Types",
@@ -19,8 +16,6 @@ const QUESTION_TYPES = [
 interface MobileFilterDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  quickFilters: Set<QuickFilter>;
-  onToggleQuickFilter: (filter: QuickFilter) => void;
   selectedType: string;
   onSelectType: (type: string) => void;
   onClearAll: () => void;
@@ -29,8 +24,6 @@ interface MobileFilterDrawerProps {
 export function MobileFilterDrawer({
   isOpen,
   onClose,
-  quickFilters,
-  onToggleQuickFilter,
   selectedType,
   onSelectType,
   onClearAll,
@@ -93,40 +86,6 @@ export function MobileFilterDrawer({
 
             {/* Scrollable content */}
             <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
-              {/* Quick Filters */}
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  Quick Filters
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  <FilterPill
-                    active={quickFilters.has("recent")}
-                    onClick={() => onToggleQuickFilter("recent")}
-                    size="lg"
-                    aria-label="Filter by recent questions"
-                  >
-                    Recent Questions
-                  </FilterPill>
-                  <FilterPill
-                    active={quickFilters.has("faang")}
-                    onClick={() => onToggleQuickFilter("faang")}
-                    size="lg"
-                    aria-label="Filter by FAANG companies"
-                  >
-                    FAANG Companies
-                  </FilterPill>
-                  <FilterPill
-                    active={quickFilters.has("weak-areas")}
-                    onClick={() => onToggleQuickFilter("weak-areas")}
-                    size="lg"
-                    aria-label="Filter by weak areas"
-                    title="Coming soon - based on your performance data"
-                  >
-                    My Weak Areas
-                  </FilterPill>
-                </div>
-              </div>
-
               {/* Question Type Filter */}
               <div>
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
