@@ -145,16 +145,16 @@ export function Sidebar({
         <button
           onClick={() => router.push("/setup")}
           className={cn(
-            "relative rounded-lg text-white font-medium text-sm transition-all duration-300 flex items-center gap-2",
-            collapsed ? "px-3 py-3 justify-center" : "px-4 py-2.5 justify-center",
+            "relative rounded-lg text-white font-medium text-sm transition-all duration-300 flex items-center",
+            collapsed ? "px-3 py-3 justify-center" : "px-4 py-2.5 justify-center gap-2",
             "bg-gradient-to-r from-primary via-purple-500 to-primary",
             "shadow-[0_0_20px_rgba(120,75,255,0.3)]",
             "hover:shadow-[0_0_30px_rgba(120,75,255,0.5)]"
           )}
           aria-label="Start new interview"
         >
-          <Sparkles size={collapsed ? 20 : 18} aria-hidden="true" />
-          {!collapsed && "New Interview"}
+          <Sparkles size={18} aria-hidden="true" />
+          {!collapsed && <span className="ml-2">New Interview</span>}
         </button>
 
         {/* Divider */}
@@ -167,8 +167,8 @@ export function Sidebar({
               key={item.id}
               onClick={() => setActiveSection(item.id)}
               className={cn(
-                "relative flex items-center gap-3 rounded-lg text-sm transition-all duration-200",
-                collapsed ? "px-3 py-3 justify-center" : "px-3 py-2",
+                "relative flex items-center rounded-lg text-sm transition-all duration-200",
+                collapsed ? "px-3 py-3 justify-center" : "px-3 py-2 gap-3",
                 activeSection === item.id
                   ? "bg-primary/5 text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-card/50"
@@ -181,7 +181,7 @@ export function Sidebar({
                 <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary/50 via-primary to-primary/50 rounded-r" />
               )}
               <item.icon
-                size={collapsed ? 20 : 18}
+                size={18}
                 className={cn(
                   "transition-opacity",
                   activeSection === item.id ? "opacity-100" : "opacity-70"
