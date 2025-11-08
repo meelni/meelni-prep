@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sidebar } from "./sidebar";
 
 interface DashboardLayoutProps {
@@ -24,7 +24,19 @@ export function DashboardLayout({
   user,
   onSignOut,
 }: DashboardLayoutProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Initialize from localStorage to prevent animation on page load
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sidebar-collapsed");
+      return saved === "true";
+    }
+    return false;
+  });
+
+  // Persist to localStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   return (
     <div className="flex h-screen bg-background">

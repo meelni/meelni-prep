@@ -98,6 +98,7 @@ export function Sidebar({
   return (
     <motion.aside
       variants={sidebarVariants}
+      initial={collapsed ? "collapsed" : "expanded"}
       animate={collapsed ? "collapsed" : "expanded"}
       className="relative h-screen bg-card border-r border-border flex flex-col"
     >
