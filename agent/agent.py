@@ -84,13 +84,12 @@ async def entrypoint(ctx: JobContext):
 
     # Extract model settings from config
     stt_model = config.get("stt_model", "deepgram/nova-3")
-    llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
+    llm_model = config.get("llm_model", "openai/gpt-4o")
 
     # Default to ElevenLabs voice (via LiveKit Inference - no API key needed)
-    # Voice: Rachel (professional female voice)
-    # Voice ID: 21m00Tcm4TlvDq8ikWAM
+    # Voice ID: cgSgspJ2msm6clMCkdW9
     # Format: elevenlabs/model:voiceId
-    default_voice_id = "21m00Tcm4TlvDq8ikWAM"
+    default_voice_id = "cgSgspJ2msm6clMCkdW9"
     tts_model = config.get("tts_model", f"elevenlabs/eleven_turbo_v2_5:{default_voice_id}")
 
     # Extract TTS parameters from config
