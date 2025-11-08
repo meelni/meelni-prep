@@ -397,4 +397,46 @@
       transform: translateY(0);
     }
   }
+
+  /* Hide LiveKit default UI elements (fixes "dots" issue) */
+  .lk-participant-tile,
+  .lk-participant-metadata,
+  .lk-participant-name,
+  .lk-participant-placeholder,
+  .lk-connection-quality,
+  [data-lk-participant]:not(.audio-visualizer) {
+    display: none !important;
+  }
+
+  .lk-room-audio-renderer {
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+  }
+
+  /* Interview page specific styles */
+  .interview-container {
+    --avatar-size: 200px;
+    --visualizer-height: 160px;
+    --control-height: 80px;
+  }
+
+  /* Smooth avatar glow */
+  .avatar-glow {
+    filter: drop-shadow(0 0 var(--glow-radius, 20px) oklch(0.70 0.22 285 / var(--glow-opacity, 0.15)));
+    transition: filter 0.3s ease;
+  }
+
+  /* Urgency pulse for low time */
+  @keyframes urgency-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  .timer-urgent {
+    animation: urgency-pulse 1s ease-in-out infinite;
+  }
 }

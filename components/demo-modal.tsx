@@ -9,8 +9,10 @@ import {
   useVoiceAssistant,
   useConnectionState,
   useRoomContext,
-  BarVisualizer,
+  useTrackVolume,
 } from "@livekit/components-react";
+import { Orb, AgentState as OrbAgentState } from "@/components/ui/orb";
+import { Track } from "livekit-client";
 import { ConnectionState } from "livekit-client";
 import { X, Mic, MicOff, Loader2, User, Bot, ArrowRight } from "lucide-react";
 import Link from "next/link";
@@ -211,6 +213,15 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
   const [sessionEnded, setSessionEnded] = useState(false);
 
+  // Audio reactivity for Orb (same as interview page)
+  const userVolume = useTrackVolume(audioTrack?.track, 50);
+  const agentAudioTrack = room?.remoteParticipants?.[0]?.getTrack(Track.Source.Microphone)?.track;
+  const agentVolume = useTrackVolume(agentAudioTrack as any, 50);
+
+  // Normalize volumes from 0-100
+  const normalizedUserVolume = Math.min(userVolume, 100) / 100;
+  const normalizedAgentVolume = Math.min(agentVolume, 100) / 100;
+
   // Timer effect - start countdown when connected
   useEffect(() => {
     const isConnected = connectionState === ConnectionState.Connected;
@@ -322,9 +333,6 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   const isConnected = connectionState === ConnectionState.Connected;
   const agentState = state || "idle";
 
-  // Determine if audio is active
-  const isAudioActive = agentState === "speaking" || agentState === "thinking";
-
   // Format time as MM:SS
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -424,7 +432,7 @@ function DemoControls({ onClose }: { onClose: () => void }) {
           >
             {/* Subtle glow (only one layer) */}
             <div className={`absolute inset-0 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 blur-xl transition-all duration-500 ${
-              isAudioActive ? "opacity-20 scale-110" : "opacity-5 scale-100"
+              (agentState === "speaking" || agentState === "thinking") ? "opacity-20 scale-110" : "opacity-5 scale-100"
             }`} />
 
             {/* Avatar */}
@@ -443,7 +451,7 @@ function DemoControls({ onClose }: { onClose: () => void }) {
             )}
           </motion.div>
 
-          {/* Visualizer (only shows when speaking/thinking) */}
+          {/* Orb Visualizer */}
           <AnimatePresence mode="wait">
             {sessionEnded ? (
               <motion.div
@@ -468,19 +476,25 @@ function DemoControls({ onClose }: { onClose: () => void }) {
                   <ArrowRight className="h-5 w-5" />
                 </Link>
               </motion.div>
-            ) : isAudioActive ? (
+            ) : isConnected ? (
               <motion.div
-                initial={{ opacity: 0, scale: 0.8, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.8, y: 20 }}
-                transition={{ duration: 0.4, type: "spring" }}
-                className="w-full max-w-2xl"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.5, type: "spring" }}
+                className="w-[400px] h-[400px]"
               >
-                <BarVisualizer
-                  state={agentState}
-                  barCount={60}
-                  trackRef={audioTrack}
-                  className="h-32"
+                <Orb
+                  colors={["oklch(0.70 0.22 285)", "oklch(0.55 0.22 285)"]}
+                  agentState={
+                    agentState === "thinking" ? "thinking" :
+                    agentState === "listening" ? "listening" :
+                    agentState === "speaking" ? "talking" :
+                    null
+                  }
+                  getInputVolume={() => normalizedUserVolume}
+                  getOutputVolume={() => normalizedAgentVolume}
+                  className="w-full h-full"
                 />
               </motion.div>
             ) : (
@@ -491,10 +505,10 @@ function DemoControls({ onClose }: { onClose: () => void }) {
                 className="text-center space-y-3"
               >
                 <h2 className="text-2xl font-semibold text-white/90">
-                  {isConnected ? "Ready to chat" : "Connecting..."}
+                  Connecting...
                 </h2>
                 <p className="text-white/50 text-sm max-w-md">
-                  {isConnected ? "Start speaking to begin your demo interview" : "Establishing secure connection..."}
+                  Establishing secure connection...
                 </p>
               </motion.div>
             )}
