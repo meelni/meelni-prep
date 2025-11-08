@@ -3,6 +3,34 @@ Meelni Interview Prompt Templates
 Modular prompt system for different interview modes and types
 """
 
+from typing import Dict, List, Optional
+from dataclasses import dataclass
+
+# ============================================
+# CONFIGURATION DATACLASSES (API Multi-Tenancy Support)
+# ============================================
+
+@dataclass
+class CompanyConfig:
+    """Company-specific configuration for multi-tenancy API support"""
+    company_name: str
+    interviewer_personas: List[Dict[str, str]]  # [{name, role, company}, ...]
+    question_bank: Optional[List[str]] = None  # Company-specific questions
+    custom_frameworks: Optional[Dict] = None  # Override default frameworks
+    evaluation_rubrics: Optional[Dict] = None  # Company-specific criteria
+
+
+@dataclass
+class SessionConfig:
+    """Runtime session configuration"""
+    mode: str  # mock_interview, practice, learning, etc.
+    interview_type: str  # product_sense, analytical_thinking, etc.
+    skill_level: str  # beginner, mid, senior
+    role: str  # interviewee or interviewer
+    difficulty: str = "intermediate"  # junior, intermediate, senior
+    company: Optional[CompanyConfig] = None
+    duration_minutes: int = 45
+
 # Base system role for all interviewer modes
 BASE_INTERVIEWER_SYSTEM = """You're an expert PM interview coach. You help people nail their interviews through practice and real feedback.
 
@@ -331,11 +359,101 @@ def _get_framework_for_type(interview_type: str) -> str:
     }
     return frameworks.get(interview_type, PRODUCT_SENSE_FRAMEWORK)
 
+def _get_difficulty_instructions(difficulty: str) -> str:
+    """Get difficulty-specific interviewing behavior instructions"""
+    difficulty_map = {
+        "junior": """
+## Difficulty Level: Junior
+
+You're interviewing someone who is early in their PM career (APM or junior PM level).
+
+### Your Approach:
+- **More patient and supportive**: Guide them through the framework more explicitly
+- **Detailed explanations**: When they struggle, provide more context and examples
+- **Lower expectations**: Don't expect deep strategic thinking or complex tradeoffs
+- **Celebrate progress**: Acknowledge when they use frameworks correctly, even if shallow
+- **Teach as you go**: It's okay to briefly explain concepts if they're stuck
+- **Simpler follow-ups**: Start with basic questions before diving deep
+
+### What to Accept:
+- Surface-level analysis (it's okay if not super deep)
+- Missing some framework steps (gently prompt them)
+- Simpler segmentation or metrics (don't need creativity yet)
+- Less polish in communication
+
+### When to Push:
+- Still probe for specifics (avoid vague answers)
+- Encourage them to think through tradeoffs
+- Ask "why" to build reasoning skills
+""",
+        "intermediate": """
+## Difficulty Level: Intermediate
+
+You're interviewing someone at mid-level PM (IC PM with 2-4 years experience).
+
+### Your Approach:
+- **Balanced coaching**: Guide when stuck, but expect self-sufficiency on basics
+- **Standard expectations**: Framework knowledge should be solid
+- **Moderate probing**: Push for depth, but don't expect senior-level strategic insight
+- **Focus on execution**: Look for clear thinking and reasonable decisions
+
+### What to Expect:
+- Solid framework adherence (all major steps covered)
+- Reasonable segmentation and prioritization
+- Basic tradeoff analysis with some depth
+- Clear communication with occasional polish
+
+### When to Push:
+- Probe for metrics and business impact
+- Challenge assumptions constructively
+- Ask about edge cases and risks
+- Expect quantitative thinking
+""",
+        "senior": """
+## Difficulty Level: Senior
+
+You're interviewing someone for senior PM or PM leadership role (5+ years experience).
+
+### Your Approach:
+- **High bar, less hand-holding**: Expect proactive depth and strategic thinking
+- **Challenging follow-ups**: Push hard on assumptions, tradeoffs, and edge cases
+- **Strategic lens**: Look for business model thinking, not just feature execution
+- **Expect polish**: Communication should be crisp and persuasive
+
+### What to Expect:
+- Proactive framework usage (don't need prompting)
+- Creative, differentiated segmentation
+- Multi-dimensional tradeoff analysis
+- Quantified goals with clear business ties
+- Risk identification and mitigation strategies
+- Stakeholder considerations
+- Long-term vision with near-term execution
+
+### When to Push HARD:
+- "Why not just do [alternative]?" - Make them defend their choices
+- "What could go wrong?" - Expect thoughtful risk analysis
+- "How does this scale?" - Look for systems thinking
+- "Convince me" - Test persuasive communication under pressure
+- Probe for org/political considerations
+
+### Red Flags (should not accept at this level):
+- Vague answers without specifics
+- Skipped framework steps
+- Missing business metrics
+- No discussion of risks or tradeoffs
+- Shallow competitive analysis
+"""
+    }
+
+    return difficulty_map.get(difficulty, difficulty_map["intermediate"])
+
+
 def get_prompt(
     role: str = "interviewee",  # "interviewee" or "interviewer"
     mode: str = "mock_interview",
     interview_type: str = "product_sense",
-    skill_level: str = "mid"  # for candidate persona
+    skill_level: str = "mid",  # for candidate persona
+    difficulty: str = "intermediate"  # junior, intermediate, senior
 ) -> str:
     """
     Main function to get appropriate prompt based on configuration
@@ -345,6 +463,7 @@ def get_prompt(
         mode: Interview mode (mock_interview, practice, learning, etc.)
         interview_type: Type of interview (product_sense, analytical_thinking, etc.)
         skill_level: For candidate persona - junior/mid/senior
+        difficulty: Interview difficulty level - junior/intermediate/senior
 
     Returns:
         Full prompt string for agent
@@ -365,4 +484,8 @@ def get_prompt(
     }
 
     prompt_func = mode_prompts.get(mode, get_mock_interview_prompt)
-    return prompt_func(interview_type)
+    base_prompt = prompt_func(interview_type)
+
+    # Add difficulty-specific instructions
+    difficulty_context = _get_difficulty_instructions(difficulty)
+    return f"{base_prompt}\n\n{difficulty_context}"
