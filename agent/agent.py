@@ -84,12 +84,12 @@ async def entrypoint(ctx: JobContext):
 
     # Extract model settings from config
     stt_model = config.get("stt_model", "deepgram/nova-3")
-    llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
+    llm_model = config.get("llm_model", "openai/gpt-4o")
 
     # Default to ElevenLabs voice (via LiveKit Inference - no API key needed)
-    # Voice ID: s3TPKV1kjDlVtZbl4Ksh
+    # Voice ID: cgSgspJ2msm6clMCkdW9
     # Format: elevenlabs/model:voiceId
-    default_voice_id = "s3TPKV1kjDlVtZbl4Ksh"
+    default_voice_id = "cgSgspJ2msm6clMCkdW9"
     tts_model = config.get("tts_model", f"elevenlabs/eleven_turbo_v2_5:{default_voice_id}")
 
     # Extract TTS parameters from config
@@ -189,53 +189,15 @@ async def entrypoint(ctx: JobContext):
 
     logger.info("Transcript event handlers registered successfully")
 
-    # Start session (non-blocking - returns immediately)
-    session_task = session.start(
+    # Start session and wait for it to be fully ready
+    # Note: Do NOT call session.say() before session.start() completes!
+    # Calling say() on an uninitialized session breaks the TTS pipeline
+    await session.start(
         agent=InterviewAgent(instructions=instructions),
         room=ctx.room
     )
 
     logger.info(f"Voice agent started successfully - {round_type} interview with {config['difficulty']} difficulty")
-
-    # Send initial greeting after agent joins
-    # This makes the agent speak first instead of waiting for user
-    import asyncio
-
-    async def send_initial_greeting():
-        # Wait a brief moment for session to fully initialize
-        await asyncio.sleep(0.5)
-
-        mode_name = config.get("mode", "mock_interview").replace("_", " ").title()
-        interview_type_name = round_type.replace("_", " ").title()
-
-        # Check if question was provided
-        if question and question.get("question_text"):
-            # Include question in greeting
-            greeting = (
-                f"Hey! I'm Meelni, your AI interview coach. "
-                f"Today we're doing a {interview_type_name} interview in {mode_name} mode. "
-                f"I'll be asking you about: {question['question_text']} "
-                f"Take a moment to think, then let me know when you're ready to start."
-            )
-        else:
-            # Generic greeting without specific question
-            greeting = (
-                f"Hey! I'm Meelni, your AI interview coach. "
-                f"Today we're doing a {interview_type_name} interview in {mode_name} mode. "
-                f"I'll ask questions and give you feedback as we go. Ready to start?"
-            )
-
-        try:
-            session.say(greeting, allow_interruptions=True)
-            logger.info(f"Agent sent initial greeting: {greeting[:60]}...")
-        except Exception as e:
-            logger.error(f"Failed to send initial greeting: {e}")
-
-    # Schedule the greeting task
-    asyncio.create_task(send_initial_greeting())
-
-    # Await the session task (this keeps the agent running)
-    await session_task
 
 
 if __name__ == "__main__":

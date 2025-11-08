@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY agent.py .
 COPY prompts.py .
 COPY config.py .
+COPY utils/ ./utils/
 
 # LiveKit Cloud automatically provides these environment variables:
 # - LIVEKIT_URL
