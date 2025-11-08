@@ -69,16 +69,32 @@ export function SettingsSection() {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
-    // Load saved settings from localStorage
-    const savedSettings = localStorage.getItem("meelni-settings");
-    if (savedSettings) {
+    // Load settings from database
+    const loadSettings = async () => {
       try {
-        const parsed = JSON.parse(savedSettings);
-        setSettings(prev => ({ ...prev, ...parsed }));
-      } catch (e) {
-        console.error("Failed to parse saved settings:", e);
+        const response = await fetch("/api/user/settings");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.settings) {
+            setSettings(prev => ({ ...prev, ...data.settings }));
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load settings:", error);
+        // Fallback to localStorage if API fails
+        const savedSettings = localStorage.getItem("meelni-settings");
+        if (savedSettings) {
+          try {
+            const parsed = JSON.parse(savedSettings);
+            setSettings(prev => ({ ...prev, ...parsed }));
+          } catch (e) {
+            console.error("Failed to parse saved settings:", e);
+          }
+        }
       }
-    }
+    };
+
+    loadSettings();
   }, []);
 
   const handleSaveSettings = async () => {
@@ -86,20 +102,27 @@ export function SettingsSection() {
     setSaveSuccess(false);
 
     try {
-      // Save to localStorage
+      // Save to database via API
+      const response = await fetch('/api/user/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save settings');
+      }
+
+      // Also save to localStorage as backup
       localStorage.setItem("meelni-settings", JSON.stringify(settings));
 
-      // TODO: Save to backend API when implemented
-      // await fetch('/api/user/settings', {
-      //   method: 'PUT',
-      //   body: JSON.stringify(settings)
-      // });
-
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error("Failed to save settings:", error);
+      alert("Failed to save settings. Please try again.");
     } finally {
       setIsSaving(false);
     }

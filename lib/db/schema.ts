@@ -112,3 +112,44 @@ export const sessionQuestion = pgTable("session_question", {
   // Unique constraint: one question per session
   sessionQuestionUnique: index("session_question_session_question_idx").on(table.sessionId, table.questionId),
 }));
+
+// User settings
+export const userSettings = pgTable("user_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id).notNull().unique(),
+  displayName: text("display_name"),
+  defaultInterviewType: text("default_interview_type").default("product_sense"),
+  defaultDifficulty: text("default_difficulty").default("medium"),
+  questionRecency: text("question_recency").default("current"),
+  autoSaveTranscripts: boolean("auto_save_transcripts").default(true).notNull(),
+  emailNotifications: boolean("email_notifications").default(true).notNull(),
+  sessionCompletionEmail: boolean("session_completion_email").default(true).notNull(),
+  feedbackReadyEmail: boolean("feedback_ready_email").default(true).notNull(),
+  weeklyProgressReport: boolean("weekly_progress_report").default(false).notNull(),
+  shareAnonymousData: boolean("share_anonymous_data").default(true).notNull(),
+  saveTranscripts: boolean("save_transcripts").default(true).notNull(),
+  theme: text("theme").default("system"),
+  compactMode: boolean("compact_mode").default(false).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  // Check constraints for valid values
+  defaultInterviewTypeCheck: check(
+    "default_interview_type_check",
+    sql`${table.defaultInterviewType} IS NULL OR ${table.defaultInterviewType} IN ('product_sense', 'analytical', 'behavioral', 'strategy')`
+  ),
+  defaultDifficultyCheck: check(
+    "default_difficulty_check",
+    sql`${table.defaultDifficulty} IS NULL OR ${table.defaultDifficulty} IN ('easy', 'medium', 'hard')`
+  ),
+  questionRecencyCheck: check(
+    "question_recency_check",
+    sql`${table.questionRecency} IS NULL OR ${table.questionRecency} IN ('current', 'recent', 'all')`
+  ),
+  themeCheck: check(
+    "theme_check",
+    sql`${table.theme} IS NULL OR ${table.theme} IN ('light', 'dark', 'system')`
+  ),
+  // Index for looking up settings by user
+  userIdIdx: index("user_settings_user_id_idx").on(table.userId),
+}));
