@@ -1,7 +1,7 @@
 # CLAUDE.md: Codebase Living Operational Document
 
 **Project**: Meelni - Real-Time AI Mock Interviews
-**Last Updated**: 2025-11-07
+**Last Updated**: 2025-11-08
 **Version**: 1.0.0
 
 ---
@@ -365,11 +365,13 @@ This document serves as the single source of truth for:
   - Cartesia is fully integrated with LiveKit Cloud
   - **ElevenLabs also does NOT require separate API key** when using LiveKit Inference
   - Both Cartesia and ElevenLabs work with only LIVEKIT_API_KEY/SECRET for TTS
+  - **Important**: Must use valid voice IDs from provider documentation (see ADR-024 for debugging)
 - **Consequences**:
   - Better voice quality and natural conversation
   - Simplified configuration (no Cartesia API key needed)
   - TTS format: `cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
   - Cost remains similar due to LiveKit Inference pricing
+  - Must verify voice IDs are valid for chosen TTS provider
 
 ### ADR-016: Cartesia Voice Library and Tessa Voice Selection
 - **Date**: 2025-11-05
@@ -719,6 +721,39 @@ session = AgentSession(..., instructions=instructions)
 - **Status**: Implemented in Phase 1A (2025-11-07)
 - **Testing**: 10 verification tests, 100% pass rate
 
+### ADR-024: LiveKit Cloud Debugging Best Practices
+- **Date**: 2025-11-08
+- **Decision**: Established standard debugging workflow for LiveKit Cloud agents
+- **Key Tools**:
+  - `lk agent logs`: View runtime logs (agent execution, errors)
+  - `lk agent logs --log-type=build`: Docker build output
+  - `lk agent logs --log-type=deploy`: Deployment events
+  - `lk agent status`: Agent health and version info
+- **Common Failure Modes**:
+  1. **ModuleNotFoundError**: Missing files in Dockerfile COPY commands
+     - Symptom: Agent crashes on startup with "No module named 'utils'"
+     - Fix: Add missing `COPY utils/ ./utils/` to Dockerfile
+  2. **Agent not speaking**: Missing greeting instructions in prompts
+     - Symptom: Agent joins room but never says anything
+     - Fix: Add greeting instructions to BASE_INTERVIEWER_SYSTEM prompt
+  3. **Invalid voice ID**: Use verified voice IDs from provider documentation
+     - Symptom: TTS fails silently or agent doesn't speak
+     - Fix: Use valid voice IDs (e.g., ElevenLabs `cgSgspJ2msm6clMCkdW9`)
+  4. **Race conditions**: Always await session.start() before calling session.say()
+     - Symptom: Agent greets but subsequent responses fail
+     - Fix: Ensure `await session.start()` completes before any `session.say()` calls
+- **Debugging Workflow**:
+  1. Check agent status: `lk agent status` (is it running?)
+  2. Check runtime logs: `lk agent logs` (Python errors, TTS failures)
+  3. Check build logs: `lk agent logs --log-type=build` (if agent not starting)
+  4. Search logs for room names: Filter by specific session to isolate issues
+  5. Verify Dockerfile: Ensure all required files are copied (especially `utils/`)
+  6. Verify prompts: Check that greeting instructions are present
+  7. Verify voice IDs: Use valid IDs from provider docs (not example placeholders)
+- **Consequences**:
+  - Faster debugging (systematic approach)
+  - Fewer deployment issues (checklist prevents common mistakes)
+  - Better documentation (centralized troubleshooting guide)
 
 =======
 >>>>>>> origin/main
@@ -1428,6 +1463,37 @@ lk agent logs
 # - Missing environment variables
 # - Invalid model names
 # - API key issues
+# - ModuleNotFoundError: Missing files in Dockerfile COPY commands
+# - Invalid voice IDs for TTS provider
+```
+
+**Issue: Agent joins but doesn't speak**
+```bash
+# Check runtime logs for TTS errors
+lk agent logs
+
+# Common causes:
+# 1. Invalid voice ID - verify voice ID is valid for chosen TTS provider
+#    - ElevenLabs: Use valid ID like cgSgspJ2msm6clMCkdW9 (not s3TPKV1kjDlVtZbl4Ksh)
+#    - Check provider documentation for valid voice IDs
+# 2. Missing greeting instructions in prompt
+# 3. Race condition: session.say() called before session.start() completes
+# 4. TTS model misconfiguration
+
+# Verify voice ID in agent code:
+grep -A5 "tts=" agent.py
+```
+
+**Issue: ModuleNotFoundError in Cloud deployment**
+```bash
+# Check build logs
+lk agent logs --log-type=build
+
+# Verify Dockerfile includes all required directories
+cat Dockerfile.main | grep COPY
+
+# Common fix: Add missing COPY commands
+# Example: COPY utils/ ./utils/
 ```
 
 **Issue: Update secrets**
@@ -1735,7 +1801,7 @@ RESEND_API_KEY=
 
 ## Known Issues & Technical Debt
 
-### Resolved Issues (Phase 0, 0.5, 0.7)
+### Resolved Issues (Phase 0, 0.5, 0.7, 1.0)
 - ✅ SSL Certificate Error: Python 3.12 on macOS needed certificate installation
 - ✅ LiveKit Components Styles: Removed unused import
 - ✅ VoiceAssistant API: Switched to AgentSession pattern
@@ -1750,6 +1816,10 @@ RESEND_API_KEY=
 - ✅ Multiple Agents Competing: Self-hosted agents competing for dispatches; resolved with explicit dispatch
 - ✅ Cloud Agent Not Joining: Missing `agent_name` in WorkerOptions; required for explicit dispatch
 - ✅ Demo Modal Muted Button: Text logic was inverted; fixed to show correct state
+- ✅ ElevenLabs Voice ID Error: Invalid voice ID `s3TPKV1kjDlVtZbl4Ksh` caused TTS failures; fixed with valid default voice `cgSgspJ2msm6clMCkdW9`
+- ✅ Missing utils Directory: Dockerfile.main missing `COPY utils/` caused ModuleNotFoundError crashes on Cloud deployment
+- ✅ Agent Silent Issue: Missing greeting instructions in BASE_INTERVIEWER_SYSTEM prompt; agent joined but never spoke
+- ✅ Session.say() Race Condition: Calling session.say() before session.start() completes breaks TTS pipeline; must await session.start() first
 
 ### Current Technical Debt
 - ✅ ~~No session persistence~~ → **DONE** - Transcripts save in real-time during interviews
