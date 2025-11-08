@@ -119,6 +119,7 @@ export async function POST(req: NextRequest) {
       role = "pm",
       persona,
       config,
+      questionId, // Optional: pre-selected question ID from question bank
     } = body;
 
     // Validate required fields
@@ -143,50 +144,73 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Fetch a random question from the question bank for this round type
-    // Map interview types to database question types (supports multiple types per interview)
-    const QUESTION_TYPE_MAP: Record<string, string[]> = {
-      behavioral: ["Behavioral"],
-      product_sense: ["Product Sense", "Product design/strategy"],
-      execution: ["Execution", "Estimation", "A/B Testing", "Pricing"],
-      strategy: ["Product Strategy"],
-    };
+    // Fetch a question from the question bank
+    // If questionId is provided, use that specific question
+    // Otherwise, fetch a random question for this round type
+    let question;
 
-    const dbQuestionTypes = QUESTION_TYPE_MAP[roundType];
-    if (!dbQuestionTypes) {
-      return NextResponse.json(
-        { error: `Invalid interview type: ${roundType}` },
-        { status: 400 }
-      );
+    if (questionId) {
+      // Use pre-selected question from question bank
+      const { getQuestionById } = await import("@/lib/db/questions");
+      question = await getQuestionById(questionId);
+
+      if (!question) {
+        return NextResponse.json(
+          { error: `Question not found: ${questionId}` },
+          { status: 404 }
+        );
+      }
+
+      console.log(`[Session Start] Using pre-selected question:`, {
+        id: question.id,
+        type: question.questionType,
+        company: question.company,
+        text_preview: question.questionText.substring(0, 100) + "...",
+      });
+    } else {
+      // Map interview types to database question types (supports multiple types per interview)
+      const QUESTION_TYPE_MAP: Record<string, string[]> = {
+        behavioral: ["Behavioral"],
+        product_sense: ["Product Sense", "Product design/strategy"],
+        execution: ["Execution", "Estimation", "A/B Testing", "Pricing"],
+        strategy: ["Product Strategy"],
+      };
+
+      const dbQuestionTypes = QUESTION_TYPE_MAP[roundType];
+      if (!dbQuestionTypes) {
+        return NextResponse.json(
+          { error: `Invalid interview type: ${roundType}` },
+          { status: 400 }
+        );
+      }
+
+      // Check if user has question preference (recent questions)
+      const recentDays = config?.questionPreference?.recentDays;
+      question = recentDays
+        ? await getRandomRecentQuestion(recentDays, dbQuestionTypes)
+        : await getRandomQuestion(dbQuestionTypes);
+
+      if (!question) {
+        const typesList = dbQuestionTypes.join('" or "');
+        const errorMsg = `No questions available for interview type "${roundType}" (looks for: "${typesList}")${recentDays ? ` from the last ${recentDays} days` : ''}. Try selecting "All Questions" or a different interview type.`;
+        console.warn(`[Session Start] ${errorMsg}`);
+
+        return NextResponse.json(
+          { error: errorMsg },
+          { status: 404 }
+        );
+      }
+
+      console.log(`[Session Start] Random question selected:`, {
+        id: question.id,
+        type: question.questionType,
+        company: question.company,
+        text_preview: question.questionText.substring(0, 100) + "...",
+        user_selected_round_type: roundType,
+        mapped_db_types: dbQuestionTypes.join(", "),
+        total_available_types: dbQuestionTypes.length,
+      });
     }
-
-    // Check if user has question preference (recent questions)
-    const recentDays = config?.questionPreference?.recentDays;
-    const question = recentDays
-      ? await getRandomRecentQuestion(recentDays, dbQuestionTypes)
-      : await getRandomQuestion(dbQuestionTypes);
-
-    if (!question) {
-      const typesList = dbQuestionTypes.join('" or "');
-      const errorMsg = `No questions available for interview type "${roundType}" (looks for: "${typesList}")${recentDays ? ` from the last ${recentDays} days` : ''}. Try selecting "All Questions" or a different interview type.`;
-      console.warn(`[Session Start] ${errorMsg}`);
-
-      return NextResponse.json(
-        { error: errorMsg },
-        { status: 404 }
-      );
-    }
-
-    // Log question selection for debugging
-    console.log(`[Session Start] Question selected:`, {
-      id: question.id,
-      type: question.questionType,
-      company: question.company,
-      text_preview: question.questionText.substring(0, 100) + "...",
-      user_selected_round_type: roundType,
-      mapped_db_types: dbQuestionTypes.join(", "),
-      total_available_types: dbQuestionTypes.length,
-    });
 
     // Ensure user exists in app_user table (for existing authenticated users)
     await upsertUser({
