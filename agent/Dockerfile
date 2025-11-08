@@ -1,4 +1,4 @@
-# Dockerfile for MockMate Main Interview Agent
+# Dockerfile for Meelni Main Interview Agent
 FROM python:3.12-slim
 
 # Set working directory
@@ -15,11 +15,11 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy main agent code and dependencies
+# Copy agent code, config, prompts, and utils
 COPY agent.py .
 COPY config.py .
 COPY prompts.py .
-COPY utils/ ./utils/
+COPY utils ./utils
 
 # LiveKit Cloud automatically provides these environment variables:
 # - LIVEKIT_URL
@@ -30,5 +30,5 @@ COPY utils/ ./utils/
 # - DEEPGRAM_API_KEY
 # (CARTESIA_API_KEY not needed when using LiveKit Inference)
 
-# Run the main interview agent
+# Run the main agent
 CMD ["python", "agent.py", "start"]
