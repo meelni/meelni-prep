@@ -21,6 +21,12 @@ export const interviewSession = pgTable("interview_session", {
   config: jsonb("config"),
   startedAt: timestamp("started_at", { withTimezone: true }).defaultNow(),
   endedAt: timestamp("ended_at", { withTimezone: true }),
+
+  // P1-001: Session validation and status tracking
+  status: text("status").default("in_progress").notNull(),
+  totalTurns: integer("total_turns").default(0),
+  totalWords: integer("total_words").default(0),
+  durationSeconds: integer("duration_seconds"),
 }, (table) => ({
   roundTypeCheck: check(
     "round_type_check",
@@ -30,6 +36,13 @@ export const interviewSession = pgTable("interview_session", {
     "mode_check",
     sql`${table.mode} IN ('voice_video', 'text')`
   ),
+  statusCheck: check(
+    "status_check",
+    sql`${table.status} IN ('in_progress', 'completed', 'abandoned', 'too_short', 'error')`
+  ),
+  // P1-001: Indexes for performance
+  userIdStatusIdx: index("interview_session_user_status_idx").on(table.userId, table.status),
+  endedAtIdx: index("interview_session_ended_at_idx").on(table.endedAt),
 }));
 
 // Turn-level transcript
@@ -65,7 +78,21 @@ export const feedback = pgTable("feedback", {
   drills: jsonb("drills"),
   summary: text("summary"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-});
+
+  // P1-001: Feedback generation status tracking
+  status: text("status").default("pending").notNull(),
+  statusReason: text("status_reason"),
+  rubricVersion: text("rubric_version").default("1.0.0").notNull(),
+  processingStartedAt: timestamp("processing_started_at", { withTimezone: true }),
+  processingDurationMs: integer("processing_duration_ms"),
+}, (table) => ({
+  statusCheck: check(
+    "feedback_status_check",
+    sql`${table.status} IN ('pending', 'processing', 'completed', 'failed', 'skipped')`
+  ),
+  // P1-001: Indexes for polling and performance
+  sessionIdStatusIdx: index("feedback_session_status_idx").on(table.sessionId, table.status),
+}));
 
 // Question bank for interview questions
 export const interviewQuestion = pgTable("interview_question", {
