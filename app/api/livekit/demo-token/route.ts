@@ -21,8 +21,10 @@
  *
  * @implementation_details
  * - Room naming: demo-{timestamp}-{random} for tracking and analytics
- * - Room lifetime: Auto-deletes 2 minutes after last participant leaves
+ * - Room lifetime: Auto-deletes 2 minutes after last participant leaves (emptyTimeout)
+ * - Departure timeout: 10 seconds grace period for re-join
  * - Max participants: 2 (user + demo agent only)
+ * - Session duration: Controlled by token TTL (2 min) + agent behavior (60s demo)
  * - Agent: Cloud-hosted demo agent (CA_Wp8bi3bRroE2) explicitly dispatched via AgentDispatchClient
  * - Agent behavior: 60-second product demo with one quick question and feedback
  * - Token TTL: 2 minutes (matches demo duration)
@@ -107,10 +109,14 @@ export async function POST(req: NextRequest) {
 
     try {
       // Create room with agent dispatch enabled
+      // Note: LiveKit doesn't support maxSessionDuration at room level.
+      // Session duration is controlled by token TTL (2 min) and emptyTimeout (2 min).
+      // The demo agent is programmed to end conversations at 60 seconds.
       await roomClient.createRoom({
         name: roomName,
         metadata: JSON.stringify(metadata),
         emptyTimeout: 120, // Auto-delete room 2 minutes after last participant leaves
+        departureTimeout: 10, // Grace period for re-join: 10 seconds
         maxParticipants: 2, // Only user + agent
       });
 

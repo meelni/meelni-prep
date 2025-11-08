@@ -208,6 +208,32 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   const room = useRoomContext();
   const [isMuted, setIsMuted] = useState(false);
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
+  const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
+  const [sessionEnded, setSessionEnded] = useState(false);
+
+  // Timer effect - start countdown when connected
+  useEffect(() => {
+    const isConnected = connectionState === ConnectionState.Connected;
+
+    if (!isConnected || sessionEnded) return;
+
+    const interval = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1) {
+          setSessionEnded(true);
+          clearInterval(interval);
+          // Disconnect room after timeout
+          if (room) {
+            room.disconnect();
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [connectionState, room, sessionEnded]);
 
   // Listen for transcription events
   useEffect(() => {
@@ -299,11 +325,58 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   // Determine if audio is active
   const isAudioActive = agentState === "speaking" || agentState === "thinking";
 
+  // Format time as MM:SS
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="relative h-full w-full flex bg-gradient-to-br from-black via-black to-purple-950/20">
       {/* Main area: Centered content */}
       <div className="flex-1 flex flex-col items-center justify-center relative px-16">
-        {/* Status indicator (top) */}
+        {/* Timer and Demo Badge (top-right) */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.2 }}
+          className="absolute top-12 right-12"
+        >
+          <div className="flex items-center gap-3">
+            {/* 5-Minute Demo Badge */}
+            {!isConnected && !sessionEnded && (
+              <div className="bg-primary/10 backdrop-blur-xl px-4 py-2 rounded-xl border border-primary/20">
+                <span className="text-primary text-xs font-semibold">5-MINUTE DEMO</span>
+              </div>
+            )}
+
+            {/* Countdown Timer (when connected) */}
+            {isConnected && !sessionEnded && (
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className={`bg-white/5 backdrop-blur-xl px-5 py-2.5 rounded-xl border ${
+                  timeRemaining <= 60 ? "border-red-500/40 bg-red-500/10" : "border-white/10"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    timeRemaining <= 60 ? "bg-red-400 animate-pulse" : "bg-primary"
+                  }`} />
+                  <span className={`text-sm font-mono font-semibold tabular-nums ${
+                    timeRemaining <= 60 ? "text-red-200" : "text-white/90"
+                  }`}>
+                    {formatTime(timeRemaining)}
+                  </span>
+                  <span className="text-white/50 text-xs">remaining</span>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Status indicator (top-center) */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -313,6 +386,10 @@ function DemoControls({ onClose }: { onClose: () => void }) {
             <div className="flex items-center gap-3 bg-white/5 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10">
               <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
               <span className="text-white/70 text-sm font-medium">Connecting to Meelni...</span>
+            </div>
+          ) : sessionEnded ? (
+            <div className="flex items-center gap-3 bg-orange-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-orange-500/20">
+              <span className="text-orange-100 text-sm font-medium">Demo session ended</span>
             </div>
           ) : agentState === "listening" ? (
             <div className="flex items-center gap-3 bg-blue-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-blue-500/20">
@@ -367,8 +444,31 @@ function DemoControls({ onClose }: { onClose: () => void }) {
           </motion.div>
 
           {/* Visualizer (only shows when speaking/thinking) */}
-          <AnimatePresence>
-            {isAudioActive ? (
+          <AnimatePresence mode="wait">
+            {sessionEnded ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="text-center space-y-6"
+              >
+                <div className="space-y-3">
+                  <h2 className="text-3xl font-semibold text-white">
+                    Demo Complete!
+                  </h2>
+                  <p className="text-white/60 text-base max-w-lg mx-auto">
+                    Thank you for trying Meelni. Ready to practice with a full interview?
+                  </p>
+                </div>
+                <Link
+                  href="/setup"
+                  className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-background px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105"
+                >
+                  Start Full Interview
+                  <ArrowRight className="h-5 w-5" />
+                </Link>
+              </motion.div>
+            ) : isAudioActive ? (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -402,53 +502,56 @@ function DemoControls({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Bottom controls */}
-        <motion.div
-          initial={{ y: 50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="absolute bottom-12 left-1/2 -translate-x-1/2"
-        >
-          <div className="flex items-center gap-4 bg-white/5 backdrop-blur-2xl rounded-2xl px-8 py-4 border border-white/10 shadow-2xl">
-            {/* Mic button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={toggleMute}
-              disabled={!isConnected}
-              className={`
-                relative p-4 rounded-xl transition-all duration-300 shadow-lg
-                ${
-                  isMuted
-                    ? "bg-red-500/80 hover:bg-red-500"
-                    : "bg-white/10 hover:bg-white/20"
-                }
-                disabled:opacity-50 disabled:cursor-not-allowed
-              `}
-            >
-              {isMuted ? (
-                <MicOff className="h-5 w-5 text-white" />
-              ) : (
-                <Mic className="h-5 w-5 text-white" />
-              )}
-              {!isMuted && isConnected && (
-                <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-400 animate-pulse" />
-              )}
-            </motion.button>
+        {!sessionEnded && (
+          <motion.div
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 50, opacity: 0 }}
+            transition={{ delay: 0.4 }}
+            className="absolute bottom-12 left-1/2 -translate-x-1/2"
+          >
+            <div className="flex items-center gap-4 bg-white/5 backdrop-blur-2xl rounded-2xl px-8 py-4 border border-white/10 shadow-2xl">
+              {/* Mic button */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={toggleMute}
+                disabled={!isConnected}
+                className={`
+                  relative p-4 rounded-xl transition-all duration-300 shadow-lg
+                  ${
+                    isMuted
+                      ? "bg-red-500/80 hover:bg-red-500"
+                      : "bg-white/10 hover:bg-white/20"
+                  }
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                `}
+              >
+                {isMuted ? (
+                  <MicOff className="h-5 w-5 text-white" />
+                ) : (
+                  <Mic className="h-5 w-5 text-white" />
+                )}
+                {!isMuted && isConnected && (
+                  <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-400 animate-pulse" />
+                )}
+              </motion.button>
 
-            {/* Divider */}
-            <div className="w-px h-8 bg-white/10" />
+              {/* Divider */}
+              <div className="w-px h-8 bg-white/10" />
 
-            {/* Close button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={onClose}
-              className="p-4 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-300 shadow-lg"
-            >
-              <X className="h-5 w-5 text-white" />
-            </motion.button>
-          </div>
-        </motion.div>
+              {/* Close button */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={onClose}
+                className="p-4 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-300 shadow-lg"
+              >
+                <X className="h-5 w-5 text-white" />
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
       </div>
 
       {/* Right sidebar: Transcript (terminal-style) */}
