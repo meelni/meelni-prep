@@ -15,6 +15,7 @@ export interface InterviewConfig {
     speed: number;
     emotion: string;
   };
+  questionId?: string; // Optional: pre-selected question from question bank
 }
 
 export interface UseSetupModalReturn {
@@ -163,6 +164,11 @@ export function useSetupModal(): UseSetupModalReturn {
       speed: config.voiceSettings.speed.toString(),
       emotion: config.voiceSettings.emotion,
     });
+
+    // Add questionId if present
+    if (config.questionId) {
+      params.append('questionId', config.questionId);
+    }
 
     router.push(`/interview?${params.toString()}`);
     close();

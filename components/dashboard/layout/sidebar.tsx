@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, Monitor, History, BarChart3, Lightbulb, Settings, Sparkles, LogOut, Moon, Sun } from "lucide-react";
+import { ChevronLeft, Monitor, History, BarChart3, Lightbulb, Settings, Sparkles, LogOut, Moon, Sun, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Icons } from "@/components/icons";
 import Link from "next/link";
@@ -156,6 +156,20 @@ export function Sidebar({
         >
           <Sparkles size={18} className="flex-shrink-0 w-[18px] h-[18px]" aria-hidden="true" />
           {!collapsed && <span className="ml-2">New Interview</span>}
+        </button>
+
+        {/* Question Bank Link */}
+        <button
+          onClick={() => router.push("/questions")}
+          className={cn(
+            "relative rounded-lg font-medium text-sm transition-all duration-200 flex items-center",
+            collapsed ? "px-3 py-3 justify-center" : "px-4 py-2.5 gap-2",
+            "bg-card/50 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-card"
+          )}
+          aria-label="Browse question bank"
+        >
+          <BookOpen size={18} className="flex-shrink-0 w-[18px] h-[18px]" aria-hidden="true" />
+          {!collapsed && <span>Question Bank</span>}
         </button>
 
         {/* Divider */}
