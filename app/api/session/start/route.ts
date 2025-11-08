@@ -144,23 +144,31 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch a random question from the question bank for this round type
-    const QUESTION_TYPE_MAP: Record<string, string> = {
-      behavioral: "Behavioral",
-      product_sense: "Product Sense",
-      execution: "Execution",
-      strategy: "Product Strategy",
+    // Map interview types to database question types (supports multiple types per interview)
+    const QUESTION_TYPE_MAP: Record<string, string[]> = {
+      behavioral: ["Behavioral"],
+      product_sense: ["Product Sense", "Product design/strategy"],
+      execution: ["Execution", "Estimation", "A/B Testing", "Pricing"],
+      strategy: ["Product Strategy"],
     };
 
-    const dbQuestionType = QUESTION_TYPE_MAP[roundType];
+    const dbQuestionTypes = QUESTION_TYPE_MAP[roundType];
+    if (!dbQuestionTypes) {
+      return NextResponse.json(
+        { error: `Invalid interview type: ${roundType}` },
+        { status: 400 }
+      );
+    }
 
     // Check if user has question preference (recent questions)
     const recentDays = config?.questionPreference?.recentDays;
     const question = recentDays
-      ? await getRandomRecentQuestion(recentDays, dbQuestionType)
-      : await getRandomQuestion(dbQuestionType);
+      ? await getRandomRecentQuestion(recentDays, dbQuestionTypes)
+      : await getRandomQuestion(dbQuestionTypes);
 
     if (!question) {
-      const errorMsg = `No ${dbQuestionType} questions available${recentDays ? ` from the last ${recentDays} days` : ''}. Try selecting "All Questions" or a different interview type.`;
+      const typesList = dbQuestionTypes.join('" or "');
+      const errorMsg = `No questions available for interview type "${roundType}" (looks for: "${typesList}")${recentDays ? ` from the last ${recentDays} days` : ''}. Try selecting "All Questions" or a different interview type.`;
       console.warn(`[Session Start] ${errorMsg}`);
 
       return NextResponse.json(
@@ -176,7 +184,8 @@ export async function POST(req: NextRequest) {
       company: question.company,
       text_preview: question.questionText.substring(0, 100) + "...",
       user_selected_round_type: roundType,
-      mapped_db_type: dbQuestionType,
+      mapped_db_types: dbQuestionTypes.join(", "),
+      total_available_types: dbQuestionTypes.length,
     });
 
     // Ensure user exists in app_user table (for existing authenticated users)
