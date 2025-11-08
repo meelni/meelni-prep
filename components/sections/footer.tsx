@@ -6,55 +6,48 @@ export function Footer() {
 
   return (
     <footer className="border-t border-border/60 bg-background/95 backdrop-blur-lg mt-20">
-      <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-          {/* Brand Column */}
-          <div className="md:col-span-2">
-            <div className="flex items-center gap-x-2 mb-4">
-              <Icons.logo className="h-6 w-6 text-primary" />
-              <h2 className="text-[20px] font-sans font-semibold text-foreground">
-                {siteConfig.name}
-              </h2>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Main Footer Content - matches header justify-between layout */}
+        <div className="flex flex-col md:flex-row justify-between gap-12 mb-12">
+          {/* Left Side: Brand + Product Links */}
+          <div className="flex flex-col md:flex-row gap-12 md:gap-16">
+            {/* Brand Column */}
+            <div>
+              <div className="flex items-center gap-x-2 mb-4">
+                <Icons.logo className="h-6 w-6 text-primary" />
+                <h2 className="text-[20px] font-sans font-semibold text-foreground">
+                  {siteConfig.name}
+                </h2>
+              </div>
+              <p className="text-[15px] text-muted-foreground leading-relaxed max-w-xs">
+                {siteConfig.description}
+              </p>
             </div>
-            <p className="text-[15px] text-muted-foreground leading-relaxed max-w-md">
-              {siteConfig.description}
-            </p>
+
+            {/* Product Links */}
+            <nav className="flex flex-col gap-3">
+              <a
+                href="#features"
+                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+              >
+                Features
+              </a>
+              <a
+                href="#pricing"
+                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+              >
+                Pricing
+              </a>
+              <a
+                href="/blog"
+                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+              >
+                Blog
+              </a>
+            </nav>
           </div>
 
-          {/* Links Column */}
-          <div>
-            <h3 className="text-[15px] font-sans font-semibold text-foreground mb-4">
-              Product
-            </h3>
-            <ul className="space-y-3">
-              <li>
-                <a
-                  href="#features"
-                  className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                >
-                  Features
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#pricing"
-                  className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                >
-                  Pricing
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#blog"
-                  className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-                >
-                  Blog
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          {/* Contact Column */}
+          {/* Right Side: Connect - aligns with header CTA button */}
           <div>
             <h3 className="text-[15px] font-sans font-semibold text-foreground mb-4">
               Connect
@@ -74,24 +67,31 @@ export function Footer() {
         </div>
 
         {/* Bottom Bar */}
-        <div className="pt-8 border-t border-border">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-[13px] text-muted-foreground">
-              © {currentYear} {siteConfig.name}. All rights reserved.
-            </p>
-            <div className="flex gap-x-6">
+        <div className="pt-8 border-t border-border/40">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            {/* Left: Copyright + Legal Links */}
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-2 text-[13px] text-muted-foreground">
+              <span>© {currentYear} {siteConfig.name}. All rights reserved.</span>
+              <span className="hidden md:inline">|</span>
               <a
-                href="#"
-                className="text-[13px] text-muted-foreground hover:text-foreground transition-colors duration-200"
-              >
-                Privacy Policy
-              </a>
-              <a
-                href="#"
-                className="text-[13px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+                href="/terms"
+                className="hover:text-foreground transition-colors duration-200"
               >
                 Terms of Service
               </a>
+              <span className="hidden md:inline">|</span>
+              <a
+                href="/privacy"
+                className="hover:text-foreground transition-colors duration-200"
+              >
+                Privacy Policy
+              </a>
+            </div>
+
+            {/* Right: Status */}
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-[13px] text-muted-foreground uppercase tracking-wider">All systems operational</span>
             </div>
           </div>
         </div>
