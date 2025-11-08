@@ -4,6 +4,7 @@ import { Public_Sans, Outfit } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/app/providers/auth-provider";
 import { QueryProvider } from "@/app/providers/query-provider";
+import { ThemeProvider } from "@/app/providers/theme-provider";
 import { Toaster } from "sonner";
 
 // Using Outfit as a free alternative to Everett - similar elegant, geometric feel
@@ -44,16 +45,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${outfit.variable} ${publicSans.variable} ${commitMono.variable} antialiased`}
       >
-        <QueryProvider>
-          <AuthProvider>
-            {children}
-            <Toaster position="top-right" duration={3000} />
-          </AuthProvider>
-        </QueryProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <QueryProvider>
+            <AuthProvider>
+              {children}
+              <Toaster position="top-right" duration={3000} />
+            </AuthProvider>
+          </QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

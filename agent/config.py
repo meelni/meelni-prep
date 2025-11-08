@@ -14,6 +14,12 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
     Expected format:
     {
         "round_type": "product_sense",
+        "question": {
+            "question_id": "uuid",
+            "question_text": "How do you improve Slack?",
+            "company": "Dropbox",
+            "question_type": "Product design/strategy"
+        },
         "config": {
             "difficulty": "intermediate",
             "voice": "6ccbfb76...",
@@ -33,13 +39,15 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         metadata: JSON string from room.metadata
 
     Returns:
-        Dict with round_type and config keys
+        Dict with round_type, question, and config keys
     """
     try:
         data = json.loads(metadata)
 
         round_type = data.get("round_type", "product_sense")
         config = data.get("config", {})
+        # NEW: Extract question data from metadata
+        question = data.get("question")  # Can be None if no question provided
 
         # Ensure all required config keys have defaults
         config_with_defaults = {
@@ -56,10 +64,16 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
             "tts_model": config.get("tts_model", "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"),
         }
 
-        logger.info(f"Parsed metadata: round_type={round_type}, difficulty={config_with_defaults['difficulty']}")
+        # Log question info if provided
+        if question:
+            question_text = question.get("question_text", "")[:50]  # First 50 chars
+            logger.info(f"Parsed metadata: round_type={round_type}, difficulty={config_with_defaults['difficulty']}, question='{question_text}...'")
+        else:
+            logger.info(f"Parsed metadata: round_type={round_type}, difficulty={config_with_defaults['difficulty']}, question=None")
 
         return {
             "round_type": round_type,
+            "question": question,  # NEW: Include question data
             "config": config_with_defaults,
         }
 
@@ -68,6 +82,7 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         # Fallback to defaults
         return {
             "round_type": "product_sense",
+            "question": None,  # NEW: No question in fallback
             "config": {
                 "difficulty": "intermediate",
                 "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
@@ -86,6 +101,7 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         logger.error(f"Unexpected error parsing metadata: {e}. Using defaults.")
         return {
             "round_type": "product_sense",
+            "question": None,  # NEW: No question in fallback
             "config": {
                 "difficulty": "intermediate",
                 "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",

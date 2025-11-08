@@ -1,0 +1,724 @@
+/**
+ * Sync Interview Questions from Google Sheet
+ *
+ * This script syncs PM interview questions from a Google Sheet to the database.
+ * It supports two methods:
+ * - Method A: Fetch from public CSV URL (recommended, simpler)
+ * - Method B: Use Google Sheets API (requires API key)
+ *
+ * Usage:
+ *   npm run sync:questions              # Sync questions
+ *   npm run sync:questions -- --dry-run # Preview changes without applying
+ *   npm run sync:questions -- --verbose # Show detailed logs
+ *
+ * Environment variables required:
+ *   GOOGLE_SHEET_CSV_URL  (Method A - recommended)
+ *   or
+ *   GOOGLE_SHEETS_API_KEY + GOOGLE_SHEET_ID (Method B)
+ */
+
+// Load environment variables from .env.local
+import { config } from 'dotenv';
+import { resolve } from 'path';
+config({ path: resolve(process.cwd(), '.env.local') });
+
+import { db } from "@/lib/db";
+import { interviewQuestion } from "@/lib/db/schema";
+import { eq, sql } from "drizzle-orm";
+import { fetchSheetAsCSV, fetchSheetViaAPI, validateSheetRow, type SheetRow } from "@/lib/google-sheets-client";
+
+// Question type mapping from Google Sheet to database
+// Maps various input formats to canonical database types
+const QUESTION_TYPE_MAPPING: Record<string, string> = {
+  // A/B Testing
+  "A/B Testing": "A/B Testing",
+  "ab testing": "A/B Testing",
+  "a/b testing": "A/B Testing",
+
+  // Product design/strategy
+  "Product design / strategy": "Product design/strategy",
+  "Product design/strategy": "Product design/strategy",
+  "Product Design": "Product design/strategy",
+  "Product design": "Product design/strategy",
+  "Product Design/Strategy": "Product design/strategy",
+  "Product Design and Strategy": "Product design/strategy",
+  "Product Design & Strategy": "Product design/strategy",
+  "Design": "Product design/strategy",
+  "design": "Product design/strategy",
+  "Design & Strategy": "Product design/strategy",
+  "Strategy/Design": "Product design/strategy",
+  "strategy + design": "Product design/strategy",
+  "strategy + product design": "Product design/strategy",
+
+  // Behavioral
+  "Behavioral": "Behavioral",
+  "behavioral": "Behavioral",
+  "Behavioural": "Behavioral",
+  "Behavior": "Behavioral",
+  "behavior": "Behavioral",
+  "Behav": "Behavioral",
+  "Leadership & Drive": "Behavioral",
+  "Leadership and Drive": "Behavioral",
+  "Leadership": "Behavioral",
+  "L&D": "Behavioral",
+
+  // Execution
+  "Execution": "Execution",
+  "execution": "Execution",
+  "Product Execution": "Execution",
+  "Product execution": "Execution",
+  "Craft & Execution": "Execution",
+  "Craft and Execution": "Execution",
+  "Craft and Exec": "Execution",
+  "Execute with Judgement": "Execution",
+
+  // Product Sense
+  "Product Sense": "Product Sense",
+  "Product sense": "Product Sense",
+  "product sense": "Product Sense",
+  "Produce Sense": "Product Sense",
+  "Sense": "Product Sense",
+  "Product": "Product Sense",
+  "product": "Product Sense",
+  "Product Insights": "Product Sense",
+  "Product Thinking": "Product Sense",
+
+  // Pricing
+  "Pricing": "Pricing",
+  "pricing": "Pricing",
+
+  // Estimation
+  "Estimation": "Estimation",
+  "estimation": "Estimation",
+
+  // Product Strategy
+  "Product Strategy": "Product Strategy",
+  "Product strategy": "Product Strategy",
+  "product strategy": "Product Strategy",
+  "Strategy": "Product Strategy",
+  "strategy": "Product Strategy",
+  "Strategic insights": "Product Strategy",
+
+  // Analytical/Analytics (map to Execution for now)
+  "Analytical Thinking": "Execution",
+  "Analytical thinking": "Execution",
+  "analytical thinking": "Execution",
+  "Analytical": "Execution",
+  "analytical": "Execution",
+  "Analytics": "Execution",
+  "analytics": "Execution",
+  "Product Analytics": "Execution",
+  "Product analytics": "Execution",
+  "Product Analysis": "Execution",
+  "Metrics": "Execution",
+  "Analytical Execution": "Execution",
+  "Analytical/Execution": "Execution",
+  "Analytical / Execution": "Execution",
+
+  // Product Prioritization (map to Execution)
+  "Product Prioritization": "Execution",
+  "Product prioritization": "Execution",
+  "Product Priortization": "Execution",
+
+  // System Design / Technical (map to Product design/strategy)
+  "System Design": "Product design/strategy",
+  "System design": "Product design/strategy",
+  "Technical": "Product design/strategy",
+  "technical": "Product design/strategy",
+
+  // Various product-related categories (map to Product Sense)
+  "Product Improvement": "Product Sense",
+  "Product Values": "Product Sense",
+  "Product Retrospective": "Product Sense",
+  "Product Metrics": "Product Sense",
+  "Product Launch": "Product Sense",
+  "Product Analytical": "Product Sense",
+  "Product Prioritisation": "Execution",
+
+  // Compound types (map to primary category)
+  "Product/Strategy": "Product Strategy",
+  "Product, Strategy": "Product Strategy",
+  "Strategy, Product Sense": "Product Strategy",
+  "Product Strategy and Design": "Product design/strategy",
+  "Product strategy and design": "Product design/strategy",
+  "Product Insights / Strategy": "Product Strategy",
+  "Product Strategy/Execution": "Product Strategy",
+  "Strategy/Estimation": "Product Strategy",
+  "Execution, Tradeoff": "Execution",
+  "Analytical Thinking / Product Execution": "Execution",
+  "Analytical Thinking / Binary Tradeoff": "Execution",
+  "Analytics / Execution": "Execution",
+
+  // Googleyness/Culture fit (map to Behavioral)
+  "Googleyness": "Behavioral",
+  "Googlines": "Behavioral",
+  "GCA, RRK": "Behavioral",
+
+  // GTM/Strategy (map to Product Strategy)
+  "GTM": "Product Strategy",
+  "Roadmap": "Product Strategy",
+
+  // Market Research (map to Product Sense)
+  "Market Research": "Product Sense",
+
+  // Various/All/Traditional (map to Product Sense as default)
+  "Various": "Product Sense",
+  "various": "Product Sense",
+  "All": "Product Sense",
+  "Traditional": "Product Sense",
+  "Past Experience and": "Behavioral",
+  "-": "Product Sense",
+
+  // More variations with spaces/typos
+  "Product design ": "Product design/strategy",
+  "Product ": "Product Sense",
+  "Analytics ": "Execution",
+  "analytics ": "Execution",
+  "Analytical ": "Execution",
+  "analytical ": "Execution",
+  "Strategy ": "Product Strategy",
+  "strategy ": "Product Strategy",
+  "Execution ": "Execution",
+  "execution ": "Execution",
+  "sense": "Product Sense",
+  "sense ": "Product Sense",
+  "Sense ": "Product Sense",
+  "Product sense ": "Product Sense",
+  "Product Sense. ": "Product Sense",
+  "Design ": "Product design/strategy",
+  "design ": "Product design/strategy",
+
+  // Typos and misspellings
+  "Startegy": "Product Strategy",
+  "startegy": "Product Strategy",
+  "Stategy": "Product Strategy",
+  "Straegy": "Product Strategy",
+  "Stratigic": "Product Strategy",
+  "Prodcut Strategy": "Product Strategy",
+  "Product Startegy": "Product Strategy",
+  "Produce Execution": "Execution",
+  "Product Executio": "Execution",
+  "Product Exectuion": "Execution",
+  "exection": "Execution",
+  "excution": "Execution",
+  "Produce Design": "Product design/strategy",
+  "Prouct design": "Product design/strategy",
+  "behavorial": "Behavioral",
+  "Behaviorial": "Behavioral",
+  "Beehavioral": "Behavioral",
+  "Behaviour": "Behavioral",
+  "behavior ": "Behavioral",
+  "behaviour": "Behavioral",
+  "Analytic": "Execution",
+  "Analitical": "Execution",
+  "Analutical": "Execution",
+  "Analytican Thinking": "Execution",
+  "Analytical Thnking": "Execution",
+
+  // More compound types
+  "Product Sense + Execution": "Execution",
+  "Product Sense/Execution": "Execution",
+  "Product Sense/Strategy": "Product Strategy",
+  "Product Sense/Design": "Product design/strategy",
+  "Product Sense and Strategy": "Product Strategy",
+  "product sense, execution": "Execution",
+  "Product design, execution": "Execution",
+  "product design, execution ": "Execution",
+  "Strategy and Design": "Product design/strategy",
+  "Strategy + design": "Product design/strategy",
+  "Strategy & product sense": "Product Strategy",
+  "Product and Strategy": "Product Strategy",
+  "Product + Strategy": "Product Strategy",
+  "Product & Strategy": "Product Strategy",
+  "Product & Strategy both": "Product Strategy",
+  "strategy / behavioral": "Product Strategy",
+
+  // Additional mappings for common variations
+  "Product Prioritization/Sense": "Execution",
+  "product prioritization": "Execution",
+  "Prioritization": "Execution",
+  "craft & execution": "Execution",
+  "craft and execution": "Execution",
+  "Problem space understanding": "Product Sense",
+  "product analytics": "Execution",
+  "Prod Analytics": "Execution",
+  "Prod Analytics ": "Execution",
+  "Product Insights, Strategic Insights": "Product Strategy",
+  "Product Insights, Strategic Insights ": "Product Strategy",
+  "Strategic Insights": "Product Strategy",
+  "test": "Product Sense",
+  "analytics/execution ": "Execution",
+
+  // Estimation combinations
+  "Strategy, Estimation": "Product Strategy",
+  "Strategy, Estimation, Pricing": "Product Strategy",
+  "Product, Estimation": "Estimation",
+  "Product + Estimation": "Estimation",
+
+  // Leadership/Behavioral variations
+  "Leadership and drive": "Behavioral",
+  "Leadership & drive": "Behavioral",
+  "Leadership + Drive": "Behavioral",
+  "Leadership, Behavioral": "Behavioral",
+  "Leadership/Behavioral": "Behavioral",
+  "Behavioural - AZ LP": "Behavioral",
+
+  // System Design variations
+  "System Design (PM)": "Product design/strategy",
+  "System Design (PM interview)": "Product design/strategy",
+  "Pseudo system design": "Product design/strategy",
+
+  // Product Insights variations
+  "Product insight": "Product Sense",
+  "Product Insights, Product Sense": "Product Sense",
+  "Product Insight/Vision": "Product Sense",
+  "Product Insight/Design": "Product design/strategy",
+
+  // Other specific cases
+  "Customer pain point": "Product Sense",
+  "Problem solving": "Product Sense",
+  "Root cause analysis": "Execution",
+  "RCA / Execution": "Execution",
+  "Troubleshooting": "Execution",
+  "NA": "Product Sense",
+  "Feature Design": "Product design/strategy",
+  "New Product Launch": "Product Sense",
+  "Product Development Life Cycle": "Product Sense",
+  "product design": "Product design/strategy",
+  "Product Strategy (Mission Driven, Ecosystem Thinking)": "Product Strategy",
+  "Product Design, Execution, Tradeoff": "Product design/strategy",
+  "Product Design (Technical)": "Product design/strategy",
+  "Data orientation": "Execution",
+  "Data orientation ": "Execution",
+  "Leadership/ behavioral": "Behavioral",
+  "Leadership/ behavioral ": "Behavioral",
+  "Design, Strategy": "Product design/strategy",
+  "Behavioral + Product Sense": "Behavioral",
+  "Product Roadmap and Prioritisation": "Execution",
+  "Engineering": "Product design/strategy",
+  "Engineering ": "Product design/strategy",
+  "Analytics + Strategy": "Execution",
+  "Designing products and compatible products": "Product design/strategy",
+  "Estimation, Design, Metrics": "Estimation",
+  "Program Management": "Execution",
+  "Program Management ": "Execution",
+  "Execution, Statistics": "Execution",
+  "Analytics/Stratergy": "Execution",
+  "Product- technical": "Product design/strategy",
+  "Design, Product Roadmap": "Product design/strategy",
+  "Product Design, Improvement, Estimation": "Product design/strategy",
+  "Product Strategy, sense, and design": "Product Strategy",
+  "Product Strategy, sense, and design ": "Product Strategy",
+  "Product Execution and Metrics and Hypothetical Question Evaluation": "Execution",
+  "Execution and metrics": "Execution",
+  "Execution and metrics ": "Execution",
+};
+
+// Valid question types in our database
+const VALID_QUESTION_TYPES = new Set([
+  "A/B Testing",
+  "Product design/strategy",
+  "Behavioral",
+  "Execution",
+  "Product Sense",
+  "Pricing",
+  "Estimation",
+  "Product Strategy",
+]);
+
+interface SyncStats {
+  newQuestions: number;
+  updatedQuestions: number;
+  deactivatedQuestions: number;
+  skippedQuestions: number;
+  errors: number;
+  skipReasons: Map<string, number>;
+}
+
+interface SyncOptions {
+  dryRun: boolean;
+  verbose: boolean;
+}
+
+/**
+ * Main sync function
+ */
+async function syncQuestions(options: SyncOptions): Promise<void> {
+  console.log("\n🔄 Starting question sync from Google Sheet...");
+  console.log(`Mode: ${options.dryRun ? 'DRY RUN (no changes will be made)' : 'LIVE'}\n`);
+
+  const stats: SyncStats = {
+    newQuestions: 0,
+    updatedQuestions: 0,
+    deactivatedQuestions: 0,
+    skippedQuestions: 0,
+    errors: 0,
+    skipReasons: new Map<string, number>(),
+  };
+
+  try {
+    // Step 1: Fetch data from Google Sheet
+    const sheetRows = await fetchSheetData();
+
+    if (sheetRows.length === 0) {
+      console.log("⚠️  No questions found in sheet");
+      return;
+    }
+
+    console.log(`📋 Found ${sheetRows.length} questions in sheet\n`);
+
+    // Step 2: Process each question
+    const validQuestions: ProcessedQuestion[] = [];
+
+    for (let i = 0; i < sheetRows.length; i++) {
+      const row = sheetRows[i];
+      const result = await processSheetRow(row, options);
+
+      if (result.valid) {
+        validQuestions.push(result.question!);
+      } else {
+        stats.skippedQuestions++;
+
+        // Track skip reasons
+        const reason = result.reason || 'Unknown reason';
+        stats.skipReasons.set(reason, (stats.skipReasons.get(reason) || 0) + 1);
+
+        if (options.verbose) {
+          console.log(`⏭️  Row ${i + 2}: Skipped - ${result.reason}`);
+          console.log(`   Question text: "${row.questionText?.substring(0, 80) || '(empty)'}..."`);
+          console.log(`   Question type: "${row.questionType || '(empty)'}"`);
+          console.log(`   Company: "${row.company || '(empty)'}"`);
+        }
+      }
+    }
+
+    console.log(`\n✅ Validated ${validQuestions.length} questions`);
+    console.log(`⏭️  Skipped ${stats.skippedQuestions} questions\n`);
+
+    // Step 3: Get existing questions from database
+    const existingQuestions = await getExistingQuestions();
+    const existingQuestionTexts = new Set(existingQuestions.map(q => normalizeText(q.questionText)));
+
+    console.log(`💾 Found ${existingQuestions.length} existing questions in database\n`);
+
+    // Step 4: Determine new, updated, and deactivated questions
+    const newQuestions: ProcessedQuestion[] = [];
+    const sheetQuestionTexts = new Set<string>();
+
+    for (const question of validQuestions) {
+      const normalizedText = normalizeText(question.questionText);
+      sheetQuestionTexts.add(normalizedText);
+
+      if (!existingQuestionTexts.has(normalizedText)) {
+        newQuestions.push(question);
+      }
+      // Note: We don't update existing questions to preserve any manual edits
+    }
+
+    // Questions in DB but not in sheet should be deactivated
+    const questionsToDeactivate = existingQuestions.filter(
+      q => q.isActive && !sheetQuestionTexts.has(normalizeText(q.questionText))
+    );
+
+    // Step 5: Apply changes (or preview if dry run)
+    if (options.dryRun) {
+      console.log("🔍 DRY RUN - Preview of changes:\n");
+      previewChanges(newQuestions, questionsToDeactivate);
+    } else {
+      await applyChanges(newQuestions, questionsToDeactivate, stats, options);
+    }
+
+    // Step 6: Print summary
+    printSummary(stats, options.dryRun);
+
+  } catch (error) {
+    console.error("\n❌ Sync failed:", error);
+    process.exit(1);
+  }
+}
+
+interface ProcessedQuestion {
+  company: string | null;
+  questionText: string;
+  questionType: string;
+  askedAt: Date | null;
+}
+
+/**
+ * Fetch data from Google Sheet using configured method
+ */
+async function fetchSheetData(): Promise<SheetRow[]> {
+  const csvUrl = process.env.GOOGLE_SHEET_CSV_URL;
+  const apiKey = process.env.GOOGLE_SHEETS_API_KEY;
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+  const sheetName = process.env.GOOGLE_SHEET_NAME || 'Sheet1';
+
+  if (csvUrl) {
+    console.log("📡 Using Method A: Fetching from CSV URL");
+    return await fetchSheetAsCSV(csvUrl);
+  } else if (apiKey && sheetId) {
+    console.log("📡 Using Method B: Fetching via Google Sheets API");
+    return await fetchSheetViaAPI(sheetId, sheetName);
+  } else {
+    throw new Error(
+      "Missing environment variables. Set either:\n" +
+      "  - GOOGLE_SHEET_CSV_URL (Method A - recommended)\n" +
+      "  or\n" +
+      "  - GOOGLE_SHEETS_API_KEY + GOOGLE_SHEET_ID (Method B)"
+    );
+  }
+}
+
+/**
+ * Process a single sheet row into a database-ready question
+ */
+function processSheetRow(
+  row: SheetRow,
+  options: SyncOptions
+): { valid: boolean; question?: ProcessedQuestion; reason?: string } {
+  // Validate required fields
+  const validation = validateSheetRow(row);
+  if (!validation.valid) {
+    return { valid: false, reason: validation.error };
+  }
+
+  // Map question type
+  const mappedType = QUESTION_TYPE_MAPPING[row.questionType.trim()];
+  if (!mappedType) {
+    return {
+      valid: false,
+      reason: `Unknown question type: "${row.questionType}"`
+    };
+  }
+
+  if (!VALID_QUESTION_TYPES.has(mappedType)) {
+    return {
+      valid: false,
+      reason: `Invalid question type: "${mappedType}"`
+    };
+  }
+
+  // Clean company name (null if empty)
+  const company = row.company && row.company.trim().length > 0
+    ? row.company.trim()
+    : null;
+
+  // Clean question text
+  const questionText = row.questionText.trim();
+
+  if (questionText.length === 0) {
+    return { valid: false, reason: "Empty question text" };
+  }
+
+  // Parse timestamp (when question was asked in real interview)
+  let askedAt: Date | null = null;
+  if (row.timestamp && row.timestamp.trim().length > 0) {
+    try {
+      const parsed = new Date(row.timestamp.trim());
+      if (!isNaN(parsed.getTime())) {
+        askedAt = parsed;
+      }
+    } catch (e) {
+      // Invalid date format, keep as null
+    }
+  }
+
+  return {
+    valid: true,
+    question: {
+      company,
+      questionText,
+      questionType: mappedType,
+      askedAt,
+    }
+  };
+}
+
+/**
+ * Get all existing questions from database
+ */
+async function getExistingQuestions() {
+  return await db
+    .select({
+      id: interviewQuestion.id,
+      company: interviewQuestion.company,
+      questionText: interviewQuestion.questionText,
+      questionType: interviewQuestion.questionType,
+      askedAt: interviewQuestion.askedAt,
+      isActive: interviewQuestion.isActive,
+    })
+    .from(interviewQuestion);
+}
+
+/**
+ * Normalize text for comparison (lowercase, trim, remove extra whitespace)
+ */
+function normalizeText(text: string): string {
+  return text.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * Preview changes without applying them
+ */
+function previewChanges(
+  newQuestions: ProcessedQuestion[],
+  questionsToDeactivate: Array<{ id: string; questionText: string }>
+) {
+  if (newQuestions.length > 0) {
+    console.log(`➕ Would add ${newQuestions.length} new questions:`);
+    newQuestions.slice(0, 5).forEach(q => {
+      console.log(`   • [${q.questionType}] ${q.questionText.substring(0, 70)}...`);
+    });
+    if (newQuestions.length > 5) {
+      console.log(`   ... and ${newQuestions.length - 5} more`);
+    }
+    console.log();
+  }
+
+  if (questionsToDeactivate.length > 0) {
+    console.log(`🔒 Would deactivate ${questionsToDeactivate.length} questions:`);
+    questionsToDeactivate.slice(0, 5).forEach(q => {
+      console.log(`   • ${q.questionText.substring(0, 70)}...`);
+    });
+    if (questionsToDeactivate.length > 5) {
+      console.log(`   ... and ${questionsToDeactivate.length - 5} more`);
+    }
+    console.log();
+  }
+
+  if (newQuestions.length === 0 && questionsToDeactivate.length === 0) {
+    console.log("✨ No changes needed - database is already in sync with sheet\n");
+  }
+}
+
+/**
+ * Apply changes to database
+ */
+async function applyChanges(
+  newQuestions: ProcessedQuestion[],
+  questionsToDeactivate: Array<{ id: string; questionText: string }>,
+  stats: SyncStats,
+  options: SyncOptions
+) {
+  // Insert new questions
+  if (newQuestions.length > 0) {
+    console.log(`➕ Adding ${newQuestions.length} new questions...`);
+
+    for (const question of newQuestions) {
+      try {
+        await db.insert(interviewQuestion).values({
+          company: question.company,
+          questionText: question.questionText,
+          questionType: question.questionType,
+          askedAt: question.askedAt,
+          isActive: true,
+        });
+
+        stats.newQuestions++;
+
+        if (options.verbose) {
+          console.log(`   ✓ Added: [${question.questionType}] ${question.questionText.substring(0, 60)}...`);
+        }
+      } catch (error) {
+        stats.errors++;
+        console.error(`   ✗ Error adding question: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  }
+
+  // Deactivate removed questions
+  if (questionsToDeactivate.length > 0) {
+    console.log(`\n🔒 Deactivating ${questionsToDeactivate.length} questions...`);
+
+    for (const question of questionsToDeactivate) {
+      try {
+        await db
+          .update(interviewQuestion)
+          .set({ isActive: false })
+          .where(eq(interviewQuestion.id, question.id));
+
+        stats.deactivatedQuestions++;
+
+        if (options.verbose) {
+          console.log(`   ✓ Deactivated: ${question.questionText.substring(0, 60)}...`);
+        }
+      } catch (error) {
+        stats.errors++;
+        console.error(`   ✗ Error deactivating question: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  }
+
+  if (newQuestions.length === 0 && questionsToDeactivate.length === 0) {
+    console.log("✨ No changes needed - database is already in sync with sheet");
+  }
+}
+
+/**
+ * Print sync summary
+ */
+function printSummary(stats: SyncStats, isDryRun: boolean) {
+  console.log("\n" + "─".repeat(50));
+  console.log(`📊 Sync ${isDryRun ? 'Preview' : 'Complete'}\n`);
+  console.log(`   New questions:         ${stats.newQuestions}`);
+  console.log(`   Updated questions:     ${stats.updatedQuestions}`);
+  console.log(`   Deactivated questions: ${stats.deactivatedQuestions}`);
+  console.log(`   Skipped questions:     ${stats.skippedQuestions}`);
+  console.log(`   Errors:                ${stats.errors}`);
+
+  // Show skip reasons breakdown
+  if (stats.skippedQuestions > 0 && stats.skipReasons.size > 0) {
+    console.log(`\n   Skip reasons breakdown:`);
+    // Sort by count (descending)
+    const sortedReasons = Array.from(stats.skipReasons.entries())
+      .sort((a, b) => b[1] - a[1]);
+
+    for (const [reason, count] of sortedReasons) {
+      console.log(`      • ${reason}: ${count}`);
+    }
+  }
+
+  console.log("─".repeat(50) + "\n");
+
+  if (isDryRun) {
+    console.log("💡 Run without --dry-run to apply these changes\n");
+  } else if (stats.errors > 0) {
+    console.log("⚠️  Some errors occurred during sync. Check logs above.\n");
+  } else {
+    console.log("✅ All changes applied successfully!\n");
+  }
+}
+
+/**
+ * Parse command line arguments
+ */
+function parseArgs(): SyncOptions {
+  const args = process.argv.slice(2);
+
+  return {
+    dryRun: args.includes('--dry-run'),
+    verbose: args.includes('--verbose') || args.includes('-v'),
+  };
+}
+
+/**
+ * Main entry point
+ */
+async function main() {
+  const options = parseArgs();
+
+  try {
+    await syncQuestions(options);
+    process.exit(0);
+  } catch (error) {
+    console.error("\n❌ Fatal error:", error);
+    process.exit(1);
+  }
+}
+
+// Run if executed directly
+if (require.main === module) {
+  main();
+}
+
+export { syncQuestions };

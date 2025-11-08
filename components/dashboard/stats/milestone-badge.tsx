@@ -102,7 +102,7 @@ export function MilestoneBadge({
 
       {/* Tooltip on hover */}
       {showTooltip && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50">
           <div className="bg-card border border-border rounded-lg px-3 py-2 shadow-lg min-w-[200px]">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-base">{milestone.emoji}</span>
