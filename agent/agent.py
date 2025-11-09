@@ -213,6 +213,17 @@ async def entrypoint(ctx: JobContext):
 
     logger.info(f"Voice agent started successfully - {round_type} interview with {config['difficulty']} difficulty")
 
+    # CRITICAL: Send initial greeting so agent speaks first
+    # AgentSession doesn't auto-generate output - it waits for user input
+    interview_type_display = round_type.replace("_", " ").title()
+    greeting = f"Hey! Ready to jump in? We'll be doing a {interview_type_display} interview today."
+
+    try:
+        await session.say(greeting)
+        logger.info(f"Initial greeting sent: {greeting[:50]}...")
+    except Exception as e:
+        logger.error(f"Failed to send initial greeting: {e}", exc_info=True)
+
 
 if __name__ == "__main__":
     # Detect if running on LiveKit Cloud (Cloud provides LIVEKIT_URL automatically)
