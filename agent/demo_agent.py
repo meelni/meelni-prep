@@ -271,6 +271,15 @@ async def entrypoint(ctx: JobContext):
 
     logger.info("Demo agent started successfully")
 
+    # CRITICAL: Send initial greeting for demo
+    greeting = "Hey! Ready to try a quick PM question?"
+
+    try:
+        await session.say(greeting)
+        logger.info(f"Demo greeting sent: {greeting}")
+    except Exception as e:
+        logger.error(f"Failed to send demo greeting: {e}", exc_info=True)
+
     # Wait for monitoring task to complete (when session ends)
     try:
         await monitoring_task

@@ -42,6 +42,7 @@ export function DashboardLayout({
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
       <Sidebar
+        key={`sidebar-${activeSection}`}
         activeSection={activeSection}
         setActiveSection={setActiveSection}
         collapsed={sidebarCollapsed}
