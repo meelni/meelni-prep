@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -282,7 +282,7 @@ function CustomTooltip({ active, payload, label }: any) {
 /**
  * Main Analytics Section Component
  */
-export function AnalyticsSection() {
+export const AnalyticsSection = memo(function AnalyticsSection() {
   const [insights, setInsights] = useState<UserInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -525,4 +525,4 @@ export function AnalyticsSection() {
       )}
     </motion.div>
   );
-}
+});

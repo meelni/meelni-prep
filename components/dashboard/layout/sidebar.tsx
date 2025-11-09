@@ -165,14 +165,10 @@ export function Sidebar({
             <button
               key={item.id}
               onClick={() => {
-                console.log("Sidebar clicked:", item.id, "isRoute:", item.isRoute);
-                console.log("setActiveSection function:", typeof setActiveSection, setActiveSection);
                 if (item.isRoute) {
                   router.push(`/${item.id}`);
                 } else {
-                  console.log("Calling setActiveSection with:", item.id);
-                  const result = setActiveSection(item.id);
-                  console.log("setActiveSection returned:", result);
+                  setActiveSection(item.id);
                 }
               }}
               className={cn(

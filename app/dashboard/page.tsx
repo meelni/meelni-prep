@@ -2,28 +2,38 @@
 
 import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
-import { OverviewSection } from "@/components/dashboard/sections/overview";
-import { HistorySection } from "@/components/dashboard/sections/history";
-import { AnalyticsSection } from "@/components/dashboard/sections/analytics";
-import { SettingsSection } from "@/components/dashboard/sections/settings";
 import { FirstTimeUserExperience } from "@/components/dashboard/first-time-user-experience";
 import { DashboardLoading } from "@/components/dashboard/loading";
 import { DashboardError } from "@/components/dashboard/error";
 import { SetupModal } from "@/components/dashboard/setup-modal";
 import { useSessions } from "@/lib/api/queries";
 import { useSetupModal } from "@/lib/hooks/use-setup-modal";
+import { Loader2 } from "lucide-react";
+
+// Lazy load heavy section components for better performance
+const OverviewSection = lazy(() => import("@/components/dashboard/sections/overview").then(m => ({ default: m.OverviewSection })));
+const HistorySection = lazy(() => import("@/components/dashboard/sections/history").then(m => ({ default: m.HistorySection })));
+const AnalyticsSection = lazy(() => import("@/components/dashboard/sections/analytics").then(m => ({ default: m.AnalyticsSection })));
+const SettingsSection = lazy(() => import("@/components/dashboard/sections/settings").then(m => ({ default: m.SettingsSection })));
+
+// Section loading fallback component
+function SectionLoading() {
+  return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading section...</p>
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
   const [activeSection, setActiveSection] = useState("overview");
-
-  // Debug: Log when activeSection changes
-  useEffect(() => {
-    console.log("activeSection state changed to:", activeSection);
-  }, [activeSection]);
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -71,9 +81,8 @@ export default function DashboardPage() {
   // Check if first-time user
   const isFirstTimeUser = stats.totalSessions === 0;
 
-  // Render section based on activeSection
+  // Render section based on activeSection (wrapped in Suspense for lazy loading)
   const renderSection = () => {
-    console.log("Rendering section:", activeSection);
     // Show FTUE for first-time users on overview
     if (activeSection === "overview" && isFirstTimeUser) {
       return <FirstTimeUserExperience onStartInterview={setupModal.open} />;
@@ -113,17 +122,6 @@ export default function DashboardPage() {
 
   return (
     <>
-      {/* Debug: Test button to verify state updates work */}
-      <div style={{ position: 'fixed', top: 10, right: 10, zIndex: 9999, background: 'red', padding: '10px' }}>
-        <button onClick={() => {
-          console.log("Test button clicked, setting to 'history'");
-          setActiveSection("history");
-        }}>
-          Test Set History
-        </button>
-        <div style={{ color: 'white' }}>Current: {activeSection}</div>
-      </div>
-
       <DashboardLayout
         key={`dashboard-${user?.id || 'guest'}`}
         activeSection={activeSection}
@@ -134,9 +132,9 @@ export default function DashboardPage() {
         user={user}
         onSignOut={handleSignOut}
       >
-        <div key={activeSection}>
+        <Suspense key={activeSection} fallback={<SectionLoading />}>
           {renderSection()}
-        </div>
+        </Suspense>
       </DashboardLayout>
 
       {/* Setup Modal */}

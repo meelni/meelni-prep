@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,7 @@ interface UserSummary {
   }>;
 }
 
-export function OverviewSection({
+export const OverviewSection = memo(function OverviewSection({
   sessions,
   loadingSessions,
   totalSessions,
@@ -389,4 +389,4 @@ export function OverviewSection({
       </div>
     </div>
   );
-}
+});
