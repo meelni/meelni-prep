@@ -7,7 +7,6 @@ import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout"
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { HistorySection } from "@/components/dashboard/sections/history";
 import { AnalyticsSection } from "@/components/dashboard/sections/analytics";
-import { FeedbackSection } from "@/components/dashboard/sections/feedback";
 import { SettingsSection } from "@/components/dashboard/sections/settings";
 import { FirstTimeUserExperience } from "@/components/dashboard/first-time-user-experience";
 import { DashboardLoading } from "@/components/dashboard/loading";
@@ -90,8 +89,6 @@ export default function DashboardPage() {
         return <HistorySection sessions={sessions} loadingSessions={false} />;
       case "analytics":
         return <AnalyticsSection />;
-      case "feedback":
-        return <FeedbackSection />;
       case "settings":
         return <SettingsSection />;
       default:
