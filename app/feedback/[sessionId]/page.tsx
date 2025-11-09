@@ -12,25 +12,9 @@ import { StrengthsList } from "@/components/feedback/strengths-list";
 import { ImprovementsList } from "@/components/feedback/improvements-list";
 import { DrillList } from "@/components/feedback/drill-list";
 import { TranscriptViewer } from "@/components/feedback/transcript-viewer";
+import { FeedbackLoading } from "./components/feedback-loading";
 import type { EvaluationResponse, TranscriptTurn } from "@/lib/types/feedback";
 import Link from "next/link";
-
-// Loading state component
-function LoadingState() {
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <Card className="p-8 text-center">
-        <Loader2 className="w-12 h-12 text-primary mx-auto mb-4 animate-spin" />
-        <p className="text-foreground font-display font-light mb-2">
-          Generating Feedback
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Analyzing your interview performance...
-        </p>
-      </Card>
-    </div>
-  );
-}
 
 // Error state component
 function ErrorState({ error }: { error: string | null }) {
@@ -57,45 +41,64 @@ export default function FeedbackPage() {
 
   const [evaluation, setEvaluation] = useState<EvaluationResponse | null>(null);
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<"pending" | "processing" | "completed" | "failed" | "skipped">("pending");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchFeedback() {
+    async function checkFeedbackStatus() {
       try {
-        setLoading(true);
+        // First check feedback status via polling API
+        const statusResponse = await fetch(`/api/feedback/${sessionId}`);
 
-        // Call evaluation API
-        const response = await fetch(`/api/eval/${sessionId}`, {
-          method: "POST",
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: response.statusText }));
-          throw new Error(errorData.error || `Failed to fetch feedback: ${response.statusText}`);
+        if (!statusResponse.ok) {
+          const errorData = await statusResponse.json().catch(() => ({ error: statusResponse.statusText }));
+          throw new Error(errorData.error || `Failed to fetch feedback status: ${statusResponse.statusText}`);
         }
 
-        const data: EvaluationResponse = await response.json();
-        setEvaluation(data);
+        const statusData = await statusResponse.json();
+        setStatus(statusData.status);
 
-        // TODO: Fetch transcript from separate endpoint when WS #3 completes
-        // For now, use empty transcript
+        // If completed, load full feedback
+        if (statusData.status === "completed" && statusData.feedback) {
+          setEvaluation({
+            session_id: sessionId,
+            scores: {
+              overall: statusData.feedback.overallScore,
+              structure: statusData.feedback.structureScore,
+              clarity: statusData.feedback.clarityScore,
+              insight: statusData.feedback.insightScore,
+              communication: statusData.feedback.communicationScore,
+              leadership: statusData.feedback.leadershipScore,
+            },
+            strengths: statusData.feedback.strengths,
+            improvements: statusData.feedback.improvements,
+            drills: statusData.feedback.drills,
+            summary: statusData.feedback.summary,
+          });
+        } else if (statusData.status === "failed") {
+          setError(statusData.error || "Feedback generation failed");
+        } else if (statusData.status === "skipped") {
+          setError(statusData.skipReason || "Feedback generation was skipped");
+        }
+
+        // TODO: Fetch transcript from separate endpoint when available
         setTranscript([]);
       } catch (err) {
         console.error("Error fetching feedback:", err);
         setError(err instanceof Error ? err.message : "Failed to load feedback");
-      } finally {
-        setLoading(false);
+        setStatus("failed");
       }
     }
 
-    fetchFeedback();
+    checkFeedbackStatus();
   }, [sessionId]);
 
-  if (loading) {
-    return <LoadingState />;
+  // Show loading component for pending/processing states
+  if (status === "pending" || status === "processing") {
+    return <FeedbackLoading sessionId={sessionId} />;
   }
 
+  // Show error state
   if (error || !evaluation) {
     return <ErrorState error={error} />;
   }
