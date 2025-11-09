@@ -7,7 +7,6 @@ import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout"
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { HistorySection } from "@/components/dashboard/sections/history";
 import { AnalyticsSection } from "@/components/dashboard/sections/analytics";
-import { FeedbackSection } from "@/components/dashboard/sections/feedback";
 import { SettingsSection } from "@/components/dashboard/sections/settings";
 import { FirstTimeUserExperience } from "@/components/dashboard/first-time-user-experience";
 import { DashboardLoading } from "@/components/dashboard/loading";
@@ -20,6 +19,11 @@ export default function DashboardPage() {
   const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
   const [activeSection, setActiveSection] = useState("overview");
+
+  // Debug: Log when activeSection changes
+  useEffect(() => {
+    console.log("activeSection state changed to:", activeSection);
+  }, [activeSection]);
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -69,6 +73,7 @@ export default function DashboardPage() {
 
   // Render section based on activeSection
   const renderSection = () => {
+    console.log("Rendering section:", activeSection);
     // Show FTUE for first-time users on overview
     if (activeSection === "overview" && isFirstTimeUser) {
       return <FirstTimeUserExperience onStartInterview={setupModal.open} />;
@@ -90,8 +95,6 @@ export default function DashboardPage() {
         return <HistorySection sessions={sessions} loadingSessions={false} />;
       case "analytics":
         return <AnalyticsSection />;
-      case "feedback":
-        return <FeedbackSection />;
       case "settings":
         return <SettingsSection />;
       default:
@@ -110,7 +113,19 @@ export default function DashboardPage() {
 
   return (
     <>
+      {/* Debug: Test button to verify state updates work */}
+      <div style={{ position: 'fixed', top: 10, right: 10, zIndex: 9999, background: 'red', padding: '10px' }}>
+        <button onClick={() => {
+          console.log("Test button clicked, setting to 'history'");
+          setActiveSection("history");
+        }}>
+          Test Set History
+        </button>
+        <div style={{ color: 'white' }}>Current: {activeSection}</div>
+      </div>
+
       <DashboardLayout
+        key={`dashboard-${user?.id || 'guest'}`}
         activeSection={activeSection}
         setActiveSection={setActiveSection}
         totalSessions={stats.totalSessions}
@@ -119,7 +134,9 @@ export default function DashboardPage() {
         user={user}
         onSignOut={handleSignOut}
       >
-        {renderSection()}
+        <div key={activeSection}>
+          {renderSection()}
+        </div>
       </DashboardLayout>
 
       {/* Setup Modal */}
