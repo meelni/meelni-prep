@@ -192,13 +192,10 @@ export const generateFeedback = inngest.createFunction(
     });
 
     // Step 7: Trigger insights update (Phase 2)
-    // TODO: Uncomment when P2-003 is implemented
-    /*
     await step.sendEvent("trigger-insights-update", {
       name: "insights/update.requested",
       data: { userId, sessionId },
     });
-    */
 
     return {
       status: "completed",
