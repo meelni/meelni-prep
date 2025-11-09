@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { feedback, interviewSession, transcriptTurn } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { validateSessionCompleteness, SessionTier } from "@/lib/evaluation/session-validator";
+import { generateFeedback as generateFeedbackWithGPT4 } from "@/lib/evaluation/scorer";
 
 /**
  * Feedback generation event payload
@@ -21,32 +22,24 @@ interface FeedbackGenerationEvent {
 }
 
 /**
- * Generate feedback using GPT-4 Turbo
- * TODO: Implement actual GPT-4 evaluation logic in Phase 1 (P1-003)
+ * Fetch session data including round type
  */
-async function evaluateWithGPT4(transcript: string, tier: SessionTier) {
-  // Placeholder for GPT-4 evaluation
-  // In production, this will call OpenAI API with evaluation prompt
+async function fetchSessionData(sessionId: string) {
+  const session = await db.query.interviewSession.findFirst({
+    where: eq(interviewSession.id, sessionId),
+  });
 
-  // For now, return mock data structure
-  return {
-    overall_score: 7.5,
-    structure_score: 8,
-    clarity_score: 7,
-    insight_score: 7,
-    communication_score: 8,
-    leadership_score: 7,
-    strengths: ["Clear communication", "Good structure"],
-    improvements: ["Add more data-driven insights", "Deeper analysis needed"],
-    drills: ["Practice CIRCLES framework", "Work on metric selection"],
-    summary: `This ${tier} session shows solid performance with room for growth.`,
-  };
+  if (!session) {
+    throw new Error(`Session ${sessionId} not found`);
+  }
+
+  return session;
 }
 
 /**
  * Fetch and format session transcript
  */
-async function fetchSessionTranscript(sessionId: string): Promise<string> {
+async function fetchSessionTranscript(sessionId: string): Promise<{ speaker: string; text: string }[]> {
   const turns = await db.query.transcriptTurn.findMany({
     where: eq(transcriptTurn.sessionId, sessionId),
     orderBy: [desc(transcriptTurn.startedAt)],
@@ -54,8 +47,10 @@ async function fetchSessionTranscript(sessionId: string): Promise<string> {
 
   return turns
     .reverse() // Oldest first
-    .map((turn) => `${turn.speaker.toUpperCase()}: ${turn.text}`)
-    .join("\n\n");
+    .map((turn) => ({
+      speaker: turn.speaker,
+      text: turn.text,
+    }));
 }
 
 /**
@@ -123,7 +118,11 @@ export const generateFeedback = inngest.createFunction(
         .where(eq(interviewSession.id, sessionId));
     });
 
-    // Step 3: Fetch transcript
+    // Step 3: Fetch session data and transcript
+    const sessionData = await step.run("fetch-session-data", async () => {
+      return await fetchSessionData(sessionId);
+    });
+
     const transcript = await step.run("fetch-transcript", async () => {
       return await fetchSessionTranscript(sessionId);
     });
@@ -159,11 +158,26 @@ export const generateFeedback = inngest.createFunction(
       "evaluate-session",
       async () => {
         const startTime = Date.now();
-        const result = await evaluateWithGPT4(transcript, validation.tier);
+
+        // Call the real GPT-4 evaluation service
+        const result = await generateFeedbackWithGPT4(
+          sessionData.roundType || "product_sense",
+          transcript
+        );
+
         const processingDuration = Date.now() - startTime;
 
         return {
-          ...result,
+          overall_score: result.overall_score,
+          structure_score: result.scores.structure,
+          clarity_score: result.scores.clarity,
+          insight_score: result.scores.insight,
+          communication_score: result.scores.communication,
+          leadership_score: result.scores.leadership,
+          strengths: result.strengths,
+          improvements: result.improvements,
+          drills: result.drills,
+          summary: result.summary,
           processingDurationMs: processingDuration,
         };
       }
