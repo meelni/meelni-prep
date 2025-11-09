@@ -179,7 +179,7 @@ export function Sidebar({
                 "relative flex items-center rounded-lg text-sm transition-all duration-200",
                 collapsed ? "px-3 py-3 justify-center" : "px-3 py-2 gap-3",
                 activeSection === item.id
-                  ? "bg-primary/5 text-foreground"
+                  ? "bg-primary/15 text-foreground font-medium"
                   : "text-muted-foreground hover:text-foreground hover:bg-card/50"
               )}
               aria-label={`Navigate to ${item.label}`}
@@ -187,7 +187,7 @@ export function Sidebar({
             >
               {/* Subtle gradient accent for active state */}
               {activeSection === item.id && !collapsed && (
-                <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary/50 via-primary to-primary/50 rounded-r" />
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-primary/50 via-primary to-primary/50 rounded-r" />
               )}
               <item.icon
                 size={18}
