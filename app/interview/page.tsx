@@ -321,7 +321,7 @@ function InterviewPageContent() {
     setIsEndingSession(true);
     try {
       // End session in database
-      await fetch("/api/session/end", {
+      await fetch("/api/interview/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
