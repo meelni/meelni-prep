@@ -15,12 +15,17 @@ import { DashboardError } from "@/components/dashboard/error";
 import { SetupModal } from "@/components/dashboard/setup-modal";
 import { useSessions } from "@/lib/api/queries";
 import { useSetupModal } from "@/lib/hooks/use-setup-modal";
-import { motion } from "framer-motion";
 
 export default function DashboardPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
   const [activeSection, setActiveSection] = useState("overview");
+
+  // Handle sign out
+  const handleSignOut = async () => {
+    await signOut();
+    router.push("/");
+  };
 
   // Setup modal hook
   const setupModal = useSetupModal();
@@ -40,25 +45,8 @@ export default function DashboardPage() {
     }
   }, [authLoading, user, router]);
 
-  // Loading state for auth
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3 }}
-          className="flex flex-col items-center gap-4"
-        >
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading your dashboard...</p>
-        </motion.div>
-      </div>
-    );
-  }
-
-  // Loading state for sessions
-  if (sessionsLoading) {
+  // Unified loading state - use skeleton for both auth and sessions loading
+  if (authLoading || sessionsLoading) {
     return <DashboardLoading />;
   }
 
@@ -128,6 +116,8 @@ export default function DashboardPage() {
         totalSessions={stats.totalSessions}
         totalMinutes={stats.totalMinutes}
         avgScore={stats.avgScore || undefined}
+        user={user}
+        onSignOut={handleSignOut}
       >
         {renderSection()}
       </DashboardLayout>

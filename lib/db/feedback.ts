@@ -17,7 +17,7 @@ export interface CreateFeedbackInput {
 }
 
 /**
- * Create feedback for a session
+ * Create feedback for a session with status tracking
  */
 export async function createFeedback(input: CreateFeedbackInput) {
   const [feedbackRecord] = await db
@@ -34,11 +34,52 @@ export async function createFeedback(input: CreateFeedbackInput) {
       improvements: input.improvements,
       drills: input.drills,
       summary: input.summary,
+      status: "completed",
       createdAt: new Date(),
     })
     .returning();
 
   return feedbackRecord;
+}
+
+/**
+ * Create pending feedback record (for async processing)
+ */
+export async function createPendingFeedback(sessionId: string) {
+  const [feedbackRecord] = await db
+    .insert(feedback)
+    .values({
+      sessionId,
+      status: "pending",
+      createdAt: new Date(),
+    })
+    .returning();
+
+  return feedbackRecord;
+}
+
+/**
+ * Update feedback status
+ */
+export async function updateFeedbackStatus(
+  sessionId: string,
+  status: "pending" | "processing" | "completed" | "failed" | "skipped",
+  statusReason?: string,
+  processingStartedAt?: Date,
+  processingDurationMs?: number
+) {
+  const [updated] = await db
+    .update(feedback)
+    .set({
+      status,
+      ...(statusReason && { statusReason }),
+      ...(processingStartedAt && { processingStartedAt }),
+      ...(processingDurationMs !== undefined && { processingDurationMs }),
+    })
+    .where(eq(feedback.sessionId, sessionId))
+    .returning();
+
+  return updated;
 }
 
 /**

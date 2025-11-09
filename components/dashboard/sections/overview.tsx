@@ -217,7 +217,7 @@ export function OverviewSection({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Milestone Badges - Full Width */}
         {milestoneBadges.length > 0 && (
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-3 relative z-20">
             <Card className="p-4 bg-card border-border">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
@@ -266,22 +266,34 @@ export function OverviewSection({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
+            <div className="space-y-0 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border">
               {recentActivity.length > 0 ? (
                 recentActivity.map((activity, index) => (
-                  <div
-                    key={index}
-                    className="text-xs border-l-2 border-primary pl-3 hover:bg-muted p-2 rounded transition-colors"
-                  >
-                    <div className="text-muted-foreground font-mono">{activity.time}</div>
-                    <div className="text-foreground">
-                      Completed{" "}
-                      <span className="text-primary font-medium capitalize">{activity.type}</span>{" "}
-                      interview
+                  <div key={index} className="relative pl-6 pb-4 last:pb-0">
+                    {/* Connecting line (not on last item) */}
+                    {index < recentActivity.length - 1 && (
+                      <div className="absolute left-2 top-2 bottom-0 w-px bg-border"></div>
+                    )}
+
+                    {/* Timeline dot */}
+                    <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full border-2 border-primary bg-background flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
                     </div>
-                    <div className="text-muted-foreground mt-1">
-                      Score: {activity.score !== "N/A" ? `${activity.score}/10` : "Pending"} •{" "}
-                      {activity.duration}
+
+                    {/* Activity content */}
+                    <div className="text-xs hover:bg-muted p-2 rounded transition-colors">
+                      <div className="text-muted-foreground font-mono text-xs mb-1">
+                        {activity.time}
+                      </div>
+                      <div className="text-foreground">
+                        Completed{" "}
+                        <span className="text-primary font-medium capitalize">{activity.type}</span>{" "}
+                        interview
+                      </div>
+                      <div className="text-muted-foreground mt-1">
+                        Score: {activity.score !== "N/A" ? `${activity.score}/10` : "Pending"} •{" "}
+                        {activity.duration}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -307,43 +319,38 @@ export function OverviewSection({
               Interview Type Breakdown
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-2 h-2 bg-primary rounded-full"></div>
-                  <span className="text-xs text-foreground font-display font-light">Completed Interviews</span>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Product Sense */}
+              <div className="space-y-1">
+                <div className="text-2xl font-bold font-mono text-foreground">
+                  {interviewTypeBreakdown.productSense}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Product Sense</span>
-                      <span className="text-foreground font-bold font-mono">
-                        {interviewTypeBreakdown.productSense}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Analytical Thinking</span>
-                      <span className="text-foreground font-bold font-mono">
-                        {interviewTypeBreakdown.analytical}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Leadership & Drive</span>
-                      <span className="text-foreground font-bold font-mono">
-                        {interviewTypeBreakdown.leadership}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Strategy</span>
-                      <span className="text-foreground font-bold font-mono">
-                        {interviewTypeBreakdown.strategy}
-                      </span>
-                    </div>
-                  </div>
+                <div className="text-xs text-muted-foreground">Product Sense</div>
+              </div>
+
+              {/* Analytical */}
+              <div className="space-y-1">
+                <div className="text-2xl font-bold font-mono text-foreground">
+                  {interviewTypeBreakdown.analytical}
                 </div>
+                <div className="text-xs text-muted-foreground">Analytical</div>
+              </div>
+
+              {/* Leadership */}
+              <div className="space-y-1">
+                <div className="text-2xl font-bold font-mono text-foreground">
+                  {interviewTypeBreakdown.leadership}
+                </div>
+                <div className="text-xs text-muted-foreground">Leadership</div>
+              </div>
+
+              {/* Strategy */}
+              <div className="space-y-1">
+                <div className="text-2xl font-bold font-mono text-foreground">
+                  {interviewTypeBreakdown.strategy}
+                </div>
+                <div className="text-xs text-muted-foreground">Strategy</div>
               </div>
             </div>
           </CardContent>

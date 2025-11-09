@@ -1,149 +1,194 @@
 /**
- * Interview Configuration Types and Constants
+ * Simplified Interview Configuration
  *
- * This module defines the configuration interface for mock interviews,
- * including voice settings, interview parameters, and model configurations.
+ * Users only choose:
+ * - Interview Type (roundType)
+ * - Difficulty Level (difficulty)
+ *
+ * Everything else is system-managed for optimal quality.
  */
 
-export interface InterviewConfig {
-  // Voice settings
-  voice: string;           // Cartesia voice ID
-  speed: number;           // 0.6 - 1.5
-  emotion: string;         // e.g., "professional", "friendly"
-  volume: number;          // 0.5 - 2.0
-
-  // Interview settings
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
-  duration: number;        // minutes (15, 30, 45)
-  feedback_mode: 'real_time' | 'end_only' | 'silent';
-
-  // Model settings
-  stt_model: string;       // e.g., "deepgram/nova-3"
-  llm_model: string;       // e.g., "openai/gpt-4.1-mini"
-  tts_model: string;       // e.g., "cartesia/sonic-3:voice-id"
+export interface QuestionPreference {
+  recency: "all" | "recent" | "very_recent";
+  recentDays?: number;
 }
 
-export const DEFAULT_CONFIG: InterviewConfig = {
-  voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", // Tessa
-  speed: 1.0,
-  emotion: "professional",
-  volume: 1.0,
-  difficulty: "intermediate",
-  duration: 30,
-  feedback_mode: "end_only",
+/**
+ * Minimal user-facing configuration
+ * Users only make 2 choices!
+ */
+export interface MinimalInterviewConfig {
+  roundType: RoundType;
+  difficulty: DifficultyLevel;
+}
+
+/**
+ * Full configuration including system defaults
+ * This is what gets sent to the backend
+ */
+export interface InterviewConfig extends MinimalInterviewConfig {
+  // System-managed voice settings
+  voice: string;
+  speed: number;
+  emotion: string;
+  volume: number;
+
+  // System-managed interview settings
+  duration: number;
+  feedback_mode: 'real_time' | 'end_only' | 'silent';
+
+  // System-managed question preferences
+  questionPreference: QuestionPreference;
+
+  // System-managed model settings
+  stt_model: string;
+  llm_model: string;
+  tts_model: string;
+}
+
+/**
+ * System-optimized defaults
+ * These are the settings we've chosen for best quality
+ */
+export const SYSTEM_DEFAULTS = {
+  // Voice model (Tessa - emotive, professional)
+  voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+
+  // Speech parameters (optimized through testing)
+  speed: 1.0,          // Natural speaking pace
+  emotion: "professional", // Balanced, trustworthy tone
+  volume: 1.0,         // Standard volume
+
+  // Feedback (don't interrupt flow)
+  feedback_mode: "end_only" as const,
+
+  // Question pool (always recent)
+  questionPreference: {
+    recency: "very_recent" as const,
+    recentDays: 365, // Last 1 year (2024)
+  },
+
+  // Models (best quality/cost ratio)
   stt_model: "deepgram/nova-3",
   llm_model: "openai/gpt-4.1-mini",
   tts_model: "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
 };
 
+/**
+ * Smart duration based on interview type
+ */
+export const SMART_DURATION = {
+  behavioral: 30,     // STAR stories need time
+  product_sense: 45,  // Design problems are longer
+  execution: 40,      // Metrics analysis needs depth
+  strategy: 45,       // Strategic thinking requires exploration
+} as const;
+
+/**
+ * Round type definitions
+ */
 export const ROUND_TYPES = {
   behavioral: {
     label: "Behavioral",
-    description: "Leadership, teamwork, and past experiences using STAR method",
+    description: "Leadership & teamwork using STAR method",
     subtitle: "Demonstrate influence, resilience, and team leadership",
     icon: "Users",
-    duration: 30,
     color: "from-blue-500 to-cyan-500",
   },
   product_sense: {
     label: "Product Sense",
-    description: "Design thinking, user empathy, and product strategy",
+    description: "Design thinking & product strategy",
     subtitle: "Design solutions and prioritize features for user problems",
     icon: "Lightbulb",
-    duration: 45,
     color: "from-purple-500 to-pink-500",
   },
   execution: {
     label: "Execution",
-    description: "Metrics, roadmapping, and technical execution",
+    description: "Metrics, roadmapping & technical execution",
     subtitle: "Define metrics and analyze data to drive decisions",
     icon: "Target",
-    duration: 40,
     color: "from-orange-500 to-red-500",
   },
   strategy: {
     label: "Strategy",
-    description: "Business thinking, market analysis, and long-term vision",
+    description: "Business thinking & market analysis",
     subtitle: "Think long-term about market positioning and competitive advantage",
     icon: "TrendingUp",
-    duration: 45,
     color: "from-green-500 to-emerald-500",
   },
 } as const;
 
 export type RoundType = keyof typeof ROUND_TYPES;
 
+/**
+ * Difficulty level definitions
+ * Maps to user experience levels
+ */
 export const DIFFICULTY_LEVELS = {
   beginner: {
-    label: "Beginner",
-    description: "Basic questions, helpful prompts, more guidance",
-    icon: "Smile",
+    label: "Junior/APM",
+    description: "0-2 years experience",
+    subtitle: "Patient coaching with learning mode",
+    icon: "Sprout",
   },
   intermediate: {
-    label: "Intermediate",
-    description: "Standard difficulty, some follow-ups",
+    label: "IC PM",
+    description: "2-4 years experience",
+    subtitle: "Balanced approach with standard bar",
     icon: "Zap",
   },
   advanced: {
-    label: "Advanced",
-    description: "Challenging questions, minimal guidance, bar-raiser mode",
-    icon: "Award",
+    label: "Senior PM",
+    description: "5+ years experience",
+    subtitle: "High bar with strategic deep-dives",
+    icon: "Trophy",
   },
 } as const;
 
 export type DifficultyLevel = keyof typeof DIFFICULTY_LEVELS;
 
-export const FEEDBACK_MODES = {
-  real_time: {
-    label: "Real-time Feedback",
-    description: "Get immediate feedback during the interview",
-  },
-  end_only: {
-    label: "End Only",
-    description: "Receive comprehensive feedback after completion",
-  },
-  silent: {
-    label: "Silent Mode",
-    description: "No feedback during interview, focus on flow",
-  },
-} as const;
+/**
+ * Build full configuration from user's minimal choices
+ */
+export function buildFullConfig(
+  userConfig: MinimalInterviewConfig
+): InterviewConfig {
+  return {
+    ...userConfig,
+    ...SYSTEM_DEFAULTS,
+    duration: SMART_DURATION[userConfig.roundType],
+  };
+}
 
-export type FeedbackMode = keyof typeof FEEDBACK_MODES;
-
-export const DURATION_OPTIONS = [
-  { value: 15, label: "15 minutes", description: "Quick practice session" },
-  { value: 30, label: "30 minutes", description: "Standard interview" },
-  { value: 45, label: "45 minutes", description: "Extended deep dive" },
-] as const;
-
-export const EMOTION_OPTIONS = [
-  { value: "professional", label: "Professional" },
-  { value: "friendly", label: "Friendly" },
-  { value: "enthusiastic", label: "Enthusiastic" },
-  { value: "calm", label: "Calm" },
-  { value: "confident", label: "Confident" },
-  { value: "curious", label: "Curious" },
-] as const;
+/**
+ * Legacy: Keep for backward compatibility
+ * @deprecated Use SYSTEM_DEFAULTS instead
+ */
+export const DEFAULT_CONFIG: InterviewConfig = {
+  roundType: "product_sense",
+  difficulty: "intermediate",
+  ...SYSTEM_DEFAULTS,
+  duration: SMART_DURATION.product_sense,
+};
 
 /**
  * Get the appropriate duration for a round type
  */
 export function getDefaultDuration(roundType: RoundType): number {
-  return ROUND_TYPES[roundType].duration;
+  return SMART_DURATION[roundType];
 }
 
 /**
- * Validate interview configuration
+ * Convert recency selection to days for API query
+ * @deprecated Not needed in simplified flow (always use very_recent)
  */
-export function validateConfig(config: Partial<InterviewConfig>): boolean {
-  if (config.speed !== undefined && (config.speed < 0.6 || config.speed > 1.5)) {
-    return false;
+export function getRecentDays(recency: "very_recent" | "recent" | "all"): number | undefined {
+  switch (recency) {
+    case "very_recent":
+      return 365;
+    case "recent":
+      return 730;
+    case "all":
+      return undefined;
   }
-  if (config.volume !== undefined && (config.volume < 0.5 || config.volume > 2.0)) {
-    return false;
-  }
-  if (config.duration !== undefined && ![15, 30, 45].includes(config.duration)) {
-    return false;
-  }
-  return true;
 }

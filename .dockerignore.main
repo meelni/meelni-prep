@@ -1,0 +1,44 @@
+# .dockerignore for Main Interview Agent
+# Use this when deploying the main agent
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Environment files (secrets managed by LiveKit Cloud)
+.env
+.env.local
+.env.demo
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Exclude demo agent files (this is for main agent)
+demo_agent.py
+Dockerfile.demo
+
+# Test files
+test_greeting.py
+test_prompts.py
+show_sample_prompt.py
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

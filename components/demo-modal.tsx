@@ -9,10 +9,12 @@ import {
   useVoiceAssistant,
   useConnectionState,
   useRoomContext,
-  BarVisualizer,
+  useTrackVolume,
 } from "@livekit/components-react";
+import { Orb, AgentState as OrbAgentState } from "@/components/ui/orb";
+import { Track } from "livekit-client";
 import { ConnectionState } from "livekit-client";
-import { X, Mic, MicOff, Loader2, User, Bot, ArrowRight } from "lucide-react";
+import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 // Transcript message type
@@ -90,117 +92,6 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
   );
 }
 
-// Visualizer Panel Component
-function VisualizerPanel({
-  agentState,
-  audioTrack,
-  isConnected,
-}: {
-  agentState: string;
-  audioTrack: any;
-  isConnected: boolean;
-}) {
-  return (
-    <div className="relative flex flex-col items-center justify-center h-full p-6">
-      {/* Connection Status */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
-        {!isConnected ? (
-          <div className="flex items-center gap-2 text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-lg text-xs">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Connecting...</span>
-          </div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-2 text-primary bg-primary/10 px-3 py-1.5 rounded-lg text-xs"
-          >
-            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-            <span>Connected</span>
-          </motion.div>
-        )}
-      </div>
-
-      {/* Main Visualizer Area */}
-      <div className="relative flex-1 flex items-center justify-center w-full">
-        {/* Visualizer */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4 }}
-          className="relative w-full max-w-xl"
-        >
-          {isConnected ? (
-            <div className="relative h-48 flex items-center justify-center">
-              <BarVisualizer
-                state={agentState as any}
-                barCount={40}
-                trackRef={audioTrack}
-                className="h-full"
-              />
-            </div>
-          ) : (
-            <div className="h-48 w-full flex items-center justify-center">
-              <div className="flex gap-1 items-end h-32">
-                {[...Array(40)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-1 bg-muted/40 rounded-full"
-                    style={{ height: "20%" }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </motion.div>
-
-        {/* Center Avatar */}
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.1, type: "spring" }}
-          className="absolute inset-0 flex items-center justify-center pointer-events-none"
-        >
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg">
-            <span className="text-2xl font-bold text-background">M</span>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Agent State Indicator */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
-        {isConnected && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex items-center gap-2 bg-muted/50 px-4 py-2 rounded-lg text-sm"
-          >
-            {agentState === "thinking" && (
-              <div className="flex gap-1">
-                <div className="w-1 h-1 rounded-full bg-foreground/60 animate-bounce" />
-                <div
-                  className="w-1 h-1 rounded-full bg-foreground/60 animate-bounce"
-                  style={{ animationDelay: "0.1s" }}
-                />
-                <div
-                  className="w-1 h-1 rounded-full bg-foreground/60 animate-bounce"
-                  style={{ animationDelay: "0.2s" }}
-                />
-              </div>
-            )}
-            <p className="text-foreground/80">
-              {agentState === "listening" && "Listening..."}
-              {agentState === "thinking" && "Thinking..."}
-              {agentState === "speaking" && "Speaking..."}
-              {agentState === "idle" && "Ready"}
-            </p>
-          </motion.div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // Main Controls Component
 function DemoControls({ onClose }: { onClose: () => void }) {
   const { state, audioTrack } = useVoiceAssistant();
@@ -208,6 +99,100 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   const room = useRoomContext();
   const [isMuted, setIsMuted] = useState(false);
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
+  const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
+  const [sessionEnded, setSessionEnded] = useState(false);
+
+  // Debounced agent state to prevent flickering during speech pauses
+  const [debouncedAgentState, setDebouncedAgentState] = useState<string>("idle");
+  const stateChangeTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const lastSpeakingTimeRef = useRef<number>(0);
+
+  // Audio reactivity for Orb (same as interview page)
+  const userVolume = useTrackVolume(audioTrack?.publication?.track as any);
+  const firstRemoteParticipant = room?.remoteParticipants ? Array.from(room.remoteParticipants.values())[0] : undefined;
+  const agentAudioTrack = firstRemoteParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
+  const agentVolume = useTrackVolume(agentAudioTrack as any);
+
+  // Normalize volumes from 0-100
+  const normalizedUserVolume = Math.min(userVolume, 100) / 100;
+  const normalizedAgentVolume = Math.min(agentVolume, 100) / 100;
+
+  // Debounce agent state changes to prevent flickering during natural pauses
+  useEffect(() => {
+    const currentState = (state as string) || "idle";
+    const GRACE_PERIOD_MS = 600; // 600ms grace period for natural pauses
+
+    // If agent is speaking, update timestamp
+    if (currentState === "speaking") {
+      lastSpeakingTimeRef.current = Date.now();
+
+      // Immediately show speaking state
+      if (debouncedAgentState !== "speaking") {
+        setDebouncedAgentState("speaking");
+      }
+
+      // Clear any pending state change
+      if (stateChangeTimerRef.current) {
+        clearTimeout(stateChangeTimerRef.current);
+        stateChangeTimerRef.current = undefined;
+      }
+    } else if (currentState !== "speaking" && debouncedAgentState === "speaking") {
+      // Agent stopped speaking - check if we should wait before transitioning
+      const timeSinceLastSpeaking = Date.now() - lastSpeakingTimeRef.current;
+
+      if (timeSinceLastSpeaking < GRACE_PERIOD_MS) {
+        // Within grace period - delay the state change
+        if (!stateChangeTimerRef.current) {
+          stateChangeTimerRef.current = setTimeout(() => {
+            setDebouncedAgentState(currentState);
+            stateChangeTimerRef.current = undefined;
+          }, GRACE_PERIOD_MS - timeSinceLastSpeaking);
+        }
+      } else {
+        // Grace period passed - update immediately
+        setDebouncedAgentState(currentState);
+      }
+    } else if (currentState !== "speaking") {
+      // Non-speaking states (thinking, listening, idle) - update immediately
+      setDebouncedAgentState(currentState);
+
+      // Clear any pending timer
+      if (stateChangeTimerRef.current) {
+        clearTimeout(stateChangeTimerRef.current);
+        stateChangeTimerRef.current = undefined;
+      }
+    }
+
+    return () => {
+      if (stateChangeTimerRef.current) {
+        clearTimeout(stateChangeTimerRef.current);
+      }
+    };
+  }, [state, debouncedAgentState]);
+
+  // Timer effect - start countdown when connected
+  useEffect(() => {
+    const isConnected = connectionState === ConnectionState.Connected;
+
+    if (!isConnected || sessionEnded) return;
+
+    const interval = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1) {
+          setSessionEnded(true);
+          clearInterval(interval);
+          // Disconnect room after timeout
+          if (room) {
+            room.disconnect();
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [connectionState, room, sessionEnded]);
 
   // Listen for transcription events
   useEffect(() => {
@@ -294,93 +279,106 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   };
 
   const isConnected = connectionState === ConnectionState.Connected;
-  const agentState = state || "idle";
+  // Use debounced state for UI display to prevent flickering
+  const agentState = debouncedAgentState;
 
-  // Determine if audio is active
-  const isAudioActive = agentState === "speaking" || agentState === "thinking";
+  // Format time as MM:SS
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="relative h-full w-full flex bg-gradient-to-br from-black via-black to-purple-950/20">
       {/* Main area: Centered content */}
       <div className="flex-1 flex flex-col items-center justify-center relative px-16">
-        {/* Status indicator (top) */}
+        {/* Timer and Demo Badge (top-right) */}
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="absolute top-12 left-1/2 -translate-x-1/2"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.2 }}
+          className="absolute top-12 right-12"
         >
-          {!isConnected ? (
-            <div className="flex items-center gap-3 bg-white/5 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10">
-              <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
-              <span className="text-white/70 text-sm font-medium">Connecting to Meelni...</span>
-            </div>
-          ) : agentState === "listening" ? (
-            <div className="flex items-center gap-3 bg-blue-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-blue-500/20">
-              <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-              <span className="text-blue-100 text-sm font-medium">Listening</span>
-            </div>
-          ) : agentState === "thinking" ? (
-            <div className="flex items-center gap-3 bg-purple-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-purple-500/20">
-              <div className="flex gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" />
-                <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0.1s" }} />
-                <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0.2s" }} />
+          <div className="flex items-center gap-3">
+            {/* 5-Minute Demo Badge */}
+            {!isConnected && !sessionEnded && (
+              <div className="bg-primary/10 backdrop-blur-xl px-4 py-2 rounded-xl border border-primary/20">
+                <span className="text-primary text-xs font-semibold">5-MINUTE DEMO</span>
               </div>
-              <span className="text-purple-100 text-sm font-medium">Thinking</span>
-            </div>
-          ) : agentState === "speaking" ? (
-            <div className="flex items-center gap-3 bg-green-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-green-500/20">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-green-100 text-sm font-medium">Speaking</span>
-            </div>
-          ) : null}
+            )}
+
+            {/* Countdown Timer (when connected) */}
+            {isConnected && !sessionEnded && (
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className={`bg-white/5 backdrop-blur-xl px-5 py-2.5 rounded-xl border ${
+                  timeRemaining <= 60 ? "border-red-500/40 bg-red-500/10" : "border-white/10"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    timeRemaining <= 60 ? "bg-red-400 animate-pulse" : "bg-primary"
+                  }`} />
+                  <span className={`text-sm font-mono font-semibold tabular-nums ${
+                    timeRemaining <= 60 ? "text-red-200" : "text-white/90"
+                  }`}>
+                    {formatTime(timeRemaining)}
+                  </span>
+                  <span className="text-white/50 text-xs">remaining</span>
+                </div>
+              </motion.div>
+            )}
+          </div>
         </motion.div>
 
         {/* Central visual area */}
-        <div className="flex flex-col items-center gap-12">
-          {/* Avatar with subtle glow */}
-          <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-            className="relative"
-          >
-            {/* Subtle glow (only one layer) */}
-            <div className={`absolute inset-0 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 blur-xl transition-all duration-500 ${
-              isAudioActive ? "opacity-20 scale-110" : "opacity-5 scale-100"
-            }`} />
-
-            {/* Avatar */}
-            <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-purple-600 via-purple-500 to-blue-500 flex items-center justify-center shadow-lg border border-white/20">
-              <span className="text-5xl font-bold text-white">M</span>
-            </div>
-
-            {/* Pulse ring when listening */}
-            {agentState === "listening" && (
+        <div className="flex flex-col items-center justify-center gap-8">
+          {/* Orb Visualizer */}
+          <AnimatePresence mode="wait">
+            {sessionEnded ? (
               <motion.div
-                className="absolute inset-0 rounded-full border border-blue-400/50"
-                initial={{ scale: 1, opacity: 0.4 }}
-                animate={{ scale: 1.2, opacity: 0 }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-              />
-            )}
-          </motion.div>
-
-          {/* Visualizer (only shows when speaking/thinking) */}
-          <AnimatePresence>
-            {isAudioActive ? (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.8, y: 20 }}
-                transition={{ duration: 0.4, type: "spring" }}
-                className="w-full max-w-2xl"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="text-center space-y-6"
               >
-                <BarVisualizer
-                  state={agentState}
-                  barCount={60}
-                  trackRef={audioTrack}
-                  className="h-32"
+                <div className="space-y-3">
+                  <h2 className="text-3xl font-semibold text-white">
+                    Demo Complete!
+                  </h2>
+                  <p className="text-white/60 text-base max-w-lg mx-auto">
+                    Thank you for trying Meelni. Ready to practice with a full interview?
+                  </p>
+                </div>
+                <Link
+                  href="/setup"
+                  className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-background px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105"
+                >
+                  Start Full Interview
+                  <ArrowRight className="h-5 w-5" />
+                </Link>
+              </motion.div>
+            ) : isConnected ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.5, type: "spring" }}
+                className="w-[400px] h-[400px]"
+              >
+                <Orb
+                  colors={["oklch(0.70 0.22 285)", "oklch(0.55 0.22 285)"]}
+                  agentState={
+                    agentState === "thinking" ? "thinking" :
+                    agentState === "listening" ? "listening" :
+                    agentState === "speaking" ? "talking" :
+                    null
+                  }
+                  getInputVolume={() => normalizedUserVolume}
+                  getOutputVolume={() => normalizedAgentVolume}
+                  className="w-full h-full"
                 />
               </motion.div>
             ) : (
@@ -391,64 +389,102 @@ function DemoControls({ onClose }: { onClose: () => void }) {
                 className="text-center space-y-3"
               >
                 <h2 className="text-2xl font-semibold text-white/90">
-                  {isConnected ? "Ready to chat" : "Connecting..."}
+                  Connecting...
                 </h2>
                 <p className="text-white/50 text-sm max-w-md">
-                  {isConnected ? "Start speaking to begin your demo interview" : "Establishing secure connection..."}
+                  Establishing secure connection...
                 </p>
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Agent Status - below orb */}
+          {!sessionEnded && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              {!isConnected ? (
+                <div className="flex items-center gap-3 bg-white/5 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10">
+                  <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
+                  <span className="text-white/70 text-sm font-medium">Connecting to Meelni...</span>
+                </div>
+              ) : agentState === "listening" ? (
+                <div className="flex items-center gap-3 bg-blue-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-blue-500/20">
+                  <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                  <span className="text-blue-100 text-sm font-medium">Listening</span>
+                </div>
+              ) : agentState === "thinking" ? (
+                <div className="flex items-center gap-3 bg-purple-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-purple-500/20">
+                  <div className="flex gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0.1s" }} />
+                    <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0.2s" }} />
+                  </div>
+                  <span className="text-purple-100 text-sm font-medium">Thinking</span>
+                </div>
+              ) : agentState === "speaking" ? (
+                <div className="flex items-center gap-3 bg-green-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-green-500/20">
+                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-green-100 text-sm font-medium">Speaking</span>
+                </div>
+              ) : null}
+            </motion.div>
+          )}
         </div>
 
         {/* Bottom controls */}
-        <motion.div
-          initial={{ y: 50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="absolute bottom-12 left-1/2 -translate-x-1/2"
-        >
-          <div className="flex items-center gap-4 bg-white/5 backdrop-blur-2xl rounded-2xl px-8 py-4 border border-white/10 shadow-2xl">
-            {/* Mic button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={toggleMute}
-              disabled={!isConnected}
-              className={`
-                relative p-4 rounded-xl transition-all duration-300 shadow-lg
-                ${
-                  isMuted
-                    ? "bg-red-500/80 hover:bg-red-500"
-                    : "bg-white/10 hover:bg-white/20"
-                }
-                disabled:opacity-50 disabled:cursor-not-allowed
-              `}
-            >
-              {isMuted ? (
-                <MicOff className="h-5 w-5 text-white" />
-              ) : (
-                <Mic className="h-5 w-5 text-white" />
-              )}
-              {!isMuted && isConnected && (
-                <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-400 animate-pulse" />
-              )}
-            </motion.button>
+        {!sessionEnded && (
+          <motion.div
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 50, opacity: 0 }}
+            transition={{ delay: 0.4 }}
+            className="absolute bottom-12 left-1/2 -translate-x-1/2"
+          >
+            <div className="flex items-center gap-4 bg-white/5 backdrop-blur-2xl rounded-2xl px-8 py-4 border border-white/10 shadow-2xl">
+              {/* Mic button */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={toggleMute}
+                disabled={!isConnected}
+                className={`
+                  relative p-4 rounded-xl transition-all duration-300 shadow-lg
+                  ${
+                    isMuted
+                      ? "bg-red-500/80 hover:bg-red-500"
+                      : "bg-white/10 hover:bg-white/20"
+                  }
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                `}
+              >
+                {isMuted ? (
+                  <MicOff className="h-5 w-5 text-white" />
+                ) : (
+                  <Mic className="h-5 w-5 text-white" />
+                )}
+                {!isMuted && isConnected && (
+                  <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-400 animate-pulse" />
+                )}
+              </motion.button>
 
-            {/* Divider */}
-            <div className="w-px h-8 bg-white/10" />
+              {/* Divider */}
+              <div className="w-px h-8 bg-white/10" />
 
-            {/* Close button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={onClose}
-              className="p-4 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-300 shadow-lg"
-            >
-              <X className="h-5 w-5 text-white" />
-            </motion.button>
-          </div>
-        </motion.div>
+              {/* Close button */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={onClose}
+                className="p-4 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-300 shadow-lg"
+              >
+                <X className="h-5 w-5 text-white" />
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
       </div>
 
       {/* Right sidebar: Transcript (terminal-style) */}

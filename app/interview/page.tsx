@@ -6,12 +6,12 @@ import { useAuth } from "@/app/providers/auth-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { sessionKeys } from "@/lib/api/queries";
 import { LiveKitRoomWrapper, TranscriptTurn } from "@/components/interview/livekit-room";
-import { AgentStatus } from "./components/agent-status";
 import { TranscriptPanel } from "./components/transcript-panel";
 import { AudioVisualizer } from "./components/audio-visualizer";
 import { InterviewControls } from "./components/interview-controls";
 import { TimerDisplay } from "./components/timer-display";
 import { EndSessionModal } from "./components/end-session-modal";
+import { ConnectionIndicator } from "./components/connection-indicator";
 import {
   NudgeOverlay,
   Nudge,
@@ -27,6 +27,11 @@ interface InterviewSession {
   livekit_room_name: string;
   started_at: string;
   config: any;
+  question?: {
+    id: string;
+    text: string;
+    company: string | null;
+  } | null;
 }
 
 function InterviewPageContent() {
@@ -41,6 +46,7 @@ function InterviewPageContent() {
   const voice = searchParams.get("voice");
   const speed = searchParams.get("speed");
   const emotion = searchParams.get("emotion");
+  const questionId = searchParams.get("questionId"); // Optional: pre-selected question
 
   // Session info (after session is created)
   const sessionId = searchParams.get("sessionId");
@@ -110,6 +116,7 @@ function InterviewPageContent() {
         body: JSON.stringify({
           roundType,
           mode,
+          questionId: questionId || undefined, // Include questionId if present
           config: {
             voice,
             speed: speed ? parseFloat(speed) : 1.0,
@@ -144,6 +151,7 @@ function InterviewPageContent() {
           roundType,
           mode,
         },
+        question: data.question || null,
       });
       setLoading(false);
     } catch (err) {
@@ -381,7 +389,6 @@ function InterviewPageContent() {
       <RoomAudioRenderer />
       <InterviewRoomContent
         session={session}
-        agentState={agentState}
         transcript={transcript}
         isMuted={isMuted}
         transcriptSaveErrors={transcriptSaveErrors}
@@ -405,7 +412,6 @@ function InterviewPageContent() {
 
 interface InterviewRoomContentProps {
   session: InterviewSession;
-  agentState: "idle" | "listening" | "thinking" | "speaking";
   transcript: TranscriptTurn[];
   isMuted: boolean;
   transcriptSaveErrors: number;
@@ -415,7 +421,6 @@ interface InterviewRoomContentProps {
 
 function InterviewRoomContent({
   session,
-  agentState,
   transcript,
   isMuted,
   transcriptSaveErrors,
@@ -439,7 +444,7 @@ function InterviewRoomContent({
         <div className="container max-w-7xl mx-auto h-16 px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-full">
             <div className="flex items-center gap-4">
-              <AgentStatus state={agentState} />
+              <ConnectionIndicator />
               {session.config?.roundType && (
                 <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
                   <span className="text-primary font-medium">
@@ -471,21 +476,50 @@ function InterviewRoomContent({
 
       {/* Main Content */}
       <main className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Question Display */}
+        {session.question && (
+          <div className="mb-6 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 border border-primary/20 rounded-xl p-6 shadow-sm">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="flex items-center gap-3">
+                <div className="px-3 py-1 bg-primary/10 border border-primary/30 rounded-full">
+                  <span className="text-xs font-semibold text-primary uppercase tracking-wider">
+                    Interview Question
+                  </span>
+                </div>
+                {session.question.company && (
+                  <div className="px-3 py-1 bg-background/50 border border-border rounded-full">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {session.question.company}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-wrap">
+              {session.question.text}
+            </p>
+          </div>
+        )}
+
+        {/* Grid Layout: AudioVisualizer (with Orb) + Transcript Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
-          {/* Center: Audio Visualizer */}
-          <div className="lg:col-span-2 flex items-center justify-center">
-            <div className="w-full h-full max-h-[400px]">
+          {/* Center: AudioVisualizer (contains Orb + state indicators) + Controls */}
+          <div className="lg:col-span-2 flex flex-col items-center justify-center gap-12">
+            <div className="w-full h-full max-h-[500px]">
               <AudioVisualizer />
             </div>
+            <InterviewControls
+              isMuted={isMuted}
+              onToggleMute={onToggleMute}
+              onEndSession={onEndSession}
+            />
           </div>
 
           {/* Right Sidebar: Transcript */}
           <div className="lg:col-span-1 bg-surface border border-border rounded-xl overflow-hidden">
             <div className="p-4 border-b border-border bg-muted/50">
               <h2 className="text-lg font-semibold">Transcript</h2>
-              <p className="text-xs text-muted-foreground">
-                Live conversation transcript
-              </p>
+              <p className="text-xs text-muted-foreground">Live conversation transcript</p>
             </div>
             <div className="h-[calc(100%-80px)]">
               <TranscriptPanel turns={transcript} />
@@ -493,13 +527,6 @@ function InterviewRoomContent({
           </div>
         </div>
       </main>
-
-      {/* Controls */}
-      <InterviewControls
-        isMuted={isMuted}
-        onToggleMute={onToggleMute}
-        onEndSession={onEndSession}
-      />
     </div>
   );
 }

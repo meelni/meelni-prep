@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sidebar } from "./sidebar";
-import { Toolbar } from "./toolbar";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -11,6 +10,8 @@ interface DashboardLayoutProps {
   totalSessions?: number;
   totalMinutes?: number;
   avgScore?: number;
+  user?: any;
+  onSignOut?: () => void;
 }
 
 export function DashboardLayout({
@@ -20,8 +21,22 @@ export function DashboardLayout({
   totalSessions,
   totalMinutes,
   avgScore,
+  user,
+  onSignOut,
 }: DashboardLayoutProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Initialize from localStorage to prevent animation on page load
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sidebar-collapsed");
+      return saved === "true";
+    }
+    return false;
+  });
+
+  // Persist to localStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   return (
     <div className="flex h-screen bg-background">
@@ -34,6 +49,8 @@ export function DashboardLayout({
         totalSessions={totalSessions}
         totalMinutes={totalMinutes}
         avgScore={avgScore}
+        user={user}
+        onSignOut={onSignOut}
       />
 
       {/* Mobile Overlay */}
@@ -44,15 +61,9 @@ export function DashboardLayout({
         />
       )}
 
-      {/* Main Content */}
-      <div className={`flex-1 flex flex-col ${!sidebarCollapsed ? "md:ml-0" : ""}`}>
-        {/* Top Toolbar */}
-        <Toolbar activeSection={activeSection} />
-
-        {/* Dashboard Content */}
-        <div className="flex-1 overflow-auto">
-          {children}
-        </div>
+      {/* Main Content - NO TOOLBAR */}
+      <div className="flex-1 overflow-auto">
+        {children}
       </div>
     </div>
   );

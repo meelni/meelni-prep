@@ -36,7 +36,13 @@ class InterviewAgent(Agent):
 
 def prewarm(proc: JobProcess):
     """Prewarm function to load VAD model before agent starts"""
-    proc.userdata["vad"] = silero.VAD.load()
+    # Configure VAD with explicit thresholds to match frontend sensitivity
+    proc.userdata["vad"] = silero.VAD.load(
+        min_speech_duration=0.2,      # Minimum speech duration in seconds
+        min_silence_duration=0.6,     # Wait 600ms of silence before end-of-speech
+        padding_duration=0.1,          # Padding before/after speech
+        activation_threshold=0.5,      # Voice activity threshold (0-1), balanced sensitivity
+    )
 
 
 async def entrypoint(ctx: JobContext):
@@ -45,11 +51,12 @@ async def entrypoint(ctx: JobContext):
 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    # Parse room metadata to get round type and config
+    # Parse room metadata to get round type, question, and config
     room_metadata = ctx.room.metadata or "{}"
     metadata = parse_room_metadata(room_metadata)
     round_type = metadata["round_type"]
     config = metadata["config"]
+    question = metadata.get("question")  # NEW: Extract question from metadata
 
     logger.info(f"Room: {ctx.room.name}")
     logger.info(f"Round Type: {round_type}")
@@ -57,21 +64,36 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Feedback Mode: {config['feedback_mode']}")
     logger.info(f"Duration: {config['duration']} minutes")
 
-    # Build dynamic prompt based on round type and config
+    # NEW: Log question info if provided
+    if question:
+        question_text = question.get("question_text", "")
+        company = question.get("company", "N/A")
+        logger.info(f"Question from bank: '{question_text[:60]}...' (Company: {company})")
+    else:
+        logger.info("No specific question provided - agent will generate questions")
+
+    # Build dynamic prompt based on round type, config, and question
     try:
-        instructions = build_agent_prompt(round_type, config)
+        # NEW: Pass question to prompt builder
+        instructions = build_agent_prompt(round_type, config, question)
         logger.info(f"Generated prompt for {round_type} interview (difficulty: {config['difficulty']})")
     except ValueError as e:
         logger.error(f"Failed to build prompt: {e}. Using fallback product_sense prompt.")
-        instructions = build_agent_prompt("product_sense", config)
+        # NEW: Pass question to fallback prompt as well
+        instructions = build_agent_prompt("product_sense", config, question)
 
     # Extract model settings from config
     stt_model = config.get("stt_model", "deepgram/nova-3")
-    llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
-    tts_model = config.get("tts_model", "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b")
+    llm_model = config.get("llm_model", "openai/gpt-4o")
+
+    # Default to ElevenLabs voice (via LiveKit Inference - no API key needed)
+    # Voice ID: cgSgspJ2msm6clMCkdW9
+    # Format: elevenlabs/model:voiceId
+    default_voice_id = "cgSgspJ2msm6clMCkdW9"
+    tts_model = config.get("tts_model", f"elevenlabs/eleven_turbo_v2_5:{default_voice_id}")
 
     # Extract TTS parameters from config
-    voice_id = config.get("voice", "6ccbfb76-1fc6-48f7-b71d-91ac6298247b")
+    voice_id = config.get("voice", default_voice_id)
     speed = config.get("speed", 1.0)
     emotion = config.get("emotion", "professional")
     volume = config.get("volume", 1.0)
@@ -83,13 +105,13 @@ async def entrypoint(ctx: JobContext):
     logger.info("Initializing voice agent session with LiveKit inference...")
 
     # Note: Using string-based TTS model with LiveKit Inference
-    # cartesia.TTS() requires CARTESIA_API_KEY even with LiveKit Inference
-    # String format works without API key and voice is embedded in tts_model string
-    # TODO: Add CARTESIA_API_KEY to .env if we need per-user voice/speed/emotion customization
+    # ElevenLabs is available through LiveKit Inference - NO API KEY NEEDED!
+    # String format: "elevenlabs/model:voiceId"
+    # Supports all default ElevenLabs voices (custom/cloned voices require ElevenLabs plugin)
     session = AgentSession(
         stt=stt_model,
         llm=llm_model,
-        tts=tts_model,  # String format: "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
+        tts=tts_model,  # String format: "elevenlabs/eleven_turbo_v2_5:56bWURjYFHyYyVf490Dp"
         vad=ctx.proc.userdata["vad"],
     )
 
@@ -108,9 +130,9 @@ async def entrypoint(ctx: JobContext):
             # Publish via LiveKit data track
             logger.info(f"[Transcript] User: {event.transcript[:50]}...")
 
-            # Use asyncio.create_task for async operation within sync callback
+            # Schedule async operation safely using ensure_future
             import asyncio
-            asyncio.create_task(
+            asyncio.ensure_future(
                 ctx.room.local_participant.publish_data(
                     json.dumps(transcript_data).encode("utf-8"),
                     topic="transcript"
@@ -126,6 +148,20 @@ async def entrypoint(ctx: JobContext):
         # Add a callback to get the full text when speech is done
         def on_speech_done(handle):
             try:
+                # Only send transcript if speech was actually delivered (not interrupted)
+                # Check if the speech was cancelled/interrupted
+                if hasattr(handle, 'interrupted') and handle.interrupted:
+                    logger.info("[Transcript] Agent speech interrupted - not sending to transcript")
+                    return
+
+                # Additional check: verify speech_duration indicates actual delivery
+                # If speech_duration is 0 or very small, it was likely interrupted
+                if hasattr(handle, 'speech_duration'):
+                    duration = getattr(handle, 'speech_duration', 0)
+                    if duration < 0.1:  # Less than 100ms means not actually spoken
+                        logger.info(f"[Transcript] Agent speech too short ({duration}s) - likely interrupted")
+                        return
+
                 # Extract text from chat items
                 agent_text = ""
                 for chat_item in handle.chat_items:
@@ -152,9 +188,9 @@ async def entrypoint(ctx: JobContext):
 
                     logger.info(f"[Transcript] Agent: {agent_text[:50].strip()}...")
 
-                    # Use asyncio.create_task for async operation within sync callback
+                    # Schedule async operation safely using ensure_future
                     import asyncio
-                    asyncio.create_task(
+                    asyncio.ensure_future(
                         ctx.room.local_participant.publish_data(
                             json.dumps(transcript_data).encode("utf-8"),
                             topic="transcript"
@@ -167,6 +203,9 @@ async def entrypoint(ctx: JobContext):
 
     logger.info("Transcript event handlers registered successfully")
 
+    # Start session and wait for it to be fully ready
+    # Note: Do NOT call session.say() before session.start() completes!
+    # Calling say() on an uninitialized session breaks the TTS pipeline
     await session.start(
         agent=InterviewAgent(instructions=instructions),
         room=ctx.room

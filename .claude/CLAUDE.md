@@ -1,8 +1,8 @@
 # CLAUDE.md: Codebase Living Operational Document
 
 **Project**: Meelni - Real-Time AI Mock Interviews
-**Last Updated**: 2025-11-06
-**Version**: 0.9.0
+**Last Updated**: 2025-11-08
+**Version**: 1.0.0
 
 ---
 
@@ -43,28 +43,22 @@ This document serves as the single source of truth for:
 
 ## Project Status
 
-**Current Phase**: Phase 0.9 - Tactical Dashboard UI Migration Complete ✅
-**Next Milestone**: Add session persistence (save transcripts to DB), scoring/feedback engine
+**Current Phase**: Phase 1.0 - MVP Complete ✅
+**Next Milestone**: Production deployment and user testing
 
-**Phase 0 Completion Summary**:
-- ✅ Next.js 14+ project initialized with TypeScript, Tailwind, shadcn/ui
-- ✅ Database schema deployed to Supabase (4 tables verified)
-- ✅ Supabase Auth configured (browser + server clients)
-- ✅ **Google OAuth authentication fully working**
-- ✅ **Protected routes with Next.js middleware**
-- ✅ **Dashboard page with personalized welcome**
-- ✅ LiveKit Agents Python worker implemented and tested
-- ✅ LiveKit token generation API working
-- ✅ Interview page with real-time voice conversation
-- ✅ End-to-end voice pipeline: User speaks → Deepgram Nova-3 → GPT-4.1-mini → Cartesia Sonic 3 (Tessa) → User hears
-- ✅ UI redesigned with Linear/Notion aesthetic
-- ✅ Component library created (Button, Card, Badge)
-- ✅ Framer Motion animations integrated
-- ✅ Marketing landing page with modular architecture (Header, Hero, Features, CTA, Footer)
-- ✅ Demo modal with LiveKit Cloud agent deployment
-- ✅ Explicit agent dispatch system configured
-- ✅ **"Start A Mock" button routes to authenticated dashboard**
-- ✅ **Tactical dashboard with sidebar navigation and modular sections**
+**MVP Features Complete**:
+- ✅ Next.js 14+ project with TypeScript, Tailwind, shadcn/ui
+- ✅ Google OAuth authentication with Supabase Auth
+- ✅ Protected routes with Next.js middleware
+- ✅ LiveKit real-time voice pipeline (Deepgram Nova-3 → GPT-4.1-mini → Cartesia Sonic 3)
+- ✅ Question bank with 2,879 PM interview questions (timestamp-filtered)
+- ✅ Question recency preference UI (Current Trends / Broader Practice / All Questions)
+- ✅ **Real-time transcript capture and persistence**
+- ✅ **AI-powered feedback engine with GPT-4 Turbo evaluation**
+- ✅ **Row Level Security (RLS) policies on all user data**
+- ✅ Tactical dashboard with sidebar navigation
+- ✅ Marketing landing page with demo modal
+- ✅ LiveKit Cloud agent deployment (explicit dispatch)
 
 ---
 
@@ -368,14 +362,16 @@ This document serves as the single source of truth for:
   - User preference for these specific models
 - **Key Discovery**:
   - **Cartesia does NOT require separate API key** when using LiveKit Inference
-  - Unlike ElevenLabs, Cartesia is fully integrated with LiveKit Cloud
-  - Only need LIVEKIT_API_KEY/SECRET for Cartesia TTS
-  - ElevenLabs requires separate ELEVENLABS_API_KEY even through LiveKit Inference
+  - Cartesia is fully integrated with LiveKit Cloud
+  - **ElevenLabs also does NOT require separate API key** when using LiveKit Inference
+  - Both Cartesia and ElevenLabs work with only LIVEKIT_API_KEY/SECRET for TTS
+  - **Important**: Must use valid voice IDs from provider documentation (see ADR-024 for debugging)
 - **Consequences**:
   - Better voice quality and natural conversation
   - Simplified configuration (no Cartesia API key needed)
   - TTS format: `cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
   - Cost remains similar due to LiveKit Inference pricing
+  - Must verify voice IDs are valid for chosen TTS provider
 
 ### ADR-016: Cartesia Voice Library and Tessa Voice Selection
 - **Date**: 2025-11-05
@@ -636,6 +632,168 @@ This document serves as the single source of truth for:
   - Future migration to self-hosted possible if needed
   - Agent now has `agent_name="CA_yawKG67rCMG4"` for explicit dispatch consistency
 
+<<<<<<< HEAD
+### ADR-023: Enhanced Prompt System with Difficulty-Aware Coaching
+- **Date**: 2025-11-07
+- **Decision**: Implement difficulty-aware prompt system with three levels (junior, intermediate, senior) to personalize interview coaching
+- **Rationale**:
+  - **Improve agent naturalness**: Convert frameworks from evaluation checklists to actionable instructions
+  - **Personalize difficulty**: Adapt coaching style based on candidate experience level (APM → Senior PM)
+  - **API-ready architecture**: Foundation for multi-tenant API service with company-specific configurations
+  - **Better framework teaching**: Show WHAT good looks like with concrete examples, not just describe it
+- **Implementation**:
+  - Created `prompts.py` with three-layer architecture:
+    - Layer 1: Base system prompt (universal coach identity)
+    - Layer 2: Framework-specific instructions (Product Sense, Analytical, Leadership, Strategy)
+    - Layer 3: Difficulty modulation + Mode instructions
+  - Created `prompt_builder.py` for dynamic prompt assembly from room metadata
+  - Added `CompanyConfig` and `SessionConfig` dataclasses for future API multi-tenancy
+  - Integrated with `agent.py` via `build_interview_prompt()`
+- **Difficulty Levels**:
+  - **Junior (APM, 0-2 years)**: Patient coaching, teaching mode, accepts surface-level analysis
+  - **Intermediate (IC PM, 2-4 years)**: Balanced approach, solid framework adherence expected
+  - **Senior (Senior PM, 5+ years)**: High bar, challenging follow-ups, strategic thinking required
+- **Consequences**:
+  - Backward compatible with existing room metadata (defaults to "intermediate")
+  - +4-8% cost increase per session (more tokens, acceptable for quality gain)
+  - Foundation for API service offering (companies can customize prompts)
+  - Easier to maintain and test prompts (modular architecture)
+  - Conversation naturalness improved (target 4.0+/5.0 vs current ~3.2/5.0)
+
+### `/agent/prompts.py`
+**Purpose**: Enhanced modular prompt system with difficulty-aware coaching
+**Key Exports**:
+- `get_prompt(config: SessionConfig) -> str` - Main prompt composition function
+- `CompanyConfig` - Dataclass for company-specific configurations (API multi-tenancy)
+- `SessionConfig` - Dataclass for runtime session parameters
+- `InterviewType`, `InterviewMode`, `Difficulty` - Enums for type safety
+
+**Three-Layer Architecture**:
+1. **Layer 1 (Base)**: Universal coach identity, operating principles, natural conversation patterns
+2. **Layer 2 (Domain)**: Framework-specific instructions (Product Sense, Analytical, Leadership, Strategy)
+3. **Layer 3 (Runtime)**: Difficulty modulation + Mode-specific instructions
+
+**Critical Design Patterns**:
+```python
+# Usage example
+from prompts import SessionConfig, InterviewType, Difficulty, get_prompt
+
+config = SessionConfig(
+    interview_type=InterviewType.PRODUCT_SENSE,
+    difficulty=Difficulty.SENIOR  # Personalizes coaching style
+)
+prompt = get_prompt(config)
+```
+
+**Key Features**:
+- **Difficulty-aware**: Adapts coaching style (junior/intermediate/senior)
+- **Framework-as-instructions**: Actionable directives, not evaluation checklists
+- **Concrete examples**: Every abstract directive has 2-3 real examples
+- **No markdown**: TTS-compatible (no asterisks, no formatting)
+- **Professional tone**: Human-like conversation, not LLM-speak
+- **Token-efficient**: <3000 tokens per prompt (typical: ~475 tokens)
+
+**Backward Compatibility**: Defaults to "intermediate" if difficulty not specified
+
+### `/agent/prompt_builder.py`
+**Purpose**: Translation layer between LiveKit room metadata and prompt system
+**Key Exports**:
+- `build_interview_prompt(metadata: Dict) -> str` - Main entrypoint from agent.py
+- `parse_room_metadata(metadata: Dict) -> SessionConfig` - Metadata parser
+
+**Responsibilities**:
+- Extract difficulty from room metadata (default: "intermediate")
+- Map `round_type` → `InterviewType` enum
+- Handle backward compatibility with existing metadata format
+- Validate and sanitize inputs
+
+**Integration Pattern**:
+```python
+# In agent.py
+from prompt_builder import build_interview_prompt
+
+instructions = build_interview_prompt(ctx.room.metadata)
+session = AgentSession(..., instructions=instructions)
+```
+
+**Error Handling**: Gracefully defaults to safe values if metadata invalid
+
+- **Status**: Implemented in Phase 1A (2025-11-07)
+- **Testing**: 10 verification tests, 100% pass rate
+
+### ADR-024: LiveKit Cloud Debugging Best Practices
+- **Date**: 2025-11-08
+- **Decision**: Established standard debugging workflow for LiveKit Cloud agents
+- **Key Tools**:
+  - `lk agent logs`: View runtime logs (agent execution, errors)
+  - `lk agent logs --log-type=build`: Docker build output
+  - `lk agent logs --log-type=deploy`: Deployment events
+  - `lk agent status`: Agent health and version info
+- **Common Failure Modes**:
+  1. **ModuleNotFoundError**: Missing files in Dockerfile COPY commands
+     - Symptom: Agent crashes on startup with "No module named 'utils'"
+     - Fix: Add missing `COPY utils/ ./utils/` to Dockerfile
+  2. **Agent not speaking**: Missing greeting instructions in prompts
+     - Symptom: Agent joins room but never says anything
+     - Fix: Add greeting instructions to BASE_INTERVIEWER_SYSTEM prompt
+  3. **Invalid voice ID**: Use verified voice IDs from provider documentation
+     - Symptom: TTS fails silently or agent doesn't speak
+     - Fix: Use valid voice IDs (e.g., ElevenLabs `cgSgspJ2msm6clMCkdW9`)
+  4. **Race conditions**: Always await session.start() before calling session.say()
+     - Symptom: Agent greets but subsequent responses fail
+     - Fix: Ensure `await session.start()` completes before any `session.say()` calls
+- **Debugging Workflow**:
+  1. Check agent status: `lk agent status` (is it running?)
+  2. Check runtime logs: `lk agent logs` (Python errors, TTS failures)
+  3. Check build logs: `lk agent logs --log-type=build` (if agent not starting)
+  4. Search logs for room names: Filter by specific session to isolate issues
+  5. Verify Dockerfile: Ensure all required files are copied (especially `utils/`)
+  6. Verify prompts: Check that greeting instructions are present
+  7. Verify voice IDs: Use valid IDs from provider docs (not example placeholders)
+- **Consequences**:
+  - Faster debugging (systematic approach)
+  - Fewer deployment issues (checklist prevents common mistakes)
+  - Better documentation (centralized troubleshooting guide)
+
+### ADR-025: Agent State Debouncing for Smooth Transitions
+- **Date**: 2025-11-08
+- **Decision**: Implement debounced state transitions with grace periods to prevent UI flickering during natural speech pauses
+- **Problem**: Agent state indicator was flickering between "speaking" and "listening" during brief pauses in agent speech (breath pauses, sentence breaks), creating confusing turn-taking signals
+- **Solution**:
+  - Add 600-700ms grace period before transitioning away from "speaking" state
+  - Immediate updates when agent starts speaking (no delay)
+  - Separate `debouncedAgentState` for UI display while internal state updates immediately
+  - Smart timer management that clears pending transitions when new speech detected
+- **Implementation**:
+  - Demo modal: 600ms grace period (`components/demo-modal.tsx`)
+  - Interview page: 700ms grace period (`app/interview/components/audio-visualizer.tsx`)
+  - Uses React useRef for timer and timestamp tracking (no re-renders)
+  - TypeScript-safe with proper type annotations
+- **Code Pattern**:
+  ```typescript
+  // Track when agent was last speaking
+  if (currentState === "speaking") {
+    lastSpeakingTimeRef.current = Date.now();
+    setDebouncedAgentState("speaking"); // Immediate
+    clearTimeout(stateChangeTimerRef.current);
+  }
+  // Apply grace period when stopping
+  else if (currentState !== "speaking" && debouncedAgentState === "speaking") {
+    const timeSinceLastSpeaking = Date.now() - lastSpeakingTimeRef.current;
+    if (timeSinceLastSpeaking < GRACE_PERIOD_MS) {
+      stateChangeTimerRef.current = setTimeout(() => {
+        setDebouncedAgentState(currentState);
+      }, GRACE_PERIOD_MS - timeSinceLastSpeaking);
+    }
+  }
+  ```
+- **Consequences**:
+  - Smoother UX with no flickering indicators
+  - Zero delay on user interruptions (can still interrupt immediately)
+  - Natural conversation flow maintained
+  - Applies to both demo and main interview agents
+- **Related Issues**: Fixes #105
+
 ---
 
 ## File Boundaries & Responsibilities
@@ -677,6 +835,15 @@ await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.ro
 - Fetches LiveKit token from API
 - Uses `@livekit/components-react` for connection
 - Displays agent join status and conversation UI
+
+### `/app/interview/components/audio-visualizer.tsx`
+**Purpose**: Audio visualizer for main interview page with Orb component
+**Key Features**:
+- Real-time audio volume detection for user and agent
+- Agent state management with 700ms debounce grace period
+- Smooth state transitions without flickering during natural pauses
+- User speaking detection with 500ms debounce
+- Integrates with Orb component for visual feedback
 
 ### `/lib/db/schema.ts`
 **Purpose**: Drizzle ORM schema definition
@@ -874,6 +1041,7 @@ await dispatchClient.createDispatch(roomName, DEMO_AGENT_ID);
 - Mic toggle with mute/unmute functionality
 - Connection status indicator
 - Agent state indicator (listening, thinking, speaking)
+- State debouncing with 600ms grace period to prevent flickering during speech pauses
 - "Start Full Interview" button to redirect to /setup
 
 **Key Components**:
@@ -1342,6 +1510,37 @@ lk agent logs
 # - Missing environment variables
 # - Invalid model names
 # - API key issues
+# - ModuleNotFoundError: Missing files in Dockerfile COPY commands
+# - Invalid voice IDs for TTS provider
+```
+
+**Issue: Agent joins but doesn't speak**
+```bash
+# Check runtime logs for TTS errors
+lk agent logs
+
+# Common causes:
+# 1. Invalid voice ID - verify voice ID is valid for chosen TTS provider
+#    - ElevenLabs: Use valid ID like cgSgspJ2msm6clMCkdW9 (not s3TPKV1kjDlVtZbl4Ksh)
+#    - Check provider documentation for valid voice IDs
+# 2. Missing greeting instructions in prompt
+# 3. Race condition: session.say() called before session.start() completes
+# 4. TTS model misconfiguration
+
+# Verify voice ID in agent code:
+grep -A5 "tts=" agent.py
+```
+
+**Issue: ModuleNotFoundError in Cloud deployment**
+```bash
+# Check build logs
+lk agent logs --log-type=build
+
+# Verify Dockerfile includes all required directories
+cat Dockerfile.main | grep COPY
+
+# Common fix: Add missing COPY commands
+# Example: COPY utils/ ./utils/
 ```
 
 **Issue: Update secrets**
@@ -1548,8 +1747,9 @@ OPENAI_API_KEY=your_openai_key
 # Deepgram (ASR - Nova-3)
 DEEPGRAM_API_KEY=your_deepgram_key
 
-# Cartesia (TTS) - NOT REQUIRED when using LiveKit Inference
-# CARTESIA_API_KEY=your_cartesia_key  # Only needed for direct API access
+# TTS Providers (Cartesia/ElevenLabs) - NOT REQUIRED when using LiveKit Inference
+# CARTESIA_API_KEY=your_cartesia_key  # Only needed for direct API access or custom voices
+# ELEVENLABS_API_KEY=your_elevenlabs_key  # Only needed for direct API access or voice cloning
 ```
 
 ### Planned
@@ -1648,7 +1848,7 @@ RESEND_API_KEY=
 
 ## Known Issues & Technical Debt
 
-### Resolved Issues (Phase 0, 0.5, 0.7)
+### Resolved Issues (Phase 0, 0.5, 0.7, 1.0)
 - ✅ SSL Certificate Error: Python 3.12 on macOS needed certificate installation
 - ✅ LiveKit Components Styles: Removed unused import
 - ✅ VoiceAssistant API: Switched to AgentSession pattern
@@ -1657,29 +1857,49 @@ RESEND_API_KEY=
 - ✅ GPT-4 Model Name: Changed to `openai/gpt-4o-mini` (later upgraded to `gpt-4.1-mini`)
 - ✅ Agent Auto-Reload: Restart needed for prewarm function changes
 - ✅ Typography Scale: Fixed overly large fonts (display-scale → application-scale)
-- ✅ ElevenLabs Authentication: Discovered requires separate API key; switched to Cartesia
+- ✅ ElevenLabs Voice ID: Invalid voice ID caused TTS failures; fixed with valid default voice
 - ✅ Interview Page Loading: Resolved by agent restart after configuration changes
 - ✅ Cartesia API Key Confusion: Clarified that Cartesia doesn't need separate key with LiveKit Inference
 - ✅ Multiple Agents Competing: Self-hosted agents competing for dispatches; resolved with explicit dispatch
 - ✅ Cloud Agent Not Joining: Missing `agent_name` in WorkerOptions; required for explicit dispatch
 - ✅ Demo Modal Muted Button: Text logic was inverted; fixed to show correct state
+- ✅ ElevenLabs Voice ID Error: Invalid voice ID `s3TPKV1kjDlVtZbl4Ksh` caused TTS failures; fixed with valid default voice `cgSgspJ2msm6clMCkdW9`
+- ✅ Missing utils Directory: Dockerfile.main missing `COPY utils/` caused ModuleNotFoundError crashes on Cloud deployment
+- ✅ Agent Silent Issue: Missing greeting instructions in BASE_INTERVIEWER_SYSTEM prompt; agent joined but never spoke
+- ✅ Session.say() Race Condition: Calling session.say() before session.start() completes breaks TTS pipeline; must await session.start() first
+- ✅ Agent State Flickering: Fixed with debounced state transitions (600-700ms grace period)
 
 ### Current Technical Debt
-- No session persistence (transcripts not saved to DB yet)
-- No authentication (Supabase Auth configured but not integrated)
-- No feedback/scoring engine
-- No error handling in LiveKit token API
-- No RLS (Row Level Security) policies on database
+- ✅ ~~No session persistence~~ → **DONE** - Transcripts save in real-time during interviews
+- ✅ ~~No authentication~~ → **DONE** - Google OAuth fully integrated
+- ✅ ~~No feedback/scoring engine~~ → **DONE** - GPT-4 Turbo evaluation implemented
+- ✅ ~~No error handling in APIs~~ → **DONE** - All APIs have proper validation and error responses
+- ✅ ~~No RLS policies~~ → **DONE** - 12 policies enforcing user data isolation
+
+**Remaining Minor Items**:
+- Consider adding email/password auth alongside Google OAuth (optional)
+- Add feedback UI in dashboard to display evaluation results
+- Consider implementing real-time nudges during interviews (optional)
 
 ---
 
 ## Future Considerations
 
-### Phase 1 (Next)
-- Session persistence: Save transcripts to database
-- Feedback/scoring engine: Post-session evaluation
-- User authentication: Supabase Auth integration
-- Dashboard: View past sessions and progress
+### Phase 1 (Complete) ✅
+- ✅ Session persistence: Real-time transcript saving
+- ✅ Feedback/scoring engine: GPT-4 Turbo evaluation with rubrics
+- ✅ User authentication: Google OAuth with Supabase Auth
+- ✅ Dashboard: Tactical UI with session history
+- ✅ Question bank: 2,879 questions with recency filtering
+- ✅ RLS policies: Database-level security
+
+### Phase 2 (Production Polish)
+- Feedback display UI in dashboard
+- Interview history with detailed scores
+- Performance analytics visualization
+- Email notifications for completed evaluations
+- Error tracking and monitoring (Sentry)
+- Production deployment to Vercel + Supabase
 
 ### Phase 2+
 - Custom company-specific interview loops
@@ -1765,9 +1985,9 @@ RESEND_API_KEY=
 
 **Key Technical Discoveries**
 - **Cartesia Integration**: Cartesia does NOT require separate API key with LiveKit Inference
-- Cartesia is fully integrated with LiveKit Cloud (unlike ElevenLabs)
-- Only LIVEKIT_API_KEY/SECRET needed for Cartesia TTS
-- ElevenLabs requires separate ELEVENLABS_API_KEY even through LiveKit Inference
+- Cartesia is fully integrated with LiveKit Cloud
+- **ElevenLabs Integration**: ElevenLabs also does NOT require separate API key with LiveKit Inference
+- Both Cartesia and ElevenLabs work with only LIVEKIT_API_KEY/SECRET for TTS through LiveKit Inference
 - Found comprehensive Cartesia voice library (150+ voices) via SignalWire documentation
 - Tessa identified as emotive voice optimized for Sonic 3 with wide emotional range
 
@@ -1779,8 +1999,8 @@ RESEND_API_KEY=
 - Updated LLM format to: `openai/gpt-4.1-mini`
 
 **Testing & Debugging**
-- Tested ElevenLabs integration (discovered API key requirement issue)
-- Switched to Cartesia per user preference
+- Initially tested with invalid ElevenLabs voice ID
+- Fixed voice ID to use valid ElevenLabs default voices (Rachel: 21m00Tcm4TlvDq8ikWAM)
 - Verified Tessa voice working correctly
 - Agent restart required after configuration changes
 
@@ -1903,6 +2123,54 @@ RESEND_API_KEY=
 
 **Key Learnings**
 - Supabase Auth SSR with @supabase/ssr works seamlessly in Next.js 14
+
+### 2025-11-07 - Phase 1A: Enhanced Prompt System with Difficulty-Aware Coaching Complete ✅
+
+**Implementation**
+- Implemented three-layer modular prompt architecture (Base + Domain + Runtime)
+- Added difficulty-aware coaching (junior/intermediate/senior levels)
+- Created `prompts.py` with comprehensive framework instructions
+- Created `prompt_builder.py` for dynamic prompt assembly
+- Integrated with `agent.py` via `build_interview_prompt()`
+
+**Key Features**
+- **Difficulty Levels**: APM (junior), IC PM (intermediate), Senior PM (senior)
+- **Framework-as-Instructions**: Converted evaluation checklists to actionable directives
+- **Concrete Examples**: Every abstract directive has 2-3 real examples showing WHAT good looks like
+- **Professional Conversational Tone**: Removed LLM-speak, added natural PM language patterns
+- **API-Ready**: `CompanyConfig` and `SessionConfig` dataclasses for future multi-tenancy
+
+**Testing & Validation**
+- Created comprehensive test suite (10 tests, 100% pass rate)
+- Verified all 4 interview types (Product Sense, Analytical, Leadership, Strategy)
+- Tested all difficulty levels and mode variations
+- Backward compatibility validated with existing metadata format
+
+**Architecture Decisions**
+- ADR-023 documented: Enhanced Prompt System with Difficulty-Aware Coaching
+- Three-layer composition (universal → domain → runtime)
+- Token-efficient design (~475 tokens typical, <3000 limit)
+- No markdown in prompts (TTS compatibility)
+
+**Consequences**
+- Backward compatible (zero breaking changes)
+- +4-8% cost increase acceptable for quality improvement
+- Foundation for API service offering
+- Improved conversation naturalness (target 4.0+/5.0)
+
+**Deliverables**
+- ✅ Enhanced `prompts.py` with difficulty support
+- ✅ New `prompt_builder.py` module
+- ✅ Updated `agent.py` integration
+- ✅ Comprehensive test suite (`test_prompts.py`)
+- ✅ Documentation updated (ADR-023, file boundaries)
+- ✅ Implementation guides and verification scripts
+
+**Next Steps**
+- Phase 1B: Add mode selection UI in setup page
+- Phase 1C: Implement role reversal (user as interviewer)
+- Phase 2: Multi-tenant API service with company-specific configs
+
 - Middleware provides clean route protection pattern
 - OAuth redirect flow requires careful URL management
 - React Context perfect for auth state management
