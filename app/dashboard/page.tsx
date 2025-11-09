@@ -113,6 +113,17 @@ export default function DashboardPage() {
 
   return (
     <>
+      {/* Debug: Test button to verify state updates work */}
+      <div style={{ position: 'fixed', top: 10, right: 10, zIndex: 9999, background: 'red', padding: '10px' }}>
+        <button onClick={() => {
+          console.log("Test button clicked, setting to 'history'");
+          setActiveSection("history");
+        }}>
+          Test Set History
+        </button>
+        <div style={{ color: 'white' }}>Current: {activeSection}</div>
+      </div>
+
       <DashboardLayout
         activeSection={activeSection}
         setActiveSection={setActiveSection}
