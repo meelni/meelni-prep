@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/app/providers/auth-provider";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
@@ -18,7 +18,8 @@ import { useSetupModal } from "@/lib/hooks/use-setup-modal";
 export default function DashboardPage() {
   const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
-  const [activeSection, setActiveSection] = useState("overview");
+  const searchParams = useSearchParams();
+  const [activeSection, setActiveSection] = useState(searchParams.get("section") || "overview");
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -36,6 +37,25 @@ export default function DashboardPage() {
     error,
     refetch,
   } = useSessions(20);
+
+  // Sync activeSection with URL params
+  useEffect(() => {
+    const section = searchParams.get("section") || "overview";
+    setActiveSection(section);
+  }, [searchParams]);
+
+  // Handle section change with URL update
+  const handleSectionChange = (section: string) => {
+    setActiveSection(section);
+    const params = new URLSearchParams(searchParams.toString());
+    if (section === "overview") {
+      params.delete("section");
+    } else {
+      params.set("section", section);
+    }
+    const newUrl = params.toString() ? `/dashboard?${params.toString()}` : "/dashboard";
+    router.push(newUrl, { scroll: false });
+  };
 
   // Redirect to signin if not authenticated
   useEffect(() => {
@@ -109,7 +129,7 @@ export default function DashboardPage() {
     <>
       <DashboardLayout
         activeSection={activeSection}
-        setActiveSection={setActiveSection}
+        setActiveSection={handleSectionChange}
         totalSessions={stats.totalSessions}
         totalMinutes={stats.totalMinutes}
         avgScore={stats.avgScore || undefined}
