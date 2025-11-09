@@ -1,5 +1,6 @@
 import { pgTable, uuid, text, timestamp, integer, numeric, jsonb, check, boolean, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { relations } from "drizzle-orm";
 
 // Users
 export const appUser = pgTable("app_user", {
@@ -178,4 +179,117 @@ export const userSettings = pgTable("user_settings", {
   ),
   // Index for looking up settings by user
   userIdIdx: index("user_settings_user_id_idx").on(table.userId),
+}));
+
+// User insights (pre-aggregated analytics) - P2-001
+export const userInsights = pgTable("user_insights", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+
+  // Overall statistics across all sessions
+  overallStats: jsonb("overall_stats").notNull().$type<{
+    total_sessions: number;
+    completed_sessions: number;
+    total_minutes: number;
+    avg_score: number;
+    median_score: number;
+    percentile_25: number;
+    percentile_75: number;
+    percentile_90: number;
+  }>(),
+
+  // Stats grouped by interview type
+  byInterviewType: jsonb("by_interview_type").notNull().$type<{
+    product_sense: { count: number; avg_score: number; last_5_avg: number };
+    analytical: { count: number; avg_score: number; last_5_avg: number };
+    leadership: { count: number; avg_score: number; last_5_avg: number };
+    strategy: { count: number; avg_score: number; last_5_avg: number };
+  }>(),
+
+  // Stats grouped by difficulty level
+  byDifficulty: jsonb("by_difficulty").notNull().$type<{
+    junior: { count: number; avg_score: number };
+    intermediate: { count: number; avg_score: number };
+    senior: { count: number; avg_score: number };
+  }>(),
+
+  // Trend analysis
+  trends: jsonb("trends").notNull().$type<{
+    last_5_sessions_avg: number;
+    all_time_avg: number;
+    improvement_trend: "improving" | "stable" | "declining";
+    velocity: number;
+  }>(),
+
+  // Average scores by competency
+  competencyBreakdown: jsonb("competency_breakdown").notNull().$type<{
+    structure: number;
+    clarity: number;
+    insight: number;
+    communication: number;
+    leadership: number;
+  }>(),
+
+  // Reference to most recent session
+  lastSessionId: uuid("last_session_id").references(() => interviewSession.id),
+  lastUpdatedAt: timestamp("last_updated_at", { withTimezone: true }).defaultNow().notNull(),
+
+  // Optimistic locking for concurrent updates
+  version: integer("version").default(1).notNull(),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Index for user lookups (most common query pattern)
+  userIdIdx: index("user_insights_user_id_idx").on(table.userId),
+  // Index for last_updated_at (for incremental sync jobs)
+  lastUpdatedAtIdx: index("user_insights_last_updated_at_idx").on(table.lastUpdatedAt),
+}));
+
+// ==================== Relations ====================
+// These enable Drizzle's relational query API (e.g., `with: { feedback: true }`)
+
+export const interviewSessionRelations = relations(interviewSession, ({ one, many }) => ({
+  user: one(appUser, {
+    fields: [interviewSession.userId],
+    references: [appUser.id],
+  }),
+  feedback: one(feedback, {
+    fields: [interviewSession.id],
+    references: [feedback.sessionId],
+  }),
+  transcriptTurns: many(transcriptTurn),
+  sessionQuestions: many(sessionQuestion),
+}));
+
+export const feedbackRelations = relations(feedback, ({ one }) => ({
+  session: one(interviewSession, {
+    fields: [feedback.sessionId],
+    references: [interviewSession.id],
+  }),
+}));
+
+export const transcriptTurnRelations = relations(transcriptTurn, ({ one }) => ({
+  session: one(interviewSession, {
+    fields: [transcriptTurn.sessionId],
+    references: [interviewSession.id],
+  }),
+}));
+
+export const appUserRelations = relations(appUser, ({ many, one }) => ({
+  sessions: many(interviewSession),
+  settings: one(userSettings, {
+    fields: [appUser.id],
+    references: [userSettings.userId],
+  }),
+  insights: one(userInsights, {
+    fields: [appUser.id],
+    references: [userInsights.userId],
+  }),
+}));
+
+export const userInsightsRelations = relations(userInsights, ({ one }) => ({
+  user: one(appUser, {
+    fields: [userInsights.userId],
+    references: [appUser.id],
+  }),
 }));
