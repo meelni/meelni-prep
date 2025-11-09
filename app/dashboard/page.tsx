@@ -17,6 +17,7 @@ const OverviewSection = lazy(() => import("@/components/dashboard/sections/overv
 const HistorySection = lazy(() => import("@/components/dashboard/sections/history").then(m => ({ default: m.HistorySection })));
 const AnalyticsSection = lazy(() => import("@/components/dashboard/sections/analytics").then(m => ({ default: m.AnalyticsSection })));
 const SettingsSection = lazy(() => import("@/components/dashboard/sections/settings").then(m => ({ default: m.SettingsSection })));
+const QuestionsSection = lazy(() => import("@/components/dashboard/sections/questions").then(m => ({ default: m.QuestionsSection })));
 
 // Section loading fallback component
 function SectionLoading() {
@@ -102,6 +103,8 @@ export default function DashboardPage() {
         );
       case "history":
         return <HistorySection sessions={sessions} loadingSessions={false} />;
+      case "questions":
+        return <QuestionsSection />;
       case "analytics":
         return <AnalyticsSection />;
       case "settings":

@@ -61,7 +61,7 @@ export function Sidebar({
   const navigationItems = [
     { id: "overview", icon: Monitor, label: "Overview", minSessions: 0 },
     { id: "history", icon: History, label: "Interview History", minSessions: 1 },
-    { id: "questions", icon: BookOpen, label: "Question Bank", minSessions: 0, isRoute: true },
+    { id: "questions", icon: BookOpen, label: "Question Bank", minSessions: 0 },
     { id: "analytics", icon: BarChart3, label: "Analytics", minSessions: 3 },
     { id: "settings", icon: Settings, label: "Settings", minSessions: 0 },
   ];
