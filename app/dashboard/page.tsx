@@ -26,9 +26,10 @@ export default function DashboardPage() {
   }, [activeSection]);
 
   // Wrap setActiveSection in useCallback to ensure stable reference
+  // Use updater function to avoid stale closure
   const handleSetActiveSection = useCallback((section: string) => {
     console.log("handleSetActiveSection called with:", section);
-    setActiveSection(section);
+    setActiveSection(() => section);
   }, []);
 
   // Handle sign out
