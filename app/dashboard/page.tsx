@@ -41,10 +41,8 @@ export default function DashboardPage() {
   // Sync activeSection with URL params
   useEffect(() => {
     const section = searchParams.get("section") || "overview";
-    if (section !== activeSection) {
-      setActiveSection(section);
-    }
-  }, [searchParams, activeSection]);
+    setActiveSection(section);
+  }, [searchParams]);
 
   // Handle section change with URL update
   const handleSectionChange = (section: string) => {
