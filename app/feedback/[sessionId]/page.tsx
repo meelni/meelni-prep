@@ -15,6 +15,29 @@ import { TranscriptViewer } from "@/components/feedback/transcript-viewer";
 import type { EvaluationResponse, TranscriptTurn } from "@/lib/types/feedback";
 import Link from "next/link";
 
+// Import edge case components
+import { FeedbackInsufficient } from "./components/feedback-insufficient";
+import { FeedbackPartial } from "./components/feedback-partial";
+import { FeedbackError } from "./components/feedback-error";
+
+// Session stats type for edge cases
+interface SessionStats {
+  durationSeconds: number;
+  durationMinutes: number;
+  userTurns: number;
+  totalTurns: number;
+  totalWords?: number;
+}
+
+// API response type with status handling
+interface FeedbackAPIResponse {
+  status?: "pending" | "processing" | "completed" | "skipped" | "failed";
+  skipReason?: string;
+  error?: string;
+  stats?: SessionStats;
+  feedback?: EvaluationResponse;
+}
+
 // Loading state component
 function LoadingState() {
   return (
@@ -32,25 +55,6 @@ function LoadingState() {
   );
 }
 
-// Error state component
-function ErrorState({ error }: { error: string | null }) {
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <Card className="p-8 text-center max-w-md">
-        <p className="text-destructive mb-4 font-display font-light text-lg">
-          Failed to load feedback
-        </p>
-        <p className="text-sm text-muted-foreground mb-6">
-          {error || "An unexpected error occurred"}
-        </p>
-        <Button asChild>
-          <Link href="/dashboard">Return to Dashboard</Link>
-        </Button>
-      </Card>
-    </div>
-  );
-}
-
 export default function FeedbackPage() {
   const params = useParams();
   const sessionId = params.sessionId as string;
@@ -59,6 +63,9 @@ export default function FeedbackPage() {
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<SessionStats | null>(null);
+  const [skipReason, setSkipReason] = useState<string | undefined>();
+  const [status, setStatus] = useState<string | undefined>();
 
   useEffect(() => {
     async function fetchFeedback() {
@@ -72,11 +79,47 @@ export default function FeedbackPage() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: response.statusText }));
+          // Handle specific 400 errors for insufficient data
+          if (response.status === 400 && errorData.error?.includes("empty transcript")) {
+            setStatus("skipped");
+            setSkipReason(errorData.error);
+            setStats({
+              durationSeconds: 0,
+              durationMinutes: 0,
+              userTurns: 0,
+              totalTurns: 0,
+            });
+            return;
+          }
           throw new Error(errorData.error || `Failed to fetch feedback: ${response.statusText}`);
         }
 
-        const data: EvaluationResponse = await response.json();
-        setEvaluation(data);
+        const data: EvaluationResponse | FeedbackAPIResponse = await response.json();
+
+        // Handle status-based responses from P1-005 polling API
+        if ('status' in data) {
+          const apiResponse = data as FeedbackAPIResponse;
+          setStatus(apiResponse.status);
+
+          if (apiResponse.status === "skipped") {
+            setSkipReason(apiResponse.skipReason);
+            setStats(apiResponse.stats || null);
+            return;
+          }
+
+          if (apiResponse.status === "failed") {
+            setError(apiResponse.error || "Feedback generation failed");
+            return;
+          }
+
+          if (apiResponse.status === "completed" && apiResponse.feedback) {
+            setEvaluation(apiResponse.feedback);
+            setStats(apiResponse.stats || null);
+          }
+        } else {
+          // Legacy format: direct evaluation response
+          setEvaluation(data as EvaluationResponse);
+        }
 
         // TODO: Fetch transcript from separate endpoint when WS #3 completes
         // For now, use empty transcript
@@ -92,14 +135,82 @@ export default function FeedbackPage() {
     fetchFeedback();
   }, [sessionId]);
 
-  if (loading) {
+  // Retry function for error state
+  const handleRetry = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/eval/${sessionId}`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Retry failed");
+      }
+
+      const data = await response.json();
+      setEvaluation(data);
+      setStatus("completed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Retry failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Route to appropriate component based on status
+  if (loading || status === "pending" || status === "processing") {
     return <LoadingState />;
   }
 
-  if (error || !evaluation) {
-    return <ErrorState error={error} />;
+  if (status === "skipped" || (error && error.includes("empty transcript"))) {
+    return (
+      <FeedbackInsufficient
+        sessionId={sessionId}
+        stats={stats || {
+          durationSeconds: 0,
+          durationMinutes: 0,
+          userTurns: 0,
+          totalTurns: 0,
+        }}
+        skipReason={skipReason}
+      />
+    );
   }
 
+  if (status === "failed" || error) {
+    return (
+      <FeedbackError
+        error={error || "Unknown error occurred"}
+        sessionId={sessionId}
+        onRetry={handleRetry}
+      />
+    );
+  }
+
+  if (!evaluation) {
+    return (
+      <FeedbackError
+        error="No feedback data available"
+        sessionId={sessionId}
+        onRetry={handleRetry}
+      />
+    );
+  }
+
+  // Check for partial feedback (short session with some feedback)
+  if (stats && stats.durationMinutes < 15 && stats.durationMinutes >= 3) {
+    return (
+      <FeedbackPartial
+        feedback={evaluation}
+        stats={stats}
+        sessionId={sessionId}
+      />
+    );
+  }
+
+  // Full feedback display (standard success case)
   const handleDownload = () => {
     alert("Download PDF feature coming soon!");
   };
