@@ -13,8 +13,23 @@ import { ImprovementsList } from "@/components/feedback/improvements-list";
 import { DrillList } from "@/components/feedback/drill-list";
 import { TranscriptViewer } from "@/components/feedback/transcript-viewer";
 import { FeedbackLoading } from "./components/feedback-loading";
+import { FeedbackInsufficient } from "@/components/feedback/feedback-insufficient";
+import { FeedbackPartial } from "@/components/feedback/feedback-partial";
+import { FeedbackAbandoned } from "@/components/feedback/feedback-abandoned";
 import type { EvaluationResponse, TranscriptTurn } from "@/lib/types/feedback";
 import Link from "next/link";
+
+// Validation data from session validator
+interface ValidationData {
+  tier: "full" | "partial" | "insufficient" | "abandoned";
+  stats: {
+    totalTurns: number;
+    durationSeconds: number;
+    substantiveResponses: number;
+  };
+  reasons: string[];
+  recommendations: string[];
+}
 
 // Error state component
 function ErrorState({ error }: { error: string | null }) {
@@ -43,6 +58,7 @@ export default function FeedbackPage() {
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
   const [status, setStatus] = useState<"pending" | "processing" | "completed" | "failed" | "skipped">("pending");
   const [error, setError] = useState<string | null>(null);
+  const [validation, setValidation] = useState<ValidationData | null>(null);
 
   useEffect(() => {
     async function checkFeedbackStatus() {
@@ -57,6 +73,11 @@ export default function FeedbackPage() {
 
         const statusData = await statusResponse.json();
         setStatus(statusData.status);
+
+        // Store validation data if available
+        if (statusData.validation) {
+          setValidation(statusData.validation);
+        }
 
         // If completed, load full feedback
         if (statusData.status === "completed" && statusData.feedback) {
@@ -78,7 +99,8 @@ export default function FeedbackPage() {
         } else if (statusData.status === "failed") {
           setError(statusData.error || "Feedback generation failed");
         } else if (statusData.status === "skipped") {
-          setError(statusData.skipReason || "Feedback generation was skipped");
+          // Status is skipped - show appropriate edge case component
+          // Don't set error, let the render logic handle it
         }
 
         // TODO: Fetch transcript from separate endpoint when available
@@ -98,9 +120,45 @@ export default function FeedbackPage() {
     return <FeedbackLoading sessionId={sessionId} />;
   }
 
-  // Show error state
-  if (error || !evaluation) {
+  // Show edge case components for skipped sessions
+  if (status === "skipped" && validation) {
+    if (validation.tier === "abandoned") {
+      return <FeedbackAbandoned reasons={validation.reasons} />;
+    }
+    if (validation.tier === "insufficient") {
+      return (
+        <FeedbackInsufficient
+          stats={validation.stats}
+          reasons={validation.reasons}
+          recommendations={validation.recommendations}
+        />
+      );
+    }
+    // Partial tier should not be skipped, but handle gracefully
+    if (validation.tier === "partial") {
+      return (
+        <FeedbackPartial
+          stats={validation.stats}
+          recommendations={validation.recommendations}
+        />
+      );
+    }
+  }
+
+  // Show error state for failed or unknown errors
+  if (error || status === "failed") {
     return <ErrorState error={error} />;
+  }
+
+  // Show partial component if tier is partial and evaluation exists
+  if (validation?.tier === "partial" && evaluation) {
+    // Render both partial info and feedback display
+    // For now, just show feedback - can enhance later
+  }
+
+  // No evaluation data - show error
+  if (!evaluation) {
+    return <ErrorState error="No feedback data available" />;
   }
 
   const handleDownload = () => {

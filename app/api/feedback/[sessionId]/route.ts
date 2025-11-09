@@ -90,6 +90,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
+import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
 
 // Estimated total processing time (seconds)
 const ESTIMATED_PROCESSING_TIME = 45;
@@ -205,12 +206,21 @@ export async function GET(
       );
     }
 
-    // Case 4: Skipped - return skip reason with short cache
+    // Case 4: Skipped - return skip reason with validation data
     if (status === "skipped") {
+      // Fetch validation data for edge case components
+      const validation = await validateSessionCompleteness(sessionId);
+
       return NextResponse.json(
         {
           status: "skipped",
           skipReason: feedbackRecord.statusReason || "Feedback generation was skipped",
+          validation: {
+            tier: validation.tier,
+            stats: validation.stats,
+            reasons: validation.reasons,
+            recommendations: validation.recommendations,
+          },
         },
         {
           headers: {
