@@ -164,13 +164,7 @@ export function Sidebar({
           {visibleNavItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => {
-                if (item.isRoute) {
-                  router.push(`/${item.id}`);
-                } else {
-                  setActiveSection(item.id);
-                }
-              }}
+              onClick={() => setActiveSection(item.id)}
               className={cn(
                 "relative flex items-center rounded-lg text-sm transition-all duration-200",
                 collapsed ? "px-3 py-3 justify-center" : "px-3 py-2 gap-3",

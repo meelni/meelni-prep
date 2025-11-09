@@ -4,22 +4,6 @@ import { useState, useEffect, memo } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
-import {
   TrendingUp,
   TrendingDown,
   Minus,
@@ -29,8 +13,19 @@ import {
   Zap,
   Sparkles,
   Loader2,
+  Calendar,
+  Filter,
 } from "lucide-react";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
+import { PerformanceTrend } from "@/components/dashboard/charts/performance-trend";
+import { CompetencyBreakdown } from "@/components/dashboard/charts/competency-breakdown";
+import { TypeDistribution } from "@/components/dashboard/charts/type-distribution";
+import {
+  aggregatePerformanceTrend,
+  aggregateCompetencyScores,
+  aggregateTypeDistribution,
+} from "@/lib/analytics/aggregations";
+import type { SessionWithFeedback } from "@/lib/analytics/aggregations";
 
 /**
  * User insights data structure (from /api/insights)
@@ -159,13 +154,13 @@ function LoadingState() {
       </div>
 
       {/* Charts Skeleton */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 bg-card border-border">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="bg-card border-border">
           <CardHeader>
             <div className="h-5 w-32 bg-muted animate-pulse rounded" />
           </CardHeader>
           <CardContent>
-            <div className="h-64 bg-muted animate-pulse rounded" />
+            <div className="h-[400px] bg-muted animate-pulse rounded" />
           </CardContent>
         </Card>
 
@@ -174,7 +169,7 @@ function LoadingState() {
             <div className="h-5 w-32 bg-muted animate-pulse rounded" />
           </CardHeader>
           <CardContent>
-            <div className="h-64 bg-muted animate-pulse rounded" />
+            <div className="h-[400px] bg-muted animate-pulse rounded" />
           </CardContent>
         </Card>
       </div>
@@ -255,28 +250,46 @@ function StatCard({
 }
 
 /**
- * Custom Tooltip for Charts
+ * Filters Bar Component
  */
-function CustomTooltip({ active, payload, label }: any) {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-        <p className="text-xs text-muted-foreground mb-2">{label}</p>
-        {payload.map((entry: any, index: number) => (
-          <div key={index} className="flex items-center gap-2">
-            <div
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: entry.color }}
-            />
-            <span className="text-sm text-foreground">
-              {entry.name}: {typeof entry.value === "number" ? entry.value.toFixed(1) : entry.value}
-            </span>
+function FiltersBar() {
+  return (
+    <motion.div variants={fadeInUp}>
+      <Card className="bg-card border-border">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Filter className="w-4 h-4" />
+              <span className="font-medium">Filters:</span>
+            </div>
+
+            {/* Date Range Filter (Coming Soon) */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 text-sm text-muted-foreground border border-border">
+              <Calendar className="w-4 h-4" />
+              <span>All Time</span>
+            </div>
+
+            {/* Interview Type Filters (Coming Soon) */}
+            <div className="flex items-center gap-2">
+              {["Product Sense", "Analytical", "Leadership", "Strategy"].map((type) => (
+                <button
+                  key={type}
+                  className="px-3 py-1.5 rounded-md bg-muted/50 text-sm text-muted-foreground border border-border hover:border-primary/30 transition-colors"
+                  disabled
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+
+            <div className="ml-auto text-xs text-muted-foreground">
+              Coming soon: Filter by date range and interview type
+            </div>
           </div>
-        ))}
-      </div>
-    );
-  }
-  return null;
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
 }
 
 /**
@@ -284,28 +297,43 @@ function CustomTooltip({ active, payload, label }: any) {
  */
 export const AnalyticsSection = memo(function AnalyticsSection() {
   const [insights, setInsights] = useState<UserInsights | null>(null);
+  const [sessions, setSessions] = useState<SessionWithFeedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch insights on mount
+  // Fetch insights and sessions on mount
   useEffect(() => {
-    async function fetchInsights() {
+    async function fetchData() {
       try {
-        const response = await fetch("/api/insights");
-        if (!response.ok) {
+        // Fetch insights
+        const insightsResponse = await fetch("/api/insights");
+        if (!insightsResponse.ok) {
           throw new Error("Failed to fetch insights");
         }
-        const data = await response.json();
-        setInsights(data);
+        const insightsData = await insightsResponse.json();
+        setInsights(insightsData);
+
+        // Fetch sessions with feedback for charts
+        const sessionsResponse = await fetch("/api/sessions?limit=30");
+        if (!sessionsResponse.ok) {
+          throw new Error("Failed to fetch sessions");
+        }
+        const sessionsData = await sessionsResponse.json();
+
+        // Transform sessions to include feedback (filter out sessions without feedback)
+        const sessionsWithFeedback = sessionsData.sessions.filter(
+          (s: any) => s.feedback !== null
+        );
+        setSessions(sessionsWithFeedback);
       } catch (err) {
-        console.error("Error fetching insights:", err);
+        console.error("Error fetching analytics data:", err);
         setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
         setLoading(false);
       }
     }
 
-    fetchInsights();
+    fetchData();
   }, []);
 
   // Loading state
@@ -331,31 +359,10 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
     return <EmptyState sessionsCompleted={insights.overall.total_sessions} />;
   }
 
-  // Prepare chart data
-  const progressData = insights.trends.last_5_sessions_avg
-    ? [
-        { session: "S1", score: insights.trends.last_5_sessions_avg },
-        { session: "S2", score: insights.trends.last_5_sessions_avg + (insights.trends.velocity * 1) },
-        { session: "S3", score: insights.trends.last_5_sessions_avg + (insights.trends.velocity * 2) },
-        { session: "S4", score: insights.trends.last_5_sessions_avg + (insights.trends.velocity * 3) },
-        { session: "S5", score: insights.trends.last_5_sessions_avg + (insights.trends.velocity * 4) },
-      ]
-    : [];
-
-  const competencyData = [
-    { competency: "Structure", score: insights.competencies.structure || 0, fullMark: 10 },
-    { competency: "Clarity", score: insights.competencies.clarity || 0, fullMark: 10 },
-    { competency: "Insight", score: insights.competencies.insight || 0, fullMark: 10 },
-    { competency: "Communication", score: insights.competencies.communication || 0, fullMark: 10 },
-    { competency: "Leadership", score: insights.competencies.leadership || 0, fullMark: 10 },
-  ];
-
-  const interviewTypeData = [
-    { type: "Product Sense", score: insights.byType.product_sense.avg_score || 0 },
-    { type: "Analytical", score: insights.byType.analytical.avg_score || 0 },
-    { type: "Leadership", score: insights.byType.leadership.avg_score || 0 },
-    { type: "Strategy", score: insights.byType.strategy.avg_score || 0 },
-  ].filter((item) => item.score > 0);
+  // Prepare chart data using aggregation utilities
+  const performanceTrendData = aggregatePerformanceTrend(sessions);
+  const competencyData = aggregateCompetencyScores(sessions);
+  const typeDistributionData = aggregateTypeDistribution(sessions);
 
   return (
     <motion.div
@@ -409,120 +416,44 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
         />
       </motion.div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Progress Trends Chart */}
-        <motion.div variants={fadeInUp} className="lg:col-span-2">
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-                Progress Trends
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={progressData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis
-                    dataKey="session"
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <YAxis
-                    domain={[0, 10]}
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Line
-                    type="monotone"
-                    dataKey="score"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    dot={{ fill: "hsl(var(--primary))", r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+      {/* Filters Bar */}
+      <FiltersBar />
+
+      {/* Charts Grid - 2 Column Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Performance Trend - Uses ClippedAreaChart */}
+        <motion.div variants={fadeInUp}>
+          <PerformanceTrend
+            data={performanceTrendData}
+            onSessionClick={(sessionId) => {
+              // TODO: Navigate to session detail page
+              console.log("Navigate to session:", sessionId);
+            }}
+          />
         </motion.div>
 
-        {/* Competency Radar Chart */}
+        {/* Competency Breakdown - Uses GlowingStrokeRadarChart */}
         <motion.div variants={fadeInUp}>
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-                Competency Breakdown
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={280}>
-                <RadarChart data={competencyData}>
-                  <PolarGrid stroke="hsl(var(--border))" />
-                  <PolarAngleAxis
-                    dataKey="competency"
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={11}
-                  />
-                  <PolarRadiusAxis
-                    domain={[0, 10]}
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={10}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Radar
-                    name="Score"
-                    dataKey="score"
-                    stroke="hsl(var(--primary))"
-                    fill="hsl(var(--primary))"
-                    fillOpacity={0.3}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          <CompetencyBreakdown
+            data={competencyData}
+            onCompetencyClick={(competency) => {
+              // TODO: Filter sessions by competency
+              console.log("Filter by competency:", competency);
+            }}
+          />
         </motion.div>
       </div>
 
-      {/* Interview Type Performance */}
-      {interviewTypeData.length > 0 && (
-        <motion.div variants={fadeInUp}>
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-                Performance by Interview Type
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={interviewTypeData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis
-                    type="number"
-                    domain={[0, 10]}
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <YAxis
-                    dataKey="type"
-                    type="category"
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                    width={120}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar
-                    dataKey="score"
-                    fill="hsl(var(--primary))"
-                    radius={[0, 4, 4, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+      {/* Interview Type Distribution - Full Width - Uses RoundedPieChart */}
+      <motion.div variants={fadeInUp}>
+        <TypeDistribution
+          data={typeDistributionData}
+          onTypeClick={(type) => {
+            // TODO: Navigate to filtered history
+            console.log("Filter by type:", type);
+          }}
+        />
+      </motion.div>
     </motion.div>
   );
 });
