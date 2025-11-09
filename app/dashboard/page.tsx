@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/app/providers/auth-provider";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
@@ -18,8 +18,7 @@ import { useSetupModal } from "@/lib/hooks/use-setup-modal";
 export default function DashboardPage() {
   const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [activeSection, setActiveSection] = useState(searchParams.get("section") || "overview");
+  const [activeSection, setActiveSection] = useState("overview");
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -37,25 +36,6 @@ export default function DashboardPage() {
     error,
     refetch,
   } = useSessions(20);
-
-  // Sync activeSection with URL params
-  useEffect(() => {
-    const section = searchParams.get("section") || "overview";
-    setActiveSection(section);
-  }, [searchParams]);
-
-  // Handle section change with URL update
-  const handleSectionChange = (section: string) => {
-    console.log("Section change requested:", section);
-    setActiveSection(section);
-    const params = new URLSearchParams();
-    if (section !== "overview") {
-      params.set("section", section);
-    }
-    const newUrl = params.toString() ? `/dashboard?${params.toString()}` : "/dashboard";
-    console.log("Navigating to:", newUrl);
-    router.push(newUrl, { scroll: false });
-  };
 
   // Redirect to signin if not authenticated
   useEffect(() => {
