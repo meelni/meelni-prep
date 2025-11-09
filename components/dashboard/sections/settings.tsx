@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +47,7 @@ interface SettingsState {
   theme: string;
 }
 
-export function SettingsSection() {
+export const SettingsSection = memo(function SettingsSection() {
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const [settings, setSettings] = useState<SettingsState>({
@@ -529,4 +530,4 @@ export function SettingsSection() {
       </div>
     </div>
   );
-}
+});

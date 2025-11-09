@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opacity Comparison - Sidebar Active State</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            margin: 40px;
+            background: #fafafa;
+        }
+        .theme-section {
+            margin-bottom: 40px;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .light-theme {
+            background: #fcfcfc;
+            border: 1px solid #e5e5e5;
+        }
+        .dark-theme {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #f0f0f0;
+        }
+        h2 {
+            margin-top: 0;
+        }
+        .nav-items {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 20px;
+        }
+        .nav-item {
+            padding: 8px 12px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            position: relative;
+        }
+        .icon {
+            width: 18px;
+            height: 18px;
+            background: currentColor;
+            border-radius: 3px;
+            opacity: 0.7;
+        }
+
+        /* Light theme nav items */
+        .light-theme .nav-item {
+            color: #737373; /* muted-foreground */
+        }
+        .light-theme .nav-item.active {
+            background: rgba(106, 59, 237, 0.05); /* bg-primary/5 */
+            color: #0a0a0a; /* foreground */
+        }
+        .light-theme .nav-item.active .icon {
+            opacity: 1;
+        }
+        .light-theme .nav-item.active-10 {
+            background: rgba(106, 59, 237, 0.10); /* bg-primary/10 */
+            color: #0a0a0a;
+        }
+        .light-theme .nav-item.active-15 {
+            background: rgba(106, 59, 237, 0.15); /* bg-primary/15 */
+            color: #0a0a0a;
+        }
+
+        /* Dark theme nav items */
+        .dark-theme .nav-item {
+            color: #a3a3a3; /* muted-foreground */
+        }
+        .dark-theme .nav-item.active {
+            background: rgba(139, 92, 246, 0.05); /* bg-primary/5 */
+            color: #fafafa; /* foreground */
+        }
+        .dark-theme .nav-item.active .icon {
+            opacity: 1;
+        }
+        .dark-theme .nav-item.active-10 {
+            background: rgba(139, 92, 246, 0.10); /* bg-primary/10 */
+            color: #fafafa;
+        }
+        .dark-theme .nav-item.active-15 {
+            background: rgba(139, 92, 246, 0.15); /* bg-primary/15 */
+            color: #fafafa;
+        }
+
+        .border-accent {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom,
+                rgba(106, 59, 237, 0.5),
+                rgba(106, 59, 237, 1),
+                rgba(106, 59, 237, 0.5)
+            );
+            border-radius: 0 2px 2px 0;
+        }
+        .dark-theme .border-accent {
+            background: linear-gradient(to bottom,
+                rgba(139, 92, 246, 0.5),
+                rgba(139, 92, 246, 1),
+                rgba(139, 92, 246, 0.5)
+            );
+        }
+
+        .comparison {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .comparison-item {
+            border: 1px solid #e5e5e5;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .dark-theme .comparison-item {
+            border-color: #333;
+        }
+        .label {
+            font-size: 12px;
+            margin-top: 8px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sidebar Active State - Opacity Comparison</h1>
+    <p>This demonstrates why <code>bg-primary/5</code> (5% opacity) is too subtle for active state feedback.</p>
+
+    <div class="theme-section light-theme">
+        <h2>Light Theme</h2>
+
+        <h3>Current Implementation (5% opacity)</h3>
+        <div class="nav-items">
+            <div class="nav-item">
+                <div class="icon"></div>
+                <span>Overview (inactive)</span>
+            </div>
+            <div class="nav-item active">
+                <div class="border-accent"></div>
+                <div class="icon"></div>
+                <span>Interview History (active - 5%)</span>
+            </div>
+            <div class="nav-item">
+                <div class="icon"></div>
+                <span>Analytics (inactive)</span>
+            </div>
+        </div>
+
+        <h3>Proposed Fix Comparison</h3>
+        <div class="comparison">
+            <div class="comparison-item">
+                <div class="nav-item">
+                    <div class="icon"></div>
+                    <span>Inactive</span>
+                </div>
+                <div class="label">No background</div>
+            </div>
+            <div class="comparison-item">
+                <div class="nav-item active">
+                    <div class="border-accent"></div>
+                    <div class="icon"></div>
+                    <span>Active</span>
+                </div>
+                <div class="label">5% opacity<br>(current - too subtle)</div>
+            </div>
+            <div class="comparison-item">
+                <div class="nav-item active-10">
+                    <div class="border-accent"></div>
+                    <div class="icon"></div>
+                    <span>Active</span>
+                </div>
+                <div class="label">10% opacity<br>(recommended)</div>
+            </div>
+            <div class="comparison-item">
+                <div class="nav-item active-15">
+                    <div class="border-accent"></div>
+                    <div class="icon"></div>
+                    <span>Active</span>
+                </div>
+                <div class="label">15% opacity<br>(stronger)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="theme-section dark-theme">
+        <h2>Dark Theme</h2>
+
+        <h3>Current Implementation (5% opacity)</h3>
+        <div class="nav-items">
+            <div class="nav-item">
+                <div class="icon"></div>
+                <span>Overview (inactive)</span>
+            </div>
+            <div class="nav-item active">
+                <div class="border-accent"></div>
+                <div class="icon"></div>
+                <span>Interview History (active - 5%)</span>
+            </div>
+            <div class="nav-item">
+                <div class="icon"></div>
+                <span>Analytics (inactive)</span>
+            </div>
+        </div>
+
+        <h3>Proposed Fix Comparison</h3>
+        <div class="comparison">
+            <div class="comparison-item">
+                <div class="nav-item">
+                    <div class="icon"></div>
+                    <span>Inactive</span>
+                </div>
+                <div class="label">No background</div>
+            </div>
+            <div class="comparison-item">
+                <div class="nav-item active">
+                    <div class="border-accent"></div>
+                    <div class="icon"></div>
+                    <span>Active</span>
+                </div>
+                <div class="label">5% opacity<br>(current - too subtle)</div>
+            </div>
+            <div class="comparison-item">
+                <div class="nav-item active-10">
+                    <div class="border-accent"></div>
+                    <div class="icon"></div>
+                    <span>Active</span>
+                </div>
+                <div class="label">10% opacity<br>(recommended)</div>
+            </div>
+            <div class="comparison-item">
+                <div class="nav-item active-15">
+                    <div class="border-accent"></div>
+                    <div class="icon"></div>
+                    <span>Active</span>
+                </div>
+                <div class="label">15% opacity<br>(stronger)</div>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top: 40px; padding: 20px; background: #f0f0f0; border-radius: 8px;">
+        <h3>Key Findings:</h3>
+        <ul>
+            <li><strong>5% opacity is barely visible</strong> - especially when switching quickly between items</li>
+            <li><strong>10% opacity provides clear feedback</strong> while maintaining subtle aesthetics</li>
+            <li><strong>15% opacity is very clear</strong> but might be too strong for minimalist design</li>
+            <li><strong>Text color change</strong> (gray → black/white) helps but isn't enough alone</li>
+            <li><strong>Left border accent</strong> (2px gradient) provides additional visual cue</li>
+        </ul>
+        <h3>Recommendation:</h3>
+        <p><strong>Change <code>bg-primary/5</code> to <code>bg-primary/10</code></strong> for optimal balance between subtlety and visibility.</p>
+    </div>
+</body>
+</html>

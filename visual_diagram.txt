@@ -1,0 +1,88 @@
+┌─────────────────────────────────────────────────────────────────┐
+│                  SIDEBAR NAVIGATION - VISUAL FEEDBACK ISSUE      │
+└─────────────────────────────────────────────────────────────────┘
+
+CURRENT STATE (TOO SUBTLE):
+┌───────────────────────────────┐
+│  MEELNI                      │
+│  ───────────────────────────  │
+│                              │
+│  ✨ New Interview            │
+│  ───────────────────────────  │
+│                              │
+│  📊 Overview                 │  ← Inactive (gray text)
+│  📋 Interview History        │  ← Active (5% bg, barely visible!)
+│  📈 Analytics                │  ← Inactive (gray text)
+│  💡 Feedback & Insights      │  ← Inactive (gray text)
+│  ⚙️  Settings                │  ← Inactive (gray text)
+│                              │
+└───────────────────────────────┘
+
+PROBLEM:
+  - Active item has bg-primary/5 (5% opacity) → BARELY VISIBLE
+  - Left border w-0.5 (0.5px) → TOO THIN (half a pixel!)
+  - Text color changes but not enough (gray → black/white)
+  - Users cannot tell which section is active
+
+
+PROPOSED FIX (CLEAR FEEDBACK):
+┌───────────────────────────────┐
+│  MEELNI                      │
+│  ───────────────────────────  │
+│                              │
+│  ✨ New Interview            │
+│  ───────────────────────────  │
+│                              │
+│  📊 Overview                 │  ← Inactive (gray text, no bg)
+│ ┃📋 Interview History        │  ← Active (10% bg, 4px border, clear!)
+│  📈 Analytics                │  ← Inactive (gray text, no bg)
+│  💡 Feedback & Insights      │  ← Inactive (gray text, no bg)
+│  ⚙️  Settings                │  ← Inactive (gray text, no bg)
+│                              │
+└───────────────────────────────┘
+  ▲
+  │ Thicker left border (4px gradient)
+  │ Noticeable background tint (10% opacity)
+
+IMPROVEMENT:
+  - Active item has bg-primary/10 (10% opacity) → CLEARLY VISIBLE
+  - Left border w-1 (4px) → EASILY NOTICED
+  - Combined with text color change → OBVIOUS FEEDBACK
+  - Users can immediately see which section is active
+
+
+TECHNICAL COMPARISON:
+
+┌──────────────┬──────────────┬──────────────┬──────────────┐
+│   Inactive   │  Active 5%   │  Active 10%  │  Active 15%  │
+│              │  (current)   │ (recommended)│   (strong)   │
+├──────────────┼──────────────┼──────────────┼──────────────┤
+│ No bg        │ Barely       │ Clearly      │ Very         │
+│ Gray text    │ visible      │ visible      │ obvious      │
+│              │ tint         │ tint         │ tint         │
+└──────────────┴──────────────┴──────────────┴──────────────┘
+
+INDUSTRY STANDARDS:
+  Linear:  12-15% opacity + 2-3px border
+  Notion:  10-15% opacity + bold text
+  Meelni:  5% opacity + 0.5px border  ← TOO SUBTLE!
+
+
+CODE CHANGES:
+
+File: /components/dashboard/layout/sidebar.tsx
+
+Line 184:
+  - BEFORE: "bg-primary/5 text-foreground"
+  - AFTER:  "bg-primary/10 text-foreground"
+
+Line 192:
+  - BEFORE: w-0.5 (0.5px border)
+  - AFTER:  w-1 (4px border)
+
+
+EXPECTED OUTCOME:
+  ✅ Users can clearly see which sidebar section is active
+  ✅ Active state provides immediate visual feedback
+  ✅ Maintains subtle, professional aesthetics
+  ✅ Works well in both light and dark themes

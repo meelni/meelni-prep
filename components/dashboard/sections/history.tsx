@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SessionList } from "@/components/dashboard/session-list";
 import type { Session } from "@/lib/api/queries";
@@ -9,7 +10,7 @@ interface HistorySectionProps {
   loadingSessions: boolean;
 }
 
-export function HistorySection({ sessions, loadingSessions }: HistorySectionProps) {
+export const HistorySection = memo(function HistorySection({ sessions, loadingSessions }: HistorySectionProps) {
   return (
     <div className="p-6 space-y-6">
       <div className="space-y-2">
@@ -28,4 +29,4 @@ export function HistorySection({ sessions, loadingSessions }: HistorySectionProp
       )}
     </div>
   );
-}
+});
