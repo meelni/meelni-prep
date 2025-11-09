@@ -165,9 +165,11 @@ export function Sidebar({
             <button
               key={item.id}
               onClick={() => {
+                console.log("Sidebar clicked:", item.id, "isRoute:", item.isRoute);
                 if (item.isRoute) {
                   router.push(`/${item.id}`);
                 } else {
+                  console.log("Calling setActiveSection with:", item.id);
                   setActiveSection(item.id);
                 }
               }}
