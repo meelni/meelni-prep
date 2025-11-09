@@ -68,6 +68,7 @@ export default function DashboardPage() {
 
   // Render section based on activeSection
   const renderSection = () => {
+    console.log("Rendering section:", activeSection);
     // Show FTUE for first-time users on overview
     if (activeSection === "overview" && isFirstTimeUser) {
       return <FirstTimeUserExperience onStartInterview={setupModal.open} />;
@@ -109,7 +110,7 @@ export default function DashboardPage() {
     <>
       <DashboardLayout
         activeSection={activeSection}
-        setActiveSection={handleSectionChange}
+        setActiveSection={setActiveSection}
         totalSessions={stats.totalSessions}
         totalMinutes={stats.totalMinutes}
         avgScore={stats.avgScore || undefined}
