@@ -20,6 +20,11 @@ export default function DashboardPage() {
   const router = useRouter();
   const [activeSection, setActiveSection] = useState("overview");
 
+  // Debug: Log when activeSection changes
+  useEffect(() => {
+    console.log("activeSection state changed to:", activeSection);
+  }, [activeSection]);
+
   // Handle sign out
   const handleSignOut = async () => {
     await signOut();
