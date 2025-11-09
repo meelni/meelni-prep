@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { HistorySection } from "@/components/dashboard/sections/history";
@@ -24,13 +24,6 @@ export default function DashboardPage() {
   useEffect(() => {
     console.log("activeSection state changed to:", activeSection);
   }, [activeSection]);
-
-  // Wrap setActiveSection in useCallback to ensure stable reference
-  // Use updater function to avoid stale closure
-  const handleSetActiveSection = useCallback((section: string) => {
-    console.log("handleSetActiveSection called with:", section);
-    setActiveSection(() => section);
-  }, []);
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -132,8 +125,9 @@ export default function DashboardPage() {
       </div>
 
       <DashboardLayout
+        key={`dashboard-${user?.id || 'guest'}`}
         activeSection={activeSection}
-        setActiveSection={handleSetActiveSection}
+        setActiveSection={setActiveSection}
         totalSessions={stats.totalSessions}
         totalMinutes={stats.totalMinutes}
         avgScore={stats.avgScore || undefined}
