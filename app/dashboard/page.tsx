@@ -41,19 +41,21 @@ export default function DashboardPage() {
   // Sync activeSection with URL params
   useEffect(() => {
     const section = searchParams.get("section") || "overview";
-    setActiveSection(section);
-  }, [searchParams]);
+    if (section !== activeSection) {
+      setActiveSection(section);
+    }
+  }, [searchParams, activeSection]);
 
   // Handle section change with URL update
   const handleSectionChange = (section: string) => {
+    console.log("Section change requested:", section);
     setActiveSection(section);
-    const params = new URLSearchParams(searchParams.toString());
-    if (section === "overview") {
-      params.delete("section");
-    } else {
+    const params = new URLSearchParams();
+    if (section !== "overview") {
       params.set("section", section);
     }
     const newUrl = params.toString() ? `/dashboard?${params.toString()}` : "/dashboard";
+    console.log("Navigating to:", newUrl);
     router.push(newUrl, { scroll: false });
   };
 
@@ -136,7 +138,9 @@ export default function DashboardPage() {
         user={user}
         onSignOut={handleSignOut}
       >
-        {renderSection()}
+        <div key={activeSection}>
+          {renderSection()}
+        </div>
       </DashboardLayout>
 
       {/* Setup Modal */}
