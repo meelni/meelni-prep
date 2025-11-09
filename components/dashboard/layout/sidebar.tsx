@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, Monitor, History, BarChart3, Lightbulb, Settings, Sparkles, LogOut, Moon, Sun, BookOpen } from "lucide-react";
+import { ChevronLeft, Monitor, History, BarChart3, Settings, Sparkles, LogOut, Moon, Sun, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Icons } from "@/components/icons";
 import Link from "next/link";
@@ -63,7 +63,6 @@ export function Sidebar({
     { id: "history", icon: History, label: "Interview History", minSessions: 1 },
     { id: "questions", icon: BookOpen, label: "Question Bank", minSessions: 0, isRoute: true },
     { id: "analytics", icon: BarChart3, label: "Analytics", minSessions: 3 },
-    { id: "feedback", icon: Lightbulb, label: "Feedback & Insights", minSessions: 5 },
     { id: "settings", icon: Settings, label: "Settings", minSessions: 0 },
   ];
 
