@@ -61,7 +61,7 @@ export function Sidebar({
   const navigationItems = [
     { id: "overview", icon: Monitor, label: "Overview", minSessions: 0 },
     { id: "history", icon: History, label: "Interview History", minSessions: 1 },
-    { id: "questions", icon: BookOpen, label: "Question Bank", minSessions: 0, isRoute: true },
+    { id: "questions", icon: BookOpen, label: "Question Bank", minSessions: 0 },
     { id: "analytics", icon: BarChart3, label: "Analytics", minSessions: 3 },
     { id: "settings", icon: Settings, label: "Settings", minSessions: 0 },
   ];
@@ -165,21 +165,17 @@ export function Sidebar({
             <button
               key={item.id}
               onClick={() => {
-                console.log("Sidebar clicked:", item.id, "isRoute:", item.isRoute);
-                console.log("setActiveSection function:", typeof setActiveSection, setActiveSection);
                 if (item.isRoute) {
                   router.push(`/${item.id}`);
                 } else {
-                  console.log("Calling setActiveSection with:", item.id);
-                  const result = setActiveSection(item.id);
-                  console.log("setActiveSection returned:", result);
+                  setActiveSection(item.id);
                 }
               }}
               className={cn(
                 "relative flex items-center rounded-lg text-sm transition-all duration-200",
                 collapsed ? "px-3 py-3 justify-center" : "px-3 py-2 gap-3",
                 activeSection === item.id
-                  ? "bg-primary/5 text-foreground"
+                  ? "bg-primary/15 text-foreground font-medium"
                   : "text-muted-foreground hover:text-foreground hover:bg-card/50"
               )}
               aria-label={`Navigate to ${item.label}`}
@@ -187,7 +183,7 @@ export function Sidebar({
             >
               {/* Subtle gradient accent for active state */}
               {activeSection === item.id && !collapsed && (
-                <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary/50 via-primary to-primary/50 rounded-r" />
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-primary/50 via-primary to-primary/50 rounded-r" />
               )}
               <item.icon
                 size={18}
