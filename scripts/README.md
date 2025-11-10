@@ -1,6 +1,42 @@
-# Google Sheets Question Sync
+# Meelni Scripts
 
-This directory contains scripts for syncing PM interview questions from Google Sheets to the database.
+This directory contains utility scripts for Google Sheets sync and Vercel deployment.
+
+## 🚀 Deployment Scripts
+
+### deploy.sh
+
+Automated deployment script with pre-flight checks for Vercel production.
+
+**Usage**:
+```bash
+./scripts/deploy.sh
+```
+
+**What it does**:
+1. Checks Vercel CLI installation
+2. Verifies authentication
+3. Runs build check
+4. Validates TypeScript
+5. Runs linter
+6. Deploys to production
+
+### setup-vercel-env.sh
+
+Automates adding environment variables to Vercel from `.env.local`.
+
+**Usage**:
+```bash
+./scripts/setup-vercel-env.sh
+```
+
+**Important**: After running, enable Preview/Development for `NEXT_PUBLIC_*` vars in Vercel Dashboard.
+
+---
+
+## 📋 Google Sheets Question Sync
+
+Scripts for syncing PM interview questions from Google Sheets to the database.
 
 ## Overview
 
