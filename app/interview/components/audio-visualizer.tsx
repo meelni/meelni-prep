@@ -14,7 +14,7 @@ import { useTrackVolume } from "@livekit/components-react";
 export function AudioVisualizer() {
   const { localParticipant } = useLocalParticipant();
   const remoteParticipants = useRemoteParticipants();
-  const { state: agentStateFromHook } = useVoiceAssistant();
+  const { state: agentStateFromHook, audioTrack: agentAudioTrackFromHook } = useVoiceAssistant();
 
   // Debounced agent state to prevent flickering during speech pauses
   const [debouncedAgentState, setDebouncedAgentState] = useState<string>("idle");
@@ -38,10 +38,25 @@ export function AudioVisualizer() {
   const normalizedUserVolume = Math.min(userVolume, 100) / 100;
   const normalizedAgentVolume = Math.min(agentVolume, 100) / 100;
 
-  // Debounce agent state changes to prevent flickering during natural pauses
+  // Hybrid approach: Use hook state if available, fall back to volume detection
+  // This handles both voice assistant mode and explicit agent dispatch
   useEffect(() => {
-    const currentState = (agentStateFromHook as string) || "idle";
     const GRACE_PERIOD_MS = 700; // 700ms grace period for natural pauses
+
+    // Try to use voice assistant state if available
+    let currentState = (agentStateFromHook as string) || "idle";
+
+    // If hook state is stuck on "idle" but we have agent volume, infer from audio
+    // This happens when agent is explicitly dispatched (not voice assistant mode)
+    if (currentState === "idle" && agentParticipant) {
+      if (normalizedAgentVolume > 0.15) {
+        currentState = "speaking";
+      } else if (normalizedUserVolume > 0.3) {
+        currentState = "listening";
+      }
+    }
+
+    console.log('[AudioVisualizer] Current state:', currentState, 'Hook state:', agentStateFromHook, 'Agent vol:', normalizedAgentVolume.toFixed(2));
 
     // If agent is speaking, update timestamp
     if (currentState === "speaking") {
@@ -89,7 +104,7 @@ export function AudioVisualizer() {
         clearTimeout(stateChangeTimerRef.current);
       }
     };
-  }, [agentStateFromHook, debouncedAgentState]);
+  }, [agentStateFromHook, debouncedAgentState, agentParticipant, normalizedAgentVolume, normalizedUserVolume]);
 
   // Debounced user speaking state
   const [isUserSpeakingDebounced, setIsUserSpeakingDebounced] = useState(false);
