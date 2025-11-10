@@ -16,10 +16,6 @@ function SignInContent() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") || "/dashboard";
 
-  // Hardcoded credentials (temporary)
-  const HARDCODED_EMAIL = "ycdemo143";
-  const HARDCODED_PASSWORD = "yf27EkJECxNeBR3-TPK4";
-
   // Redirect if already logged in
   useEffect(() => {
     if (!authLoading && user) {
@@ -46,15 +42,14 @@ function SignInContent() {
     setIsSigningIn(true);
     setError(null);
 
-    // Check hardcoded credentials
-    if (email === HARDCODED_EMAIL && password === HARDCODED_PASSWORD) {
-      // Simulate successful login by redirecting
-      // In a real app, you'd create a proper session here
-      setTimeout(() => {
-        router.push(redirectTo);
-      }, 500);
-    } else {
-      setError("Invalid email or password");
+    try {
+      // TODO: Implement Supabase email/password authentication
+      // For now, show a message
+      setError("Email/password sign-in coming soon. Please use Google sign-in for now.");
+      setIsSigningIn(false);
+    } catch (err) {
+      console.error("Sign in error:", err);
+      setError("Failed to sign in. Please try again.");
       setIsSigningIn(false);
     }
   };
