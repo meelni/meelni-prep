@@ -11,7 +11,7 @@ import {
 import { ChartConfig, ChartContainer } from "@/components/ui/chart";
 import { Badge } from "@/components/ui/badge";
 import { TrendingDown, TrendingUp } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useSpring, useMotionValueEvent } from "motion/react";
 
 interface ScoreDataPoint {
@@ -53,6 +53,15 @@ export function ClippedAreaChart({ data }: ClippedAreaChartProps) {
   useMotionValueEvent(springX, "change", (latest) => {
     setAxis(latest);
   });
+
+  // Initialize axis to full width on mount
+  useEffect(() => {
+    const width = chartRef.current?.getBoundingClientRect().width || 0;
+    if (width > 0) {
+      setAxis(width);
+      springX.set(width);
+    }
+  }, [springX]);
 
   // Calculate trend
   const trend =
