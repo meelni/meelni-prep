@@ -18,21 +18,34 @@ export default async function Image() {
       // ImageResponse JSX element
       <div
         style={{
-          background: 'linear-gradient(135deg, oklch(0.70 0.22 285) 0%, oklch(0.65 0.25 260) 100%)',
+          background: 'white',
           width: '100%',
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          color: 'white',
           fontFamily: 'system-ui, sans-serif',
+          padding: '80px',
         }}
       >
+        {/* Logo placeholder - will be replaced by actual logo */}
         <div
           style={{
-            fontSize: 120,
+            fontSize: 200,
             fontWeight: 700,
+            marginBottom: 40,
+            color: '#000',
+            letterSpacing: '-0.05em',
+          }}
+        >
+          M
+        </div>
+        <div
+          style={{
+            fontSize: 72,
+            fontWeight: 700,
+            color: '#000',
             marginBottom: 20,
           }}
         >
@@ -40,9 +53,9 @@ export default async function Image() {
         </div>
         <div
           style={{
-            fontSize: 48,
+            fontSize: 42,
             fontWeight: 400,
-            opacity: 0.9,
+            color: '#666',
           }}
         >
           AI Interview Agent
@@ -51,8 +64,8 @@ export default async function Image() {
           style={{
             fontSize: 32,
             fontWeight: 300,
-            marginTop: 40,
-            opacity: 0.7,
+            marginTop: 60,
+            color: '#999',
           }}
         >
           Practice PM Interviews • Get Real-Time Feedback
