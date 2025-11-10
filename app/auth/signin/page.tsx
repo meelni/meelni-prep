@@ -10,9 +10,15 @@ function SignInContent() {
   const { signInWithGoogle, user, isLoading: authLoading } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") || "/dashboard";
+
+  // Hardcoded credentials (temporary)
+  const HARDCODED_EMAIL = "demo@meelni.com";
+  const HARDCODED_PASSWORD = "demo123";
 
   // Redirect if already logged in
   useEffect(() => {
@@ -31,6 +37,24 @@ function SignInContent() {
     } catch (err) {
       console.error("Sign in error:", err);
       setError("Failed to sign in. Please try again.");
+      setIsSigningIn(false);
+    }
+  };
+
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSigningIn(true);
+    setError(null);
+
+    // Check hardcoded credentials
+    if (email === HARDCODED_EMAIL && password === HARDCODED_PASSWORD) {
+      // Simulate successful login by redirecting
+      // In a real app, you'd create a proper session here
+      setTimeout(() => {
+        router.push(redirectTo);
+      }, 500);
+    } else {
+      setError("Invalid email or password");
       setIsSigningIn(false);
     }
   };
@@ -91,11 +115,75 @@ function SignInContent() {
             </p>
           </div>
 
-          {/* Sign In Button */}
-          <motion.button
+          {/* Email/Password Form */}
+          <motion.form
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
+            onSubmit={handleEmailSignIn}
+            className="space-y-4"
+          >
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
+                className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-foreground mb-2">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSigningIn}
+              className="w-full rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground transition-all duration-300 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSigningIn ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Signing in...</span>
+                </div>
+              ) : (
+                "Sign In"
+              )}
+            </button>
+          </motion.form>
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-background px-4 text-muted-foreground">Or continue with</span>
+            </div>
+          </div>
+
+          {/* Google Sign In Button */}
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
             onClick={handleGoogleSignIn}
             disabled={isSigningIn}
             className="group relative w-full overflow-hidden rounded-xl border-2 border-border bg-background px-6 py-4 font-semibold transition-all duration-300 hover:border-primary/50 hover:bg-background/80 disabled:cursor-not-allowed disabled:opacity-50"
@@ -138,11 +226,6 @@ function SignInContent() {
             </motion.div>
           )}
 
-          {/* Trust Signals */}
-          <div className="mt-6 space-y-2 text-center text-xs text-muted-foreground">
-            <p>✓ Free forever • No credit card required</p>
-            <p>✓ 2-minute setup • Start practicing immediately</p>
-          </div>
         </div>
 
         {/* Back to Home */}
