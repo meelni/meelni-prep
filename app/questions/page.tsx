@@ -169,7 +169,7 @@ export default function QuestionBankPage() {
     const params = new URLSearchParams({
       questionId,
       roundType,
-      mode: "mock_interview",
+      mode: "voice_video", // Must match database constraint: 'voice_video' or 'text'
       voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", // Tessa voice
       speed: "1.0",
       emotion: "confident",

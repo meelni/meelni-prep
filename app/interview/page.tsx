@@ -42,7 +42,9 @@ function InterviewPageContent() {
 
   // Config from Setup Modal (query params)
   const roundType = searchParams.get("roundType");
-  const mode = searchParams.get("mode");
+  const modeParam = searchParams.get("mode");
+  // Ensure mode is valid (fallback for cached URLs with "mock_interview")
+  const mode = modeParam === "mock_interview" ? "voice_video" : modeParam;
   const voice = searchParams.get("voice");
   const speed = searchParams.get("speed");
   const emotion = searchParams.get("emotion");
