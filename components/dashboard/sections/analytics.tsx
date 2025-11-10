@@ -10,11 +10,8 @@ import {
   Target,
   Clock,
   Award,
-  Zap,
   Sparkles,
   Loader2,
-  Calendar,
-  Filter,
 } from "lucide-react";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import {
@@ -229,8 +226,8 @@ function StatCard({
 
   return (
     <motion.div variants={fadeInUp}>
-      <Card className="bg-card border-border hover:border-primary/30 transition-colors">
-        <CardContent className="p-6">
+      <Card className="bg-card border-border hover:border-primary/30 transition-colors min-h-[140px] flex flex-col">
+        <CardContent className="p-6 flex-1 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
             <Icon className="w-5 h-5 text-primary" />
             {ChangeIcon && change !== undefined && (
@@ -247,49 +244,6 @@ function StatCard({
             </div>
             <div className="text-xs text-muted-foreground uppercase tracking-wide">
               {label}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-/**
- * Filters Bar Component
- */
-function FiltersBar() {
-  return (
-    <motion.div variants={fadeInUp}>
-      <Card className="bg-card border-border">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Filter className="w-4 h-4" />
-              <span className="font-medium">Filters:</span>
-            </div>
-
-            {/* Date Range Filter (Coming Soon) */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 text-sm text-muted-foreground border border-border">
-              <Calendar className="w-4 h-4" />
-              <span>All Time</span>
-            </div>
-
-            {/* Interview Type Filters (Coming Soon) */}
-            <div className="flex items-center gap-2">
-              {["Product Sense", "Analytical", "Leadership", "Strategy"].map((type) => (
-                <button
-                  key={type}
-                  className="px-3 py-1.5 rounded-md bg-muted/50 text-sm text-muted-foreground border border-border hover:border-primary/30 transition-colors"
-                  disabled
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-
-            <div className="ml-auto text-xs text-muted-foreground">
-              Coming soon: Filter by date range and interview type
             </div>
           </div>
         </CardContent>
@@ -390,7 +344,7 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
       {/* Stats Cards */}
       <motion.div
         variants={staggerContainer}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+        className="grid grid-cols-1 md:grid-cols-3 gap-4"
       >
         <StatCard
           icon={Target}
@@ -416,16 +370,7 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
           value={insights.overall.total_minutes}
           suffix="m"
         />
-        <StatCard
-          icon={Zap}
-          label="Current Streak"
-          value={insights.overall.current_streak}
-          suffix=" days"
-        />
       </motion.div>
-
-      {/* Filters Bar */}
-      <FiltersBar />
 
       {/* Charts Grid - 2 Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

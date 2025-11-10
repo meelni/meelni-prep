@@ -56,7 +56,7 @@ export function StatsCards({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.1, duration: 0.3 }}
         >
-          <Card className="p-6 bg-surface/50 border-border/50 hover:border-primary/30 transition-all duration-300 min-h-[140px] flex flex-col justify-between">
+          <Card className="p-6 bg-card border-border hover:border-primary/30 transition-all duration-300 min-h-[140px] flex flex-col justify-between">
             <div className="space-y-3">
               <p className="text-sm font-medium text-muted-foreground h-5 flex items-center">
                 {stat.label}
