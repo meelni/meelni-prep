@@ -16,16 +16,10 @@ export function AudioVisualizer() {
   const remoteParticipants = useRemoteParticipants();
   const { state: agentStateFromHook } = useVoiceAssistant();
 
-  // Track agent connection state
-  const [agentConnected, setAgentConnected] = useState(false);
-
   // Debounced agent state to prevent flickering during speech pauses
   const [debouncedAgentState, setDebouncedAgentState] = useState<string>("idle");
-  const agentStateTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
-  const lastAgentSpeakingTimeRef = useRef<number>(0);
-
-  // Raw state detection with its own debouncing
-  const rawStateDetectionTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const stateChangeTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const lastSpeakingTimeRef = useRef<number>(0);
 
   const userAudioTrack = localParticipant?.getTrackPublication(
     Track.Source.Microphone
@@ -40,9 +34,62 @@ export function AudioVisualizer() {
   const userVolume = useTrackVolume(userAudioTrack as any);
   const agentVolume = useTrackVolume(agentAudioTrack as any);
 
-  // Normalize volumes to 0-1 range
-  const normalizedUserVolume = Math.min(userVolume / 0.5, 1);
-  const normalizedAgentVolume = Math.min(agentVolume / 0.5, 1);
+  // Normalize volumes to 0-1 range (same as demo)
+  const normalizedUserVolume = Math.min(userVolume, 100) / 100;
+  const normalizedAgentVolume = Math.min(agentVolume, 100) / 100;
+
+  // Debounce agent state changes to prevent flickering during natural pauses
+  useEffect(() => {
+    const currentState = (agentStateFromHook as string) || "idle";
+    const GRACE_PERIOD_MS = 700; // 700ms grace period for natural pauses
+
+    // If agent is speaking, update timestamp
+    if (currentState === "speaking") {
+      lastSpeakingTimeRef.current = Date.now();
+
+      // Immediately show speaking state
+      if (debouncedAgentState !== "speaking") {
+        setDebouncedAgentState("speaking");
+      }
+
+      // Clear any pending state change
+      if (stateChangeTimerRef.current) {
+        clearTimeout(stateChangeTimerRef.current);
+        stateChangeTimerRef.current = undefined;
+      }
+    } else if (currentState !== "speaking" && debouncedAgentState === "speaking") {
+      // Agent stopped speaking - check if we should wait before transitioning
+      const timeSinceLastSpeaking = Date.now() - lastSpeakingTimeRef.current;
+
+      if (timeSinceLastSpeaking < GRACE_PERIOD_MS) {
+        // Within grace period - delay the state change
+        if (!stateChangeTimerRef.current) {
+          stateChangeTimerRef.current = setTimeout(() => {
+            setDebouncedAgentState(currentState);
+            stateChangeTimerRef.current = undefined;
+          }, GRACE_PERIOD_MS - timeSinceLastSpeaking);
+        }
+      } else {
+        // Grace period passed - update immediately
+        setDebouncedAgentState(currentState);
+      }
+    } else if (currentState !== "speaking") {
+      // Non-speaking states (thinking, listening, idle) - update immediately
+      setDebouncedAgentState(currentState);
+
+      // Clear any pending timer
+      if (stateChangeTimerRef.current) {
+        clearTimeout(stateChangeTimerRef.current);
+        stateChangeTimerRef.current = undefined;
+      }
+    }
+
+    return () => {
+      if (stateChangeTimerRef.current) {
+        clearTimeout(stateChangeTimerRef.current);
+      }
+    };
+  }, [agentStateFromHook, debouncedAgentState]);
 
   // Debounced user speaking state
   const [isUserSpeakingDebounced, setIsUserSpeakingDebounced] = useState(false);
@@ -74,86 +121,6 @@ export function AudioVisualizer() {
       }
     };
   }, [normalizedUserVolume, userAudioTrack, isUserSpeakingDebounced]);
-
-  // Detect agent connection
-  useEffect(() => {
-    const agentParticipant = remoteParticipants[0];
-
-    if (agentParticipant && !agentConnected) {
-      console.log('[AudioVisualizer] Agent connected:', agentParticipant.identity);
-      setAgentConnected(true);
-    }
-  }, [remoteParticipants, agentConnected]);
-
-  // Detect and debounce agent state based on audio activity
-  useEffect(() => {
-    if (!agentConnected) return;
-
-    const GRACE_PERIOD_MS = 700; // 700ms grace period for natural pauses in speech
-
-    // Determine desired state based on audio activity
-    let rawState = "idle";
-
-    if (normalizedAgentVolume > 0.15) {
-      // Agent is speaking (higher volume detected)
-      rawState = "speaking";
-    } else if (normalizedUserVolume > 0.3) {
-      // User is speaking, agent should be listening
-      rawState = "listening";
-    }
-
-    // Immediate update when agent starts speaking
-    if (rawState === "speaking") {
-      lastAgentSpeakingTimeRef.current = Date.now();
-
-      if (debouncedAgentState !== "speaking") {
-        console.log('[AudioVisualizer] Agent started speaking');
-        setDebouncedAgentState("speaking");
-      }
-
-      // Clear any pending state change
-      if (agentStateTimerRef.current) {
-        clearTimeout(agentStateTimerRef.current);
-        agentStateTimerRef.current = undefined;
-      }
-    }
-    // Apply grace period when stopping speaking
-    else if (rawState !== "speaking" && debouncedAgentState === "speaking") {
-      const timeSinceLastSpeaking = Date.now() - lastAgentSpeakingTimeRef.current;
-
-      if (timeSinceLastSpeaking < GRACE_PERIOD_MS) {
-        // Within grace period - delay the state change (only set timer once)
-        if (!agentStateTimerRef.current) {
-          const remainingTime = GRACE_PERIOD_MS - timeSinceLastSpeaking;
-          agentStateTimerRef.current = setTimeout(() => {
-            console.log('[AudioVisualizer] Grace period expired, changing state from speaking to', rawState);
-            setDebouncedAgentState(rawState);
-            agentStateTimerRef.current = undefined;
-          }, remainingTime);
-        }
-      } else {
-        // Grace period already passed - update immediately
-        setDebouncedAgentState(rawState);
-      }
-    }
-    // For other state transitions (listening/idle), update immediately
-    else if (rawState !== debouncedAgentState) {
-      console.log('[AudioVisualizer] State change:', debouncedAgentState, '→', rawState);
-      setDebouncedAgentState(rawState);
-
-      // Clear any pending timer
-      if (agentStateTimerRef.current) {
-        clearTimeout(agentStateTimerRef.current);
-        agentStateTimerRef.current = undefined;
-      }
-    }
-
-    return () => {
-      if (agentStateTimerRef.current) {
-        clearTimeout(agentStateTimerRef.current);
-      }
-    };
-  }, [normalizedUserVolume, normalizedAgentVolume, agentConnected, debouncedAgentState]);
 
   // Map LiveKit agent state to Orb agent state
   // Use debounced state for UI display to prevent flickering
