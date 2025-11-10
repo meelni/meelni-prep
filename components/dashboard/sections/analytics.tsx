@@ -17,13 +17,19 @@ import {
   Filter,
 } from "lucide-react";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
-import { PerformanceTrend } from "@/components/dashboard/charts/performance-trend";
-import { CompetencyBreakdown } from "@/components/dashboard/charts/competency-breakdown";
-import { TypeDistribution } from "@/components/dashboard/charts/type-distribution";
+import {
+  PerformanceTrend,
+  CompetencyBreakdown,
+  TypeDistribution,
+  TimeInvestment,
+  ScoreByType,
+} from "@/components/dashboard/charts";
 import {
   aggregatePerformanceTrend,
   aggregateCompetencyScores,
   aggregateTypeDistribution,
+  aggregateTimeInvestment,
+  aggregateScoreByType,
 } from "@/lib/analytics/aggregations";
 import type { SessionWithFeedback } from "@/lib/analytics/aggregations";
 
@@ -363,6 +369,8 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
   const performanceTrendData = aggregatePerformanceTrend(sessions);
   const competencyData = aggregateCompetencyScores(sessions);
   const typeDistributionData = aggregateTypeDistribution(sessions);
+  const timeInvestmentData = aggregateTimeInvestment(sessions, "week");
+  const scoreByTypeData = aggregateScoreByType(sessions);
 
   return (
     <motion.div
@@ -454,6 +462,25 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
           }}
         />
       </motion.div>
+
+      {/* Additional Charts Grid - 2 Column Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Time Investment - Uses GradientBarChart */}
+        <motion.div variants={fadeInUp}>
+          <TimeInvestment data={timeInvestmentData} groupBy="week" />
+        </motion.div>
+
+        {/* Score by Type Comparison - Uses DefaultMultipleBarChart */}
+        <motion.div variants={fadeInUp}>
+          <ScoreByType
+            data={scoreByTypeData}
+            onTypeClick={(type) => {
+              // TODO: Navigate to filtered history
+              console.log("Filter by type:", type);
+            }}
+          />
+        </motion.div>
+      </div>
     </motion.div>
   );
 });
