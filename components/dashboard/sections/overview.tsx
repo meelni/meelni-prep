@@ -239,7 +239,7 @@ export const OverviewSection = memo(function OverviewSection({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-0 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border">
+            <div className="space-y-0 max-h-80 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full">
               {recentActivity.length > 0 ? (
                 recentActivity.map((activity, index) => (
                   <div key={index} className="relative pl-6 pb-4 last:pb-0">
