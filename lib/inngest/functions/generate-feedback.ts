@@ -47,9 +47,10 @@ async function fetchSessionTranscript(sessionId: string): Promise<{ speaker: str
 
   return turns
     .reverse() // Oldest first
+    .filter((turn) => turn.text !== null)
     .map((turn) => ({
       speaker: turn.speaker,
-      text: turn.text,
+      text: turn.text!,
     }));
 }
 

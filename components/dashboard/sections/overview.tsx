@@ -10,7 +10,6 @@ import { ScoreChart } from "@/components/dashboard/score-chart";
 import { CompetencyRadar } from "@/components/dashboard/competency-radar";
 import { SessionList } from "@/components/dashboard/session-list";
 import { EmptyStateCard } from "@/components/dashboard/empty-state-card";
-import { MilestoneBadges, MilestoneType } from "@/components/dashboard/stats/milestone-badge";
 import type { Session } from "@/lib/api/queries";
 
 interface OverviewSectionProps {
@@ -79,15 +78,6 @@ export const OverviewSection = memo(function OverviewSection({
 
     fetchUserSummary();
   }, [sessions]); // Refetch when sessions change
-
-  // Derive milestone badges from user summary
-  const milestoneBadges: MilestoneType[] = [];
-  if (userSummary?.milestones) {
-    if (userSummary.milestones.fiveSessionStreak) milestoneBadges.push("streak");
-    if (userSummary.milestones.perfectScore) milestoneBadges.push("perfect");
-    if (userSummary.milestones.improving) milestoneBadges.push("improving");
-    if (userSummary.milestones.consistent) milestoneBadges.push("consistent");
-  }
 
   // Score data from user summary (real feedback scores)
   const scoreData =
@@ -213,28 +203,16 @@ export const OverviewSection = memo(function OverviewSection({
 
   return (
     <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="space-y-2">
+        <h2 className="text-2xl font-display font-light text-foreground">Overview</h2>
+        <p className="text-muted-foreground font-sans">
+          Track your progress and see how you're improving across all interview types.
+        </p>
+      </div>
+
       {/* Main Dashboard Grid - Improved Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Milestone Badges - Full Width */}
-        {milestoneBadges.length > 0 && (
-          <div className="lg:col-span-3 relative z-20">
-            <Card className="p-4 bg-card border-border">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <h3 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-                    Achievements
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Keep up the great work! You've earned {milestoneBadges.length}{" "}
-                    {milestoneBadges.length === 1 ? "milestone" : "milestones"}.
-                  </p>
-                </div>
-                <MilestoneBadges milestones={milestoneBadges} />
-              </div>
-            </Card>
-          </div>
-        )}
-
         {/* Stats Cards Overview - Full Width */}
         <div className="lg:col-span-3">
           <StatsCards
