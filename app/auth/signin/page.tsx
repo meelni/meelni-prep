@@ -17,8 +17,8 @@ function SignInContent() {
   const redirectTo = searchParams.get("redirectTo") || "/dashboard";
 
   // Hardcoded credentials (temporary)
-  const HARDCODED_EMAIL = "demo@meelni.com";
-  const HARDCODED_PASSWORD = "demo123";
+  const HARDCODED_EMAIL = "ycdemo143";
+  const HARDCODED_PASSWORD = "yf27EkJECxNeBR3-TPK4";
 
   // Redirect if already logged in
   useEffect(() => {
@@ -125,14 +125,14 @@ function SignInContent() {
           >
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
-                Email
+                Username
               </label>
               <input
                 id="email"
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
+                placeholder="Enter your username"
                 className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 required
               />
