@@ -200,7 +200,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="p-6 flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-4">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-muted-foreground">
@@ -212,9 +212,17 @@ export const QuestionsSection = memo(function QuestionsSection() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="space-y-2">
+        <h2 className="text-2xl font-display font-light text-foreground">Question Bank</h2>
+        <p className="text-muted-foreground font-sans">
+          Browse and practice with real interview questions from top companies.
+        </p>
+      </div>
+
       {/* Questions Content */}
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-8">
+      <div>
         {emptyStateType ? (
           <div className="rounded-lg border border-border overflow-hidden bg-card">
             <EmptyState
