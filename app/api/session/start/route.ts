@@ -268,7 +268,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Dispatch Cloud agent to the room
-    const INTERVIEW_AGENT_ID = "CA_yawKG67rCMG4";
+    const INTERVIEW_AGENT_ID = "CA_t3sKQEihMQ7x"; // Updated to new agent with question bank fix
     const dispatchClient = new AgentDispatchClient(livekit_url, livekit_api_key, livekit_api_secret);
     try {
       await dispatchClient.createDispatch(roomName, INTERVIEW_AGENT_ID);

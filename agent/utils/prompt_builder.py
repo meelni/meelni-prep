@@ -58,11 +58,57 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
         skill_level=skill_level
     )
 
+    # IMPORTANT: Add specific question FIRST (before greeting) so LLM sees it early
+    question_text = None
+    if question:
+        # Handle both field name formats (question_text/text, question_type/type)
+        question_text = question.get("question_text") or question.get("text")
+        company = question.get("company")
+        question_type = question.get("question_type") or question.get("type")
+
+        # DEBUG: Log what we received
+        print(f"[PROMPT_BUILDER] Received question: {question}")
+        print(f"[PROMPT_BUILDER] Extracted text: {question_text[:100] if question_text else 'None'}...")
+        print(f"[PROMPT_BUILDER] Company: {company}, Type: {question_type}")
+
+        if question_text:
+            base_prompt = "\n\n" + "=" * 80 + "\n" + base_prompt  # Move base prompt DOWN
+
+            # Put question at ABSOLUTE TOP - first thing LLM sees
+            question_header = "=" * 80
+            question_header += "\n🚨 CRITICAL SYSTEM CONSTRAINT - READ FIRST 🚨"
+            question_header += "\n" + "=" * 80
+            question_header += f"\n\nYou are LOCKED to this specific interview question. You CANNOT ask any other question."
+            question_header += f"\n\nTHE ONLY QUESTION YOU MAY ASK:"
+            question_header += f"\n\n    \"{question_text}\""
+
+            # Add company context if available
+            if company:
+                question_header += f"\n\nCompany Context: Candidate is interviewing at {company}."
+
+            # Add question type context
+            if question_type:
+                question_header += f"\nQuestion Type: {question_type}"
+
+            question_header += "\n\n" + "=" * 80
+            question_header += "\n🚨 CONSTRAINT ENFORCEMENT:"
+            question_header += "\n• You are FORBIDDEN from generating your own questions"
+            question_header += "\n• You MUST use this exact question (same meaning, same content)"
+            question_header += "\n• ALLOWED natural fixes when speaking:"
+            question_header += "\n  - Expand abbreviations: 'NSM' → 'North Star Metric', '6mo' → '6 months', 'pls' → 'please'"
+            question_header += "\n  - Fix obvious typos: 'teh' → 'the', 'recieve' → 'receive'"
+            question_header += "\n  - Natural grammar: 'What will you do?' sounds natural as-is"
+            question_header += "\n• FORBIDDEN: Changing the question, rephrasing, or adding/removing concepts"
+            question_header += "\n• Keep all company names, product names, and key terms exactly as written"
+            question_header += "\n" + "=" * 80
+
+            base_prompt = question_header + "\n" + base_prompt
+
     # Add opening greeting instruction - CRITICAL: Tell agent to speak first
     mode_name = mode.replace("_", " ").title()
     interview_type_name = interview_type.replace("_", " ").title()
 
-    base_prompt += f"""
+    greeting_instruction = f"""
 
 ## CRITICAL - OPENING GREETING:
 
@@ -72,11 +118,20 @@ Greet the candidate warmly and set the stage. Keep it brief and natural.
 
 Example opening (adapt to your personality):
 "Hey! I'm Meelni, your AI interview coach. Today we're doing a {interview_type_name} interview in {mode_name} mode. I'll ask questions and give you feedback as we go. Sound good? Ready to start?"
+"""
 
+    # If we have a specific question, modify the greeting instruction
+    if question_text:
+        greeting_instruction += f"""
+After the greeting, IMMEDIATELY ask the EXACT question specified above (starting with: "{question_text[:50]}...").
+DO NOT ask any other question first. DO NOT make up your own question.
+"""
+
+    greeting_instruction += """
 Requirements for your greeting:
 - Mention you're Meelni, the AI interview coach
-- State the interview type: {interview_type_name}
-- State the mode: {mode_name}
+- State the interview type: """ + interview_type_name + """
+- State the mode: """ + mode_name + """
 - Set expectations briefly
 - Ask if they're ready
 - Be warm but direct (no corporate fluff)
@@ -85,14 +140,22 @@ Requirements for your greeting:
 DO NOT wait for them to speak first. YOU initiate the conversation.
 """
 
+    base_prompt += greeting_instruction
+
     # Add duration context
     base_prompt += f"\n\nInterview Duration: {duration} minutes - pace yourself accordingly."
 
-    # NEW: Add specific question from question bank if provided
-    if question:
-        question_text = question.get("question_text")
+    # OLD LOCATION: Question was here (moved to top for visibility)
+    if False:  # Keeping this section as reference but never executing
+        # Handle both field name formats (question_text/text, question_type/type)
+        question_text = question.get("question_text") or question.get("text")
         company = question.get("company")
-        question_type = question.get("question_type")
+        question_type = question.get("question_type") or question.get("type")
+
+        # DEBUG: Log what we received
+        print(f"[PROMPT_BUILDER] Received question: {question}")
+        print(f"[PROMPT_BUILDER] Extracted text: {question_text[:100] if question_text else 'None'}...")
+        print(f"[PROMPT_BUILDER] Company: {company}, Type: {question_type}")
 
         base_prompt += "\n\n## INTERVIEW QUESTION FROM QUESTION BANK:"
 

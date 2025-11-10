@@ -236,7 +236,7 @@ if __name__ == "__main__":
             WorkerOptions(
                 entrypoint_fnc=entrypoint,
                 prewarm_fnc=prewarm,
-                agent_name="CA_yawKG67rCMG4",  # Required for explicit dispatch
+                agent_name="CA_t3sKQEihMQ7x",  # Required for explicit dispatch
             ),
         )
     else:
