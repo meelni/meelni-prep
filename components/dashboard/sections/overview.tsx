@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles, Calendar, Loader2 } from "lucide-react";
 import { StatsCards } from "@/components/dashboard/stats-cards";
-import { ScoreChart } from "@/components/dashboard/score-chart";
-import { CompetencyRadar } from "@/components/dashboard/competency-radar";
+import { ClippedAreaChart } from "@/components/dashboard/charts/clipped-area-chart";
+import { GlowingRadarChart } from "@/components/dashboard/charts/glowing-radar-chart";
 import { SessionList } from "@/components/dashboard/session-list";
 import { EmptyStateCard } from "@/components/dashboard/empty-state-card";
 import type { Session } from "@/lib/api/queries";
@@ -95,16 +95,15 @@ export const OverviewSection = memo(function OverviewSection({
       })) || [];
 
   // Competency data (real average scores from feedback)
-  // TODO: Fetch detailed competency breakdown from API
-  const competencyData = userSummary
-    ? [
-        { competency: "Structure", score: avgScore || 0, fullMark: 10 },
-        { competency: "Clarity", score: avgScore || 0, fullMark: 10 },
-        { competency: "Insight", score: avgScore || 0, fullMark: 10 },
-        { competency: "Communication", score: avgScore || 0, fullMark: 10 },
-        { competency: "Leadership", score: avgScore || 0, fullMark: 10 },
-      ]
-    : [];
+  // Use avgScore from props, fallback to userSummary average if available
+  const actualAvgScore = avgScore || userSummary?.summary?.avgScore || 0;
+  const competencyData = [
+    { competency: "Structure", fullName: "Structure", score: actualAvgScore, fullMark: 10 },
+    { competency: "Clarity", fullName: "Clarity", score: actualAvgScore, fullMark: 10 },
+    { competency: "Insight", fullName: "Insight", score: actualAvgScore, fullMark: 10 },
+    { competency: "Comm", fullName: "Communication", score: actualAvgScore, fullMark: 10 },
+    { competency: "Lead", fullName: "Leadership", score: actualAvgScore, fullMark: 10 },
+  ];
 
   // Interview type breakdown (mock data)
   const interviewTypeBreakdown = {
@@ -224,17 +223,13 @@ export const OverviewSection = memo(function OverviewSection({
           />
         </div>
 
-        {/* Charts Row - Only show if we have real feedback scores */}
-        {scoreData.length > 0 && (
-          <>
-            <div className="lg:col-span-2">
-              <ScoreChart data={scoreData} />
-            </div>
-            <div className="lg:col-span-1">
-              <CompetencyRadar data={competencyData} />
-            </div>
-          </>
-        )}
+        {/* Charts Row */}
+        <div className="lg:col-span-2">
+          <ClippedAreaChart data={scoreData} />
+        </div>
+        <div className="lg:col-span-1">
+          <GlowingRadarChart data={competencyData} />
+        </div>
 
         {/* Recent Activity */}
         <Card className="lg:col-span-1 bg-card border-border">
