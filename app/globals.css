@@ -304,6 +304,26 @@
     @apply bg-background text-foreground font-sans;
   }
 
+  /* Ensure all interactive elements have pointer cursor */
+  button,
+  a,
+  [role="button"],
+  [role="link"],
+  [type="button"],
+  [type="submit"],
+  [type="reset"],
+  label[for],
+  select {
+    cursor: pointer;
+  }
+
+  /* Disabled state should show not-allowed cursor */
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  [disabled] {
+    cursor: not-allowed;
+  }
+
   ::-webkit-scrollbar {
     width: 5px;
   }
