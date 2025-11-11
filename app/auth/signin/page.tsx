@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
 function SignInContent() {
-  const { signInWithGoogle, user, isLoading: authLoading } = useAuth();
+  const { signInWithGoogle, signInWithEmail, user, isLoading: authLoading } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
@@ -43,13 +43,12 @@ function SignInContent() {
     setError(null);
 
     try {
-      // TODO: Implement Supabase email/password authentication
-      // For now, show a message
-      setError("Email/password sign-in coming soon. Please use Google sign-in for now.");
-      setIsSigningIn(false);
-    } catch (err) {
+      await signInWithEmail(email, password);
+      // Redirect will happen via the useEffect hook
+      router.push(redirectTo);
+    } catch (err: any) {
       console.error("Sign in error:", err);
-      setError("Failed to sign in. Please try again.");
+      setError(err.message || "Failed to sign in. Please check your credentials.");
       setIsSigningIn(false);
     }
   };
@@ -120,23 +119,32 @@ function SignInContent() {
           >
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
-                Username
+                Email
               </label>
               <input
                 id="email"
-                type="text"
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your username"
+                placeholder="Enter your email"
                 className="w-full rounded-lg border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 required
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-foreground mb-2">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label htmlFor="password" className="block text-sm font-medium text-foreground">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => router.push("/auth/forgot-password")}
+                  className="text-xs text-primary hover:text-primary/80 transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
               <input
                 id="password"
                 type="password"
@@ -220,6 +228,17 @@ function SignInContent() {
               {error}
             </motion.div>
           )}
+
+          {/* Sign Up Link */}
+          <div className="mt-6 text-center text-sm text-muted-foreground">
+            Don't have an account?{" "}
+            <button
+              onClick={() => router.push("/auth/signup")}
+              className="text-primary hover:text-primary/80 font-medium transition-colors"
+            >
+              Sign up
+            </button>
+          </div>
 
         </div>
 
