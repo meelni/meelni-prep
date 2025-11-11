@@ -4,7 +4,7 @@ import { Examples } from '@/components/sections/examples';
 import { Features } from '@/components/sections/features';
 import { Footer } from '@/components/sections/footer';
 import { Logos } from '@/components/sections/logos';
-import { Pricing } from '@/components/sections/pricing';
+// import { Pricing } from '@/components/sections/pricing'; // Removed - will add back when pricing model is finalized
 import { HomeWrapper } from '@/components/home-wrapper';
 
 export default function Home() {
@@ -19,9 +19,7 @@ export default function Home() {
       <div className="mt-20">
         <Features />
       </div>
-      <div className="mt-20">
-        <Pricing />
-      </div>
+      {/* Pricing section removed - will add back when pricing model is finalized */}
       <div className="mt-20">
         <Blog />
       </div>
