@@ -13,7 +13,6 @@ import { useAuth } from "@/app/providers/auth-provider";
 
 const navLinks = [
   { name: "Features", href: "#features" },
-  { name: "Pricing", href: "#pricing" },
   { name: "Blog", href: "#blog" },
 ];
 
@@ -31,7 +30,7 @@ export function Header({ isDemoModalOpen = false }: HeaderProps) {
       setIsScrolled(window.scrollY > 20);
 
       // Determine active section
-      const sections = ["features", "pricing", "blog"];
+      const sections = ["features", "blog"];
       const current = sections.find((section) => {
         const element = document.getElementById(section);
         if (element) {
