@@ -52,17 +52,19 @@ export function ScoreBreakdown({ scores }: ScoreBreakdownProps) {
         <div className="h-[320px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart data={radarData}>
-              <PolarGrid stroke="rgba(128, 128, 128, 0.2)" />
+              <PolarGrid stroke="hsl(var(--border))" strokeOpacity={0.5} />
               <PolarAngleAxis
                 dataKey="competency"
-                stroke="rgba(128, 128, 128, 0.5)"
+                stroke="hsl(var(--border))"
+                strokeOpacity={0.8}
                 fontSize={12}
                 tick={{ fill: "hsl(var(--muted-foreground))" }}
               />
               <PolarRadiusAxis
                 angle={90}
                 domain={[0, 10]}
-                stroke="rgba(128, 128, 128, 0.3)"
+                stroke="hsl(var(--border))"
+                strokeOpacity={0.6}
                 fontSize={10}
                 tick={{ fill: "hsl(var(--muted-foreground))" }}
               />
