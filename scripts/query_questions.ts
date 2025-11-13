@@ -1,5 +1,5 @@
-import { db } from "./lib/db";
-import { interviewQuestion } from "./lib/db/schema";
+import { db } from "../lib/db";
+import { interviewQuestion } from "../lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 
 async function analyzeQuestions() {

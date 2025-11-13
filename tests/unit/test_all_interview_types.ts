@@ -3,9 +3,9 @@
  * Tests all 4 interview types with multiple selections to ensure proper mapping
  */
 
-import { getRandomRecentQuestion, getRandomQuestion } from "./lib/db/questions";
-import { db } from "./lib/db";
-import { interviewQuestion } from "./lib/db/schema";
+import { getRandomRecentQuestion, getRandomQuestion } from "../../lib/db/questions";
+import { db } from "../../lib/db";
+import { interviewQuestion } from "../../lib/db/schema";
 import { sql } from "drizzle-orm";
 
 async function testAllInterviewTypes() {

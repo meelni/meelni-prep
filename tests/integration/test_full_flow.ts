@@ -3,7 +3,7 @@
  * to verify behavioral interviews get behavioral questions
  */
 
-import { getRandomRecentQuestion } from "./lib/db/questions";
+import { getRandomRecentQuestion } from "../../lib/db/questions";
 
 async function testFullBehavioralFlow() {
   console.log("=== TESTING FULL BEHAVIORAL INTERVIEW FLOW ===\n");
