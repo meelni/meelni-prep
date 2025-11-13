@@ -3,6 +3,12 @@
  * Run with: npx tsx scripts/fix-stuck-feedback.ts <sessionId>
  */
 
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load environment variables from .env.local
+config({ path: resolve(process.cwd(), ".env.local") });
+
 import { db } from "../lib/db";
 import { feedback } from "../lib/db/schema";
 import { eq } from "drizzle-orm";

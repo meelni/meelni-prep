@@ -54,6 +54,8 @@ If you have a stuck feedback record (status='pending'), use the fix script:
 npx tsx scripts/fix-stuck-feedback.ts <sessionId>
 ```
 
+**Note**: The script automatically loads environment variables from `.env.local`
+
 This will:
 1. Check if feedback exists
 2. Re-send the Inngest event if status is 'pending'
