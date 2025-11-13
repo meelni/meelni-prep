@@ -151,8 +151,8 @@ export function AudioVisualizer() {
   const isUserSpeaking = isUserSpeakingDebounced;
   const isAgentActive = displayAgentState === "speaking" || displayAgentState === "thinking";
 
-  // Meelni purple-blue colors
-  const meelniColors: [string, string] = ["oklch(0.70 0.22 285)", "oklch(0.55 0.22 285)"];
+  // Meelni purple-blue colors (hex format for THREE.js compatibility)
+  const meelniColors: [string, string] = ["#a855f7", "#7c3aed"];
 
   // Only pass volume to Orb when actually speaking (above threshold) to prevent flickering
   const displayUserVolume = normalizedUserVolume > 0.3 ? normalizedUserVolume : 0;
