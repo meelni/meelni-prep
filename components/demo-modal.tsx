@@ -78,7 +78,7 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
                   {message.speaker === "user" ? "user" : "agent"}
                 </span>
                 <span className={`flex-1 ${
-                  message.isFinal ? "text-foreground/90" : "text-foreground/40 italic"
+                  message.isFinal ? "text-white/90" : "text-white/40 italic"
                 }`}>
                   {message.text}
                   {!message.isFinal && <span className="animate-pulse ml-1">...</span>}
