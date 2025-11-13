@@ -1,4 +1,4 @@
-import { getRandomRecentQuestion } from "./lib/db/questions";
+import { getRandomRecentQuestion } from "../../lib/db/questions";
 
 async function testSpecificCase() {
   console.log("=== Testing Specific User Scenario ===");

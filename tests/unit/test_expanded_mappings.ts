@@ -3,9 +3,9 @@
  * Verifies all 361 previously unmapped questions are now accessible
  */
 
-import { getRandomQuestion } from "./lib/db/questions";
-import { db } from "./lib/db";
-import { interviewQuestion } from "./lib/db/schema";
+import { getRandomQuestion } from "../../lib/db/questions";
+import { db } from "../../lib/db";
+import { interviewQuestion } from "../../lib/db/schema";
 import { sql } from "drizzle-orm";
 
 async function testExpandedMappings() {

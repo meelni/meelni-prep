@@ -3,8 +3,9 @@
 echo "🚀 Starting Meelni development servers..."
 echo ""
 
-# Get the directory where this script is located (workspace root)
-WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Get the workspace root (parent of scripts directory)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$WORKSPACE_DIR"
 
 echo "📂 Working directory: $WORKSPACE_DIR"

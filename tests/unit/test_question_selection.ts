@@ -1,4 +1,4 @@
-import { getRandomQuestion, getRandomRecentQuestion } from "./lib/db/questions";
+import { getRandomQuestion, getRandomRecentQuestion } from "../../lib/db/questions";
 
 async function testQuestionSelection() {
   const QUESTION_TYPE_MAP: Record<string, string> = {
