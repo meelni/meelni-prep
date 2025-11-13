@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   RadarChart,
@@ -9,49 +8,27 @@ import {
   PolarRadiusAxis,
   Radar,
   ResponsiveContainer,
-  Tooltip,
 } from "recharts";
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import type { RubricScores } from "@/lib/types/feedback";
 
 interface ScoreBreakdownProps {
   scores: RubricScores;
 }
 
+const chartConfig = {
+  score: {
+    label: "Score",
+    color: "hsl(var(--primary))",
+  },
+} satisfies ChartConfig;
+
 export function ScoreBreakdown({ scores }: ScoreBreakdownProps) {
-  // Get computed CSS colors from the document
-  const [colors, setColors] = useState({
-    grid: "rgba(128, 128, 128, 0.2)",
-    axis: "rgba(128, 128, 128, 0.5)",
-    text: "rgba(128, 128, 128, 0.8)",
-    primary: "oklch(0.70 0.22 285)",
-    primaryFill: "rgba(135, 92, 255, 0.3)",
-    card: "oklch(0.18 0.008 264)",
-    border: "oklch(0.28 0.015 264)",
-    foreground: "oklch(0.95 0.005 264)",
-  });
-
-  useEffect(() => {
-    // Get computed colors from CSS variables
-    const computedStyle = getComputedStyle(document.documentElement);
-
-    // Extract the actual color values
-    const borderColor = computedStyle.getPropertyValue("--border").trim();
-    const foregroundColor = computedStyle.getPropertyValue("--foreground").trim();
-    const primaryColor = computedStyle.getPropertyValue("--primary").trim();
-    const cardColor = computedStyle.getPropertyValue("--card").trim();
-
-    setColors({
-      grid: borderColor || "oklch(0.28 0.015 264)",
-      axis: borderColor || "oklch(0.28 0.015 264)",
-      text: foregroundColor || "oklch(0.95 0.005 264)",
-      primary: primaryColor || "oklch(0.70 0.22 285)",
-      primaryFill: primaryColor ? `${primaryColor} / 0.3` : "oklch(0.70 0.22 285 / 0.3)",
-      card: cardColor || "oklch(0.18 0.008 264)",
-      border: borderColor || "oklch(0.28 0.015 264)",
-      foreground: foregroundColor || "oklch(0.95 0.005 264)",
-    });
-  }, []);
-
   // Convert rubric scores to radar chart format
   const radarData = [
     { competency: "Structure", score: scores.structure, fullMark: 10 },
@@ -84,48 +61,43 @@ export function ScoreBreakdown({ scores }: ScoreBreakdownProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[320px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <RadarChart data={radarData}>
-              <PolarGrid
-                stroke={colors.grid}
-                strokeOpacity={0.5}
-              />
-              <PolarAngleAxis
-                dataKey="competency"
-                stroke={colors.axis}
-                strokeOpacity={0.8}
-                fontSize={12}
-                tick={{ fill: colors.text }}
-              />
-              <PolarRadiusAxis
-                angle={90}
-                domain={[0, 10]}
-                stroke={colors.axis}
-                strokeOpacity={0.6}
-                fontSize={10}
-                tick={{ fill: colors.text }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: colors.card,
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: "8px",
-                  padding: "12px",
-                }}
-                labelStyle={{ color: colors.foreground, marginBottom: "4px" }}
-                itemStyle={{ color: colors.primary }}
-              />
-              <Radar
-                name="Score"
-                dataKey="score"
-                stroke={colors.primary}
-                fill={colors.primaryFill}
-                strokeWidth={2}
-              />
-            </RadarChart>
-          </ResponsiveContainer>
-        </div>
+        <ChartContainer config={chartConfig} className="h-[320px] w-full">
+          <RadarChart data={radarData} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+            <ChartTooltip
+              cursor={false}
+              content={<ChartTooltipContent />}
+            />
+            <PolarAngleAxis dataKey="competency" />
+            <PolarGrid strokeDasharray="3 3" />
+            <PolarRadiusAxis
+              angle={90}
+              domain={[0, 10]}
+              tickCount={6}
+              axisLine={false}
+              tick={false}
+            />
+            <Radar
+              stroke="var(--color-score)"
+              strokeWidth={2}
+              dataKey="score"
+              fill="var(--color-score)"
+              fillOpacity={0.3}
+              filter="url(#stroke-line-glow)"
+            />
+            <defs>
+              <filter
+                id="stroke-line-glow"
+                x="-20%"
+                y="-20%"
+                width="140%"
+                height="140%"
+              >
+                <feGaussianBlur stdDeviation="10" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+            </defs>
+          </RadarChart>
+        </ChartContainer>
       </CardContent>
     </Card>
   );
