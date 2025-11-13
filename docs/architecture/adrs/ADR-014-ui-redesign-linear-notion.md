@@ -1,0 +1,22 @@
+### ADR-014: UI Redesign with Linear/Notion Aesthetic
+- **Date**: 2025-11-05
+- **Decision**: Complete UI redesign with modern design system inspired by Linear and Notion
+- **Rationale**:
+  - Previous UI was not intuitive or clean
+  - User requested professional, modern aesthetic
+  - Needed consistent design language across the application
+  - Typography was too large (display-scale vs application-scale)
+- **Implementation**:
+  - Created RGB-based color token system for better opacity control
+  - Built reusable component library using class-variance-authority (CVA)
+  - Integrated Framer Motion with spring physics for 60fps animations
+  - Refined typography from display-scale (6xl-7xl) to application-scale (2xl-5xl)
+  - Implemented gradient backgrounds and micro-interactions
+  - Progressive disclosure UX for setup page
+- **Consequences**:
+  - More polished, professional appearance
+  - Improved user experience and visual feedback
+  - Consistent design tokens enable easier theming
+  - Animation system provides smooth, natural interactions
+  - Component library enables rapid development
+
