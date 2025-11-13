@@ -42,10 +42,10 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-full bg-background/60 backdrop-blur-sm">
+    <div className="flex flex-col h-full border-l border-white/10">
       {/* Terminal-style Header */}
-      <div className="px-4 py-3 border-b border-border/50 bg-muted/20">
-        <span className="text-xs font-mono text-muted-foreground">transcript.log</span>
+      <div className="px-4 py-3 border-b border-white/10">
+        <span className="text-xs font-mono text-white/60">transcript.log</span>
       </div>
 
       {/* Messages (Terminal output style) */}
