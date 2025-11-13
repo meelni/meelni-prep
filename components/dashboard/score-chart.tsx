@@ -35,7 +35,9 @@ export function ScoreChart({ data }: ScoreChartProps) {
         <div className="space-y-1">
           <h3 className="text-lg font-semibold text-foreground">Score Trends</h3>
           <p className="text-sm text-muted-foreground">
-            Your performance over the last {data.length} sessions
+            {data.length > 0
+              ? `Your performance over the last ${data.length} ${data.length === 1 ? 'session' : 'sessions'}`
+              : 'Your performance over recent sessions'}
           </p>
         </div>
 
@@ -45,36 +47,39 @@ export function ScoreChart({ data }: ScoreChartProps) {
               data={data}
               margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.1)" />
+              <CartesianGrid strokeDasharray="3 3" className="stroke-muted/20" />
               <XAxis
                 dataKey="date"
-                stroke="rgba(128, 128, 128, 0.5)"
+                className="text-muted-foreground"
                 fontSize={12}
                 tickLine={false}
+                stroke="hsl(var(--muted-foreground))"
               />
               <YAxis
                 domain={[0, 10]}
-                stroke="rgba(128, 128, 128, 0.5)"
+                className="text-muted-foreground"
                 fontSize={12}
                 tickLine={false}
+                stroke="hsl(var(--muted-foreground))"
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "rgba(24, 24, 27, 0.95)",
-                  border: "1px solid rgba(128, 128, 128, 0.2)",
+                  backgroundColor: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--border))",
                   borderRadius: "8px",
                   padding: "12px",
+                  color: "hsl(var(--foreground))",
                 }}
-                labelStyle={{ color: "rgba(255, 255, 255, 0.9)", marginBottom: "4px" }}
-                itemStyle={{ color: "rgba(168, 85, 247, 1)" }}
+                labelStyle={{ color: "hsl(var(--foreground))", marginBottom: "4px" }}
+                itemStyle={{ color: "hsl(var(--primary))" }}
               />
               <Line
                 type="monotone"
                 dataKey="score"
-                stroke="rgba(168, 85, 247, 1)"
-                strokeWidth={2}
-                dot={{ fill: "rgba(168, 85, 247, 1)", r: 4 }}
-                activeDot={{ r: 6 }}
+                stroke="hsl(var(--primary))"
+                strokeWidth={3}
+                dot={{ fill: "hsl(var(--primary))", r: 5, strokeWidth: 2, stroke: "hsl(var(--background))" }}
+                activeDot={{ r: 7, strokeWidth: 2, stroke: "hsl(var(--background))" }}
               />
             </LineChart>
           </ResponsiveContainer>

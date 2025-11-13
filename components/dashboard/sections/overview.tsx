@@ -80,19 +80,21 @@ export const OverviewSection = memo(function OverviewSection({
   }, [sessions]); // Refetch when sessions change
 
   // Score data from user summary (real feedback scores)
-  const scoreData =
-    userSummary?.recentActivity
-      .filter((activity) => activity.score !== null)
-      .slice(0, 10)
-      .reverse()
-      .map((activity) => ({
-        date: new Date(activity.timestamp).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
-        score: activity.score!,
-        roundType: activity.type,
-      })) || [];
+  // Show last 10 sessions with scores in chronological order (oldest to newest for chart)
+  const scoreData = userSummary?.recentActivity
+    ? userSummary.recentActivity
+        .filter((activity) => activity.score !== null) // Only sessions with feedback
+        .slice(0, 10) // Take first 10 (most recent) sessions with scores
+        .reverse() // Reverse to chronological order (oldest to newest) for chart
+        .map((activity) => ({
+          date: new Date(activity.timestamp).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          }),
+          score: activity.score!,
+          roundType: activity.type,
+        }))
+    : [];
 
   // Competency data (real average scores from feedback)
   // Use avgScore from props, fallback to userSummary average if available

@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
       getUserSessionSummary(user.id),
       getUserWeeklyTrend(user.id),
       getUserMilestones(user.id),
-      getUserRecentActivity(user.id, 10),
+      getUserRecentActivity(user.id, 20), // Fetch last 20 sessions to ensure we get 8-10 with scores
     ]);
 
     // Format response with proper types

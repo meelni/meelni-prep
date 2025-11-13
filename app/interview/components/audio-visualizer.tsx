@@ -178,7 +178,7 @@ export function AudioVisualizer() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          className="relative text-center space-y-2 px-6 py-4 rounded-2xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 backdrop-blur-sm shadow-lg"
+          className="relative text-center space-y-2 px-6 py-4 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/30 backdrop-blur-sm shadow-lg"
         >
           <p className="text-2xl font-sans font-medium text-primary">
             {displayAgentState === "thinking" ? "Meelni is thinking..." : "Meelni is speaking"}
@@ -195,7 +195,7 @@ export function AudioVisualizer() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          className="relative text-center space-y-2 px-6 py-4 rounded-2xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 backdrop-blur-sm shadow-lg"
+          className="relative text-center space-y-2 px-6 py-4 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/30 backdrop-blur-sm shadow-lg"
         >
           <div className="flex items-center justify-center gap-2">
             <motion.div
@@ -216,7 +216,7 @@ export function AudioVisualizer() {
           animate={{ opacity: 1 }}
           className="text-center space-y-2"
         >
-          <p className="text-lg font-display font-medium text-foreground/80">Ready to begin</p>
+          <p className="text-lg font-display font-medium text-foreground">Ready to begin</p>
           <p className="text-sm font-sans text-muted-foreground">Start speaking to continue the interview</p>
         </motion.div>
       )}
