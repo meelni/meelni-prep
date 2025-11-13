@@ -89,14 +89,15 @@ export const generateFeedback = inngest.createFunction(
     });
 
     if (!validation.isValid) {
-      // Mark as skipped with reason
+      // Update existing feedback to skipped (record already created by /api/interview/end)
       await step.run("mark-skipped", async () => {
-        await db.insert(feedback).values({
-          sessionId: sessionId,
-          status: "skipped",
-          statusReason: validation.reasons.join(", "),
-          rubricVersion: "1.0.0",
-        });
+        await db
+          .update(feedback)
+          .set({
+            status: "skipped",
+            statusReason: validation.reasons.join(", "),
+          })
+          .where(eq(feedback.sessionId, sessionId));
       });
 
       return {
@@ -130,12 +131,13 @@ export const generateFeedback = inngest.createFunction(
 
     if (!transcript || transcript.length === 0) {
       await step.run("mark-failed-no-transcript", async () => {
-        await db.insert(feedback).values({
-          sessionId: sessionId,
-          status: "failed",
-          statusReason: "No transcript data found",
-          rubricVersion: "1.0.0",
-        });
+        await db
+          .update(feedback)
+          .set({
+            status: "failed",
+            statusReason: "No transcript data found",
+          })
+          .where(eq(feedback.sessionId, sessionId));
       });
 
       return {
@@ -144,14 +146,15 @@ export const generateFeedback = inngest.createFunction(
       };
     }
 
-    // Step 4: Create pending feedback record
-    await step.run("create-pending-feedback", async () => {
-      await db.insert(feedback).values({
-        sessionId: sessionId,
-        status: "processing",
-        processingStartedAt: new Date(),
-        rubricVersion: "1.0.0",
-      });
+    // Step 4: Update feedback to processing status
+    await step.run("update-feedback-processing", async () => {
+      await db
+        .update(feedback)
+        .set({
+          status: "processing",
+          processingStartedAt: new Date(),
+        })
+        .where(eq(feedback.sessionId, sessionId));
     });
 
     // Step 5: Evaluate with GPT-4
