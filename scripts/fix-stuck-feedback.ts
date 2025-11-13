@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Script to fix stuck feedback records (status='pending')
  * Run with: npx tsx scripts/fix-stuck-feedback.ts <sessionId>
@@ -7,29 +8,46 @@ import { config } from "dotenv";
 import { resolve } from "path";
 import { existsSync } from "fs";
 
-// Load environment variables from .env.local
-// Try workspace directory first, then parent directory
-const workspaceEnv = resolve(process.cwd(), ".env.local");
-const parentEnv = resolve(process.cwd(), "../.env");
+async function main() {
+  // Load environment variables FIRST
+  const workspaceEnv = resolve(process.cwd(), ".env.local");
+  const parentEnv = resolve(process.cwd(), "../.env");
 
-if (existsSync(workspaceEnv)) {
-  config({ path: workspaceEnv });
-} else if (existsSync(parentEnv)) {
-  config({ path: parentEnv });
-} else {
-  console.error("ERROR: No .env.local or .env file found");
-  console.error("Checked:");
-  console.error(`  - ${workspaceEnv}`);
-  console.error(`  - ${parentEnv}`);
-  process.exit(1);
-}
+  if (existsSync(workspaceEnv)) {
+    console.log("Loading env from:", workspaceEnv);
+    config({ path: workspaceEnv });
+  } else if (existsSync(parentEnv)) {
+    console.log("Loading env from:", parentEnv);
+    config({ path: parentEnv });
+  } else {
+    console.error("ERROR: No .env.local or .env file found");
+    console.error("Checked:");
+    console.error(`  - ${workspaceEnv}`);
+    console.error(`  - ${parentEnv}`);
+    process.exit(1);
+  }
 
-import { db } from "../lib/db";
-import { feedback } from "../lib/db/schema";
-import { eq } from "drizzle-orm";
-import { inngest } from "../lib/inngest/client";
+  // Verify DATABASE_URL is loaded
+  if (!process.env.DATABASE_URL) {
+    console.error("ERROR: DATABASE_URL not found in environment file");
+    console.error("Please check your .env file contains DATABASE_URL");
+    process.exit(1);
+  }
 
-async function fixStuckFeedback(sessionId: string) {
+  // Get sessionId from command line
+  const sessionId = process.argv[2];
+
+  if (!sessionId) {
+    console.error("Usage: npx tsx scripts/fix-stuck-feedback.ts <sessionId>");
+    process.exit(1);
+  }
+
+  // NOW dynamically import modules that need env vars
+  const { db } = await import("../lib/db/index.js");
+  const { feedback } = await import("../lib/db/schema.js");
+  const { eq } = await import("drizzle-orm");
+  const { inngest } = await import("../lib/inngest/client.js");
+
   console.log(`Fixing stuck feedback for session: ${sessionId}`);
 
   // Check if feedback exists
@@ -61,21 +79,12 @@ async function fixStuckFeedback(sessionId: string) {
   } else {
     console.log(`Feedback status is ${feedbackRecord.status}, no action needed`);
   }
+
+  console.log("Done");
 }
 
-// Get sessionId from command line
-const sessionId = process.argv[2];
-
-if (!sessionId) {
-  console.error("Usage: npx tsx scripts/fix-stuck-feedback.ts <sessionId>");
-  process.exit(1);
-}
-
-fixStuckFeedback(sessionId)
-  .then(() => {
-    console.log("Done");
-    process.exit(0);
-  })
+main()
+  .then(() => process.exit(0))
   .catch((err) => {
     console.error("Error:", err);
     process.exit(1);
