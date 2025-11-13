@@ -2,7 +2,7 @@
  * Test 20 random behavioral question selections to see if any Product Sense questions sneak in
  */
 
-import { getRandomRecentQuestion } from "./lib/db/questions";
+import { getRandomRecentQuestion } from "../../lib/db/questions";
 
 async function testMultipleSelections() {
   console.log("=== TESTING 20 RANDOM BEHAVIORAL QUESTION SELECTIONS ===\n");
