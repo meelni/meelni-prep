@@ -7,7 +7,7 @@ import { Dumbbell, Lightbulb, ArrowRight } from "lucide-react";
 import type { DrillSuggestion } from "@/lib/types/feedback";
 
 interface DrillListProps {
-  drills: DrillSuggestion[];
+  drills: (DrillSuggestion | string)[];
 }
 
 export function DrillList({ drills }: DrillListProps) {
@@ -15,10 +15,11 @@ export function DrillList({ drills }: DrillListProps) {
     return null;
   }
 
-  const handleDrillClick = (drill: DrillSuggestion) => {
+  const handleDrillClick = (drill: DrillSuggestion | string) => {
+    const title = typeof drill === "string" ? drill : drill.title;
     // Placeholder for future drill navigation
-    console.log("Starting drill:", drill.title);
-    alert(`Practice drill "${drill.title}" is coming soon! This will navigate you to a focused practice session.`);
+    console.log("Starting drill:", title);
+    alert(`Practice drill "${title}" is coming soon! This will navigate you to a focused practice session.`);
   };
 
   return (
@@ -35,7 +36,14 @@ export function DrillList({ drills }: DrillListProps) {
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {drills.map((drill, index) => (
+        {drills.map((drill, index) => {
+          // Handle both string array and object array formats
+          const isString = typeof drill === "string";
+          const title = isString ? drill : drill.title;
+          const description = isString ? null : drill.description;
+          const tips = isString ? null : drill.tips;
+
+          return (
           <div
             key={index}
             className="group border border-border/50 rounded-lg p-4 hover:border-primary/30 transition-all duration-300 cursor-pointer"
@@ -53,22 +61,24 @@ export function DrillList({ drills }: DrillListProps) {
                     </Badge>
                   </div>
                   <h3 className="text-base font-display font-light text-foreground group-hover:text-primary transition-colors">
-                    {drill.title}
+                    {title}
                   </h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {drill.description}
-                  </p>
+                  {description && (
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {description}
+                    </p>
+                  )}
                 </div>
 
                 {/* Tips */}
-                {drill.tips && drill.tips.length > 0 && (
+                {tips && tips.length > 0 && (
                   <div className="space-y-2 pl-4 border-l-2 border-primary/20">
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70 uppercase tracking-wide font-display font-light">
                       <Lightbulb className="w-3.5 h-3.5" />
                       <span>Tips</span>
                     </div>
                     <ul className="space-y-1">
-                      {drill.tips.map((tip, tipIndex) => (
+                      {tips.map((tip, tipIndex) => (
                         <li key={tipIndex} className="text-xs text-muted-foreground leading-relaxed flex items-start gap-2">
                           <span className="text-primary mt-0.5">•</span>
                           <span>{tip}</span>
@@ -92,7 +102,8 @@ export function DrillList({ drills }: DrillListProps) {
               </Button>
             </div>
           </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
