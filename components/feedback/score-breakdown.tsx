@@ -8,13 +8,25 @@ import {
   PolarRadiusAxis,
   Radar,
   ResponsiveContainer,
-  Tooltip,
 } from "recharts";
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import type { RubricScores } from "@/lib/types/feedback";
 
 interface ScoreBreakdownProps {
   scores: RubricScores;
 }
+
+const chartConfig = {
+  score: {
+    label: "Score",
+    color: "#8b5cf6", // Purple-500 - visible in both light and dark mode (matches dashboard)
+  },
+} satisfies ChartConfig;
 
 export function ScoreBreakdown({ scores }: ScoreBreakdownProps) {
   // Convert rubric scores to radar chart format
@@ -49,43 +61,43 @@ export function ScoreBreakdown({ scores }: ScoreBreakdownProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[320px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <RadarChart data={radarData}>
-              <PolarGrid stroke="rgba(128, 128, 128, 0.2)" />
-              <PolarAngleAxis
-                dataKey="competency"
-                stroke="rgba(128, 128, 128, 0.5)"
-                fontSize={12}
-                tick={{ fill: "hsl(var(--muted-foreground))" }}
-              />
-              <PolarRadiusAxis
-                angle={90}
-                domain={[0, 10]}
-                stroke="rgba(128, 128, 128, 0.3)"
-                fontSize={10}
-                tick={{ fill: "hsl(var(--muted-foreground))" }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "8px",
-                  padding: "12px",
-                }}
-                labelStyle={{ color: "hsl(var(--foreground))", marginBottom: "4px" }}
-                itemStyle={{ color: "hsl(var(--primary))" }}
-              />
-              <Radar
-                name="Score"
-                dataKey="score"
-                stroke="hsl(var(--primary))"
-                fill="hsl(var(--primary) / 0.3)"
-                strokeWidth={2}
-              />
-            </RadarChart>
-          </ResponsiveContainer>
-        </div>
+        <ChartContainer config={chartConfig} className="h-[320px] w-full">
+          <RadarChart data={radarData} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+            <ChartTooltip
+              cursor={false}
+              content={<ChartTooltipContent />}
+            />
+            <PolarAngleAxis dataKey="competency" />
+            <PolarGrid strokeDasharray="3 3" />
+            <PolarRadiusAxis
+              angle={90}
+              domain={[0, 10]}
+              tickCount={6}
+              axisLine={false}
+              tick={false}
+            />
+            <Radar
+              stroke="var(--color-score)"
+              strokeWidth={2}
+              dataKey="score"
+              fill="var(--color-score)"
+              fillOpacity={0.3}
+              filter="url(#stroke-line-glow)"
+            />
+            <defs>
+              <filter
+                id="stroke-line-glow"
+                x="-20%"
+                y="-20%"
+                width="140%"
+                height="140%"
+              >
+                <feGaussianBlur stdDeviation="10" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+            </defs>
+          </RadarChart>
+        </ChartContainer>
       </CardContent>
     </Card>
   );
