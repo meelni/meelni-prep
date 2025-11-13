@@ -40,7 +40,7 @@ export function ScoreChart({ data }: ScoreChartProps) {
           <p className="text-sm text-muted-foreground">
             {data.length === 1
               ? 'Your latest session score'
-              : `Your performance over the last ${data.length} sessions`}
+              : `Your performance over the last ${data.length} ${data.length === 1 ? 'session' : 'sessions'}`}
           </p>
         </div>
 
