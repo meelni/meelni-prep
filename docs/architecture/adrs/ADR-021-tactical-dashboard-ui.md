@@ -1,0 +1,57 @@
+### ADR-021: Tactical Dashboard UI Migration
+- **Date**: 2025-11-06
+- **Decision**: Migrated dashboard to tactical command-interface style layout with sidebar navigation
+- **Rationale**:
+  - **User Requirement**: Adopt tactical-command-interface example UI for improved dashboard UX
+  - **Layout Structure**: Sidebar + toolbar + main content grid provides better navigation and organization
+  - **Preserve Branding**: Keep Meelni's color scheme and typography while adopting tactical layout
+  - **Minimal Text Changes**: Replace military/tactical terminology with interview-related terms
+  - **Modular Architecture**: Create placeholder sections for future development
+- **Color Migration**:
+  - Tactical Orange (`#f97316`, `text-orange-500`) → Meelni Purple-Blue (`oklch(0.70 0.22 285)`, `text-primary`)
+  - Tactical Dark Neutrals (`bg-neutral-900/950`) → Meelni Card (`bg-card`)
+  - Tactical Borders (`border-neutral-800`) → Meelni Borders (`border-border`)
+  - Tactical Accents (`bg-orange-500/10`) → Meelni Accents (`bg-primary/10`)
+- **Text Changes**:
+  - "TACTICAL COMMAND INTERFACE" → "MEELNI DASHBOARD"
+  - "Mission Control" → "Overview"
+  - "Operations History" → "Interview History"
+  - "Intel & Analysis" → "Analytics"
+  - "Strategic Planning" → "Settings"
+  - "Alert Status" → "Session Stats"
+- **Implementation**:
+  - **Layout Components**:
+    - `/components/dashboard/layout/sidebar.tsx`: Collapsible sidebar with 5 navigation sections
+    - `/components/dashboard/layout/toolbar.tsx`: Top toolbar with breadcrumb and user actions
+    - `/components/dashboard/layout/dashboard-layout.tsx`: Main layout wrapper
+  - **Section Components**:
+    - `/components/dashboard/sections/overview.tsx`: Main overview with stats, charts, activity log
+    - `/components/dashboard/sections/history.tsx`: Full interview history with tactical styling
+    - `/components/dashboard/sections/analytics.tsx`: Placeholder for analytics
+    - `/components/dashboard/sections/feedback.tsx`: Placeholder for feedback & insights
+    - `/components/dashboard/sections/settings.tsx`: Placeholder for settings
+  - **Modified**:
+    - `/app/dashboard/page.tsx`: Updated to use DashboardLayout with section switching
+- **Key Features**:
+  - Collapsible sidebar (fixed on desktop, overlay on mobile)
+  - Active section highlighting with purple-blue accent
+  - Breadcrumb navigation in toolbar (DASHBOARD / SECTION NAME)
+  - Status box in sidebar showing total sessions, minutes, avg score
+  - Activity log with tactical-style timeline (border-l-2 border-primary)
+  - Responsive design with mobile-first approach
+  - User name displayed in toolbar (no avatar per user preference)
+  - Sign-out button in toolbar
+- **Preserved Elements**:
+  - Meelni color tokens and design system
+  - Framer Motion animations
+  - Existing components (StatsCards, ScoreChart, CompetencyRadar, SessionList)
+  - Typography scale (Public Sans for UI, Everett for display)
+- **Consequences**:
+  - Better navigation and organization for dashboard content
+  - Placeholder sections enable iterative development
+  - Modular architecture allows easy updates to individual sections
+  - Sidebar state can be persisted to localStorage (future enhancement)
+  - Keyboard shortcuts can be added for power users (future enhancement)
+  - Activity log provides real-time feedback on user actions
+
+
