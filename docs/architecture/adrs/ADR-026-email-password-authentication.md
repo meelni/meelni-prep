@@ -1,0 +1,40 @@
+### ADR-026: Email/Password Authentication Implementation
+- **Date**: 2025-11-10
+- **Decision**: Implement email/password authentication alongside existing Google OAuth
+- **Rationale**:
+  - **User Preference**: Some users prefer traditional email/password over OAuth
+  - **Flexibility**: Provides multiple authentication options for different use cases
+  - **Production Ready**: Email verification and password reset flows for complete auth system
+  - **No Lock-in**: Users not forced to use Google account
+- **Implementation**:
+  - **AuthProvider Updates**: Added `signInWithEmail`, `signUpWithEmail`, `resetPassword` methods
+  - **Sign-In Page**: Enhanced with email/password form above Google OAuth button
+  - **Sign-Up Page**: New registration page with email/password and confirm password
+  - **Forgot Password Flow**: Request reset link → Email sent → Reset password page
+  - **Reset Password Page**: Users can set new password after clicking reset link
+- **Key Features**:
+  - Email verification required for new sign-ups (Supabase handles)
+  - Password strength validation (minimum 8 characters)
+  - Password confirmation on sign-up
+  - "Forgot password?" link on sign-in page
+  - Auto-redirect after successful password reset
+  - Success/error messages with Framer Motion animations
+  - Consistent UI/UX with Google OAuth flow
+- **Security**:
+  - Supabase Auth handles password hashing (bcrypt)
+  - Email verification prevents fake accounts
+  - Password reset tokens expire after use
+  - All auth operations use Supabase security best practices
+  - Same session management as OAuth (HTTP-only cookies)
+- **User Experience**:
+  - Sign-in: Email/password form first, Google OAuth as alternative
+  - Sign-up: Clear instructions about email verification
+  - Password reset: Simple 2-step process with email confirmation
+  - Links between signin/signup/forgot-password pages for easy navigation
+- **Consequences**:
+  - Users can choose their preferred auth method
+  - Email verification required (may slow onboarding slightly)
+  - Supabase handles email delivery (need to configure SMTP for production)
+  - Easy to add more OAuth providers later (GitHub, LinkedIn, etc.)
+  - Backward compatible with existing Google OAuth users
+

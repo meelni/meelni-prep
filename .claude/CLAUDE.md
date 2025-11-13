@@ -1,8 +1,8 @@
 # CLAUDE.md: Codebase Living Operational Document
 
 **Project**: Meelni - Real-Time AI Mock Interviews
-**Last Updated**: 2025-11-08
-**Version**: 1.0.0
+**Last Updated**: 2025-11-12
+**Version**: 2.0.0 - Documentation Reorganization
 
 ---
 
@@ -24,20 +24,42 @@ This document serves as the single source of truth for:
 ## Documentation Map
 
 **Finding Information Fast**:
-- **Current System State** → CLAUDE.md (this file)
-- **Product Requirements** → PRD.md
-- **LiveKit Patterns** → LIVEKIT.md
-- **Database Schema & Patterns** → DATABASE.md
-- **API Specs** → docs/api/
-- **Architecture Decisions** → Search CLAUDE.md for "ADR-"
-- **Authentication** → docs/api/authentication.md
-- **Testing** → docs/development/testing.md
-- **Deployment** → DEPLOYMENT.md
-- **Troubleshooting** → TROUBLESHOOTING.md
-- **Contributing** → CONTRIBUTING.md
-- **Historical Context** → `.conductor/florence/archive/` (rarely needed)
 
-**For Agents**: Start with CLAUDE.md. If you need deep technical details on a specific domain, check the relevant file above. Historical implementation logs are in `.conductor/florence/archive/` but should only be referenced if explicitly asked.
+### Core Documentation (`.claude/`)
+- **Current System State** → `.claude/CLAUDE.md` (this file)
+- **Product Requirements** → `.claude/PRD.md`
+- **LiveKit Patterns** → `.claude/LIVEKIT.md`
+- **Database Schema** → `.claude/DATABASE.md`
+- **Troubleshooting** → `.claude/TROUBLESHOOTING.md`
+- **Contributing** → `.claude/CONTRIBUTING.md`
+- **Deployment** → `.claude/DEPLOYMENT.md` (high-level overview)
+
+### Technical Documentation (`docs/`)
+- **Documentation Hub** → `docs/README.md` (start here for all documentation)
+- **Architecture Decisions** → `docs/architecture/adrs/` (26+ ADRs extracted from CLAUDE.md)
+- **API Specifications** → `docs/api/`
+- **Development Guides** → `docs/development/`
+- **Deployment Guides** → `docs/deployment/` (detailed deployment instructions)
+- **Feature Deep Dives** → `docs/features/`
+- **Integration Guides** → `docs/integrations/`
+- **Documentation Templates** → `docs/templates/`
+
+### Quick Links by Task
+- **Setting up dev environment** → `docs/development/setup.md`
+- **Deploying to production** → `docs/deployment/quickstart.md`
+- **Understanding architecture decisions** → `docs/architecture/adrs/README.md`
+- **Integrating LiveKit** → `docs/integrations/livekit.md`
+- **Debugging LiveKit agents** → `docs/LIVEKIT_DEBUGGING.md`
+- **Adding new features** → `docs/templates/FEATURE_TEMPLATE.md`
+- **Creating ADRs** → `docs/templates/ADR_TEMPLATE.md`
+- **API reference** → `docs/api/README.md`
+- **Testing guidelines** → `docs/development/testing.md`
+
+### Historical Context
+- **Implementation logs** → `archive/2025-11/` (completed feature summaries)
+- **Obsolete documentation** → `.conductor/archive/documentation/` (archived)
+
+**For Agents**: Start with CLAUDE.md. For detailed technical information, see `docs/README.md` for the documentation index. ADRs are now in `docs/architecture/adrs/` (no longer embedded in this file). Historical implementation logs are in `archive/` but should only be referenced if explicitly asked.
 
 ---
 
@@ -229,612 +251,38 @@ This document serves as the single source of truth for:
 
 ## Architecture Decisions
 
-### ADR-001: Workspace in `.conductor/almaty`
-- **Date**: 2025-11-05
-- **Decision**: Work within Conductor workspace at `.conductor/almaty/.claude/` for documentation
-- **Rationale**: Conductor workspaces are isolated; using `.claude/` directory for project docs allows version control while keeping workspace organized
-- **Consequences**: Documentation files need to be force-added to git due to `.conductor` being in `.git/info/exclude`
-- **UPDATE**: Moved docs to `.claude/` in project root for easier access
+All architecture decision records (ADRs) have been extracted to individual files for easier reference and linking.
 
-### ADR-002: PRD Location
-- **Date**: 2025-11-05
-- **Decision**: Store PRD at `.claude/PRD.md` (updated from `.conductor/almaty/.claude/PRD.md`)
-- **Rationale**: Keep all project documentation together in version control at project root
-- **Consequences**: Centralized documentation, easy to reference and update
+**ADR Index**: See [`docs/architecture/adrs/README.md`](../docs/architecture/adrs/README.md) for the complete, categorized list of all ADRs.
 
-### ADR-003: Tech Stack Finalization
-- **Date**: 2025-11-05
-- **Updated**: 2025-11-05 (GPT-4o-mini decision)
-- **Decision**: Use Next.js 14+, Supabase (Postgres + Auth), Drizzle ORM, LiveKit Agents (with Deepgram ASR + Cartesia TTS + **GPT-4o-mini**), Hedra for avatars (post-MVP)
-- **Rationale**:
-  - Next.js: Fast MVP development, unified frontend/backend, scales to 1K users easily
-  - Supabase Auth: Free, integrated with database RLS, flexible vs Clerk's cost at scale
-  - Drizzle: Lightweight, type-safe, serverless-friendly vs Prisma's bundle size
-  - LiveKit Agents: Integrated ASR/TTS/LLM orchestration with provider flexibility vs OpenAI Realtime's lock-in
-  - Deepgram: Low latency, cost-effective ASR ($0.0043/min)
-  - Cartesia: Better cost/quality than OpenAI TTS
-  - **GPT-4o-mini**: Cost-effective dialogue model, works with LiveKit gateway, sufficient quality for MVP
-- **Consequences**:
-  - Need to deploy LiveKit Agents separately (Railway/Render/Fly.io)
-  - More control over AI stack, easier to optimize costs
-  - Learning curve for LiveKit Agents framework (completed in Phase 0)
-  - Model format: `"provider/model-name"` (e.g., `"openai/gpt-4o-mini"`)
+### Quick Reference: Key ADRs
 
-### ADR-004: Background Jobs with Inngest
-- **Date**: 2025-11-05
-- **Decision**: Use Inngest for post-session evaluation processing
-- **Rationale**: Serverless queue system with retries, no Redis to manage, generous free tier
-- **Consequences**: Async evaluation workflow, don't need to manage queue infrastructure
-- **Status**: Planned, not yet implemented
+#### Core Infrastructure
+- [ADR-003: Tech Stack Finalization](../docs/architecture/adrs/ADR-003-tech-stack-finalization.md) - Next.js, Supabase, Drizzle, LiveKit
+- [ADR-006: Database Schema Deployed](../docs/architecture/adrs/ADR-006-database-schema-deployed.md) - Supabase schema
+- [ADR-007: LiveKit Voice Interview Integration](../docs/architecture/adrs/ADR-007-livekit-voice-interview.md) - Real-time voice pipeline
 
-### ADR-005: Documentation Location Update
-- **Date**: 2025-11-05
-- **Decision**: Move PRD.md and CLAUDE.md from `.conductor/almaty/.claude/` to `.claude/` at project root
-- **Rationale**: User preference for easier access, less nesting
-- **Consequences**: Updated git tracking, clearer documentation structure
+#### Authentication
+- [ADR-020: Google OAuth Authentication](../docs/architecture/adrs/ADR-020-google-oauth-authentication.md) - OAuth implementation
+- [ADR-021: Tactical Dashboard UI Migration](../docs/architecture/adrs/ADR-021-tactical-dashboard-ui.md) - Dashboard redesign
+- [ADR-026: Email/Password Authentication](../docs/architecture/adrs/ADR-026-email-password-authentication.md) - Traditional auth
 
-### ADR-006: Database Schema Deployed
-- **Date**: 2025-11-05
-- **Decision**: Successfully deployed database schema to Supabase with all tables (app_user, interview_session, transcript_turn, feedback)
-- **Rationale**: Database tables match PRD specification and are ready for application development
-- **Consequences**:
-  - All tables created in Supabase Postgres
-  - Drizzle ORM configured and tested with `drizzle-kit push`
-  - Supabase Auth connection verified
-  - Ready to implement authentication and data operations
-  - May need to add RLS (Row Level Security) policies for production
+#### Agent System
+- [ADR-018: Demo Modal with LiveKit Cloud Agent](../docs/architecture/adrs/ADR-018-demo-modal-livekit-cloud.md) - Demo agent strategy
+- [ADR-019: Explicit Agent Dispatch Pattern](../docs/architecture/adrs/ADR-019-explicit-agent-dispatch.md) - Agent control mechanism
+- [ADR-022: Main Interview Agent Deployed to Cloud](../docs/architecture/adrs/ADR-022-main-interview-agent-cloud.md) - Production agent
+- [ADR-023: Enhanced Prompt System](../docs/architecture/adrs/ADR-023-enhanced-prompt-system.md) - Difficulty-aware coaching
 
-### ADR-007: LiveKit Voice Interview Integration
-- **Date**: 2025-11-05
-- **Decision**: Implemented LiveKit Agents framework for real-time voice interviews
-- **Rationale**: 
-  - LiveKit Agents provides integrated voice pipeline (Deepgram ASR + GPT-4o-mini + Cartesia TTS)
-  - Python agent runs separately, joins LiveKit rooms as programmable participant
-  - Next.js frontend generates tokens and connects users to rooms
-  - Enables natural conversation with interruption handling (barge-in)
-- **Consequences**:
-  - Monorepo structure with `/agent` directory for Python code
-  - Separate deployment needed for agent worker (Railway/Render/Fly.io)
-  - Frontend: `/interview` page with LiveKit React components
-  - Backend: `/api/livekit/token` route for access token generation
-  - Agent uses Deepgram (STT), GPT-4o-mini (LLM), Cartesia (TTS), Silero (VAD)
+#### Voice & UI
+- [ADR-015: Model Upgrade](../docs/architecture/adrs/ADR-015-model-upgrade.md) - Deepgram Nova-3, GPT-4.1-mini, Cartesia Sonic 3
+- [ADR-016: Cartesia Voice Library](../docs/architecture/adrs/ADR-016-cartesia-voice-tessa.md) - Tessa voice selection
+- [ADR-025: Agent State Debouncing](../docs/architecture/adrs/ADR-025-agent-state-debouncing.md) - UI flickering fix
 
-### ADR-008: GPT-4o-mini for Dialogue LLM
-- **Date**: 2025-11-05
-- **Decision**: Use GPT-4o-mini instead of GPT-4 or Claude 3.5 Sonnet for dialogue
-- **Rationale**:
-  - Cost-effective for MVP ($0.15/1M input tokens vs $10/1M for GPT-4 Turbo)
-  - Works with LiveKit's OpenAI gateway provider
-  - Sufficient quality for natural interview conversation
-  - Can upgrade to GPT-4 Turbo or Claude later if needed
-  - Model name format: `"openai/gpt-4o-mini"` (not `"openai/gpt-4"`)
-- **Consequences**:
-  - Lower cost per interview session (~20 min = ~$0.05 in LLM costs)
-  - May need to tune prompts for interview quality
-  - Easy to swap models later via string config in `AgentSession`
+**Total ADRs**: 26 (ADR-001 through ADR-026, plus ADR-036)
 
-### ADR-009: LiveKit AgentSession API Pattern
-- **Date**: 2025-11-05
-- **Decision**: Use `AgentSession` with string-based model configuration instead of older `VoiceAssistant` API
-- **Rationale**:
-  - LiveKit Agents framework evolved; `AgentSession` is current recommended pattern
-  - Simpler string-based config: `stt="deepgram"`, `llm="openai/gpt-4o-mini"`, `tts="cartesia"`
-  - Documentation lagged behind SDK changes; referenced official GitHub examples
-- **Consequences**:
-  - Custom `Agent` class extends base `livekit.agents.Agent`
-  - Prewarm function needed for VAD model optimization
-  - Clear separation: agent definition vs session orchestration
-  - Learning: Always check official examples when docs don't match SDK
+**Creating New ADRs**: See [`docs/templates/ADR_TEMPLATE.md`](../docs/templates/ADR_TEMPLATE.md) for the standard template.
 
-### ADR-014: UI Redesign with Linear/Notion Aesthetic
-- **Date**: 2025-11-05
-- **Decision**: Complete UI redesign with modern design system inspired by Linear and Notion
-- **Rationale**:
-  - Previous UI was not intuitive or clean
-  - User requested professional, modern aesthetic
-  - Needed consistent design language across the application
-  - Typography was too large (display-scale vs application-scale)
-- **Implementation**:
-  - Created RGB-based color token system for better opacity control
-  - Built reusable component library using class-variance-authority (CVA)
-  - Integrated Framer Motion with spring physics for 60fps animations
-  - Refined typography from display-scale (6xl-7xl) to application-scale (2xl-5xl)
-  - Implemented gradient backgrounds and micro-interactions
-  - Progressive disclosure UX for setup page
-- **Consequences**:
-  - More polished, professional appearance
-  - Improved user experience and visual feedback
-  - Consistent design tokens enable easier theming
-  - Animation system provides smooth, natural interactions
-  - Component library enables rapid development
-
-### ADR-015: Model Upgrade to Deepgram Nova-3, GPT-4.1-mini, and Cartesia Sonic 3 with Tessa Voice
-- **Date**: 2025-11-05
-- **Decision**: Upgrade all voice pipeline models to latest versions
-- **Models Selected**:
-  - **STT**: Deepgram Nova-3 (upgraded from Nova-2)
-  - **LLM**: OpenAI GPT-4.1-mini (upgraded from GPT-4o-mini)
-  - **TTS**: Cartesia Sonic 3.0 with Tessa voice (voice ID: `6ccbfb76-1fc6-48f7-b71d-91ac6298247b`)
-  - **VAD**: Silero (unchanged)
-- **Rationale**:
-  - Nova-3 offers improved speech recognition accuracy
-  - GPT-4.1-mini provides better reasoning while maintaining cost-effectiveness
-  - Tessa is an emotive voice optimized for Sonic 3, providing more natural conversation
-  - User preference for these specific models
-- **Key Discovery**:
-  - **Cartesia does NOT require separate API key** when using LiveKit Inference
-  - Cartesia is fully integrated with LiveKit Cloud
-  - **ElevenLabs also does NOT require separate API key** when using LiveKit Inference
-  - Both Cartesia and ElevenLabs work with only LIVEKIT_API_KEY/SECRET for TTS
-  - **Important**: Must use valid voice IDs from provider documentation (see ADR-024 for debugging)
-- **Consequences**:
-  - Better voice quality and natural conversation
-  - Simplified configuration (no Cartesia API key needed)
-  - TTS format: `cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
-  - Cost remains similar due to LiveKit Inference pricing
-  - Must verify voice IDs are valid for chosen TTS provider
-
-### ADR-016: Cartesia Voice Library and Tessa Voice Selection
-- **Date**: 2025-11-05
-- **Decision**: Use Tessa voice from Cartesia's 150+ voice library
-- **Voice Details**:
-  - **Name**: Tessa
-  - **Voice ID**: `6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
-  - **Characteristics**: Emotive voice with wide emotional range
-  - **Model**: Sonic 3.0 (best-in-class emotional response)
-  - **Emotions Supported**: Happy, Excited, Sad, Angry, Scared, Confident, and 50+ more
-- **Rationale**:
-  - User specifically requested Tessa voice
-  - Tessa is listed among voices with best emotional response in Sonic 3
-  - Natural, engaging voice suitable for interview coaching
-- **Discovery Process**:
-  - Found comprehensive voice list via SignalWire documentation
-  - Cartesia API endpoint: `GET https://api.cartesia.ai/voices`
-  - 150+ voices available (British Male, Professional Female, Sarah, etc.)
-- **Consequences**:
-  - More natural, emotive interview conversations
-  - Can easily swap voices by changing voice ID in configuration
-  - Default voice ID updated in both frontend (`/app/setup/page.tsx`) and backend (`/agent/agent.py`)
-
-### ADR-017: Marketing Landing Page Architecture
-- **Date**: 2025-11-05
-- **Decision**: Implemented modular, component-based landing page architecture adapted from reference UI design
-- **Implementation**:
-  - **Components Structure**: Created `/components/sections/` directory for page sections (header, hero, features, cta, footer)
-  - **Configuration-Driven**: Centralized all copy in `/lib/config.tsx` for easy updates
-  - **Reusable Primitives**: Built `aurora-text.tsx` and `section.tsx` for consistent patterns
-  - **Design System**: Extended `globals.css` with aurora animations and additional color tokens
-- **Rationale**:
-  - Separation of concerns: content (config), structure (sections), styling (CSS)
-  - Easier to maintain and update marketing copy without touching component logic
-  - Reusable components enable rapid iteration on landing page variants
-  - Professional aesthetic (Linear/Notion-inspired) builds trust with PM candidates
-- **Reference Source**:
-  - Adapted from external UI design template in `/ui-design` directory
-  - Extracted and customized relevant components (hero, features, CTA)
-  - Removed unnecessary sections (testimonials, pricing, blog, etc.)
-  - **Recommendation**: External `/ui-design` folder can be deleted from parent directory
-- **Architecture Pattern**:
-  ```
-  /app/page.tsx (orchestrator)
-    → imports sections from /components/sections/
-      → each section imports from /lib/config.tsx
-      → uses primitives (aurora-text, section) for consistency
-  ```
-- **Consequences**:
-  - Clean separation allows marketing team to update copy in config file
-  - Consistent design language across all landing page sections
-  - Easy to A/B test different hero messages or feature sets
-  - Component library can be reused for future marketing pages
-  - External UI template no longer needed (all necessary code extracted)
-
-### ADR-018: Demo Modal with LiveKit Cloud Agent
-- **Date**: 2025-11-05
-- **Decision**: Implemented demo modal on landing page with separate LiveKit Cloud-deployed agent
-- **Rationale**:
-  - **User Experience**: Allow visitors to instantly try voice AI without signup
-  - **Isolation**: Demo agent separate from main interview agent (different prompt, duration)
-  - **Scalability**: Cloud-hosted agent auto-scales, no local infrastructure needed
-  - **Cost Optimization**: Cloud agent only active during demo sessions (~60 seconds)
-- **Architecture**:
-  ```
-  Landing Page → "Talk to Meelni" Button
-      ↓
-  DemoModal Component Opens
-      ↓
-  POST /api/livekit/demo-token
-      ↓
-  1. Create unique room: demo-{timestamp}-{random}
-  2. AgentDispatchClient.createDispatch(roomName, "CA_Wp8bi3bRroE2")
-  3. Return token + url
-      ↓
-  LiveKit Cloud Agent Receives Dispatch
-      ↓
-  Agent joins room (cold start ~2-3 seconds)
-      ↓
-  60-second demo conversation
-      ↓
-  Room auto-deletes after 2 minutes (emptyTimeout)
-  ```
-- **Key Components**:
-  - **Demo Agent** (`/agent/demo_agent.py`): 60-second optimized prompt, separate from main agent
-  - **Demo Token API** (`/app/api/livekit/demo-token/route.ts`): Creates room + dispatches Cloud agent
-  - **DemoModal** (`/components/demo-modal.tsx`): LiveKit audio visualizer UI with mic toggle
-  - **Hero Integration** (`/components/sections/hero.tsx`): Modal trigger button
-- **Critical Configuration**:
-  - **MUST set `agent_name` in WorkerOptions**: Required for explicit dispatch via AgentDispatchClient
-  - **Room Name Pattern**: `demo-*` prefix for filtering/analytics
-  - **Agent ID**: `CA_Wp8bi3bRroE2` (deployed to LiveKit Cloud)
-  - **Auto-cleanup**: `emptyTimeout: 120` (room deleted 2 min after last participant)
-- **Consequences**:
-  - Separate deployment pipeline for demo agent (uses `Dockerfile.demo`)
-  - Cloud agent scales to zero when not in use (cost-effective)
-  - No competition with self-hosted agents (isolated dispatch)
-  - Faster iteration: update demo agent without affecting production interviews
-  - **Important**: Agent requires `agent_name` parameter to receive dispatches
-
-### ADR-019: Explicit Agent Dispatch Pattern
-- **Date**: 2025-11-05
-- **Decision**: Use LiveKit's explicit agent dispatch instead of automatic dispatch
-- **Rationale**:
-  - **Control**: Choose which agent joins which room (demo vs interview)
-  - **Multi-Agent Support**: Run multiple agent types simultaneously
-  - **Room Filtering**: Agents can filter by room name patterns
-  - **Dispatch Metadata**: Pass context to agents via metadata
-- **Implementation**:
-  ```python
-  # Agent Configuration (CRITICAL)
-  cli.run_app(
-      WorkerOptions(
-          entrypoint_fnc=entrypoint,
-          prewarm_fnc=prewarm,
-          agent_name="CA_Wp8bi3bRroE2",  # Required for explicit dispatch!
-      ),
-  )
-  ```
-  ```typescript
-  // Backend Dispatch (Next.js API)
-  import { AgentDispatchClient } from "livekit-server-sdk";
-
-  const dispatchClient = new AgentDispatchClient(livekit_url, apiKey, apiSecret);
-  const dispatch = await dispatchClient.createDispatch(roomName, agentId);
-  ```
-- **Key Discovery**:
-  - Setting `agent_name` in WorkerOptions **disables automatic dispatch**
-  - Agent will ONLY join rooms when explicitly dispatched via AgentDispatchClient
-  - Without `agent_name`, multiple self-hosted agents compete for job dispatches
-  - Explicit dispatch provides full control over agent assignment
-- **Consequences**:
-  - More complex setup (must configure agent_name + dispatch API)
-  - Better isolation: demo agent never joins interview rooms
-  - Easier debugging: dispatch logs show which agent was assigned
-  - Supports multi-tenant scenarios (assign agents by customer/use-case)
-
-### ADR-020: Google OAuth Authentication Implementation
-- **Date**: 2025-11-06
-- **Decision**: Implemented full Google OAuth authentication with Supabase Auth
-- **Rationale**:
-  - **User Requirement**: Authentication needed for "Start A Mock" flow
-  - **Provider Choice**: Google OAuth only (initially) for simplicity
-  - **No Onboarding**: Direct to dashboard after sign-in per user request
-  - **Demo Separation**: Keep demo modal auth-free for instant testing
-- **Implementation**:
-  - **AuthProvider** (`app/providers/auth-provider.tsx`): React Context for session management
-  - **Sign-in Page** (`app/auth/signin/page.tsx`): Google OAuth button with polished UI
-  - **Callback Route** (`app/auth/callback/route.ts`): Exchanges OAuth code for session
-  - **Middleware** (`middleware.ts`): Protects `/dashboard`, `/setup`, `/interview` routes
-  - **Dashboard** (`app/dashboard/page.tsx`): Personalized welcome + "Start Mock Interview" CTA
-- **User Flow**:
-  ```
-  Landing Page → "Start A Mock" button
-      ↓
-  /dashboard (middleware checks auth)
-      ↓
-  If not logged in → /auth/signin
-      ↓
-  Google OAuth consent screen
-      ↓
-  /auth/callback (code exchange)
-      ↓
-  /dashboard (authenticated)
-      ↓
-  "Start Mock Interview" → /setup → /interview
-  ```
-- **Key Features**:
-  - Personalized greeting with user's first name from Google profile
-  - Auto-redirect if already authenticated
-  - Sign out functionality from dashboard
-  - Preserves redirect URL for post-login navigation
-  - Demo modal remains auth-free (no friction for trying the product)
-- **Consequences**:
-  - Authentication gate for full interview experience
-  - User data (name, email) stored in Supabase Auth
-  - Need to add RLS policies later for data security
-  - Easy to add email/password auth later if needed
-  - Google Cloud Console OAuth credentials required (already configured)
-
-### ADR-021: Tactical Dashboard UI Migration
-- **Date**: 2025-11-06
-- **Decision**: Migrated dashboard to tactical command-interface style layout with sidebar navigation
-- **Rationale**:
-  - **User Requirement**: Adopt tactical-command-interface example UI for improved dashboard UX
-  - **Layout Structure**: Sidebar + toolbar + main content grid provides better navigation and organization
-  - **Preserve Branding**: Keep Meelni's color scheme and typography while adopting tactical layout
-  - **Minimal Text Changes**: Replace military/tactical terminology with interview-related terms
-  - **Modular Architecture**: Create placeholder sections for future development
-- **Color Migration**:
-  - Tactical Orange (`#f97316`, `text-orange-500`) → Meelni Purple-Blue (`oklch(0.70 0.22 285)`, `text-primary`)
-  - Tactical Dark Neutrals (`bg-neutral-900/950`) → Meelni Card (`bg-card`)
-  - Tactical Borders (`border-neutral-800`) → Meelni Borders (`border-border`)
-  - Tactical Accents (`bg-orange-500/10`) → Meelni Accents (`bg-primary/10`)
-- **Text Changes**:
-  - "TACTICAL COMMAND INTERFACE" → "MEELNI DASHBOARD"
-  - "Mission Control" → "Overview"
-  - "Operations History" → "Interview History"
-  - "Intel & Analysis" → "Analytics"
-  - "Strategic Planning" → "Settings"
-  - "Alert Status" → "Session Stats"
-- **Implementation**:
-  - **Layout Components**:
-    - `/components/dashboard/layout/sidebar.tsx`: Collapsible sidebar with 5 navigation sections
-    - `/components/dashboard/layout/toolbar.tsx`: Top toolbar with breadcrumb and user actions
-    - `/components/dashboard/layout/dashboard-layout.tsx`: Main layout wrapper
-  - **Section Components**:
-    - `/components/dashboard/sections/overview.tsx`: Main overview with stats, charts, activity log
-    - `/components/dashboard/sections/history.tsx`: Full interview history with tactical styling
-    - `/components/dashboard/sections/analytics.tsx`: Placeholder for analytics
-    - `/components/dashboard/sections/feedback.tsx`: Placeholder for feedback & insights
-    - `/components/dashboard/sections/settings.tsx`: Placeholder for settings
-  - **Modified**:
-    - `/app/dashboard/page.tsx`: Updated to use DashboardLayout with section switching
-- **Key Features**:
-  - Collapsible sidebar (fixed on desktop, overlay on mobile)
-  - Active section highlighting with purple-blue accent
-  - Breadcrumb navigation in toolbar (DASHBOARD / SECTION NAME)
-  - Status box in sidebar showing total sessions, minutes, avg score
-  - Activity log with tactical-style timeline (border-l-2 border-primary)
-  - Responsive design with mobile-first approach
-  - User name displayed in toolbar (no avatar per user preference)
-  - Sign-out button in toolbar
-- **Preserved Elements**:
-  - Meelni color tokens and design system
-  - Framer Motion animations
-  - Existing components (StatsCards, ScoreChart, CompetencyRadar, SessionList)
-  - Typography scale (Public Sans for UI, Everett for display)
-- **Consequences**:
-  - Better navigation and organization for dashboard content
-  - Placeholder sections enable iterative development
-  - Modular architecture allows easy updates to individual sections
-  - Sidebar state can be persisted to localStorage (future enhancement)
-  - Keyboard shortcuts can be added for power users (future enhancement)
-  - Activity log provides real-time feedback on user actions
-
-
-### ADR-022: Main Interview Agent Deployed to LiveKit Cloud
-- **Date**: 2025-11-06
-- **Decision**: Deployed main interview agent to LiveKit Cloud (same infrastructure as demo agent)
-- **Agent ID**: `CA_yawKG67rCMG4`
-- **Deployment**: LiveKit Cloud (us-east region)
-- **Version**: v20251106062030
-- **Rationale**:
-  - Simplified deployment: both demo and main agents on LiveKit Cloud
-  - Auto-scaling handles variable load without managing infrastructure
-  - Cost-effective for MVP stage (scales to zero when idle)
-  - Easy rollback and version management via LiveKit CLI
-  - No separate hosting provider needed (Railway/Render/Fly.io)
-- **Configuration**:
-  - Agent ID stored in `agent/livekit.toml`
-  - Frontend dispatches via `AgentDispatchClient` in `/api/session/start`
-  - Room name pattern: `interview-{sessionId}` (vs `demo-*` for demo agent)
-- **Consequences**:
-  - Both agents share LiveKit Cloud infrastructure
-  - Agent dispatch is explicit via API (not automatic room joining)
-  - Local development still available with `python agent.py dev`
-  - Future migration to self-hosted possible if needed
-  - Agent now has `agent_name="CA_yawKG67rCMG4"` for explicit dispatch consistency
-
-<<<<<<< HEAD
-### ADR-023: Enhanced Prompt System with Difficulty-Aware Coaching
-- **Date**: 2025-11-07
-- **Decision**: Implement difficulty-aware prompt system with three levels (junior, intermediate, senior) to personalize interview coaching
-- **Rationale**:
-  - **Improve agent naturalness**: Convert frameworks from evaluation checklists to actionable instructions
-  - **Personalize difficulty**: Adapt coaching style based on candidate experience level (APM → Senior PM)
-  - **API-ready architecture**: Foundation for multi-tenant API service with company-specific configurations
-  - **Better framework teaching**: Show WHAT good looks like with concrete examples, not just describe it
-- **Implementation**:
-  - Created `prompts.py` with three-layer architecture:
-    - Layer 1: Base system prompt (universal coach identity)
-    - Layer 2: Framework-specific instructions (Product Sense, Analytical, Leadership, Strategy)
-    - Layer 3: Difficulty modulation + Mode instructions
-  - Created `prompt_builder.py` for dynamic prompt assembly from room metadata
-  - Added `CompanyConfig` and `SessionConfig` dataclasses for future API multi-tenancy
-  - Integrated with `agent.py` via `build_interview_prompt()`
-- **Difficulty Levels**:
-  - **Junior (APM, 0-2 years)**: Patient coaching, teaching mode, accepts surface-level analysis
-  - **Intermediate (IC PM, 2-4 years)**: Balanced approach, solid framework adherence expected
-  - **Senior (Senior PM, 5+ years)**: High bar, challenging follow-ups, strategic thinking required
-- **Consequences**:
-  - Backward compatible with existing room metadata (defaults to "intermediate")
-  - +4-8% cost increase per session (more tokens, acceptable for quality gain)
-  - Foundation for API service offering (companies can customize prompts)
-  - Easier to maintain and test prompts (modular architecture)
-  - Conversation naturalness improved (target 4.0+/5.0 vs current ~3.2/5.0)
-
-### `/agent/prompts.py`
-**Purpose**: Enhanced modular prompt system with difficulty-aware coaching
-**Key Exports**:
-- `get_prompt(config: SessionConfig) -> str` - Main prompt composition function
-- `CompanyConfig` - Dataclass for company-specific configurations (API multi-tenancy)
-- `SessionConfig` - Dataclass for runtime session parameters
-- `InterviewType`, `InterviewMode`, `Difficulty` - Enums for type safety
-
-**Three-Layer Architecture**:
-1. **Layer 1 (Base)**: Universal coach identity, operating principles, natural conversation patterns
-2. **Layer 2 (Domain)**: Framework-specific instructions (Product Sense, Analytical, Leadership, Strategy)
-3. **Layer 3 (Runtime)**: Difficulty modulation + Mode-specific instructions
-
-**Critical Design Patterns**:
-```python
-# Usage example
-from prompts import SessionConfig, InterviewType, Difficulty, get_prompt
-
-config = SessionConfig(
-    interview_type=InterviewType.PRODUCT_SENSE,
-    difficulty=Difficulty.SENIOR  # Personalizes coaching style
-)
-prompt = get_prompt(config)
-```
-
-**Key Features**:
-- **Difficulty-aware**: Adapts coaching style (junior/intermediate/senior)
-- **Framework-as-instructions**: Actionable directives, not evaluation checklists
-- **Concrete examples**: Every abstract directive has 2-3 real examples
-- **No markdown**: TTS-compatible (no asterisks, no formatting)
-- **Professional tone**: Human-like conversation, not LLM-speak
-- **Token-efficient**: <3000 tokens per prompt (typical: ~475 tokens)
-
-**Backward Compatibility**: Defaults to "intermediate" if difficulty not specified
-
-### `/agent/prompt_builder.py`
-**Purpose**: Translation layer between LiveKit room metadata and prompt system
-**Key Exports**:
-- `build_interview_prompt(metadata: Dict) -> str` - Main entrypoint from agent.py
-- `parse_room_metadata(metadata: Dict) -> SessionConfig` - Metadata parser
-
-**Responsibilities**:
-- Extract difficulty from room metadata (default: "intermediate")
-- Map `round_type` → `InterviewType` enum
-- Handle backward compatibility with existing metadata format
-- Validate and sanitize inputs
-
-**Integration Pattern**:
-```python
-# In agent.py
-from prompt_builder import build_interview_prompt
-
-instructions = build_interview_prompt(ctx.room.metadata)
-session = AgentSession(..., instructions=instructions)
-```
-
-**Error Handling**: Gracefully defaults to safe values if metadata invalid
-
-- **Status**: Implemented in Phase 1A (2025-11-07)
-- **Testing**: 10 verification tests, 100% pass rate
-
-### ADR-024: LiveKit Cloud Debugging Best Practices
-- **Date**: 2025-11-08
-- **Decision**: Established standard debugging workflow for LiveKit Cloud agents
-- **Key Tools**:
-  - `lk agent logs`: View runtime logs (agent execution, errors)
-  - `lk agent logs --log-type=build`: Docker build output
-  - `lk agent logs --log-type=deploy`: Deployment events
-  - `lk agent status`: Agent health and version info
-- **Common Failure Modes**:
-  1. **ModuleNotFoundError**: Missing files in Dockerfile COPY commands
-     - Symptom: Agent crashes on startup with "No module named 'utils'"
-     - Fix: Add missing `COPY utils/ ./utils/` to Dockerfile
-  2. **Agent not speaking**: Missing greeting instructions in prompts
-     - Symptom: Agent joins room but never says anything
-     - Fix: Add greeting instructions to BASE_INTERVIEWER_SYSTEM prompt
-  3. **Invalid voice ID**: Use verified voice IDs from provider documentation
-     - Symptom: TTS fails silently or agent doesn't speak
-     - Fix: Use valid voice IDs (e.g., ElevenLabs `cgSgspJ2msm6clMCkdW9`)
-  4. **Race conditions**: Always await session.start() before calling session.say()
-     - Symptom: Agent greets but subsequent responses fail
-     - Fix: Ensure `await session.start()` completes before any `session.say()` calls
-- **Debugging Workflow**:
-  1. Check agent status: `lk agent status` (is it running?)
-  2. Check runtime logs: `lk agent logs` (Python errors, TTS failures)
-  3. Check build logs: `lk agent logs --log-type=build` (if agent not starting)
-  4. Search logs for room names: Filter by specific session to isolate issues
-  5. Verify Dockerfile: Ensure all required files are copied (especially `utils/`)
-  6. Verify prompts: Check that greeting instructions are present
-  7. Verify voice IDs: Use valid IDs from provider docs (not example placeholders)
-- **Consequences**:
-  - Faster debugging (systematic approach)
-  - Fewer deployment issues (checklist prevents common mistakes)
-  - Better documentation (centralized troubleshooting guide)
-
-### ADR-025: Agent State Debouncing for Smooth Transitions
-- **Date**: 2025-11-08
-- **Decision**: Implement debounced state transitions with grace periods to prevent UI flickering during natural speech pauses
-- **Problem**: Agent state indicator was flickering between "speaking" and "listening" during brief pauses in agent speech (breath pauses, sentence breaks), creating confusing turn-taking signals
-- **Solution**:
-  - Add 600-700ms grace period before transitioning away from "speaking" state
-  - Immediate updates when agent starts speaking (no delay)
-  - Separate `debouncedAgentState` for UI display while internal state updates immediately
-  - Smart timer management that clears pending transitions when new speech detected
-- **Implementation**:
-  - Demo modal: 600ms grace period (`components/demo-modal.tsx`)
-  - Interview page: 700ms grace period (`app/interview/components/audio-visualizer.tsx`)
-  - Uses React useRef for timer and timestamp tracking (no re-renders)
-  - TypeScript-safe with proper type annotations
-- **Code Pattern**:
-  ```typescript
-  // Track when agent was last speaking
-  if (currentState === "speaking") {
-    lastSpeakingTimeRef.current = Date.now();
-    setDebouncedAgentState("speaking"); // Immediate
-    clearTimeout(stateChangeTimerRef.current);
-  }
-  // Apply grace period when stopping
-  else if (currentState !== "speaking" && debouncedAgentState === "speaking") {
-    const timeSinceLastSpeaking = Date.now() - lastSpeakingTimeRef.current;
-    if (timeSinceLastSpeaking < GRACE_PERIOD_MS) {
-      stateChangeTimerRef.current = setTimeout(() => {
-        setDebouncedAgentState(currentState);
-      }, GRACE_PERIOD_MS - timeSinceLastSpeaking);
-    }
-  }
-  ```
-- **Consequences**:
-  - Smoother UX with no flickering indicators
-  - Zero delay on user interruptions (can still interrupt immediately)
-  - Natural conversation flow maintained
-  - Applies to both demo and main interview agents
-- **Related Issues**: Fixes #105
-
-### ADR-026: Email/Password Authentication Implementation
-- **Date**: 2025-11-10
-- **Decision**: Implement email/password authentication alongside existing Google OAuth
-- **Rationale**:
-  - **User Preference**: Some users prefer traditional email/password over OAuth
-  - **Flexibility**: Provides multiple authentication options for different use cases
-  - **Production Ready**: Email verification and password reset flows for complete auth system
-  - **No Lock-in**: Users not forced to use Google account
-- **Implementation**:
-  - **AuthProvider Updates**: Added `signInWithEmail`, `signUpWithEmail`, `resetPassword` methods
-  - **Sign-In Page**: Enhanced with email/password form above Google OAuth button
-  - **Sign-Up Page**: New registration page with email/password and confirm password
-  - **Forgot Password Flow**: Request reset link → Email sent → Reset password page
-  - **Reset Password Page**: Users can set new password after clicking reset link
-- **Key Features**:
-  - Email verification required for new sign-ups (Supabase handles)
-  - Password strength validation (minimum 8 characters)
-  - Password confirmation on sign-up
-  - "Forgot password?" link on sign-in page
-  - Auto-redirect after successful password reset
-  - Success/error messages with Framer Motion animations
-  - Consistent UI/UX with Google OAuth flow
-- **Security**:
-  - Supabase Auth handles password hashing (bcrypt)
-  - Email verification prevents fake accounts
-  - Password reset tokens expire after use
-  - All auth operations use Supabase security best practices
-  - Same session management as OAuth (HTTP-only cookies)
-- **User Experience**:
-  - Sign-in: Email/password form first, Google OAuth as alternative
-  - Sign-up: Clear instructions about email verification
-  - Password reset: Simple 2-step process with email confirmation
-  - Links between signin/signup/forgot-password pages for easy navigation
-- **Consequences**:
-  - Users can choose their preferred auth method
-  - Email verification required (may slow onboarding slightly)
-  - Supabase handles email delivery (need to configure SMTP for production)
-  - Easy to add more OAuth providers later (GitHub, LinkedIn, etc.)
-  - Backward compatible with existing Google OAuth users
-
+---
 ---
 
 ## File Boundaries & Responsibilities
