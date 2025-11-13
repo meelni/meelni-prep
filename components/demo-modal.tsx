@@ -292,19 +292,19 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   return (
     <div className="relative h-full w-full flex bg-gradient-to-br from-black via-black to-purple-950/20">
       {/* Main area: Centered content */}
-      <div className="flex-1 flex flex-col items-center justify-center relative px-16">
+      <div className="flex-1 flex flex-col items-center justify-center relative px-4 sm:px-8 md:px-16">
         {/* Timer and Demo Badge (top-right) */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
-          className="absolute top-12 right-12"
+          className="absolute top-4 right-4 sm:top-8 sm:right-8 md:top-12 md:right-12"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* 5-Minute Demo Badge */}
             {!isConnected && !sessionEnded && (
-              <div className="bg-primary/10 backdrop-blur-xl px-4 py-2 rounded-xl border border-primary/20">
-                <span className="text-primary text-xs font-semibold">5-MINUTE DEMO</span>
+              <div className="bg-primary/10 backdrop-blur-xl px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl border border-primary/20">
+                <span className="text-primary text-[10px] sm:text-xs font-semibold">5-MIN DEMO</span>
               </div>
             )}
 
@@ -313,20 +313,20 @@ function DemoControls({ onClose }: { onClose: () => void }) {
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className={`bg-white/5 backdrop-blur-xl px-5 py-2.5 rounded-xl border ${
+                className={`bg-white/5 backdrop-blur-xl px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border ${
                   timeRemaining <= 60 ? "border-red-500/40 bg-red-500/10" : "border-white/10"
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${
                     timeRemaining <= 60 ? "bg-red-400 animate-pulse" : "bg-primary"
                   }`} />
-                  <span className={`text-sm font-mono font-semibold tabular-nums ${
+                  <span className={`text-xs sm:text-sm font-mono font-semibold tabular-nums ${
                     timeRemaining <= 60 ? "text-red-200" : "text-white/90"
                   }`}>
                     {formatTime(timeRemaining)}
                   </span>
-                  <span className="text-white/50 text-xs">remaining</span>
+                  <span className="hidden sm:inline text-white/50 text-xs">remaining</span>
                 </div>
               </motion.div>
             )}
@@ -366,7 +366,7 @@ function DemoControls({ onClose }: { onClose: () => void }) {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.5, type: "spring" }}
-                className="w-[400px] h-[400px]"
+                className="w-[250px] h-[250px] sm:w-[350px] sm:h-[350px] md:w-[400px] md:h-[400px]"
               >
                 <Orb
                   colors={["#a855f7", "#7c3aed"]}
@@ -441,9 +441,9 @@ function DemoControls({ onClose }: { onClose: () => void }) {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 50, opacity: 0 }}
             transition={{ delay: 0.4 }}
-            className="absolute bottom-12 left-1/2 -translate-x-1/2"
+            className="absolute bottom-4 sm:bottom-8 md:bottom-12 left-1/2 -translate-x-1/2"
           >
-            <div className="flex items-center gap-4 bg-white/5 backdrop-blur-2xl rounded-2xl px-8 py-4 border border-white/10 shadow-2xl">
+            <div className="flex items-center gap-3 sm:gap-4 bg-white/5 backdrop-blur-2xl rounded-2xl px-4 sm:px-6 md:px-8 py-3 sm:py-4 border border-white/10 shadow-2xl">
               {/* Mic button */}
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -487,12 +487,12 @@ function DemoControls({ onClose }: { onClose: () => void }) {
         )}
       </div>
 
-      {/* Right sidebar: Transcript (terminal-style) */}
+      {/* Right sidebar: Transcript (terminal-style) - Hidden on mobile */}
       <motion.div
         initial={{ x: 100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ delay: 0.3 }}
-        className="w-[400px] border-l border-border/50"
+        className="hidden lg:block w-[400px] border-l border-border/50"
       >
         <TranscriptPanel messages={messages} />
       </motion.div>
@@ -610,12 +610,12 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
           >
             {/* Inner modal with border/frame */}
             <div className="relative w-full h-full max-w-[1600px] max-h-[900px] rounded-2xl border border-white/10 bg-gradient-to-br from-black via-black to-purple-950/20 shadow-2xl overflow-hidden">
-              {/* Keyboard shortcut hint - bottom left */}
+              {/* Keyboard shortcut hint - bottom left - Hidden on mobile */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
-                className="absolute bottom-6 left-6 z-50 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 backdrop-blur-xl border border-white/10 text-xs text-white/60"
+                className="hidden sm:flex absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-50 items-center gap-2 px-3 py-2 rounded-lg bg-white/5 backdrop-blur-xl border border-white/10 text-xs text-white/60"
               >
                 <kbd className="px-2 py-1 rounded bg-white/10 border border-white/20 font-mono text-white/80">
                   ESC
