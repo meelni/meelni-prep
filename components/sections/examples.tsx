@@ -176,7 +176,7 @@ export function Examples() {
       <div className="pt-16 pb-6 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           {/* Header with inline voice preview button */}
-          <div className="flex items-center justify-center gap-3 mb-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
               Practice with Meelni
             </h2>
