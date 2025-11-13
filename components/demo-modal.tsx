@@ -369,7 +369,7 @@ function DemoControls({ onClose }: { onClose: () => void }) {
                 className="w-[400px] h-[400px]"
               >
                 <Orb
-                  colors={["oklch(0.70 0.22 285)", "oklch(0.55 0.22 285)"]}
+                  colors={["#a855f7", "#7c3aed"]}
                   agentState={
                     agentState === "thinking" ? "thinking" :
                     agentState === "listening" ? "listening" :
