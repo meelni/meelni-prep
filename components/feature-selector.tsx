@@ -187,14 +187,14 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
     <div ref={containerRef} className="max-w-6xl mx-auto">
       {/* Enhanced Tab Selector with Icons */}
       <div className="relative mb-8">
-        <div className="flex flex-wrap gap-3 justify-center">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto">
           {features.map((option, index) => {
             const Icon = interviewIcons[option.title as keyof typeof interviewIcons];
             return (
               <button
                 key={option.id}
                 onClick={() => setSelectedIndex(index)}
-                className={`group relative px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+                className={`group relative px-4 py-3 rounded-xl font-medium transition-all duration-300 ${
                   selectedIndex === index
                     ? "text-primary"
                     : "text-muted-foreground hover:text-foreground"
@@ -207,9 +207,9 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                     transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center gap-2">
+                <span className="relative z-10 flex items-center justify-center gap-2 text-sm md:text-base">
                   {Icon && <Icon className="w-4 h-4" />}
-                  {option.title}
+                  <span className="whitespace-nowrap">{option.title}</span>
                 </span>
               </button>
             );
