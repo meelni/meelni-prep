@@ -5,9 +5,24 @@
 
 import { config } from "dotenv";
 import { resolve } from "path";
+import { existsSync } from "fs";
 
 // Load environment variables from .env.local
-config({ path: resolve(process.cwd(), ".env.local") });
+// Try workspace directory first, then parent directory
+const workspaceEnv = resolve(process.cwd(), ".env.local");
+const parentEnv = resolve(process.cwd(), "../.env");
+
+if (existsSync(workspaceEnv)) {
+  config({ path: workspaceEnv });
+} else if (existsSync(parentEnv)) {
+  config({ path: parentEnv });
+} else {
+  console.error("ERROR: No .env.local or .env file found");
+  console.error("Checked:");
+  console.error(`  - ${workspaceEnv}`);
+  console.error(`  - ${parentEnv}`);
+  process.exit(1);
+}
 
 import { db } from "../lib/db";
 import { feedback } from "../lib/db/schema";
