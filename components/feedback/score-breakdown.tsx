@@ -24,7 +24,7 @@ interface ScoreBreakdownProps {
 const chartConfig = {
   score: {
     label: "Score",
-    color: "hsl(var(--primary))",
+    color: "#8b5cf6", // Purple-500 - visible in both light and dark mode (matches dashboard)
   },
 } satisfies ChartConfig;
 
