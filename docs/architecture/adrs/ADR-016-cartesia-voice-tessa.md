@@ -1,0 +1,22 @@
+### ADR-016: Cartesia Voice Library and Tessa Voice Selection
+- **Date**: 2025-11-05
+- **Decision**: Use Tessa voice from Cartesia's 150+ voice library
+- **Voice Details**:
+  - **Name**: Tessa
+  - **Voice ID**: `6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
+  - **Characteristics**: Emotive voice with wide emotional range
+  - **Model**: Sonic 3.0 (best-in-class emotional response)
+  - **Emotions Supported**: Happy, Excited, Sad, Angry, Scared, Confident, and 50+ more
+- **Rationale**:
+  - User specifically requested Tessa voice
+  - Tessa is listed among voices with best emotional response in Sonic 3
+  - Natural, engaging voice suitable for interview coaching
+- **Discovery Process**:
+  - Found comprehensive voice list via SignalWire documentation
+  - Cartesia API endpoint: `GET https://api.cartesia.ai/voices`
+  - 150+ voices available (British Male, Professional Female, Sarah, etc.)
+- **Consequences**:
+  - More natural, emotive interview conversations
+  - Can easily swap voices by changing voice ID in configuration
+  - Default voice ID updated in both frontend (`/app/setup/page.tsx`) and backend (`/agent/agent.py`)
+

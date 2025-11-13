@@ -1,0 +1,26 @@
+### ADR-015: Model Upgrade to Deepgram Nova-3, GPT-4.1-mini, and Cartesia Sonic 3 with Tessa Voice
+- **Date**: 2025-11-05
+- **Decision**: Upgrade all voice pipeline models to latest versions
+- **Models Selected**:
+  - **STT**: Deepgram Nova-3 (upgraded from Nova-2)
+  - **LLM**: OpenAI GPT-4.1-mini (upgraded from GPT-4o-mini)
+  - **TTS**: Cartesia Sonic 3.0 with Tessa voice (voice ID: `6ccbfb76-1fc6-48f7-b71d-91ac6298247b`)
+  - **VAD**: Silero (unchanged)
+- **Rationale**:
+  - Nova-3 offers improved speech recognition accuracy
+  - GPT-4.1-mini provides better reasoning while maintaining cost-effectiveness
+  - Tessa is an emotive voice optimized for Sonic 3, providing more natural conversation
+  - User preference for these specific models
+- **Key Discovery**:
+  - **Cartesia does NOT require separate API key** when using LiveKit Inference
+  - Cartesia is fully integrated with LiveKit Cloud
+  - **ElevenLabs also does NOT require separate API key** when using LiveKit Inference
+  - Both Cartesia and ElevenLabs work with only LIVEKIT_API_KEY/SECRET for TTS
+  - **Important**: Must use valid voice IDs from provider documentation (see ADR-024 for debugging)
+- **Consequences**:
+  - Better voice quality and natural conversation
+  - Simplified configuration (no Cartesia API key needed)
+  - TTS format: `cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
+  - Cost remains similar due to LiveKit Inference pricing
+  - Must verify voice IDs are valid for chosen TTS provider
+
