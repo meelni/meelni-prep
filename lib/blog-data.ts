@@ -12,6 +12,283 @@ export interface BlogPost {
 
 export const blogPosts: BlogPost[] = [
   {
+    id: "big-tech-case-study-interviews",
+    title: "Big Tech's Case Study Interview Format: What You Need to Know",
+    excerpt: "Google, Meta, Amazon, and other tech giants rely heavily on case study interviews. Here's what makes them different from traditional PM interviews and how to prepare effectively.",
+    author: "Meelni Team",
+    date: "November 12, 2025",
+    readTime: "9 min read",
+    category: "Interview Strategy",
+    content: `
+# Big Tech's Case Study Interview Format: What You Need to Know
+
+If you're preparing for PM interviews at Google, Meta, Amazon, or other top tech companies, there's one format you'll face repeatedly: **the case study interview**.
+
+Unlike traditional behavioral interviews where you draw from past experience, case study interviews throw you into hypothetical scenarios—often ones you've never encountered before. You're asked to design products, solve business problems, or optimize systems, all while the interviewer evaluates your structured thinking in real-time.
+
+This post breaks down how major tech companies use case study formats, what they're actually testing, and how to prepare effectively.
+
+## Why Big Tech Loves Case Study Interviews
+
+Case study interviews have become the standard across major tech companies because they simulate the day-to-day challenges Product Managers actually face. Instead of asking "Tell me about a time you...", interviewers can directly observe:
+
+- **Your problem-solving process** (not just the outcome)
+- **How you think under pressure** (when you can't prepare in advance)
+- **Your ability to structure ambiguous problems** (a core PM skill)
+- **Whether you can separate signal from noise** (user needs vs. nice-to-haves)
+
+The key insight? Past experience can be coached and polished. But how you think on your feet—that's harder to fake.
+
+## The Big Tech Companies Using Case Study Formats
+
+Based on patterns across hundreds of PM interviews, here are the major companies where case studies are central to the process:
+
+### Google
+
+Google extensively uses case study interviews across multiple rounds. Their cases fall into several categories:
+
+**Product Design & Improvement** (30-45 minutes)
+- "Design a product for elderly users"
+- "How would you improve Google Maps for commuters?"
+- "What's your favorite Google product and how would you improve it?"
+
+**Analytical Thinking** (30-45 minutes)
+- Market sizing: "How many queries does Google process per day?"
+- Metrics definition: "How would you measure success for YouTube Shorts?"
+- Root cause analysis: "Daily active users dropped 10% last week—what happened?"
+
+**Key Focus:** Structured thinking, technical fluency, and strategic decision-making. Google wants to see you break down complex problems systematically.
+
+### Meta (Facebook)
+
+Meta employs comprehensive case study interviews across multiple rounds, with heavy emphasis on two core areas:
+
+**Product Sense** (45 minutes)
+- Product design: "Design a product for restaurant recommendations"
+- Product improvement: "How would you improve Instagram Stories?"
+- Product strategy: "Should Facebook build a dating feature?"
+
+**Analytical Thinking** (45 minutes)
+- Hypothetical case studies involving metrics, prioritization, and trade-offs
+- Focus on data-driven decision making
+- Emphasis on 10-year mission alignment
+
+**Key Focus:** User empathy, creativity, and alignment with Meta's mission. They want PMs who think about connecting people and building communities.
+
+### Amazon
+
+Amazon integrates case studies throughout their "bar raiser" interview process:
+
+**Business Case Studies** (20-30 minutes)
+- "How would you reduce Prime member churn?"
+- "Design a system to improve seller experience on Amazon Marketplace"
+- "Increase advertising revenue without hurting customer experience"
+
+**Key Focus:** Operational efficiency, customer obsession, and data-driven decision making. Every answer should map back to Amazon's 14 Leadership Principles.
+
+### Microsoft
+
+Microsoft uses case study formats extensively, with a unique twist:
+
+**Product Sense** (45 minutes)
+- Focus on enterprise scenarios and B2B product challenges
+- "Design a collaboration tool for remote engineering teams"
+- "How would you improve Microsoft Teams for large organizations?"
+
+**Strategic Execution** (45 minutes)
+- Roadmap prioritization with competing stakeholder needs
+- Competitive analysis in enterprise markets
+- Technical problem-solving integrated into cases
+
+**Key Focus:** Understanding enterprise user pain points and navigating technical constraints. Microsoft wants PMs who can balance user needs with platform strategy.
+
+### Netflix
+
+Netflix stands out with their unique take-home case study format:
+
+**Take-Home Assignment** (2-4 hours)
+- Real-world Netflix challenges (content recommendation, user retention)
+- Requires presentation preparation with data storytelling
+
+**Panel Presentation** (1 hour)
+- Present your case study analysis to 3-5 interviewers
+- Defend your recommendations under cross-functional questioning
+
+**Key Focus:** Product strategy, metrics thinking, and communication under pressure. Netflix wants to see how you think about content, algorithms, and user experience at scale.
+
+### Uber
+
+Uber employs unique case study formats including their signature collaborative approach:
+
+**Technical Case Study** (45 minutes)
+- Real marketplace challenges: "Improve driver earnings in Brazil"
+- Focus on supply-demand dynamics and two-sided marketplace problems
+
+**Jam Session** (45 minutes)
+- A collaborative problem-solving format unique to Uber
+- Work with the interviewer to solve a product challenge together
+- Tests real-time collaboration, not just solo thinking
+
+**Key Focus:** Data-driven decision making and user empathy for both riders and drivers. Uber wants PMs who understand marketplace dynamics.
+
+### TikTok/ByteDance
+
+TikTok uses case study interviews across multiple rounds with a focus on viral content and algorithms:
+
+**Product Sense** (45 minutes)
+- Design and improvement cases around short-form video
+- "How would you increase creator retention on TikTok?"
+- "Design a feature to help users discover niche content"
+
+**Execution** (45 minutes)
+- Focus on metrics, prioritization, and algorithm optimization
+- Content moderation challenges
+- Balancing user engagement with platform safety
+
+**Key Focus:** Understanding short-form video dynamics, algorithm thinking, and social media growth strategies.
+
+## The 4 Case Study Question Types You'll Face
+
+Across all these companies, case study questions fall into four main categories:
+
+### 1. Product Design (20% of questions)
+"Design a product for X users" or "Build a feature for Y use case"
+
+**What they're testing:**
+- User empathy and segmentation
+- Structured problem-solving (clarify → goal → users → needs → solutions)
+- Creativity within constraints
+
+**Example:** "Design a fitness app for busy professionals"
+
+### 2. Product Improvement (20% of questions)
+"How would you improve [existing product]?"
+
+**What they're testing:**
+- Product intuition (do you understand why products succeed/fail?)
+- Prioritization (which problems matter most?)
+- Strategic thinking (how does this fit the big picture?)
+
+**Example:** "How would you improve Spotify's Discover Weekly?"
+
+### 3. Product Strategy (20% of questions)
+"Should we enter this market?" or "How do we compete with X?"
+
+**What they're testing:**
+- Market understanding and competitive analysis
+- Strategic trade-offs and business acumen
+- Long-term thinking vs. short-term wins
+
+**Example:** "Should Google build a social media competitor to TikTok?"
+
+### 4. Product Execution (29% of questions)
+Metrics, debugging, root cause analysis, and roadmap prioritization
+
+**What they're testing:**
+- Analytical thinking and data fluency
+- Ability to diagnose problems systematically
+- Metrics selection (vanity vs. value)
+
+**Example:** "Engagement dropped 15% last month—walk me through your approach to diagnosing the issue"
+
+## Key Similarities Across Companies
+
+Despite differences in format and focus, all major tech companies look for the same core skills in case study interviews:
+
+**Structured Thinking**
+- Breaking down ambiguous problems into manageable pieces
+- Using frameworks without sounding robotic
+- Clear communication of your thought process
+
+**User Empathy**
+- Understanding target segments deeply
+- Mapping user journeys to identify pain points
+- Designing solutions that actually solve problems (not just cool features)
+
+**Technical Fluency**
+- Understanding how products work under the hood (no coding required)
+- Awareness of technical constraints and trade-offs
+- Comfort discussing systems, APIs, and data flows
+
+**Strategic Alignment**
+- Connecting product decisions to company mission
+- Understanding competitive dynamics
+- Balancing user needs with business goals
+
+**Real-World Application**
+Interviewers aren't just evaluating your answer—they're evaluating **how you think**. Can you simulate the day-to-day work of a PM at their company?
+
+## How to Prepare for Case Study Interviews
+
+Case study interviews are learnable, but you need **deliberate practice**. Here's how to prepare effectively:
+
+### 1. Build Your Framework Toolkit (Week 1-2)
+
+Master these core frameworks:
+- **Product Design:** Clarify → Mission → Users → Pain Points → Solutions → Prioritize
+- **Product Improvement:** Current State → Goal → Segments → Needs → Ideas → Prioritize
+- **Metrics Thinking:** North Star → Input Metrics → Guardrails
+- **Strategic Trade-offs:** Pros/Cons → Impact/Effort → Strategic Fit
+
+### 2. Practice Product Critique (Ongoing)
+
+Study products systematically:
+- Analyze apps you use: What works? What doesn't? Why?
+- Read product teardowns (Lenny's Newsletter, Product Hunt)
+- Make predictions about product success and check back later
+
+This builds the **product intuition** you need for case studies.
+
+### 3. Do Mock Interviews (Week 3+)
+
+Solo practice isn't enough—you need **real-time feedback**. Here's why:
+
+**What solo practice misses:**
+- You don't know if you're going too deep or too shallow
+- You don't get pushed back when your logic has gaps
+- You don't learn to think conversationally under pressure
+- You don't calibrate your pacing (most candidates go too slow or too fast)
+
+**What mock interviews provide:**
+- Realistic pressure and time constraints
+- Follow-up questions that test your thinking
+- Feedback on structure, not just content
+- Calibration on what "good enough" looks like
+
+### 4. Study Company-Specific Patterns
+
+Each company has unique focuses:
+- **Google:** Technical depth, structured thinking
+- **Meta:** User empathy, mission alignment
+- **Amazon:** Customer obsession, leadership principles
+- **Microsoft:** Enterprise understanding, platform thinking
+- **Netflix:** Data storytelling, strategic vision
+- **Uber:** Marketplace dynamics, two-sided thinking
+- **TikTok:** Algorithm awareness, viral content
+
+Research Glassdoor, Blind, and interview prep sites for company-specific question patterns.
+
+## How Meelni Accelerates Your Prep
+
+Case study interviews require **reps with realistic feedback**. That's exactly what we built Meelni for.
+
+Our AI interviewer:
+- Asks real case study questions across all four types
+- Adapts to your responses in real-time (just like a real interviewer)
+- Pushes back when you skip steps or make logical leaps
+- Catches when you're not showing user empathy or structured thinking
+- Provides framework-based feedback after each session
+
+**The combination is powerful:** Frameworks give you structure. Product critique builds intuition. But **Meelni builds interview performance** by simulating the real thing.
+
+[Start practicing now](/setup) and see where you stand.
+
+---
+
+*Remember: Case study interviews aren't about having the "right" answer—they're about demonstrating how you think. The companies that use this format want to see your process, not just your conclusion. Practice thinking out loud, and you're already ahead of most candidates.*
+    `,
+  },
+  {
     id: "building-product-intuition",
     title: "Building Product Intuition: The Daily Practice Top PMs Use",
     excerpt: "Product sense isn't innate—it's trained. Here's an observation framework that helps candidates develop world-class product intuition in weeks, not years.",
