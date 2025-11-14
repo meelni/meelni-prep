@@ -11,6 +11,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 const checkoutSchema = z.object({
   tier: z.enum(["pro", "premium"]),
   billingPeriod: z.enum(["monthly", "annual"]),
+  email: z.string().email().optional(), // Optional email for unauthenticated users
 });
 
 export async function POST(req: NextRequest) {
@@ -19,18 +20,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { tier, billingPeriod } = checkoutSchema.parse(body);
 
-    // 2. Get authenticated user
+    // 2. Check if user is authenticated (optional)
     const supabase = await createClient();
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = session.user.id;
-    const userEmail = session.user.email!;
+    const userId = session?.user.id;
+    const userEmail = session?.user.email;
 
     // 3. Map tier + billing period to Stripe price ID
     const priceMap: Record<string, string> = {
@@ -52,8 +49,9 @@ export async function POST(req: NextRequest) {
     const trialPeriodDays = tier === "pro" ? 7 : 14;
 
     // 5. Create Stripe Checkout session
+    // Only include customer_email if authenticated, otherwise Stripe will collect it
     const checkoutSession = await stripe.checkout.sessions.create({
-      customer_email: userEmail,
+      ...(userEmail ? { customer_email: userEmail } : {}),
       line_items: [
         {
           price: priceId,
@@ -64,13 +62,13 @@ export async function POST(req: NextRequest) {
       subscription_data: {
         trial_period_days: trialPeriodDays,
         metadata: {
-          userId,
+          ...(userId ? { userId } : {}),
           tier,
           billingPeriod,
         },
       },
       metadata: {
-        userId,
+        ...(userId ? { userId } : {}),
         tier,
         billingPeriod,
       },

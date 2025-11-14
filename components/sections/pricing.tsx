@@ -245,12 +245,6 @@ export function Pricing() {
       return;
     }
 
-    // Check if user is authenticated
-    if (!user) {
-      router.push("/auth/signin?redirectTo=/");
-      return;
-    }
-
     setLoadingTier(tierName);
 
     try {

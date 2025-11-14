@@ -162,12 +162,6 @@ export default function PricingPage() {
       return;
     }
 
-    // Check if user is authenticated
-    if (!user) {
-      router.push("/auth/signin?redirectTo=/pricing");
-      return;
-    }
-
     setLoadingTier(tierName);
 
     try {
