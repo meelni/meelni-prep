@@ -584,4 +584,61 @@ lib/utils.ts                               (added formatCurrency, formatDate)
 
 ---
 
-**Status**: Phase 2 complete ✅. Ready for E2E testing and production deployment.
+**Status**: Phase 2 complete ✅. **Security hardened (2025-11-13)**. Ready for E2E testing and production deployment.
+
+---
+
+## Security Hardening (Post-Phase 2)
+
+**Date**: 2025-11-13
+**Status**: ✅ ALL CRITICAL ISSUES RESOLVED
+
+### Critical Fixes Applied (P0)
+
+1. **✅ RLS Policies Enabled** on all 5 billing tables
+   - User data isolation: Users can only SELECT own billing data
+   - Service-role-only access for internal tables
+   - Migration: `supabase/migrations/20251113000001_add_billing_rls_policies.sql`
+
+2. **✅ TOCTOU Race Condition Fixed** in quota enforcement
+   - Removed redundant `checkUsageQuota()` call
+   - Single atomic `incrementUsage()` operation
+   - Prevents users from exceeding quota limits
+
+3. **✅ SQL Injection Prevented** with Drizzle ORM
+   - Replaced raw SQL with Drizzle query builder
+   - Full type safety with `.insert().onConflictDoUpdate()`
+   - All parameters properly escaped
+
+4. **✅ Fail-Closed Error Handling** implemented
+   - Returns 503 Service Unavailable if quota service fails
+   - Prevents service abuse during outages
+   - Clear error message for users to retry
+
+### High Priority Fixes (P1)
+
+5. **✅ Transaction Wrapper Added** for webhook updates
+   - Subscription + customer mapping + usage init in single transaction
+   - Ensures atomicity: all operations commit or rollback together
+   - Created `initializeUsageRecordInTransaction()` helper
+
+6. **✅ Payment Idempotency Fixed**
+   - Added `.onConflictDoNothing()` to payment history inserts
+   - Prevents duplicate records on webhook retries
+   - Applies to both succeeded and failed payments
+
+### Files Modified for Security
+
+- `app/api/livekit/token/route.ts` - Race condition + fail-closed
+- `lib/services/usage-service.ts` - SQL injection prevention
+- `app/api/webhooks/stripe/route.ts` - Transaction + idempotency
+- `supabase/migrations/20251113000001_add_billing_rls_policies.sql` - RLS policies
+- `scripts/apply-rls-policies.ts` - Migration script
+
+### Security Documentation
+
+See `.claude/pricing/SECURITY_FIXES.md` for comprehensive documentation with before/after code examples, testing recommendations, and rollback procedures.
+
+---
+
+**Status**: Phase 2 complete ✅. **Security hardened ✅**. Ready for E2E testing and production deployment.

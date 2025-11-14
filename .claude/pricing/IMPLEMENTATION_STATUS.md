@@ -316,13 +316,15 @@ STRIPE_PREMIUM_ANNUAL_PRICE_ID=price_xxxxxxxxxxxxx
 
 ### Phase 2.2: Usage Quota Enforcement ✅
 
-**Status**: Complete
+**Status**: Complete (**Security Hardened** - 2025-11-13)
 **Files Modified**:
-- ✅ `app/api/livekit/token/route.ts` - Added quota enforcement
+- ✅ `app/api/livekit/token/route.ts` - Added quota enforcement with race condition fix
+- ✅ `lib/services/usage-service.ts` - Replaced raw SQL with Drizzle ORM
 
 **Features Implemented**:
-- ✅ Two-phase quota check (check → increment)
-- ✅ Atomic SQL operations to prevent race conditions
+- ✅ **SECURITY FIX**: Single atomic quota check/increment (eliminates TOCTOU race condition)
+- ✅ **SECURITY FIX**: Fail-closed error handling (returns 503 if quota service is down)
+- ✅ **SECURITY FIX**: Drizzle ORM query builder prevents SQL injection
 - ✅ 403 error response with upgrade URL when quota exceeded
 - ✅ Authentication-aware (enforces for logged-in users, allows anonymous demos)
 - ✅ Preserves all existing functionality (demo mode, agent dispatch)
@@ -399,9 +401,9 @@ STRIPE_PREMIUM_ANNUAL_PRICE_ID=price_xxxxxxxxxxxxx
 
 ### Phase 2.4: Stripe API v2025 Upgrade ✅
 
-**Status**: Complete
+**Status**: Complete (**Security Hardened** - 2025-11-13)
 **Files Modified**:
-- ✅ `app/api/webhooks/stripe/route.ts` - Updated to Stripe API v2025-10-29.clover
+- ✅ `app/api/webhooks/stripe/route.ts` - Updated to Stripe API v2025-10-29.clover with transaction wrapper
 
 **Breaking Changes Handled**:
 - ✅ `current_period_start`/`current_period_end` moved from Subscription to SubscriptionItem
@@ -409,13 +411,23 @@ STRIPE_PREMIUM_ANNUAL_PRICE_ID=price_xxxxxxxxxxxxx
 - ✅ `payment_intent` no longer directly accessible on Invoice - set to null
 - ✅ Drizzle ORM `.returning()` used instead of `rowCount` for updates
 
+**Security Enhancements**:
+- ✅ **SECURITY FIX**: Transaction wrapper for atomic webhook updates (subscription + mapping + usage)
+- ✅ **SECURITY FIX**: Payment history idempotency (prevents duplicates on webhook retries)
+
 ### Technical Highlights
 
-**Security**:
+**Security** (Hardened 2025-11-13):
 - ✅ All API endpoints protected by Supabase Auth
-- ✅ RLS policies enforce user data isolation
+- ✅ **Row Level Security (RLS) policies on all 5 billing tables** (subscription, usage_record, payment_history, stripe_event_log, stripe_customer_mapping)
+- ✅ **User data isolation**: Users can only SELECT own billing data
+- ✅ **Service-role-only access** for internal tables (event log, customer mapping)
 - ✅ Stripe webhook signature verification
-- ✅ SQL injection prevention (parameterized queries)
+- ✅ **SQL injection prevention** via Drizzle ORM query builder (no raw SQL)
+- ✅ **TOCTOU race condition eliminated** with atomic quota operations
+- ✅ **Fail-closed error handling** (503 on service failure, not unlimited access)
+- ✅ **Transaction atomicity** for webhook updates (all-or-nothing)
+- ✅ **Payment idempotency** (prevents duplicates on retries)
 
 **Performance**:
 - ✅ Lazy loading for billing section
@@ -490,16 +502,30 @@ STRIPE_PREMIUM_ANNUAL_PRICE_ID=price_xxxxxxxxxxxxx
 
 - ✅ `.claude/pricing/TESTING_GUIDE.md` - Local webhook testing guide
 - ✅ `.claude/pricing/IMPLEMENTATION_STATUS.md` - This file
+- ✅ `.claude/pricing/SECURITY_FIXES.md` - Security hardening documentation (2025-11-13)
+- ✅ `.claude/pricing/PHASE_2_SUMMARY.md` - Phase 2 comprehensive implementation guide
 - ✅ Architecture decisions documented in webhook handler comments
 - ✅ RLS policy documentation in migration file
+- ✅ Security fixes documented with before/after code examples
 
 ---
 
 ## Git History
 
-**Branch**: `mogadishu`
+**Branch**: `implement-pricing-tiers`
 
-### Recent Commits (Phase 1)
+### Phase 2 Commits (Subscription Management Dashboard)
+
+1. `8cb82a9` - `feat: implement Phase 2 subscription management dashboard` - Billing APIs + UI + quota enforcement + Stripe API v2025 upgrade
+2. `233878f` - `fix(security): resolve 6 critical P0/P1 security issues in Phase 2 billing` - **Security Hardening (2025-11-13)**
+   - ✅ RLS policies on all billing tables
+   - ✅ TOCTOU race condition fix
+   - ✅ SQL injection prevention with Drizzle ORM
+   - ✅ Fail-closed error handling
+   - ✅ Transaction wrapper for webhooks
+   - ✅ Payment idempotency fix
+
+### Phase 1 Commits (Pricing Page + Checkout)
 
 1. `eaf21db` - `feat: implement Stripe Checkout integration (Phase 1.2)` - Checkout session API, success/cancel pages, pricing page integration
 2. `6e05d0d` - `feat: implement checkout-first authentication flow` - Removed auth gate before checkout, added auth gate on success page
@@ -507,7 +533,7 @@ STRIPE_PREMIUM_ANNUAL_PRICE_ID=price_xxxxxxxxxxxxx
 4. `543a17c` - `fix: improve mobile layout for logos section` - Separate mobile/desktop layouts
 5. `1c315f7` - `fix: improve text wrapping in logos section` - Non-breaking space for "interviewed at"
 
-### Earlier Commits (Phase 0.5)
+### Phase 0.5 Commits (Database + Webhooks)
 
 1. `feat: add pricing database schema (Phase 0.5A)` - Initial schema
 2. `feat: add Stripe webhook handler with idempotency (Phase 0.5B)` - Webhook implementation
