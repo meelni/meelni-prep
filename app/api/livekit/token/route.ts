@@ -6,8 +6,9 @@
  * agent configuration.
  *
  * @route POST /api/livekit/token
- * @access Public (no authentication required - used for interview sessions)
- * @note Authentication is handled at the session level via /api/session/start
+ * @access Public (authentication optional)
+ * @note Authenticated users: quota enforcement applied
+ * @note Anonymous users: no quota enforcement (demo mode)
  *
  * @request {Object} body - Request payload
  * @request.roomName {string} Required - LiveKit room name to join
@@ -19,6 +20,7 @@
  * @response.url {string} - LiveKit server WebSocket URL
  *
  * @throws {400} Bad Request - Missing roomName or participantName
+ * @throws {403} Forbidden - Monthly interview quota exceeded (authenticated users only)
  * @throws {500} Internal Server Error - LiveKit credentials not configured or token generation failed
  *
  * @example
@@ -51,6 +53,15 @@
  *   "error": "Missing roomName or participantName"
  * }
  *
+ * // Error Response (403 Forbidden - Quota Exceeded)
+ * {
+ *   "error": "quota_exceeded",
+ *   "message": "Monthly interview quota exceeded",
+ *   "currentUsage": 3,
+ *   "limit": 3,
+ *   "upgradeUrl": "/pricing"
+ * }
+ *
  * // Error Response (500 Internal Server Error)
  * {
  *   "error": "LiveKit credentials not configured"
@@ -59,6 +70,8 @@
 
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { checkUsageQuota, incrementUsage } from "@/lib/services/usage-service";
 
 export async function POST(req: NextRequest) {
   try {
@@ -71,6 +84,52 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Check authentication and quota (only for authenticated users)
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      // Authenticated user - check quota
+      try {
+        const quotaCheck = await checkUsageQuota(user.id);
+
+        if (!quotaCheck.allowed) {
+          return NextResponse.json(
+            {
+              error: "quota_exceeded",
+              message: quotaCheck.reason || "Monthly interview quota exceeded",
+              currentUsage: quotaCheck.currentUsage,
+              limit: quotaCheck.limit,
+              upgradeUrl: "/pricing",
+            },
+            { status: 403 }
+          );
+        }
+
+        // Quota check passed - atomically increment usage
+        const incrementResult = await incrementUsage(user.id);
+
+        if (!incrementResult.success) {
+          // Edge case: quota exceeded between check and increment
+          return NextResponse.json(
+            {
+              error: "quota_exceeded",
+              message: incrementResult.reason || "Monthly interview quota exceeded",
+              currentUsage: quotaCheck.currentUsage,
+              limit: quotaCheck.limit,
+              upgradeUrl: "/pricing",
+            },
+            { status: 403 }
+          );
+        }
+      } catch (error: any) {
+        console.error("Quota check error:", error.message);
+        // Log error but don't block token generation (fail open for now)
+        // In production, you may want to fail closed instead
+      }
+    }
+    // else: Anonymous user (demo mode) - skip quota check
 
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;

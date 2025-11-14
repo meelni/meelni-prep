@@ -124,7 +124,8 @@ export async function incrementUsage(userId: string): Promise<{ success: boolean
       OR usage_record.interviews_limit = -1
   `);
 
-  if (result.rowCount === 0) {
+  // Check if the query affected any rows (length of rows array indicates success)
+  if (!result || result.length === 0) {
     // Quota exceeded or record not found
     const usage = await getCurrentUsageRecord(userId, sub.currentPeriodStart!, sub.currentPeriodEnd!);
     if (!usage) {

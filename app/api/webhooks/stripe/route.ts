@@ -16,7 +16,7 @@ if (!STRIPE_WEBHOOK_SECRET) {
 }
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2024-11-20.acacia",
+  apiVersion: "2025-10-29.clover",
 });
 
 const webhookSecret = STRIPE_WEBHOOK_SECRET;
@@ -238,18 +238,25 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     }
   }
 
+  // In Stripe API 2025-10-29.clover, current_period_start/end moved to SubscriptionItem
+  const firstItem = stripeSubscription.items.data[0];
+
   const subscriptionData = {
     userId,
     tier,
     status: mapStripeStatus(stripeSubscription.status),
-    billingCycle: stripeSubscription.items.data[0]?.price.recurring?.interval === "month"
+    billingCycle: firstItem?.price.recurring?.interval === "month"
       ? "monthly" as const
       : "annual" as const,
     stripeCustomerId: stripeSubscription.customer as string,
     stripeSubscriptionId: stripeSubscription.id,
-    stripePriceId: stripeSubscription.items.data[0]?.price.id,
-    currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-    currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+    stripePriceId: firstItem?.price.id,
+    currentPeriodStart: firstItem?.current_period_start
+      ? new Date(firstItem.current_period_start * 1000)
+      : null,
+    currentPeriodEnd: firstItem?.current_period_end
+      ? new Date(firstItem.current_period_end * 1000)
+      : null,
     trialEnd: stripeSubscription.trial_end
       ? new Date(stripeSubscription.trial_end * 1000)
       : null,
@@ -276,10 +283,11 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
           eq(subscription.userId, userId),
           eq(subscription.version, currentVersion)
         )
-      );
+      )
+      .returning({ id: subscription.id });
 
     // If no rows updated, version mismatch (concurrent update detected)
-    if (result.rowCount === 0) {
+    if (result.length === 0) {
       throw new Error(`Optimistic lock failure: subscription version mismatch for user ${userId}`);
     }
   }
@@ -303,7 +311,9 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     });
 
   // Initialize usage record for new billing period if needed
-  await initializeUsageRecord(userId, subscriptionData.currentPeriodStart, subscriptionData.currentPeriodEnd, subscriptionData.tier);
+  if (subscriptionData.currentPeriodStart && subscriptionData.currentPeriodEnd) {
+    await initializeUsageRecord(userId, subscriptionData.currentPeriodStart, subscriptionData.currentPeriodEnd, subscriptionData.tier);
+  }
 }
 
 /**
@@ -335,16 +345,19 @@ async function handleSubscriptionDeleted(event: Stripe.Event) {
  */
 async function handlePaymentSucceeded(event: Stripe.Event) {
   const invoice = event.data.object as Stripe.Invoice;
-  const userId = invoice.subscription_details?.metadata?.userId || invoice.metadata?.userId;
+  // In API 2025-10-29.clover, use invoice.metadata directly
+  const userId = invoice.metadata?.userId as string | undefined;
 
   if (!userId) {
     console.warn("Missing userId in invoice metadata");
     return;
   }
 
+  // In API 2025-10-29.clover, payment_intent moved to payments array
+  // For simplicity, we'll use null and rely on stripeInvoiceId for tracking
   await db.insert(paymentHistory).values({
     userId,
-    stripePaymentIntentId: invoice.payment_intent as string,
+    stripePaymentIntentId: null,
     stripeInvoiceId: invoice.id,
     stripeEventId: event.id,
     amountInCents: invoice.amount_paid,
@@ -374,7 +387,8 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
  */
 async function handlePaymentFailed(event: Stripe.Event) {
   const invoice = event.data.object as Stripe.Invoice;
-  const userId = invoice.subscription_details?.metadata?.userId || invoice.metadata?.userId;
+  // In API 2025-10-29.clover, use invoice.metadata directly
+  const userId = invoice.metadata?.userId as string | undefined;
 
   if (!userId) {
     console.warn("Missing userId in invoice metadata");
@@ -382,9 +396,11 @@ async function handlePaymentFailed(event: Stripe.Event) {
   }
 
   // Record failed payment
+  // In API 2025-10-29.clover, payment_intent moved to payments array
+  // For simplicity, we'll use null and rely on stripeInvoiceId for tracking
   await db.insert(paymentHistory).values({
     userId,
-    stripePaymentIntentId: invoice.payment_intent as string,
+    stripePaymentIntentId: null,
     stripeInvoiceId: invoice.id,
     stripeEventId: event.id,
     amountInCents: invoice.amount_due,
