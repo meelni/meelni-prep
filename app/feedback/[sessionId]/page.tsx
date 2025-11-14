@@ -12,7 +12,6 @@ import { StrengthsList } from "@/components/feedback/strengths-list";
 import { ImprovementsList } from "@/components/feedback/improvements-list";
 import { DrillList } from "@/components/feedback/drill-list";
 import { TranscriptViewer } from "@/components/feedback/transcript-viewer";
-import { FeedbackLoading } from "./components/feedback-loading";
 import { FeedbackInsufficient } from "@/components/feedback/feedback-insufficient";
 import { FeedbackPartial } from "@/components/feedback/feedback-partial";
 import { FeedbackAbandoned } from "@/components/feedback/feedback-abandoned";
@@ -56,7 +55,7 @@ export default function FeedbackPage() {
 
   const [evaluation, setEvaluation] = useState<EvaluationResponse | null>(null);
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
-  const [status, setStatus] = useState<"pending" | "processing" | "completed" | "failed" | "skipped">("pending");
+  const [status, setStatus] = useState<"completed" | "failed" | "skipped" | "loading">("loading");
   const [error, setError] = useState<string | null>(null);
   const [validation, setValidation] = useState<ValidationData | null>(null);
 
@@ -72,6 +71,16 @@ export default function FeedbackPage() {
         }
 
         const statusData = await statusResponse.json();
+        console.log("[FeedbackPage] Received status:", statusData.status);
+
+        // This page should only be accessed when feedback is ready
+        // If it's still pending/processing, redirect to loading page
+        if (statusData.status === "pending" || statusData.status === "processing") {
+          console.log("[FeedbackPage] Feedback not ready, redirecting to loading page");
+          window.location.href = `/feedback/${sessionId}/loading`;
+          return;
+        }
+
         setStatus(statusData.status);
 
         // Store validation data if available
@@ -115,9 +124,16 @@ export default function FeedbackPage() {
     checkFeedbackStatus();
   }, [sessionId]);
 
-  // Show loading component for pending/processing states
-  if (status === "pending" || status === "processing") {
-    return <FeedbackLoading sessionId={sessionId} />;
+  // Show loading state while fetching initial data
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading feedback...</p>
+        </div>
+      </div>
+    );
   }
 
   // Show edge case components for skipped sessions
