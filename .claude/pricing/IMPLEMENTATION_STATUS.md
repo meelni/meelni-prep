@@ -223,32 +223,89 @@ STRIPE_PREMIUM_ANNUAL_PRICE_ID=price_xxxxxxxxxxxxx
 
 ---
 
-## Next Steps (Phase 1)
+## Phase 1: Pricing Page & Checkout ✅
 
-**Not Started**
+**Status**: ✅ **COMPLETE**
+**Completion Date**: 2025-11-13
 
-1. **Pricing Page UI**
-   - Feature comparison table
-   - Monthly/annual toggle
-   - "Start Free Trial" CTA
+### Phase 1.1: Pricing Page UI ✅
 
-2. **Stripe Checkout Integration**
-   - `POST /api/checkout/create-session`
-   - Set `userId` in subscription metadata
-   - Redirect to Stripe Checkout
+**Status**: Complete
+**Files**:
+- ✅ `app/pricing/page.tsx` - Full pricing page with comparison table
+- ✅ `components/sections/pricing.tsx` - Landing page pricing section
+- ✅ `lib/config.tsx` - Pricing tier configuration (Free, Pro, Premium)
 
-3. **Subscription Management**
+**Features Implemented**:
+- ✅ 3-tier pricing table (Free, Pro, Premium)
+- ✅ Monthly/annual toggle with "Save 20%" badge
+- ✅ Feature comparison with checkmarks
+- ✅ Animated pricing cards with Framer Motion
+- ✅ "Start Free Trial" CTAs (7-day Pro, 14-day Premium)
+- ✅ Mobile-responsive design
+- ✅ FAQ section on pricing page
+
+### Phase 1.2: Stripe Checkout Integration ✅
+
+**Status**: Complete
+**Files**:
+- ✅ `app/api/checkout/create-session/route.ts` - Checkout session API
+- ✅ `app/pricing/success/page.tsx` - Post-checkout success page
+- ✅ `app/pricing/canceled/page.tsx` - Checkout canceled page
+
+**Features Implemented**:
+- ✅ Stripe Checkout session creation
+- ✅ Trial period handling (7 days Pro, 14 days Premium)
+- ✅ Tier + billing period mapping to Stripe price IDs
+- ✅ Checkout-first authentication flow (no auth required before payment)
+- ✅ Auth gate on success page (redirects unauthenticated users to signup)
+- ✅ Success/cancel redirect URLs
+- ✅ Loading states during checkout
+- ✅ Error handling with user feedback
+- ✅ Promotion code support enabled
+
+**Authentication Flow**:
+1. User clicks "Start Trial" → No auth check ✅
+2. Redirect to Stripe Checkout → Stripe collects email ✅
+3. Complete payment → Subscription created ✅
+4. Redirect to `/pricing/success` → Auth check happens here ✅
+5. If not authenticated → Redirect to `/auth/signup` ✅
+6. After signup/signin → Return to success page ✅
+7. Webhook links customer via email matching ✅
+
+### Phase 1.3: Landing Page Enhancements ✅
+
+**Status**: Complete
+**Files**:
+- ✅ `components/sections/logos.tsx` - Company logos section
+- ✅ `app/page.tsx` - Updated home page with logos
+
+**Features Implemented**:
+- ✅ Company logos section with rotating logos
+- ✅ Text: "Built by PMs who've interviewed at"
+- ✅ Responsive design (separate mobile/desktop layouts)
+- ✅ Mobile: 3-column grid with rounded cards
+- ✅ Desktop: Horizontal grid with text + 5 rotating logos
+- ✅ Proper text wrapping (non-breaking space for "interviewed at")
+
+---
+
+## Phase 2: Subscription Management (Not Started)
+
+### Remaining Features
+
+1. **Subscription Management Dashboard**
    - View current plan in dashboard
    - Upgrade/downgrade flow
    - Cancel subscription UI
    - Stripe Customer Portal integration
 
-4. **Usage Quota UI**
+2. **Usage Quota UI**
    - Display interviews_used / interviews_limit
    - Warning when approaching quota
    - "Upgrade to continue" modal
 
-5. **E2E Testing**
+3. **E2E Testing**
    - Full checkout flow
    - Subscription lifecycle (active → past_due → canceled)
    - Trial expiration
@@ -267,23 +324,34 @@ STRIPE_PREMIUM_ANNUAL_PRICE_ID=price_xxxxxxxxxxxxx
 
 ## Git History
 
-**Branch**: `implement-pricing-tiers`
+**Branch**: `mogadishu`
 
-### Commits
+### Recent Commits (Phase 1)
+
+1. `eaf21db` - `feat: implement Stripe Checkout integration (Phase 1.2)` - Checkout session API, success/cancel pages, pricing page integration
+2. `6e05d0d` - `feat: implement checkout-first authentication flow` - Removed auth gate before checkout, added auth gate on success page
+3. `59d9bc4` - `feat: add company logos section to landing page` - "Built by PMs who've interviewed at" section
+4. `543a17c` - `fix: improve mobile layout for logos section` - Separate mobile/desktop layouts
+5. `1c315f7` - `fix: improve text wrapping in logos section` - Non-breaking space for "interviewed at"
+
+### Earlier Commits (Phase 0.5)
 
 1. `feat: add pricing database schema (Phase 0.5A)` - Initial schema
 2. `feat: add Stripe webhook handler with idempotency (Phase 0.5B)` - Webhook implementation
-3. `fix: resolve 6 P0 issues in pricing implementation (Phase 0.5C)` - Critical fixes (pending)
+3. `fix: resolve 6 P0 issues in pricing implementation (Phase 0.5C)` - Critical fixes
 
 ---
 
 ## Deployment Checklist
 
-**Not Ready for Production**
+**Phase 1 Complete - Ready for Testing**
 
-Phase 0.5 is a foundation. Before deploying to production:
+Phase 1 (Pricing + Checkout) is complete. Before deploying to production:
 
-- [ ] Complete Phase 1 (Pricing Page + Checkout)
+- [x] Complete Phase 0.5 (Database Schema + Webhooks)
+- [x] Complete Phase 1.1 (Pricing Page UI)
+- [x] Complete Phase 1.2 (Stripe Checkout Integration)
+- [x] Complete Phase 1.3 (Landing Page Enhancements)
 - [ ] E2E testing with real Stripe Checkout
 - [ ] Production webhook endpoint registered in Stripe Dashboard
 - [ ] Production API keys configured
@@ -291,7 +359,8 @@ Phase 0.5 is a foundation. Before deploying to production:
 - [ ] Customer support runbook for subscription issues
 - [ ] Legal review of pricing terms
 - [ ] Test payment failure recovery flow
+- [ ] Complete Phase 2 (Subscription Management Dashboard)
 
 ---
 
-**Status**: Phase 0.5 foundation complete and tested. Ready for Phase 1 development.
+**Status**: Phase 1 complete ✅. Checkout-first flow implemented. Ready for E2E testing and Phase 2 development.
