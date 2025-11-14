@@ -29,44 +29,89 @@ export function Logos() {
 
   return (
     <Section id="logos">
-      <div className="border">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6">
-          {/* First box - static intro text */}
-          <div className="flex col-span-2 sm:col-span-1 items-center justify-center p-4 border-r border-t [&:nth-child(-n+2)]:border-t-0 sm:[&:nth-child(-n+3)]:border-t-0 md:[&:nth-child(-n+6)]:border-t-0 bg-gradient-to-br from-accent/5 to-transparent">
-            <p className="text-sm font-semibold text-foreground/90 text-center leading-snug tracking-tight">
-              Helping PMs ace interviews at top companies like
+      <div className="w-full">
+        {/* Mobile layout: vertical stack */}
+        <div className="md:hidden space-y-6">
+          {/* Title */}
+          <div className="text-center">
+            <p className="text-sm font-semibold text-foreground/90 leading-snug tracking-tight">
+              Built by PMs who've interviewed at
             </p>
           </div>
 
-          {/* Remaining boxes with rotating companies */}
-          {companies.slice(0, 5).map((_, idx) => (
-            <div
-              key={idx}
-              className="flex group items-center justify-center p-4 border-r border-t last:border-r-0 sm:last:border-r md:[&:nth-child(3n)]:border-r md:[&:nth-child(6n)]:border-r-0 md:[&:nth-child(3)]:border-r [&:nth-child(-n+2)]:border-t-0 sm:[&:nth-child(-n+3)]:border-t-0 sm:[&:nth-child(3n)]:border-r-0 md:[&:nth-child(-n+6)]:border-t-0 [&:nth-child(2n)]:border-r-0 sm:[&:nth-child(2n)]:border-r"
-            >
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={currentSet[idx]}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  transition={{
-                    duration: 0.5,
-                    ease: "easeInOut",
-                    delay: Math.random() * 0.5,
-                  }}
-                >
-                  <Image
-                    width={112}
-                    height={40}
-                    src={`https://cdn.magicui.design/companies/${currentSet[idx]}.svg`}
-                    className="h-10 w-28 dark:brightness-0 dark:invert grayscale hover:grayscale-0 hover:brightness-100 dark:hover:brightness-0 dark:hover:invert transition-all duration-200 ease-out opacity-30 hover:opacity-100"
-                    alt={currentSet[idx]}
-                  />
-                </motion.div>
-              </AnimatePresence>
+          {/* Logo grid - 3 columns on mobile */}
+          <div className="grid grid-cols-3 gap-4">
+            {companies.slice(0, 6).map((_, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-center p-3 rounded-lg border border-border/50 bg-card/30"
+              >
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={currentSet[idx]}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{
+                      duration: 0.5,
+                      ease: "easeInOut",
+                      delay: Math.random() * 0.5,
+                    }}
+                  >
+                    <Image
+                      width={80}
+                      height={32}
+                      src={`https://cdn.magicui.design/companies/${currentSet[idx]}.svg`}
+                      className="h-8 w-20 dark:brightness-0 dark:invert grayscale opacity-40"
+                      alt={currentSet[idx]}
+                    />
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Desktop layout: original grid */}
+        <div className="hidden md:block border rounded-lg overflow-hidden">
+          <div className="grid grid-cols-6">
+            {/* First box - static intro text */}
+            <div className="flex items-center justify-center p-6 border-r bg-gradient-to-br from-accent/5 to-transparent">
+              <p className="text-sm font-semibold text-foreground/90 text-center leading-snug tracking-tight max-w-[140px]">
+                Built by PMs who've interviewed&nbsp;at
+              </p>
             </div>
-          ))}
+
+            {/* Remaining boxes with rotating companies */}
+            {companies.slice(0, 5).map((_, idx) => (
+              <div
+                key={idx}
+                className="flex group items-center justify-center p-6 border-r last:border-r-0"
+              >
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={currentSet[idx]}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{
+                      duration: 0.5,
+                      ease: "easeInOut",
+                      delay: Math.random() * 0.5,
+                    }}
+                  >
+                    <Image
+                      width={112}
+                      height={40}
+                      src={`https://cdn.magicui.design/companies/${currentSet[idx]}.svg`}
+                      className="h-10 w-28 dark:brightness-0 dark:invert grayscale hover:grayscale-0 hover:brightness-100 dark:hover:brightness-0 dark:hover:invert transition-all duration-200 ease-out opacity-30 hover:opacity-100"
+                      alt={currentSet[idx]}
+                    />
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </Section>

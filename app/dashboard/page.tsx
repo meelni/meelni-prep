@@ -16,6 +16,7 @@ import { Loader2 } from "lucide-react";
 const OverviewSection = lazy(() => import("@/components/dashboard/sections/overview").then(m => ({ default: m.OverviewSection })));
 const HistorySection = lazy(() => import("@/components/dashboard/sections/history").then(m => ({ default: m.HistorySection })));
 const AnalyticsSection = lazy(() => import("@/components/dashboard/sections/analytics").then(m => ({ default: m.AnalyticsSection })));
+const BillingSection = lazy(() => import("@/components/dashboard/sections/billing").then(m => ({ default: m.BillingSection })));
 const SettingsSection = lazy(() => import("@/components/dashboard/sections/settings").then(m => ({ default: m.SettingsSection })));
 const QuestionsSection = lazy(() => import("@/components/dashboard/sections/questions").then(m => ({ default: m.QuestionsSection })));
 
@@ -107,6 +108,8 @@ export default function DashboardPage() {
         return <QuestionsSection />;
       case "analytics":
         return <AnalyticsSection />;
+      case "billing":
+        return <BillingSection />;
       case "settings":
         return <SettingsSection />;
       default:

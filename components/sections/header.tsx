@@ -13,6 +13,7 @@ import { useAuth } from "@/app/providers/auth-provider";
 
 const navLinks = [
   { name: "Features", href: "#features" },
+  { name: "Pricing", href: "/pricing" },
   { name: "Blog", href: "#blog" },
 ];
 
@@ -92,6 +93,7 @@ export function Header({ isDemoModalOpen = false }: HeaderProps) {
           <nav className="hidden lg:flex items-center gap-8">
             {navLinks.map((link, index) => {
               const isActive = activeSection === link.href.slice(1);
+              const isExternalRoute = link.href.startsWith("/");
               return (
                 <motion.div
                   key={link.name}
@@ -99,23 +101,35 @@ export function Header({ isDemoModalOpen = false }: HeaderProps) {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4, delay: 0.1 + index * 0.1 }}
                 >
-                  <a
-                    href={link.href}
-                    onClick={(e) => handleSmoothScroll(e, link.href)}
-                    className="relative text-[15px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 group"
-                  >
-                    {link.name}
+                  {isExternalRoute ? (
+                    <Link
+                      href={link.href}
+                      className="relative text-[15px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 group"
+                    >
+                      {link.name}
 
-                    {/* Underline animation */}
-                    <span
-                      className={cn(
-                        "absolute -bottom-1 left-1/2 h-[2px] bg-primary transition-all duration-300 ease-out",
-                        isActive
-                          ? "w-full -translate-x-1/2"
-                          : "w-0 -translate-x-1/2 group-hover:w-full"
-                      )}
-                    />
-                  </a>
+                      {/* Underline animation */}
+                      <span className="absolute -bottom-1 left-1/2 h-[2px] bg-primary transition-all duration-300 ease-out w-0 -translate-x-1/2 group-hover:w-full" />
+                    </Link>
+                  ) : (
+                    <a
+                      href={link.href}
+                      onClick={(e) => handleSmoothScroll(e, link.href)}
+                      className="relative text-[15px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 group"
+                    >
+                      {link.name}
+
+                      {/* Underline animation */}
+                      <span
+                        className={cn(
+                          "absolute -bottom-1 left-1/2 h-[2px] bg-primary transition-all duration-300 ease-out",
+                          isActive
+                            ? "w-full -translate-x-1/2"
+                            : "w-0 -translate-x-1/2 group-hover:w-full"
+                        )}
+                      />
+                    </a>
+                  )}
                 </motion.div>
               );
             })}

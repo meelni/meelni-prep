@@ -2,6 +2,29 @@ import { pgTable, uuid, text, timestamp, integer, numeric, jsonb, check, boolean
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 
+// ==================== Pricing Schema Import ====================
+// Phase 0.5A: Import pricing tables for subscription management
+import {
+  subscription,
+  usageRecord,
+  paymentHistory,
+  stripeEventLog,
+  stripeCustomerMapping,
+  subscriptionRelations as pricingSubscriptionRelations,
+  usageRecordRelations as pricingUsageRecordRelations,
+  paymentHistoryRelations as pricingPaymentHistoryRelations,
+  stripeCustomerMappingRelations as pricingStripeCustomerMappingRelations,
+} from "./schema-pricing";
+
+// Re-export pricing tables
+export {
+  subscription,
+  usageRecord,
+  paymentHistory,
+  stripeEventLog,
+  stripeCustomerMapping,
+};
+
 // Users
 export const appUser = pgTable("app_user", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -285,6 +308,13 @@ export const appUserRelations = relations(appUser, ({ many, one }) => ({
     fields: [appUser.id],
     references: [userInsights.userId],
   }),
+  // Phase 0.5A: Pricing relations
+  subscription: one(subscription, {
+    fields: [appUser.id],
+    references: [subscription.userId],
+  }),
+  usageRecords: many(usageRecord),
+  paymentHistory: many(paymentHistory),
 }));
 
 export const userInsightsRelations = relations(userInsights, ({ one }) => ({
@@ -293,3 +323,12 @@ export const userInsightsRelations = relations(userInsights, ({ one }) => ({
     references: [appUser.id],
   }),
 }));
+
+// ==================== Re-export Pricing Relations ====================
+// Phase 0.5A: Re-export pricing relations for Drizzle's relational API
+export {
+  pricingSubscriptionRelations as subscriptionRelations,
+  pricingUsageRecordRelations as usageRecordRelations,
+  pricingPaymentHistoryRelations as paymentHistoryRelations,
+  pricingStripeCustomerMappingRelations as stripeCustomerMappingRelations,
+};
