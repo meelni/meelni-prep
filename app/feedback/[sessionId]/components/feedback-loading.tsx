@@ -54,28 +54,30 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
 
       console.log("[FeedbackLoading] Poll response:", data);
 
-      setStatus(data.status);
-
       if (data.status === "completed" && data.feedback) {
         console.log("[FeedbackLoading] Feedback complete, redirecting to feedback page");
-        // Slight delay for smooth transition
-        setTimeout(() => {
-          router.push(`/feedback/${sessionId}`);
-        }, 800);
+        setStatus("completed");
+        // Redirect immediately without delay
+        router.push(`/feedback/${sessionId}`);
         return;
       }
 
       if (data.status === "failed") {
         console.error("[FeedbackLoading] Feedback generation failed:", data.error);
+        setStatus("failed");
         setError(data.error || "Feedback generation failed. Please try again.");
         return;
       }
 
       if (data.status === "skipped") {
         console.log("[FeedbackLoading] Feedback was skipped");
+        setStatus("skipped");
         setError("Feedback generation was skipped for this session.");
         return;
       }
+
+      // Only update state if still processing
+      setStatus(data.status);
 
       // Update estimated time if provided
       if (data.estimatedTimeRemaining !== undefined) {
@@ -100,6 +102,11 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
 
   // Start polling on mount
   useEffect(() => {
+    // Don't poll if already in terminal state
+    if (status === "completed" || status === "failed" || status === "skipped") {
+      return;
+    }
+
     // Initial poll
     pollFeedback();
 
@@ -113,6 +120,9 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
           setStatus("failed");
           setError("Feedback generation timed out after 90 seconds. Please try again.");
         }
+      } else {
+        // Clear interval when status changes to terminal state
+        clearInterval(interval);
       }
     }, 3000);
 
