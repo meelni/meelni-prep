@@ -118,12 +118,8 @@ export const siteConfig = {
   footer: {
     socialLinks: [
       {
-        icon: <Icons.github className="h-5 w-5" />,
-        url: "#",
-      },
-      {
         icon: <Icons.twitter className="h-5 w-5" />,
-        url: "#",
+        url: "https://x.com/trymeelni",
       },
     ],
     links: [
