@@ -54,8 +54,11 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       if (data.status === "completed" && data.feedback) {
         console.log("[FeedbackLoading] Feedback complete, redirecting to feedback page");
         setStatus("completed");
-        // Redirect immediately - navigation will happen on next render
-        router.push(`/feedback/${sessionId}`);
+        setProgress(100); // Set to 100% before redirect
+        // Small delay to show 100% completion, then redirect
+        setTimeout(() => {
+          router.replace(`/feedback/${sessionId}`);
+        }, 500);
         return;
       }
 
