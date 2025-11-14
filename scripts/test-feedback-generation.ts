@@ -1,12 +1,18 @@
 #!/usr/bin/env tsx
 /**
  * Test Feedback Generation Script
- * 
+ *
  * Creates a fake interview session with transcript data and triggers
  * feedback generation to test the complete flow without doing a real interview.
- * 
+ *
  * Usage: npx tsx scripts/test-feedback-generation.ts
  */
+
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load environment variables from .env.local
+config({ path: resolve(process.cwd(), ".env.local") });
 
 import { db } from "../lib/db";
 import { interviewSession, transcriptTurn, feedback } from "../lib/db/schema";
