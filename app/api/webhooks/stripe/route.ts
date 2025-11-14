@@ -1,14 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
-import { stripeEventLog, subscription, paymentHistory, usageRecord } from "@/lib/db/schema";
+import { stripeEventLog, subscription, paymentHistory, usageRecord, stripeCustomerMapping } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+// Phase 0.5C: Environment variable validation (P0 fix #5)
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+
+if (!STRIPE_SECRET_KEY) {
+  throw new Error("STRIPE_SECRET_KEY environment variable is required");
+}
+if (!STRIPE_WEBHOOK_SECRET) {
+  throw new Error("STRIPE_WEBHOOK_SECRET environment variable is required");
+}
+
+const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: "2024-11-20.acacia",
 });
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+const webhookSecret = STRIPE_WEBHOOK_SECRET;
+
+// Phase 0.5C: Price ID mapping from environment (P1 fix #9)
+const STRIPE_PRICE_IDS = {
+  pro_monthly: process.env.STRIPE_PRO_MONTHLY_PRICE_ID,
+  pro_annual: process.env.STRIPE_PRO_ANNUAL_PRICE_ID,
+  premium_monthly: process.env.STRIPE_PREMIUM_MONTHLY_PRICE_ID,
+  premium_annual: process.env.STRIPE_PREMIUM_ANNUAL_PRICE_ID,
+};
 
 /**
  * Stripe Webhook Handler with Idempotency
@@ -146,17 +165,45 @@ export async function POST(req: NextRequest) {
 }
 
 /**
+ * Phase 0.5C: Get userId from Stripe customer with metadata fallback (P0 fix #3)
+ *
+ * CRITICAL: Always check stripe_customer_mapping as fallback
+ * Stripe metadata can be overwritten via Customer Portal
+ */
+async function getUserIdFromStripe(customerId: string, fallbackMetadata?: string): Promise<string> {
+  // First try: metadata (fast path)
+  if (fallbackMetadata) {
+    return fallbackMetadata;
+  }
+
+  // Second try: stripe_customer_mapping table (CRITICAL FALLBACK)
+  const mapping = await db
+    .select()
+    .from(stripeCustomerMapping)
+    .where(eq(stripeCustomerMapping.stripeCustomerId, customerId))
+    .limit(1);
+
+  if (mapping.length > 0) {
+    return mapping[0].userId;
+  }
+
+  throw new Error(`Cannot find userId for Stripe customer ${customerId}`);
+}
+
+/**
  * Handle subscription.created and subscription.updated events
  *
  * Updates subscription state with optimistic locking
+ * Phase 0.5C: Added customer mapping upsert and trial tracking (P0 fixes #2, #4)
  */
 async function handleSubscriptionUpdate(event: Stripe.Event) {
   const stripeSubscription = event.data.object as Stripe.Subscription;
-  const userId = stripeSubscription.metadata.userId;
 
-  if (!userId) {
-    throw new Error("Missing userId in subscription metadata");
-  }
+  // Phase 0.5C: Use metadata fallback (P0 fix #3)
+  const userId = await getUserIdFromStripe(
+    stripeSubscription.customer as string,
+    stripeSubscription.metadata.userId
+  );
 
   const eventTimestamp = new Date(event.created * 1000);
 
@@ -176,9 +223,24 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     return;
   }
 
+  const tier = getTierFromPrice(stripeSubscription.items.data[0]?.price.id);
+
+  // Phase 0.5C: Set trial tracking flags (P0 fix #4)
+  let trialUpdates = {};
+  if (
+    stripeSubscription.status === "trialing" ||
+    (stripeSubscription.trial_end && new Date(stripeSubscription.trial_end * 1000) < new Date())
+  ) {
+    if (tier === "pro") {
+      trialUpdates = { proTrialUsed: true };
+    } else if (tier === "premium") {
+      trialUpdates = { premiumTrialUsed: true };
+    }
+  }
+
   const subscriptionData = {
     userId,
-    tier: getTierFromPrice(stripeSubscription.items.data[0]?.price.id),
+    tier,
     status: mapStripeStatus(stripeSubscription.status),
     billingCycle: stripeSubscription.items.data[0]?.price.recurring?.interval === "month"
       ? "monthly" as const
@@ -198,6 +260,7 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     version: currentVersion + 1,
     lastEventTimestamp: eventTimestamp,
     updatedAt: new Date(),
+    ...trialUpdates,
   };
 
   if (currentSub.length === 0) {
@@ -221,6 +284,24 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     }
   }
 
+  // Phase 0.5C: Upsert stripe_customer_mapping (P0 fix #2)
+  // CRITICAL: This is the source of truth if Stripe metadata gets overwritten
+  await db
+    .insert(stripeCustomerMapping)
+    .values({
+      stripeCustomerId: stripeSubscription.customer as string,
+      stripeSubscriptionId: stripeSubscription.id,
+      userId,
+    })
+    .onConflictDoUpdate({
+      target: stripeCustomerMapping.stripeCustomerId,
+      set: {
+        stripeSubscriptionId: stripeSubscription.id,
+        userId,
+        updatedAt: new Date(),
+      },
+    });
+
   // Initialize usage record for new billing period if needed
   await initializeUsageRecord(userId, subscriptionData.currentPeriodStart, subscriptionData.currentPeriodEnd, subscriptionData.tier);
 }
@@ -230,11 +311,12 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
  */
 async function handleSubscriptionDeleted(event: Stripe.Event) {
   const stripeSubscription = event.data.object as Stripe.Subscription;
-  const userId = stripeSubscription.metadata.userId;
 
-  if (!userId) {
-    throw new Error("Missing userId in subscription metadata");
-  }
+  // Phase 0.5C: Use metadata fallback (P0 fix #3)
+  const userId = await getUserIdFromStripe(
+    stripeSubscription.customer as string,
+    stripeSubscription.metadata.userId
+  );
 
   await db
     .update(subscription)
@@ -426,14 +508,28 @@ function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): string {
 /**
  * Get tier from Stripe price ID
  *
- * TODO: Replace with actual price ID mapping from environment variables
+ * Phase 0.5C: Use environment variable mapping (P1 fix #9)
  */
 function getTierFromPrice(priceId: string | undefined): string {
   if (!priceId) return "free";
 
-  // Placeholder - should match actual Stripe price IDs
-  if (priceId.includes("pro")) return "pro";
-  if (priceId.includes("premium")) return "premium";
+  // Check against environment variable price IDs
+  const priceIdValues = Object.values(STRIPE_PRICE_IDS).filter(Boolean);
 
-  return "free";
+  if (priceIdValues.includes(priceId)) {
+    if (
+      priceId === STRIPE_PRICE_IDS.pro_monthly ||
+      priceId === STRIPE_PRICE_IDS.pro_annual
+    ) {
+      return "pro";
+    }
+    if (
+      priceId === STRIPE_PRICE_IDS.premium_monthly ||
+      priceId === STRIPE_PRICE_IDS.premium_annual
+    ) {
+      return "premium";
+    }
+  }
+
+  throw new Error(`Unknown Stripe price ID: ${priceId}`);
 }

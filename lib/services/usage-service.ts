@@ -101,29 +101,27 @@ export async function incrementUsage(userId: string): Promise<{ success: boolean
     return { success: true };
   }
 
-  // Ensure usage record exists
-  const currentUsage = await getCurrentUsageRecord(userId, sub.currentPeriodStart!, sub.currentPeriodEnd!);
-  if (!currentUsage) {
-    await initializeUsageRecord(userId, sub.currentPeriodStart!, sub.currentPeriodEnd!, sub.tier);
-  }
-
-  // ATOMIC INCREMENT with quota check
-  // This single query prevents race conditions:
-  // 1. Increment interviews_used by 1
-  // 2. Only if under quota (interviews_used < interviews_limit OR unlimited)
-  // 3. Returns number of rows updated (0 = quota exceeded, 1 = success)
+  // Phase 0.5C: ATOMIC INCREMENT with INSERT ON CONFLICT (P0 fix #6)
+  // This single query prevents BOTH race conditions:
+  // 1. Handles first usage (INSERT) and subsequent usage (UPDATE) atomically
+  // 2. Increments interviews_used only if under quota
+  // 3. Returns number of rows affected (0 = quota exceeded, 1 = success)
   const result = await db.execute(sql`
-    UPDATE usage_record
-    SET
-      interviews_used = interviews_used + 1,
+    INSERT INTO usage_record (
+      user_id, period_start, period_end,
+      interviews_used, interviews_limit, tier_snapshot
+    )
+    VALUES (
+      ${userId}, ${sub.currentPeriodStart}, ${sub.currentPeriodEnd},
+      1, ${sub.tier === 'free' ? 3 : -1}, ${sub.tier}
+    )
+    ON CONFLICT (user_id, period_start)
+    DO UPDATE SET
+      interviews_used = usage_record.interviews_used + 1,
       updated_at = NOW()
     WHERE
-      user_id = ${userId}
-      AND period_start = ${sub.currentPeriodStart}
-      AND (
-        interviews_used < interviews_limit
-        OR interviews_limit = -1
-      )
+      usage_record.interviews_used < usage_record.interviews_limit
+      OR usage_record.interviews_limit = -1
   `);
 
   if (result.rowCount === 0) {
