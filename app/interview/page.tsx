@@ -332,8 +332,8 @@ function InterviewPageContent() {
       setShowEndModal(false);
       setIsEndingSession(false);
 
-      // Navigate to feedback page
-      router.push(`/feedback/${sessionId}`);
+      // Navigate to feedback loading page
+      router.push(`/feedback/${sessionId}/loading`);
     } catch (error) {
       console.error("Failed to end session:", error);
       setIsEndingSession(false);
