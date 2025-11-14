@@ -86,6 +86,36 @@ const FAKE_TRANSCRIPT = [
     text: "Yes, actually! I'm curious - when you're evaluating product sense answers, what separates a good answer from a great one?",
     duration: 8000,
   },
+  {
+    speaker: "interviewer" as const,
+    text: "That's a great question! I'd say the key differentiator is depth of thinking. A good answer checks the boxes - clarifies the problem, identifies pain points, proposes a solution. But a great answer goes deeper - it shows you understand the ecosystem, the tradeoffs, the second-order effects. For example, your point about not wanting to ruin local spots by overexposing them shows you're thinking about sustainability and long-term impact, not just solving the immediate problem.",
+    duration: 30000,
+  },
+  {
+    speaker: "user" as const,
+    text: "That makes sense. So it's really about demonstrating product judgment and understanding the nuances of how features impact different stakeholders over time.",
+    duration: 10000,
+  },
+  {
+    speaker: "interviewer" as const,
+    text: "Exactly. Well done on this interview! We covered a lot of ground. Do you have any final thoughts or anything else you'd like to add about your solution?",
+    duration: 8000,
+  },
+  {
+    speaker: "user" as const,
+    text: "Just one final thought - I think the key to making this successful would be starting small with a pilot in maybe 2-3 cities, gathering feedback from both tourists and local businesses, iterating on the recommendation algorithm, and then scaling gradually. This would help us validate the concept before rolling it out globally and potentially causing unintended consequences.",
+    duration: 20000,
+  },
+  {
+    speaker: "interviewer" as const,
+    text: "Perfect answer! That's exactly the kind of thoughtful, iterative approach we look for. Well done today - you've shown strong product sense and clear communication throughout. Thanks for your time!",
+    duration: 12000,
+  },
+  {
+    speaker: "user" as const,
+    text: "Thank you so much! This was a great discussion and I really appreciate the feedback. Have a great day!",
+    duration: 8000,
+  },
 ];
 
 async function main() {
