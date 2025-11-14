@@ -21,7 +21,7 @@
     "db:check": "drizzle-kit check",
     "sync:questions": "tsx scripts/sync-questions-from-sheet.ts",
     "test:sheets": "tsx scripts/test-google-sheets-connection.ts",
-    "test:feedback": "tsx scripts/test-feedback-generation.ts"
+    "test:feedback": "tsx --env-file=.env.local scripts/test-feedback-generation.ts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.22.0",
