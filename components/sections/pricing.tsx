@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { Check, Sparkles } from "lucide-react";
+import { Check, Sparkles, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "@/app/providers/auth-provider";
+import { useRouter } from "next/navigation";
 
 interface TabsProps {
   activeTab: string;
@@ -88,10 +90,14 @@ function PricingTier({
   tier,
   billingCycle,
   index,
+  onCheckout,
+  isLoading,
 }: {
   tier: (typeof siteConfig.pricing)[0];
   billingCycle: "monthly" | "yearly";
   index: number;
+  onCheckout: (tierName: string) => void;
+  isLoading: boolean;
 }) {
   const isPopular = tier.popular;
 
@@ -197,6 +203,8 @@ function PricingTier({
         {/* CTA Button */}
         <Button
           size="lg"
+          onClick={() => onCheckout(tier.name)}
+          disabled={isLoading}
           className={cn(
             "w-full rounded-xl font-semibold text-[15px] transition-all duration-200",
             isPopular
@@ -204,7 +212,14 @@ function PricingTier({
               : "bg-muted text-foreground hover:bg-primary/10 hover:border-primary/50"
           )}
         >
-          {tier.cta}
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading...
+            </>
+          ) : (
+            tier.cta
+          )}
         </Button>
       </div>
     </motion.div>
@@ -215,9 +230,48 @@ export function Pricing() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">(
     "monthly"
   );
+  const [loadingTier, setLoadingTier] = useState<string | null>(null);
+  const { user } = useAuth();
+  const router = useRouter();
 
   const handleTabChange = (tab: "yearly" | "monthly") => {
     setBillingCycle(tab);
+  };
+
+  const handleCheckout = async (tierName: string) => {
+    // Free tier - redirect to signup
+    if (tierName === "Free") {
+      router.push("/auth/signup");
+      return;
+    }
+
+    setLoadingTier(tierName);
+
+    try {
+      const response = await fetch("/api/checkout/create-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tier: tierName.toLowerCase(),
+          billingPeriod: billingCycle === "monthly" ? "monthly" : "annual",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create checkout session");
+      }
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("[Checkout] Error:", error);
+      alert("Failed to start checkout. Please try again.");
+      setLoadingTier(null);
+    }
   };
 
   return (
@@ -283,7 +337,14 @@ export function Pricing() {
           {/* Pricing Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
             {siteConfig.pricing.map((tier, index) => (
-              <PricingTier key={index} tier={tier} billingCycle={billingCycle} index={index} />
+              <PricingTier
+                key={index}
+                tier={tier}
+                billingCycle={billingCycle}
+                index={index}
+                onCheckout={handleCheckout}
+                isLoading={loadingTier === tier.name}
+              />
             ))}
           </div>
 
