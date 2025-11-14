@@ -3,9 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Check, X, Sparkles, Zap, Crown } from "lucide-react";
+import { Check, X, Sparkles, Zap, Crown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useAuth } from "@/app/providers/auth-provider";
+import { useRouter } from "next/navigation";
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -149,6 +151,51 @@ const faqs = [
 
 export default function PricingPage() {
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>("monthly");
+  const [loadingTier, setLoadingTier] = useState<string | null>(null);
+  const { user } = useAuth();
+  const router = useRouter();
+
+  const handleCheckout = async (tierName: string) => {
+    // Free tier - redirect to signup
+    if (tierName === "Free") {
+      router.push("/auth/signup");
+      return;
+    }
+
+    // Check if user is authenticated
+    if (!user) {
+      router.push("/auth/signin?redirectTo=/pricing");
+      return;
+    }
+
+    setLoadingTier(tierName);
+
+    try {
+      const response = await fetch("/api/checkout/create-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tier: tierName.toLowerCase(),
+          billingPeriod: billingPeriod === "monthly" ? "monthly" : "annual",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create checkout session");
+      }
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("[Checkout] Error:", error);
+      alert("Failed to start checkout. Please try again.");
+      setLoadingTier(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -316,14 +363,20 @@ export default function PricingPage() {
                     {/* CTA */}
                     <div className="mt-auto space-y-2">
                       <Button
-                        asChild
+                        onClick={() => handleCheckout(tier.name)}
+                        disabled={loadingTier !== null}
                         variant={tier.popular ? "default" : "outline"}
                         className="w-full"
                         size="lg"
                       >
-                        <Link href={tier.name === "Free" ? "/auth/signup" : "/pricing/checkout"}>
-                          {tier.cta}
-                        </Link>
+                        {loadingTier === tier.name ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          tier.cta
+                        )}
                       </Button>
                       <p className="text-center text-xs text-muted-foreground">{tier.trial}</p>
                     </div>
