@@ -6,9 +6,31 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 
-export default function CheckoutSuccess() {
+// Loading fallback component
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+      <Card className="max-w-md w-full p-8 text-center">
+        <div className="flex justify-center mb-6">
+          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        </div>
+        <h1 className="text-2xl font-display font-semibold text-foreground mb-2">
+          Loading...
+        </h1>
+        <p className="text-muted-foreground">
+          Please wait while we load your page.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
+// Component that uses useSearchParams (must be wrapped in Suspense)
+function CheckoutSuccessContent() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -82,5 +104,14 @@ export default function CheckoutSuccess() {
         </p>
       </Card>
     </div>
+  );
+}
+
+// Main page component with Suspense boundary
+export default function CheckoutSuccess() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <CheckoutSuccessContent />
+    </Suspense>
   );
 }

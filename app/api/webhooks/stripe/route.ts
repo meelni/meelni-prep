@@ -270,50 +270,59 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     ...trialUpdates,
   };
 
-  if (currentSub.length === 0) {
-    // Create new subscription
-    await db.insert(subscription).values(subscriptionData);
-  } else {
-    // Update with optimistic locking
-    const result = await db
-      .update(subscription)
-      .set(subscriptionData)
-      .where(
-        and(
-          eq(subscription.userId, userId),
-          eq(subscription.version, currentVersion)
+  // Wrap all updates in a transaction for atomicity (P1 fix #5)
+  await db.transaction(async (tx) => {
+    if (currentSub.length === 0) {
+      // Create new subscription
+      await tx.insert(subscription).values(subscriptionData);
+    } else {
+      // Update with optimistic locking
+      const result = await tx
+        .update(subscription)
+        .set(subscriptionData)
+        .where(
+          and(
+            eq(subscription.userId, userId),
+            eq(subscription.version, currentVersion)
+          )
         )
-      )
-      .returning({ id: subscription.id });
+        .returning({ id: subscription.id });
 
-    // If no rows updated, version mismatch (concurrent update detected)
-    if (result.length === 0) {
-      throw new Error(`Optimistic lock failure: subscription version mismatch for user ${userId}`);
+      // If no rows updated, version mismatch (concurrent update detected)
+      if (result.length === 0) {
+        throw new Error(`Optimistic lock failure: subscription version mismatch for user ${userId}`);
+      }
     }
-  }
 
-  // Phase 0.5C: Upsert stripe_customer_mapping (P0 fix #2)
-  // CRITICAL: This is the source of truth if Stripe metadata gets overwritten
-  await db
-    .insert(stripeCustomerMapping)
-    .values({
-      stripeCustomerId: stripeSubscription.customer as string,
-      stripeSubscriptionId: stripeSubscription.id,
-      userId,
-    })
-    .onConflictDoUpdate({
-      target: stripeCustomerMapping.stripeCustomerId,
-      set: {
+    // Phase 0.5C: Upsert stripe_customer_mapping (P0 fix #2)
+    // CRITICAL: This is the source of truth if Stripe metadata gets overwritten
+    await tx
+      .insert(stripeCustomerMapping)
+      .values({
+        stripeCustomerId: stripeSubscription.customer as string,
         stripeSubscriptionId: stripeSubscription.id,
         userId,
-        updatedAt: new Date(),
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: stripeCustomerMapping.stripeCustomerId,
+        set: {
+          stripeSubscriptionId: stripeSubscription.id,
+          userId,
+          updatedAt: new Date(),
+        },
+      });
 
-  // Initialize usage record for new billing period if needed
-  if (subscriptionData.currentPeriodStart && subscriptionData.currentPeriodEnd) {
-    await initializeUsageRecord(userId, subscriptionData.currentPeriodStart, subscriptionData.currentPeriodEnd, subscriptionData.tier);
-  }
+    // Initialize usage record for new billing period if needed
+    if (subscriptionData.currentPeriodStart && subscriptionData.currentPeriodEnd) {
+      await initializeUsageRecordInTransaction(
+        tx,
+        userId,
+        subscriptionData.currentPeriodStart,
+        subscriptionData.currentPeriodEnd,
+        subscriptionData.tier
+      );
+    }
+  });
 }
 
 /**
@@ -355,19 +364,23 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
 
   // In API 2025-10-29.clover, payment_intent moved to payments array
   // For simplicity, we'll use null and rely on stripeInvoiceId for tracking
-  await db.insert(paymentHistory).values({
-    userId,
-    stripePaymentIntentId: null,
-    stripeInvoiceId: invoice.id,
-    stripeEventId: event.id,
-    amountInCents: invoice.amount_paid,
-    currency: invoice.currency,
-    status: "succeeded",
-    tier: invoice.lines.data[0]?.description || null,
-    periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
-    periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : null,
-    receiptUrl: invoice.hosted_invoice_url,
-  });
+  // Use onConflictDoNothing() for idempotency (P1 fix #6)
+  await db
+    .insert(paymentHistory)
+    .values({
+      userId,
+      stripePaymentIntentId: null,
+      stripeInvoiceId: invoice.id,
+      stripeEventId: event.id,
+      amountInCents: invoice.amount_paid,
+      currency: invoice.currency,
+      status: "succeeded",
+      tier: invoice.lines.data[0]?.description || null,
+      periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
+      periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : null,
+      receiptUrl: invoice.hosted_invoice_url,
+    })
+    .onConflictDoNothing({ target: paymentHistory.stripeEventId });
 
   // Clear grace period if payment succeeds after past_due
   await db
@@ -398,19 +411,23 @@ async function handlePaymentFailed(event: Stripe.Event) {
   // Record failed payment
   // In API 2025-10-29.clover, payment_intent moved to payments array
   // For simplicity, we'll use null and rely on stripeInvoiceId for tracking
-  await db.insert(paymentHistory).values({
-    userId,
-    stripePaymentIntentId: null,
-    stripeInvoiceId: invoice.id,
-    stripeEventId: event.id,
-    amountInCents: invoice.amount_due,
-    currency: invoice.currency,
-    status: "failed",
-    tier: invoice.lines.data[0]?.description || null,
-    periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
-    periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : null,
-    failureReason: invoice.last_finalization_error?.message || "Payment failed",
-  });
+  // Use onConflictDoNothing() for idempotency (P1 fix #6)
+  await db
+    .insert(paymentHistory)
+    .values({
+      userId,
+      stripePaymentIntentId: null,
+      stripeInvoiceId: invoice.id,
+      stripeEventId: event.id,
+      amountInCents: invoice.amount_due,
+      currency: invoice.currency,
+      status: "failed",
+      tier: invoice.lines.data[0]?.description || null,
+      periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
+      periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : null,
+      failureReason: invoice.last_finalization_error?.message || "Payment failed",
+    })
+    .onConflictDoNothing({ target: paymentHistory.stripeEventId });
 
   // CRITICAL FIX: Set 7-day grace period
   const gracePeriodEnd = new Date();
@@ -491,6 +508,43 @@ async function initializeUsageRecord(
 
   if (existing.length === 0) {
     await db.insert(usageRecord).values({
+      userId,
+      periodStart,
+      periodEnd,
+      interviewsUsed: 0,
+      interviewsLimit: limit,
+      tierSnapshot: tier,
+    });
+  }
+}
+
+/**
+ * Transaction-aware version of initializeUsageRecord
+ * Used within db.transaction() to maintain atomicity
+ */
+async function initializeUsageRecordInTransaction(
+  tx: any,
+  userId: string,
+  periodStart: Date,
+  periodEnd: Date,
+  tier: string
+) {
+  const limit = tier === "free" ? 3 : -1; // -1 = unlimited
+
+  // Check if usage record already exists
+  const existing = await tx
+    .select()
+    .from(usageRecord)
+    .where(
+      and(
+        eq(usageRecord.userId, userId),
+        eq(usageRecord.periodStart, periodStart)
+      )
+    )
+    .limit(1);
+
+  if (existing.length === 0) {
+    await tx.insert(usageRecord).values({
       userId,
       periodStart,
       periodEnd,

@@ -71,7 +71,7 @@
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { checkUsageQuota, incrementUsage } from "@/lib/services/usage-service";
+import { incrementUsage } from "@/lib/services/usage-service";
 
 export async function POST(req: NextRequest) {
   try {
@@ -90,34 +90,18 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
-      // Authenticated user - check quota
+      // Authenticated user - atomically check and increment quota
       try {
-        const quotaCheck = await checkUsageQuota(user.id);
-
-        if (!quotaCheck.allowed) {
-          return NextResponse.json(
-            {
-              error: "quota_exceeded",
-              message: quotaCheck.reason || "Monthly interview quota exceeded",
-              currentUsage: quotaCheck.currentUsage,
-              limit: quotaCheck.limit,
-              upgradeUrl: "/pricing",
-            },
-            { status: 403 }
-          );
-        }
-
-        // Quota check passed - atomically increment usage
         const incrementResult = await incrementUsage(user.id);
 
         if (!incrementResult.success) {
-          // Edge case: quota exceeded between check and increment
+          // Quota exceeded - return 403 with upgrade information
           return NextResponse.json(
             {
               error: "quota_exceeded",
               message: incrementResult.reason || "Monthly interview quota exceeded",
-              currentUsage: quotaCheck.currentUsage,
-              limit: quotaCheck.limit,
+              currentUsage: incrementResult.currentUsage || 0,
+              limit: incrementResult.limit || 0,
               upgradeUrl: "/pricing",
             },
             { status: 403 }
@@ -125,8 +109,14 @@ export async function POST(req: NextRequest) {
         }
       } catch (error: any) {
         console.error("Quota check error:", error.message);
-        // Log error but don't block token generation (fail open for now)
-        // In production, you may want to fail closed instead
+        // Fail closed: return 503 Service Unavailable if quota service is down
+        return NextResponse.json(
+          {
+            error: "service_unavailable",
+            message: "Unable to verify interview quota. Please try again in a moment.",
+          },
+          { status: 503 }
+        );
       }
     }
     // else: Anonymous user (demo mode) - skip quota check

@@ -82,7 +82,9 @@ export async function checkUsageQuota(userId: string): Promise<UsageCheckResult>
  *   UPDATE usage_record SET interviews_used = interviews_used + 1
  *   WHERE ... AND (interviews_used < interviews_limit OR interviews_limit = -1)
  */
-export async function incrementUsage(userId: string): Promise<{ success: boolean; reason?: string }> {
+export async function incrementUsage(
+  userId: string
+): Promise<{ success: boolean; reason?: string; currentUsage?: number; limit?: number }> {
   // Get current subscription
   const userSub = await db
     .select()
@@ -106,23 +108,28 @@ export async function incrementUsage(userId: string): Promise<{ success: boolean
   // 1. Handles first usage (INSERT) and subsequent usage (UPDATE) atomically
   // 2. Increments interviews_used only if under quota
   // 3. Returns number of rows affected (0 = quota exceeded, 1 = success)
-  const result = await db.execute(sql`
-    INSERT INTO usage_record (
-      user_id, period_start, period_end,
-      interviews_used, interviews_limit, tier_snapshot
-    )
-    VALUES (
-      ${userId}, ${sub.currentPeriodStart}, ${sub.currentPeriodEnd},
-      1, ${sub.tier === 'free' ? 3 : -1}, ${sub.tier}
-    )
-    ON CONFLICT (user_id, period_start)
-    DO UPDATE SET
-      interviews_used = usage_record.interviews_used + 1,
-      updated_at = NOW()
-    WHERE
-      usage_record.interviews_used < usage_record.interviews_limit
-      OR usage_record.interviews_limit = -1
-  `);
+  //
+  // Using Drizzle ORM query builder for type safety and SQL injection prevention
+  const result = await db
+    .insert(usageRecord)
+    .values({
+      userId: userId,
+      periodStart: sub.currentPeriodStart!,
+      periodEnd: sub.currentPeriodEnd!,
+      interviewsUsed: 1,
+      interviewsLimit: sub.tier === 'free' ? 3 : -1,
+      tierSnapshot: sub.tier,
+    })
+    .onConflictDoUpdate({
+      target: [usageRecord.userId, usageRecord.periodStart],
+      set: {
+        interviewsUsed: sql`${usageRecord.interviewsUsed} + 1`,
+        updatedAt: sql`NOW()`,
+      },
+      // Only increment if under quota (WHERE clause)
+      where: sql`${usageRecord.interviewsUsed} < ${usageRecord.interviewsLimit} OR ${usageRecord.interviewsLimit} = -1`,
+    })
+    .returning();
 
   // Check if the query affected any rows (length of rows array indicates success)
   if (!result || result.length === 0) {
@@ -135,10 +142,16 @@ export async function incrementUsage(userId: string): Promise<{ success: boolean
     return {
       success: false,
       reason: `Monthly quota exceeded (${usage.interviewsUsed}/${usage.interviewsLimit})`,
+      currentUsage: usage.interviewsUsed,
+      limit: usage.interviewsLimit,
     };
   }
 
-  return { success: true };
+  return {
+    success: true,
+    currentUsage: result[0].interviewsUsed,
+    limit: result[0].interviewsLimit,
+  };
 }
 
 /**
