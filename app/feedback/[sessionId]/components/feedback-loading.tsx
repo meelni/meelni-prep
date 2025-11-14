@@ -45,19 +45,16 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
 
   const MAX_POLLS = 30; // 30 polls * 3s = 90s timeout
 
-  // Polling effect
+  // Polling effect - useCallback without dependencies that change on every poll
   const pollFeedback = useCallback(async () => {
     try {
-      console.log(`[FeedbackLoading] Polling feedback status (attempt ${pollCount + 1}/${MAX_POLLS})`);
       const res = await fetch(`/api/feedback/${sessionId}`);
       const data = await res.json();
-
-      console.log("[FeedbackLoading] Poll response:", data);
 
       if (data.status === "completed" && data.feedback) {
         console.log("[FeedbackLoading] Feedback complete, redirecting to feedback page");
         setStatus("completed");
-        // Redirect immediately without delay
+        // Redirect immediately - navigation will happen on next render
         router.push(`/feedback/${sessionId}`);
         return;
       }
@@ -84,21 +81,33 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
         setEstimatedTime(Math.max(0, data.estimatedTimeRemaining));
       }
 
-      // Update progress (simulated based on elapsed time)
-      const elapsed = pollCount * 3; // 3s per poll
-      const estimatedTotal = 60; // Assume ~60s total
-      const calculatedProgress = Math.min(95, (elapsed / estimatedTotal) * 100);
-      setProgress(Math.max(progress, calculatedProgress));
+      // Update poll count, check timeout, and update progress
+      setPollCount((prevCount) => {
+        const newCount = prevCount + 1;
 
-      setPollCount((prev) => prev + 1);
+        console.log(`[FeedbackLoading] Polling feedback status (attempt ${newCount}/${MAX_POLLS})`);
+        console.log("[FeedbackLoading] Poll response:", data);
+
+        // Check for timeout
+        if (newCount >= MAX_POLLS) {
+          console.error("[FeedbackLoading] Timeout reached after 90 seconds");
+          setStatus("failed");
+          setError("Feedback generation timed out after 90 seconds. Please try again.");
+        }
+
+        // Update progress
+        const elapsed = (newCount - 1) * 3; // Time elapsed before this poll
+        const estimatedTotal = 60;
+        const calculatedProgress = Math.min(95, (elapsed / estimatedTotal) * 100);
+        setProgress((prev) => Math.max(prev, calculatedProgress));
+
+        return newCount;
+      });
     } catch (err) {
       console.error("[FeedbackLoading] Error polling feedback:", err);
-      if (pollCount >= MAX_POLLS) {
-        setStatus("failed");
-        setError("Feedback generation timed out. Please refresh to try again.");
-      }
+      // Don't increment on error, just log it
     }
-  }, [sessionId, router, pollCount, progress]);
+  }, [sessionId, router]);
 
   // Start polling on mount
   useEffect(() => {
@@ -112,22 +121,19 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
 
     // Poll every 3 seconds
     const interval = setInterval(() => {
-      if (status === "pending" || status === "processing") {
-        if (pollCount < MAX_POLLS) {
-          pollFeedback();
-        } else {
-          clearInterval(interval);
-          setStatus("failed");
-          setError("Feedback generation timed out after 90 seconds. Please try again.");
-        }
-      } else {
-        // Clear interval when status changes to terminal state
-        clearInterval(interval);
-      }
+      pollFeedback();
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [pollFeedback, status, pollCount]);
+  }, [pollFeedback, status]);
+
+  // Stop polling when terminal state is reached
+  useEffect(() => {
+    if (status === "completed" || status === "failed" || status === "skipped") {
+      // Force a re-render to ensure redirect happens
+      console.log("[FeedbackLoading] Terminal state reached:", status);
+    }
+  }, [status]);
 
   // Message rotation (every 5s)
   useEffect(() => {
