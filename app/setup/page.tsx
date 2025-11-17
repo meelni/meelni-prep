@@ -17,6 +17,7 @@ import { validateSessionStart } from "@/lib/validation/setup-schema";
 import { RoundSelector } from "./components/round-selector";
 import { DifficultySelector } from "./components/difficulty-selector";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
+import { QuotaExceededModal } from "@/components/dashboard/quota-exceeded-modal";
 
 export default function SetupPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -28,6 +29,14 @@ export default function SetupPage() {
   const [difficulty, setDifficulty] = useState<DifficultyLevel | null>(null);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Quota exceeded modal state
+  const [showQuotaModal, setShowQuotaModal] = useState(false);
+  const [quotaInfo, setQuotaInfo] = useState<{
+    currentUsage: number;
+    limit: number;
+    resetDate: string | null;
+  } | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -91,6 +100,19 @@ export default function SetupPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
+
+        // Handle quota exceeded error
+        if (response.status === 403 && errorData.error === "quota_exceeded") {
+          setQuotaInfo({
+            currentUsage: errorData.currentUsage || 0,
+            limit: errorData.limit || 0,
+            resetDate: null, // Will fetch from subscription endpoint if needed
+          });
+          setShowQuotaModal(true);
+          setIsCreatingSession(false);
+          return;
+        }
+
         throw new Error(errorData.error || "Failed to start session");
       }
 
@@ -302,6 +324,17 @@ export default function SetupPage() {
           </motion.div>
         </motion.div>
       </main>
+
+      {/* Quota Exceeded Modal */}
+      {quotaInfo && (
+        <QuotaExceededModal
+          isOpen={showQuotaModal}
+          onClose={() => setShowQuotaModal(false)}
+          currentUsage={quotaInfo.currentUsage}
+          limit={quotaInfo.limit}
+          resetDate={quotaInfo.resetDate}
+        />
+      )}
     </div>
   );
 }

@@ -30,7 +30,9 @@
  * @response.config {Object} - Session configuration used
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
+ * @throws {403} Forbidden - Monthly interview quota exceeded (Free tier: 3/month, see upgradeUrl in response)
  * @throws {400} Bad Request - Missing roundType or invalid roundType value
+ * @throws {503} Service Unavailable - Unable to verify quota (billing service down)
  * @throws {500} Internal Server Error - Database error, LiveKit configuration error, or agent dispatch failure
  *
  * @example
@@ -75,6 +77,21 @@
  * {
  *   "error": "Unauthorized"
  * }
+ *
+ * // Error Response (403 Forbidden - Quota Exceeded)
+ * {
+ *   "error": "quota_exceeded",
+ *   "message": "Monthly interview quota exceeded",
+ *   "currentUsage": 3,
+ *   "limit": 3,
+ *   "upgradeUrl": "/pricing"
+ * }
+ *
+ * // Error Response (503 Service Unavailable)
+ * {
+ *   "error": "service_unavailable",
+ *   "message": "Unable to verify interview quota. Please try again in a moment."
+ * }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -83,6 +100,7 @@ import { createSession } from "@/lib/db/sessions";
 import { upsertUser } from "@/lib/db/users";
 import { getRandomQuestion, getRandomRecentQuestion, recordQuestionUsage } from "@/lib/db/questions";
 import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
+import { incrementUsage } from "@/lib/services/usage-service";
 
 const livekit_api_key = process.env.LIVEKIT_API_KEY;
 const livekit_api_secret = process.env.LIVEKIT_API_SECRET;
@@ -100,6 +118,37 @@ export async function POST(req: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Quota enforcement: Check and increment usage atomically
+    // This prevents race conditions and ensures fair usage limits
+    try {
+      const incrementResult = await incrementUsage(user.id);
+
+      if (!incrementResult.success) {
+        // Quota exceeded - return 403 with upgrade information
+        return NextResponse.json(
+          {
+            error: "quota_exceeded",
+            message: incrementResult.reason || "Monthly interview quota exceeded",
+            currentUsage: incrementResult.currentUsage || 0,
+            limit: incrementResult.limit || 0,
+            upgradeUrl: "/pricing",
+          },
+          { status: 403 }
+        );
+      }
+    } catch (error: any) {
+      console.error("Quota check error:", error.message);
+      // Fail closed: return 503 Service Unavailable if quota service is down
+      // This prevents unlimited access if the billing system is unavailable
+      return NextResponse.json(
+        {
+          error: "service_unavailable",
+          message: "Unable to verify interview quota. Please try again in a moment.",
+        },
+        { status: 503 }
+      );
     }
 
     // Validate required environment variables
