@@ -248,7 +248,9 @@ export function BillingSection() {
                     {subscription.tier.toUpperCase()}
                   </Badge>
                   <Badge variant={getStatusBadgeVariant(subscription.status)} className="text-xs">
-                    {subscription.status.replace("_", " ").toUpperCase()}
+                    {subscription.status === "trialing"
+                      ? "FREE TRIAL"
+                      : subscription.status.replace("_", " ").toUpperCase()}
                   </Badge>
                 </div>
 
