@@ -356,12 +356,23 @@ export default function SetupPage() {
                     Select the type of interview you want to practice
                   </p>
                 </div>
-                <RoundSelector
-                  selected={roundType}
-                  onSelect={setRoundType}
-                  lockedTypes={lockedTypes}
-                  onLockedClick={handleLockedTypeClick}
-                />
+                {isLoadingSubscription ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div
+                        key={i}
+                        className="h-32 rounded-lg bg-muted animate-pulse"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <RoundSelector
+                    selected={roundType}
+                    onSelect={setRoundType}
+                    lockedTypes={lockedTypes}
+                    onLockedClick={handleLockedTypeClick}
+                  />
+                )}
               </motion.div>
             )}
 

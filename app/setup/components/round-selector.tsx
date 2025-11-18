@@ -28,17 +28,23 @@ export function RoundSelector({
   lockedTypes = [],
   onLockedClick,
 }: RoundSelectorProps) {
-  // Sort interview types: unlocked first, then locked
-  const sortedRoundTypes = (Object.keys(ROUND_TYPES) as RoundType[]).sort((a, b) => {
-    const aLocked = lockedTypes.includes(a);
-    const bLocked = lockedTypes.includes(b);
+  // Get all interview types in original order
+  const allRoundTypes = Object.keys(ROUND_TYPES) as RoundType[];
 
-    // If both locked or both unlocked, maintain original order
-    if (aLocked === bLocked) return 0;
+  // Only sort if there are locked types (free tier)
+  // For Pro/Premium (no locked types), maintain original order to prevent flash
+  const sortedRoundTypes = lockedTypes.length > 0
+    ? allRoundTypes.sort((a, b) => {
+        const aLocked = lockedTypes.includes(a);
+        const bLocked = lockedTypes.includes(b);
 
-    // Unlocked types come first
-    return aLocked ? 1 : -1;
-  });
+        // If both locked or both unlocked, maintain original order
+        if (aLocked === bLocked) return 0;
+
+        // Unlocked types come first
+        return aLocked ? 1 : -1;
+      })
+    : allRoundTypes;
 
   return (
     <motion.div
