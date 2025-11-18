@@ -16,6 +16,14 @@ function SignInContent() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") || "/dashboard";
 
+  // Track page view
+  useEffect(() => {
+    const { analytics } = require('@/lib/analytics/analytics-service');
+    analytics.track('auth_signin_started', {
+      source: searchParams?.get('source') || 'direct',
+    });
+  }, [searchParams]);
+
   // Redirect if already logged in
   useEffect(() => {
     if (!authLoading && user) {
@@ -48,8 +56,16 @@ function SignInContent() {
       router.push(redirectTo);
     } catch (err: any) {
       console.error("Sign in error:", err);
-      setError(err.message || "Failed to sign in. Please check your credentials.");
+      const errorMessage = err.message || "Failed to sign in. Please check your credentials.";
+      setError(errorMessage);
       setIsSigningIn(false);
+
+      // Track signin failure
+      const { analytics } = require('@/lib/analytics/analytics-service');
+      analytics.track('auth_signin_failed', {
+        method: 'email',
+        error: errorMessage,
+      });
     }
   };
 

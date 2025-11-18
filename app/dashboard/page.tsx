@@ -36,6 +36,14 @@ export default function DashboardPage() {
   const router = useRouter();
   const [activeSection, setActiveSection] = useState("overview");
 
+  // Track dashboard section views
+  useEffect(() => {
+    const { analytics } = require('@/lib/analytics/analytics-service');
+    analytics.track('dashboard_viewed', {
+      section: activeSection,
+    });
+  }, [activeSection]);
+
   // Handle sign out
   const handleSignOut = async () => {
     await signOut();
