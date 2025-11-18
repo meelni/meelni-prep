@@ -75,7 +75,6 @@ export async function GET() {
         currency: newSub.currency,
         trialEnd: newSub.trialEnd?.toISOString() || null,
         proTrialUsed: newSub.proTrialUsed,
-        premiumTrialUsed: newSub.premiumTrialUsed,
       });
     }
 
@@ -93,7 +92,6 @@ export async function GET() {
       currency: sub.currency,
       trialEnd: sub.trialEnd?.toISOString() || null,
       proTrialUsed: sub.proTrialUsed,
-      premiumTrialUsed: sub.premiumTrialUsed,
     });
   } catch (error) {
     console.error("Error fetching subscription:", error);
