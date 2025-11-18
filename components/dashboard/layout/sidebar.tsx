@@ -59,15 +59,15 @@ export function Sidebar({
   };
 
   const navigationItems = [
-    { id: "overview", icon: Monitor, label: "Overview", minSessions: 0 },
-    { id: "history", icon: History, label: "Interview History", minSessions: 1 },
-    { id: "questions", icon: BookOpen, label: "Question Bank", minSessions: 0 },
-    { id: "analytics", icon: BarChart3, label: "Analytics", minSessions: 3 },
-    { id: "settings", icon: Settings, label: "Settings", minSessions: 0 },
+    { id: "overview", icon: Monitor, label: "Overview" },
+    { id: "history", icon: History, label: "Interview History" },
+    { id: "questions", icon: BookOpen, label: "Question Bank" },
+    { id: "analytics", icon: BarChart3, label: "Analytics" },
+    { id: "settings", icon: Settings, label: "Settings" },
   ];
 
-  // Filter navigation items based on progressive disclosure
-  const visibleNavItems = navigationItems.filter((item) => totalSessions >= item.minSessions);
+  // All navigation items are always visible - empty states handle no-data scenarios
+  const visibleNavItems = navigationItems;
 
   const formatMinutes = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
