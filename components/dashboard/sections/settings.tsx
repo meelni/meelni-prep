@@ -19,8 +19,10 @@ import {
   Mic,
   Save,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  CreditCard
 } from "lucide-react";
+import { BillingSection } from "./billing";
 
 interface SettingsState {
   // Account
@@ -224,6 +226,15 @@ export const SettingsSection = memo(function SettingsSection() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Billing Section */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <CreditCard className="w-5 h-5 text-primary" />
+          <h3 className="text-xl font-display font-light text-foreground">Billing & Subscription</h3>
+        </div>
+        <BillingSection />
+      </div>
 
       {/* Interview Preferences */}
       <Card className="bg-card border-border">

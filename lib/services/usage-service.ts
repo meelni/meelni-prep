@@ -211,6 +211,9 @@ export async function resetUsageForNewPeriod(userId: string, newPeriodStart: Dat
 
 /**
  * Get usage summary for user (for dashboard)
+ *
+ * Phase 0.5D: Count actual completed interview sessions instead of relying solely on usage_record
+ * This ensures accurate billing display even if usage_record gets out of sync
  */
 export async function getUsageSummary(userId: string) {
   const userSub = await db
@@ -231,22 +234,56 @@ export async function getUsageSummary(userId: string) {
 
   const sub = userSub[0];
 
+  // For unlimited tiers, count actual sessions for display
   if (sub.tier === "pro" || sub.tier === "premium") {
+    // Import interviewSession here to avoid circular dependency
+    const { interviewSession } = await import("@/lib/db/schema");
+    const { count } = await import("drizzle-orm");
+    const { gte, lte } = await import("drizzle-orm");
+
+    // Count completed sessions in current period
+    const sessionCount = await db
+      .select({ count: count() })
+      .from(interviewSession)
+      .where(
+        and(
+          eq(interviewSession.userId, userId),
+          eq(interviewSession.status, 'completed'),
+          gte(interviewSession.startedAt, sub.currentPeriodStart!),
+          lte(interviewSession.startedAt, sub.currentPeriodEnd!)
+        )
+      );
+
     return {
       tier: sub.tier,
-      interviewsUsed: 0,
+      interviewsUsed: sessionCount[0]?.count || 0,
       interviewsLimit: -1,
       periodStart: sub.currentPeriodStart,
       periodEnd: sub.currentPeriodEnd,
     };
   }
 
-  const usage = await getCurrentUsageRecord(userId, sub.currentPeriodStart!, sub.currentPeriodEnd!);
+  // For free tier, count actual completed sessions (more accurate than usage_record)
+  const { interviewSession } = await import("@/lib/db/schema");
+  const { count } = await import("drizzle-orm");
+  const { gte, lte } = await import("drizzle-orm");
+
+  const sessionCount = await db
+    .select({ count: count() })
+    .from(interviewSession)
+    .where(
+      and(
+        eq(interviewSession.userId, userId),
+        eq(interviewSession.status, 'completed'),
+        gte(interviewSession.startedAt, sub.currentPeriodStart!),
+        lte(interviewSession.startedAt, sub.currentPeriodEnd!)
+      )
+    );
 
   return {
     tier: sub.tier,
-    interviewsUsed: usage?.interviewsUsed || 0,
-    interviewsLimit: usage?.interviewsLimit || 3,
+    interviewsUsed: sessionCount[0]?.count || 0,
+    interviewsLimit: 3, // free tier limit
     periodStart: sub.currentPeriodStart,
     periodEnd: sub.currentPeriodEnd,
   };
