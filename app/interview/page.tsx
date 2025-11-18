@@ -71,6 +71,7 @@ function InterviewPageContent() {
   const [transcriptQueue] = useState(() => getTranscriptQueue());
   const [currentNudge, setCurrentNudge] = useState<Nudge | null>(null);
   const [frameworkCoverage, setFrameworkCoverage] = useState<FrameworkCoverage>([]);
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
 
   // Invalidate queries when component unmounts (user leaves interview)
   useEffect(() => {
@@ -176,7 +177,17 @@ function InterviewPageContent() {
 
       const sessionData = await response.json();
       setSession(sessionData);
+      setSessionStartTime(Date.now());
       setLoading(false);
+
+      // Track interview started
+      const { analytics } = require('@/lib/analytics/analytics-service');
+      analytics.track('interview_started', {
+        session_id: sessionId,
+        interview_type: sessionData.config?.roundType,
+        mode: sessionData.config?.mode,
+        skill_level: sessionData.config?.difficulty,
+      });
     } catch (err) {
       console.error("Error fetching session:", err);
       setError(err instanceof Error ? err.message : "Failed to load interview");
@@ -322,6 +333,16 @@ function InterviewPageContent() {
   const handleEndSession = async () => {
     setIsEndingSession(true);
     try {
+      // Track interview ended
+      const { analytics } = require('@/lib/analytics/analytics-service');
+      const duration = sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0;
+      analytics.track('interview_ended', {
+        session_id: sessionId,
+        duration_seconds: duration,
+        ended_naturally: true,
+        interview_type: session?.config?.roundType,
+      });
+
       // End session in database
       await fetch("/api/interview/end", {
         method: "POST",
@@ -394,7 +415,16 @@ function InterviewPageContent() {
         transcript={transcript}
         isMuted={isMuted}
         transcriptSaveErrors={transcriptSaveErrors}
-        onToggleMute={() => setIsMuted(!isMuted)}
+        onToggleMute={() => {
+          const newMutedState = !isMuted;
+          setIsMuted(newMutedState);
+          // Track mic toggle
+          const { analytics } = require('@/lib/analytics/analytics-service');
+          analytics.track('mic_toggled', {
+            session_id: sessionId,
+            new_state: newMutedState ? 'muted' : 'unmuted',
+          });
+        }}
         onEndSession={() => setShowEndModal(true)}
       />
       <NudgeOverlay

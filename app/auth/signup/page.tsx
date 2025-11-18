@@ -18,6 +18,14 @@ function SignUpContent() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") || "/dashboard";
 
+  // Track page view
+  useEffect(() => {
+    const { analytics } = require('@/lib/analytics/analytics-service');
+    analytics.track('auth_signup_started', {
+      source: searchParams?.get('source') || 'direct',
+    });
+  }, [searchParams]);
+
   // Redirect if already logged in
   useEffect(() => {
     if (!authLoading && user) {
@@ -65,8 +73,16 @@ function SignUpContent() {
       setIsSigningUp(false);
     } catch (err: any) {
       console.error("Sign up error:", err);
-      setError(err.message || "Failed to sign up. Please try again.");
+      const errorMessage = err.message || "Failed to sign up. Please try again.";
+      setError(errorMessage);
       setIsSigningUp(false);
+
+      // Track signup failure
+      const { analytics } = require('@/lib/analytics/analytics-service');
+      analytics.track('auth_signup_failed', {
+        method: 'email',
+        error: errorMessage,
+      });
     }
   };
 

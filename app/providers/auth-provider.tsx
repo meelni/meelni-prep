@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 interface AuthContextType {
   user: User | null;
@@ -32,6 +33,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } = await supabase.auth.getSession();
         setSession(session);
         setUser(session?.user ?? null);
+
+        // Identify user if session exists
+        if (session?.user) {
+          const provider = session.user.app_metadata.provider;
+          analytics.identify(session.user.id, {
+            email_domain: session.user.email?.split('@')[1],
+            signup_method: provider === 'google' ? 'google' : 'email',
+            created_at: session.user.created_at,
+          });
+        }
       } catch (error) {
         console.error("Error fetching session:", error);
       } finally {
@@ -44,10 +55,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setIsLoading(false);
+
+      // Track auth events
+      if (event === 'SIGNED_IN' && session?.user) {
+        const provider = session.user.app_metadata.provider;
+        const method = provider === 'google' ? 'google' : 'email';
+
+        // Identify user
+        analytics.identify(session.user.id, {
+          email_domain: session.user.email?.split('@')[1],
+          signup_method: method,
+          created_at: session.user.created_at,
+        });
+
+        // Check if new user (created_at === last_sign_in_at within 5 seconds)
+        const createdAt = new Date(session.user.created_at).getTime();
+        const lastSignIn = session.user.last_sign_in_at
+          ? new Date(session.user.last_sign_in_at).getTime()
+          : createdAt;
+        const isNewUser = Math.abs(createdAt - lastSignIn) < 5000;
+
+        if (isNewUser) {
+          analytics.track('auth_signup_completed', {
+            method,
+          });
+        } else {
+          analytics.track('auth_signin_completed', {
+            method,
+          });
+        }
+      } else if (event === 'SIGNED_OUT') {
+        analytics.track('auth_signout_completed', {});
+        analytics.reset();
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -111,6 +155,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Error signing out:", error);
       throw error;
     }
+
+    // Track sign out and reset analytics
+    analytics.track('auth_signout_completed', {});
+    analytics.reset();
 
     setUser(null);
     setSession(null);
