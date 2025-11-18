@@ -84,7 +84,14 @@ export function BillingSection() {
           throw new Error("Failed to fetch usage");
         }
         const data = await response.json();
-        setUsage(data);
+
+        // Map API response to component state
+        setUsage({
+          currentUsage: data.interviewsUsed,
+          limit: data.interviewsLimit === -1 ? null : data.interviewsLimit,
+          periodStart: data.periodStart,
+          periodEnd: data.periodEnd,
+        });
       } catch (err) {
         console.error("Error fetching usage:", err);
         setError("Failed to load usage data");
