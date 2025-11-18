@@ -38,9 +38,10 @@ export default function SetupPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Subscription/tier state
+  // Initialize with free tier defaults to prevent flash of unlocked content
   const [userTier, setUserTier] = useState<SubscriptionTier>("free");
-  const [allowedTypes, setAllowedTypes] = useState<RoundType[]>([]);
-  const [lockedTypes, setLockedTypes] = useState<RoundType[]>([]);
+  const [allowedTypes, setAllowedTypes] = useState<RoundType[]>(getAllowedInterviewTypes("free"));
+  const [lockedTypes, setLockedTypes] = useState<RoundType[]>(getLockedInterviewTypes("free"));
   const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
 
   // Quota exceeded modal state
