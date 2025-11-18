@@ -221,15 +221,7 @@ export function BillingSection() {
   const showUpgradeBanner = subscription?.tier === "free" && (usage?.currentUsage || 0) >= 1;
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <h2 className="text-2xl font-display font-light text-foreground">Billing & Subscription</h2>
-        <p className="text-muted-foreground font-sans">
-          Manage your subscription, view usage, and access payment history.
-        </p>
-      </div>
-
+    <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Subscription Card */}
         <Card className="bg-card border-border">
