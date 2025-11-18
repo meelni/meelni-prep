@@ -19,6 +19,12 @@ import { DifficultySelector } from "./components/difficulty-selector";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import { QuotaExceededModal } from "@/components/dashboard/quota-exceeded-modal";
 import { TierUpgradeModal } from "@/components/dashboard/tier-upgrade-modal";
+import {
+  getAllowedInterviewTypes,
+  getLockedInterviewTypes,
+  INTERVIEW_TYPE_LABELS,
+  type SubscriptionTier,
+} from "@/lib/services/permissions-service";
 
 export default function SetupPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -30,6 +36,12 @@ export default function SetupPage() {
   const [difficulty, setDifficulty] = useState<DifficultyLevel | null>(null);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Subscription/tier state
+  const [userTier, setUserTier] = useState<SubscriptionTier>("free");
+  const [allowedTypes, setAllowedTypes] = useState<RoundType[]>([]);
+  const [lockedTypes, setLockedTypes] = useState<RoundType[]>([]);
+  const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
 
   // Quota exceeded modal state
   const [showQuotaModal, setShowQuotaModal] = useState(false);
@@ -53,6 +65,52 @@ export default function SetupPage() {
       router.push("/auth/signin?redirectTo=/setup");
     }
   }, [user, authLoading, router]);
+
+  // Fetch user subscription on mount
+  useEffect(() => {
+    async function fetchSubscription() {
+      if (!user) return;
+
+      try {
+        const response = await fetch("/api/billing/subscription");
+        if (!response.ok) {
+          console.error("Failed to fetch subscription");
+          // Default to free tier on error
+          setUserTier("free");
+          setAllowedTypes(getAllowedInterviewTypes("free"));
+          setLockedTypes(getLockedInterviewTypes("free"));
+          setIsLoadingSubscription(false);
+          return;
+        }
+
+        const data = await response.json();
+        const tier = (data.tier || "free") as SubscriptionTier;
+
+        setUserTier(tier);
+        setAllowedTypes(getAllowedInterviewTypes(tier));
+        setLockedTypes(getLockedInterviewTypes(tier));
+        setIsLoadingSubscription(false);
+      } catch (error) {
+        console.error("Error fetching subscription:", error);
+        // Default to free tier on error
+        setUserTier("free");
+        setAllowedTypes(getAllowedInterviewTypes("free"));
+        setLockedTypes(getLockedInterviewTypes("free"));
+        setIsLoadingSubscription(false);
+      }
+    }
+
+    fetchSubscription();
+  }, [user]);
+
+  const handleLockedTypeClick = (requestedType: RoundType) => {
+    setTierUpgradeInfo({
+      requestedType,
+      currentTier: userTier,
+      message: `${INTERVIEW_TYPE_LABELS[requestedType]} interviews require a Pro subscription. Upgrade to unlock all 4 interview types.`,
+    });
+    setShowTierUpgradeModal(true);
+  };
 
   const handleStartInterview = async () => {
     if (!roundType || !difficulty) {
@@ -285,6 +343,8 @@ export default function SetupPage() {
                 <RoundSelector
                   selected={roundType}
                   onSelect={setRoundType}
+                  lockedTypes={lockedTypes}
+                  onLockedClick={handleLockedTypeClick}
                 />
               </motion.div>
             )}
