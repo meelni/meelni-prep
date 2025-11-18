@@ -30,7 +30,9 @@
  * @response.config {Object} - Session configuration used
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
+ * @throws {403} Forbidden - Interview type locked (requires upgrade) or monthly quota exceeded (Free tier: 3/month)
  * @throws {400} Bad Request - Missing roundType or invalid roundType value
+ * @throws {503} Service Unavailable - Unable to verify permissions or quota (service down)
  * @throws {500} Internal Server Error - Database error, LiveKit configuration error, or agent dispatch failure
  *
  * @example
@@ -75,6 +77,31 @@
  * {
  *   "error": "Unauthorized"
  * }
+ *
+ * // Error Response (403 Forbidden - Interview Type Locked)
+ * {
+ *   "error": "interview_type_locked",
+ *   "message": "Execution interviews require a Pro subscription. Upgrade to unlock all 4 interview types.",
+ *   "currentTier": "free",
+ *   "requestedType": "execution",
+ *   "allowedTypes": ["product_sense"],
+ *   "upgradeUrl": "/pricing"
+ * }
+ *
+ * // Error Response (403 Forbidden - Quota Exceeded)
+ * {
+ *   "error": "quota_exceeded",
+ *   "message": "Monthly interview quota exceeded",
+ *   "currentUsage": 3,
+ *   "limit": 3,
+ *   "upgradeUrl": "/pricing"
+ * }
+ *
+ * // Error Response (503 Service Unavailable)
+ * {
+ *   "error": "service_unavailable",
+ *   "message": "Unable to verify interview quota. Please try again in a moment."
+ * }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -83,6 +110,14 @@ import { createSession } from "@/lib/db/sessions";
 import { upsertUser } from "@/lib/db/users";
 import { getRandomQuestion, getRandomRecentQuestion, recordQuestionUsage } from "@/lib/db/questions";
 import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
+import { incrementUsage } from "@/lib/services/usage-service";
+import { getUserTier } from "@/lib/services/permissions-service.server";
+import {
+  canAccessInterviewType,
+  getAllowedInterviewTypes,
+  INTERVIEW_TYPE_LABELS,
+  type RoundType,
+} from "@/lib/services/permissions-service";
 
 const livekit_api_key = process.env.LIVEKIT_API_KEY;
 const livekit_api_secret = process.env.LIVEKIT_API_SECRET;
@@ -102,16 +137,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Validate required environment variables
-    if (!livekit_api_key || !livekit_api_secret || !livekit_url) {
-      console.error("Missing LiveKit environment variables");
-      return NextResponse.json(
-        { error: "Server configuration error" },
-        { status: 500 }
-      );
-    }
-
-    // Parse request body
+    // Parse request body first to access roundType
     const body = await req.json();
     const {
       roundType,
@@ -141,6 +167,78 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Invalid roundType" },
         { status: 400 }
+      );
+    }
+
+    // Tier-based access control: Check if user can access this interview type
+    try {
+      const userTier = await getUserTier(user.id);
+
+      if (!canAccessInterviewType(userTier, roundType as RoundType)) {
+        const allowedTypes = getAllowedInterviewTypes(userTier);
+        const requestedTypeLabel = INTERVIEW_TYPE_LABELS[roundType as RoundType];
+
+        return NextResponse.json(
+          {
+            error: "interview_type_locked",
+            message: `${requestedTypeLabel} interviews require a Pro subscription. Upgrade to unlock all 4 interview types.`,
+            currentTier: userTier,
+            requestedType: roundType,
+            allowedTypes: allowedTypes,
+            upgradeUrl: "/pricing",
+          },
+          { status: 403 }
+        );
+      }
+    } catch (error: any) {
+      console.error("Permissions check error:", error.message);
+      // Fail closed: return 503 if permissions service is unavailable
+      return NextResponse.json(
+        {
+          error: "service_unavailable",
+          message: "Unable to verify interview type access. Please try again in a moment.",
+        },
+        { status: 503 }
+      );
+    }
+
+    // Quota enforcement: Check and increment usage atomically
+    // This prevents race conditions and ensures fair usage limits
+    try {
+      const incrementResult = await incrementUsage(user.id);
+
+      if (!incrementResult.success) {
+        // Quota exceeded - return 403 with upgrade information
+        return NextResponse.json(
+          {
+            error: "quota_exceeded",
+            message: incrementResult.reason || "Monthly interview quota exceeded",
+            currentUsage: incrementResult.currentUsage || 0,
+            limit: incrementResult.limit || 0,
+            upgradeUrl: "/pricing",
+          },
+          { status: 403 }
+        );
+      }
+    } catch (error: any) {
+      console.error("Quota check error:", error.message);
+      // Fail closed: return 503 Service Unavailable if quota service is down
+      // This prevents unlimited access if the billing system is unavailable
+      return NextResponse.json(
+        {
+          error: "service_unavailable",
+          message: "Unable to verify interview quota. Please try again in a moment.",
+        },
+        { status: 503 }
+      );
+    }
+
+    // Validate required environment variables
+    if (!livekit_api_key || !livekit_api_secret || !livekit_url) {
+      console.error("Missing LiveKit environment variables");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
       );
     }
 

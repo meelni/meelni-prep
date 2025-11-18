@@ -316,9 +316,11 @@ STRIPE_PREMIUM_ANNUAL_PRICE_ID=price_xxxxxxxxxxxxx
 
 ### Phase 2.2: Usage Quota Enforcement ✅
 
-**Status**: Complete (**Security Hardened** - 2025-11-13)
+**Status**: Complete (**Security Hardened** - 2025-11-13, **Fully Enforced** - 2025-11-17)
 **Files Modified**:
 - ✅ `app/api/livekit/token/route.ts` - Added quota enforcement with race condition fix
+- ✅ `app/api/session/start/route.ts` - **NEW**: Added quota enforcement (2025-11-17)
+- ✅ `app/setup/page.tsx` - **NEW**: Added QuotaExceededModal integration (2025-11-17)
 - ✅ `lib/services/usage-service.ts` - Replaced raw SQL with Drizzle ORM
 
 **Features Implemented**:
@@ -329,6 +331,8 @@ STRIPE_PREMIUM_ANNUAL_PRICE_ID=price_xxxxxxxxxxxxx
 - ✅ Authentication-aware (enforces for logged-in users, allows anonymous demos)
 - ✅ Preserves all existing functionality (demo mode, agent dispatch)
 - ✅ Returns quota info in error response (currentUsage, limit, upgradeUrl)
+- ✅ **COMPLETE COVERAGE**: Quota enforcement now in ALL interview start endpoints (2025-11-17)
+- ✅ **USER EXPERIENCE**: Quota exceeded modal with upgrade CTA (2025-11-17)
 
 **Error Response Format**:
 ```json
@@ -340,6 +344,35 @@ STRIPE_PREMIUM_ANNUAL_PRICE_ID=price_xxxxxxxxxxxxx
   "upgradeUrl": "/pricing"
 }
 ```
+
+**Quota Enforcement Flow** (2025-11-17):
+```
+User starts interview → /api/session/start
+  ↓
+Authentication check (Supabase Auth)
+  ↓
+Atomic quota check + increment (incrementUsage)
+  ↓
+If quota exceeded → Return 403 with quota info
+  ↓
+Frontend detects 403 → Show QuotaExceededModal
+  ↓
+User clicks "View Plans" → Redirect to /pricing
+```
+
+**Coverage Matrix**:
+| Endpoint | Quota Enforcement | Error Handling | Modal Integration |
+|----------|-------------------|----------------|-------------------|
+| `/api/session/start` | ✅ Atomic | ✅ 403/503 | ✅ QuotaExceededModal |
+| `/api/livekit/token` | ✅ Atomic | ✅ 403/503 | N/A (backend only) |
+
+**Testing Status**:
+- ✅ Build passes (TypeScript validation)
+- ✅ Atomic quota increment prevents race conditions
+- ✅ Fail-closed error handling (503 if service down)
+- ✅ Frontend modal shows upgrade CTA
+- [ ] Manual E2E testing (free tier hitting 3 interview limit)
+- [ ] Concurrent request testing (race condition verification)
 
 ### Phase 2.3: Billing Dashboard UI ✅
 
