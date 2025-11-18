@@ -28,6 +28,18 @@ export function RoundSelector({
   lockedTypes = [],
   onLockedClick,
 }: RoundSelectorProps) {
+  // Sort interview types: unlocked first, then locked
+  const sortedRoundTypes = (Object.keys(ROUND_TYPES) as RoundType[]).sort((a, b) => {
+    const aLocked = lockedTypes.includes(a);
+    const bLocked = lockedTypes.includes(b);
+
+    // If both locked or both unlocked, maintain original order
+    if (aLocked === bLocked) return 0;
+
+    // Unlocked types come first
+    return aLocked ? 1 : -1;
+  });
+
   return (
     <motion.div
       variants={staggerContainer}
@@ -35,7 +47,7 @@ export function RoundSelector({
       animate="animate"
       className="grid gap-3 md:grid-cols-2"
     >
-      {(Object.keys(ROUND_TYPES) as RoundType[]).map((roundType) => {
+      {sortedRoundTypes.map((roundType) => {
         const config = ROUND_TYPES[roundType];
         const Icon = iconMap[config.icon as keyof typeof iconMap];
         const isSelected = selected === roundType;
@@ -54,8 +66,8 @@ export function RoundSelector({
           <motion.div key={roundType} variants={fadeInUp} className="h-full">
             <Card
               className={`
-                relative transition-all duration-200 p-4 h-full
-                ${isLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:scale-[1.02] hover:shadow-lg"}
+                relative transition-all duration-200 p-4 h-full cursor-pointer
+                ${isLocked ? "opacity-60" : "hover:scale-[1.02] hover:shadow-lg"}
                 ${
                   isSelected && !isLocked
                     ? "border-primary shadow-md ring-2 ring-primary/20"
