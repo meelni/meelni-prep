@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/sections/header";
 import { Hero } from "@/components/sections/hero";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 
 interface HomeWrapperProps {
   children: React.ReactNode;
@@ -16,6 +17,9 @@ const DemoModalContext = createContext<(open: boolean) => void>(() => {});
 export function HomeWrapper({ children }: HomeWrapperProps) {
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const searchParams = useSearchParams();
+
+  // Track Web Vitals performance
+  useWebVitals('landing_page');
 
   // Track landing page view
   useEffect(() => {

@@ -11,6 +11,7 @@ import { GlowingRadarChart } from "@/components/dashboard/charts/glowing-radar-c
 import { SessionList } from "@/components/dashboard/session-list";
 import { EmptyStateCard } from "@/components/dashboard/empty-state-card";
 import type { Session } from "@/lib/api/queries";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 interface OverviewSectionProps {
   sessions: Session[];

@@ -17,6 +17,7 @@ import { FeedbackPartial } from "@/components/feedback/feedback-partial";
 import { FeedbackAbandoned } from "@/components/feedback/feedback-abandoned";
 import type { EvaluationResponse, TranscriptTurn } from "@/lib/types/feedback";
 import Link from "next/link";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 // Validation data from session validator
 interface ValidationData {
@@ -58,6 +59,7 @@ export default function FeedbackPage() {
   const [status, setStatus] = useState<"completed" | "failed" | "skipped" | "loading">("loading");
   const [error, setError] = useState<string | null>(null);
   const [validation, setValidation] = useState<ValidationData | null>(null);
+  const [feedbackTracked, setFeedbackTracked] = useState(false);
 
   useEffect(() => {
     async function checkFeedbackStatus() {
@@ -90,6 +92,16 @@ export default function FeedbackPage() {
 
         // If completed, load full feedback
         if (statusData.status === "completed" && statusData.feedback) {
+          // Track feedback view (only once)
+          if (!feedbackTracked) {
+            analytics.track("feedback_viewed", {
+              session_id: sessionId,
+              feedback_available: true,
+              overall_score: statusData.feedback.overallScore,
+            });
+            setFeedbackTracked(true);
+          }
+
           setEvaluation({
             session_id: sessionId,
             scores: {
@@ -118,11 +130,20 @@ export default function FeedbackPage() {
         console.error("Error fetching feedback:", err);
         setError(err instanceof Error ? err.message : "Failed to load feedback");
         setStatus("failed");
+
+        // Track feedback view even if unavailable (for analytics)
+        if (!feedbackTracked) {
+          analytics.track("feedback_viewed", {
+            session_id: sessionId,
+            feedback_available: false,
+          });
+          setFeedbackTracked(true);
+        }
       }
     }
 
     checkFeedbackStatus();
-  }, [sessionId]);
+  }, [sessionId, feedbackTracked]);
 
   // Show loading state while fetching initial data
   if (status === "loading") {

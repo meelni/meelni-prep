@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Clock, Calendar, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import type { Session } from "@/lib/api/queries";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 interface SessionListProps {
   sessions: Session[];
@@ -67,6 +68,25 @@ export function SessionList({ sessions, onSessionClick }: SessionListProps) {
 
         const isCompleted = !!session.endedAt;
 
+        const handleSessionClick = () => {
+          // Calculate session age in days
+          const sessionAge = (Date.now() - new Date(session.startedAt).getTime()) / (1000 * 60 * 60 * 24);
+
+          // Track session details click
+          const sessionFeedback = (session as any).feedback;
+          analytics.track("session_details_clicked", {
+            session_id: session.id,
+            interview_type: session.roundType,
+            session_age_days: Math.floor(sessionAge),
+            has_feedback: !!(sessionFeedback?.overallScore !== null && sessionFeedback?.overallScore !== undefined),
+          });
+
+          // Call optional callback
+          if (onSessionClick) {
+            onSessionClick(session.id);
+          }
+        };
+
         return (
           <motion.div
             key={session.id}
@@ -74,7 +94,7 @@ export function SessionList({ sessions, onSessionClick }: SessionListProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05, duration: 0.3 }}
           >
-            <Link href={`/feedback/${session.id}`}>
+            <Link href={`/feedback/${session.id}`} onClick={handleSessionClick}>
               <Card className="p-6 bg-surface/50 border-border/50 hover:border-primary/30 transition-all duration-300 cursor-pointer group">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 space-y-3">

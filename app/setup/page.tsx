@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
@@ -26,10 +26,15 @@ import {
   type SubscriptionTier,
 } from "@/lib/services/permissions-service";
 import { track, AnalyticsEvents } from "@/lib/analytics";
+import { analytics } from "@/lib/analytics/analytics-service";
+import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 
 export default function SetupPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
+
+  // Track Web Vitals performance
+  useWebVitals('setup');
 
   // Simplified 2-step state
   const [step, setStep] = useState<1 | 2>(1);
@@ -37,6 +42,9 @@ export default function SetupPage() {
   const [difficulty, setDifficulty] = useState<DifficultyLevel | null>(null);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pageLoadTime = useRef(Date.now());
+  const defaultRoundType = useRef<RoundType | null>(null);
+  const defaultDifficulty = useRef<DifficultyLevel | null>(null);
 
   // Subscription/tier state
   // Initialize with free tier defaults to prevent flash of unlocked content
@@ -99,6 +107,13 @@ export default function SetupPage() {
           allowedTypesCount: getAllowedInterviewTypes(tier).length,
           lockedTypesCount: getLockedInterviewTypes(tier).length,
         });
+
+        // Track setup started
+        analytics.track("setup_started", {
+          user_id: user.id,
+          referrer_page: typeof document !== "undefined" ? document.referrer : undefined,
+          user_authenticated: true,
+        });
       } catch (error) {
         console.error("Error fetching subscription:", error);
         // Default to free tier on error
@@ -136,6 +151,21 @@ export default function SetupPage() {
 
     setIsCreatingSession(true);
     setError(null);
+
+    // Track setup completion
+    const timeToComplete = (Date.now() - pageLoadTime.current) / 1000;
+    const selectionsChanged =
+      (roundType !== defaultRoundType.current ? 1 : 0) +
+      (difficulty !== defaultDifficulty.current ? 1 : 0);
+
+    analytics.track("setup_completed", {
+      user_id: user!.id,
+      interview_type: roundType,
+      skill_level: difficulty,
+      mode: "voice_video",
+      time_to_complete_seconds: Math.floor(timeToComplete),
+      selections_changed: selectionsChanged,
+    });
 
     try {
       // Request microphone permission before starting interview
@@ -368,7 +398,13 @@ export default function SetupPage() {
                 ) : (
                   <RoundSelector
                     selected={roundType}
-                    onSelect={setRoundType}
+                    onSelect={(type) => {
+                      // Save first selection as default for comparison later
+                      if (defaultRoundType.current === null) {
+                        defaultRoundType.current = type;
+                      }
+                      setRoundType(type);
+                    }}
                     lockedTypes={lockedTypes}
                     onLockedClick={handleLockedTypeClick}
                   />
@@ -387,7 +423,21 @@ export default function SetupPage() {
               >
                 <DifficultySelector
                   selected={difficulty}
-                  onSelect={setDifficulty}
+                  onSelect={(level) => {
+                    // Save first selection as default for comparison later
+                    if (defaultDifficulty.current === null) {
+                      defaultDifficulty.current = level;
+                    }
+
+                    // Track skill level selection
+                    analytics.track("skill_level_selected", {
+                      skill_level: level,
+                      interview_type: roundType || "unknown",
+                      is_default_selection: defaultDifficulty.current === level,
+                    });
+
+                    setDifficulty(level);
+                  }}
                 />
               </motion.div>
             )}

@@ -17,6 +17,8 @@ export type AnalyticsEvent =
   | "cta_clicked"
   | "demo_modal_opened"
   | "demo_modal_closed"
+  | "demo_completed"
+  | "demo_mic_toggled"
   // Auth Events
   | "auth_signup_started"
   | "auth_signup_completed"
@@ -30,6 +32,7 @@ export type AnalyticsEvent =
   // Setup Events
   | "setup_started"
   | "interview_type_selected"
+  | "skill_level_selected"
   | "setup_completed"
   // Interview Events
   | "interview_started"
@@ -39,7 +42,13 @@ export type AnalyticsEvent =
   | "mic_toggled"
   // Dashboard Events
   | "dashboard_viewed"
-  | "session_history_viewed";
+  | "session_history_viewed"
+  | "session_details_clicked"
+  | "feedback_viewed"
+  // Performance Events
+  | "page_performance"
+  | "livekit_connection_established"
+  | "error_boundary_triggered";
 
 // =============================================================================
 // Event Properties
@@ -66,6 +75,17 @@ interface LandingPageProperties {
   demo_modal_closed: {
     duration_seconds: number;
     completed: boolean;
+    agent_joined: boolean;
+    user_spoke: boolean;
+  };
+  demo_completed: {
+    duration_seconds: number;
+    turn_count?: number;
+    converted_to_signup: boolean;
+  };
+  demo_mic_toggled: {
+    new_state: "muted" | "unmuted";
+    time_in_demo_seconds: number;
   };
 }
 
@@ -109,16 +129,25 @@ interface AuthProperties {
 interface SetupProperties {
   setup_started: {
     user_id: string;
+    referrer_page?: string;
+    user_authenticated: boolean;
   };
   interview_type_selected: {
     user_id: string;
-    interview_type: "product_sense" | "analytical" | "leadership" | "strategy";
+    interview_type: "product_sense" | "behavioral" | "execution" | "strategy";
+  };
+  skill_level_selected: {
+    skill_level: "beginner" | "intermediate" | "advanced";
+    interview_type: string;
+    is_default_selection: boolean;
   };
   setup_completed: {
     user_id: string;
-    interview_type: "product_sense" | "analytical" | "leadership" | "strategy";
-    skill_level: "junior" | "intermediate" | "senior";
-    mode: "mock_interview" | "practice" | "learning";
+    interview_type: "product_sense" | "behavioral" | "execution" | "strategy";
+    skill_level: "beginner" | "intermediate" | "advanced";
+    mode: "voice_video";
+    time_to_complete_seconds: number;
+    selections_changed: number;
   };
 }
 
@@ -164,8 +193,46 @@ interface DashboardProperties {
     section: "overview" | "history" | "analytics" | "feedback" | "settings" | "questions";
   };
   session_history_viewed: {
-    user_id: string;
+    section: "history" | "overview";
     total_sessions: number;
+    has_feedback: boolean;
+  };
+  session_details_clicked: {
+    session_id: string;
+    interview_type: string;
+    session_age_days: number;
+    has_feedback: boolean;
+  };
+  feedback_viewed: {
+    session_id: string;
+    feedback_available: boolean;
+    overall_score?: number;
+  };
+}
+
+/**
+ * Performance Event Properties
+ */
+interface PerformanceProperties {
+  page_performance: {
+    page: string;
+    lcp?: number; // Largest Contentful Paint (ms)
+    fid?: number; // First Input Delay (ms)
+    cls?: number; // Cumulative Layout Shift (score)
+    ttfb?: number; // Time to First Byte (ms)
+    fcp?: number; // First Contentful Paint (ms)
+  };
+  livekit_connection_established: {
+    session_id: string;
+    connection_time_ms: number;
+    region?: string;
+    connection_quality: "excellent" | "good" | "poor";
+  };
+  error_boundary_triggered: {
+    error_message: string;
+    component_stack?: string;
+    page: string;
+    user_action?: string;
   };
 }
 
@@ -177,7 +244,8 @@ export type EventProperties = LandingPageProperties &
   AuthProperties &
   SetupProperties &
   InterviewProperties &
-  DashboardProperties;
+  DashboardProperties &
+  PerformanceProperties;
 
 // =============================================================================
 // User Traits

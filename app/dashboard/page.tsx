@@ -10,6 +10,7 @@ import { DashboardError } from "@/components/dashboard/error";
 import { SetupModal } from "@/components/dashboard/setup-modal";
 import { useSessions } from "@/lib/api/queries";
 import { useSetupModal } from "@/lib/hooks/use-setup-modal";
+import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { Loader2 } from "lucide-react";
 
 // Lazy load heavy section components for better performance
@@ -35,6 +36,9 @@ export default function DashboardPage() {
   const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
   const [activeSection, setActiveSection] = useState("overview");
+
+  // Track Web Vitals performance
+  useWebVitals('dashboard');
 
   // Track dashboard section views
   useEffect(() => {
