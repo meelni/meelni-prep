@@ -19,7 +19,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 
 // Type definitions
 interface Subscription {
-  tier: "free" | "pro" | "premium";
+  tier: "free" | "pro";
   status: "active" | "trialing" | "canceled" | "past_due";
   billingCycle?: "monthly" | "annual";
   currentPeriodEnd?: string;
@@ -152,8 +152,6 @@ export function BillingSection() {
         return "outline" as const;
       case "pro":
         return "default" as const;
-      case "premium":
-        return "success" as const;
       default:
         return "outline" as const;
     }
@@ -236,7 +234,6 @@ export function BillingSection() {
                 {/* Tier and Status */}
                 <div className="flex items-center gap-3">
                   <Badge variant={getTierBadgeVariant(subscription.tier)} className="text-sm">
-                    {subscription.tier === "premium" && <Crown className="w-3 h-3 mr-1" />}
                     {subscription.tier.toUpperCase()}
                   </Badge>
                   <Badge variant={getStatusBadgeVariant(subscription.status)} className="text-xs">

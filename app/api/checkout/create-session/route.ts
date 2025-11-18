@@ -9,7 +9,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 // Request validation schema
 const checkoutSchema = z.object({
-  tier: z.enum(["pro", "premium"]),
+  tier: z.enum(["pro"]),
   billingPeriod: z.enum(["monthly", "annual"]),
   email: z.string().email().optional(), // Optional email for unauthenticated users
 });
@@ -33,8 +33,6 @@ export async function POST(req: NextRequest) {
     const priceMap: Record<string, string> = {
       "pro-monthly": process.env.STRIPE_PRO_MONTHLY_PRICE_ID!,
       "pro-annual": process.env.STRIPE_PRO_ANNUAL_PRICE_ID!,
-      "premium-monthly": process.env.STRIPE_PREMIUM_MONTHLY_PRICE_ID!,
-      "premium-annual": process.env.STRIPE_PREMIUM_ANNUAL_PRICE_ID!,
     };
 
     const priceId = priceMap[`${tier}-${billingPeriod}`];
@@ -45,8 +43,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Determine trial period (7 days for Pro, 14 days for Premium)
-    const trialPeriodDays = tier === "pro" ? 7 : 14;
+    // 4. Determine trial period (7 days for Pro)
+    const trialPeriodDays = 7;
 
     // 5. Create Stripe Checkout session
     // Only include customer_email if authenticated, otherwise Stripe will collect it
