@@ -265,10 +265,24 @@ export function BillingSection() {
                     </div>
                     {subscription.currentPeriodEnd && (
                       <p className="text-sm text-muted-foreground">
-                        {subscription.cancelAtPeriodEnd ? "Ends on" : "Renews on"}{" "}
+                        {subscription.status === "trialing"
+                          ? "Trial ends on"
+                          : subscription.cancelAtPeriodEnd
+                            ? "Ends on"
+                            : "Renews on"}{" "}
                         {formatDate(subscription.currentPeriodEnd)}
                       </p>
                     )}
+                  </div>
+                )}
+
+                {/* Trial status message */}
+                {subscription.status === "trialing" && (
+                  <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                    <p className="text-sm text-foreground">
+                      <strong>Free Trial Active</strong> - You have full access to {subscription.tier.toUpperCase()} features.
+                      No charges until your trial ends.
+                    </p>
                   </div>
                 )}
 
