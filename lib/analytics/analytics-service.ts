@@ -29,6 +29,23 @@ export class AnalyticsService {
   }
 
   /**
+   * Check if user has consented to analytics tracking
+   */
+  private hasConsent(): boolean {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    try {
+      const consent = localStorage.getItem("cookie-consent");
+      return consent === "accepted";
+    } catch {
+      // If localStorage access fails, default to no consent
+      return false;
+    }
+  }
+
+  /**
    * Track an analytics event
    * @param event - Event name (must be in AnalyticsEvent type)
    * @param properties - Event properties (type-safe per event)
@@ -40,6 +57,14 @@ export class AnalyticsService {
     if (!clientConfig.enabled) {
       if (clientConfig.debug) {
         console.log("[Analytics] Tracking disabled", { event, properties });
+      }
+      return;
+    }
+
+    // CRITICAL: Check user consent before tracking
+    if (!this.hasConsent()) {
+      if (clientConfig.debug) {
+        console.log("[Analytics] Tracking blocked - no user consent", { event });
       }
       return;
     }
@@ -73,6 +98,14 @@ export class AnalyticsService {
       return;
     }
 
+    // Check user consent before identifying
+    if (!this.hasConsent()) {
+      if (clientConfig.debug) {
+        console.log("[Analytics] Identify blocked - no user consent");
+      }
+      return;
+    }
+
     try {
       // Sanitize email if present
       const sanitizedTraits = traits
@@ -98,6 +131,14 @@ export class AnalyticsService {
    */
   pageview(path?: string): void {
     if (!clientConfig.enabled) {
+      return;
+    }
+
+    // Check user consent before tracking pageview
+    if (!this.hasConsent()) {
+      if (clientConfig.debug) {
+        console.log("[Analytics] Pageview blocked - no user consent");
+      }
       return;
     }
 
@@ -140,6 +181,44 @@ export class AnalyticsService {
   // =============================================================================
 
   /**
+   * Hash a session ID using Web Crypto API
+   * This prevents sending raw UUIDs to PostHog
+   */
+  private async hashSessionId(sessionId: string): Promise<string> {
+    if (typeof window === "undefined" || !window.crypto || !window.crypto.subtle) {
+      // Fallback for server-side or old browsers: just truncate
+      return `session_${sessionId.substring(0, 8)}`;
+    }
+
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(sessionId);
+      const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      return `session_${hashHex.substring(0, 16)}`; // First 16 chars of hash
+    } catch (error) {
+      // Fallback on error
+      return `session_${sessionId.substring(0, 8)}`;
+    }
+  }
+
+  /**
+   * Synchronous session ID hashing (uses simple truncation)
+   * Use this for tracking events where async is not possible
+   */
+  private hashSessionIdSync(sessionId: string): string {
+    // Simple hash function for synchronous contexts
+    let hash = 0;
+    for (let i = 0; i < sessionId.length; i++) {
+      const char = sessionId.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return `session_${Math.abs(hash).toString(16).substring(0, 12)}`;
+  }
+
+  /**
    * Sanitize properties by removing PII
    */
   private sanitizeProperties(properties: unknown): unknown {
@@ -154,6 +233,12 @@ export class AnalyticsService {
     const sanitized: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(properties)) {
+      // Hash session IDs instead of sending raw UUIDs
+      if (key.toLowerCase().includes("session_id") && typeof value === "string") {
+        sanitized[key] = this.hashSessionIdSync(value);
+        continue;
+      }
+
       // Skip email fields entirely (too risky)
       if (key.toLowerCase().includes("email")) {
         sanitized[key] = "[REDACTED]";
@@ -194,14 +279,16 @@ export class AnalyticsService {
   }
 
   /**
-   * Sanitize email by hashing
+   * Sanitize email by preserving domain only
+   * This allows analytics on email providers without exposing user identity
+   * Example: user@gmail.com -> [REDACTED]@gmail.com
    */
   private sanitizeEmail(email: string): string {
-    // For now, just redact domain to preserve uniqueness
-    // Example: user@example.com -> user@[DOMAIN]
     const parts = email.split("@");
     if (parts.length === 2) {
-      return `${parts[0]}@[DOMAIN]`;
+      // Preserve domain for analytics (e.g., gmail.com vs corporate domains)
+      // Redact username to protect identity
+      return `[REDACTED]@${parts[1]}`;
     }
     return "[EMAIL_REDACTED]";
   }
