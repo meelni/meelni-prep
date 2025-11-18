@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -21,6 +22,7 @@ import {
   Zap,
 } from "lucide-react";
 import { INTERVIEW_TYPE_LABELS, type RoundType } from "@/lib/services/permissions-service";
+import { track, AnalyticsEvents } from "@/lib/analytics";
 
 interface TierUpgradeModalProps {
   isOpen: boolean;
@@ -39,8 +41,37 @@ export function TierUpgradeModal({
 }: TierUpgradeModalProps) {
   const router = useRouter();
 
+  // Track when modal is viewed
+  useEffect(() => {
+    if (isOpen) {
+      track(AnalyticsEvents.UPGRADE_MODAL_VIEWED, {
+        requestedType,
+        requestedTypeLabel: INTERVIEW_TYPE_LABELS[requestedType],
+        currentTier,
+      });
+    }
+  }, [isOpen, requestedType, currentTier]);
+
   const handleViewPlans = () => {
+    // Track CTA click
+    track(AnalyticsEvents.UPGRADE_MODAL_CTA_CLICKED, {
+      requestedType,
+      requestedTypeLabel: INTERVIEW_TYPE_LABELS[requestedType],
+      currentTier,
+    });
+
     router.push("/pricing");
+    onClose();
+  };
+
+  const handleDismiss = () => {
+    // Track modal dismissal
+    track(AnalyticsEvents.UPGRADE_MODAL_DISMISSED, {
+      requestedType,
+      requestedTypeLabel: INTERVIEW_TYPE_LABELS[requestedType],
+      currentTier,
+    });
+
     onClose();
   };
 
@@ -70,7 +101,7 @@ export function TierUpgradeModal({
   ];
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleDismiss}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
@@ -156,7 +187,7 @@ export function TierUpgradeModal({
         <DialogFooter className="flex-col sm:flex-row gap-3">
           <Button
             variant="outline"
-            onClick={onClose}
+            onClick={handleDismiss}
             className="w-full sm:w-auto order-2 sm:order-1"
           >
             Maybe Later
