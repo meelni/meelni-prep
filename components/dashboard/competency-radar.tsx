@@ -2,6 +2,8 @@
 
 import { Card } from "@/components/ui/card";
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from "recharts";
+import { analytics } from "@/lib/analytics/analytics-service";
+import { useEffect, useRef } from "react";
 
 interface CompetencyData {
   competency: string;
@@ -14,6 +16,34 @@ interface CompetencyRadarProps {
 }
 
 export function CompetencyRadar({ data }: CompetencyRadarProps) {
+  const hasTrackedView = useRef(false);
+
+  // Track competency radar view
+  useEffect(() => {
+    if (data.length > 0 && !hasTrackedView.current) {
+      hasTrackedView.current = true;
+
+      const hasScores = data.some(d => d.score > 0);
+      const avgScore = hasScores
+        ? data.reduce((sum, d) => sum + d.score, 0) / data.length
+        : undefined;
+
+      analytics.track('competency_radar_viewed', {
+        competencies_count: data.length,
+        has_scores: hasScores,
+        avg_competency_score: avgScore ? Math.round(avgScore * 10) / 10 : undefined,
+      });
+    }
+  }, [data]);
+
+  const handleRadarClick = () => {
+    analytics.track('chart_interacted', {
+      chart_type: 'competency_radar',
+      interaction_type: 'click',
+      data_point: `${data.length} competencies`,
+    });
+  };
+
   if (data.length === 0) {
     return (
       <Card className="p-8 bg-surface/30 border-border/30">
@@ -41,7 +71,7 @@ export function CompetencyRadar({ data }: CompetencyRadarProps) {
           </p>
         </div>
 
-        <div className="h-[360px] w-full">
+        <div className="h-[360px] w-full" onClick={handleRadarClick}>
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart data={data} margin={{ top: 30, right: 40, bottom: 30, left: 40 }}>
               <PolarGrid stroke="rgba(128, 128, 128, 0.2)" />

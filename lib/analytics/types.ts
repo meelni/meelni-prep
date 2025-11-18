@@ -45,6 +45,9 @@ export type AnalyticsEvent =
   | "session_history_viewed"
   | "session_details_clicked"
   | "feedback_viewed"
+  | "chart_interacted"
+  | "competency_radar_viewed"
+  | "score_trend_analyzed"
   // Performance Events
   | "page_performance"
   | "livekit_connection_established"
@@ -207,6 +210,22 @@ interface DashboardProperties {
     session_id: string;
     feedback_available: boolean;
     overall_score?: number;
+  };
+  chart_interacted: {
+    chart_type: "score_chart" | "competency_radar" | "stats_cards" | "interview_type_breakdown";
+    interaction_type: "hover" | "click" | "expand";
+    data_point?: string;
+    time_spent_seconds?: number;
+  };
+  competency_radar_viewed: {
+    competencies_count: number;
+    has_scores: boolean;
+    avg_competency_score?: number;
+  };
+  score_trend_analyzed: {
+    time_range: "all_time" | "last_7_days" | "last_30_days";
+    sessions_in_range: number;
+    trend_direction: "improving" | "declining" | "stable";
   };
 }
 

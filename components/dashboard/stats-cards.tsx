@@ -3,6 +3,7 @@
 import { Card } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { TrendIndicator } from "./stats/trend-indicator";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 interface StatsCardsProps {
   totalSessions: number;
@@ -47,6 +48,14 @@ export function StatsCards({
     },
   ];
 
+  const handleStatCardClick = (statLabel: string) => {
+    analytics.track('chart_interacted', {
+      chart_type: 'stats_cards',
+      interaction_type: 'click',
+      data_point: statLabel,
+    });
+  };
+
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat, index) => (
@@ -56,7 +65,10 @@ export function StatsCards({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.1, duration: 0.3 }}
         >
-          <Card className="p-6 bg-card border-border hover:border-primary/30 transition-all duration-300 min-h-[140px] flex flex-col justify-between">
+          <Card
+            className="p-6 bg-card border-border hover:border-primary/30 transition-all duration-300 min-h-[140px] flex flex-col justify-between cursor-pointer"
+            onClick={() => handleStatCardClick(stat.label)}
+          >
             <div className="space-y-3">
               <p className="text-sm font-medium text-muted-foreground h-5 flex items-center">
                 {stat.label}
