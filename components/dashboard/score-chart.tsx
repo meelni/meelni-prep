@@ -2,6 +2,8 @@
 
 import { Card } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { analytics } from "@/lib/analytics/analytics-service";
+import { useEffect, useRef, useState } from "react";
 
 interface ScoreDataPoint {
   date: string;
@@ -14,6 +16,58 @@ interface ScoreChartProps {
 }
 
 export function ScoreChart({ data }: ScoreChartProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const chartViewStartTime = useRef<number>(Date.now());
+  const hasTrackedView = useRef(false);
+
+  // Track chart view and analyze trend
+  useEffect(() => {
+    if (data.length > 0 && !hasTrackedView.current) {
+      hasTrackedView.current = true;
+
+      // Calculate trend direction
+      let trendDirection: "improving" | "declining" | "stable" = "stable";
+      if (data.length >= 2) {
+        const recentScores = data.slice(-3);
+        const avgRecent = recentScores.reduce((sum, d) => sum + d.score, 0) / recentScores.length;
+        const olderScores = data.length > 3 ? data.slice(0, -3) : data.slice(0, 1);
+        const avgOlder = olderScores.reduce((sum, d) => sum + d.score, 0) / olderScores.length;
+
+        if (avgRecent > avgOlder + 0.5) trendDirection = "improving";
+        else if (avgRecent < avgOlder - 0.5) trendDirection = "declining";
+      }
+
+      analytics.track('score_trend_analyzed', {
+        time_range: 'all_time',
+        sessions_in_range: data.length,
+        trend_direction: trendDirection,
+      });
+    }
+
+    // Track time spent on chart when user leaves
+    return () => {
+      if (isHovered) {
+        const timeSpent = (Date.now() - chartViewStartTime.current) / 1000;
+        analytics.track('chart_interacted', {
+          chart_type: 'score_chart',
+          interaction_type: 'hover',
+          time_spent_seconds: Math.round(timeSpent),
+        });
+      }
+    };
+  }, [data, isHovered]);
+
+  const handleChartClick = (dataPoint: any) => {
+    if (dataPoint && dataPoint.activePayload) {
+      const point = dataPoint.activePayload[0]?.payload;
+      analytics.track('chart_interacted', {
+        chart_type: 'score_chart',
+        interaction_type: 'click',
+        data_point: `${point?.date}: ${point?.score}`,
+      });
+    }
+  };
+
   if (data.length === 0) {
     return (
       <Card className="p-8 bg-surface/30 border-border/30">
@@ -44,11 +98,19 @@ export function ScoreChart({ data }: ScoreChartProps) {
           </p>
         </div>
 
-        <div className="h-[300px] w-full">
+        <div
+          className="h-[300px] w-full"
+          onMouseEnter={() => {
+            setIsHovered(true);
+            chartViewStartTime.current = Date.now();
+          }}
+          onMouseLeave={() => setIsHovered(false)}
+        >
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={data}
               margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+              onClick={handleChartClick}
             >
               <CartesianGrid
                 strokeDasharray="3 3"
