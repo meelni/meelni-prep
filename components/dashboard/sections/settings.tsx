@@ -4,7 +4,6 @@ import { memo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
@@ -13,10 +12,7 @@ import { motion } from "framer-motion";
 import { useTheme } from "next-themes";
 import {
   User,
-  Bell,
-  Shield,
   Palette,
-  Mic,
   Save,
   Trash2,
   AlertTriangle,
@@ -29,22 +25,6 @@ interface SettingsState {
   displayName: string;
   email: string;
 
-  // Interview Preferences
-  defaultInterviewType: string;
-  defaultDifficulty: string;
-  questionRecency: string;
-  autoSaveTranscripts: boolean;
-
-  // Notifications
-  emailNotifications: boolean;
-  sessionCompletionEmail: boolean;
-  feedbackReadyEmail: boolean;
-  weeklyProgressReport: boolean;
-
-  // Privacy
-  shareAnonymousData: boolean;
-  saveTranscripts: boolean;
-
   // Appearance
   theme: string;
 }
@@ -55,16 +35,6 @@ export const SettingsSection = memo(function SettingsSection() {
   const [settings, setSettings] = useState<SettingsState>({
     displayName: user?.user_metadata?.full_name || "",
     email: user?.email || "",
-    defaultInterviewType: "product_sense",
-    defaultDifficulty: "medium",
-    questionRecency: "current",
-    autoSaveTranscripts: true,
-    emailNotifications: true,
-    sessionCompletionEmail: true,
-    feedbackReadyEmail: true,
-    weeklyProgressReport: false,
-    shareAnonymousData: true,
-    saveTranscripts: true,
     theme: "system",
   });
 
@@ -235,215 +205,6 @@ export const SettingsSection = memo(function SettingsSection() {
         </div>
         <BillingSection />
       </div>
-
-      {/* Interview Preferences */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Mic className="w-5 h-5 text-primary" />
-            <CardTitle className="font-display font-light">Interview Preferences</CardTitle>
-          </div>
-          <CardDescription>
-            Set your default preferences for interview sessions.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="interviewType">Default Interview Type</Label>
-              <Select
-                value={settings.defaultInterviewType}
-                onValueChange={(value) => setSettings({ ...settings, defaultInterviewType: value })}
-              >
-                <SelectTrigger id="interviewType">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="product_sense">Product Sense</SelectItem>
-                  <SelectItem value="analytical">Analytical Thinking</SelectItem>
-                  <SelectItem value="behavioral">Leadership & Drive</SelectItem>
-                  <SelectItem value="strategy">Strategy</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="difficulty">Default Difficulty</Label>
-              <Select
-                value={settings.defaultDifficulty}
-                onValueChange={(value) => setSettings({ ...settings, defaultDifficulty: value })}
-              >
-                <SelectTrigger id="difficulty">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="questionRecency">Question Recency Preference</Label>
-            <Select
-              value={settings.questionRecency}
-              onValueChange={(value) => setSettings({ ...settings, questionRecency: value })}
-            >
-              <SelectTrigger id="questionRecency">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current">Current Trends (Last 3 months)</SelectItem>
-                <SelectItem value="recent">Broader Practice (Last year)</SelectItem>
-                <SelectItem value="all">All Questions</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Controls which questions appear in your mock interviews based on when they were asked in real interviews.
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between py-2">
-            <div className="space-y-0.5">
-              <Label>Auto-save Transcripts</Label>
-              <p className="text-sm text-muted-foreground">
-                Automatically save conversation transcripts after each session
-              </p>
-            </div>
-            <Switch
-              checked={settings.autoSaveTranscripts}
-              onCheckedChange={(checked) => setSettings({ ...settings, autoSaveTranscripts: checked })}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Notifications */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Bell className="w-5 h-5 text-primary" />
-            <CardTitle className="font-display font-light">Notifications</CardTitle>
-          </div>
-          <CardDescription>
-            Configure how and when you receive notifications.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between py-2">
-            <div className="space-y-0.5">
-              <Label>Email Notifications</Label>
-              <p className="text-sm text-muted-foreground">
-                Receive notifications via email
-              </p>
-            </div>
-            <Switch
-              checked={settings.emailNotifications}
-              onCheckedChange={(checked) => setSettings({ ...settings, emailNotifications: checked })}
-            />
-          </div>
-
-          <div className="flex items-center justify-between py-2 opacity-60">
-            <div className="space-y-0.5">
-              <Label>Session Completion Alerts</Label>
-              <p className="text-sm text-muted-foreground">
-                Get notified when an interview session is completed
-              </p>
-            </div>
-            <Switch
-              checked={settings.sessionCompletionEmail}
-              disabled={!settings.emailNotifications}
-              onCheckedChange={(checked) => setSettings({ ...settings, sessionCompletionEmail: checked })}
-            />
-          </div>
-
-          <div className="flex items-center justify-between py-2 opacity-60">
-            <div className="space-y-0.5">
-              <Label>Feedback Ready Notifications</Label>
-              <p className="text-sm text-muted-foreground">
-                Get notified when your interview feedback is ready
-              </p>
-            </div>
-            <Switch
-              checked={settings.feedbackReadyEmail}
-              disabled={!settings.emailNotifications}
-              onCheckedChange={(checked) => setSettings({ ...settings, feedbackReadyEmail: checked })}
-            />
-          </div>
-
-          <div className="flex items-center justify-between py-2 opacity-60">
-            <div className="space-y-0.5">
-              <Label>Weekly Progress Report</Label>
-              <p className="text-sm text-muted-foreground">
-                Receive a weekly summary of your interview practice progress
-              </p>
-            </div>
-            <Switch
-              checked={settings.weeklyProgressReport}
-              disabled={!settings.emailNotifications}
-              onCheckedChange={(checked) => setSettings({ ...settings, weeklyProgressReport: checked })}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Privacy & Data */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-primary" />
-            <CardTitle className="font-display font-light">Privacy & Data</CardTitle>
-          </div>
-          <CardDescription>
-            Control how your data is used and stored.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between py-2">
-            <div className="space-y-0.5">
-              <Label>Share Anonymous Usage Data</Label>
-              <p className="text-sm text-muted-foreground">
-                Help improve Meelni by sharing anonymous usage analytics
-              </p>
-            </div>
-            <Switch
-              checked={settings.shareAnonymousData}
-              onCheckedChange={(checked) => setSettings({ ...settings, shareAnonymousData: checked })}
-            />
-          </div>
-
-          <div className="flex items-center justify-between py-2">
-            <div className="space-y-0.5">
-              <Label>Save Interview Transcripts</Label>
-              <p className="text-sm text-muted-foreground">
-                Store your interview transcripts for review and analysis
-              </p>
-            </div>
-            <Switch
-              checked={settings.saveTranscripts}
-              onCheckedChange={(checked) => setSettings({ ...settings, saveTranscripts: checked })}
-            />
-          </div>
-
-          <div className="pt-4 border-t border-border">
-            <Button
-              variant="outline"
-              className="w-full md:w-auto"
-              onClick={() => {
-                // TODO: Implement data export
-                alert("Data export feature coming soon!");
-              }}
-            >
-              Export My Data
-            </Button>
-            <p className="text-xs text-muted-foreground mt-2">
-              Download all your interview data, transcripts, and feedback in JSON format.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Appearance */}
       <Card className="bg-card border-border">
