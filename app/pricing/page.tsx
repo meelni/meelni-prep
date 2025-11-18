@@ -49,6 +49,7 @@ const pricingTiers: PricingTier[] = [
     features: [
       { text: "3 AI mock interviews per month", included: true },
       { text: "Product Sense questions only", included: true },
+      { text: "View-only question bank", included: true },
       { text: "Basic scoring (overall + 4 dimensions)", included: true },
       { text: "Last 5 sessions visible", included: true },
       { text: "Community support", included: true },
@@ -71,37 +72,14 @@ const pricingTiers: PricingTier[] = [
       { text: "UNLIMITED AI mock interviews", included: true },
       { text: "All 4 interview types (PS/Analytical/Leadership/Strategy)", included: true },
       { text: "2,879 curated PM questions", included: true },
+      { text: "Product Sense, Analytical, Leadership & Strategy", included: true },
+      { text: "Full session history & analytics", included: true },
       { text: "Detailed framework-based feedback + rubrics", included: true },
-      { text: "Full analytics dashboard with trends", included: true },
-      { text: "Unlimited transcript history", included: true },
       { text: "All difficulty levels (Junior → Senior PM)", included: true },
       { text: "PDF export of feedback reports", included: true },
       { text: "Email support (24h response)", included: true },
-      { text: "Advanced analytics & benchmarks", included: false },
-      { text: "Custom improvement drills", included: false },
-      { text: "Priority support", included: false },
     ],
     cta: "Start 7-Day Free Trial",
-    trial: "Cancel anytime",
-  },
-  {
-    name: "Premium",
-    tagline: "For power users & career switchers",
-    monthlyPrice: 79,
-    annualPrice: 699,
-    annualSavings: 249,
-    icon: Crown,
-    features: [
-      { text: "Everything in Pro, PLUS:", included: true },
-      { text: "Advanced analytics & competitive benchmarks", included: true },
-      { text: "Custom improvement drills tailored to weaknesses", included: true },
-      { text: "Early access to new questions & features", included: true },
-      { text: "API access for data export", included: true },
-      { text: "Priority support + monthly office hours", included: true },
-      { text: "Custom question uploads (for specific companies)", included: true },
-      { text: "Adaptive difficulty AI (learns your level)", included: true },
-    ],
-    cta: "Start 14-Day Free Trial",
     trial: "Cancel anytime",
   },
 ];
@@ -110,7 +88,7 @@ const faqs = [
   {
     question: "How does the free trial work?",
     answer:
-      "Pro tier offers a 7-day free trial, and Premium offers a 14-day free trial. You'll need to enter a credit card, but you won't be charged until the trial ends. Cancel anytime before the trial expires and you won't pay anything.",
+      "Pro tier offers a 7-day free trial. You'll need to enter a credit card, but you won't be charged until the trial ends. Cancel anytime before the trial expires and you won't pay anything.",
   },
   {
     question: "Can I upgrade or downgrade my plan?",
@@ -125,7 +103,7 @@ const faqs = [
   {
     question: "Do annual plans auto-renew?",
     answer:
-      "Yes, both monthly and annual plans auto-renew unless you cancel. We'll send you an email reminder before each renewal. Annual subscribers save 30% compared to monthly billing.",
+      "Yes, both monthly and annual plans auto-renew unless you cancel. We'll send you an email reminder before each renewal. Annual subscribers save 20% compared to monthly billing.",
   },
   {
     question: "What's your refund policy?",
@@ -140,7 +118,7 @@ const faqs = [
   {
     question: "Can I switch between monthly and annual billing?",
     answer:
-      "Yes! You can switch from monthly to annual billing at any time to start saving 30%. If you're switching from annual to monthly, the change will take effect at the end of your current annual period.",
+      "Yes! You can switch from monthly to annual billing at any time to start saving 20%. If you're switching from annual to monthly, the change will take effect at the end of your current annual period.",
   },
   {
     question: "Is there a team or enterprise plan?",
@@ -262,7 +240,7 @@ export default function PricingPage() {
             >
               Annual
               <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                Save 30%
+                Save 20%
               </span>
             </span>
           </motion.div>
@@ -277,7 +255,7 @@ export default function PricingPage() {
           initial="initial"
           animate="animate"
         >
-          <div className="grid gap-8 lg:grid-cols-3">
+          <div className="grid gap-8 lg:grid-cols-2 max-w-4xl mx-auto">
             {pricingTiers.map((tier, index) => {
               const Icon = tier.icon;
               const displayPrice =
@@ -403,7 +381,6 @@ export default function PricingPage() {
                     <th className="px-6 py-4 text-left text-sm font-semibold">Feature</th>
                     <th className="px-6 py-4 text-center text-sm font-semibold">Free</th>
                     <th className="px-6 py-4 text-center text-sm font-semibold">Pro</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold">Premium</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -415,37 +392,27 @@ export default function PricingPage() {
                     <td className="px-6 py-4 text-center text-sm font-semibold text-primary">
                       Unlimited
                     </td>
-                    <td className="px-6 py-4 text-center text-sm font-semibold text-primary">
-                      Unlimited
-                    </td>
                   </tr>
                   <tr>
                     <td className="px-6 py-4 text-sm">Interview types</td>
                     <td className="px-6 py-4 text-center text-sm text-muted-foreground">
-                      Product Sense
+                      Product Sense only
                     </td>
                     <td className="px-6 py-4 text-center text-sm">All 4 types</td>
-                    <td className="px-6 py-4 text-center text-sm">All 4 + Custom</td>
                   </tr>
                   <tr>
                     <td className="px-6 py-4 text-sm">Question bank</td>
                     <td className="px-6 py-4 text-center text-sm text-muted-foreground">
-                      100 questions
+                      View-only
                     </td>
                     <td className="px-6 py-4 text-center text-sm">2,879 questions</td>
-                    <td className="px-6 py-4 text-center text-sm">
-                      2,879 + Early access
-                    </td>
                   </tr>
                   <tr>
                     <td className="px-6 py-4 text-sm">Difficulty levels</td>
                     <td className="px-6 py-4 text-center text-sm text-muted-foreground">
-                      Intermediate
+                      Intermediate only
                     </td>
                     <td className="px-6 py-4 text-center text-sm">Junior to Senior</td>
-                    <td className="px-6 py-4 text-center text-sm">
-                      All + Adaptive AI
-                    </td>
                   </tr>
                   <tr>
                     <td className="px-6 py-4 text-sm">AI feedback</td>
@@ -454,9 +421,6 @@ export default function PricingPage() {
                     </td>
                     <td className="px-6 py-4 text-center text-sm">
                       Detailed framework rubric
-                    </td>
-                    <td className="px-6 py-4 text-center text-sm">
-                      Detailed + Improvement drills
                     </td>
                   </tr>
                   <tr>
@@ -467,9 +431,13 @@ export default function PricingPage() {
                     <td className="px-6 py-4 text-center text-sm">
                       <Check className="mx-auto h-5 w-5 text-primary" />
                     </td>
-                    <td className="px-6 py-4 text-center text-sm">
-                      <Check className="mx-auto h-5 w-5 text-primary" />
+                  </tr>
+                  <tr>
+                    <td className="px-6 py-4 text-sm">Session history</td>
+                    <td className="px-6 py-4 text-center text-sm text-muted-foreground">
+                      Last 5 sessions
                     </td>
+                    <td className="px-6 py-4 text-center text-sm">Unlimited history</td>
                   </tr>
                   <tr>
                     <td className="px-6 py-4 text-sm">PDF export</td>
@@ -479,7 +447,6 @@ export default function PricingPage() {
                     <td className="px-6 py-4 text-center text-sm">
                       <Check className="mx-auto h-5 w-5 text-primary" />
                     </td>
-                    <td className="px-6 py-4 text-center text-sm">PDF + CSV + API</td>
                   </tr>
                   <tr>
                     <td className="px-6 py-4 text-sm">Support</td>
@@ -487,9 +454,6 @@ export default function PricingPage() {
                       Community
                     </td>
                     <td className="px-6 py-4 text-center text-sm">Email (24h)</td>
-                    <td className="px-6 py-4 text-center text-sm">
-                      Priority + Office hours
-                    </td>
                   </tr>
                 </tbody>
               </table>
