@@ -30,9 +30,9 @@
  * @response.config {Object} - Session configuration used
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
- * @throws {403} Forbidden - Monthly interview quota exceeded (Free tier: 3/month, see upgradeUrl in response)
+ * @throws {403} Forbidden - Interview type locked (requires upgrade) or monthly quota exceeded (Free tier: 3/month)
  * @throws {400} Bad Request - Missing roundType or invalid roundType value
- * @throws {503} Service Unavailable - Unable to verify quota (billing service down)
+ * @throws {503} Service Unavailable - Unable to verify permissions or quota (service down)
  * @throws {500} Internal Server Error - Database error, LiveKit configuration error, or agent dispatch failure
  *
  * @example
@@ -78,6 +78,16 @@
  *   "error": "Unauthorized"
  * }
  *
+ * // Error Response (403 Forbidden - Interview Type Locked)
+ * {
+ *   "error": "interview_type_locked",
+ *   "message": "Execution interviews require a Pro subscription. Upgrade to unlock all 4 interview types.",
+ *   "currentTier": "free",
+ *   "requestedType": "execution",
+ *   "allowedTypes": ["product_sense"],
+ *   "upgradeUrl": "/pricing"
+ * }
+ *
  * // Error Response (403 Forbidden - Quota Exceeded)
  * {
  *   "error": "quota_exceeded",
@@ -101,6 +111,13 @@ import { upsertUser } from "@/lib/db/users";
 import { getRandomQuestion, getRandomRecentQuestion, recordQuestionUsage } from "@/lib/db/questions";
 import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
 import { incrementUsage } from "@/lib/services/usage-service";
+import { getUserTier } from "@/lib/services/permissions-service.server";
+import {
+  canAccessInterviewType,
+  getAllowedInterviewTypes,
+  INTERVIEW_TYPE_LABELS,
+  type RoundType,
+} from "@/lib/services/permissions-service";
 
 const livekit_api_key = process.env.LIVEKIT_API_KEY;
 const livekit_api_secret = process.env.LIVEKIT_API_SECRET;
@@ -118,6 +135,71 @@ export async function POST(req: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Parse request body first to access roundType
+    const body = await req.json();
+    const {
+      roundType,
+      mode = "voice_video",
+      role = "pm",
+      persona,
+      config,
+      questionId, // Optional: pre-selected question ID from question bank
+    } = body;
+
+    // Validate required fields
+    if (!roundType) {
+      return NextResponse.json(
+        { error: "roundType is required" },
+        { status: 400 }
+      );
+    }
+
+    // Validate roundType
+    const validRoundTypes = [
+      "behavioral",
+      "product_sense",
+      "execution",
+      "strategy",
+    ];
+    if (!validRoundTypes.includes(roundType)) {
+      return NextResponse.json(
+        { error: "Invalid roundType" },
+        { status: 400 }
+      );
+    }
+
+    // Tier-based access control: Check if user can access this interview type
+    try {
+      const userTier = await getUserTier(user.id);
+
+      if (!canAccessInterviewType(userTier, roundType as RoundType)) {
+        const allowedTypes = getAllowedInterviewTypes(userTier);
+        const requestedTypeLabel = INTERVIEW_TYPE_LABELS[roundType as RoundType];
+
+        return NextResponse.json(
+          {
+            error: "interview_type_locked",
+            message: `${requestedTypeLabel} interviews require a Pro subscription. Upgrade to unlock all 4 interview types.`,
+            currentTier: userTier,
+            requestedType: roundType,
+            allowedTypes: allowedTypes,
+            upgradeUrl: "/pricing",
+          },
+          { status: 403 }
+        );
+      }
+    } catch (error: any) {
+      console.error("Permissions check error:", error.message);
+      // Fail closed: return 503 if permissions service is unavailable
+      return NextResponse.json(
+        {
+          error: "service_unavailable",
+          message: "Unable to verify interview type access. Please try again in a moment.",
+        },
+        { status: 503 }
+      );
     }
 
     // Quota enforcement: Check and increment usage atomically
@@ -157,39 +239,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
-      );
-    }
-
-    // Parse request body
-    const body = await req.json();
-    const {
-      roundType,
-      mode = "voice_video",
-      role = "pm",
-      persona,
-      config,
-      questionId, // Optional: pre-selected question ID from question bank
-    } = body;
-
-    // Validate required fields
-    if (!roundType) {
-      return NextResponse.json(
-        { error: "roundType is required" },
-        { status: 400 }
-      );
-    }
-
-    // Validate roundType
-    const validRoundTypes = [
-      "behavioral",
-      "product_sense",
-      "execution",
-      "strategy",
-    ];
-    if (!validRoundTypes.includes(roundType)) {
-      return NextResponse.json(
-        { error: "Invalid roundType" },
-        { status: 400 }
       );
     }
 
