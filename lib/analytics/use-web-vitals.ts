@@ -20,6 +20,8 @@ export function useWebVitals(pageName: string) {
     script.src = vitalsUrl
     script.async = true
 
+    let timeoutId: NodeJS.Timeout | null = null
+
     script.onload = () => {
       if (window.webVitals) {
         const { onLCP, onFID, onCLS, onTTFB, onFCP } = window.webVitals
@@ -34,18 +36,29 @@ export function useWebVitals(pageName: string) {
 
         let reportedMetricsCount = 0
         const totalMetrics = 5 // LCP, FID, CLS, TTFB, FCP
+        let hasReported = false // Prevent duplicate reports
 
         // Track when all metrics are collected
         const maybeReport = () => {
           reportedMetricsCount++
 
           // Report when we have all metrics, or after 10s timeout
-          if (reportedMetricsCount >= totalMetrics) {
+          if (reportedMetricsCount >= totalMetrics && !hasReported) {
             reportVitals()
           }
         }
 
         const reportVitals = () => {
+          if (hasReported) return // Prevent duplicate reports
+
+          hasReported = true
+
+          // Clear timeout if we're reporting early
+          if (timeoutId) {
+            clearTimeout(timeoutId)
+            timeoutId = null
+          }
+
           analytics.track('page_performance', {
             page: pageName,
             ...vitalsData,
@@ -53,8 +66,8 @@ export function useWebVitals(pageName: string) {
         }
 
         // Set timeout to report after 10s even if not all metrics available
-        setTimeout(() => {
-          if (reportedMetricsCount > 0 && reportedMetricsCount < totalMetrics) {
+        timeoutId = setTimeout(() => {
+          if (reportedMetricsCount > 0 && !hasReported) {
             reportVitals()
           }
         }, 10000)
@@ -98,8 +111,15 @@ export function useWebVitals(pageName: string) {
 
     document.head.appendChild(script)
 
-    // Cleanup
+    // Cleanup function to prevent memory leaks
     return () => {
+      // Clear timeout to prevent memory leak
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+
+      // Remove script tag
       if (script.parentNode) {
         script.parentNode.removeChild(script)
       }
