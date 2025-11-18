@@ -18,6 +18,7 @@ import { RoundSelector } from "./components/round-selector";
 import { DifficultySelector } from "./components/difficulty-selector";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import { QuotaExceededModal } from "@/components/dashboard/quota-exceeded-modal";
+import { TierUpgradeModal } from "@/components/dashboard/tier-upgrade-modal";
 
 export default function SetupPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -36,6 +37,14 @@ export default function SetupPage() {
     currentUsage: number;
     limit: number;
     resetDate: string | null;
+  } | null>(null);
+
+  // Tier upgrade modal state
+  const [showTierUpgradeModal, setShowTierUpgradeModal] = useState(false);
+  const [tierUpgradeInfo, setTierUpgradeInfo] = useState<{
+    requestedType: RoundType;
+    currentTier: string;
+    message: string;
   } | null>(null);
 
   // Redirect if not authenticated
@@ -100,6 +109,18 @@ export default function SetupPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
+
+        // Handle interview type locked error
+        if (response.status === 403 && errorData.error === "interview_type_locked") {
+          setTierUpgradeInfo({
+            requestedType: roundType,
+            currentTier: errorData.currentTier || "free",
+            message: errorData.message || "This interview type requires a Pro subscription",
+          });
+          setShowTierUpgradeModal(true);
+          setIsCreatingSession(false);
+          return;
+        }
 
         // Handle quota exceeded error
         if (response.status === 403 && errorData.error === "quota_exceeded") {
@@ -324,6 +345,17 @@ export default function SetupPage() {
           </motion.div>
         </motion.div>
       </main>
+
+      {/* Tier Upgrade Modal */}
+      {tierUpgradeInfo && (
+        <TierUpgradeModal
+          isOpen={showTierUpgradeModal}
+          onClose={() => setShowTierUpgradeModal(false)}
+          requestedType={tierUpgradeInfo.requestedType}
+          currentTier={tierUpgradeInfo.currentTier}
+          message={tierUpgradeInfo.message}
+        />
+      )}
 
       {/* Quota Exceeded Modal */}
       {quotaInfo && (
