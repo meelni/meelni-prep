@@ -25,6 +25,7 @@ import {
   INTERVIEW_TYPE_LABELS,
   type SubscriptionTier,
 } from "@/lib/services/permissions-service";
+import { track, AnalyticsEvents } from "@/lib/analytics";
 
 export default function SetupPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -91,6 +92,13 @@ export default function SetupPage() {
         setAllowedTypes(getAllowedInterviewTypes(tier));
         setLockedTypes(getLockedInterviewTypes(tier));
         setIsLoadingSubscription(false);
+
+        // Track setup page view with tier context
+        track(AnalyticsEvents.SETUP_PAGE_VIEWED, {
+          userTier: tier,
+          allowedTypesCount: getAllowedInterviewTypes(tier).length,
+          lockedTypesCount: getLockedInterviewTypes(tier).length,
+        });
       } catch (error) {
         console.error("Error fetching subscription:", error);
         // Default to free tier on error
@@ -105,6 +113,13 @@ export default function SetupPage() {
   }, [user]);
 
   const handleLockedTypeClick = (requestedType: RoundType) => {
+    // Track which locked interview type was clicked
+    track(AnalyticsEvents.LOCKED_TYPE_CLICKED, {
+      interviewType: requestedType,
+      interviewTypeLabel: INTERVIEW_TYPE_LABELS[requestedType],
+      currentTier: userTier,
+    });
+
     setTierUpgradeInfo({
       requestedType,
       currentTier: userTier,
