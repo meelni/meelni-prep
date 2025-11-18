@@ -84,7 +84,14 @@ export function BillingSection() {
           throw new Error("Failed to fetch usage");
         }
         const data = await response.json();
-        setUsage(data);
+
+        // Map API response to component state
+        setUsage({
+          currentUsage: data.interviewsUsed,
+          limit: data.interviewsLimit === -1 ? null : data.interviewsLimit,
+          periodStart: data.periodStart,
+          periodEnd: data.periodEnd,
+        });
       } catch (err) {
         console.error("Error fetching usage:", err);
         setError("Failed to load usage data");
@@ -214,15 +221,7 @@ export function BillingSection() {
   const showUpgradeBanner = subscription?.tier === "free" && (usage?.currentUsage || 0) >= 1;
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <h2 className="text-2xl font-display font-light text-foreground">Billing & Subscription</h2>
-        <p className="text-muted-foreground font-sans">
-          Manage your subscription, view usage, and access payment history.
-        </p>
-      </div>
-
+    <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Subscription Card */}
         <Card className="bg-card border-border">
@@ -241,7 +240,9 @@ export function BillingSection() {
                     {subscription.tier.toUpperCase()}
                   </Badge>
                   <Badge variant={getStatusBadgeVariant(subscription.status)} className="text-xs">
-                    {subscription.status.replace("_", " ").toUpperCase()}
+                    {subscription.status === "trialing"
+                      ? "FREE TRIAL"
+                      : subscription.status.replace("_", " ").toUpperCase()}
                   </Badge>
                 </div>
 
@@ -258,10 +259,24 @@ export function BillingSection() {
                     </div>
                     {subscription.currentPeriodEnd && (
                       <p className="text-sm text-muted-foreground">
-                        {subscription.cancelAtPeriodEnd ? "Ends on" : "Renews on"}{" "}
+                        {subscription.status === "trialing"
+                          ? "Trial ends on"
+                          : subscription.cancelAtPeriodEnd
+                            ? "Ends on"
+                            : "Renews on"}{" "}
                         {formatDate(subscription.currentPeriodEnd)}
                       </p>
                     )}
+                  </div>
+                )}
+
+                {/* Trial status message */}
+                {subscription.status === "trialing" && (
+                  <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                    <p className="text-sm text-foreground">
+                      <strong>Free Trial Active</strong> - You have full access to {subscription.tier.toUpperCase()} features.
+                      No charges until your trial ends.
+                    </p>
                   </div>
                 )}
 
