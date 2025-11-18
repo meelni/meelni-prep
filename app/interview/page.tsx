@@ -19,6 +19,7 @@ import {
 } from "@/components/interview/nudge-overlay";
 import { useLocalParticipant } from "@livekit/components-react";
 import { RoomAudioRenderer } from "@livekit/components-react";
+import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { Loader2, AlertCircle } from "lucide-react";
 import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
 
@@ -39,6 +40,9 @@ function InterviewPageContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
+
+  // Track Web Vitals performance
+  useWebVitals('interview');
 
   // Config from Setup Modal (query params)
   const roundType = searchParams.get("roundType");

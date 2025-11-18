@@ -16,6 +16,7 @@ import { Track } from "livekit-client";
 import { ConnectionState } from "livekit-client";
 import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 // Transcript message type
 interface TranscriptMessage {
@@ -93,7 +94,19 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
 }
 
 // Main Controls Component
-function DemoControls({ onClose }: { onClose: () => void }) {
+function DemoControls({
+  onClose,
+  demoStartTime,
+  onAgentJoined,
+  onUserSpoke,
+  onDemoCompleted,
+}: {
+  onClose: () => void;
+  demoStartTime: React.MutableRefObject<number | undefined>;
+  onAgentJoined: () => void;
+  onUserSpoke: () => void;
+  onDemoCompleted: () => void;
+}) {
   const { state, audioTrack } = useVoiceAssistant();
   const connectionState = useConnectionState();
   const room = useRoomContext();
@@ -101,11 +114,19 @@ function DemoControls({ onClose }: { onClose: () => void }) {
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
   const [sessionEnded, setSessionEnded] = useState(false);
+  const demoCompletedTracked = useRef(false);
 
   // Debounced agent state to prevent flickering during speech pauses
   const [debouncedAgentState, setDebouncedAgentState] = useState<string>("idle");
   const stateChangeTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastSpeakingTimeRef = useRef<number>(0);
+
+  // Track agent join
+  useEffect(() => {
+    if (connectionState === ConnectionState.Connected && room?.remoteParticipants.size > 0) {
+      onAgentJoined();
+    }
+  }, [connectionState, room?.remoteParticipants.size, onAgentJoined]);
 
   // Audio reactivity for Orb (same as interview page)
   const userVolume = useTrackVolume(audioTrack?.publication?.track as any);
@@ -216,6 +237,11 @@ function DemoControls({ onClose }: { onClose: () => void }) {
           const speaker = isAgentParticipant ? "agent" : "user";
           const messageId = `${speaker}-${Date.now()}`;
 
+          // Track if user spoke
+          if (speaker === "user" && segment.final) {
+            onUserSpoke();
+          }
+
           const newMessage: TranscriptMessage = {
             id: messageId,
             speaker: speaker,
@@ -275,8 +301,34 @@ function DemoControls({ onClose }: { onClose: () => void }) {
       const newMutedState = !isMuted;
       (audioTrack as any).setMuted(newMutedState);
       setIsMuted(newMutedState);
+
+      // Track mic toggle
+      if (demoStartTime.current) {
+        const timeInDemo = (Date.now() - demoStartTime.current) / 1000;
+        analytics.track("demo_mic_toggled", {
+          new_state: newMutedState ? "muted" : "unmuted",
+          time_in_demo_seconds: Math.floor(timeInDemo),
+        });
+      }
     }
   };
+
+  // Track demo completion when session ends
+  useEffect(() => {
+    if (sessionEnded && !demoCompletedTracked.current && demoStartTime.current) {
+      demoCompletedTracked.current = true;
+      onDemoCompleted();
+
+      const duration = (Date.now() - demoStartTime.current) / 1000;
+      const turnCount = messages.filter((msg) => msg.isFinal).length;
+
+      analytics.track("demo_completed", {
+        duration_seconds: Math.floor(duration),
+        turn_count: turnCount,
+        converted_to_signup: false, // Will be updated if user clicks "Start Full Interview"
+      });
+    }
+  }, [sessionEnded, demoStartTime, messages, onDemoCompleted]);
 
   const isConnected = connectionState === ConnectionState.Connected;
   // Use debounced state for UI display to prevent flickering
@@ -354,6 +406,16 @@ function DemoControls({ onClose }: { onClose: () => void }) {
                 </div>
                 <Link
                   href="/setup"
+                  onClick={() => {
+                    // Track conversion to signup
+                    if (demoStartTime.current) {
+                      analytics.track("demo_completed", {
+                        duration_seconds: Math.floor((Date.now() - demoStartTime.current) / 1000),
+                        turn_count: messages.filter((msg) => msg.isFinal).length,
+                        converted_to_signup: true,
+                      });
+                    }
+                  }}
                   className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-background px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105"
                 >
                   Start Full Interview
@@ -505,11 +567,16 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
   const [url, setUrl] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
+  const demoStartTime = useRef<number | undefined>(undefined);
+  const [agentJoined, setAgentJoined] = useState(false);
+  const [userSpoke, setUserSpoke] = useState(false);
+  const [demoCompleted, setDemoCompleted] = useState(false);
 
-  // Body scroll lock
+  // Body scroll lock and start time tracking
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
+      demoStartTime.current = Date.now();
     } else {
       document.body.style.overflow = "unset";
     }
@@ -571,10 +638,25 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
   };
 
   const handleClose = () => {
+    // Track demo close
+    if (demoStartTime.current) {
+      const duration = (Date.now() - demoStartTime.current) / 1000;
+
+      analytics.track("demo_modal_closed", {
+        duration_seconds: Math.floor(duration),
+        completed: demoCompleted,
+        agent_joined: agentJoined,
+        user_spoke: userSpoke,
+      });
+    }
+
     // Reset state when closing
     setToken("");
     setUrl("");
     setError("");
+    setAgentJoined(false);
+    setUserSpoke(false);
+    setDemoCompleted(false);
     onClose();
   };
 
@@ -654,7 +736,13 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
                   onDisconnected={handleClose}
                   className="h-full w-full"
                 >
-                  <DemoControls onClose={handleClose} />
+                  <DemoControls
+                    onClose={handleClose}
+                    demoStartTime={demoStartTime}
+                    onAgentJoined={() => setAgentJoined(true)}
+                    onUserSpoke={() => setUserSpoke(true)}
+                    onDemoCompleted={() => setDemoCompleted(true)}
+                  />
                   <RoomAudioRenderer />
                 </LiveKitRoom>
               )}

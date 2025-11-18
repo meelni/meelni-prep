@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/app/providers/theme-provider";
 import { AnalyticsPageview } from "@/app/providers/analytics-pageview";
 import { PostHogProvider } from "@/lib/analytics/posthog-provider";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { Toaster } from "sonner";
 
 // Using Outfit as a free alternative to Everett - similar elegant, geometric feel
@@ -73,13 +74,15 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <QueryProvider>
-              <AuthProvider>
-                {children}
-                <Toaster position="top-right" duration={3000} />
-                <CookieConsentBanner />
-              </AuthProvider>
-            </QueryProvider>
+            <ErrorBoundary>
+              <QueryProvider>
+                <AuthProvider>
+                  {children}
+                  <Toaster position="top-right" duration={3000} />
+                  <CookieConsentBanner />
+                </AuthProvider>
+              </QueryProvider>
+            </ErrorBoundary>
           </ThemeProvider>
         </PostHogProvider>
       </body>
