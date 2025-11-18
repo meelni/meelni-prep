@@ -1,14 +1,18 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Users, Lightbulb, Target, TrendingUp } from "lucide-react";
+import { Users, Lightbulb, Target, TrendingUp, Lock } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { ROUND_TYPES, RoundType } from "@/lib/interview-config";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
+import { getRequiredTierBadge } from "@/lib/services/permissions-service";
 
 interface RoundSelectorProps {
   selected: RoundType | null;
   onSelect: (roundType: RoundType) => void;
+  lockedTypes?: RoundType[];
+  onLockedClick?: (roundType: RoundType) => void;
 }
 
 const iconMap = {
@@ -18,7 +22,30 @@ const iconMap = {
   TrendingUp,
 };
 
-export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
+export function RoundSelector({
+  selected,
+  onSelect,
+  lockedTypes = [],
+  onLockedClick,
+}: RoundSelectorProps) {
+  // Get all interview types in original order
+  const allRoundTypes = Object.keys(ROUND_TYPES) as RoundType[];
+
+  // Only sort if there are locked types (free tier)
+  // For Pro/Premium (no locked types), maintain original order to prevent flash
+  const sortedRoundTypes = lockedTypes.length > 0
+    ? allRoundTypes.sort((a, b) => {
+        const aLocked = lockedTypes.includes(a);
+        const bLocked = lockedTypes.includes(b);
+
+        // If both locked or both unlocked, maintain original order
+        if (aLocked === bLocked) return 0;
+
+        // Unlocked types come first
+        return aLocked ? 1 : -1;
+      })
+    : allRoundTypes;
+
   return (
     <motion.div
       variants={staggerContainer}
@@ -26,24 +53,35 @@ export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
       animate="animate"
       className="grid gap-3 md:grid-cols-2"
     >
-      {(Object.keys(ROUND_TYPES) as RoundType[]).map((roundType) => {
+      {sortedRoundTypes.map((roundType) => {
         const config = ROUND_TYPES[roundType];
         const Icon = iconMap[config.icon as keyof typeof iconMap];
         const isSelected = selected === roundType;
+        const isLocked = lockedTypes.includes(roundType);
+        const tierBadge = isLocked ? getRequiredTierBadge(roundType) : "";
+
+        const handleClick = () => {
+          if (isLocked && onLockedClick) {
+            onLockedClick(roundType);
+          } else if (!isLocked) {
+            onSelect(roundType);
+          }
+        };
 
         return (
           <motion.div key={roundType} variants={fadeInUp} className="h-full">
             <Card
               className={`
-                relative cursor-pointer transition-all duration-200 p-4 h-full
-                hover:scale-[1.02] hover:shadow-lg
+                relative transition-all duration-200 p-4 h-full cursor-pointer
+                ${isLocked ? "opacity-60" : "hover:scale-[1.02] hover:shadow-lg"}
                 ${
-                  isSelected
+                  isSelected && !isLocked
                     ? "border-primary shadow-md ring-2 ring-primary/20"
-                    : "border-border hover:border-primary/50"
+                    : "border-border"
                 }
+                ${!isLocked && !isSelected ? "hover:border-primary/50" : ""}
               `}
-              onClick={() => onSelect(roundType)}
+              onClick={handleClick}
             >
               {/* Gradient background on hover/select */}
               <div
@@ -84,8 +122,32 @@ export function RoundSelector({ selected, onSelect }: RoundSelectorProps) {
                   {config.description}
                 </p>
 
+                {/* Lock overlay for locked types */}
+                {isLocked && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-xl backdrop-blur-[2px]">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                        <Lock className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Click to upgrade
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pro badge for locked types */}
+                {isLocked && tierBadge && (
+                  <Badge
+                    variant="outline"
+                    className="absolute top-3 right-3 border-primary/50 text-primary bg-primary/10 font-semibold"
+                  >
+                    {tierBadge}
+                  </Badge>
+                )}
+
                 {/* Selection indicator */}
-                {isSelected && (
+                {isSelected && !isLocked && (
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}

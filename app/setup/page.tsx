@@ -17,6 +17,15 @@ import { validateSessionStart } from "@/lib/validation/setup-schema";
 import { RoundSelector } from "./components/round-selector";
 import { DifficultySelector } from "./components/difficulty-selector";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
+import { QuotaExceededModal } from "@/components/dashboard/quota-exceeded-modal";
+import { TierUpgradeModal } from "@/components/dashboard/tier-upgrade-modal";
+import {
+  getAllowedInterviewTypes,
+  getLockedInterviewTypes,
+  INTERVIEW_TYPE_LABELS,
+  type SubscriptionTier,
+} from "@/lib/services/permissions-service";
+import { track, AnalyticsEvents } from "@/lib/analytics";
 
 export default function SetupPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -29,12 +38,95 @@ export default function SetupPage() {
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Subscription/tier state
+  // Initialize with free tier defaults to prevent flash of unlocked content
+  const [userTier, setUserTier] = useState<SubscriptionTier>("free");
+  const [allowedTypes, setAllowedTypes] = useState<RoundType[]>(getAllowedInterviewTypes("free"));
+  const [lockedTypes, setLockedTypes] = useState<RoundType[]>(getLockedInterviewTypes("free"));
+  const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
+
+  // Quota exceeded modal state
+  const [showQuotaModal, setShowQuotaModal] = useState(false);
+  const [quotaInfo, setQuotaInfo] = useState<{
+    currentUsage: number;
+    limit: number;
+    resetDate: string | null;
+  } | null>(null);
+
+  // Tier upgrade modal state
+  const [showTierUpgradeModal, setShowTierUpgradeModal] = useState(false);
+  const [tierUpgradeInfo, setTierUpgradeInfo] = useState<{
+    requestedType: RoundType;
+    currentTier: string;
+    message: string;
+  } | null>(null);
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/auth/signin?redirectTo=/setup");
     }
   }, [user, authLoading, router]);
+
+  // Fetch user subscription on mount
+  useEffect(() => {
+    async function fetchSubscription() {
+      if (!user) return;
+
+      try {
+        const response = await fetch("/api/billing/subscription");
+        if (!response.ok) {
+          console.error("Failed to fetch subscription");
+          // Default to free tier on error
+          setUserTier("free");
+          setAllowedTypes(getAllowedInterviewTypes("free"));
+          setLockedTypes(getLockedInterviewTypes("free"));
+          setIsLoadingSubscription(false);
+          return;
+        }
+
+        const data = await response.json();
+        const tier = (data.tier || "free") as SubscriptionTier;
+
+        setUserTier(tier);
+        setAllowedTypes(getAllowedInterviewTypes(tier));
+        setLockedTypes(getLockedInterviewTypes(tier));
+        setIsLoadingSubscription(false);
+
+        // Track setup page view with tier context
+        track(AnalyticsEvents.SETUP_PAGE_VIEWED, {
+          userTier: tier,
+          allowedTypesCount: getAllowedInterviewTypes(tier).length,
+          lockedTypesCount: getLockedInterviewTypes(tier).length,
+        });
+      } catch (error) {
+        console.error("Error fetching subscription:", error);
+        // Default to free tier on error
+        setUserTier("free");
+        setAllowedTypes(getAllowedInterviewTypes("free"));
+        setLockedTypes(getLockedInterviewTypes("free"));
+        setIsLoadingSubscription(false);
+      }
+    }
+
+    fetchSubscription();
+  }, [user]);
+
+  const handleLockedTypeClick = (requestedType: RoundType) => {
+    // Track which locked interview type was clicked
+    track(AnalyticsEvents.LOCKED_TYPE_CLICKED, {
+      interviewType: requestedType,
+      interviewTypeLabel: INTERVIEW_TYPE_LABELS[requestedType],
+      currentTier: userTier,
+    });
+
+    setTierUpgradeInfo({
+      requestedType,
+      currentTier: userTier,
+      message: `${INTERVIEW_TYPE_LABELS[requestedType]} interviews require a Pro subscription. Upgrade to unlock all 4 interview types.`,
+    });
+    setShowTierUpgradeModal(true);
+  };
 
   const handleStartInterview = async () => {
     if (!roundType || !difficulty) {
@@ -91,6 +183,31 @@ export default function SetupPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
+
+        // Handle interview type locked error
+        if (response.status === 403 && errorData.error === "interview_type_locked") {
+          setTierUpgradeInfo({
+            requestedType: roundType,
+            currentTier: errorData.currentTier || "free",
+            message: errorData.message || "This interview type requires a Pro subscription",
+          });
+          setShowTierUpgradeModal(true);
+          setIsCreatingSession(false);
+          return;
+        }
+
+        // Handle quota exceeded error
+        if (response.status === 403 && errorData.error === "quota_exceeded") {
+          setQuotaInfo({
+            currentUsage: errorData.currentUsage || 0,
+            limit: errorData.limit || 0,
+            resetDate: null, // Will fetch from subscription endpoint if needed
+          });
+          setShowQuotaModal(true);
+          setIsCreatingSession(false);
+          return;
+        }
+
         throw new Error(errorData.error || "Failed to start session");
       }
 
@@ -239,10 +356,23 @@ export default function SetupPage() {
                     Select the type of interview you want to practice
                   </p>
                 </div>
-                <RoundSelector
-                  selected={roundType}
-                  onSelect={setRoundType}
-                />
+                {isLoadingSubscription ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div
+                        key={i}
+                        className="h-32 rounded-lg bg-muted animate-pulse"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <RoundSelector
+                    selected={roundType}
+                    onSelect={setRoundType}
+                    lockedTypes={lockedTypes}
+                    onLockedClick={handleLockedTypeClick}
+                  />
+                )}
               </motion.div>
             )}
 
@@ -302,6 +432,28 @@ export default function SetupPage() {
           </motion.div>
         </motion.div>
       </main>
+
+      {/* Tier Upgrade Modal */}
+      {tierUpgradeInfo && (
+        <TierUpgradeModal
+          isOpen={showTierUpgradeModal}
+          onClose={() => setShowTierUpgradeModal(false)}
+          requestedType={tierUpgradeInfo.requestedType}
+          currentTier={tierUpgradeInfo.currentTier}
+          message={tierUpgradeInfo.message}
+        />
+      )}
+
+      {/* Quota Exceeded Modal */}
+      {quotaInfo && (
+        <QuotaExceededModal
+          isOpen={showQuotaModal}
+          onClose={() => setShowQuotaModal(false)}
+          currentUsage={quotaInfo.currentUsage}
+          limit={quotaInfo.limit}
+          resetDate={quotaInfo.resetDate}
+        />
+      )}
     </div>
   );
 }
