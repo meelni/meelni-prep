@@ -270,22 +270,28 @@ All architecture decision records (ADRs) have been extracted to individual files
 
 ## File Boundaries & Responsibilities
 
-### `/agent/agent.py`
-**Purpose**: LiveKit Agents worker - conducts voice interviews
+### `/agent/interview/agent.py`
+**Purpose**: Main interview agent - conducts full voice interviews
 **Key Responsibilities**:
 - Define `InterviewAgent` class with PM interviewer instructions
 - Prewarm Silero VAD model for voice activity detection
 - Entrypoint function: connect to LiveKit room, start AgentSession
 - Orchestrate ASR → LLM → TTS pipeline
+- Support 4 interview types with dynamic prompts
+- Real-time transcript saving to Supabase
 
 **Critical Code Pattern**:
 ```python
-# Current configuration (as of 2025-11-05)
-stt_model = "deepgram/nova-3"
-llm_model = "openai/gpt-4.1-mini"
-tts_model = "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"  # Tessa voice
+# Current configuration (as of 2025-11-18)
+stt_model = config.get("stt_model", "deepgram/nova-3")
+llm_model = config.get("llm_model", "openai/gpt-5")
+tts_model = config.get("tts_model", "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9")
+
+# Build dynamic prompt based on round type and config
+instructions = build_agent_prompt(round_type, config, question)
 
 session = AgentSession(
+    turn_detection=EnglishModel(),
     stt=stt_model,
     llm=llm_model,
     tts=tts_model,
@@ -293,6 +299,8 @@ session = AgentSession(
 )
 await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.room)
 ```
+
+**Note**: See `agent/interview/README.md` for detailed documentation.
 
 ### `/app/api/livekit/token/route.ts`
 **Purpose**: Generate LiveKit access tokens for room authentication
@@ -436,26 +444,31 @@ await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.ro
 - Brand, Links, Contact sections
 - Copyright notice
 
-### `/agent/demo_agent.py`
-**Purpose**: Separate demo agent for landing page 60-second demos
+### `/agent/demo/agent.py`
+**Purpose**: Demo agent for landing page 5-minute demos
 **Key Responsibilities**:
-- Define `DemoAgent` class with 60-second demo prompt
-- Configure for LiveKit Cloud deployment (no custom parameters)
+- Define `DemoAgent` class with 5-minute demo prompt and time tracking
+- Configure for LiveKit Cloud deployment
 - Set `agent_name="CA_Wp8bi3bRroE2"` for explicit dispatch
-- Uses same voice pipeline as main agent (Deepgram Nova-3, GPT-4.1-mini, Cartesia Sonic 3)
+- Monitor session duration and auto-terminate at 5 minutes
+- Uses GPT-4o (faster for demos) and ElevenLabs voice
 
 **Critical Configuration**:
 ```python
-DEMO_AGENT_INSTRUCTIONS = """You are Meelni, an AI interview coach giving a 60-second product demo.
+def build_demo_instructions(question: dict = None) -> str:
+    """Build demo instructions with optional question from question bank"""
+    # Spontaneous, energetic demo prompt
+    # Asks 1 question (from bank or fallback)
+    # Provides quick feedback (2-3 points)
+    # Natural CTA to full interview
 
-Structure (keep under 60 seconds total):
-1. Introduce yourself briefly (10s): "Hi! I'm Meelni, your AI interview coach."
-2. Ask ONE quick product sense question (10s)
-3. Listen to their response (max 20s)
-4. Give very brief feedback (10s): one strength, one improvement
-5. End with: "Ready for a full mock interview? Click 'Start Full Interview' on the page!"
-
-Keep responses SHORT and FAST. This is a quick preview, not a full interview."""
+class DemoAgent(Agent):
+    """Demo agent with time tracking"""
+    def __init__(self, instructions: str) -> None:
+        super().__init__(instructions=instructions)
+        self.start_time = None
+        self.warning_sent = False  # 4:45 warning
+        self.ending_sent = False   # 5:00 end
 
 if __name__ == "__main__":
     cli.run_app(
@@ -468,10 +481,11 @@ if __name__ == "__main__":
 ```
 
 **Deployment**:
-- Uses `Dockerfile.demo` for Cloud deployment
-- Deployed with `lk agent create --secrets-file .env.demo .`
-- Update with `lk agent deploy .`
-- Agent ID stored in `livekit.toml`
+- Deploy from `agent/demo/` directory
+- Run `./deploy.sh` which builds from parent context
+- Agent ID: `CA_Wp8bi3bRroE2`
+
+**Note**: See `agent/demo/README.md` for detailed documentation.
 
 ### `/app/api/livekit/demo-token/route.ts`
 **Purpose**: Generate tokens and dispatch Cloud agent for demo sessions
@@ -816,12 +830,17 @@ python3 -m venv venv
 source venv/bin/activate  # or `venv\Scripts\activate` on Windows
 pip install -r requirements.txt
 
-# Development
-source venv/bin/activate
-python agent.py dev      # Start agent in dev mode (auto-reload on file changes)
+# Development - Demo Agent
+cd demo
+python agent.py dev      # Start demo agent in dev mode
 
-# Production (later)
-python agent.py start    # Start agent worker
+# Development - Interview Agent
+cd interview
+python agent.py dev      # Start interview agent in dev mode
+
+# Production Deployment
+cd demo && ./deploy.sh       # Deploy demo agent to LiveKit Cloud
+cd interview && ./deploy.sh  # Deploy interview agent to LiveKit Cloud
 ```
 
 ### Database
