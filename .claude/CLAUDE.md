@@ -95,7 +95,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 ### Real-time & AI
 - **WebRTC**: LiveKit Cloud (audio/video + Agents framework)
 - **ASR**: Deepgram Nova-3 (via LiveKit Inference) - upgraded from Nova-2
-- **TTS**: Cartesia Sonic 3.0 with Tessa voice (via LiveKit Inference) - emotive voice optimized
+- **TTS**: ElevenLabs Eleven Turbo v2.5 (via LiveKit Inference) - natural, professional voice
 - **Dialogue LLM**: GPT-5 (via LiveKit Inference) - upgraded from GPT-4.1-mini
 - **Evaluation LLM**: GPT-4 Turbo (post-session scoring, planned)
 - **Avatar**: Hedra Video (lip-sync, post-MVP)

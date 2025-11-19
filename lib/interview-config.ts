@@ -51,8 +51,8 @@ export interface InterviewConfig extends MinimalInterviewConfig {
  * These are the settings we've chosen for best quality
  */
 export const SYSTEM_DEFAULTS = {
-  // Voice model (Tessa - emotive, professional)
-  voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+  // Voice model (ElevenLabs - natural, professional)
+  voice: "cgSgspJ2msm6clMCkdW9",
 
   // Speech parameters (optimized through testing)
   speed: 1.0,          // Natural speaking pace
@@ -71,7 +71,7 @@ export const SYSTEM_DEFAULTS = {
   // Models (best quality/cost ratio)
   stt_model: "deepgram/nova-3",
   llm_model: "openai/gpt-5",
-  tts_model: "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+  tts_model: "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
 };
 
 /**
