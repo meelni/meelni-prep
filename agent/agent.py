@@ -18,6 +18,7 @@ from livekit.agents import (
     SpeechCreatedEvent,
 )
 from livekit.plugins import silero, cartesia
+from livekit.plugins.turn_detector.english import EnglishModel
 from config import parse_room_metadata
 from utils.prompt_builder import build_agent_prompt
 
@@ -109,6 +110,7 @@ async def entrypoint(ctx: JobContext):
     # String format: "elevenlabs/model:voiceId"
     # Supports all default ElevenLabs voices (custom/cloned voices require ElevenLabs plugin)
     session = AgentSession(
+        turn_detection=EnglishModel(),  # Context-aware turn detection
         stt=stt_model,
         llm=llm_model,
         tts=tts_model,  # String format: "elevenlabs/eleven_turbo_v2_5:56bWURjYFHyYyVf490Dp"

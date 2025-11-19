@@ -21,6 +21,9 @@ COPY prompts.py .
 COPY config.py .
 COPY utils/ ./utils/
 
+# Download turn detector model weights (66 MB English model)
+RUN python agent.py download-files
+
 # LiveKit Cloud automatically provides these environment variables:
 # - LIVEKIT_URL
 # - LIVEKIT_API_KEY
