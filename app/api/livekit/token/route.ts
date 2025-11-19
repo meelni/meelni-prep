@@ -134,19 +134,36 @@ export async function POST(req: NextRequest) {
 
     // Create room with metadata (agent will auto-dispatch)
     if (metadata) {
+      // Validate metadata size and structure
+      const metadataStr = JSON.stringify(metadata);
+      if (metadataStr.length > 10000) {
+        // 10KB limit
+        return NextResponse.json({ error: "Metadata too large (max 10KB)" }, { status: 400 });
+      }
+
+      // Validate metadata keys (allowlist approach)
+      const allowedKeys = ["sessionId", "roundType", "config", "question", "difficulty", "mode"];
+      const hasInvalidKeys = Object.keys(metadata).some((key) => !allowedKeys.includes(key));
+      if (hasInvalidKeys) {
+        return NextResponse.json(
+          { error: "Invalid metadata keys. Allowed: sessionId, roundType, config, question, difficulty, mode" },
+          { status: 400 }
+        );
+      }
+
       const roomClient = new RoomServiceClient(livekit_url, apiKey, apiSecret);
 
       try {
         await roomClient.createRoom({
           name: roomName,
-          metadata: JSON.stringify(metadata),
+          metadata: metadataStr,
         });
 
         console.log("Room created with metadata");
       } catch (error: any) {
         if (error.message?.includes("already exists")) {
           console.log("Room already exists, updating metadata");
-          await roomClient.updateRoomMetadata(roomName, JSON.stringify(metadata));
+          await roomClient.updateRoomMetadata(roomName, metadataStr);
         } else {
           console.error("Room creation error:", error.message);
         }
