@@ -18,6 +18,7 @@ from livekit.agents import (
     cli,
 )
 from livekit.plugins import silero
+from livekit.plugins.turn_detector.english import EnglishModel
 
 load_dotenv()
 
@@ -243,8 +244,9 @@ async def entrypoint(ctx: JobContext):
 
     logger.info(f"Demo Configuration - STT: {stt_model}, LLM: {llm_model}, TTS: {tts_model}")
 
-    # Create agent session
+    # Create agent session with turn detection
     session = AgentSession(
+        turn_detection=EnglishModel(),  # Context-aware turn detection
         stt=stt_model,
         llm=llm_model,
         tts=tts_model,
