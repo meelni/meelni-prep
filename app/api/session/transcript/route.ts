@@ -94,6 +94,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createTranscriptTurn, batchCreateTranscriptTurns } from "@/lib/db/transcripts";
 import { isSessionOwnedByUser } from "@/lib/db/sessions";
+import { z } from "zod";
+
+// Zod schema for transcript turn validation
+const TranscriptTurnSchema = z.object({
+  speaker: z.enum(["user", "interviewer"]),
+  startedAt: z.string().datetime().optional(),
+  endedAt: z.string().datetime().optional(),
+  text: z.string().max(10000).optional(), // 10KB max per turn
+  audioMs: z.number().int().min(0).max(600000).optional(), // Max 10 minutes
+  latencyMs: z.number().int().min(0).max(60000).optional(), // Max 1 minute
+  section: z.string().max(100).optional(),
+});
+
+// Schema for batch mode
+const BatchTranscriptSchema = z.object({
+  sessionId: z.string().uuid(),
+  turns: z.array(TranscriptTurnSchema).min(1).max(1000), // Max 1000 turns per batch
+});
+
+// Schema for single turn mode
+const SingleTranscriptSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+  })
+  .merge(TranscriptTurnSchema);
 
 export async function POST(req: NextRequest) {
   try {
@@ -110,15 +135,27 @@ export async function POST(req: NextRequest) {
 
     // Parse request body
     const body = await req.json();
-    const { sessionId, turns } = body;
 
-    // Validate required fields
-    if (!sessionId) {
+    // Validate with Zod schema
+    const isBatchMode = Array.isArray(body.turns);
+    const schema = isBatchMode ? BatchTranscriptSchema : SingleTranscriptSchema;
+    const validation = schema.safeParse(body);
+
+    if (!validation.success) {
       return NextResponse.json(
-        { error: "sessionId is required" },
+        {
+          error: "Invalid request data",
+          details: validation.error.errors.map((e) => ({
+            path: e.path.join("."),
+            message: e.message,
+          })),
+        },
         { status: 400 }
       );
     }
+
+    const validatedData = validation.data;
+    const sessionId = validatedData.sessionId;
 
     // Verify user owns the session
     const isOwner = await isSessionOwnedByUser(sessionId, user.id);
@@ -130,10 +167,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Handle batch or single turn
-    if (Array.isArray(turns)) {
+    if (isBatchMode && "turns" in validatedData) {
       // Batch insert for multiple turns
       const createdTurns = await batchCreateTranscriptTurns(
-        turns.map((turn: any) => ({
+        validatedData.turns.map((turn) => ({
           sessionId,
           speaker: turn.speaker,
           startedAt: turn.startedAt ? new Date(turn.startedAt) : undefined,
@@ -149,17 +186,9 @@ export async function POST(req: NextRequest) {
         success: true,
         turns: createdTurns,
       });
-    } else {
+    } else if ("speaker" in validatedData) {
       // Single turn insert
-      const { speaker, startedAt, endedAt, text, audioMs, latencyMs, section } = body;
-
-      // Validate speaker
-      if (!speaker || !["user", "interviewer"].includes(speaker)) {
-        return NextResponse.json(
-          { error: "Invalid speaker value" },
-          { status: 400 }
-        );
-      }
+      const { speaker, startedAt, endedAt, text, audioMs, latencyMs, section } = validatedData;
 
       const turn = await createTranscriptTurn({
         sessionId,

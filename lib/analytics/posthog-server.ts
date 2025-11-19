@@ -12,15 +12,24 @@ let serverPostHog: PostHog | null = null;
  * Singleton pattern for server-side usage
  */
 export function getServerPostHog(): PostHog | null {
-  const apiKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  // Use server-side key (not exposed to client)
+  const apiKey = process.env.POSTHOG_SERVER_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY;
   const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
   // Return null if no API key configured
   if (!apiKey) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn("[Analytics Server] PostHog API key not configured");
+      console.warn("[Analytics Server] PostHog server key not configured");
     }
     return null;
+  }
+
+  // Warn if using client key instead of server key
+  if (!process.env.POSTHOG_SERVER_KEY && process.env.NODE_ENV !== "production") {
+    console.warn(
+      "[Analytics Server] Using NEXT_PUBLIC_POSTHOG_KEY (client key) instead of POSTHOG_SERVER_KEY. " +
+        "Please set POSTHOG_SERVER_KEY for production."
+    );
   }
 
   // Return existing instance if already initialized
