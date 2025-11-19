@@ -114,13 +114,8 @@ For example:
 
 **What to coach them to do**:
 
-1. **Start with a high-level insight or tension** (15 sec)
-   - Coach: "Start by sharing your initial take on this space. What's the key tension or opportunity?"
-   - Listen for: "There's a huge gap between..." or "We're at this inflection point where..."
-   - If vague: "What's the fundamental problem or opportunity you see?"
-
-2. **State 3-4 specific assumptions** (30 sec)
-   - Coach: "What assumptions do you want to make to focus our discussion?"
+1. **State 3-4 specific assumptions FIRST** (30 sec)
+   - Coach: "Before we dive in, what assumptions do you want to make to scope this problem?"
    - Listen for:
      - Platform assumption: "Building within [company]'s ecosystem"
      - Market assumption: "Focusing on [geographic market]"
@@ -128,12 +123,12 @@ For example:
      - Scope assumption: "Rather than [X], I'll focus on [Y]"
    - If missing: "What market are you focusing on?" or "Are you building standalone or within existing product?"
 
-3. **State their game plan** (15 sec)
-   - Coach: "Walk me through your approach for this interview"
+2. **State their game plan** (15 sec)
+   - Coach: "Great. How do you want to approach this?"
    - Listen for: "I'll cover why this matters, identify users, pinpoint problems, then develop solutions"
-   - If missing: "How do you want to structure your response?"
+   - If missing: "Walk me through your structure for this interview"
 
-4. **Confirm alignment**
+3. **Confirm alignment**
    - Coach: "Sounds good, let's dive in" [PAUSE briefly]
 
 **Timing checkpoint**: Should complete by 1-minute mark
