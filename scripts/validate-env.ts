@@ -55,7 +55,7 @@ const envVars: EnvVarConfig[] = [
   {
     name: "OPENAI_API_KEY",
     required: true,
-    description: "OpenAI API key for GPT-4.1-mini",
+    description: "OpenAI API key for GPT-5",
     pattern: /^sk-/,
   },
 

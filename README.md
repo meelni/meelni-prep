@@ -18,7 +18,7 @@ Meelni consists of three interconnected systems:
 - Python worker that joins LiveKit rooms as a programmable participant
 - Real-time voice pipeline:
   - **STT**: Deepgram Nova-3 for speech recognition
-  - **LLM**: GPT-4.1-mini for conversational intelligence
+  - **LLM**: GPT-5 for conversational intelligence
   - **TTS**: Cartesia Sonic 3.0 (Tessa voice) for natural speech
   - **VAD**: Silero for voice activity detection and interruption handling
 - See [`agent/README.md`](./agent/README.md) for detailed agent documentation
