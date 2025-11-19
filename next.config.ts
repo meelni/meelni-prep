@@ -46,6 +46,32 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // CORS headers for API routes
+        source: "/api/:path*",
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com",
+          },
+          {
+            key: "Access-Control-Allow-Methods",
+            value: "GET, POST, PUT, DELETE, OPTIONS",
+          },
+          {
+            key: "Access-Control-Allow-Headers",
+            value: "Content-Type, Authorization",
+          },
+          {
+            key: "Access-Control-Allow-Credentials",
+            value: "true",
+          },
+          {
+            key: "Access-Control-Max-Age",
+            value: "86400", // 24 hours
+          },
+        ],
+      },
     ];
   },
   // Configure API route body size limits
