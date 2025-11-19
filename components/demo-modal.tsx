@@ -10,6 +10,7 @@ import {
   useConnectionState,
   useRoomContext,
   useTrackVolume,
+  useLocalParticipant,
 } from "@livekit/components-react";
 import { Orb, AgentState as OrbAgentState } from "@/components/ui/orb";
 import { Track } from "livekit-client";
@@ -110,6 +111,7 @@ function DemoControls({
   const { state, audioTrack } = useVoiceAssistant();
   const connectionState = useConnectionState();
   const room = useRoomContext();
+  const { localParticipant } = useLocalParticipant();
   const [isMuted, setIsMuted] = useState(false);
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
@@ -127,6 +129,14 @@ function DemoControls({
       onAgentJoined();
     }
   }, [connectionState, room?.remoteParticipants.size, onAgentJoined]);
+
+  // Sync mute state with local participant's microphone state
+  useEffect(() => {
+    if (localParticipant) {
+      const micEnabled = localParticipant.isMicrophoneEnabled;
+      setIsMuted(!micEnabled);
+    }
+  }, [localParticipant, localParticipant?.isMicrophoneEnabled]);
 
   // Audio reactivity for Orb (same as interview page)
   const userVolume = useTrackVolume(audioTrack?.publication?.track as any);
@@ -296,20 +306,22 @@ function DemoControls({
     };
   }, [room]);
 
-  const toggleMute = () => {
-    if (audioTrack && 'setMuted' in audioTrack) {
-      const newMutedState = !isMuted;
-      (audioTrack as any).setMuted(newMutedState);
-      setIsMuted(newMutedState);
+  const toggleMute = async () => {
+    if (!localParticipant) return;
 
-      // Track mic toggle
-      if (demoStartTime.current) {
-        const timeInDemo = (Date.now() - demoStartTime.current) / 1000;
-        analytics.track("demo_mic_toggled", {
-          new_state: newMutedState ? "muted" : "unmuted",
-          time_in_demo_seconds: Math.floor(timeInDemo),
-        });
-      }
+    const newMutedState = !isMuted;
+
+    // Toggle the microphone mute state
+    await localParticipant.setMicrophoneEnabled(!newMutedState);
+    setIsMuted(newMutedState);
+
+    // Track mic toggle
+    if (demoStartTime.current) {
+      const timeInDemo = (Date.now() - demoStartTime.current) / 1000;
+      analytics.track("demo_mic_toggled", {
+        new_state: newMutedState ? "muted" : "unmuted",
+        time_in_demo_seconds: Math.floor(timeInDemo),
+      });
     }
   };
 
@@ -511,7 +523,7 @@ function DemoControls({
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={toggleMute}
-                disabled={!isConnected}
+                disabled={!isConnected || !localParticipant}
                 className={`
                   relative p-4 rounded-xl transition-all duration-300 shadow-lg
                   ${
