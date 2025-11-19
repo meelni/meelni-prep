@@ -83,6 +83,25 @@ export const generateFeedback = inngest.createFunction(
   async ({ event, step }) => {
     const { sessionId, userId } = event.data as FeedbackGenerationEvent["data"];
 
+    // Step 0: Security check - validate userId matches session owner
+    await step.run("validate-user-ownership", async () => {
+      const session = await db.query.interviewSession.findFirst({
+        where: eq(interviewSession.id, sessionId),
+      });
+
+      if (!session) {
+        throw new Error(`Session ${sessionId} not found`);
+      }
+
+      if (session.userId !== userId) {
+        throw new Error(
+          `Security violation: userId ${userId} does not own session ${sessionId} (owner: ${session.userId})`
+        );
+      }
+
+      return { validated: true };
+    });
+
     // Step 1: Validate session
     const validation = await step.run("validate-session", async () => {
       return await validateSessionCompleteness(sessionId);
