@@ -1,15 +1,15 @@
-### ADR-015: Model Upgrade to Deepgram Nova-3, GPT-5, and Cartesia Sonic 3 with Tessa Voice
+### ADR-015: Model Upgrade to Deepgram Nova-3, GPT-5, and ElevenLabs
 - **Date**: 2025-11-05 (Updated: 2025-11-19)
 - **Decision**: Upgrade all voice pipeline models to latest versions
 - **Models Selected**:
   - **STT**: Deepgram Nova-3 (upgraded from Nova-2)
   - **LLM**: OpenAI GPT-5 (upgraded from GPT-4.1-mini)
-  - **TTS**: Cartesia Sonic 3.0 with Tessa voice (voice ID: `6ccbfb76-1fc6-48f7-b71d-91ac6298247b`)
+  - **TTS**: ElevenLabs Eleven Turbo v2.5 (voice ID: `cgSgspJ2msm6clMCkdW9`)
   - **VAD**: Silero (unchanged)
 - **Rationale**:
   - Nova-3 offers improved speech recognition accuracy
   - GPT-5 provides superior reasoning and conversation quality
-  - Tessa is an emotive voice optimized for Sonic 3, providing more natural conversation
+  - ElevenLabs provides natural, professional voice quality
   - User preference for these specific models
 - **Key Discovery**:
   - **Cartesia does NOT require separate API key** when using LiveKit Inference
@@ -19,8 +19,8 @@
   - **Important**: Must use valid voice IDs from provider documentation (see ADR-024 for debugging)
 - **Consequences**:
   - Better voice quality and natural conversation
-  - Simplified configuration (no Cartesia API key needed)
-  - TTS format: `cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b`
+  - Simplified configuration (no ElevenLabs API key needed via LiveKit Inference)
+  - TTS format: `elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9`
   - Cost remains similar due to LiveKit Inference pricing
   - Must verify voice IDs are valid for chosen TTS provider
 
