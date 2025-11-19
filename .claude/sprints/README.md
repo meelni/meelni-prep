@@ -17,7 +17,19 @@
 
 ### Quick Start
 
+**IMPORTANT: Check if sprint already exists first!**
+
 ```bash
+# 0. Check for existing sprints
+ls -la .claude/sprints/
+find .claude/archive/sprints/ -type d -name "*[feature-name]*"
+
+# If sprint exists:
+# - Active sprint → Resume work, don't create new one
+# - Archived sprint → Ask user before reopening/creating new
+
+# Only if sprint does NOT exist:
+
 # 1. Create sprint folder with date
 mkdir -p .claude/sprints/[feature-name-YYYY-MM]
 
@@ -43,10 +55,14 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 ```
 
 This will:
-- Create the sprint folder with current date
+- **Check if sprint already exists first** (active or archived)
+- If exists: Alert you and ask what to do
+- If doesn't exist: Create the sprint folder with current date
 - Copy all template files
 - Pre-fill sprint name and dates
 - Add entry to this index
+
+**The slash command prevents duplicate sprint creation automatically.**
 
 ---
 

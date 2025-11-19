@@ -8,12 +8,28 @@ Create a new sprint for feature development using our standardized template.
 
 ## Your Task
 
-1. **Create sprint folder**:
+**CRITICAL: Check if sprint already exists first!**
+
+1. **Check for existing sprint**:
+   ```bash
+   # Check if sprint folder already exists
+   ls -la .claude/sprints/
+
+   # Check archive for completed sprints with similar name
+   ls -la .claude/archive/sprints/ | grep -i [feature-name]
+   ```
+
+   **If sprint exists:**
+   - **In `.claude/sprints/`** → Tell user "Sprint already exists at `.claude/sprints/[name]/`. Continue working on this sprint?"
+   - **In `.claude/archive/sprints/`** → Tell user "Sprint was previously completed and archived. Create new sprint with different name or reopen archived sprint?"
+   - **DO NOT create duplicate sprint folders**
+
+2. **Only if sprint does NOT exist, create sprint folder**:
    - Folder name format: `[feature-name]-YYYY-MM`
    - Example: `email-notifications-2025-11`
    - Location: `.claude/sprints/[feature-name]-YYYY-MM/`
 
-2. **Copy all template files**:
+3. **Copy all template files**:
    ```bash
    cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name]-YYYY-MM/
    ```
