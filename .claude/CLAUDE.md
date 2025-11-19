@@ -96,7 +96,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **WebRTC**: LiveKit Cloud (audio/video + Agents framework)
 - **ASR**: Deepgram Nova-3 (via LiveKit Inference) - upgraded from Nova-2
 - **TTS**: ElevenLabs Eleven Turbo v2.5 (via LiveKit Inference) - natural, professional voice
-- **Dialogue LLM**: GPT-5 (via LiveKit Inference) - upgraded from GPT-4.1-mini
+- **Dialogue LLM**: GPT-4.1-mini (via LiveKit Inference) - upgraded from GPT-4.1-mini
 - **Evaluation LLM**: GPT-4 Turbo (post-session scoring, planned)
 - **Avatar**: Hedra Video (lip-sync, post-MVP)
 - **VAD**: Silero (livekit-plugins-silero)
@@ -287,7 +287,7 @@ All architecture decision records (ADRs) have been extracted to individual files
 ```python
 # Current configuration (as of 2025-11-18)
 stt_model = config.get("stt_model", "deepgram/nova-3")
-llm_model = config.get("llm_model", "openai/gpt-5")
+llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
 tts_model = config.get("tts_model", "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9")
 
 # Build dynamic prompt based on round type and config

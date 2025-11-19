@@ -1,14 +1,14 @@
-### ADR-015: Model Upgrade to Deepgram Nova-3, GPT-5, and ElevenLabs
+### ADR-015: Model Upgrade to Deepgram Nova-3, GPT-4.1-mini, and ElevenLabs
 - **Date**: 2025-11-05 (Updated: 2025-11-19)
 - **Decision**: Upgrade all voice pipeline models to latest versions
 - **Models Selected**:
   - **STT**: Deepgram Nova-3 (upgraded from Nova-2)
-  - **LLM**: OpenAI GPT-5 (upgraded from GPT-4.1-mini)
+  - **LLM**: OpenAI GPT-4.1-mini (upgraded from GPT-4.1-mini)
   - **TTS**: ElevenLabs Eleven Turbo v2.5 (voice ID: `cgSgspJ2msm6clMCkdW9`)
   - **VAD**: Silero (unchanged)
 - **Rationale**:
   - Nova-3 offers improved speech recognition accuracy
-  - GPT-5 provides superior reasoning and conversation quality
+  - GPT-4.1-mini provides superior reasoning and conversation quality
   - ElevenLabs provides natural, professional voice quality
   - User preference for these specific models
 - **Key Discovery**:

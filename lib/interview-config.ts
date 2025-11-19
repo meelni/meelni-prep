@@ -70,7 +70,7 @@ export const SYSTEM_DEFAULTS = {
 
   // Models (best quality/cost ratio)
   stt_model: "deepgram/nova-3",
-  llm_model: "openai/gpt-5",
+  llm_model: "openai/gpt-4.1-mini",
   tts_model: "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
 };
 

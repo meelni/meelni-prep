@@ -441,7 +441,7 @@ base_prompt += timing_instructions
 
 ### Medium Risk ⚠️
 1. **LLM response to time context**: Depends on prompt quality
-   - **Mitigation**: Test with multiple LLMs (GPT-4o, GPT-5)
+   - **Mitigation**: Test with multiple LLMs (GPT-4o, GPT-4.1-mini)
    - **Fallback**: Add explicit examples in prompt
 
 2. **Grace period tuning**: 2 minutes may be too short/long
