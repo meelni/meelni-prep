@@ -40,6 +40,37 @@ export async function POST(request: NextRequest) {
 
     const stripeCustomerId = subscriptionData.stripe_customer_id;
 
+    // Verify customer exists in current Stripe mode (test vs live)
+    try {
+      await stripe.customers.retrieve(stripeCustomerId);
+    } catch (stripeError: any) {
+      // Customer doesn't exist in current mode (likely test customer ID with live keys)
+      console.error(`Stripe customer ${stripeCustomerId} not found:`, stripeError.message);
+
+      // Check if this is a mode mismatch (test customer with live keys or vice versa)
+      const isTestCustomer = stripeCustomerId.startsWith('cus_') && !stripeCustomerId.includes('live');
+      const isLiveMode = process.env.STRIPE_SECRET_KEY?.startsWith('sk_live');
+
+      if (isTestCustomer && isLiveMode) {
+        return NextResponse.json(
+          {
+            error: "Your subscription was created in test mode. Please create a new subscription to access the customer portal.",
+            code: "MODE_MISMATCH"
+          },
+          { status: 400 }
+        );
+      }
+
+      // Generic customer not found error
+      return NextResponse.json(
+        {
+          error: "Stripe customer not found. Your subscription may need to be recreated.",
+          code: "CUSTOMER_NOT_FOUND"
+        },
+        { status: 404 }
+      );
+    }
+
     // Create Customer Portal session
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
