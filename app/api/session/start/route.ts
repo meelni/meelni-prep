@@ -16,7 +16,7 @@
  * @request.config {Object} Optional - Session configuration (voice settings, models, etc.)
  * @request.config.voice {string} Optional - Cartesia voice ID (default: Tessa voice)
  * @request.config.stt_model {string} Optional - Speech-to-Text model (default: deepgram/nova-3)
- * @request.config.llm_model {string} Optional - Language model (default: openai/gpt-5)
+ * @request.config.llm_model {string} Optional - Language model (default: openai/gpt-4.1-mini)
  * @request.config.tts_model {string} Optional - Text-to-Speech model with voice
  * @request.config.speed {number} Optional - Voice speed multiplier (0.6-1.5)
  * @request.config.emotion {string} Optional - Voice emotion (Happy, Calm, Confident, etc.)
@@ -61,7 +61,7 @@
  *   "config": {
  *     "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
  *     "stt_model": "deepgram/nova-3",
- *     "llm_model": "openai/gpt-5",
+ *     "llm_model": "openai/gpt-4.1-mini",
  *     "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
  *     "speed": 1.0,
  *     "emotion": "Calm"

@@ -63,7 +63,7 @@ agent/
 Both agents use the same voice pipeline:
 
 ```
-User speaks → Deepgram Nova-3 (STT) → GPT-4/GPT-5 (LLM) → ElevenLabs (TTS) → User hears
+User speaks → Deepgram Nova-3 (STT) → GPT-4/GPT-4.1-mini (LLM) → ElevenLabs (TTS) → User hears
                                               ↓
                                     Silero VAD (interruption detection)
 ```
@@ -71,7 +71,7 @@ User speaks → Deepgram Nova-3 (STT) → GPT-4/GPT-5 (LLM) → ElevenLabs (TTS)
 | Component | Provider | Purpose |
 |-----------|----------|---------|
 | **STT** | Deepgram Nova-3 | Speech-to-text with low latency |
-| **LLM** | GPT-4o (demo) / GPT-5 (interview) | Conversational intelligence |
+| **LLM** | GPT-4o (demo) / GPT-4.1-mini (interview) | Conversational intelligence |
 | **TTS** | ElevenLabs Eleven Turbo v2.5 | Natural speech synthesis |
 | **VAD** | Silero | Voice activity detection for barge-in |
 
@@ -172,7 +172,7 @@ The agent uses LiveKit's `AgentSession` API to orchestrate the voice pipeline:
 ```python
 session = AgentSession(
     stt="deepgram/nova-3",           # Speech-to-Text
-    llm="openai/gpt-5",              # Language Model
+    llm="openai/gpt-4.1-mini",              # Language Model
     tts="cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",  # Text-to-Speech (Tessa voice)
     vad=silero_vad,                  # Voice Activity Detection
 )
@@ -181,7 +181,7 @@ await session.start(agent=InterviewAgent(instructions=prompt), room=room)
 
 ### 3. Conversation Flow
 - User speaks → Deepgram transcribes audio in real-time
-- Transcript sent to GPT-5 → LLM generates response
+- Transcript sent to GPT-4.1-mini → LLM generates response
 - Response synthesized by Cartesia TTS → Audio played to user
 - Silero VAD monitors audio → Detects when user interrupts (barge-in)
 
@@ -420,7 +420,7 @@ Pass configuration via room metadata (JSON):
     "emotion": "professional",
     "volume": 1.0,
     "stt_model": "deepgram/nova-3",
-    "llm_model": "openai/gpt-5",
+    "llm_model": "openai/gpt-4.1-mini",
     "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
   }
 }
@@ -463,7 +463,7 @@ INFO:__main__:Feedback Mode: end_only
 INFO:__main__:Duration: 45 minutes
 INFO:__main__:Generated prompt for product_sense interview (difficulty: intermediate)
 INFO:__main__:STT Model: deepgram/nova-3
-INFO:__main__:LLM Model: openai/gpt-5
+INFO:__main__:LLM Model: openai/gpt-4.1-mini
 INFO:__main__:TTS Model: cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b
 INFO:__main__:Voice agent started successfully - product_sense interview with intermediate difficulty
 ```
@@ -520,7 +520,7 @@ pip install -r requirements.txt
 
 ### "Agent joins but doesn't speak"
 - Check `OPENAI_API_KEY` and `CARTESIA_API_KEY` (if using direct API)
-- Verify model names: `deepgram/nova-3`, `openai/gpt-5`, `cartesia/sonic-3:VOICE_ID`
+- Verify model names: `deepgram/nova-3`, `openai/gpt-4.1-mini`, `cartesia/sonic-3:VOICE_ID`
 - Check agent logs for API errors
 
 ### "Silero VAD not loading"
