@@ -13,11 +13,11 @@ Tests cover:
 import sys
 from pathlib import Path
 
-# Add agent directory to path
-agent_dir = Path(__file__).parent.parent.parent / "agent"
+# Add agent directory to path to access shared modules
+agent_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(agent_dir))
 
-from prompts import get_prompt
+from shared.prompts import get_prompt
 
 def test_imports():
     """Test 1: Verify all imports work"""

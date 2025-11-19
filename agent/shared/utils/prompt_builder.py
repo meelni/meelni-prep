@@ -2,10 +2,11 @@
 
 from typing import Dict, Any
 import sys
-import os
+from pathlib import Path
 
-# Add parent directory to path to import prompts
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add parent directory to path to import shared modules
+shared_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(shared_dir))
 
 from prompts import get_prompt
 

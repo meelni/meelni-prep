@@ -1,4 +1,5 @@
-# Dockerfile for Meelni Main Interview Agent
+# Dockerfile for Meelni Demo Agent
+# Build context: agent/ directory (parent of demo/)
 FROM python:3.12-slim
 
 # Set working directory
@@ -15,11 +16,11 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy agent code and prompts
-COPY agent.py .
-COPY prompts.py .
-COPY config.py .
-COPY utils/ ./utils/
+# Copy shared modules (needed for imports)
+COPY shared/ ./shared/
+
+# Copy demo agent code
+COPY demo/agent.py .
 
 # Download turn detector model weights (66 MB English model)
 RUN python agent.py download-files
@@ -31,7 +32,7 @@ RUN python agent.py download-files
 # You need to provide via secrets:
 # - OPENAI_API_KEY
 # - DEEPGRAM_API_KEY
-# (ElevenLabs available via LiveKit Inference - no API key needed!)
+# (CARTESIA_API_KEY not needed when using LiveKit Inference)
 
-# Run the main interview agent
+# Run the demo agent
 CMD ["python", "agent.py", "start"]
