@@ -5,6 +5,8 @@ Handles real-time voice interviews with LiveKit inference platform
 
 import json
 import logging
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
@@ -19,8 +21,12 @@ from livekit.agents import (
 )
 from livekit.plugins import silero, cartesia
 from livekit.plugins.turn_detector.english import EnglishModel
-from config import parse_room_metadata
-from utils.prompt_builder import build_agent_prompt
+
+# Add parent directory to path for shared module imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from shared.config import parse_room_metadata
+from shared.utils.prompt_builder import build_agent_prompt
 
 load_dotenv()
 

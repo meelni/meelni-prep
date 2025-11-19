@@ -1,4 +1,5 @@
 # Dockerfile for Meelni Main Interview Agent
+# Build context: agent/ directory (parent of interview/)
 FROM python:3.12-slim
 
 # Set working directory
@@ -15,11 +16,11 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy agent code and prompts
-COPY agent.py .
-COPY prompts.py .
-COPY config.py .
-COPY utils/ ./utils/
+# Copy shared modules (needed for imports)
+COPY shared/ ./shared/
+
+# Copy interview agent code
+COPY interview/agent.py .
 
 # Download turn detector model weights (66 MB English model)
 RUN python agent.py download-files

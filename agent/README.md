@@ -1,23 +1,69 @@
-# Meelni Interview Agent
+# Meelni Agents
 
-Python-based LiveKit Agent for conducting real-time AI mock interviews.
+Python-based LiveKit Agents for conducting real-time AI mock interviews.
 
 **Parent Documentation:** [Root README](../README.md) | [Project Architecture](../.claude/CLAUDE.md)
 
 ---
 
-## 🏗️ Architecture
-
-This agent is the **backend brain** of Meelni. It:
-- Joins LiveKit rooms as a programmable participant
-- Orchestrates the real-time voice pipeline (STT → LLM → TTS)
-- Manages interview conversation state and flow
-- Handles interruptions and natural conversation dynamics
-
-### Voice Pipeline Components
+## 📁 Project Structure
 
 ```
-User speaks → Deepgram Nova-3 (STT) → GPT-4.1-mini (LLM) → Cartesia Sonic 3.0 (TTS) → User hears
+agent/
+├── demo/                    # 5-minute demo agent for landing page
+│   ├── agent.py            # Demo agent entrypoint
+│   ├── Dockerfile          # Docker config
+│   ├── deploy.sh           # Deployment script
+│   └── README.md           # Demo agent documentation
+├── interview/              # Full interview agent for authenticated users
+│   ├── agent.py            # Interview agent entrypoint
+│   ├── Dockerfile          # Docker config
+│   ├── deploy.sh           # Deployment script
+│   └── README.md           # Interview agent documentation
+├── shared/                 # Shared code between agents
+│   ├── config.py           # Configuration parsing
+│   ├── prompts.py          # Interview prompts and frameworks
+│   └── utils/              # Shared utilities
+│       └── prompt_builder.py  # Dynamic prompt generation
+├── docs/                   # Documentation
+│   ├── DEPLOYMENT.md       # Deployment guide
+│   └── QUESTION_BANK_INTEGRATION.md  # Question bank docs
+├── scripts/                # Development and test scripts
+│   ├── test_greeting.py
+│   ├── test_prompts.py
+│   └── show_sample_prompt.py
+├── requirements.txt        # Python dependencies (shared)
+└── venv/                   # Virtual environment
+```
+
+---
+
+## 🎯 Two Agent Types
+
+### Demo Agent (`demo/`)
+- **Purpose**: Quick 5-minute demos for landing page visitors
+- **Duration**: 5 minutes (auto-terminates)
+- **Questions**: 1 question from bank or fallback
+- **Tone**: Energetic, conversational, fast-paced
+- **Agent ID**: `CA_Wp8bi3bRroE2`
+- **Documentation**: [demo/README.md](demo/README.md)
+
+### Interview Agent (`interview/`)
+- **Purpose**: Full mock interviews for authenticated users
+- **Duration**: 15, 30, or 45 minutes (configurable)
+- **Features**: 4 interview types, 3 difficulty levels, real-time transcripts
+- **Tone**: Professional, adaptive coaching
+- **Agent ID**: `CA_yawKG67rCMG4`
+- **Documentation**: [interview/README.md](interview/README.md)
+
+---
+
+## 🏗️ Architecture
+
+Both agents use the same voice pipeline:
+
+```
+User speaks → Deepgram Nova-3 (STT) → GPT-4/GPT-5 (LLM) → ElevenLabs (TTS) → User hears
                                               ↓
                                     Silero VAD (interruption detection)
 ```
@@ -25,8 +71,8 @@ User speaks → Deepgram Nova-3 (STT) → GPT-4.1-mini (LLM) → Cartesia Sonic 
 | Component | Provider | Purpose |
 |-----------|----------|---------|
 | **STT** | Deepgram Nova-3 | Speech-to-text with low latency |
-| **LLM** | OpenAI GPT-4.1-mini | Conversational intelligence |
-| **TTS** | Cartesia Sonic 3.0 (Tessa voice) | Natural, emotive speech synthesis |
+| **LLM** | GPT-4o (demo) / GPT-5 (interview) | Conversational intelligence |
+| **TTS** | ElevenLabs Eleven Turbo v2.5 | Natural speech synthesis |
 | **VAD** | Silero | Voice activity detection for barge-in |
 
 ---
@@ -35,9 +81,8 @@ User speaks → Deepgram Nova-3 (STT) → GPT-4.1-mini (LLM) → Cartesia Sonic 
 
 ### Prerequisites
 - Python 3.10 or higher
-- pip (Python package manager)
 - Active LiveKit Cloud project
-- API keys: OpenAI, Deepgram (Cartesia key not required when using LiveKit Inference)
+- API keys: OpenAI, Deepgram
 
 ### 1. Create Virtual Environment
 ```bash
@@ -52,32 +97,59 @@ pip install -r requirements.txt
 ```
 
 ### 3. Configure Environment
+Create a `.env` file in the agent directory:
 ```bash
-cp .env.example .env
-# Edit .env with your credentials (see Environment Variables below)
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your_api_key
+LIVEKIT_API_SECRET=your_api_secret
+OPENAI_API_KEY=your_openai_key
+DEEPGRAM_API_KEY=your_deepgram_key
 ```
 
-### 4. Run Agent
+### 4. Run Agents Locally
+
+**Demo Agent:**
 ```bash
-# Development mode (auto-reload on file changes)
+cd demo
 python agent.py dev
-
-# Production mode
-python agent.py start
 ```
+
+**Interview Agent:**
+```bash
+cd interview
+python agent.py dev
+```
+
+---
+
+## 🚀 Deployment
+
+Both agents are deployed to LiveKit Cloud.
+
+**Deploy Demo Agent:**
+```bash
+cd demo
+./deploy.sh
+```
+
+**Deploy Interview Agent:**
+```bash
+cd interview
+./deploy.sh
+```
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instructions.
 
 ---
 
 ## 🔐 Environment Variables
 
-The agent reads from the same `.env.local` file as the Next.js frontend (symlinked by Conductor automation). Required variables:
-
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `LIVEKIT_URL` | ✅ | LiveKit WebSocket URL (e.g., `wss://your-project.livekit.cloud`) |
+| `LIVEKIT_URL` | ✅ | LiveKit WebSocket URL |
 | `LIVEKIT_API_KEY` | ✅ | LiveKit API key |
 | `LIVEKIT_API_SECRET` | ✅ | LiveKit API secret |
-| `OPENAI_API_KEY` | ✅ | OpenAI API key (for GPT-4.1-mini) |
+| `OPENAI_API_KEY` | ✅ | OpenAI API key |
 | `DEEPGRAM_API_KEY` | ✅ | Deepgram API key (for Nova-3 ASR) |
 | `CARTESIA_API_KEY` | ❌ | **Not required** when using LiveKit Inference |
 

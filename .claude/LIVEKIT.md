@@ -74,7 +74,7 @@ LiveKit Agents is a framework for building programmable, server-side participant
 
 ### 1. Main Worker Process
 
-**File**: `agent/agent.py` (lines 115-123)
+**File**: `agent/interview/agent.py` (lines 115-123)
 
 ```python
 if __name__ == "__main__":
@@ -518,7 +518,7 @@ Backend creates room → Backend dispatches specific agent → Agent joins
 **Step 1: Configure Agent with `agent_name`**
 
 ```python
-# /agent/demo_agent.py
+# /agent/demo/agent.py
 if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
@@ -806,7 +806,7 @@ export async function POST(request: Request) {
 }
 ```
 
-**3. Demo Agent** (`/agent/demo_agent.py`)
+**3. Demo Agent** (`/agent/demo/agent.py`)
 ```python
 DEMO_AGENT_INSTRUCTIONS = """You are Meelni, an AI interview coach giving a 60-second product demo.
 
@@ -940,7 +940,7 @@ if __name__ == "__main__":
 **Verification**:
 ```bash
 # Check agent configuration
-grep -A5 "WorkerOptions" agent/demo_agent.py
+grep -A5 "WorkerOptions" agent/demo/agent.py
 
 # Should see: agent_name="CA_xxxxxxxxxxxx"
 
@@ -1003,7 +1003,7 @@ When using LiveKit Cloud (detected via `_worker_token`), custom `load_fnc` and `
 
 2. **Metadata parsing error**: Agent crashes when parsing room metadata
    ```python
-   # Check: agent/agent.py
+   # Check: agent/interview/agent.py
    metadata = json.loads(ctx.room.metadata or "{}")
    ```
 
