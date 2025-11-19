@@ -30,7 +30,7 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
             "feedback_mode": "end_only",
             "persona": null,
             "stt_model": "deepgram/nova-3",
-            "llm_model": "openai/gpt-4.1-mini",
+            "llm_model": "openai/gpt-5",
             "tts_model": "cartesia/sonic-3:6ccbfb76..."
         }
     }
@@ -93,7 +93,7 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
                 "feedback_mode": "end_only",
                 "persona": None,
                 "stt_model": "deepgram/nova-3",
-                "llm_model": "openai/gpt-4.1-mini",
+                "llm_model": "openai/gpt-5",
                 "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
             },
         }
@@ -112,7 +112,7 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
                 "feedback_mode": "end_only",
                 "persona": None,
                 "stt_model": "deepgram/nova-3",
-                "llm_model": "openai/gpt-4.1-mini",
+                "llm_model": "openai/gpt-5",
                 "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
             },
         }
