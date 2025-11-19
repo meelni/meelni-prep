@@ -96,6 +96,28 @@ interface HeroCTAProps {
 }
 
 function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
+  const handleStartMockClick = () => {
+    const { analytics } = require('@/lib/analytics/analytics-service');
+    analytics.track('cta_clicked', {
+      button_text: 'Start A Mock',
+      location: 'hero',
+      destination: '/dashboard',
+    });
+  };
+
+  const handleDemoClick = () => {
+    const { analytics } = require('@/lib/analytics/analytics-service');
+    analytics.track('cta_clicked', {
+      button_text: 'Talk to Meelni',
+      location: 'hero',
+      destination: 'demo_modal',
+    });
+    analytics.track('demo_modal_opened', {
+      trigger_source: 'hero',
+    });
+    setIsDemoModalOpen(true);
+  };
+
   return (
     <>
       <div className="relative mt-8">
@@ -108,6 +130,7 @@ function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
           {/* Primary CTA - Start A Mock (routes to dashboard with auth) */}
           <Link
             href="/dashboard"
+            onClick={handleStartMockClick}
             className="group relative w-full sm:w-auto overflow-hidden rounded-xl bg-gradient-to-r from-primary via-primary/90 to-primary/80 px-8 py-4 text-primary-foreground font-semibold shadow-lg shadow-primary/30 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.98]"
           >
             <div className="relative z-10 flex items-center gap-3">
@@ -150,7 +173,7 @@ function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
 
           {/* Secondary CTA - Talk to Meelni (opens demo modal, no auth) */}
           <button
-            onClick={() => setIsDemoModalOpen(true)}
+            onClick={handleDemoClick}
             className="group relative w-full sm:w-auto overflow-hidden rounded-xl border-2 border-border/60 bg-card/40 backdrop-blur-md px-8 py-4 font-semibold transition-all duration-300 hover:border-primary/70 hover:bg-card/60 hover:scale-[1.02] active:scale-[0.98]"
           >
             <div className="relative z-10 flex items-center gap-3">

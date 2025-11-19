@@ -36,6 +36,10 @@ This directory contains all architecture decision records for the Meelni project
 - [ADR-024: LiveKit Cloud Debugging Best Practices](./ADR-024-livekit-cloud-debugging.md) - Debugging workflow for Cloud agents
 - [ADR-025: Agent State Debouncing for Smooth Transitions](./ADR-025-agent-state-debouncing.md) - UI flickering prevention
 
+### Analytics & Privacy (027-028)
+- [ADR-027: PostHog Analytics Integration](./ADR-027-posthog-analytics-integration.md) - Analytics infrastructure with privacy-first architecture
+- [ADR-028: Analytics Privacy & GDPR Compliance](./ADR-028-analytics-privacy-compliance.md) - Privacy controls and GDPR compliance
+
 ### API & Performance (036+)
 - [ADR-036: Insights API Caching](./ADR-036-insights-api-caching.md) - API caching strategy
 

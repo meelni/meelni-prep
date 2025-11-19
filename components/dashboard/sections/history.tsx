@@ -1,9 +1,10 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SessionList } from "@/components/dashboard/session-list";
 import type { Session } from "@/lib/api/queries";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 interface HistorySectionProps {
   sessions: Session[];
@@ -11,6 +12,22 @@ interface HistorySectionProps {
 }
 
 export const HistorySection = memo(function HistorySection({ sessions, loadingSessions }: HistorySectionProps) {
+  // Track when history section is viewed
+  useEffect(() => {
+    if (!loadingSessions) {
+      // Check if any sessions have feedback by checking if overallScore exists
+      const hasFeedback = sessions.some((s) => {
+        return (s as any).feedback?.overallScore !== null && (s as any).feedback?.overallScore !== undefined;
+      });
+
+      analytics.track("session_history_viewed", {
+        section: "history",
+        total_sessions: sessions.length,
+        has_feedback: hasFeedback,
+      });
+    }
+  }, [loadingSessions, sessions]);
+
   return (
     <div className="p-6 space-y-6">
       <div className="space-y-2">
