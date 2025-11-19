@@ -8,16 +8,13 @@
 
 ## Document Purpose
 
-This document serves as the single source of truth for:
-- Project structure and architecture decisions
+This is a **quick reference guide** for developers and AI agents. It provides:
 - Code style and conventions
-- Important constraints and boundaries
+- File boundaries and responsibilities
 - Development commands and workflows
-- API and database schemas
-- Documentation standards
-- Cross-cutting concerns
+- Links to detailed documentation
 
-**Update Protocol**: Review and update this document at the end of each significant iteration or sprint.
+**Not Included Here**: Detailed technical docs, ADRs, API specs, and deployment guides are in `docs/` and other `.claude/` files. See the Documentation Map below.
 
 ---
 
@@ -68,28 +65,6 @@ This document serves as the single source of truth for:
 - **Obsolete documentation** → `.conductor/archive/documentation/` (archived)
 
 **For Agents**: Start with CLAUDE.md. For detailed technical information, see `docs/README.md` for the documentation index. ADRs are now in `docs/architecture/adrs/` (no longer embedded in this file). Historical implementation logs are in `archive/` but should only be referenced if explicitly asked.
-
----
-
-## Project Status
-
-**Current Phase**: Phase 1.0 - MVP Complete ✅
-**Next Milestone**: Production deployment and user testing
-
-**MVP Features Complete**:
-- ✅ Next.js 14+ project with TypeScript, Tailwind, shadcn/ui
-- ✅ **Dual authentication: Google OAuth + Email/Password with verification**
-- ✅ **Password reset flow with email verification**
-- ✅ Protected routes with Next.js middleware
-- ✅ LiveKit real-time voice pipeline (Deepgram Nova-3 → GPT-4.1-mini → Cartesia Sonic 3)
-- ✅ Question bank with 2,879 PM interview questions (timestamp-filtered)
-- ✅ Question recency preference UI (Current Trends / Broader Practice / All Questions)
-- ✅ **Real-time transcript capture and persistence**
-- ✅ **AI-powered feedback engine with GPT-4 Turbo evaluation**
-- ✅ **Row Level Security (RLS) policies on all user data**
-- ✅ Tactical dashboard with sidebar navigation
-- ✅ Marketing landing page with demo modal
-- ✅ LiveKit Cloud agent deployment (explicit dispatch)
 
 ---
 
