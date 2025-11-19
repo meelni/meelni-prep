@@ -6,7 +6,9 @@ Quick 5-minute product demo for landing page visitors
 import asyncio
 import json
 import logging
+import sys
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
@@ -19,6 +21,9 @@ from livekit.agents import (
 )
 from livekit.plugins import silero
 from livekit.plugins.turn_detector.english import EnglishModel
+
+# Add parent directory to path for shared module imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 load_dotenv()
 
