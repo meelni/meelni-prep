@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { getBlogPostById, blogPosts } from "@/lib/blog-data";
 import { Calendar, Clock, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export async function generateStaticParams() {
   return blogPosts.map((post) => ({
@@ -79,65 +81,56 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
 
         {/* Content */}
         <div className="prose prose-lg prose-neutral dark:prose-invert max-w-none">
-          <div
+          <ReactMarkdown
             className="text-foreground/80 leading-relaxed space-y-6"
-            dangerouslySetInnerHTML={{
-              __html: post.content
-                .split("\n")
-                .map((line) => {
-                  // First, handle bold text globally (before any other processing)
-                  let processedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>');
-
-                  // Handle headings
-                  if (line.startsWith("# ")) {
-                    return `<h1 class="text-[40px] font-display font-bold mt-12 mb-6 leading-tight">${processedLine.slice(2)}</h1>`;
-                  }
-                  if (line.startsWith("## ")) {
-                    return `<h2 class="text-[32px] font-display font-semibold mt-10 mb-4 leading-tight">${processedLine.slice(3)}</h2>`;
-                  }
-                  if (line.startsWith("### ")) {
-                    return `<h3 class="text-[24px] font-display font-semibold mt-8 mb-3 leading-tight">${processedLine.slice(4)}</h3>`;
-                  }
-
-                  // Use processedLine for the rest
-                  const boldText = processedLine;
-
-                  // Handle list items
-                  if (line.startsWith("- ")) {
-                    return `<li class="ml-6 mb-2">${boldText.slice(2)}</li>`;
-                  }
-
-                  // Handle blockquotes (example sections)
-                  if (line.startsWith("> ")) {
-                    return `<blockquote class="border-l-4 border-primary/30 pl-6 italic text-muted-foreground my-6">${line.slice(2)}</blockquote>`;
-                  }
-
-                  // Handle example markers
-                  if (line.includes("**Example:**")) {
-                    return `<p class="font-semibold text-foreground mt-6 mb-3">${boldText}</p>`;
-                  }
-
-                  // Handle good/bad examples
-                  if (line.startsWith("❌")) {
-                    return `<p class="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 my-3 text-[15px]">${line}</p>`;
-                  }
-                  if (line.startsWith("✅")) {
-                    return `<p class="bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 my-3 text-[15px]">${line}</p>`;
-                  }
-
-                  // Handle links
-                  const withLinks = boldText.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" class="text-primary hover:underline">$1</a>');
-
-                  // Regular paragraphs
-                  if (line.trim()) {
-                    return `<p class="text-[17px] leading-relaxed mb-4">${withLinks}</p>`;
-                  }
-
-                  return "";
-                })
-                .join("\n"),
+            remarkPlugins={[remarkGfm]}
+            components={{
+              h1: ({ children }) => (
+                <h1 className="text-[40px] font-display font-bold mt-12 mb-6 leading-tight">{children}</h1>
+              ),
+              h2: ({ children }) => (
+                <h2 className="text-[32px] font-display font-semibold mt-10 mb-4 leading-tight">{children}</h2>
+              ),
+              h3: ({ children }) => (
+                <h3 className="text-[24px] font-display font-semibold mt-8 mb-3 leading-tight">{children}</h3>
+              ),
+              p: ({ children }) => {
+                const text = typeof children === "string" ? children : "";
+                // Special styling for good/bad examples
+                if (text.startsWith("❌")) {
+                  return (
+                    <p className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 my-3 text-[15px]">
+                      {children}
+                    </p>
+                  );
+                }
+                if (text.startsWith("✅")) {
+                  return (
+                    <p className="bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 my-3 text-[15px]">
+                      {children}
+                    </p>
+                  );
+                }
+                return <p className="text-[17px] leading-relaxed mb-4">{children}</p>;
+              },
+              strong: ({ children }) => (
+                <strong className="font-semibold text-foreground">{children}</strong>
+              ),
+              li: ({ children }) => <li className="ml-6 mb-2">{children}</li>,
+              blockquote: ({ children }) => (
+                <blockquote className="border-l-4 border-primary/30 pl-6 italic text-muted-foreground my-6">
+                  {children}
+                </blockquote>
+              ),
+              a: ({ href, children }) => (
+                <a href={href} className="text-primary hover:underline">
+                  {children}
+                </a>
+              ),
             }}
-          />
+          >
+            {post.content}
+          </ReactMarkdown>
         </div>
 
         {/* CTA */}
