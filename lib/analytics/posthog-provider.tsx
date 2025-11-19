@@ -46,6 +46,20 @@ function initializePostHog() {
       recordCrossOriginIframes: false,
     },
 
+    // Disable optional features that cause console errors
+    // These modules try to load lazily and show errors if blocked by CSP
+    capture_dead_clicks: false, // Disable dead clicks tracking
+    capture_performance: false, // Disable Web Vitals tracking
+    enable_recording_console_log: false, // Don't record console logs
+
+    // CRITICAL: Prevent PostHog from loading external scripts (unpkg.com, etc.)
+    // This eliminates CSP violations and console errors
+    disable_external_dependency_loading: true,
+
+    // Advanced options
+    opt_out_capturing_by_default: false, // Don't opt out by default
+    advanced_disable_decide: false, // Keep feature flags enabled
+
     // Performance
     loaded: (ph) => {
       if (clientConfig.debug) {

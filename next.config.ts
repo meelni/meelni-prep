@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
               "font-src 'self' data:",
               "connect-src 'self' https://*.supabase.co https://*.livekit.cloud https://us.i.posthog.com wss://*.livekit.cloud",
               "media-src 'self' blob:",
+              "worker-src 'self' blob:", // Allow web workers for PostHog session recording
               "frame-src 'none'",
               "frame-ancestors 'none'",
               "base-uri 'self'",
