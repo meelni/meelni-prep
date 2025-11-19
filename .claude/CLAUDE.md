@@ -1354,22 +1354,33 @@ RESEND_API_KEY=
 
 #### Starting a New Sprint
 
-**Use the slash command**:
+**CRITICAL: Always check if sprint already exists first!**
+
+**Use the slash command** (recommended - handles duplicates automatically):
 ```
 /new-sprint [feature-name]
 ```
 
-This creates:
-- Sprint folder at `.claude/sprints/[feature-name-YYYY-MM]/`
-- All template files (README, PLAN, PROGRESS, DECISIONS, TESTING, COMPLETION)
-- Pre-filled dates and sprint name
-- Entry in sprint index
+The command will:
+- Check if sprint already exists (active or archived)
+- If exists: Alert you and ask what to do (resume or create new)
+- If doesn't exist: Create sprint folder at `.claude/sprints/[feature-name-YYYY-MM]/`
+- Copy all template files (README, PLAN, PROGRESS, DECISIONS, TESTING, COMPLETION)
+- Pre-fill dates and sprint name
+- Add entry to sprint index
 
-**Or manually**:
+**Or manually** (must check for duplicates yourself):
 ```bash
+# 1. Check for existing sprints FIRST
+ls -la .claude/sprints/
+find .claude/archive/sprints/ -type d -name "*[feature-name]*"
+
+# 2. Only if sprint does NOT exist, create it
 mkdir -p .claude/sprints/[feature-name-YYYY-MM]
 cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 ```
+
+**Never create duplicate sprints.** If a sprint exists, resume work or ask user before creating a new one.
 
 #### Daily Documentation Requirements
 

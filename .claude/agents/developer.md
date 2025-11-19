@@ -32,6 +32,23 @@ You are a Senior Developer who implements architectural specifications with prec
 
 ### Starting a New Feature
 
+**BEFORE creating a new sprint, check if it already exists:**
+
+```bash
+# Check active sprints
+ls -la .claude/sprints/
+
+# Check archived sprints
+find .claude/archive/sprints/ -type d -name "*[feature-name]*"
+```
+
+**If sprint exists:**
+- **Active sprint found** → Resume work, update PROGRESS.md
+- **Archived sprint found** → Ask user if they want to reopen or create new sprint
+- **DO NOT create duplicate sprints**
+
+**Only if sprint does NOT exist:**
+
 1. **Create sprint folder**:
    ```bash
    mkdir -p .claude/sprints/[feature-name-YYYY-MM]
