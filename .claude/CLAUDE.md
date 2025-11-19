@@ -1,8 +1,8 @@
 # CLAUDE.md: Codebase Living Operational Document
 
 **Project**: Meelni - Real-Time AI Mock Interviews
-**Last Updated**: 2025-11-12
-**Version**: 2.0.0 - Documentation Reorganization
+**Last Updated**: 2025-11-18
+**Version**: 2.1.0 - Sprint Documentation Pattern Established
 
 ---
 
@@ -33,6 +33,13 @@ This document serves as the single source of truth for:
 - **Troubleshooting** → `.claude/TROUBLESHOOTING.md`
 - **Contributing** → `.claude/CONTRIBUTING.md`
 - **Deployment** → `.claude/DEPLOYMENT.md` (high-level overview)
+- **Sprint Documentation** → `.claude/sprints/README.md` (active feature work tracking)
+
+### Sprint Documentation (`.claude/sprints/`)
+- **Active Sprints** → `.claude/sprints/` (current feature development)
+- **Archived Sprints** → `.claude/archive/sprints/` (completed features)
+- **Sprint Template** → `docs/templates/SPRINT_TEMPLATE/` (template for new sprints)
+- **Quick Start Guide** → `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
 
 ### Technical Documentation (`docs/`)
 - **Documentation Hub** → `docs/README.md` (start here for all documentation)
@@ -50,6 +57,7 @@ This document serves as the single source of truth for:
 - **Understanding architecture decisions** → `docs/architecture/adrs/README.md`
 - **Integrating LiveKit** → `docs/integrations/livekit.md`
 - **Debugging LiveKit agents** → `docs/LIVEKIT_DEBUGGING.md`
+- **Starting a new feature/sprint** → `.claude/sprints/README.md` (USE THIS!)
 - **Adding new features** → `docs/templates/FEATURE_TEMPLATE.md`
 - **Creating ADRs** → `docs/templates/ADR_TEMPLATE.md`
 - **API reference** → `docs/api/README.md`
@@ -1339,6 +1347,76 @@ RESEND_API_KEY=
 - Document API routes with input/output schemas
 - Use comments in route handlers for clarity
 - Consider OpenAPI/Swagger for later phases
+
+### Sprint Documentation (NEW - REQUIRED FOR ALL FEATURES)
+
+**When implementing new features, ALWAYS follow the sprint documentation pattern.**
+
+#### Starting a New Sprint
+
+**Use the slash command**:
+```
+/new-sprint [feature-name]
+```
+
+This creates:
+- Sprint folder at `.claude/sprints/[feature-name-YYYY-MM]/`
+- All template files (README, PLAN, PROGRESS, DECISIONS, TESTING, COMPLETION)
+- Pre-filled dates and sprint name
+- Entry in sprint index
+
+**Or manually**:
+```bash
+mkdir -p .claude/sprints/[feature-name-YYYY-MM]
+cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
+```
+
+#### Daily Documentation Requirements
+
+**EVERY DAY** you work on a feature:
+1. Update `PROGRESS.md` with daily entry (what done, what next, blockers)
+2. Check off completed tasks in README checklist
+3. Log decisions in `DECISIONS.md` when making important choices
+
+#### Sprint Folder Contents
+
+- `README.md` - Sprint overview, goals, timeline, progress checklist
+- `PLAN.md` - Technical approach, architecture, API endpoints, DB changes
+- `PROGRESS.md` - Daily log (REQUIRED - update every day)
+- `DECISIONS.md` - Key decisions and trade-offs (as needed)
+- `TESTING.md` - Test scenarios, results, bug log
+- `COMPLETION.md` - Final summary (created on sprint completion)
+
+#### On Sprint Completion
+
+1. **Fill in COMPLETION.md** with summary, lessons learned, metrics
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+#### Where Documentation Goes
+
+**Sprint folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+- Planning notes
+
+**docs/ folder** (permanent, forever):
+- Architecture Decision Records (ADRs)
+- API documentation
+- Feature guides
+- Integration setup guides
+- Deployment procedures
+
+**RULE**: Never create permanent documentation in sprint folders. Sprint folders are for active work tracking only. Permanent docs go in `docs/`.
+
+**See**: `.claude/sprints/README.md` for full guidelines and `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md` for detailed workflow.
 
 ---
 
