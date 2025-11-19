@@ -14,6 +14,164 @@ You create precise, actionable ADR documentation for technical systems. You have
 **ADR Location**: All ADRs are stored in `docs/architecture/adrs/` directory.
 
 **ADR Index**: The master index is at `docs/architecture/adrs/README.md` - ALWAYS check this first.
+- `.claude/sprints/README.md` - Sprint documentation guidelines (NEW)
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+### Starting a New Feature
+
+**BEFORE creating a new sprint, check if it already exists:**
+
+```bash
+# Check active sprints
+ls -la .claude/sprints/
+
+# Check archived sprints
+find .claude/archive/sprints/ -type d -name "*[feature-name]*"
+```
+
+**If sprint exists:**
+- **Active sprint found** → Resume work, update PROGRESS.md
+- **Archived sprint found** → Ask user if they want to reopen or create new sprint
+- **DO NOT create duplicate sprints**
+
+**Only if sprint does NOT exist:**
+
+1. **Create sprint folder**:
+   ```bash
+   mkdir -p .claude/sprints/[feature-name-YYYY-MM]
+   ```
+
+2. **Copy template**:
+   ```bash
+   cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
+   ```
+
+3. **Fill in documentation** (see `.claude/sprints/README.md` for details):
+   - `README.md`: Sprint goals, timeline, checklist
+   - `PLAN.md`: Technical approach, API endpoints, DB changes
+   - `PROGRESS.md`: Daily updates (REQUIRED)
+   - `DECISIONS.md`: Log key decisions as you make them
+   - `TESTING.md`: Test scenarios and results
+
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
 
 **Existing ADR Count**: Currently 26 ADRs (ADR-001 through ADR-026, plus ADR-036).
 
@@ -37,6 +195,168 @@ You create precise, actionable ADR documentation for technical systems. You have
 ALWAYS identify ADR relationships before writing. If relationships are not provided in the user's prompt, discover them using this process:
 
 1. **Check for ADR index** - Read `docs/architecture/adrs/README.md` first
+- `.claude/sprints/README.md` - Sprint documentation guidelines (NEW)
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+### Starting a New Feature
+
+**BEFORE creating a new sprint, check if it already exists:**
+
+```bash
+# Check active sprints
+ls -la .claude/sprints/
+
+# Check archived sprints
+find .claude/archive/sprints/ -type d -name "*[feature-name]*"
+```
+
+**If sprint exists:**
+- **Active sprint found** → Resume work, update PROGRESS.md
+- **Archived sprint found** → Ask user if they want to reopen or create new sprint
+- **DO NOT create duplicate sprints**
+
+**Only if sprint does NOT exist:**
+
+1. **Create sprint folder**:
+   ```bash
+   mkdir -p .claude/sprints/[feature-name-YYYY-MM]
+   ```
+
+2. **Copy template**:
+   ```bash
+   cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
+   ```
+
+3. **Fill in documentation** (see `.claude/sprints/README.md` for details):
+   - `README.md`: Sprint goals, timeline, checklist
+   - `PLAN.md`: Technical approach, API endpoints, DB changes
+   - `PROGRESS.md`: Daily updates (REQUIRED)
+   - `DECISIONS.md`: Log key decisions as you make them
+   - `TESTING.md`: Test scenarios and results
+
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
 2. **Identify related ADRs** - Based on the new ADR description and existing ADR summaries, identify which ADRs directly relate to this new ADR
 3. **Classify relationships** - Determine which of the 5 standard relationship types applies
 4. **Record backlink tasks** - Use TodoWrite to track updates needed in related ADRs
@@ -236,11 +556,335 @@ Before delivering any ADR, verify:
 **For new ADRs:**
 1. Start with relationship discovery if not provided
 2. Read `docs/architecture/adrs/README.md` to check next ADR number
+- `.claude/sprints/README.md` - Sprint documentation guidelines (NEW)
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+### Starting a New Feature
+
+**BEFORE creating a new sprint, check if it already exists:**
+
+```bash
+# Check active sprints
+ls -la .claude/sprints/
+
+# Check archived sprints
+find .claude/archive/sprints/ -type d -name "*[feature-name]*"
+```
+
+**If sprint exists:**
+- **Active sprint found** → Resume work, update PROGRESS.md
+- **Archived sprint found** → Ask user if they want to reopen or create new sprint
+- **DO NOT create duplicate sprints**
+
+**Only if sprint does NOT exist:**
+
+1. **Create sprint folder**:
+   ```bash
+   mkdir -p .claude/sprints/[feature-name-YYYY-MM]
+   ```
+
+2. **Copy template**:
+   ```bash
+   cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
+   ```
+
+3. **Fill in documentation** (see `.claude/sprints/README.md` for details):
+   - `README.md`: Sprint goals, timeline, checklist
+   - `PLAN.md`: Technical approach, API endpoints, DB changes
+   - `PROGRESS.md`: Daily updates (REQUIRED)
+   - `DECISIONS.md`: Log key decisions as you make them
+   - `TESTING.md`: Test scenarios and results
+
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
 3. Create ADR with proper structure in `docs/architecture/adrs/ADR-XXX-slug.md`
 4. Add revision log entry "Document created"
 5. Place implementation details in appendices
 6. Create TodoWrite tasks for backlink updates to related ADRs
 7. Update `docs/architecture/adrs/README.md` index with new ADR
+- `.claude/sprints/README.md` - Sprint documentation guidelines (NEW)
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+### Starting a New Feature
+
+**BEFORE creating a new sprint, check if it already exists:**
+
+```bash
+# Check active sprints
+ls -la .claude/sprints/
+
+# Check archived sprints
+find .claude/archive/sprints/ -type d -name "*[feature-name]*"
+```
+
+**If sprint exists:**
+- **Active sprint found** → Resume work, update PROGRESS.md
+- **Archived sprint found** → Ask user if they want to reopen or create new sprint
+- **DO NOT create duplicate sprints**
+
+**Only if sprint does NOT exist:**
+
+1. **Create sprint folder**:
+   ```bash
+   mkdir -p .claude/sprints/[feature-name-YYYY-MM]
+   ```
+
+2. **Copy template**:
+   ```bash
+   cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
+   ```
+
+3. **Fill in documentation** (see `.claude/sprints/README.md` for details):
+   - `README.md`: Sprint goals, timeline, checklist
+   - `PLAN.md`: Technical approach, API endpoints, DB changes
+   - `PROGRESS.md`: Daily updates (REQUIRED)
+   - `DECISIONS.md`: Log key decisions as you make them
+   - `TESTING.md`: Test scenarios and results
+
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
 
 **For relationship updates:**
 1. Read existing ADR from `docs/architecture/adrs/`
@@ -270,6 +914,168 @@ Follow this pattern for ADR filenames:
 After creating a new ADR:
 1. [ ] ADR file created in `docs/architecture/adrs/`
 2. [ ] ADR added to index in `docs/architecture/adrs/README.md`
+- `.claude/sprints/README.md` - Sprint documentation guidelines (NEW)
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+### Starting a New Feature
+
+**BEFORE creating a new sprint, check if it already exists:**
+
+```bash
+# Check active sprints
+ls -la .claude/sprints/
+
+# Check archived sprints
+find .claude/archive/sprints/ -type d -name "*[feature-name]*"
+```
+
+**If sprint exists:**
+- **Active sprint found** → Resume work, update PROGRESS.md
+- **Archived sprint found** → Ask user if they want to reopen or create new sprint
+- **DO NOT create duplicate sprints**
+
+**Only if sprint does NOT exist:**
+
+1. **Create sprint folder**:
+   ```bash
+   mkdir -p .claude/sprints/[feature-name-YYYY-MM]
+   ```
+
+2. **Copy template**:
+   ```bash
+   cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
+   ```
+
+3. **Fill in documentation** (see `.claude/sprints/README.md` for details):
+   - `README.md`: Sprint goals, timeline, checklist
+   - `PLAN.md`: Technical approach, API endpoints, DB changes
+   - `PROGRESS.md`: Daily updates (REQUIRED)
+   - `DECISIONS.md`: Log key decisions as you make them
+   - `TESTING.md`: Test scenarios and results
+
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
 3. [ ] TodoWrite tasks created for backlink updates
 4. [ ] Related ADRs identified and logged
 5. [ ] Filename follows naming convention
@@ -283,3 +1089,165 @@ When writing ADRs, you may reference:
 - `.claude/LIVEKIT.md` - LiveKit integration patterns
 - `.claude/DATABASE.md` - Database schema
 - `docs/architecture/adrs/README.md` - ADR index and categories
+- `.claude/sprints/README.md` - Sprint documentation guidelines (NEW)
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+## CRITICAL: Sprint Documentation Requirements
+
+**When working on new features**, you MUST follow the sprint documentation pattern:
+
+### Starting a New Feature
+
+**BEFORE creating a new sprint, check if it already exists:**
+
+```bash
+# Check active sprints
+ls -la .claude/sprints/
+
+# Check archived sprints
+find .claude/archive/sprints/ -type d -name "*[feature-name]*"
+```
+
+**If sprint exists:**
+- **Active sprint found** → Resume work, update PROGRESS.md
+- **Archived sprint found** → Ask user if they want to reopen or create new sprint
+- **DO NOT create duplicate sprints**
+
+**Only if sprint does NOT exist:**
+
+1. **Create sprint folder**:
+   ```bash
+   mkdir -p .claude/sprints/[feature-name-YYYY-MM]
+   ```
+
+2. **Copy template**:
+   ```bash
+   cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
+   ```
+
+3. **Fill in documentation** (see `.claude/sprints/README.md` for details):
+   - `README.md`: Sprint goals, timeline, checklist
+   - `PLAN.md`: Technical approach, API endpoints, DB changes
+   - `PROGRESS.md`: Daily updates (REQUIRED)
+   - `DECISIONS.md`: Log key decisions as you make them
+   - `TESTING.md`: Test scenarios and results
+
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
+### Daily Workflow
+
+**EVERY DAY** you work on a sprint, you MUST:
+1. Update `PROGRESS.md` with what you did today
+2. Update README checklist (check off completed tasks)
+3. Log any decisions in `DECISIONS.md`
+
+**Example PROGRESS.md Entry**:
+```markdown
+### 2025-11-18 - Day 3
+
+**Focus**: Implementing feature X
+
+**Completed:**
+- ✅ Task 1
+- ✅ Task 2
+
+**In Progress:**
+- 🔄 Task 3 (70% done)
+
+**Blockers:**
+- None
+
+**Next Steps:**
+1. Next priority
+2. Following task
+
+**Time Spent**: X hours
+```
+
+### On Sprint Completion
+
+1. **Create COMPLETION.md** with summary
+2. **Create permanent docs**:
+   - ADRs for key decisions → `docs/architecture/adrs/`
+   - API docs → `docs/api/`
+   - Feature guides → `docs/features/`
+3. **Archive sprint**:
+   ```bash
+   mv .claude/sprints/[name] .claude/archive/sprints/[name]
+   ```
+
+### Where Documentation Goes
+
+**Sprint Folder** (temporary, during development):
+- Daily progress logs
+- Work-in-progress decisions
+- Test results during development
+
+**docs/ Folder** (permanent, forever):
+- ADRs (architecture decisions)
+- API documentation
+- Feature guides
+- Integration setup guides
+
+**RULE**: Never create permanent docs in sprint folders. Sprint folders are for active work tracking only.
+
+**Quick Reference**: See `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
