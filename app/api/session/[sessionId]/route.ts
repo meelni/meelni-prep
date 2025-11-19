@@ -49,7 +49,7 @@
  *     "config": {
  *       "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
  *       "stt_model": "deepgram/nova-3",
- *       "llm_model": "openai/gpt-5",
+ *       "llm_model": "openai/gpt-4.1-mini",
  *       "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
  *       "speed": 1.0,
  *       "emotion": "Calm"

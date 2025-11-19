@@ -268,7 +268,7 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
   "config": {
     "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
     "stt_model": "deepgram/nova-3",
-    "llm_model": "openai/gpt-5",
+    "llm_model": "openai/gpt-4.1-mini",
     "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
     "speed": 1.0,
     "emotion": "Calm",
@@ -295,7 +295,7 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
 |-------|------|----------|---------|-------------|
 | `voice` | string | No | Tessa voice ID | Cartesia voice ID |
 | `stt_model` | string | No | `deepgram/nova-3` | Speech-to-Text model |
-| `llm_model` | string | No | `openai/gpt-5` | Language model for dialogue |
+| `llm_model` | string | No | `openai/gpt-4.1-mini` | Language model for dialogue |
 | `tts_model` | string | No | `cartesia/sonic-3:{voice_id}` | Text-to-Speech model with voice |
 | `speed` | number | No | `1.0` | Voice speed multiplier (0.6 - 1.5) |
 | `emotion` | string | No | `null` | Voice emotion (Happy, Calm, Confident, etc.) |
@@ -313,7 +313,7 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
   "config": {
     "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
     "stt_model": "deepgram/nova-3",
-    "llm_model": "openai/gpt-5",
+    "llm_model": "openai/gpt-4.1-mini",
     "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
     "speed": 1.0,
     "emotion": "Calm"
@@ -410,7 +410,7 @@ Retrieves complete information about a specific interview session including conf
     "config": {
       "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
       "stt_model": "deepgram/nova-3",
-      "llm_model": "openai/gpt-5",
+      "llm_model": "openai/gpt-4.1-mini",
       "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
       "speed": 1.0,
       "emotion": "Calm"

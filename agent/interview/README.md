@@ -19,7 +19,7 @@ This is the main interview agent that powers full mock interview sessions. It su
 ## Configuration
 
 - **STT Model**: Deepgram Nova-3 (configurable via room metadata)
-- **LLM Model**: GPT-5 (default, configurable)
+- **LLM Model**: GPT-4.1-mini (default, configurable)
 - **TTS Model**: ElevenLabs Eleven Turbo v2.5 (default voice ID: cgSgspJ2msm6clMCkdW9)
 - **VAD**: Silero VAD with custom thresholds:
   - `min_speech_duration`: 0.2s
@@ -105,7 +105,7 @@ Uses shared modules from `../shared/`:
     "feedback_mode": "end",
     "duration": 30,
     "stt_model": "deepgram/nova-3",
-    "llm_model": "openai/gpt-5",
+    "llm_model": "openai/gpt-4.1-mini",
     "tts_model": "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
     "voice": "cgSgspJ2msm6clMCkdW9",
     "speed": 1.0,
@@ -139,7 +139,7 @@ proc.userdata["vad"] = silero.VAD.load(
 Update defaults in `entrypoint()` function in `agent.py`:
 ```python
 stt_model = config.get("stt_model", "deepgram/nova-3")
-llm_model = config.get("llm_model", "openai/gpt-5")
+llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
 tts_model = config.get("tts_model", "elevenlabs/eleven_turbo_v2_5:...")
 ```
 
