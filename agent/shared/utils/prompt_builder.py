@@ -51,12 +51,28 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
     skill_level = config.get("skill_level", "mid")
     duration = config.get("duration", 30)
 
+    # Extract difficulty from config
+    # Frontend uses: "beginner", "intermediate", "advanced"
+    # Agent expects: "junior", "intermediate", "senior"
+    # Map frontend values to agent values
+    difficulty_map = {
+        "beginner": "junior",
+        "intermediate": "intermediate",
+        "advanced": "senior",
+    }
+    frontend_difficulty = config.get("difficulty", "intermediate")
+    difficulty = difficulty_map.get(frontend_difficulty, "intermediate")
+
+    # Log difficulty mapping for debugging
+    print(f"[PROMPT_BUILDER] Difficulty: {frontend_difficulty} (frontend) → {difficulty} (agent)")
+
     # Get base prompt from new prompts.py system
     base_prompt = get_prompt(
         role=role,
         mode=mode,
         interview_type=interview_type,
-        skill_level=skill_level
+        skill_level=skill_level,
+        difficulty=difficulty
     )
 
     # IMPORTANT: Add specific question FIRST (before greeting) so LLM sees it early
