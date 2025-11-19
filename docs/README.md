@@ -5,6 +5,7 @@ Welcome to the Meelni project documentation. This is your central hub for all te
 ## Quick Links
 
 - **[Getting Started](#)** - Setup guide for new developers
+- **[Security Setup](./security/QUICK_START_SECURITY_FIX.md)** - 5-minute RLS & password protection guide
 - **[API Documentation](./api/README.md)** - REST API specifications and examples
 - **[Architecture Decisions](./architecture/adrs/README.md)** - ADRs documenting key decisions
 - **[Deployment Guide](./deployment/README.md)** - Production deployment instructions
@@ -49,6 +50,12 @@ These files form the "living operational document" for the project:
 - Environment variables reference
 - Quickstart checklist
 
+#### [Security](./security/)
+- **[Quick Start Guide](./security/QUICK_START_SECURITY_FIX.md)** - Deploy RLS & password protection (5 min)
+- **[RLS Deployment](./security/RLS_DEPLOYMENT_GUIDE.md)** - Row Level Security setup
+- **[Password Protection](./security/PASSWORD_PROTECTION_GUIDE.md)** - Leaked password prevention
+- **[Security Audit 2025-11-18](./security/SECURITY_AUDIT_2025-11-18.md)** - Complete audit report
+
 #### [Features](./features/)
 Feature-specific deep dives:
 - Authentication system
@@ -89,10 +96,11 @@ Documentation templates for consistency:
 
 ## For Operators/DevOps
 
-1. **[Deployment Guide](./deployment/README.md)** - production deployment
-2. **[Environment Variables](./deployment/environment-variables.md)** - configuration reference
-3. **[Troubleshooting](../.claude/TROUBLESHOOTING.md)** - common issues
-4. **[LiveKit Debugging](./LIVEKIT_DEBUGGING.md)** - agent debugging guide
+1. **[Security Setup](./security/QUICK_START_SECURITY_FIX.md)** - **CRITICAL** - Deploy RLS policies first
+2. **[Deployment Guide](./deployment/README.md)** - production deployment
+3. **[Environment Variables](./deployment/environment-variables.md)** - configuration reference
+4. **[Troubleshooting](../.claude/TROUBLESHOOTING.md)** - common issues
+5. **[LiveKit Debugging](./LIVEKIT_DEBUGGING.md)** - agent debugging guide
 
 ## Documentation Standards
 
@@ -124,5 +132,5 @@ When adding new documentation:
 
 ---
 
-**Last Updated**: 2025-11-12
-**Documentation Version**: 2.0 (Post-reorganization)
+**Last Updated**: 2025-11-18
+**Documentation Version**: 2.1 (Security documentation added)
