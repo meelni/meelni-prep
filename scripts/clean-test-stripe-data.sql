@@ -30,8 +30,8 @@ ORDER BY created_at DESC;
 -- 3. Delete test mode payment history (UNCOMMENT TO RUN)
 -- DELETE FROM payment_history
 -- WHERE
---   stripe_payment_id IS NOT NULL
---   AND stripe_payment_id LIKE 'pi_test_%';
+--   stripe_payment_intent_id IS NOT NULL
+--   AND stripe_payment_intent_id LIKE 'pi_test_%';
 
 -- 4. Delete test mode Stripe event logs (UNCOMMENT TO RUN)
 -- DELETE FROM stripe_event_log
