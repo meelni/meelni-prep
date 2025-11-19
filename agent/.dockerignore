@@ -25,6 +25,7 @@ ENV/
 .gitignore
 
 # Exclude demo agent files (this is for main interview agent)
+# NOTE: Comment out when deploying demo agent, uncomment when deploying main agent
 demo_agent.py
 Dockerfile.demo
 
