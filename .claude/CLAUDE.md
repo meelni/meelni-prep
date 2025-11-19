@@ -44,6 +44,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **API Specifications** → `docs/api/`
 - **Development Guides** → `docs/development/`
 - **Deployment Guides** → `docs/deployment/` (detailed deployment instructions)
+- **Security Documentation** → `docs/security/` (RLS policies, password protection, security audits)
 - **Feature Deep Dives** → `docs/features/`
 - **Integration Guides** → `docs/integrations/`
 - **Documentation Templates** → `docs/templates/`
@@ -51,6 +52,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 ### Quick Links by Task
 - **Setting up dev environment** → `docs/development/setup.md`
 - **Deploying to production** → `docs/deployment/quickstart.md`
+- **Security setup (RLS + passwords)** → `docs/security/QUICK_START_SECURITY_FIX.md` (5 minutes)
 - **Understanding architecture decisions** → `docs/architecture/adrs/README.md`
 - **Integrating LiveKit** → `docs/integrations/livekit.md`
 - **Debugging LiveKit agents** → `docs/LIVEKIT_DEBUGGING.md`
@@ -1495,15 +1497,16 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 
 ### Current Technical Debt
 - ✅ ~~No session persistence~~ → **DONE** - Transcripts save in real-time during interviews
-- ✅ ~~No authentication~~ → **DONE** - Google OAuth fully integrated
+- ✅ ~~No authentication~~ → **DONE** - Google OAuth + Email/Password fully integrated
 - ✅ ~~No feedback/scoring engine~~ → **DONE** - GPT-4 Turbo evaluation implemented
 - ✅ ~~No error handling in APIs~~ → **DONE** - All APIs have proper validation and error responses
-- ✅ ~~No RLS policies~~ → **DONE** - 12 policies enforcing user data isolation
+- ✅ ~~No RLS policies~~ → **DONE** - 38 policies enforcing user data isolation across 13 tables (deployed 2025-11-18)
 
 **Remaining Minor Items**:
-- Consider adding email/password auth alongside Google OAuth (optional)
+- ⏳ Enable leaked password protection in Supabase Auth (5-min manual step)
 - Add feedback UI in dashboard to display evaluation results
 - Consider implementing real-time nudges during interviews (optional)
+- Optimize RLS policies for performance when scale demands (auth.uid() → select auth.uid())
 
 ---
 
