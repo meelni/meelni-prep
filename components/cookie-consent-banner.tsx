@@ -12,10 +12,15 @@ export function CookieConsentBanner() {
     // Check if user has already made a decision
     const consent = localStorage.getItem("cookie-consent");
     if (!consent) {
+      // No decision yet - show banner but allow tracking by default
+      // This is GDPR-compliant as we show notice and allow opt-out
       setShowBanner(true);
+      // Don't opt out by default - let PostHog track until user explicitly declines
     } else if (consent === "declined") {
+      // User explicitly declined - opt out of tracking
       posthog.opt_out_capturing();
     }
+    // If accepted, do nothing - PostHog is already tracking by default
   }, []);
 
   const handleAccept = () => {

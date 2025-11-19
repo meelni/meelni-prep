@@ -56,6 +56,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **Understanding architecture decisions** → `docs/architecture/adrs/README.md`
 - **Integrating LiveKit** → `docs/integrations/livekit.md`
 - **Debugging LiveKit agents** → `docs/LIVEKIT_DEBUGGING.md`
+- **PostHog analytics troubleshooting** → `.claude/archive/sprints/posthog-analytics-2025-11/POSTHOG_TESTING_GUIDE.md`
 - **Starting a new feature/sprint** → `.claude/sprints/README.md` (USE THIS!)
 - **Adding new features** → `docs/templates/FEATURE_TEMPLATE.md`
 - **Creating ADRs** → `docs/templates/ADR_TEMPLATE.md`

@@ -167,6 +167,28 @@ Events appear in browser console when debug mode is enabled:
 3. Check PostHog project ID matches your account
 4. Verify network requests: DevTools → Network → Filter "posthog"
 
+### Issue: CSP violations / Console errors (Fixed 2025-11-19)
+
+**Symptoms**: Console shows errors like:
+```
+Loading the script 'https://unpkg.com/web-vitals@3/dist/web-vitals.iife.js'
+violates the following Content Security Policy directive...
+[PostHog.js] [SessionRecording] "could not load recorder"
+[PostHog.js] [Dead Clicks] "failed to load script"
+```
+
+**Root Cause**: PostHog tries to load external scripts from CDNs (unpkg.com) even when features are disabled.
+
+**Solution**: Add to PostHog config in `lib/analytics/posthog-provider.tsx`:
+```typescript
+disable_external_dependency_loading: true,
+capture_dead_clicks: false,
+capture_performance: false,
+enable_recording_console_log: false,
+```
+
+**Reference**: See `.claude/archive/sprints/posthog-analytics-2025-11/POSTHOG_CSP_FIX_2025-11-19.md`
+
 ### Issue: Cookie consent banner not showing
 
 **Symptoms**: Banner never appears on first visit
