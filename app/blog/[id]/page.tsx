@@ -80,9 +80,8 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
         </div>
 
         {/* Content */}
-        <div className="prose prose-lg prose-neutral dark:prose-invert max-w-none">
+        <div className="prose prose-lg prose-neutral dark:prose-invert max-w-none text-foreground/80 leading-relaxed space-y-6">
           <ReactMarkdown
-            className="text-foreground/80 leading-relaxed space-y-6"
             remarkPlugins={[remarkGfm]}
             components={{
               h1: ({ children }) => (
