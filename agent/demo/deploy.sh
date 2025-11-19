@@ -4,17 +4,9 @@ set -e
 
 echo "🚀 Deploying Demo Agent to LiveKit Cloud..."
 
-# Use demo-specific dockerignore
-cp .dockerignore.demo .dockerignore
-
-# Use demo Dockerfile
-cp Dockerfile.demo Dockerfile
-
-# Deploy
+# Deploy from demo directory
+# Dockerfile references shared modules via ../shared/
 lk agent deploy .
-
-# Cleanup
-rm Dockerfile
 
 echo "✅ Demo Agent deployed successfully!"
 echo "Agent ID: CA_Wp8bi3bRroE2"

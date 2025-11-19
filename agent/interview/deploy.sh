@@ -4,17 +4,9 @@ set -e
 
 echo "🚀 Deploying Main Interview Agent to LiveKit Cloud..."
 
-# Use main-specific dockerignore
-cp .dockerignore.main .dockerignore
-
-# Use main Dockerfile
-cp Dockerfile.main Dockerfile
-
-# Deploy
+# Deploy from interview directory
+# Dockerfile references shared modules via ../shared/
 lk agent deploy .
-
-# Cleanup
-rm Dockerfile
 
 echo "✅ Main Interview Agent deployed successfully!"
 echo "Agent ID: CA_yawKG67rCMG4"

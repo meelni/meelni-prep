@@ -4,12 +4,13 @@ Test script to verify the greeting is included in agent prompts
 """
 
 import sys
-import os
+from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add agent directory to path to access shared modules
+agent_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(agent_dir))
 
-from utils.prompt_builder import build_agent_prompt
+from shared.utils.prompt_builder import build_agent_prompt
 
 def test_greeting_in_prompt():
     """Test that greeting instruction appears in generated prompts"""
