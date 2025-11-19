@@ -151,7 +151,7 @@ export function QuotaExceededModal({
               <div>
                 <div className="text-sm text-muted-foreground mb-1">Pro Plan</div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-foreground">$19</span>
+                  <span className="text-3xl font-bold text-foreground">$29</span>
                   <span className="text-muted-foreground">/month</span>
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
