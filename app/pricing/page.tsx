@@ -459,7 +459,7 @@ export default function PricingPage() {
           <motion.div {...fadeInUp} className="mt-12 text-center">
             <p className="text-sm text-muted-foreground">
               Still have questions?{" "}
-              <a href="mailto:support@meelni.com" className="text-primary hover:underline">
+              <a href="mailto:contact@meelni.com" className="text-primary hover:underline">
                 Contact our support team
               </a>
             </p>
