@@ -473,7 +473,7 @@ export default function PricingPage() {
           <motion.div {...fadeInUp}>
             <h2 className="font-display text-4xl font-bold">Ready to ace your PM interviews?</h2>
             <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-              Join thousands of Product Managers who've landed their dream jobs with Meelni.
+              Start practicing with AI-powered mock interviews today.
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <Button asChild size="lg">
