@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter } from "next/navigation";
+import { Header } from "@/components/sections/header";
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -106,11 +107,6 @@ const faqs = [
       "Yes, both monthly and annual plans auto-renew unless you cancel. We'll send you an email reminder before each renewal. Annual subscribers save 20% compared to monthly billing.",
   },
   {
-    question: "What's your refund policy?",
-    answer:
-      "We offer a 30-day money-back guarantee on all paid plans. If you're not satisfied within the first 30 days, contact support for a full refund. No questions asked.",
-  },
-  {
     question: "How many interviews can I do with the free tier?",
     answer:
       "The free tier includes 3 AI mock interviews per month, focused on Product Sense questions. This resets on the 1st of each month. Upgrade to Pro for unlimited interviews across all 4 interview types.",
@@ -119,11 +115,6 @@ const faqs = [
     question: "Can I switch between monthly and annual billing?",
     answer:
       "Yes! You can switch from monthly to annual billing at any time to start saving 20%. If you're switching from annual to monthly, the change will take effect at the end of your current annual period.",
-  },
-  {
-    question: "Is there a team or enterprise plan?",
-    answer:
-      "We're currently focused on individual users, but we're planning to launch team and enterprise plans in Q2 2026. If you're interested in bulk licensing for your company or bootcamp, reach out to enterprise@meelni.com.",
   },
 ];
 
@@ -172,27 +163,7 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/50">
-              <Sparkles className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="font-display text-xl font-bold">Meelni</span>
-          </Link>
-          <nav className="flex items-center gap-4">
-            <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
-              Home
-            </Link>
-            <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
-              Dashboard
-            </Link>
-            <Button asChild>
-              <Link href="/auth/signin">Sign In</Link>
-            </Button>
-          </nav>
-        </div>
-      </header>
+      <Header />
 
       {/* Hero Section */}
       <section className="border-b border-border bg-gradient-to-b from-background to-muted/20 py-20">
