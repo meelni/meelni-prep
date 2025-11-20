@@ -18,136 +18,125 @@ const featureOptions: FeatureOption[] = [
     id: 1,
     title: "Product Sense",
     description: "Practice designing products that solve real user problems using structured frameworks.",
-    code: `🎯 Interviewer: "Design a feature to help Spotify users discover new music that matches their evolving taste."
+    code: `🎯 Interviewer: "Design a product for education at Meta."
 
-👤 You: "Let me start by clarifying a few assumptions. Are we focusing on the main Spotify app, and should I assume we're looking at the US market?"
-
-🎯 Interviewer: "Yes to both. Go ahead."
-
-👤 You: "Great. So from a product motivation standpoint, I see this as addressing a core challenge—users often get stuck in listening loops. They want to discover new artists but don't know where to start beyond algorithmic playlists."
+👤 You: "Education's interesting - we're at this inflection point where traditional learning models are breaking down. Quick assumptions: I'm building within Meta's ecosystem, focusing on consumer education rather than K-12, U.S. market initially."
 
 [Framework checkpoint: ✓ Assumptions clarified]
-[Framework checkpoint: → Building product motivation]
 
-👤 You: "The mission would be: To help music explorers discover artists that match their evolving taste by surfacing contextual recommendations at the right moments."
+👤 You: "Here's what's happening - people are switching careers more frequently, skills are becoming obsolete faster. The pandemic proved people will learn online, but most are stuck between expensive courses and random YouTube videos."
 
-👤 You: "Let me think about our target users. I'd segment them into a few groups..."
+👤 You: "Meta's unique position: We have 3 billion users already sharing knowledge in Groups, creators teaching through Reels, WhatsApp study groups forming organically. We're sitting on the world's largest knowledge-sharing network."
 
-👤 You: "The 'Mood Shifters' - people whose music taste changes based on context, time of day, or activity. They're high reach and underserved because current playlists feel static."
+[Framework checkpoint: → Product motivation established]
 
-[Framework checkpoint: → Identifying target segments]
+🎯 Interviewer: "Who would you focus on?"
 
-👤 You: "For their journey, discovery often happens when they're bored of their current playlist. The problem is—the 'Browse' section feels overwhelming with too many generic categories."
+👤 You: "Let me segment learners... I'm choosing the 'Rabbit Holers' - these are the midnight learners. They start googling bread making at 10pm and emerge at 2am as sourdough experts. High reach, most underserved."
 
-[Framework checkpoint: → Mapping user journey and problems]
+[Framework checkpoint: → Target segment selected]
 
-👤 You: "So for solutions, I'm thinking about contextual discovery moments. What if we introduced 'Musical Stepping Stones'—showing you artists one degree away from what you're currently listening to, with a quick preview snippet?"
+👤 You: "Their biggest problem? Knowledge Evaporation. Three weeks later, they can't remember which video had that brilliant explanation. All that learning just... disappears."
 
-[Framework checkpoint: → Generating solutions]
+[Framework checkpoint: → Problem prioritized]
 
-🎯 Interviewer: "Interesting. How would you prioritize this against other features?"
-
-👤 You: "I'd evaluate based on Impact and Effort. This is high impact because it directly addresses discovery friction, and medium effort—we already have the relationship data. I'd compare it against..."`,
+👤 You: "My solution: Knowledge Threads. As you learn about fermentation, your thread grows - saved videos, notes, experiments. Others can follow your learning journey. Six months later, you can instantly retrieve that perfect explanation of wild yeast."`,
   },
   {
     id: 2,
     title: "Product Execution",
     description: "Master goal-setting, metrics, and execution strategy for shipping great products.",
-    code: `🎯 Interviewer: "You're the PM for Instagram Reels. Set a goal for your team for the next quarter."
+    code: `🎯 Interviewer: "You're the PM for Instagram Reels. Set goals and success metrics."
 
-👤 You: "Let me start by clarifying the current state. Can I assume Instagram Reels is in growth phase and we're focused on increasing daily active usage?"
+👤 You: "So Reels - this is Meta's answer to TikTok, now a core part of Instagram's strategy. Quick assumptions: focusing on Instagram Reels globally, current established state not launch phase."
 
-🎯 Interviewer: "Yes, that's right. Continue."
+👤 You: "The reality is, Reels exists because TikTok fundamentally changed content consumption. We went from curated feeds to AI-driven entertainment. Reels is now 40% of time spent on Instagram."
 
-👤 You: "Okay. Let me first think about our ecosystem. We have four main players: Creators who make Reels, Viewers who watch them, Instagram as the platform, and Advertisers who monetize. I want to focus on Viewers for this goal."
+[Framework checkpoint: ✓ Product context established]
 
-[Framework checkpoint: ✓ Ecosystem mapping]
+👤 You: "Looking at the ecosystem - Viewers want entertainment, Creators want monetization, Instagram needs revenue, Advertisers want performance. The tension: balancing all four."
 
-👤 You: "For our North Star Metric, I'd choose 'Daily Reels Watched per DAU'. This captures both engagement depth and user value. The strength is it's simple and directly tied to our business goal of increasing time spent. The drawback is it doesn't capture creator health."
+[Framework checkpoint: → Ecosystem mapped]
 
-[Framework checkpoint: → Defining North Star Metric]
+🎯 Interviewer: "What's your North Star?"
 
-🎯 Interviewer: "What about guardrails?"
+👤 You: "I'm choosing Weekly Active Creators. This is the number of unique users posting at least one Reel per week. Why? It captures supply-side health - without thriving creators, everything falls apart. TikTok's winning because they made unknown creators famous."
 
-👤 You: "Great question. I'd track three guardrails: 7-day retention rate to ensure we're not burning users out, creator upload frequency to protect supply health, and revenue per impression to ensure monetization doesn't degrade."
+[Framework checkpoint: → North Star defined]
 
-[Framework checkpoint: → Setting guardrails]
+👤 You: "For guardrails: viewer satisfaction through average watch time, content quality via violation rate, and revenue per thousand views to ensure monetization isn't suffering."
 
-👤 You: "Now for the team goal. Looking at the viewer journey: they discover Reels on the Explore tab, watch the first one, then swipe to the next. The biggest drop-off is between watching one Reel and swiping to the second."
+[Framework checkpoint: → Guardrails set]
 
-👤 You: "So my goal would be: Increase the swipe-to-second-Reel rate from 45% to 60% in Q2. This has high impact on our NSM and we have medium-to-high influence through better recommendations and UI improvements."
-
-[Framework checkpoint: → Setting measurable team goal]
-
-🎯 Interviewer: "How would you approach improving that metric?"
-
-👤 You: "I'd start with a hypothesis: users don't swipe because the next Reel preview isn't compelling enough. We could test showing a preview thumbnail, improving our recommendation algorithm, or..."`,
+👤 You: "My Q1 goal: Increase first-time creator success rate from 15% to 25%. Success rate equals percentage of first Reels getting over 1000 views. Why? Early success drives habit formation, and we control the algorithm completely."`,
   },
   {
     id: 3,
     title: "Product Strategy",
     description: "Navigate complex business decisions, competitive positioning, and long-term vision.",
-    code: `🎯 Interviewer: "You're the CEO of Notion. Should you build a native mobile app or continue focusing on the web experience?"
+    code: `🎯 Interviewer: "You're the CEO of Notion. Should you build a native mobile app or continue focusing on the web?"
 
 👤 You: "This is a classic build-versus-optimize tradeoff. Let me think through the strategic context first."
 
-👤 You: "Notion's core value prop is being an all-in-one workspace. Right now, the web app is powerful but the mobile experience is clunky—slow load times, limited offline support, awkward navigation on small screens."
-
 [Strategic context: Current state analysis]
 
-👤 You: "From a competitive standpoint, our main rivals—Coda, Airtable, even Google Docs—all have native mobile apps. We're losing deals to teams that are mobile-first. I've heard from sales that 'mobile experience' comes up in 30% of lost deals."
+👤 You: "Notion's core value prop is being an all-in-one workspace. Right now, the web app is powerful but mobile is clunky - slow load times, limited offline support, awkward navigation on small screens."
+
+👤 You: "Competitively, Coda, Airtable, even Google Docs all have native mobile apps. We're losing deals to mobile-first teams. Sales says 'mobile experience' comes up in 30% of lost deals."
 
 [Strategic context: Competitive pressure]
 
-👤 You: "But here's the strategic question: does a native app unlock a new customer segment, or just serve existing users better?"
+🎯 Interviewer: "Does a native app unlock new customers or just serve existing users better?"
 
-🎯 Interviewer: "Good question. What do you think?"
+👤 You: "Both, but let me prioritize. Short-term, it's table stakes for enterprise deals. Long-term, it unlocks mobile-first teams who'd never consider Notion today."
 
-👤 You: "I think both, but let me prioritize. Short-term, it's table stakes for enterprise deals—we need it to compete. Long-term, it could unlock a new segment: mobile-first teams who would never consider Notion today."
-
-👤 You: "The business model implications: building native apps is expensive—probably 6-9 months for iOS and Android combined, pulling engineering resources from core product work. But if it helps us close even 10% more enterprise deals, the ROI is massive."
+👤 You: "Business model implications: native apps are expensive - probably 6-9 months for iOS and Android, pulling resources from core work. But if it helps us close even 10% more enterprise deals, the ROI is massive."
 
 [Strategic analysis: Investment vs. return]
 
-👤 You: "My recommendation: Build a lightweight native app focused on three core use cases—quick capture, reading docs on the go, and commenting. Not trying to replicate the full web experience, which would take forever. Ship iOS first since 70% of our enterprise users are on iOS."
+👤 You: "My recommendation: Build a lightweight native app focused on three use cases - quick capture, reading docs, and commenting. Not replicating the full web experience. Ship iOS first since 70% of enterprise users are on iOS."
 
 [Strategic decision: Phased approach]
 
-🎯 Interviewer: "What would make you change your mind?"
+🎯 Interviewer: "What would change your mind?"
 
-👤 You: "Two things. One, if we see mobile web usage improving significantly with PWA improvements—that would buy us time. Two, if our sales team reports that mobile apps stop being a deal-blocker after we improve the mobile web experience. Then I'd deprioritize native."`,
+👤 You: "Two things. If mobile web improves significantly with PWA work, that buys us time. Or if sales reports mobile stops being a deal-blocker after we improve mobile web. Then I'd deprioritize native."`,
   },
   {
     id: 4,
     title: "Behavioral",
     description: "Demonstrate leadership, collaboration, and impact through structured storytelling.",
-    code: `🎯 Interviewer: "Tell me about a time you had to influence a team without having direct authority."
+    code: `🎯 Interviewer: "Tell me about a time you failed."
 
-👤 You: "Sure. So this was at my last company where I was a PM working on our checkout experience. The design team was three time zones away and didn't report to me, but we needed to redesign the entire checkout flow for mobile."
+👤 You: "I'll share a significant failure from my time as Senior PM that fundamentally changed how I approach product launches. This was about 18 months ago - I led the launch of an AI-powered recommendation engine that I ultimately mismanaged."
 
 [STAR: Situation - Setting context]
 
-👤 You: "The challenge was—the design team was underwater with requests from other product teams. Our project kept getting deprioritized, and we had a hard deadline: Black Friday was 8 weeks away."
+👤 You: "Context: our e-commerce platform was losing ground. CEO made personalization the top priority. I was asked to lead a tiger team - 8 engineers, 2 designers, a data scientist. $3 million budget. Series B funding depended on this."
+
+👤 You: "My mandate: Build a recommendation engine increasing session time by 40% and conversion by 20% within 6 months."
 
 [STAR: Task - What needed to be accomplished]
 
-🎯 Interviewer: "How did you approach this?"
+🎯 Interviewer: "What happened?"
 
-👤 You: "First, I tried to understand their constraints. I set up a 1:1 with their design lead to learn what was blocking them. Turns out, they felt our requirements were too vague and kept changing. Fair point."
+👤 You: "Three critical mistakes. First, I got seduced by technical sophistication. The ML contractors proposed this cutting-edge algorithm. I thought 'This will blow competitors away' - even though our senior engineers expressed concerns."
 
-[STAR: Action - Specific steps taken]
+👤 You: "Second, I managed up but not across. I was focused on impressing the CEO with progress demos. But I wasn't spending time with infrastructure who'd actually deploy this."
 
-👤 You: "So I did three things. One, I created a detailed design brief with user research insights, wireframes, and success metrics. Made it easy for them to just execute. Two, I got our Head of Product to write an email clarifying this was a company priority—not to strong-arm them, but to give them air cover with their manager. Three, I offered to be their user research partner—I ran all the usability tests so they could focus on design work."
+👤 You: "Third, I ignored warning signs. QA mentioned 400 millisecond latency - 4x our budget. I said 'we'll optimize later.'"
 
-[STAR: Action - Multiple strategies]
+[STAR: Action - Specific steps and mistakes]
 
-👤 You: "The result: they delivered the designs in 3 weeks, we shipped the new checkout flow 10 days before Black Friday, and we saw a 12% increase in mobile conversion rate. The design lead actually thanked me afterwards and said it was one of the smoothest cross-functional projects they'd worked on."
+👤 You: "Launch day was a disaster. Within 2 hours, site latency increased 300%. Pages that loaded in 1 second now took 4. The recommendations were wrong - winter coats in July. We rolled back within 6 hours."
 
-[STAR: Result - Quantified impact and relationship outcome]
+👤 You: "Lost 15% of daily users that week. Conversion dropped 8%. Delayed our Series B by 6 months. My credibility took a huge hit."
 
-🎯 Interviewer: "What did you learn from this?"
+[STAR: Result - Quantified impact]
 
-👤 You: "Two things. One, influence without authority starts with understanding the other person's constraints—not just pushing your agenda. Two, reducing friction for other teams is often more effective than escalating. The brief and research support probably saved them 10 hours of work."`,
+🎯 Interviewer: "What did you learn?"
+
+👤 You: "Perfect is the enemy of shipped. Now I ask: 'What's the simplest version that delivers value?' Technical impressiveness means nothing if it doesn't work at scale. And silent stakeholders are dangerous - the infrastructure team I ignored knew where the bodies were buried."`,
   },
 ];
 
