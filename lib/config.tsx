@@ -12,14 +12,20 @@ export const BLUR_FADE_DELAY = 0.15;
 
 export const siteConfig = {
   name: "Meelni",
-  description: "Practice the interview. Land the offer.",
+  description: "AI-powered mock interview coach for product managers. Practice PM interviews with real-time voice feedback.",
   cta: "Start a mock",
   url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   keywords: [
-    "Mock Interviews",
-    "Interview Practice",
-    "Product Management",
-    "Interview Preparation",
+    "AI interview coach",
+    "mock interview AI",
+    "PM interview practice",
+    "product manager interview prep",
+    "product sense interview",
+    "behavioral interview practice",
+    "AI mock interview",
+    "voice interview practice",
+    "PM interview questions",
+    "interview preparation tool",
   ],
   links: {
     email: "support@meelni.com",

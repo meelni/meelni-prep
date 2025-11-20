@@ -1,0 +1,14 @@
+# Allow all crawlers
+User-agent: *
+Allow: /
+
+# Crawl delay (optional, adjust if needed)
+Crawl-delay: 0
+
+# Disallow private/auth pages
+Disallow: /dashboard
+Disallow: /auth/
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://meelni.com/sitemap.xml
