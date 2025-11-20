@@ -222,13 +222,13 @@ What questions do you have about this approach?"
 
 ## Key Excellence Markers Demonstrated
 
-✅ **Natural language** throughout - "The reality is..." instead of "I would approach this by..."
-✅ **Creative segment names** - "Weekend Warriors" not "busy professionals"
-✅ **Authentic approximations** - "Most people" not "73% of users"
-✅ **Strategic rationale** - Explained WHY each choice was made
-✅ **Meta ecosystem leverage** - Used Groups, Stories, Messenger
-✅ **Clear mission alignment** - Connected to Meta's community building
-✅ **Structured yet conversational** - Framework without rigidity
+- ✅ **Natural language** throughout - "The reality is..." instead of "I would approach this by..."
+- ✅ **Creative segment names** - "Weekend Warriors" not "busy professionals"
+- ✅ **Authentic approximations** - "Most people" not "73% of users"
+- ✅ **Strategic rationale** - Explained WHY each choice was made
+- ✅ **Meta ecosystem leverage** - Used Groups, Stories, Messenger
+- ✅ **Clear mission alignment** - Connected to Meta's community building
+- ✅ **Structured yet conversational** - Framework without rigidity
 
 ## Practice This Question
 
@@ -453,12 +453,12 @@ What aspects would you like me to elaborate on?"
 
 ## Key Excellence Markers
 
-✅ **Authentic language**: "Rabbit Holers" - creative segment name
-✅ **Natural approximations**: "47 YouTube tabs" not "73.2% of users"
-✅ **Meta leverage**: Used Reels, Groups, Stories, AI
-✅ **Personal resonance**: Everyone knows the "2am Wikipedia" feeling
-✅ **Visual solution**: Knowledge Threads are easy to envision
-✅ **Inherently social**: Builds on Meta's core strength
+- ✅ **Authentic language**: "Rabbit Holers" - creative segment name
+- ✅ **Natural approximations**: "47 YouTube tabs" not "73.2% of users"
+- ✅ **Meta leverage**: Used Reels, Groups, Stories, AI
+- ✅ **Personal resonance**: Everyone knows the "2am Wikipedia" feeling
+- ✅ **Visual solution**: Knowledge Threads are easy to envision
+- ✅ **Inherently social**: Builds on Meta's core strength
 
 ## Practice This Question
 
@@ -728,12 +728,12 @@ What aspects would you like me to dive deeper on?"
 
 ## Key AT Excellence Markers
 
-✅ **Simple NSM**: Weekly Active Creators - anyone can understand it
-✅ **Natural business language**: "40% of time" not "43.7% of engagement"
-✅ **Clear ecosystem tensions**: Balanced all stakeholder needs
-✅ **Standard guardrails**: Used normal business metrics, not complex composites
-✅ **Decisive tradeoff**: Made a clear choice with rationale
-✅ **Strategic thinking**: Connected everything back to competing with TikTok
+- ✅ **Simple NSM**: Weekly Active Creators - anyone can understand it
+- ✅ **Natural business language**: "40% of time" not "43.7% of engagement"
+- ✅ **Clear ecosystem tensions**: Balanced all stakeholder needs
+- ✅ **Standard guardrails**: Used normal business metrics, not complex composites
+- ✅ **Decisive tradeoff**: Made a clear choice with rationale
+- ✅ **Strategic thinking**: Connected everything back to competing with TikTok
 
 ## Practice This Question
 
@@ -933,12 +933,12 @@ I'd love to hear about how Meta handles the tension between innovation and stabi
 
 ## Key L&D Excellence Markers
 
-✅ **Specific metrics**: "30% bounce rate," "400 milliseconds"
-✅ **Real ownership**: No blaming others, full accountability
-✅ **Vulnerable but professional**: Admitted real mistakes without self-pity
-✅ **Clear growth arc**: Showed how failure led to specific behavioral changes
-✅ **Meta relevance**: Connected lessons to Meta's scale challenges
-✅ **Turned it around**: Ended with question showing genuine interest
+- ✅ **Specific metrics**: "30% bounce rate," "400 milliseconds"
+- ✅ **Real ownership**: No blaming others, full accountability
+- ✅ **Vulnerable but professional**: Admitted real mistakes without self-pity
+- ✅ **Clear growth arc**: Showed how failure led to specific behavioral changes
+- ✅ **Meta relevance**: Connected lessons to Meta's scale challenges
+- ✅ **Turned it around**: Ended with question showing genuine interest
 
 ## Meta Leadership Principles Demonstrated
 
