@@ -125,13 +125,13 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
                 <em className="italic text-foreground/90">{children}</em>
               ),
               ul: ({ children }) => (
-                <ul className="space-y-3 my-6 text-[17px] text-foreground/85">{children}</ul>
+                <ul className="list-disc space-y-2 my-6 text-[17px] text-foreground/85 pl-6">{children}</ul>
               ),
               ol: ({ children }) => (
-                <ol className="space-y-3 my-6 text-[17px] text-foreground/85">{children}</ol>
+                <ol className="list-decimal space-y-2 my-6 text-[17px] text-foreground/85 pl-6">{children}</ol>
               ),
               li: ({ children }) => (
-                <li className="ml-6 leading-[1.7] marker:text-primary/60">{children}</li>
+                <li className="leading-[1.7] marker:text-primary/70 pl-2">{children}</li>
               ),
               blockquote: ({ children }) => (
                 <blockquote className="border-l-4 border-primary/40 bg-primary/5 pl-6 pr-4 py-4 italic text-foreground/80 my-8 rounded-r-lg text-[17px] leading-[1.7]">
