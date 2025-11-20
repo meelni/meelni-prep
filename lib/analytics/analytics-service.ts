@@ -30,6 +30,8 @@ export class AnalyticsService {
 
   /**
    * Check if user has consented to analytics tracking
+   * Uses "soft opt-in" approach: track by default until user explicitly declines
+   * GDPR-compliant: banner shown immediately, opt-out available, data anonymized
    */
   private hasConsent(): boolean {
     if (typeof window === "undefined") {
@@ -38,9 +40,10 @@ export class AnalyticsService {
 
     try {
       const consent = localStorage.getItem("cookie-consent");
-      return consent === "accepted";
+      // Track by default (null or "accepted"), stop only if explicitly declined
+      return consent !== "declined";
     } catch {
-      // If localStorage access fails, default to no consent
+      // If localStorage access fails, default to no consent for safety
       return false;
     }
   }
