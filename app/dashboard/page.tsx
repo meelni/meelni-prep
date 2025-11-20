@@ -7,9 +7,7 @@ import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout"
 import { FirstTimeUserExperience } from "@/components/dashboard/first-time-user-experience";
 import { DashboardLoading } from "@/components/dashboard/loading";
 import { DashboardError } from "@/components/dashboard/error";
-import { SetupModal } from "@/components/dashboard/setup-modal";
 import { useSessions } from "@/lib/api/queries";
-import { useSetupModal } from "@/lib/hooks/use-setup-modal";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { Loader2 } from "lucide-react";
 
@@ -54,9 +52,6 @@ export default function DashboardPage() {
     router.push("/");
   };
 
-  // Setup modal hook
-  const setupModal = useSetupModal();
-
   // Fetch sessions using React Query
   const {
     data,
@@ -98,7 +93,7 @@ export default function DashboardPage() {
   const renderSection = () => {
     // Show FTUE for first-time users on overview
     if (activeSection === "overview" && isFirstTimeUser) {
-      return <FirstTimeUserExperience onStartInterview={setupModal.open} />;
+      return <FirstTimeUserExperience />;
     }
 
     switch (activeSection) {
@@ -136,32 +131,19 @@ export default function DashboardPage() {
   };
 
   return (
-    <>
-      <DashboardLayout
-        key={`dashboard-${user?.id || 'guest'}`}
-        activeSection={activeSection}
-        setActiveSection={setActiveSection}
-        totalSessions={stats.totalSessions}
-        totalMinutes={stats.totalMinutes}
-        avgScore={stats.avgScore || undefined}
-        user={user}
-        onSignOut={handleSignOut}
-      >
-        <Suspense key={activeSection} fallback={<SectionLoading />}>
-          {renderSection()}
-        </Suspense>
-      </DashboardLayout>
-
-      {/* Setup Modal */}
-      <SetupModal
-        isOpen={setupModal.isOpen}
-        onClose={setupModal.close}
-        config={setupModal.config}
-        updateConfig={setupModal.updateConfig}
-        canProceedToNextStep={setupModal.canProceedToNextStep}
-        onSubmit={setupModal.submitConfig}
-        onUseSmartDefaults={setupModal.useSmartDefaults}
-      />
-    </>
+    <DashboardLayout
+      key={`dashboard-${user?.id || 'guest'}`}
+      activeSection={activeSection}
+      setActiveSection={setActiveSection}
+      totalSessions={stats.totalSessions}
+      totalMinutes={stats.totalMinutes}
+      avgScore={stats.avgScore || undefined}
+      user={user}
+      onSignOut={handleSignOut}
+    >
+      <Suspense key={activeSection} fallback={<SectionLoading />}>
+        {renderSection()}
+      </Suspense>
+    </DashboardLayout>
   );
 }
