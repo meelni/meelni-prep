@@ -119,7 +119,7 @@ function PricingTier({
           : "border-border/60 bg-card/50 hover:border-primary/50 hover:bg-card/70 hover:-translate-y-1"
       )}
     >
-      {/* Popular badge */}
+      {/* Recommended badge */}
       {isPopular && (
         <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
           <Badge
@@ -127,7 +127,7 @@ function PricingTier({
             className="bg-gradient-to-r from-primary to-primary/80 text-primary-foreground border-0 px-4 py-1 shadow-lg"
           >
             <Sparkles className="w-3 h-3 mr-1.5" />
-            Most Popular
+            Recommended
           </Badge>
         </div>
       )}

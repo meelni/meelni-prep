@@ -71,8 +71,8 @@ const pricingTiers: PricingTier[] = [
     popular: true,
     features: [
       { text: "UNLIMITED AI mock interviews", included: true },
-      { text: "All 4 interview types (PS/Analytical/Leadership/Strategy)", included: true },
-      { text: "2,879 curated PM questions", included: true },
+      { text: "All interview types (PS/Analytical/Leadership/Strategy)", included: true },
+      { text: "2,800+ curated PM questions", included: true },
       { text: "Product Sense, Analytical, Leadership & Strategy", included: true },
       { text: "Full session history & analytics", included: true },
       { text: "Detailed framework-based feedback + rubrics", included: true },
@@ -245,7 +245,7 @@ export default function PricingPage() {
                     {tier.popular && (
                       <div className="absolute -top-4 left-1/2 -translate-x-1/2">
                         <span className="rounded-full bg-primary px-4 py-1 text-xs font-semibold text-primary-foreground">
-                          Most Popular
+                          Recommended
                         </span>
                       </div>
                     )}
@@ -369,14 +369,14 @@ export default function PricingPage() {
                     <td className="px-6 py-4 text-center text-sm text-muted-foreground">
                       Product Sense only
                     </td>
-                    <td className="px-6 py-4 text-center text-sm">All 4 types</td>
+                    <td className="px-6 py-4 text-center text-sm">All types</td>
                   </tr>
                   <tr>
                     <td className="px-6 py-4 text-sm">Question bank</td>
                     <td className="px-6 py-4 text-center text-sm text-muted-foreground">
                       View-only
                     </td>
-                    <td className="px-6 py-4 text-center text-sm">2,879 questions</td>
+                    <td className="px-6 py-4 text-center text-sm">2,800+ questions</td>
                   </tr>
                   <tr>
                     <td className="px-6 py-4 text-sm">Difficulty levels</td>
