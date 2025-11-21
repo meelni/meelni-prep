@@ -49,7 +49,7 @@ export const siteConfig = {
       icon: <MicIcon className="h-6 w-6" />,
     },
     {
-      name: "4 PM Interview Types",
+      name: "All PM Interview Types",
       description:
         "Master Product Sense, Execution, Behavioral, and Strategy interviews. Each with proven frameworks tailored to top tech companies.",
       icon: <TargetIcon className="h-6 w-6" />,
@@ -88,11 +88,11 @@ export const siteConfig = {
       frequency: { monthly: "month", yearly: "year" },
       description: "For serious interview prep",
       usage: "UNLIMITED AI mock interviews",
-      usageDetail: "All 4 interview types",
+      usageDetail: "All interview types",
       features: [
         "Unlimited interviews",
-        "All 4 interview types",
-        "2,879 curated PM questions",
+        "All interview types",
+        "2,800+ curated PM questions",
         "Product Sense, Analytical, Leadership & Strategy",
         "Full session history & analytics",
       ],
