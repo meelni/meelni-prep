@@ -35,7 +35,7 @@ export function Logos() {
           {/* Title */}
           <div className="text-center">
             <p className="text-sm font-semibold text-foreground/90 leading-snug tracking-tight">
-              Built by PMs who've interviewed at
+              Built for PMs interviewing at
             </p>
           </div>
 
@@ -78,7 +78,7 @@ export function Logos() {
             {/* First box - static intro text */}
             <div className="flex items-center justify-center p-6 border-r bg-gradient-to-br from-accent/5 to-transparent">
               <p className="text-sm font-semibold text-foreground/90 text-center leading-snug tracking-tight max-w-[140px]">
-                Built by PMs who've interviewed&nbsp;at
+                Built for PMs interviewing&nbsp;at
               </p>
             </div>
 
