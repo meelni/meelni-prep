@@ -92,7 +92,7 @@ export const siteConfig = {
       features: [
         "Unlimited interviews",
         "All interview types",
-        "2,879 curated PM questions",
+        "2,800+ curated PM questions",
         "Product Sense, Analytical, Leadership & Strategy",
         "Full session history & analytics",
       ],
