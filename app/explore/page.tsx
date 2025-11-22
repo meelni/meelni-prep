@@ -287,7 +287,6 @@ export default function ExplorePage() {
           aria-label="Interview questions list"
         >
           {paginatedQuestions.length === 0 ? (
-            /* Empty State */}
             <div className="py-24 text-center">
               <p className="text-lg font-medium text-foreground mb-2">
                 No questions found
