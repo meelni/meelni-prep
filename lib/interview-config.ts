@@ -76,11 +76,12 @@ export const SYSTEM_DEFAULTS = {
 
 /**
  * Smart duration based on interview type
+ * Must be 15, 30, or 45 minutes per validation schema
  */
 export const SMART_DURATION = {
   behavioral: 30,     // STAR stories need time
   product_sense: 45,  // Design problems are longer
-  execution: 40,      // Metrics analysis needs depth
+  execution: 45,      // Metrics analysis needs depth (changed from 40 to match schema)
   strategy: 45,       // Strategic thinking requires exploration
 } as const;
 

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { upsertUser } from "@/lib/db/users";
+import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -36,6 +37,8 @@ export async function GET(request: Request) {
     }
   }
 
-  // Redirect to dashboard after successful authentication
+  // Redirect to dashboard by default
+  // Note: redirectTo from sessionStorage will be handled by client-side navigation
+  // We can't access sessionStorage from server-side code
   return NextResponse.redirect(`${origin}/dashboard`);
 }
