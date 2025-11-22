@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Search, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,16 +19,33 @@ interface Question {
   createdAt: Date | null;
 }
 
-const QUESTION_TYPE_COLORS = {
-  Behavioral:
-    "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
-  "Product Sense":
-    "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20",
-  Execution:
-    "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20",
-  "Product Strategy":
-    "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20",
-};
+// Format relative time for question recency
+function formatRelativeTime(date: Date | null): string {
+  if (!date) return "";
+
+  const now = new Date();
+  const askedDate = new Date(date);
+  const diffInMs = now.getTime() - askedDate.getTime();
+  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+
+  if (diffInDays < 7) {
+    return diffInDays === 0 ? "Today" : diffInDays === 1 ? "Yesterday" : `${diffInDays} days ago`;
+  } else if (diffInDays < 30) {
+    const weeks = Math.floor(diffInDays / 7);
+    return `${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
+  } else if (diffInDays < 365) {
+    const months = Math.floor(diffInDays / 30);
+    return `${months} ${months === 1 ? "month" : "months"} ago`;
+  } else {
+    return askedDate.getFullYear().toString();
+  }
+}
+
+// Capitalize company name
+function formatCompanyName(company: string | null): string {
+  if (!company) return "Unknown";
+  return company.charAt(0).toUpperCase() + company.slice(1);
+}
 
 const QUESTIONS_PER_PAGE = 20;
 
@@ -248,22 +264,22 @@ export default function ExplorePage() {
                   )}
                 >
                   {/* Metadata */}
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
                     <span className="text-xs font-medium text-foreground">
-                      {question.company || "Unknown"}
+                      {formatCompanyName(question.company)}
                     </span>
                     <span className="text-xs text-muted-foreground">•</span>
-                    <Badge
-                      variant="subtle"
-                      className={cn(
-                        "text-xs font-medium px-2 py-0.5",
-                        QUESTION_TYPE_COLORS[
-                          question.questionType as keyof typeof QUESTION_TYPE_COLORS
-                        ]
-                      )}
-                    >
+                    <span className="text-xs text-muted-foreground font-normal">
                       {question.questionType}
-                    </Badge>
+                    </span>
+                    {question.askedAt && (
+                      <>
+                        <span className="text-xs text-muted-foreground">•</span>
+                        <span className="text-xs text-muted-foreground font-normal">
+                          {formatRelativeTime(question.askedAt)}
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   {/* Question Text */}
