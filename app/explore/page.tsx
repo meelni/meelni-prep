@@ -47,6 +47,12 @@ function formatCompanyName(company: string | null): string {
   return company.charAt(0).toUpperCase() + company.slice(1);
 }
 
+// Capitalize first letter of question text
+function formatQuestionText(text: string): string {
+  if (!text) return "";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 const QUESTIONS_PER_PAGE = 20;
 
 export default function ExplorePage() {
@@ -136,7 +142,7 @@ export default function ExplorePage() {
     const startIndex = (currentPage - 1) * QUESTIONS_PER_PAGE;
     const endIndex = startIndex + QUESTIONS_PER_PAGE;
     return filteredQuestions.slice(startIndex, endIndex);
-  }, [filteredQuestions, currentPage]);
+  }, [filteredQuestions, currentPage, totalPages]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -285,7 +291,7 @@ export default function ExplorePage() {
                   {/* Question Text */}
                   <div className="flex items-start justify-between gap-4">
                     <h3 className="text-lg font-semibold text-foreground leading-[1.4] group-hover:text-primary transition-colors">
-                      {question.questionText}
+                      {formatQuestionText(question.questionText)}
                     </h3>
                     <ArrowRight className="w-5 h-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all duration-200 flex-shrink-0 mt-0.5 group-hover:translate-x-1" />
                   </div>
