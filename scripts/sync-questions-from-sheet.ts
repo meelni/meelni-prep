@@ -340,10 +340,22 @@ interface SyncOptions {
   verbose: boolean;
 }
 
+export interface SyncResult {
+  success: boolean;
+  questionsAdded: number;
+  questionsUpdated: number;
+  questionsDeactivated: number;
+  questionsSkipped: number;
+  totalProcessed: number;
+  errors: number;
+  errorMessages?: string[];
+  timestamp: string;
+}
+
 /**
  * Main sync function
  */
-async function syncQuestions(options: SyncOptions): Promise<void> {
+async function syncQuestions(options: SyncOptions): Promise<SyncResult> {
   console.log("\n🔄 Starting question sync from Google Sheet...");
   console.log(`Mode: ${options.dryRun ? 'DRY RUN (no changes will be made)' : 'LIVE'}\n`);
 
@@ -356,13 +368,24 @@ async function syncQuestions(options: SyncOptions): Promise<void> {
     skipReasons: new Map<string, number>(),
   };
 
+  const errorMessages: string[] = [];
+
   try {
     // Step 1: Fetch data from Google Sheet
     const sheetRows = await fetchSheetData();
 
     if (sheetRows.length === 0) {
       console.log("⚠️  No questions found in sheet");
-      return;
+      return {
+        success: true,
+        questionsAdded: 0,
+        questionsUpdated: 0,
+        questionsDeactivated: 0,
+        questionsSkipped: 0,
+        totalProcessed: 0,
+        errors: 0,
+        timestamp: new Date().toISOString(),
+      };
     }
 
     console.log(`📋 Found ${sheetRows.length} questions in sheet\n`);
@@ -425,15 +448,40 @@ async function syncQuestions(options: SyncOptions): Promise<void> {
       console.log("🔍 DRY RUN - Preview of changes:\n");
       previewChanges(newQuestions, questionsToDeactivate);
     } else {
-      await applyChanges(newQuestions, questionsToDeactivate, stats, options);
+      await applyChanges(newQuestions, questionsToDeactivate, stats, options, errorMessages);
     }
 
     // Step 6: Print summary
     printSummary(stats, options.dryRun);
 
+    // Return result
+    return {
+      success: stats.errors === 0,
+      questionsAdded: stats.newQuestions,
+      questionsUpdated: stats.updatedQuestions,
+      questionsDeactivated: stats.deactivatedQuestions,
+      questionsSkipped: stats.skippedQuestions,
+      totalProcessed: sheetRows.length,
+      errors: stats.errors,
+      errorMessages: errorMessages.length > 0 ? errorMessages : undefined,
+      timestamp: new Date().toISOString(),
+    };
+
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error("\n❌ Sync failed:", error);
-    process.exit(1);
+
+    return {
+      success: false,
+      questionsAdded: stats.newQuestions,
+      questionsUpdated: stats.updatedQuestions,
+      questionsDeactivated: stats.deactivatedQuestions,
+      questionsSkipped: stats.skippedQuestions,
+      totalProcessed: 0,
+      errors: stats.errors + 1,
+      errorMessages: [errorMessage],
+      timestamp: new Date().toISOString(),
+    };
   }
 }
 
@@ -598,7 +646,8 @@ async function applyChanges(
   newQuestions: ProcessedQuestion[],
   questionsToDeactivate: Array<{ id: string; questionText: string }>,
   stats: SyncStats,
-  options: SyncOptions
+  options: SyncOptions,
+  errorMessages: string[] = []
 ) {
   // Insert new questions
   if (newQuestions.length > 0) {
@@ -621,7 +670,9 @@ async function applyChanges(
         }
       } catch (error) {
         stats.errors++;
-        console.error(`   ✗ Error adding question: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const errorMsg = `Error adding question: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        errorMessages.push(errorMsg);
+        console.error(`   ✗ ${errorMsg}`);
       }
     }
   }
@@ -644,7 +695,9 @@ async function applyChanges(
         }
       } catch (error) {
         stats.errors++;
-        console.error(`   ✗ Error deactivating question: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const errorMsg = `Error deactivating question: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        errorMessages.push(errorMsg);
+        console.error(`   ✗ ${errorMsg}`);
       }
     }
   }
@@ -722,3 +775,4 @@ if (require.main === module) {
 }
 
 export { syncQuestions };
+export type { SyncResult };
