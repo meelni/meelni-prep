@@ -11,9 +11,11 @@ agent/
 .vscode/
 .idea/
 
-# Documentation
+# Documentation (exclude from Vercel builds)
 *.md
 !README.md
+docs/
+.claude/
 
 # Tests
 __tests__/

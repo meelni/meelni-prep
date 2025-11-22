@@ -4,8 +4,9 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
+import { ExploreStructuredData } from "@/components/explore/structured-data";
 import { Button } from "@/components/ui/button";
-import { Search, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, ArrowRight, ChevronLeft, ChevronRight, Home, ChevronRight as BreadcrumbArrow } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { usePostHog } from "posthog-js/react";
@@ -198,8 +199,51 @@ export default function ExplorePage() {
 
   return (
     <>
+      {/* Structured Data for SEO & LLM Indexing */}
+      <ExploreStructuredData
+        questions={filteredQuestions}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalQuestions={questions.length}
+      />
+
       <Header />
-      <div className="min-h-screen bg-background">
+
+      <main className="min-h-screen bg-background">
+        {/* Breadcrumb Navigation - SEO & UX */}
+        <nav aria-label="Breadcrumb" className="max-w-4xl mx-auto px-4 sm:px-6 pt-6">
+          <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+            <li>
+              <a
+                href="/"
+                className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                aria-label="Home"
+              >
+                <Home className="w-4 h-4" />
+                <span>Home</span>
+              </a>
+            </li>
+            <li aria-hidden="true">
+              <BreadcrumbArrow className="w-4 h-4" />
+            </li>
+            <li aria-current="page">
+              <span className="text-foreground font-medium">Explore Questions</span>
+            </li>
+          </ol>
+        </nav>
+
+        {/* Page Header - H1 for SEO */}
+        <header className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+          <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-3">
+            Product Manager Interview Questions
+          </h1>
+          <p className="text-lg text-muted-foreground max-w-3xl">
+            Browse {questions.length.toLocaleString()}+ real interview questions from Google, Meta, Amazon,
+            and 100+ top companies. Practice Product Sense, Behavioral, Execution, and Strategy questions
+            with AI coaching.
+          </p>
+        </header>
+
         {/* Sticky Search & Filter Bar */}
         <div className="sticky top-[60px] z-40">
           {/* Solid background with backdrop blur */}
@@ -237,10 +281,13 @@ export default function ExplorePage() {
           <div className="h-8 bg-gradient-to-b from-background/80 via-background/40 to-transparent pointer-events-none" />
         </div>
 
-        {/* Questions Feed */}
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-0 pb-12">
+        {/* Questions Feed - Semantic Section */}
+        <section
+          className="max-w-4xl mx-auto px-4 sm:px-6 pt-0 pb-12"
+          aria-label="Interview questions list"
+        >
           {paginatedQuestions.length === 0 ? (
-            /* Empty State */
+            /* Empty State */}
             <div className="py-24 text-center">
               <p className="text-lg font-medium text-foreground mb-2">
                 No questions found
@@ -250,46 +297,69 @@ export default function ExplorePage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-0">
+            <div className="space-y-0" role="list">
               {paginatedQuestions.map((question, index) => (
-                <button
+                <article
                   key={question.id}
-                  onClick={() => handleQuestionClick(question)}
                   className={cn(
-                    "group w-full text-left py-6 transition-all duration-200",
+                    "group py-6 transition-all duration-200",
                     "hover:bg-muted/20 -mx-4 px-4 rounded-lg",
                     index !== paginatedQuestions.length - 1 && "border-b border-border/40"
                   )}
+                  role="listitem"
+                  itemScope
+                  itemType="https://schema.org/Question"
                 >
-                  {/* Metadata */}
-                  <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    <span className="text-xs font-medium text-foreground">
-                      {formatCompanyName(question.company)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">•</span>
-                    <span className="text-xs text-muted-foreground font-normal">
-                      {question.questionType}
-                    </span>
-                    {question.askedAt && (
-                      <>
-                        <span className="text-xs text-muted-foreground">•</span>
-                        <span className="text-xs text-muted-foreground font-normal">
-                          {formatRelativeTime(question.askedAt)}
-                        </span>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Question Text */}
-                  <div className="flex items-start justify-between gap-4">
-                    <h3 className="text-lg font-semibold text-foreground leading-[1.4] group-hover:text-primary transition-colors">
-                      {formatQuestionText(question.questionText)}
-                    </h3>
-                    <div className="flex-shrink-0 flex items-center gap-2 mt-0.5">
-                      <ArrowRight className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-all duration-200 group-hover:translate-x-1" />
+                  <button
+                    onClick={() => handleQuestionClick(question)}
+                    className="w-full text-left"
+                    aria-label={`Practice question: ${question.questionText}`}
+                  >
+                    {/* Metadata */}
+                    <div className="flex items-center gap-2 mb-3 flex-wrap">
+                      <span
+                        className="text-xs font-medium text-foreground"
+                        itemProp="author"
+                        itemScope
+                        itemType="https://schema.org/Organization"
+                      >
+                        <span itemProp="name">{formatCompanyName(question.company)}</span>
+                      </span>
+                      <span className="text-xs text-muted-foreground" aria-hidden="true">•</span>
+                      <span className="text-xs text-muted-foreground font-normal" itemProp="about">
+                        {question.questionType}
+                      </span>
+                      {question.askedAt && (
+                        <>
+                          <span className="text-xs text-muted-foreground" aria-hidden="true">•</span>
+                          <time
+                            className="text-xs text-muted-foreground font-normal"
+                            dateTime={new Date(question.askedAt).toISOString()}
+                            itemProp="dateCreated"
+                          >
+                            {formatRelativeTime(question.askedAt)}
+                          </time>
+                        </>
+                      )}
                     </div>
-                  </div>
-                </button>
+
+                    {/* Question Text */}
+                    <div className="flex items-start justify-between gap-4">
+                      <h2
+                        className="text-lg font-semibold text-foreground leading-[1.4] group-hover:text-primary transition-colors"
+                        itemProp="name"
+                      >
+                        {formatQuestionText(question.questionText)}
+                      </h2>
+                      <div className="flex-shrink-0 flex items-center gap-2 mt-0.5">
+                        <ArrowRight
+                          className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-all duration-200 group-hover:translate-x-1"
+                          aria-hidden="true"
+                        />
+                      </div>
+                    </div>
+                  </button>
+                </article>
               ))}
             </div>
           )}
@@ -326,8 +396,8 @@ export default function ExplorePage() {
               </Button>
             </div>
           )}
-        </div>
-      </div>
+        </section>
+      </main>
 
       {/* Sign-In Modal */}
       {selectedQuestion && (
