@@ -89,17 +89,19 @@ export function QuestionSignInModal({
                 <X className="w-4 h-4" />
               </button>
 
-              {/* Selected Question (Quote-style) */}
-              <div className="mb-6 pl-4 border-l-2 border-primary">
-                <p className="text-sm text-muted-foreground line-clamp-3">
-                  {questionText}
-                </p>
+              {/* Heading */}
+              <div className="text-center mb-6">
+                <h2 className="text-2xl font-semibold text-foreground">
+                  Ready to practice?
+                </h2>
               </div>
 
-              {/* Heading */}
-              <h2 className="text-2xl font-semibold text-foreground mb-6">
-                Sign in to practice this question
-              </h2>
+              {/* Selected Question (Highlighted box) */}
+              <div className="mb-8 p-6 rounded-xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20">
+                <p className="text-base font-semibold text-foreground leading-relaxed line-clamp-2">
+                  "{questionText}"
+                </p>
+              </div>
 
               {/* Google Sign In */}
               <button
@@ -111,18 +113,6 @@ export function QuestionSignInModal({
                   <span>Continue with Google</span>
                 </div>
               </button>
-
-              {/* Divider */}
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-border"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="bg-background px-4 text-muted-foreground">
-                    or
-                  </span>
-                </div>
-              </div>
 
               {/* Email Sign In */}
               <button
