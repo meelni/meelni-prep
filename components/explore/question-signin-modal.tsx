@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Icons } from "@/components/icons";
+import { useAuth } from "@/app/providers/auth-provider";
 
 interface QuestionSignInModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export function QuestionSignInModal({
   questionId,
 }: QuestionSignInModalProps) {
   const router = useRouter();
+  const { signInWithGoogle } = useAuth();
 
   // Handle ESC key to close modal
   useEffect(() => {
@@ -41,20 +43,19 @@ export function QuestionSignInModal({
     };
   }, [isOpen, onClose]);
 
-  const handleGoogleSignIn = () => {
-    // Store the question ID in session storage to redirect after auth
-    sessionStorage.setItem("pendingQuestionId", questionId);
-    router.push(`/auth/signin?provider=google&redirectTo=/setup?questionId=${questionId}`);
+  const handleGoogleSignIn = async () => {
+    // Redirect to dashboard after Google OAuth
+    await signInWithGoogle("/dashboard");
   };
 
   const handleEmailSignIn = () => {
-    sessionStorage.setItem("pendingQuestionId", questionId);
-    router.push(`/auth/signin?redirectTo=/setup?questionId=${questionId}`);
+    // Redirect to sign-in page
+    router.push("/auth/signin");
   };
 
   const handleSignUp = () => {
-    sessionStorage.setItem("pendingQuestionId", questionId);
-    router.push(`/auth/signup?redirectTo=/setup?questionId=${questionId}`);
+    // Redirect to sign-up page
+    router.push("/auth/signup");
   };
 
   return (

@@ -2,8 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Lock, Calendar, Building2 } from "lucide-react";
+import { Calendar, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface PublicQuestionCardProps {
@@ -14,14 +13,12 @@ interface PublicQuestionCardProps {
     questionType: string;
     askedAt: Date | null;
   };
-  onSignIn: () => void;
   badgeClassName?: string;
   index?: number;
 }
 
 export function PublicQuestionCard({
   question,
-  onSignIn,
   badgeClassName,
   index = 0,
 }: PublicQuestionCardProps) {
@@ -70,22 +67,11 @@ export function PublicQuestionCard({
       </p>
 
       {/* Type Badge */}
-      <div className="mb-3">
+      <div>
         <Badge variant="subtle" className={cn("text-xs", badgeClassName)}>
           {question.questionType}
         </Badge>
       </div>
-
-      {/* Sign In to Practice Button - Full width, touch-friendly */}
-      <Button
-        size="sm"
-        onClick={onSignIn}
-        className="w-full h-11 gap-2 group"
-        aria-label={`Sign in to practice: ${question.questionText}`}
-      >
-        <Lock className="w-4 h-4 text-muted-foreground opacity-60 group-hover:opacity-100 transition-opacity" />
-        Sign In to Practice
-      </Button>
     </motion.div>
   );
 }
