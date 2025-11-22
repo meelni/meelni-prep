@@ -65,7 +65,6 @@ export default function ExplorePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
-  const [showFooterCTA, setShowFooterCTA] = useState(false);
 
   // Track page view
   useEffect(() => {
@@ -73,17 +72,6 @@ export default function ExplorePage() {
       total_questions: questions.length,
     });
   }, [posthog, questions.length]);
-
-  // Track scroll for footer CTA
-  useEffect(() => {
-    const handleScroll = () => {
-      // Show footer CTA after scrolling past 3 questions (~800px)
-      setShowFooterCTA(window.scrollY > 800);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   // Fetch questions
   useEffect(() => {
@@ -183,7 +171,7 @@ export default function ExplorePage() {
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo(0, 0);
     posthog?.capture("explore_page_changed", {
       page,
       total_pages: totalPages,
@@ -246,7 +234,7 @@ export default function ExplorePage() {
         </div>
 
         {/* Questions Feed */}
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-0 pb-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-0 pb-12">
           {paginatedQuestions.length === 0 ? (
             /* Empty State */
             <div className="py-24 text-center">
@@ -334,34 +322,6 @@ export default function ExplorePage() {
           )}
         </div>
       </div>
-
-      {/* Sticky Footer CTA */}
-      {showFooterCTA && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/60 bg-background/95 backdrop-blur-xl">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Ready to practice with AI coaching?
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Get personalized feedback and track your progress
-                </p>
-              </div>
-              <Button
-                onClick={() => {
-                  posthog?.capture("explore_footer_cta_clicked");
-                  window.location.href = "/auth/signin?redirectTo=/explore";
-                }}
-                className="gap-2 flex-shrink-0"
-              >
-                Sign Up Free
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Sign-In Modal */}
       {selectedQuestion && (
