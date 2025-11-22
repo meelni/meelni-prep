@@ -38,6 +38,15 @@ export default function DashboardPage() {
   // Track Web Vitals performance
   useWebVitals('dashboard');
 
+  // Check for pending redirect from OAuth (e.g., from explore page)
+  useEffect(() => {
+    const pendingRedirect = sessionStorage.getItem("auth_redirect_to");
+    if (pendingRedirect) {
+      sessionStorage.removeItem("auth_redirect_to");
+      router.push(pendingRedirect);
+    }
+  }, [router]);
+
   // Track dashboard section views
   useEffect(() => {
     const { analytics } = require('@/lib/analytics/analytics-service');

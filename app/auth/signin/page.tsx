@@ -36,7 +36,7 @@ function SignInContent() {
     setError(null);
 
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(redirectTo);
       // OAuth will redirect, so we don't need to do anything here
     } catch (err) {
       console.error("Sign in error:", err);
