@@ -52,7 +52,7 @@ export function ExploreStructuredData({
         "@type": "Question",
         name: question.questionText,
         text: question.questionText,
-        dateCreated: question.createdAt?.toISOString(),
+        dateCreated: question.createdAt ? new Date(question.createdAt).toISOString() : undefined,
         author: {
           "@type": "Organization",
           name: question.company || "Various Companies",
