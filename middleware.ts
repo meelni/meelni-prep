@@ -8,10 +8,13 @@ export async function middleware(request: NextRequest) {
   // Protected routes that require authentication
   const protectedRoutes = ["/dashboard", "/setup", "/interview", "/questions"];
 
-  // Check if the current path is a protected route
+  // Public routes that don't require authentication
+  const publicRoutes = ["/explore", "/browse"];
+
+  // Check if the current path is a protected route (excluding public routes)
   const isProtectedRoute = protectedRoutes.some((route) =>
     pathname.startsWith(route)
-  );
+  ) && !publicRoutes.some((route) => pathname.startsWith(route));
 
   if (isProtectedRoute) {
     const supabase = await createClient();

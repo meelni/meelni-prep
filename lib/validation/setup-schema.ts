@@ -35,6 +35,7 @@ export const sessionStartSchema = z.object({
   mode: z.enum(["voice_video", "text"]).default("voice_video"),
   persona: z.string().optional(),
   config: interviewConfigSchema,
+  questionId: z.string().uuid().optional(), // Optional pre-selected question from explore page
 });
 
 /**
