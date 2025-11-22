@@ -281,7 +281,12 @@ export default function ExplorePage() {
                     <h3 className="text-lg font-semibold text-foreground leading-[1.4] group-hover:text-primary transition-colors">
                       {formatQuestionText(question.questionText)}
                     </h3>
-                    <ArrowRight className="w-5 h-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all duration-200 flex-shrink-0 mt-0.5 group-hover:translate-x-1" />
+                    <div className="flex-shrink-0 flex items-center gap-2 mt-0.5">
+                      <span className="text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-all duration-200">
+                        Try now
+                      </span>
+                      <ArrowRight className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-all duration-200 group-hover:translate-x-1" />
+                    </div>
                   </div>
                 </button>
               ))}
