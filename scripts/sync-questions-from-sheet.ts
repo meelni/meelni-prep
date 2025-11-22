@@ -775,4 +775,3 @@ if (require.main === module) {
 }
 
 export { syncQuestions };
-export type { SyncResult };
