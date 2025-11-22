@@ -1,21 +1,58 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Explore 2,879+ Real Interview Questions | Meelni",
+  title: "2,879+ Real PM Interview Questions from Google, Meta, Amazon | Meelni",
   description:
-    "Browse real interview questions from Google, Meta, Amazon, and 100+ top companies. Practice product sense, execution, behavioral, and strategy questions with AI coaching.",
+    "Search and practice 2,879+ real Product Manager interview questions asked at Google, Meta, Amazon, Apple, Netflix, and 100+ top tech companies. Free to browse. Includes Product Sense, Behavioral, Execution, and Strategy questions with AI coaching. Updated daily with new questions from actual PM interviews.",
   keywords: [
-    "interview questions",
-    "product manager interview",
-    "google interview questions",
-    "meta interview questions",
-    "amazon interview questions",
-    "product sense questions",
-    "behavioral interview questions",
-    "execution interview questions",
-    "strategy interview questions",
+    // Primary keywords
+    "PM interview questions",
+    "product manager interview questions",
+    "product management interview questions",
+
+    // Company-specific long-tail keywords
+    "google PM interview questions",
+    "meta product manager interview",
+    "amazon PM interview questions",
+    "apple product manager interview",
+    "netflix PM interview questions",
+    "microsoft product manager interview",
+    "stripe PM interview",
+    "airbnb product manager questions",
+    "uber PM interview prep",
+    "spotify product manager interview",
+
+    // Question type long-tail keywords
+    "product sense interview questions",
+    "behavioral interview questions for PM",
+    "execution interview questions product manager",
+    "product strategy interview questions",
+    "product design interview questions",
+    "product analytics interview questions",
+    "PM technical interview questions",
+    "product prioritization questions",
+
+    // Intent-based keywords
     "PM interview prep",
-    "interview practice",
+    "how to prepare for PM interview",
+    "product manager interview practice",
+    "mock PM interview questions",
+    "real PM interview questions",
+    "actual interview questions from google",
+    "what questions are asked in PM interviews",
+    "common PM interview questions",
+    "PM interview question bank",
+    "free PM interview questions",
+
+    // Problem-solving keywords
+    "tell me about a product you love",
+    "how would you improve product X",
+    "design a product for X",
+    "estimate market size",
+    "prioritize features",
+    "handle difficult stakeholders",
+    "product roadmap questions",
+    "product metrics questions",
   ],
   openGraph: {
     title: "Explore 2,879+ Real Interview Questions | Meelni",
