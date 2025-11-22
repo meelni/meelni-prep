@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import Link from "next/link";
@@ -32,6 +32,7 @@ import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 export default function SetupPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Track Web Vitals performance
   useWebVitals('setup');
@@ -45,6 +46,15 @@ export default function SetupPage() {
   const pageLoadTime = useRef(Date.now());
   const defaultRoundType = useRef<RoundType | null>(null);
   const defaultDifficulty = useRef<DifficultyLevel | null>(null);
+
+  // Question from explore page
+  const [questionId, setQuestionId] = useState<string | null>(null);
+  const [questionData, setQuestionData] = useState<{
+    text: string;
+    company: string | null;
+    type: string;
+  } | null>(null);
+  const [loadingQuestion, setLoadingQuestion] = useState(false);
 
   // Subscription/tier state
   // Initialize with free tier defaults to prevent flash of unlocked content
@@ -75,6 +85,64 @@ export default function SetupPage() {
       router.push("/auth/signin?redirectTo=/setup");
     }
   }, [user, authLoading, router]);
+
+  // Fetch question from URL parameter if provided
+  useEffect(() => {
+    const questionIdParam = searchParams.get("questionId");
+    if (!questionIdParam) return;
+
+    async function fetchQuestion() {
+      setLoadingQuestion(true);
+      try {
+        const response = await fetch(`/api/questions/${questionIdParam}`);
+        if (!response.ok) {
+          console.error("Failed to fetch question");
+          return;
+        }
+
+        const data = await response.json();
+        setQuestionId(questionIdParam);
+        setQuestionData({
+          text: data.questionText,
+          company: data.company,
+          type: data.questionType,
+        });
+
+        // Map question type to roundType
+        const typeMapping: Record<string, RoundType> = {
+          "Behavioral": "behavioral",
+          "Product Sense": "product_sense",
+          "Product design/strategy": "product_sense",
+          "Execution": "execution",
+          "Estimation": "execution",
+          "A/B Testing": "execution",
+          "Pricing": "execution",
+          "Product Strategy": "strategy",
+        };
+
+        const mappedRoundType = typeMapping[data.questionType];
+        if (mappedRoundType) {
+          setRoundType(mappedRoundType);
+          defaultRoundType.current = mappedRoundType;
+          // Skip to difficulty selection (step 2)
+          setStep(2);
+        }
+
+        // Track that user came from explore page
+        track(AnalyticsEvents.SETUP_PAGE_VIEWED, {
+          source: "explore",
+          questionId: questionIdParam,
+          questionType: data.questionType,
+        });
+      } catch (error) {
+        console.error("Error fetching question:", error);
+      } finally {
+        setLoadingQuestion(false);
+      }
+    }
+
+    fetchQuestion();
+  }, [searchParams]);
 
   // Fetch user subscription on mount
   useEffect(() => {
@@ -194,6 +262,7 @@ export default function SetupPage() {
         mode: "voice_video" as const,
         persona: undefined,
         config: fullConfig,
+        questionId: questionId || undefined, // Include pre-selected question if available
       };
 
       // Validate data
@@ -421,6 +490,28 @@ export default function SetupPage() {
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-6"
               >
+                {/* Show selected question if coming from explore page */}
+                {questionData && (
+                  <div className="p-6 rounded-xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-primary uppercase tracking-wider">
+                        Selected Question
+                      </span>
+                      {questionData.company && (
+                        <>
+                          <span className="text-xs text-muted-foreground">•</span>
+                          <span className="text-xs text-muted-foreground">
+                            {questionData.company}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <p className="text-base font-semibold text-foreground leading-relaxed">
+                      {questionData.text}
+                    </p>
+                  </div>
+                )}
+
                 <DifficultySelector
                   selected={difficulty}
                   onSelect={(level) => {

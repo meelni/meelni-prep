@@ -44,17 +44,17 @@ export function QuestionSignInModal({
   const handleGoogleSignIn = () => {
     // Store the question ID in session storage to redirect after auth
     sessionStorage.setItem("pendingQuestionId", questionId);
-    router.push("/auth/signin?provider=google&redirectTo=/explore");
+    router.push(`/auth/signin?provider=google&redirectTo=/setup?questionId=${questionId}`);
   };
 
   const handleEmailSignIn = () => {
     sessionStorage.setItem("pendingQuestionId", questionId);
-    router.push("/auth/signin?redirectTo=/explore");
+    router.push(`/auth/signin?redirectTo=/setup?questionId=${questionId}`);
   };
 
   const handleSignUp = () => {
     sessionStorage.setItem("pendingQuestionId", questionId);
-    router.push("/auth/signup?redirectTo=/explore");
+    router.push(`/auth/signup?redirectTo=/setup?questionId=${questionId}`);
   };
 
   return (
