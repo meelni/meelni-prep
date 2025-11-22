@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useQueryClient } from "@tanstack/react-query";
@@ -76,6 +76,7 @@ function InterviewPageContent() {
   const [currentNudge, setCurrentNudge] = useState<Nudge | null>(null);
   const [frameworkCoverage, setFrameworkCoverage] = useState<FrameworkCoverage>([]);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const initializedRef = useRef(false);
 
   // Invalidate queries when component unmounts (user leaves interview)
   useEffect(() => {
@@ -87,6 +88,9 @@ function InterviewPageContent() {
   }, [queryClient]);
 
   useEffect(() => {
+    // Skip if already initialized
+    if (initializedRef.current) return;
+
     if (authLoading) return;
 
     if (!user) {
@@ -97,17 +101,21 @@ function InterviewPageContent() {
     // Case 1: Config params present (from Setup Modal) → create session
     if (roundType && mode && !sessionId) {
       createSession();
+      initializedRef.current = true;
       return;
     }
 
     // Case 2: Session ID present → fetch session details
     if (sessionId && tokenParam && urlParam) {
       fetchSessionDetails();
+      initializedRef.current = true;
       return;
     }
 
-    // Case 3: No config and no session → redirect to dashboard
-    router.push("/dashboard");
+    // Case 3: No valid params → redirect to dashboard
+    if (!roundType && !sessionId) {
+      router.push("/dashboard");
+    }
   }, [roundType, mode, sessionId, tokenParam, urlParam, user, authLoading]);
 
   const createSession = async () => {
@@ -138,15 +146,7 @@ function InterviewPageContent() {
 
       const data = await response.json();
 
-      // Update URL with session info (replace current history entry)
-      const newParams = new URLSearchParams({
-        sessionId: data.sessionId,
-        token: data.token,
-        url: data.url,
-      });
-      router.replace(`/interview?${newParams.toString()}`);
-
-      // Set state
+      // Set state directly without navigating (prevents component remount)
       setToken(data.token);
       setUrl(data.url);
       setSession({
@@ -160,7 +160,17 @@ function InterviewPageContent() {
         },
         question: data.question || null,
       });
+      setSessionStartTime(Date.now());
       setLoading(false);
+
+      // Track interview started
+      const { analytics } = require('@/lib/analytics/analytics-service');
+      analytics.track('interview_started', {
+        session_id: data.sessionId,
+        interview_type: roundType,
+        mode: mode,
+        skill_level: data.config?.difficulty,
+      });
     } catch (err) {
       console.error("Error creating session:", err);
       setError(err instanceof Error ? err.message : "Failed to create interview session");

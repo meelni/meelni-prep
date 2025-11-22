@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ function formatQuestionText(text: string): string {
 const QUESTIONS_PER_PAGE = 20;
 
 export default function ExplorePage() {
+  const router = useRouter();
   const posthog = usePostHog();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,15 +160,17 @@ export default function ExplorePage() {
   }, [selectedType, filteredQuestions.length, posthog]);
 
   const handleQuestionClick = (question: Question) => {
-    setSelectedQuestion(question);
-    setSignInModalOpen(true);
-
+    // Track click
     posthog?.capture("explore_question_clicked", {
       question_id: question.id,
       question_type: question.questionType,
       company: question.company,
       page: currentPage,
     });
+
+    // Show sign-in modal
+    setSelectedQuestion(question);
+    setSignInModalOpen(true);
   };
 
   const handlePageChange = (page: number) => {
@@ -282,9 +286,6 @@ export default function ExplorePage() {
                       {formatQuestionText(question.questionText)}
                     </h3>
                     <div className="flex-shrink-0 flex items-center gap-2 mt-0.5">
-                      <span className="text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-all duration-200">
-                        Try now
-                      </span>
                       <ArrowRight className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-all duration-200 group-hover:translate-x-1" />
                     </div>
                   </div>
