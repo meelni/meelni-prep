@@ -187,44 +187,44 @@ export default function ExplorePage() {
       <Header />
       <div className="min-h-screen bg-background">
         {/* Sticky Search & Filter Bar */}
-        <div className="sticky top-[60px] z-40 border-b border-border/40 bg-background/95 backdrop-blur-xl">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4">
-            <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-              {/* Search */}
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search questions or companies..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                />
+        <div className="sticky top-[60px] z-40">
+          {/* Solid background with backdrop blur */}
+          <div className="bg-background/95 backdrop-blur-xl">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                {/* Search */}
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search questions or companies..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  />
+                </div>
+
+                {/* Type Filter */}
+                <select
+                  value={selectedType}
+                  onChange={(e) => setSelectedType(e.target.value)}
+                  className="px-4 py-2.5 bg-background border border-border rounded-lg text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                >
+                  <option>All Types</option>
+                  <option>Product Sense</option>
+                  <option>Execution</option>
+                  <option>Behavioral</option>
+                  <option>Product Strategy</option>
+                </select>
               </div>
-
-              {/* Type Filter */}
-              <select
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-                className="px-4 py-2.5 bg-background border border-border rounded-lg text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-              >
-                <option>All Types</option>
-                <option>Product Sense</option>
-                <option>Execution</option>
-                <option>Behavioral</option>
-                <option>Product Strategy</option>
-              </select>
-            </div>
-
-            {/* Results count */}
-            <div className="mt-3 text-xs text-muted-foreground">
-              {filteredQuestions.length} question{filteredQuestions.length !== 1 ? "s" : ""}
             </div>
           </div>
+          {/* Gradient fade at bottom */}
+          <div className="h-8 bg-gradient-to-b from-background/80 via-background/40 to-transparent pointer-events-none" />
         </div>
 
         {/* Questions Feed */}
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-0 pb-8">
           {paginatedQuestions.length === 0 ? (
             /* Empty State */
             <div className="py-24 text-center">
@@ -242,8 +242,8 @@ export default function ExplorePage() {
                   key={question.id}
                   onClick={() => handleQuestionClick(question)}
                   className={cn(
-                    "group w-full text-left py-6 transition-all duration-150",
-                    "hover:bg-muted/30 -mx-4 px-4 rounded-lg",
+                    "group w-full text-left py-6 transition-all duration-200",
+                    "hover:bg-muted/20 -mx-4 px-4 rounded-lg",
                     index !== paginatedQuestions.length - 1 && "border-b border-border/40"
                   )}
                 >
@@ -268,10 +268,10 @@ export default function ExplorePage() {
 
                   {/* Question Text */}
                   <div className="flex items-start justify-between gap-4">
-                    <h3 className="text-lg font-semibold text-foreground leading-relaxed group-hover:text-primary transition-colors">
+                    <h3 className="text-lg font-semibold text-foreground leading-[1.4] group-hover:text-primary transition-colors">
                       {question.questionText}
                     </h3>
-                    <ArrowRight className="w-5 h-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-1" />
+                    <ArrowRight className="w-5 h-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all duration-200 flex-shrink-0 mt-0.5 group-hover:translate-x-1" />
                   </div>
                 </button>
               ))}
