@@ -6,7 +6,6 @@ export function DashboardLoading() {
   return (
     <DashboardLayout
       activeSection="overview"
-      setActiveSection={() => {}}
       totalSessions={0}
       totalMinutes={0}
       avgScore={0}
