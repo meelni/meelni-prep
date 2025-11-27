@@ -6,7 +6,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Protected routes that require authentication
-  const protectedRoutes = ["/dashboard", "/setup", "/interview", "/questions"];
+  const protectedRoutes = ["/dashboard", "/setup", "/interview"];
 
   // Public routes that don't require authentication
   const publicRoutes = ["/explore", "/browse"];
