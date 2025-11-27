@@ -6,7 +6,6 @@ import { Sidebar } from "./sidebar";
 interface DashboardLayoutProps {
   children: React.ReactNode;
   activeSection: string;
-  setActiveSection: (section: string) => void;
   totalSessions?: number;
   totalMinutes?: number;
   avgScore?: number;
@@ -17,7 +16,6 @@ interface DashboardLayoutProps {
 export function DashboardLayout({
   children,
   activeSection,
-  setActiveSection,
   totalSessions,
   totalMinutes,
   avgScore,
@@ -44,7 +42,6 @@ export function DashboardLayout({
       <Sidebar
         key={`sidebar-${activeSection}`}
         activeSection={activeSection}
-        setActiveSection={setActiveSection}
         collapsed={sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
         totalSessions={totalSessions}
