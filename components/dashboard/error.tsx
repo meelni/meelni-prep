@@ -21,7 +21,6 @@ export function DashboardError({ error, reset }: DashboardErrorProps) {
   return (
     <DashboardLayout
       activeSection="overview"
-      setActiveSection={() => {}}
       totalSessions={0}
       totalMinutes={0}
       avgScore={0}

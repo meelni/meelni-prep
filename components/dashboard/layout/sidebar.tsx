@@ -12,7 +12,6 @@ import { useEffect, useState } from "react";
 
 interface SidebarProps {
   activeSection: string;
-  setActiveSection: (section: string) => void;
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
   totalSessions?: number;
@@ -24,7 +23,6 @@ interface SidebarProps {
 
 export function Sidebar({
   activeSection,
-  setActiveSection,
   collapsed,
   setCollapsed,
   totalSessions = 0,
@@ -59,11 +57,11 @@ export function Sidebar({
   };
 
   const navigationItems = [
-    { id: "overview", icon: Monitor, label: "Overview" },
-    { id: "history", icon: History, label: "Interview History" },
-    { id: "questions", icon: BookOpen, label: "Question Bank" },
-    { id: "analytics", icon: BarChart3, label: "Analytics" },
-    { id: "settings", icon: Settings, label: "Settings" },
+    { id: "overview", icon: Monitor, label: "Overview", href: "/dashboard" },
+    { id: "history", icon: History, label: "Interview History", href: "/dashboard/history" },
+    { id: "questions", icon: BookOpen, label: "Question Bank", href: "/dashboard/questions" },
+    { id: "analytics", icon: BarChart3, label: "Analytics", href: "/dashboard/analytics" },
+    { id: "settings", icon: Settings, label: "Settings", href: "/dashboard/settings" },
   ];
 
   // All navigation items are always visible - empty states handle no-data scenarios
@@ -162,9 +160,9 @@ export function Sidebar({
         {/* Navigation Items */}
         <nav className="flex flex-col gap-1">
           {visibleNavItems.map((item) => (
-            <button
+            <Link
               key={item.id}
-              onClick={() => setActiveSection(item.id)}
+              href={item.href}
               className={cn(
                 "relative flex items-center rounded-lg text-sm transition-all duration-200",
                 collapsed ? "px-3 py-3 justify-center" : "px-3 py-2 gap-3",
@@ -188,7 +186,7 @@ export function Sidebar({
                 aria-hidden="true"
               />
               {!collapsed && <span>{item.label}</span>}
-            </button>
+            </Link>
           ))}
         </nav>
 
