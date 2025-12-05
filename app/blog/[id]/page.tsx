@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
-import { getBlogPostById, blogPosts } from "@/lib/blog-data";
-import { Calendar, Clock, ArrowLeft } from "lucide-react";
+import { getBlogPostById, blogPosts, BlogPost as BlogPostType } from "@/lib/blog-data";
+import { Calendar, Clock, ArrowLeft, Home, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Header } from "@/components/sections/header";
 
 export async function generateStaticParams() {
   return blogPosts.map((post) => ({
@@ -27,6 +28,75 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   };
 }
 
+// Structured Data for SEO
+function BlogPostStructuredData({ post }: { post: BlogPostType }) {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: baseUrl,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Blog",
+        item: `${baseUrl}/blog`,
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: post.title,
+        item: `${baseUrl}/blog/${post.id}`,
+      },
+    ],
+  };
+
+  const articleSchema = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.excerpt,
+    url: `${baseUrl}/blog/${post.id}`,
+    datePublished: post.date,
+    dateModified: post.date,
+    inLanguage: "en-US",
+    author: {
+      "@type": "Person",
+      name: post.author,
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "Meelni",
+      url: baseUrl,
+    },
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": `${baseUrl}/blog/${post.id}`,
+    },
+    articleSection: post.category,
+    keywords: ["PM interview", "product management", post.category.toLowerCase()],
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }}
+      />
+    </>
+  );
+}
+
 export default async function BlogPost({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const post = getBlogPostById(id);
@@ -37,21 +107,46 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-muted/5 to-background">
-      {/* Header */}
-      <div className="border-b border-border/40 bg-background/80 backdrop-blur-xl sticky top-0 z-10 shadow-sm">
-        <div className="max-w-3xl mx-auto px-6 py-5">
-          <Link
-            href="/blog"
-            className="inline-flex items-center gap-2 text-[14px] text-muted-foreground hover:text-primary transition-colors duration-200 group"
-          >
-            <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
-            <span className="font-medium">Back to blog</span>
-          </Link>
-        </div>
-      </div>
+      {/* Structured Data for SEO */}
+      <BlogPostStructuredData post={post} />
+
+      {/* Site Header */}
+      <Header />
+
+      {/* Breadcrumb Navigation */}
+      <nav aria-label="Breadcrumb" className="max-w-3xl mx-auto px-6 pt-8">
+        <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+          <li>
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+            >
+              <Home className="w-4 h-4" />
+              <span>Home</span>
+            </Link>
+          </li>
+          <li aria-hidden="true">
+            <ChevronRight className="w-4 h-4" />
+          </li>
+          <li>
+            <Link
+              href="/blog"
+              className="hover:text-foreground transition-colors"
+            >
+              Blog
+            </Link>
+          </li>
+          <li aria-hidden="true">
+            <ChevronRight className="w-4 h-4" />
+          </li>
+          <li aria-current="page" className="truncate max-w-[200px]">
+            <span className="text-foreground font-medium">{post.title}</span>
+          </li>
+        </ol>
+      </nav>
 
       {/* Article */}
-      <article className="max-w-3xl mx-auto px-6 py-20">
+      <article className="max-w-3xl mx-auto px-6 py-12">
         {/* Category Badge */}
         <div className="mb-8">
           <span className="inline-block px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/10 to-primary/5 text-primary text-[12px] font-semibold tracking-wide uppercase border border-primary/20">

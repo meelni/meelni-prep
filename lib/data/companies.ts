@@ -62,7 +62,7 @@ export const companies: Company[] = [
     name: "Coinbase",
     industry: "Cryptocurrency / Fintech",
     description: "Product manager interviews at Coinbase are extremely competitive. You'll face in-depth and challenging questions over the course of at least seven different interview rounds.",
-    interviewDuration: "~60 days",
+    interviewDuration: "8-10 weeks",
     interviewRounds: 7,
     difficulty: "Very Hard",
 
@@ -378,7 +378,7 @@ export const companies: Company[] = [
     name: "Stripe",
     industry: "Fintech / Payments",
     description: "Don't underestimate the Stripe product manager interviews. The process is known to be quite rigorous, with challenging questions that are specific to the company. Expect interviewers to ask you behavioral, product sense, product execution, and technical questions. Be prepared to show off your systems thinking, user empathy, and technical curiosity.",
-    interviewDuration: "~4 weeks",
+    interviewDuration: "4 weeks",
     interviewRounds: 5,
     difficulty: "Very Hard",
 
