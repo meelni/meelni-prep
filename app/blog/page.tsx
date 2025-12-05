@@ -1,30 +1,127 @@
 import { blogPosts } from "@/lib/blog-data";
-import { Calendar, Clock, ArrowLeft } from "lucide-react";
+import { Calendar, Clock, Home, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { Header } from "@/components/sections/header";
 
 export const metadata = {
   title: "Blog | Meelni",
   description: "Frameworks, strategies, and insights from our PM coaching practice",
 };
 
+// Structured Data for SEO
+function BlogStructuredData() {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: baseUrl,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Blog",
+        item: `${baseUrl}/blog`,
+      },
+    ],
+  };
+
+  const blogSchema = {
+    "@context": "https://schema.org",
+    "@type": "Blog",
+    name: "Meelni Blog",
+    description: "Frameworks, strategies, and insights from our PM coaching practice",
+    url: `${baseUrl}/blog`,
+    inLanguage: "en-US",
+    publisher: {
+      "@type": "Organization",
+      name: "Meelni",
+      url: baseUrl,
+    },
+    blogPost: blogPosts.map((post) => ({
+      "@type": "BlogPosting",
+      headline: post.title,
+      description: post.excerpt,
+      url: `${baseUrl}/blog/${post.id}`,
+      datePublished: post.date,
+      author: {
+        "@type": "Person",
+        name: post.author,
+      },
+    })),
+  };
+
+  const itemListSchema = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: "PM Interview Blog Articles",
+    numberOfItems: blogPosts.length,
+    itemListElement: blogPosts.map((post, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      item: {
+        "@type": "BlogPosting",
+        headline: post.title,
+        url: `${baseUrl}/blog/${post.id}`,
+      },
+    })),
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
+      />
+    </>
+  );
+}
+
 export default function BlogIndex() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-muted/5 to-background">
-      {/* Header */}
-      <div className="border-b border-border/40 bg-background/80 backdrop-blur-xl sticky top-0 z-10 shadow-sm">
-        <div className="max-w-6xl mx-auto px-6 py-5">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-[14px] text-muted-foreground hover:text-primary transition-colors duration-200 group"
-          >
-            <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
-            <span className="font-medium">Back to home</span>
-          </Link>
-        </div>
-      </div>
+      {/* Structured Data for SEO */}
+      <BlogStructuredData />
+
+      {/* Site Header */}
+      <Header />
+
+      {/* Breadcrumb Navigation */}
+      <nav aria-label="Breadcrumb" className="max-w-6xl mx-auto px-6 pt-8">
+        <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+          <li>
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+            >
+              <Home className="w-4 h-4" />
+              <span>Home</span>
+            </Link>
+          </li>
+          <li aria-hidden="true">
+            <ChevronRight className="w-4 h-4" />
+          </li>
+          <li aria-current="page">
+            <span className="text-foreground font-medium">Blog</span>
+          </li>
+        </ol>
+      </nav>
 
       {/* Page Header */}
-      <div className="max-w-6xl mx-auto px-6 py-20">
+      <div className="max-w-6xl mx-auto px-6 py-12">
         <div className="text-center space-y-6 mb-20">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 mb-4">
             <div className="h-6 w-6 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
