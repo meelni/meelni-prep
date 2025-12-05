@@ -1,40 +1,114 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { Header } from "@/components/sections/header";
-import { getCompanyBySlug } from "@/lib/data/companies";
+import { getCompanyBySlug, Company } from "@/lib/data/companies";
 import { Button } from "@/components/ui/button";
 import {
-  Home,
-  ChevronRight as BreadcrumbArrow,
+  ArrowLeft,
   Clock,
   Users,
   DollarSign,
   CheckCircle2,
   Lightbulb,
   MessageSquare,
-  ArrowRight,
-  Building2,
   Briefcase,
-  GraduationCap
+  GraduationCap,
+  ChevronDown,
+  ChevronUp,
+  Home,
+  ChevronRight
 } from "lucide-react";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { Header } from "@/components/sections/header";
 
-function getDifficultyColor(difficulty: string) {
-  switch (difficulty) {
-    case "Easy":
-      return "bg-green-500/10 text-green-500 border-green-500/20";
-    case "Medium":
-      return "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
-    case "Hard":
-      return "bg-orange-500/10 text-orange-500 border-orange-500/20";
-    case "Very Hard":
-      return "bg-red-500/10 text-red-500 border-red-500/20";
-    default:
-      return "bg-muted text-muted-foreground";
-  }
+// Structured Data for SEO
+function CompanyStructuredData({ company }: { company: Company }) {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: baseUrl,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Company Guides",
+        item: `${baseUrl}/companies`,
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: `${company.name} Interview Guide`,
+        item: `${baseUrl}/companies/${company.slug}`,
+      },
+    ],
+  };
+
+  const articleSchema = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: `${company.name} PM Interview Guide`,
+    description: company.description,
+    url: `${baseUrl}/companies/${company.slug}`,
+    inLanguage: "en-US",
+    publisher: {
+      "@type": "Organization",
+      name: "Meelni",
+      url: baseUrl,
+    },
+    author: {
+      "@type": "Organization",
+      name: "Meelni",
+    },
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": `${baseUrl}/companies/${company.slug}`,
+    },
+    about: {
+      "@type": "Organization",
+      name: company.name,
+      industry: company.industry,
+    },
+  };
+
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: company.questionCategories.flatMap((cat) =>
+      cat.questions.slice(0, 3).map((q) => ({
+        "@type": "Question",
+        name: q,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: `This is a real ${cat.category} interview question asked at ${company.name}. Practice with Meelni's AI interview coach to prepare your answer.`,
+        },
+      }))
+    ),
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
+    </>
+  );
 }
 
 export default function CompanyDetailPage() {
@@ -45,20 +119,17 @@ export default function CompanyDetailPage() {
 
   if (!company) {
     return (
-      <>
-        <Header />
-        <main className="min-h-screen bg-background flex items-center justify-center">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-foreground mb-2">Company not found</h1>
-            <p className="text-muted-foreground mb-4">
-              We don't have a guide for this company yet.
-            </p>
-            <Link href="/companies">
-              <Button variant="outline">View all companies</Button>
-            </Link>
-          </div>
-        </main>
-      </>
+      <div className="min-h-screen bg-gradient-to-b from-background via-muted/5 to-background flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-foreground mb-2">Company not found</h1>
+          <p className="text-muted-foreground mb-4">
+            We don't have a guide for this company yet.
+          </p>
+          <Link href="/companies">
+            <Button variant="outline">View all companies</Button>
+          </Link>
+        </div>
+      </div>
     );
   }
 
@@ -73,155 +144,134 @@ export default function CompanyDetailPage() {
   };
 
   return (
-    <>
+    <div className="min-h-screen bg-gradient-to-b from-background via-muted/5 to-background">
+      {/* Structured Data for SEO */}
+      <CompanyStructuredData company={company} />
+
+      {/* Site Header */}
       <Header />
 
-      <main className="min-h-screen bg-background">
-        {/* Breadcrumb Navigation */}
-        <nav aria-label="Breadcrumb" className="max-w-4xl mx-auto px-4 sm:px-6 pt-6">
-          <ol className="flex items-center gap-2 text-sm text-muted-foreground">
-            <li>
-              <a
-                href="/"
-                className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-              >
-                <Home className="w-4 h-4" />
-                <span>Home</span>
-              </a>
-            </li>
-            <li aria-hidden="true">
-              <BreadcrumbArrow className="w-4 h-4" />
-            </li>
-            <li>
-              <Link
-                href="/companies"
-                className="hover:text-foreground transition-colors"
-              >
-                Companies
-              </Link>
-            </li>
-            <li aria-hidden="true">
-              <BreadcrumbArrow className="w-4 h-4" />
-            </li>
-            <li aria-current="page">
-              <span className="text-foreground font-medium">{company.name}</span>
-            </li>
-          </ol>
-        </nav>
+      {/* Breadcrumb Navigation */}
+      <nav aria-label="Breadcrumb" className="max-w-3xl mx-auto px-6 pt-8">
+        <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+          <li>
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+            >
+              <Home className="w-4 h-4" />
+              <span>Home</span>
+            </Link>
+          </li>
+          <li aria-hidden="true">
+            <ChevronRight className="w-4 h-4" />
+          </li>
+          <li>
+            <Link
+              href="/companies"
+              className="hover:text-foreground transition-colors"
+            >
+              Companies
+            </Link>
+          </li>
+          <li aria-hidden="true">
+            <ChevronRight className="w-4 h-4" />
+          </li>
+          <li aria-current="page">
+            <span className="text-foreground font-medium">{company.name}</span>
+          </li>
+        </ol>
+      </nav>
 
-        {/* Page Header */}
-        <header className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
-          <div className="flex items-start gap-4 mb-4">
-            <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Building2 className="w-7 h-7 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-foreground">
-                {company.name} PM Interview Guide
-              </h1>
-              <p className="text-muted-foreground mt-1">{company.industry}</p>
-            </div>
+      {/* Article */}
+      <article className="max-w-3xl mx-auto px-6 py-12">
+        {/* Industry Badge */}
+        <div className="mb-8">
+          <span className="inline-block px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/10 to-primary/5 text-primary text-[12px] font-semibold tracking-wide uppercase border border-primary/20">
+            {company.industry}
+          </span>
+        </div>
+
+        {/* Title */}
+        <h1 className="text-[40px] sm:text-[52px] font-display font-bold tracking-tight mb-6 leading-[1.1] bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+          {company.name} PM Interview Guide
+        </h1>
+
+        {/* Description */}
+        <p className="text-[18px] leading-[1.8] mb-8 text-foreground/85">
+          {company.description}
+        </p>
+
+        {/* Meta Info */}
+        <div className="flex flex-wrap items-center gap-4 text-[14px] text-muted-foreground mb-12 pb-10 border-b border-border/30">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50">
+            <Clock className="h-4 w-4" />
+            <span className="font-medium text-foreground">{company.interviewDuration}</span>
           </div>
-
-          <p className="text-lg text-muted-foreground max-w-3xl">
-            {company.description}
-          </p>
-
-          {/* Quick Stats */}
-          <div className="flex flex-wrap items-center gap-4 mt-6">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50">
-              <Clock className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{company.interviewDuration}</span>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50">
-              <Users className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{company.interviewRounds} rounds</span>
-            </div>
-            <span className={cn(
-              "px-3 py-1.5 rounded-lg text-sm font-medium border",
-              getDifficultyColor(company.difficulty)
-            )}>
-              {company.difficulty}
-            </span>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50">
+            <Users className="h-4 w-4" />
+            <span className="font-medium text-foreground">{company.interviewRounds} interview rounds</span>
           </div>
-        </header>
-
-        {/* CTA Banner */}
-        <section className="max-w-4xl mx-auto px-4 sm:px-6 mb-8">
-          <div className="p-6 rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">
-                  Practice {company.name} Interview Questions
-                </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Get AI-powered feedback on your answers with Meelni
-                </p>
-              </div>
-              <Link href="/setup">
-                <Button className="gap-2">
-                  Start Mock Interview
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </section>
+          <span className="px-3 py-1.5 rounded-lg text-[14px] font-medium bg-muted/50 text-muted-foreground border border-border/40">
+            {company.difficulty}
+          </span>
+        </div>
 
         {/* Table of Contents */}
-        <nav className="max-w-4xl mx-auto px-4 sm:px-6 mb-8">
-          <div className="p-4 rounded-xl bg-muted/30 border border-border/60">
-            <h2 className="text-sm font-semibold text-foreground mb-3">On this page</h2>
-            <ul className="space-y-2 text-sm">
-              <li>
-                <a href="#role" className="text-muted-foreground hover:text-primary transition-colors">
-                  Role Overview & Salary
-                </a>
-              </li>
-              <li>
-                <a href="#process" className="text-muted-foreground hover:text-primary transition-colors">
-                  Interview Process
-                </a>
-              </li>
-              <li>
-                <a href="#questions" className="text-muted-foreground hover:text-primary transition-colors">
-                  Example Questions
-                </a>
-              </li>
-              <li>
-                <a href="#tips" className="text-muted-foreground hover:text-primary transition-colors">
-                  Interview Tips
-                </a>
-              </li>
-              <li>
-                <a href="#preparation" className="text-muted-foreground hover:text-primary transition-colors">
-                  How to Prepare
-                </a>
-              </li>
-            </ul>
-          </div>
+        <nav className="mb-14 p-6 rounded-2xl bg-muted/30 border border-border/40">
+          <h2 className="text-[14px] font-semibold text-foreground uppercase tracking-wide mb-4">On this page</h2>
+          <ul className="space-y-3 text-[15px]">
+            <li>
+              <a href="#role" className="text-foreground/70 hover:text-primary transition-colors flex items-center gap-2">
+                <Briefcase className="h-4 w-4" />
+                Role Overview & Salary
+              </a>
+            </li>
+            <li>
+              <a href="#process" className="text-foreground/70 hover:text-primary transition-colors flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Interview Process
+              </a>
+            </li>
+            <li>
+              <a href="#questions" className="text-foreground/70 hover:text-primary transition-colors flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Example Questions
+              </a>
+            </li>
+            <li>
+              <a href="#tips" className="text-foreground/70 hover:text-primary transition-colors flex items-center gap-2">
+                <Lightbulb className="h-4 w-4" />
+                Interview Tips
+              </a>
+            </li>
+            <li>
+              <a href="#preparation" className="text-foreground/70 hover:text-primary transition-colors flex items-center gap-2">
+                <GraduationCap className="h-4 w-4" />
+                How to Prepare
+              </a>
+            </li>
+          </ul>
         </nav>
 
         {/* Role Overview & Salary */}
-        <section id="role" className="max-w-4xl mx-auto px-4 sm:px-6 mb-12 scroll-mt-24">
-          <h2 className="text-2xl font-bold text-foreground mb-4 flex items-center gap-2">
-            <Briefcase className="w-6 h-6 text-primary" />
+        <section id="role" className="mb-16 scroll-mt-24">
+          <h2 className="text-[28px] font-display font-bold mb-6 leading-tight text-foreground border-b border-border/20 pb-3 flex items-center gap-3">
+            <Briefcase className="h-6 w-6 text-primary" />
             Role Overview & Salary
           </h2>
 
-          <div className="prose prose-neutral dark:prose-invert max-w-none mb-6">
-            <p className="text-muted-foreground leading-relaxed">
-              {company.roleOverview.description}
-            </p>
-          </div>
+          <p className="text-[18px] leading-[1.8] mb-8 text-foreground/85">
+            {company.roleOverview.description}
+          </p>
 
           {/* Skills */}
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold text-foreground mb-3">Key Skills Required</h3>
-            <ul className="grid sm:grid-cols-2 gap-2">
+          <div className="mb-10">
+            <h3 className="text-[20px] font-display font-semibold mb-4 text-foreground">Key Skills Required</h3>
+            <ul className="grid sm:grid-cols-2 gap-3">
               {company.roleOverview.skills.map((skill, index) => (
-                <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                <li key={index} className="flex items-start gap-3 text-[16px] text-foreground/85">
+                  <CheckCircle2 className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
                   <span>{skill}</span>
                 </li>
               ))}
@@ -230,36 +280,36 @@ export default function CompanyDetailPage() {
 
           {/* Salary Table */}
           {company.salaryLevels && (
-            <div className="rounded-xl border border-border/60 overflow-hidden">
-              <div className="px-4 py-3 bg-muted/30 border-b border-border/60">
-                <h3 className="font-semibold text-foreground flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-primary" />
-                  {company.name} PM Salary & Compensation
+            <div className="overflow-hidden rounded-2xl border border-border/40">
+              <div className="px-6 py-4 bg-gradient-to-r from-primary/10 to-primary/5 border-b border-border/40">
+                <h3 className="font-display font-semibold text-foreground flex items-center gap-2 text-[18px]">
+                  <DollarSign className="h-5 w-5 text-primary" />
+                  {company.name} PM Compensation
                 </h3>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-border/60 bg-muted/20">
-                      <th className="px-4 py-3 text-left text-sm font-medium text-foreground">Level</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-foreground">Base Salary</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-foreground">Total Compensation</th>
+                    <tr className="border-b border-border/40 bg-muted/30">
+                      <th className="px-6 py-4 text-left text-[14px] font-semibold text-foreground">Level</th>
+                      <th className="px-6 py-4 text-left text-[14px] font-semibold text-foreground">Base Salary</th>
+                      <th className="px-6 py-4 text-left text-[14px] font-semibold text-foreground">Total Comp</th>
                     </tr>
                   </thead>
                   <tbody>
                     {company.salaryLevels.map((level, index) => (
-                      <tr key={index} className="border-b border-border/40 last:border-0">
-                        <td className="px-4 py-3 text-sm text-foreground">{level.level}</td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">{level.baseSalary}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-foreground">{level.totalComp}</td>
+                      <tr key={index} className="border-b border-border/30 last:border-0 hover:bg-muted/20 transition-colors">
+                        <td className="px-6 py-4 text-[15px] text-foreground font-medium">{level.level}</td>
+                        <td className="px-6 py-4 text-[15px] text-foreground/70">{level.baseSalary}</td>
+                        <td className="px-6 py-4 text-[15px] font-semibold text-primary">{level.totalComp}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               {company.salaryNote && (
-                <div className="px-4 py-3 bg-muted/20 border-t border-border/60">
-                  <p className="text-xs text-muted-foreground">{company.salaryNote}</p>
+                <div className="px-6 py-4 bg-muted/20 border-t border-border/40">
+                  <p className="text-[13px] text-foreground/60 leading-relaxed">{company.salaryNote}</p>
                 </div>
               )}
             </div>
@@ -267,39 +317,39 @@ export default function CompanyDetailPage() {
         </section>
 
         {/* Interview Process */}
-        <section id="process" className="max-w-4xl mx-auto px-4 sm:px-6 mb-12 scroll-mt-24">
-          <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-2">
-            <Users className="w-6 h-6 text-primary" />
+        <section id="process" className="mb-16 scroll-mt-24">
+          <h2 className="text-[28px] font-display font-bold mb-8 leading-tight text-foreground border-b border-border/20 pb-3 flex items-center gap-3">
+            <Users className="h-6 w-6 text-primary" />
             Interview Process
           </h2>
 
-          <div className="space-y-4">
+          <div className="space-y-6">
             {company.interviewStages.map((stage, index) => (
               <div
                 key={index}
-                className="relative pl-8 pb-6 last:pb-0"
+                className="relative pl-12"
               >
                 {/* Timeline line */}
                 {index !== company.interviewStages.length - 1 && (
-                  <div className="absolute left-[11px] top-8 bottom-0 w-0.5 bg-border" />
+                  <div className="absolute left-[17px] top-12 bottom-0 w-0.5 bg-gradient-to-b from-primary/40 to-border/40" />
                 )}
 
                 {/* Timeline dot */}
-                <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center">
-                  <span className="text-xs font-bold text-primary">{index + 1}</span>
+                <div className="absolute left-0 top-0 w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/20">
+                  <span className="text-[13px] font-bold text-primary-foreground">{index + 1}</span>
                 </div>
 
                 {/* Content */}
-                <div className="rounded-lg border border-border/60 p-4 bg-card">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <h3 className="font-semibold text-foreground">{stage.name}</h3>
+                <div className="rounded-2xl border border-border/40 p-6 bg-card/50 hover:bg-card/80 transition-colors">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <h3 className="font-display font-semibold text-foreground text-[18px]">{stage.name}</h3>
                     {stage.duration && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                      <span className="text-[12px] px-3 py-1 rounded-full bg-primary/10 text-primary font-medium border border-primary/20">
                         {stage.duration}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
+                  <p className="text-[15px] text-foreground/70 leading-relaxed">
                     {stage.description}
                   </p>
                 </div>
@@ -309,13 +359,13 @@ export default function CompanyDetailPage() {
         </section>
 
         {/* Example Questions */}
-        <section id="questions" className="max-w-4xl mx-auto px-4 sm:px-6 mb-12 scroll-mt-24">
-          <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-primary" />
+        <section id="questions" className="mb-16 scroll-mt-24">
+          <h2 className="text-[28px] font-display font-bold mb-8 leading-tight text-foreground border-b border-border/20 pb-3 flex items-center gap-3">
+            <MessageSquare className="h-6 w-6 text-primary" />
             Example Interview Questions
           </h2>
 
-          <div className="space-y-4">
+          <div className="space-y-6">
             {company.questionCategories.map((category) => {
               const isExpanded = expandedCategories.has(category.category);
               const displayQuestions = isExpanded
@@ -325,17 +375,17 @@ export default function CompanyDetailPage() {
               return (
                 <div
                   key={category.category}
-                  className="rounded-xl border border-border/60 overflow-hidden"
+                  className="rounded-2xl border border-border/40 overflow-hidden bg-card/50"
                 >
-                  <div className="px-4 py-3 bg-muted/30 border-b border-border/60">
-                    <h3 className="font-semibold text-foreground">{category.category}</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                  <div className="px-6 py-4 bg-gradient-to-r from-muted/50 to-transparent border-b border-border/40">
+                    <h3 className="font-display font-semibold text-foreground text-[17px]">{category.category}</h3>
+                    <p className="text-[13px] text-foreground/50 mt-1">
                       {category.questions.length} questions
                     </p>
                   </div>
-                  <ul className="divide-y divide-border/40">
+                  <ul className="divide-y divide-border/30">
                     {displayQuestions.map((question, index) => (
-                      <li key={index} className="px-4 py-3 text-sm text-foreground hover:bg-muted/20 transition-colors">
+                      <li key={index} className="px-6 py-4 text-[15px] text-foreground/85 hover:bg-muted/30 transition-colors leading-relaxed">
                         {question}
                       </li>
                     ))}
@@ -343,11 +393,19 @@ export default function CompanyDetailPage() {
                   {category.questions.length > 3 && (
                     <button
                       onClick={() => toggleCategory(category.category)}
-                      className="w-full px-4 py-2 text-sm text-primary hover:bg-muted/30 transition-colors border-t border-border/40"
+                      className="w-full px-6 py-3 text-[14px] font-medium text-primary hover:bg-muted/30 transition-colors border-t border-border/40 flex items-center justify-center gap-2"
                     >
-                      {isExpanded
-                        ? "Show less"
-                        : `Show ${category.questions.length - 3} more questions`}
+                      {isExpanded ? (
+                        <>
+                          Show less
+                          <ChevronUp className="h-4 w-4" />
+                        </>
+                      ) : (
+                        <>
+                          Show {category.questions.length - 3} more questions
+                          <ChevronDown className="h-4 w-4" />
+                        </>
+                      )}
                     </button>
                   )}
                 </div>
@@ -355,35 +413,38 @@ export default function CompanyDetailPage() {
             })}
           </div>
 
-          {/* CTA */}
-          <div className="mt-6 p-4 rounded-xl bg-muted/30 border border-border/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground">
-              Practice these questions with AI feedback
+          {/* Mini CTA */}
+          <div className="mt-8 p-6 rounded-2xl bg-muted/30 border border-border/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <p className="text-[15px] text-foreground/70">
+              Practice these questions with real-time AI feedback
             </p>
-            <Link href="/setup">
-              <Button variant="outline" size="sm" className="gap-2">
-                Start Practicing
-                <ArrowRight className="w-4 h-4" />
-              </Button>
+            <Link
+              href="/setup"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary/10 text-primary font-medium text-[14px] hover:bg-primary/20 transition-colors border border-primary/20"
+            >
+              Start practicing
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
             </Link>
           </div>
         </section>
 
         {/* Interview Tips */}
-        <section id="tips" className="max-w-4xl mx-auto px-4 sm:px-6 mb-12 scroll-mt-24">
-          <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-2">
-            <Lightbulb className="w-6 h-6 text-primary" />
+        <section id="tips" className="mb-16 scroll-mt-24">
+          <h2 className="text-[28px] font-display font-bold mb-8 leading-tight text-foreground border-b border-border/20 pb-3 flex items-center gap-3">
+            <Lightbulb className="h-6 w-6 text-primary" />
             Interview Tips
           </h2>
 
-          <div className="grid gap-4">
+          <div className="grid gap-5">
             {company.interviewTips.map((tip, index) => (
               <div
                 key={index}
-                className="p-4 rounded-xl border border-border/60 bg-card hover:bg-muted/20 transition-colors"
+                className="p-6 rounded-2xl border border-border/40 bg-card/50 hover:bg-card/80 hover:border-primary/30 transition-all"
               >
-                <h3 className="font-semibold text-foreground mb-2">{tip.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
+                <h3 className="font-display font-semibold text-foreground mb-3 text-[17px]">{tip.title}</h3>
+                <p className="text-[15px] text-foreground/70 leading-relaxed">
                   {tip.description}
                 </p>
               </div>
@@ -392,54 +453,67 @@ export default function CompanyDetailPage() {
         </section>
 
         {/* Preparation Steps */}
-        <section id="preparation" className="max-w-4xl mx-auto px-4 sm:px-6 mb-12 scroll-mt-24">
-          <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-2">
-            <GraduationCap className="w-6 h-6 text-primary" />
+        <section id="preparation" className="mb-16 scroll-mt-24">
+          <h2 className="text-[28px] font-display font-bold mb-8 leading-tight text-foreground border-b border-border/20 pb-3 flex items-center gap-3">
+            <GraduationCap className="h-6 w-6 text-primary" />
             How to Prepare
           </h2>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             {company.preparationSteps.map((step, index) => (
               <div
                 key={index}
-                className="flex items-start gap-3 p-4 rounded-xl border border-border/60 bg-card"
+                className="flex items-start gap-4 p-5 rounded-2xl border border-border/40 bg-card/50 hover:bg-card/80 transition-colors"
               >
-                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-xs font-bold text-primary">{index + 1}</span>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center flex-shrink-0 shadow-md shadow-primary/20">
+                  <span className="text-[13px] font-bold text-primary-foreground">{index + 1}</span>
                 </div>
-                <p className="text-sm text-foreground">{step}</p>
+                <p className="text-[16px] text-foreground/85 leading-relaxed pt-1">{step}</p>
               </div>
             ))}
           </div>
-
-          {/* Final CTA */}
-          <div className="mt-8 p-6 rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 text-center">
-            <h3 className="text-xl font-semibold text-foreground mb-2">
-              Ready to ace your {company.name} interview?
-            </h3>
-            <p className="text-muted-foreground mb-4">
-              Practice with our AI interviewer and get instant feedback
-            </p>
-            <Link href="/setup">
-              <Button size="lg" className="gap-2">
-                Start Mock Interview
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </Link>
-          </div>
         </section>
 
-        {/* Back to Companies */}
-        <section className="max-w-4xl mx-auto px-4 sm:px-6 pb-12">
+        {/* Final CTA */}
+        <div className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-3xl" />
+          <div className="relative p-10 rounded-3xl border border-primary/20 backdrop-blur-sm">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary/20">
+                <span className="text-[18px] font-bold text-primary-foreground">M</span>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-[26px] font-display font-bold mb-2 text-foreground">
+                  Ready to ace your {company.name} interview?
+                </h3>
+                <p className="text-[17px] text-foreground/70 leading-relaxed mb-6">
+                  Practice with Meelni's AI interview coach. Get real-time feedback, improve your answers, and build confidence before your big day.
+                </p>
+                <Link
+                  href="/setup"
+                  className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-gradient-to-r from-primary to-primary/90 text-primary-foreground font-semibold text-[16px] hover:shadow-lg hover:shadow-primary/25 hover:scale-[1.02] transition-all duration-200"
+                >
+                  Start mock interview
+                  <svg className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Back Link */}
+        <div className="mt-16 pt-10 border-t border-border/30">
           <Link
             href="/companies"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-2 text-[15px] text-muted-foreground hover:text-primary transition-colors duration-200 group"
           >
-            <BreadcrumbArrow className="w-4 h-4 rotate-180" />
-            Back to all companies
+            <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
+            <span className="font-medium">View all companies</span>
           </Link>
-        </section>
-      </main>
-    </>
+        </div>
+      </article>
+    </div>
   );
 }
