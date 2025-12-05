@@ -14,6 +14,7 @@ import { useAuth } from "@/app/providers/auth-provider";
 const navLinks = [
   { name: "Features", href: "#features" },
   { name: "Questions", href: "/explore" },
+  { name: "Companies", href: "/companies" },
   { name: "Pricing", href: "/pricing" },
   { name: "Blog", href: "/blog" },
 ];
