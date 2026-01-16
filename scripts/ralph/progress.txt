@@ -228,3 +228,22 @@ Initial badges:
   - Quality gates passed: typecheck (pre-existing test errors only), lint (pre-existing errors only)
 ---
 
+## 2026-01-16 - MOTI-002: Create achievement badges system
+- Implemented achievement badge tracking system with automatic awarding
+- Files changed:
+  - lib/db/schema.ts (added user_achievement table)
+  - lib/achievements.ts (new file - 7 badge definitions + check/award logic)
+  - app/api/interview/end/route.ts (integrated achievement checking)
+- **Learnings:**
+  - Achievement system with 4 categories: milestones, excellence, streaks, exploration
+  - Badge definitions: first_interview (1), getting_serious (5), dedicated (10), perfect_score (100), week_warrior (7d), monthly_master (30d), well_rounded (all types)
+  - checkAndAwardAchievements() runs automatically after each completed interview
+  - Used Set data structure to check unique interview types for well_rounded badge
+  - onConflictDoNothing() prevents duplicate badge awards in edge cases
+  - Non-critical operations (streaks, achievements) wrapped in try/catch to avoid blocking interview end
+  - Map<string, Date> for type safety when building earnedMap in getUserAchievements
+  - Null coalescing operator (??) for clean null handling in achievement status
+  - Database push succeeded with warning about supautils prefix (Supabase internal, not blocking)
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
+---
+
