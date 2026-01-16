@@ -1,5 +1,5 @@
 import { db } from "./index";
-import { interviewSession, appUser } from "./schema";
+import { interviewSession, appUser, feedback } from "./schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 
 export interface CreateSessionInput {
@@ -107,16 +107,33 @@ export async function getUserSessions(userId: string, limit = 50) {
 
 /**
  * Get sessions for a user with pagination and total count
+ * Includes feedback data (status and overallScore) for each session
  */
 export async function getUserSessionsPaginated(
   userId: string,
   limit = 20,
   offset = 0
 ) {
-  // Get sessions with pagination
+  // Get sessions with pagination, including feedback data
   const sessions = await db
-    .select()
+    .select({
+      id: interviewSession.id,
+      userId: interviewSession.userId,
+      role: interviewSession.role,
+      roundType: interviewSession.roundType,
+      mode: interviewSession.mode,
+      persona: interviewSession.persona,
+      livekitRoomName: interviewSession.livekitRoomName,
+      config: interviewSession.config,
+      startedAt: interviewSession.startedAt,
+      endedAt: interviewSession.endedAt,
+      feedback: {
+        status: feedback.status,
+        overallScore: feedback.overallScore,
+      },
+    })
     .from(interviewSession)
+    .leftJoin(feedback, eq(feedback.sessionId, interviewSession.id))
     .where(eq(interviewSession.userId, userId))
     .orderBy(desc(interviewSession.startedAt))
     .limit(limit)
@@ -158,6 +175,7 @@ export async function getUserSessionsByRoundType(
 
 /**
  * Get sessions for a user filtered by round type with pagination
+ * Includes feedback data (status and overallScore) for each session
  */
 export async function getUserSessionsByRoundTypePaginated(
   userId: string,
@@ -165,10 +183,26 @@ export async function getUserSessionsByRoundTypePaginated(
   limit = 20,
   offset = 0
 ) {
-  // Get sessions with pagination
+  // Get sessions with pagination, including feedback data
   const sessions = await db
-    .select()
+    .select({
+      id: interviewSession.id,
+      userId: interviewSession.userId,
+      role: interviewSession.role,
+      roundType: interviewSession.roundType,
+      mode: interviewSession.mode,
+      persona: interviewSession.persona,
+      livekitRoomName: interviewSession.livekitRoomName,
+      config: interviewSession.config,
+      startedAt: interviewSession.startedAt,
+      endedAt: interviewSession.endedAt,
+      feedback: {
+        status: feedback.status,
+        overallScore: feedback.overallScore,
+      },
+    })
     .from(interviewSession)
+    .leftJoin(feedback, eq(feedback.sessionId, interviewSession.id))
     .where(
       and(
         eq(interviewSession.userId, userId),
