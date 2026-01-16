@@ -1,6 +1,7 @@
 "use client";
 
 import { LabelList, Pie, PieChart, Cell } from "recharts";
+import { AlertCircle } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -32,6 +33,14 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
+// All possible interview types
+const ALL_TYPES = [
+  { key: "Product Sense", label: "Product Sense" },
+  { key: "Analytical", label: "Analytical" },
+  { key: "Leadership", label: "Leadership" },
+  { key: "Strategy", label: "Strategy" },
+];
+
 export function TypeDistribution({ data, onTypeClick }: TypeDistributionProps) {
   if (data.length === 0) {
     return (
@@ -52,6 +61,12 @@ export function TypeDistribution({ data, onTypeClick }: TypeDistributionProps) {
     current.count > max.count ? current : max
   );
 
+  // Identify missing types (gaps)
+  const practicedTypes = new Set(data.map((d) => d.type));
+  const missingTypes = ALL_TYPES.filter(
+    (type) => !practicedTypes.has(type.key)
+  );
+
   return (
     <Card className="flex flex-col">
       <CardHeader className="items-center pb-0">
@@ -61,6 +76,23 @@ export function TypeDistribution({ data, onTypeClick }: TypeDistributionProps) {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-1 pb-0 pt-6">
+        {/* Gap indicator - show missing types */}
+        {missingTypes.length > 0 && (
+          <div className="mb-4 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-orange-500">
+                  Missing Types
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  You haven&apos;t practiced: {missingTypes.map((t) => t.label).join(", ")}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <ChartContainer
           config={chartConfig}
           className="mx-auto aspect-square max-h-[400px]"
@@ -70,7 +102,7 @@ export function TypeDistribution({ data, onTypeClick }: TypeDistributionProps) {
               content={
                 <ChartTooltipContent
                   nameKey="type"
-                  formatter={(value, name, props) => {
+                  formatter={(value) => {
                     const percentage = ((Number(value) / totalSessions) * 100).toFixed(1);
                     return `${value} sessions (${percentage}%)`;
                   }}
