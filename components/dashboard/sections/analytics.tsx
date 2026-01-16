@@ -285,9 +285,14 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
         const sessionsData = await sessionsResponse.json();
 
         // Transform sessions to include feedback (filter out sessions without feedback)
-        const sessionsWithFeedback = sessionsData.sessions.filter(
-          (s: any) => s.feedback !== null
-        );
+        // Convert date strings to Date objects for aggregation functions
+        const sessionsWithFeedback = sessionsData.sessions
+          .filter((s: any) => s.feedback !== null)
+          .map((s: any) => ({
+            ...s,
+            startedAt: s.startedAt ? new Date(s.startedAt) : null,
+            endedAt: s.endedAt ? new Date(s.endedAt) : null,
+          }));
         setSessions(sessionsWithFeedback);
       } catch (err) {
         console.error("Error fetching analytics data:", err);
