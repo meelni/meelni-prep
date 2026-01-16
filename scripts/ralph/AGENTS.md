@@ -142,7 +142,52 @@ npm run db:check
 
 ## Patterns Discovered by Ralph
 
-(Ralph will add new patterns here as they're discovered during development)
+### Linear Regression for Trend Lines (2026-01-16)
+
+When adding trend lines to time-series charts:
+
+```typescript
+import { useMemo } from "react";
+import { Line } from "recharts";
+
+// Calculate linear regression trend line
+const trendLineData = useMemo(() => {
+  if (data.length < 2) return [];
+
+  // Linear regression formula: y = mx + b
+  const n = data.length;
+  const sumX = data.reduce((sum, _, i) => sum + i, 0);
+  const sumY = data.reduce((sum, point) => sum + point.score, 0);
+  const sumXY = data.reduce((sum, point, i) => sum + i * point.score, 0);
+  const sumX2 = data.reduce((sum, _, i) => sum + i * i, 0);
+
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+
+  // Add trend values to data points
+  return data.map((point, i) => ({
+    ...point,
+    trendScore: slope * i + intercept,
+  }));
+}, [data]);
+
+// In AreaChart
+<Line
+  dataKey="trendScore"
+  type="monotone"
+  stroke="hsl(var(--primary))"
+  strokeWidth={2}
+  strokeDasharray="5 5"  // Dashed line for distinction
+  dot={false}
+  strokeOpacity={0.6}
+/>
+```
+
+**Why this pattern:**
+- useMemo prevents recalculation on every render
+- Dashed line (strokeDasharray) visually distinguishes trend from actual data
+- Lower opacity (0.6) keeps focus on actual data points
+- Works with any recharts Area/LineChart component
 
 ---
 
