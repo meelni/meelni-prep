@@ -1,6 +1,6 @@
 "use client";
 
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, Line } from "recharts";
 import {
   Card,
   CardContent,
@@ -11,7 +11,7 @@ import {
 import { ChartConfig, ChartContainer } from "@/components/ui/chart";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo } from "react";
 import { useSpring, useMotionValueEvent } from "motion/react";
 
 interface PerformanceTrendData {
@@ -51,6 +51,27 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
   useMotionValueEvent(springX, "change", (latest) => {
     setAxis(latest);
   });
+
+  // Calculate linear regression trend line
+  const trendLineData = useMemo(() => {
+    if (data.length < 2) return [];
+
+    // Calculate linear regression: y = mx + b
+    const n = data.length;
+    const sumX = data.reduce((sum, _, i) => sum + i, 0);
+    const sumY = data.reduce((sum, point) => sum + point.score, 0);
+    const sumXY = data.reduce((sum, point, i) => sum + i * point.score, 0);
+    const sumX2 = data.reduce((sum, _, i) => sum + i * i, 0);
+
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    // Generate trend line points
+    return data.map((point, i) => ({
+      ...point,
+      trendScore: slope * i + intercept,
+    }));
+  }, [data]);
 
   // Calculate trend
   const trend = data.length >= 2
@@ -99,7 +120,7 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
           <AreaChart
             className="overflow-visible"
             accessibilityLayer
-            data={data}
+            data={trendLineData.length > 0 ? trendLineData : data}
             onMouseMove={(state) => {
               const x = state.activeCoordinate?.x;
               const dataValue = state.activePayload?.[0]?.value;
@@ -180,6 +201,18 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
             >
               {springY.get().toFixed(0)}%
             </text>
+            {/* Trend line showing improvement direction */}
+            {trendLineData.length > 0 && (
+              <Line
+                dataKey="trendScore"
+                type="monotone"
+                stroke="hsl(var(--primary))"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+                strokeOpacity={0.6}
+              />
+            )}
             {/* Ghost line behind graph */}
             <Area
               dataKey="score"
