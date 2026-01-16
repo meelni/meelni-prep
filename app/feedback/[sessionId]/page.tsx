@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, CheckCircle2, TrendingUp, Target } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle2, TrendingUp, Target, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
 
 interface FeedbackData {
   id: string;
@@ -30,6 +30,22 @@ interface FeedbackResponse {
   estimatedTimeRemaining?: number;
   error?: string;
   skipReason?: string;
+}
+
+interface TranscriptTurn {
+  id: string;
+  sessionId: string;
+  speaker: "user" | "interviewer";
+  startedAt: string | null;
+  endedAt: string | null;
+  text: string | null;
+  audioMs: number | null;
+  latencyMs: number | null;
+  section: string | null;
+}
+
+interface TranscriptResponse {
+  turns: TranscriptTurn[];
 }
 
 function LoadingSkeleton() {
@@ -93,8 +109,11 @@ export default function FeedbackPage() {
   const sessionId = params.sessionId as string;
 
   const [feedbackData, setFeedbackData] = useState<FeedbackResponse | null>(null);
+  const [transcriptData, setTranscriptData] = useState<TranscriptTurn[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [transcriptExpanded, setTranscriptExpanded] = useState(false);
+  const [loadingTranscript, setLoadingTranscript] = useState(false);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -127,6 +146,41 @@ export default function FeedbackPage() {
 
     fetchFeedback();
   }, [sessionId, router]);
+
+  // Fetch transcript when expanded
+  useEffect(() => {
+    if (!transcriptExpanded || transcriptData.length > 0 || !sessionId) return;
+
+    async function fetchTranscript() {
+      setLoadingTranscript(true);
+      try {
+        const response = await fetch(`/api/transcript/${sessionId}`);
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch transcript");
+        }
+
+        const data: TranscriptResponse = await response.json();
+        setTranscriptData(data.turns);
+      } catch (err) {
+        console.error("Error fetching transcript:", err);
+      } finally {
+        setLoadingTranscript(false);
+      }
+    }
+
+    fetchTranscript();
+  }, [transcriptExpanded, sessionId, transcriptData.length]);
+
+  const formatTimestamp = (timestamp: string | null): string => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
 
   if (loading) {
     return <LoadingSkeleton />;
@@ -405,6 +459,79 @@ export default function FeedbackPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Interview Transcript */}
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                Interview Transcript
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setTranscriptExpanded(!transcriptExpanded)}
+              >
+                {transcriptExpanded ? (
+                  <>
+                    <ChevronUp className="h-4 w-4 mr-2" />
+                    Collapse
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4 mr-2" />
+                    Expand
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+          {transcriptExpanded && (
+            <CardContent>
+              {loadingTranscript ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : transcriptData.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  No transcript available for this session
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {transcriptData.map((turn, index) => (
+                    <div
+                      key={turn.id}
+                      className={`flex ${turn.speaker === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[80%] rounded-lg px-4 py-3 ${
+                          turn.speaker === "user"
+                            ? "bg-primary/10 text-foreground"
+                            : "bg-muted text-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-semibold uppercase tracking-wide">
+                            {turn.speaker === "user" ? "You" : "Interviewer"}
+                          </span>
+                          {turn.startedAt && (
+                            <span className="text-xs text-muted-foreground">
+                              {formatTimestamp(turn.startedAt)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {turn.text || "(No text recorded)"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
       </div>
     </div>
   );

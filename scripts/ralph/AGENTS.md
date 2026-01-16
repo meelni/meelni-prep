@@ -53,6 +53,23 @@ export async function GET(request: NextRequest) {
 }
 ```
 
+### API Route with Dynamic Params (Next.js 15+)
+Location: `/app/api/[name]/[param]/route.ts`
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+
+// IMPORTANT: In Next.js 15+, params is a Promise
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ param: string }> }
+) {
+  // Must await params before accessing values
+  const { param } = await params;
+
+  // Continue with implementation
+}
+```
+
 ### New Database Table
 Location: `/lib/db/schema.ts`
 ```typescript
