@@ -22,7 +22,10 @@
     "sync:questions": "tsx scripts/sync-questions-from-sheet.ts",
     "test:sheets": "tsx scripts/test-google-sheets-connection.ts",
     "test:feedback": "tsx --env-file=.env.local scripts/test-feedback-generation.ts",
-    "validate:env": "tsx --env-file=.env.local scripts/validate-env.ts"
+    "validate:env": "tsx --env-file=.env.local scripts/validate-env.ts",
+    "ralph": "./scripts/ralph/ralph.sh",
+    "ralph:status": "cat scripts/ralph/prd.json | jq '.userStories[] | {id, title, passes}'",
+    "ralph:progress": "cat scripts/ralph/progress.txt"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.22.0",
