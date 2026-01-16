@@ -1,0 +1,69 @@
+{
+  "name": "Example Feature",
+  "description": "Example PRD for Ralph - replace with your actual feature",
+  "branchName": "ralph/example-feature",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add database table for feature",
+      "description": "Create the necessary database schema",
+      "acceptanceCriteria": [
+        "Add new table to /lib/db/schema.ts",
+        "Include id, userId, createdAt columns minimum",
+        "Add foreign key to app_user table",
+        "Run npm run db:push successfully",
+        "npm run typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Create API endpoint",
+      "description": "Add API route for the feature",
+      "acceptanceCriteria": [
+        "Create /app/api/[feature]/route.ts",
+        "Implement GET handler with auth check",
+        "Return proper JSON response",
+        "Handle errors with appropriate status codes",
+        "npm run typecheck passes",
+        "npm run lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Build UI component",
+      "description": "Create the frontend component",
+      "acceptanceCriteria": [
+        "Create component in /components/",
+        "Use existing UI components from /components/ui/",
+        "Follow Tailwind styling patterns",
+        "Add loading and error states",
+        "npm run typecheck passes",
+        "npm run build passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Integrate component into page",
+      "description": "Add the component to the appropriate page",
+      "acceptanceCriteria": [
+        "Import component into page",
+        "Pass required props",
+        "Handle data fetching",
+        "Test manually at localhost:3000/[page]",
+        "npm run build passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
