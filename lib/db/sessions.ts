@@ -130,6 +130,11 @@ export async function getUserSessionsPaginated(
       feedback: {
         status: feedback.status,
         overallScore: feedback.overallScore,
+        structureScore: feedback.structureScore,
+        clarityScore: feedback.clarityScore,
+        insightScore: feedback.insightScore,
+        communicationScore: feedback.communicationScore,
+        leadershipScore: feedback.leadershipScore,
       },
     })
     .from(interviewSession)
@@ -199,6 +204,11 @@ export async function getUserSessionsByRoundTypePaginated(
       feedback: {
         status: feedback.status,
         overallScore: feedback.overallScore,
+        structureScore: feedback.structureScore,
+        clarityScore: feedback.clarityScore,
+        insightScore: feedback.insightScore,
+        communicationScore: feedback.communicationScore,
+        leadershipScore: feedback.leadershipScore,
       },
     })
     .from(interviewSession)

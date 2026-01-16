@@ -45,7 +45,13 @@ export function aggregatePerformanceTrend(
  * Competency Breakdown: Calculate average scores for radar chart
  */
 export function aggregateCompetencyScores(sessions: SessionWithFeedback[]) {
-  const sessionsWithFeedback = sessions.filter((s) => s.feedback);
+  // Filter to sessions with feedback AND dimension scores populated
+  const sessionsWithFeedback = sessions.filter(
+    (s) =>
+      s.feedback &&
+      s.feedback.structureScore !== null &&
+      s.feedback.structureScore !== undefined
+  );
 
   if (sessionsWithFeedback.length === 0) {
     return [];
@@ -55,11 +61,11 @@ export function aggregateCompetencyScores(sessions: SessionWithFeedback[]) {
     (acc, session) => {
       const fb = session.feedback!;
       return {
-        structure: acc.structure + (fb.structureScore || 0),
-        clarity: acc.clarity + (fb.clarityScore || 0),
-        insight: acc.insight + (fb.insightScore || 0),
-        communication: acc.communication + (fb.communicationScore || 0),
-        leadership: acc.leadership + (fb.leadershipScore || 0),
+        structure: acc.structure + (fb.structureScore ?? 0),
+        clarity: acc.clarity + (fb.clarityScore ?? 0),
+        insight: acc.insight + (fb.insightScore ?? 0),
+        communication: acc.communication + (fb.communicationScore ?? 0),
+        leadership: acc.leadership + (fb.leadershipScore ?? 0),
       };
     },
     { structure: 0, clarity: 0, insight: 0, communication: 0, leadership: 0 }
