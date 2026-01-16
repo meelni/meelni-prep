@@ -21,12 +21,15 @@ import {
   TimeInvestment,
   ScoreByType,
 } from "@/components/dashboard/charts";
+import { ScoreByDifficulty } from "@/components/dashboard/charts/score-by-difficulty";
 import {
   aggregatePerformanceTrend,
   aggregateCompetencyScores,
   aggregateTypeDistribution,
   aggregateTimeInvestment,
   aggregateScoreByType,
+  aggregateScoreByDifficulty,
+  calculateRecommendedDifficulty,
 } from "@/lib/analytics/aggregations";
 import type { SessionWithFeedback } from "@/lib/analytics/aggregations";
 
@@ -325,6 +328,8 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
   const typeDistributionData = aggregateTypeDistribution(sessions);
   const timeInvestmentData = aggregateTimeInvestment(sessions, "week");
   const scoreByTypeData = aggregateScoreByType(sessions);
+  const scoreByDifficultyData = aggregateScoreByDifficulty(sessions);
+  const recommendedDifficulty = calculateRecommendedDifficulty(sessions);
 
   return (
     <motion.div
@@ -426,6 +431,14 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
           />
         </motion.div>
       </div>
+
+      {/* PRAC-003: Score by Difficulty - Full Width */}
+      <motion.div variants={fadeInUp}>
+        <ScoreByDifficulty
+          data={scoreByDifficultyData}
+          recommendedDifficulty={recommendedDifficulty}
+        />
+      </motion.div>
     </motion.div>
   );
 });
