@@ -148,6 +148,7 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
             <CartesianGrid
               vertical={false}
               strokeDasharray="3 3"
+              stroke="hsl(var(--border))"
               horizontalCoordinatesGenerator={(props) => {
                 const { height } = props;
                 return [0, height - 30];
@@ -158,7 +159,7 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
               tickLine={false}
               axisLine={false}
               tickMargin={8}
-              tick={{ fontSize: 12 }}
+              tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
             />
             <Area
               dataKey="score"
