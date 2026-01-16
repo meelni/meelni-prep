@@ -408,3 +408,24 @@ Initial badges:
   - Orange color scheme (border-orange-500/30, bg-orange-500/5) for warning/focus sections
   - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors in modified files)
 ---
+## 2026-01-16 - PRAC-005: Create practice sets
+- Implemented practice set system with database tables and API endpoints
+- Files changed:
+  - lib/db/schema.ts (added practice_set and practice_set_question tables with relations)
+  - app/api/practice-sets/route.ts (GET all sets, POST create set)
+  - app/api/practice-sets/[setId]/route.ts (DELETE set, PATCH update set)
+  - app/api/practice-sets/[setId]/questions/route.ts (GET/POST/DELETE questions in set)
+  - components/question-bank/practice-set-dialog.tsx (modal for creating sets)
+  - components/question-bank/practice-sets-list.tsx (grid display of sets)
+  - components/dashboard/sections/questions.tsx (integrated Practice Sets tab)
+- **Learnings:**
+  - Junction table pattern: practice_set_question links practice_sets to questions with cascade deletes
+  - Dialog pattern: Modal with form validation, loading states, and success callbacks
+  - Tab state management: Three-way toggle (All/Saved/Practice Sets) with conditional rendering
+  - API endpoint pattern: Verify ownership before operations (and() condition with userId)
+  - optimistic updates and refresh triggers for seamless UX
+  - onConflictDoNothing() prevents duplicate entries in junction tables
+  - updatedAt timestamp updates when adding/removing questions from sets
+  - Grid layout with responsive columns (1/2/3 cols) for practice set cards
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (clean for new files)
+---
