@@ -247,3 +247,37 @@ Initial badges:
   - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
 ---
 
+## 2026-01-16 - MOTI-003: Display earned badges on dashboard
+- Implemented achievement badge display system on dashboard
+- Files changed:
+  - app/api/achievements/route.ts (new file - API endpoint to fetch user achievements)
+  - components/dashboard/badge-display.tsx (new file - BadgeDisplay component)
+  - components/dashboard/sections/overview.tsx (integrated BadgeDisplay)
+- **Learnings:**
+  - Badge grid uses responsive layout: 4 cols on mobile, 7 cols on larger screens
+  - Earned badges: colored border (border-primary/30), filled background (bg-primary/10), hover scale effect
+  - Locked badges: grayscale filter, reduced opacity (40%), Lock icon instead of emoji
+  - NEW indicator: absolute positioned badge with green background, pulse animation for badges earned in last 7 days
+  - Hover tooltips: absolute positioned with bottom-full + mb-2, opacity-0 to opacity-100 transition
+  - Tooltip content: badge icon/name, earned date, description, locked state indicator
+  - Progress messages: conditional rendering based on earnedCount (0, partial, all)
+  - Achievement counter: Award icon + X/Y format in card header
+  - Full-width layout: lg:col-span-3 for horizontal badge grid
+  - isRecentlyEarned helper: checks if earnedAt within 7 days for NEW badge display
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
+---
+
+## 2026-01-16 - MOTI-004: Add interview type distribution chart
+- Enhanced TypeDistribution component with gap indicator for missing interview types
+- Files changed: components/dashboard/charts/type-distribution.tsx
+- **Learnings:**
+  - Gap indicator pattern: orange alert banner with AlertCircle icon for missing items
+  - Set data structure (Set<string>) efficiently checks for presence: `new Set(data.map(d => d.type))`
+  - ALL_TYPES constant provides source of truth for expected categories
+  - Conditional rendering with `missingTypes.length > 0` avoids empty alert boxes
+  - React escaped entities: use `&apos;` for apostrophes in JSX text content
+  - Lint formatter signature: remove unused params to avoid warnings (value only, not name/props)
+  - Component already existed and was functional - enhancement adds value without breaking existing behavior
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (clean for modified file)
+---
+
