@@ -70,6 +70,7 @@ export async function GET(
 }
 ```
 
+
 ### New Database Table
 Location: `/lib/db/schema.ts`
 ```typescript
