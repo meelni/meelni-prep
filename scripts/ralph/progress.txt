@@ -281,3 +281,41 @@ Initial badges:
   - Quality gates passed: typecheck (pre-existing test errors only), lint (clean for modified file)
 ---
 
+## 2026-01-16 - BUG-001: Fix analytics stats showing blank/NaN values
+- Fixed stats cards component to handle zero values correctly
+- Files changed: components/dashboard/stats-cards.tsx
+- **Learnings:**
+  - JavaScript treats 0 as falsy, so `averageScore ? value : 'N/A'` shows "N/A" for 0 scores
+  - Solution: Use explicit null/undefined checks: `averageScore !== undefined && averageScore !== null ? value : 'N/A'`
+  - Same pattern applied to totalMinutes and completionRate for consistency
+  - This ensures "0.0/10" displays instead of "N/A" when user has 0 average score
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors in modified file)
+---
+
+## 2026-01-16 - BUG-002: Fix chart colors invisible on dark theme
+- Fixed chart colors to use theme-aware CSS variables for proper dark mode support
+- Files changed: components/dashboard/charts/performance-trend.tsx
+- **Learnings:**
+  - Charts were using hardcoded colors that didn't adapt to dark theme
+  - PerformanceTrend: Added `stroke="hsl(var(--border))"` to CartesianGrid, `fill: "hsl(var(--muted-foreground))"` to XAxis tick
+  - Chart colors are already defined in globals.css for both light and dark themes (--chart-1 through --chart-6)
+  - TimeInvestment and CompetencyBreakdown already had correct theme-aware colors configured
+  - All charts now properly use CSS variables that change based on theme
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (pre-existing errors only), build (success)
+  - Pattern: Always use `hsl(var(--variable-name))` for colors in charts to support theme switching
+---
+## 2026-01-16 - BUG-003: Fix competency breakdown showing 0% with no data
+- Fixed competency radar chart to display actual dimension scores from feedback
+- Files changed:
+  - lib/db/sessions.ts (added dimension score fields to query selects)
+  - lib/analytics/aggregations.ts (filter sessions with null dimension scores, use nullish coalescing)
+- **Learnings:**
+  - Database query must explicitly select all fields needed downstream - leftJoin doesn't automatically include all columns
+  - Pattern: When selecting nested objects, explicitly list all required fields: `feedback: { status, overallScore, structureScore, ...}`
+  - Aggregation functions should filter for data completeness BEFORE calculating averages
+  - Use nullish coalescing (??) instead of logical OR (||) to properly handle 0 values
+  - Filter pattern: Check if key field is not null/undefined to ensure all dimension scores are populated
+  - Empty state already handles gracefully with "No competency data available" message
+  - Pre-existing test errors are acceptable - only check for NEW errors introduced by changes
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no errors in modified files)
+---
