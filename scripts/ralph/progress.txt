@@ -319,3 +319,48 @@ Initial badges:
   - Pre-existing test errors are acceptable - only check for NEW errors introduced by changes
   - Quality gates passed: typecheck (pre-existing test errors only), lint (no errors in modified files)
 ---
+## 2026-01-16 - BUG-004: Fix NaN percentage in interview type distribution
+- Fixed aggregateScoreByType function to handle 0 scores correctly
+- Files changed: lib/analytics/aggregations.ts
+- **Learnings:**
+  - Same pattern as BUG-001: JavaScript falsy checks exclude valid 0 values
+  - Changed `if (!session.feedback?.overallScore)` to explicit null/undefined check
+  - Pattern: `if (value === null || value === undefined)` instead of `if (!value)`
+  - This affects score-by-type chart in analytics section (Performance by Interview Type)
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no errors in modified file)
+  - Consistent with established codebase pattern from BUG-001 fix
+---
+## 2026-01-16 - MOTI-005: Show 'Next Goal' recommendation
+- Implemented personalized goal recommendation system on dashboard
+- Files changed: 
+  - components/dashboard/next-goal-card.tsx (new file)
+  - components/dashboard/sections/overview.tsx (integration)
+- **Learnings:**
+  - Goal prioritization logic: streak completion (3-6 days) > missing types > beat high score > improve weakest type > default
+  - Helper functions for analysis: getMissingTypes(), getBestPerformingType(), getWeakestType()
+  - Set data structure efficient for checking practiced types: new Set(sessions.map(s => s.roundType))
+  - Pre-fill setup page via query params: router.push(`/setup?${params.toString()}`)
+  - Gradient background pattern: from-primary/5 to-primary/10 border-primary/20 for featured cards
+  - Dynamic pluralization: `${days} day${days === 1 ? '' : 's'}` for better UX
+  - Conditional recommendations reduce decision fatigue and drive targeted practice
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (clean for modified files)
+---
+## 2026-01-16 - PRAC-001: Add bookmark functionality for questions
+- Implemented bookmark system with database table and API endpoints
+- Files changed:
+  - lib/db/schema.ts (added bookmarked_question table with relations)
+  - app/api/questions/bookmark/route.ts (new file - GET/POST/DELETE endpoints)
+  - components/dashboard/sections/questions.tsx (integrated bookmark UI with optimistic updates)
+  - components/question-bank/question-card.tsx (added bookmark button to mobile cards)
+- **Learnings:**
+  - Database push requires DATABASE_URL env var - used workaround: `grep DATABASE_URL .env > .env.db && export $(cat .env.db) && npm run db:push`
+  - Bookmark icon pattern: filled when bookmarked (fill-current class), outlined when not
+  - Optimistic UI: Update state immediately, revert on API error for better UX
+  - Bulk bookmark handler: use Promise.all() to bookmark multiple questions in parallel
+  - Toggle bookmark: check current state, then call appropriate API method (POST vs DELETE)
+  - GET endpoint returns array of question IDs for efficient Set-based lookup
+  - onConflictDoNothing() in Drizzle prevents duplicate bookmark errors
+  - Mobile card layout: bookmark button in header with touch-friendly sizing (p-1.5 rounded-lg)
+  - Desktop table: bookmark button before "Try Question" with flex layout
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
+---

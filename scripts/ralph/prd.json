@@ -91,8 +91,8 @@
         "npm run typecheck passes"
       ],
       "priority": 0,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Fixed falsy check in aggregateScoreByType to use explicit null/undefined check, allowing 0 scores to be included in calculations",
       "estimatedHours": 1,
       "userValue": "Users see which interview types they've practiced"
     },
@@ -308,8 +308,8 @@
         "npm run typecheck passes"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed: Created NextGoalCard with 4 intelligent recommendations (streak completion, missing types, beat high score, improve weakest type). Links to /setup with pre-filled interview type. Gradient background, integrated in overview section.",
       "estimatedHours": 3,
       "userValue": "Reduces decision fatigue, increases sessions"
     },
@@ -327,8 +327,8 @@
         "npm run typecheck passes"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed: Created bookmarked_question table, added GET/POST/DELETE bookmark API, integrated bookmark icon in both desktop table and mobile cards with optimistic UI updates",
       "estimatedHours": 3,
       "userValue": "Users can curate their own practice list"
     },
