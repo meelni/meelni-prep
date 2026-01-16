@@ -158,7 +158,8 @@ export function aggregateTimeInvestment(
  */
 export function aggregateScoreByType(sessions: SessionWithFeedback[]) {
   const typeScores = sessions.reduce((acc, session) => {
-    if (!session.feedback?.overallScore) return acc;
+    // Explicit null/undefined check to handle 0 scores correctly
+    if (session.feedback?.overallScore === null || session.feedback?.overallScore === undefined) return acc;
 
     const type = session.roundType;
     if (!acc[type]) {
