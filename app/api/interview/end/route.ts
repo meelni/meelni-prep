@@ -94,6 +94,8 @@ import {
   SessionTier,
 } from "@/lib/evaluation/session-validator";
 import { isSessionOwnedByUser, getSessionById } from "@/lib/db/sessions";
+import { updateStreak } from "@/lib/streaks";
+import { checkAndAwardAchievements } from "@/lib/achievements";
 
 // Rate limiting: Track requests per user (in-memory, simple approach)
 // Production: Use Redis or Upstash Rate Limiting
@@ -279,6 +281,25 @@ export async function POST(req: NextRequest) {
         rubricVersion: "1.0.0",
       })
       .returning();
+
+    // 11.5. Update user's practice streak (MOTI-001)
+    try {
+      await updateStreak(user.id);
+    } catch (streakError) {
+      // Log error but don't fail the request - streak update is non-critical
+      console.error("Failed to update practice streak:", streakError);
+    }
+
+    // 11.6. Check and award achievements (MOTI-002)
+    try {
+      const newAchievements = await checkAndAwardAchievements(user.id);
+      if (newAchievements.length > 0) {
+        console.log(`Awarded ${newAchievements.length} new achievement(s):`, newAchievements);
+      }
+    } catch (achievementError) {
+      // Log error but don't fail the request - achievement awarding is non-critical
+      console.error("Failed to check/award achievements:", achievementError);
+    }
 
     // 12. Trigger Inngest job for feedback generation
     try {

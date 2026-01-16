@@ -4,14 +4,14 @@ import { useState, useEffect, memo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles, Calendar, Loader2 } from "lucide-react";
+import { ArrowRight, Sparkles, Calendar, Loader2, Flame, AlertCircle } from "lucide-react";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { ClippedAreaChart } from "@/components/dashboard/charts/clipped-area-chart";
 import { GlowingRadarChart } from "@/components/dashboard/charts/glowing-radar-chart";
-import { SessionList } from "@/components/dashboard/session-list";
 import { EmptyStateCard } from "@/components/dashboard/empty-state-card";
+import { BadgeDisplay } from "@/components/dashboard/badge-display";
+import { NextGoalCard } from "@/components/dashboard/next-goal-card";
 import type { Session } from "@/lib/api/queries";
-import { analytics } from "@/lib/analytics/analytics-service";
 
 interface OverviewSectionProps {
   sessions: Session[];
@@ -39,6 +39,11 @@ interface UserSummary {
     perfectScore: boolean;
     improving: boolean;
     consistent: boolean;
+  };
+  streak: {
+    streakCurrent: number;
+    streakLongest: number;
+    isAtRisk: boolean;
   };
   recentActivity: Array<{
     sessionId: string;
@@ -209,7 +214,7 @@ export const OverviewSection = memo(function OverviewSection({
       <div className="space-y-2">
         <h2 className="text-2xl font-display font-light text-foreground">Overview</h2>
         <p className="text-muted-foreground font-sans">
-          Track your progress and see how you're improving across all interview types.
+          Track your progress and see how you&apos;re improving across all interview types.
         </p>
       </div>
 
@@ -331,6 +336,62 @@ export const OverviewSection = memo(function OverviewSection({
             </div>
           </CardContent>
         </Card>
+
+        {/* Practice Streak - MOTI-001 */}
+        {userSummary?.streak && (
+          <Card className="lg:col-span-1 bg-card border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
+                Practice Streak
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Current Streak */}
+                <div className="flex items-center gap-3">
+                  <Flame className={`w-8 h-8 ${userSummary.streak.streakCurrent > 0 ? 'text-orange-500' : 'text-muted-foreground'}`} />
+                  <div>
+                    <div className="text-3xl font-bold font-mono text-foreground">
+                      {userSummary.streak.streakCurrent}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Day Streak</div>
+                  </div>
+                </div>
+
+                {/* Longest Streak */}
+                <div className="pt-3 border-t border-border">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Longest Streak</span>
+                    <span className="text-sm font-mono text-foreground">
+                      {userSummary.streak.streakLongest} days
+                    </span>
+                  </div>
+                </div>
+
+                {/* At Risk Warning */}
+                {userSummary.streak.isAtRisk && userSummary.streak.streakCurrent >= 3 && (
+                  <div className="pt-3 border-t border-border">
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                      <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-orange-500">Keep your streak!</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Practice today to maintain your {userSummary.streak.streakCurrent}-day streak.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Achievements - MOTI-003 */}
+        <BadgeDisplay className="lg:col-span-3 bg-card border-border" />
+
+        {/* Next Goal - MOTI-005 */}
+        <NextGoalCard sessions={sessions} userSummary={userSummary} />
 
         {/* Start Mock Card - Full Width */}
         <Card className="lg:col-span-3 bg-card border-border hover:border-primary/30 transition-all duration-300">

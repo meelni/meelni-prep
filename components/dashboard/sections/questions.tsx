@@ -17,12 +17,16 @@ import { BulkActionToolbar } from "@/components/question-bank/bulk-action-toolba
 import { EmptyState } from "@/components/question-bank/empty-state";
 import { QuestionCard } from "@/components/question-bank/question-card";
 import { MobileFilterDrawer } from "@/components/question-bank/mobile-filter-drawer";
+import { PracticeSetDialog } from "@/components/question-bank/practice-set-dialog";
+import { PracticeSetsList } from "@/components/question-bank/practice-sets-list";
 import {
   Play,
   Calendar,
   Building2,
   Filter,
   Search,
+  Bookmark,
+  FolderPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
@@ -54,6 +58,11 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const [sortBy, setSortBy] = useState<"recent" | "company" | "type">("recent");
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<Set<string>>(new Set());
+  const [showOnlyBookmarked, setShowOnlyBookmarked] = useState(false);
+  const [showPracticeSets, setShowPracticeSets] = useState(false);
+  const [isPracticeSetDialogOpen, setIsPracticeSetDialogOpen] = useState(false);
+  const [practiceSetRefreshTrigger, setPracticeSetRefreshTrigger] = useState(0);
 
   // Fetch questions
   useEffect(() => {
@@ -89,16 +98,37 @@ export const QuestionsSection = memo(function QuestionsSection() {
     fetchQuestions();
   }, [selectedType]);
 
+  // Fetch bookmarked question IDs
+  useEffect(() => {
+    async function fetchBookmarks() {
+      try {
+        const res = await fetch("/api/questions/bookmark");
+        const data = await res.json();
+        setBookmarkedQuestionIds(new Set(data.questionIds || []));
+      } catch (error) {
+        console.error("Error fetching bookmarks:", error);
+      }
+    }
+
+    fetchBookmarks();
+  }, []);
+
   // Clear all filters
   const clearAllFilters = () => {
     setSearchQuery("");
     setSelectedType("All Types");
+    setShowOnlyBookmarked(false);
   };
 
   // Filter and sort questions
   const filteredQuestions = useMemo(() => {
     return questions
       .filter((q) => {
+        // Bookmark filter
+        if (showOnlyBookmarked && !bookmarkedQuestionIds.has(q.id)) {
+          return false;
+        }
+
         // Search filter (debounced)
         const matchesSearch =
           debouncedSearchQuery === "" ||
@@ -126,7 +156,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
           return a.questionType.localeCompare(b.questionType);
         }
       });
-  }, [questions, debouncedSearchQuery, selectedType, sortBy]);
+  }, [questions, debouncedSearchQuery, selectedType, sortBy, showOnlyBookmarked, bookmarkedQuestionIds]);
 
   const handleTryQuestion = (questionId: string, questionType: string) => {
     // Map display question type to roundType
@@ -173,14 +203,95 @@ export const QuestionsSection = memo(function QuestionsSection() {
     }
   };
 
-  const handleBookmark = () => {
-    // TODO: Implement bookmark functionality
-    alert(`Bookmarked ${selectedQuestions.size} questions (placeholder)`);
+  const handleBookmark = async () => {
+    if (selectedQuestions.size === 0) return;
+
+    try {
+      // Optimistic UI update
+      const questionsToBookmark = Array.from(selectedQuestions);
+      setBookmarkedQuestionIds(prev => {
+        const updated = new Set(prev);
+        questionsToBookmark.forEach(id => updated.add(id));
+        return updated;
+      });
+
+      // Bookmark all selected questions
+      await Promise.all(
+        questionsToBookmark.map(questionId =>
+          fetch("/api/questions/bookmark", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ questionId }),
+          })
+        )
+      );
+
+      // Clear selection after bookmarking
+      setSelectedQuestions(new Set());
+    } catch (error) {
+      console.error("Error bookmarking questions:", error);
+      // Revert optimistic update on error
+      const res = await fetch("/api/questions/bookmark");
+      const data = await res.json();
+      setBookmarkedQuestionIds(new Set(data.questionIds || []));
+    }
+  };
+
+  const toggleBookmark = async (questionId: string) => {
+    const isBookmarked = bookmarkedQuestionIds.has(questionId);
+
+    // Optimistic UI update
+    setBookmarkedQuestionIds(prev => {
+      const updated = new Set(prev);
+      if (isBookmarked) {
+        updated.delete(questionId);
+      } else {
+        updated.add(questionId);
+      }
+      return updated;
+    });
+
+    try {
+      if (isBookmarked) {
+        // Remove bookmark
+        await fetch(`/api/questions/bookmark?questionId=${questionId}`, {
+          method: "DELETE",
+        });
+      } else {
+        // Add bookmark
+        await fetch("/api/questions/bookmark", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId }),
+        });
+      }
+    } catch (error) {
+      console.error("Error toggling bookmark:", error);
+      // Revert optimistic update on error
+      setBookmarkedQuestionIds(prev => {
+        const updated = new Set(prev);
+        if (isBookmarked) {
+          updated.add(questionId);
+        } else {
+          updated.delete(questionId);
+        }
+        return updated;
+      });
+    }
   };
 
   const handleCreatePracticeSet = () => {
-    // TODO: Implement practice set creation
-    alert(`Creating practice set with ${selectedQuestions.size} questions (placeholder)`);
+    setIsPracticeSetDialogOpen(true);
+  };
+
+  const handlePracticeSetSuccess = () => {
+    setPracticeSetRefreshTrigger(prev => prev + 1);
+    setSelectedQuestions(new Set());
+  };
+
+  const handleSelectPracticeSet = (setId: string) => {
+    // TODO: Navigate to practice set detail view or start practice with set questions
+    console.log("Selected practice set:", setId);
   };
 
   const handleDeselectAll = () => {
@@ -188,8 +299,9 @@ export const QuestionsSection = memo(function QuestionsSection() {
   };
 
   // Determine empty state type
-  const getEmptyStateType = (): "no-search" | "no-filter" | "first-time" | null => {
+  const getEmptyStateType = (): "no-search" | "no-filter" | "first-time" | "no-bookmarks" | null => {
     if (filteredQuestions.length > 0) return null;
+    if (showOnlyBookmarked && bookmarkedQuestionIds.size === 0) return "no-bookmarks";
     if (debouncedSearchQuery) return "no-search";
     if (selectedType !== "All Types") return "no-filter";
     if (questions.length === 0) return "first-time";
@@ -197,6 +309,18 @@ export const QuestionsSection = memo(function QuestionsSection() {
   };
 
   const emptyStateType = getEmptyStateType();
+
+  // Handler to practice with bookmarked questions
+  const handlePracticeWithBookmarked = () => {
+    if (bookmarkedQuestionIds.size === 0) return;
+
+    // Navigate to interview with a random bookmarked question
+    const bookmarkedQuestions = questions.filter(q => bookmarkedQuestionIds.has(q.id));
+    if (bookmarkedQuestions.length > 0) {
+      const randomQuestion = bookmarkedQuestions[Math.floor(Math.random() * bookmarkedQuestions.length)];
+      handleTryQuestion(randomQuestion.id, randomQuestion.questionType);
+    }
+  };
 
   if (loading) {
     return (
@@ -221,14 +345,87 @@ export const QuestionsSection = memo(function QuestionsSection() {
         </p>
       </div>
 
+      {/* View Tabs */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg">
+          <button
+            onClick={() => {
+              setShowOnlyBookmarked(false);
+              setShowPracticeSets(false);
+            }}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200",
+              !showOnlyBookmarked && !showPracticeSets
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            All Questions
+          </button>
+          <button
+            onClick={() => {
+              setShowOnlyBookmarked(true);
+              setShowPracticeSets(false);
+            }}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2",
+              showOnlyBookmarked && !showPracticeSets
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Bookmark className={cn("w-4 h-4", showOnlyBookmarked && !showPracticeSets && "fill-current")} />
+            Saved
+            {bookmarkedQuestionIds.size > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
+                {bookmarkedQuestionIds.size}
+              </Badge>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              setShowPracticeSets(true);
+              setShowOnlyBookmarked(false);
+            }}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2",
+              showPracticeSets
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <FolderPlus className="w-4 h-4" />
+            Practice Sets
+          </button>
+        </div>
+
+        {showOnlyBookmarked && bookmarkedQuestionIds.size > 0 && (
+          <Button onClick={handlePracticeWithBookmarked} className="gap-2">
+            <Play className="w-4 h-4" />
+            Practice with these
+          </Button>
+        )}
+      </div>
+
       {/* Questions Content */}
       <div>
-        {emptyStateType ? (
+        {showPracticeSets ? (
+          <div className="rounded-lg border border-border overflow-hidden bg-card p-6">
+            <PracticeSetsList
+              onSelectSet={handleSelectPracticeSet}
+              refreshTrigger={practiceSetRefreshTrigger}
+            />
+          </div>
+        ) : emptyStateType ? (
           <div className="rounded-lg border border-border overflow-hidden bg-card">
             <EmptyState
               type={emptyStateType}
               onClearFilters={clearAllFilters}
-              onExploreProductSense={() => setSelectedType("Product Sense")}
+              onExploreProductSense={
+                emptyStateType === "no-bookmarks"
+                  ? () => setShowOnlyBookmarked(false)
+                  : () => setSelectedType("Product Sense")
+              }
               onBackToDashboard={() => router.push("/dashboard")}
               selectedType={selectedType}
             />
@@ -360,14 +557,33 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
                           {/* Action */}
                           <TableCell className="px-4 py-3.5 text-right">
-                            <Button
-                              size="sm"
-                              onClick={() => handleTryQuestion(question.id, question.questionType)}
-                              className="gap-2"
-                            >
-                              <Play className="w-4 h-4" />
-                              Try Question
-                            </Button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => toggleBookmark(question.id)}
+                                className={cn(
+                                  "p-2 rounded-lg transition-colors",
+                                  bookmarkedQuestionIds.has(question.id)
+                                    ? "text-primary bg-primary/10 hover:bg-primary/20"
+                                    : "text-muted-foreground hover:text-primary hover:bg-primary/5"
+                                )}
+                                aria-label={bookmarkedQuestionIds.has(question.id) ? "Remove bookmark" : "Bookmark question"}
+                              >
+                                <Bookmark
+                                  className={cn(
+                                    "w-4 h-4",
+                                    bookmarkedQuestionIds.has(question.id) && "fill-current"
+                                  )}
+                                />
+                              </button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleTryQuestion(question.id, question.questionType)}
+                                className="gap-2"
+                              >
+                                <Play className="w-4 h-4" />
+                                Try Question
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -428,6 +644,8 @@ export const QuestionsSection = memo(function QuestionsSection() {
                       ]
                     }
                     index={index}
+                    isBookmarked={bookmarkedQuestionIds.has(question.id)}
+                    onToggleBookmark={() => toggleBookmark(question.id)}
                   />
                 ))}
               </div>
@@ -451,6 +669,14 @@ export const QuestionsSection = memo(function QuestionsSection() {
         selectedType={selectedType}
         onSelectType={setSelectedType}
         onClearAll={clearAllFilters}
+      />
+
+      {/* Practice Set Dialog */}
+      <PracticeSetDialog
+        isOpen={isPracticeSetDialogOpen}
+        onClose={() => setIsPracticeSetDialogOpen(false)}
+        selectedQuestionIds={Array.from(selectedQuestions)}
+        onSuccess={handlePracticeSetSuccess}
       />
 
       {/* Live region for accessibility */}

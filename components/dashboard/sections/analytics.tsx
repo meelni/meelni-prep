@@ -21,12 +21,16 @@ import {
   TimeInvestment,
   ScoreByType,
 } from "@/components/dashboard/charts";
+import { ScoreByDifficulty } from "@/components/dashboard/charts/score-by-difficulty";
+import { WeakestAreaCard } from "@/components/dashboard/weakest-area-card";
 import {
   aggregatePerformanceTrend,
   aggregateCompetencyScores,
   aggregateTypeDistribution,
   aggregateTimeInvestment,
   aggregateScoreByType,
+  aggregateScoreByDifficulty,
+  calculateRecommendedDifficulty,
 } from "@/lib/analytics/aggregations";
 import type { SessionWithFeedback } from "@/lib/analytics/aggregations";
 
@@ -281,9 +285,14 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
         const sessionsData = await sessionsResponse.json();
 
         // Transform sessions to include feedback (filter out sessions without feedback)
-        const sessionsWithFeedback = sessionsData.sessions.filter(
-          (s: any) => s.feedback !== null
-        );
+        // Convert date strings to Date objects for aggregation functions
+        const sessionsWithFeedback = sessionsData.sessions
+          .filter((s: any) => s.feedback !== null)
+          .map((s: any) => ({
+            ...s,
+            startedAt: s.startedAt ? new Date(s.startedAt) : null,
+            endedAt: s.endedAt ? new Date(s.endedAt) : null,
+          }));
         setSessions(sessionsWithFeedback);
       } catch (err) {
         console.error("Error fetching analytics data:", err);
@@ -325,6 +334,8 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
   const typeDistributionData = aggregateTypeDistribution(sessions);
   const timeInvestmentData = aggregateTimeInvestment(sessions, "week");
   const scoreByTypeData = aggregateScoreByType(sessions);
+  const scoreByDifficultyData = aggregateScoreByDifficulty(sessions);
+  const recommendedDifficulty = calculateRecommendedDifficulty(sessions);
 
   return (
     <motion.div
@@ -426,6 +437,19 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
           />
         </motion.div>
       </div>
+
+      {/* PRAC-003: Score by Difficulty - Full Width */}
+      <motion.div variants={fadeInUp}>
+        <ScoreByDifficulty
+          data={scoreByDifficultyData}
+          recommendedDifficulty={recommendedDifficulty}
+        />
+      </motion.div>
+
+      {/* PRAC-004: Weakest Area Card - Full Width */}
+      <motion.div variants={fadeInUp}>
+        <WeakestAreaCard sessions={sessions} />
+      </motion.div>
     </motion.div>
   );
 });

@@ -1,320 +1,537 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, Share2, Calendar, Loader2, GitCompare } from "lucide-react";
-import { ScoreBreakdown } from "@/components/feedback/score-breakdown";
-import { RubricSection } from "@/components/feedback/rubric-section";
-import { StrengthsList } from "@/components/feedback/strengths-list";
-import { ImprovementsList } from "@/components/feedback/improvements-list";
-import { DrillList } from "@/components/feedback/drill-list";
-import { TranscriptViewer } from "@/components/feedback/transcript-viewer";
-import { FeedbackInsufficient } from "@/components/feedback/feedback-insufficient";
-import { FeedbackPartial } from "@/components/feedback/feedback-partial";
-import { FeedbackAbandoned } from "@/components/feedback/feedback-abandoned";
-import type { EvaluationResponse, TranscriptTurn } from "@/lib/types/feedback";
-import Link from "next/link";
-import { analytics } from "@/lib/analytics/analytics-service";
+import { ArrowLeft, Loader2, CheckCircle2, TrendingUp, Target, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
 
-// Validation data from session validator
-interface ValidationData {
-  tier: "full" | "partial" | "insufficient" | "abandoned";
-  stats: {
-    totalTurns: number;
-    durationSeconds: number;
-    substantiveResponses: number;
-  };
-  reasons: string[];
-  recommendations: string[];
+interface FeedbackData {
+  id: string;
+  sessionId: string;
+  structureScore: number | null;
+  clarityScore: number | null;
+  insightScore: number | null;
+  communicationScore: number | null;
+  leadershipScore: number | null;
+  overallScore: number | null;
+  strengths: string[];
+  improvements: string[];
+  drills: string[];
+  summary: string | null;
+  rubricVersion: string;
+  createdAt: string;
 }
 
-// Error state component
-function ErrorState({ error }: { error: string | null }) {
+interface FeedbackResponse {
+  status: "pending" | "processing" | "completed" | "failed" | "skipped";
+  feedback?: FeedbackData;
+  estimatedTimeRemaining?: number;
+  error?: string;
+  skipReason?: string;
+}
+
+interface TranscriptTurn {
+  id: string;
+  sessionId: string;
+  speaker: "user" | "interviewer";
+  startedAt: string | null;
+  endedAt: string | null;
+  text: string | null;
+  audioMs: number | null;
+  latencyMs: number | null;
+  section: string | null;
+}
+
+interface TranscriptResponse {
+  turns: TranscriptTurn[];
+}
+
+function LoadingSkeleton() {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <Card className="p-8 text-center max-w-md">
-        <p className="text-destructive mb-4 font-display font-light text-lg">
-          Failed to load feedback
-        </p>
-        <p className="text-sm text-muted-foreground mb-6">
-          {error || "An unexpected error occurred"}
-        </p>
-        <Button asChild>
-          <Link href="/dashboard">Return to Dashboard</Link>
-        </Button>
-      </Card>
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* Header Skeleton */}
+        <div className="mb-8">
+          <div className="h-8 w-32 bg-muted animate-pulse rounded mb-4" />
+          <div className="h-12 w-64 bg-muted animate-pulse rounded" />
+        </div>
+
+        {/* Overall Score Skeleton */}
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="h-6 w-40 bg-muted animate-pulse rounded" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center py-8">
+              <div className="h-32 w-32 bg-muted animate-pulse rounded-full" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Dimension Scores Skeleton */}
+        <Card>
+          <CardHeader>
+            <div className="h-6 w-48 bg-muted animate-pulse rounded" />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="space-y-2">
+                <div className="h-5 w-32 bg-muted animate-pulse rounded" />
+                <div className="h-2 w-full bg-muted animate-pulse rounded" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
 
+function getScoreColor(score: number): string {
+  if (score >= 80) return "text-green-500";
+  if (score >= 60) return "text-blue-500";
+  if (score >= 40) return "text-yellow-500";
+  return "text-red-500";
+}
+
+function getProgressColor(score: number): string {
+  if (score >= 80) return "bg-green-500";
+  if (score >= 60) return "bg-blue-500";
+  if (score >= 40) return "bg-yellow-500";
+  return "bg-red-500";
+}
+
 export default function FeedbackPage() {
   const params = useParams();
+  const router = useRouter();
   const sessionId = params.sessionId as string;
 
-  const [evaluation, setEvaluation] = useState<EvaluationResponse | null>(null);
-  const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
-  const [status, setStatus] = useState<"completed" | "failed" | "skipped" | "loading">("loading");
+  const [feedbackData, setFeedbackData] = useState<FeedbackResponse | null>(null);
+  const [transcriptData, setTranscriptData] = useState<TranscriptTurn[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [validation, setValidation] = useState<ValidationData | null>(null);
-  const [feedbackTracked, setFeedbackTracked] = useState(false);
+  const [transcriptExpanded, setTranscriptExpanded] = useState(false);
+  const [loadingTranscript, setLoadingTranscript] = useState(false);
 
   useEffect(() => {
-    async function checkFeedbackStatus() {
+    if (!sessionId) return;
+
+    async function fetchFeedback() {
       try {
-        // First check feedback status via polling API
-        const statusResponse = await fetch(`/api/feedback/${sessionId}`);
+        const response = await fetch(`/api/feedback/${sessionId}`);
 
-        if (!statusResponse.ok) {
-          const errorData = await statusResponse.json().catch(() => ({ error: statusResponse.statusText }));
-          throw new Error(errorData.error || `Failed to fetch feedback status: ${statusResponse.statusText}`);
-        }
-
-        const statusData = await statusResponse.json();
-        console.log("[FeedbackPage] Received status:", statusData.status);
-
-        // This page should only be accessed when feedback is ready
-        // If it's still pending/processing, redirect to loading page
-        if (statusData.status === "pending" || statusData.status === "processing") {
-          console.log("[FeedbackPage] Feedback not ready, redirecting to loading page");
-          window.location.href = `/feedback/${sessionId}/loading`;
-          return;
-        }
-
-        setStatus(statusData.status);
-
-        // Store validation data if available
-        if (statusData.validation) {
-          setValidation(statusData.validation);
-        }
-
-        // If completed, load full feedback
-        if (statusData.status === "completed" && statusData.feedback) {
-          // Track feedback view (only once)
-          if (!feedbackTracked) {
-            analytics.track("feedback_viewed", {
-              session_id: sessionId,
-              feedback_available: true,
-              overall_score: statusData.feedback.overallScore,
-            });
-            setFeedbackTracked(true);
+        if (!response.ok) {
+          if (response.status === 401) {
+            router.push("/auth/signin");
+            return;
           }
-
-          setEvaluation({
-            session_id: sessionId,
-            scores: {
-              overall: statusData.feedback.overallScore,
-              structure: statusData.feedback.structureScore,
-              clarity: statusData.feedback.clarityScore,
-              insight: statusData.feedback.insightScore,
-              communication: statusData.feedback.communicationScore,
-              leadership: statusData.feedback.leadershipScore,
-            },
-            strengths: statusData.feedback.strengths,
-            improvements: statusData.feedback.improvements,
-            drills: statusData.feedback.drills,
-            summary: statusData.feedback.summary,
-          });
-        } else if (statusData.status === "failed") {
-          setError(statusData.error || "Feedback generation failed");
-        } else if (statusData.status === "skipped") {
-          // Status is skipped - show appropriate edge case component
-          // Don't set error, let the render logic handle it
+          throw new Error("Failed to fetch feedback");
         }
 
-        // TODO: Fetch transcript from separate endpoint when available
-        setTranscript([]);
+        const data: FeedbackResponse = await response.json();
+        setFeedbackData(data);
+
+        // If still processing, poll again
+        if (data.status === "pending" || data.status === "processing") {
+          setTimeout(fetchFeedback, 3000); // Poll every 3 seconds
+        }
       } catch (err) {
-        console.error("Error fetching feedback:", err);
         setError(err instanceof Error ? err.message : "Failed to load feedback");
-        setStatus("failed");
-
-        // Track feedback view even if unavailable (for analytics)
-        if (!feedbackTracked) {
-          analytics.track("feedback_viewed", {
-            session_id: sessionId,
-            feedback_available: false,
-          });
-          setFeedbackTracked(true);
-        }
+      } finally {
+        setLoading(false);
       }
     }
 
-    checkFeedbackStatus();
-  }, [sessionId, feedbackTracked]);
+    fetchFeedback();
+  }, [sessionId, router]);
 
-  // Show loading state while fetching initial data
-  if (status === "loading") {
+  // Fetch transcript when expanded
+  useEffect(() => {
+    if (!transcriptExpanded || transcriptData.length > 0 || !sessionId) return;
+
+    async function fetchTranscript() {
+      setLoadingTranscript(true);
+      try {
+        const response = await fetch(`/api/transcript/${sessionId}`);
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch transcript");
+        }
+
+        const data: TranscriptResponse = await response.json();
+        setTranscriptData(data.turns);
+      } catch (err) {
+        console.error("Error fetching transcript:", err);
+      } finally {
+        setLoadingTranscript(false);
+      }
+    }
+
+    fetchTranscript();
+  }, [transcriptExpanded, sessionId, transcriptData.length]);
+
+  const formatTimestamp = (timestamp: string | null): string => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
+  if (loading) {
+    return <LoadingSkeleton />;
+  }
+
+  if (error) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading feedback...</p>
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-4xl">
+          <Button
+            variant="ghost"
+            onClick={() => router.push("/dashboard")}
+            className="mb-6"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          <Card>
+            <CardContent className="py-8 text-center">
+              <p className="text-red-500">{error}</p>
+              <Button onClick={() => router.push("/dashboard")} className="mt-4">
+                Go to Dashboard
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
   }
 
-  // Show edge case components for skipped sessions
-  if (status === "skipped" && validation) {
-    if (validation.tier === "abandoned") {
-      return <FeedbackAbandoned reasons={validation.reasons} />;
-    }
-    if (validation.tier === "insufficient") {
-      return (
-        <FeedbackInsufficient
-          stats={validation.stats}
-          reasons={validation.reasons}
-          recommendations={validation.recommendations}
-        />
-      );
-    }
-    // Partial tier should not be skipped, but handle gracefully
-    if (validation.tier === "partial") {
-      return (
-        <FeedbackPartial
-          stats={validation.stats}
-          recommendations={validation.recommendations}
-        />
-      );
-    }
+  // Processing state
+  if (feedbackData?.status === "pending" || feedbackData?.status === "processing") {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-4xl">
+          <Button
+            variant="ghost"
+            onClick={() => router.push("/dashboard")}
+            className="mb-6"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
+              <h2 className="text-2xl font-semibold mb-2">
+                {feedbackData.status === "pending" ? "Preparing Feedback" : "Generating Feedback"}
+              </h2>
+              <p className="text-muted-foreground mb-4">
+                Our AI is analyzing your interview performance...
+              </p>
+              {feedbackData.estimatedTimeRemaining !== undefined && (
+                <p className="text-sm text-muted-foreground">
+                  Estimated time remaining: {feedbackData.estimatedTimeRemaining} seconds
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
   }
 
-  // Show error state for failed or unknown errors
-  if (error || status === "failed") {
-    return <ErrorState error={error} />;
+  // Failed state
+  if (feedbackData?.status === "failed") {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-4xl">
+          <Button
+            variant="ghost"
+            onClick={() => router.push("/dashboard")}
+            className="mb-6"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          <Card>
+            <CardContent className="py-8 text-center">
+              <p className="text-red-500 mb-2">Feedback generation failed</p>
+              <p className="text-muted-foreground text-sm">{feedbackData.error}</p>
+              <Button onClick={() => router.push("/dashboard")} className="mt-4">
+                Go to Dashboard
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
   }
 
-  // Show partial component if tier is partial and evaluation exists
-  if (validation?.tier === "partial" && evaluation) {
-    // Render both partial info and feedback display
-    // For now, just show feedback - can enhance later
+  // Skipped state
+  if (feedbackData?.status === "skipped") {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-4xl">
+          <Button
+            variant="ghost"
+            onClick={() => router.push("/dashboard")}
+            className="mb-6"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          <Card>
+            <CardContent className="py-8 text-center">
+              <p className="text-yellow-500 mb-2">Feedback Not Available</p>
+              <p className="text-muted-foreground text-sm">{feedbackData.skipReason}</p>
+              <Button onClick={() => router.push("/dashboard")} className="mt-4">
+                Go to Dashboard
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
   }
 
-  // No evaluation data - show error
-  if (!evaluation) {
-    return <ErrorState error="No feedback data available" />;
+  // Completed state - show feedback
+  const feedback = feedbackData?.feedback;
+  if (!feedback) {
+    return null;
   }
 
-  const handleDownload = () => {
-    alert("Download PDF feature coming soon!");
-  };
+  const overallScore = feedback.overallScore || 0;
+  const scorePercentage = (overallScore / 10) * 100; // Convert 0-10 scale to 0-100
 
-  const handleShare = () => {
-    alert("Share feedback feature coming soon!");
-  };
+  // Prepare dimension scores
+  const dimensions = [
+    { name: "Structure", score: feedback.structureScore },
+    { name: "Clarity", score: feedback.clarityScore },
+    { name: "Insight", score: feedback.insightScore },
+    { name: "Communication", score: feedback.communicationScore },
+    { name: "Leadership", score: feedback.leadershipScore },
+  ];
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link href="/dashboard">
-                <Button variant="ghost" size="sm">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Dashboard
-                </Button>
-              </Link>
-              <div className="h-6 w-px bg-border" />
-              <div className="space-y-1">
-                <h1 className="text-xl font-display font-light text-foreground">
-                  Interview Feedback
-                </h1>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>Session {sessionId}</span>
-                  <Badge variant="secondary" className="ml-2">
-                    Product Sense
-                  </Badge>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href={`/feedback/${sessionId}/compare`}>
-                <Button variant="outline" size="sm">
-                  <GitCompare className="w-4 h-4 mr-2" />
-                  Compare Attempts
-                </Button>
-              </Link>
-              <Button variant="outline" size="sm" onClick={handleShare}>
-                <Share2 className="w-4 h-4 mr-2" />
-                Share
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleDownload}>
-                <Download className="w-4 h-4 mr-2" />
-                Download PDF
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* Header */}
+        <Button
+          variant="ghost"
+          onClick={() => router.push("/dashboard")}
+          className="mb-6"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Dashboard
+        </Button>
 
-      {/* Main Content */}
-      <div className="container max-w-7xl mx-auto px-4 py-8">
-        <div className="space-y-8">
-          {/* Summary Card */}
-          <Card className="bg-gradient-to-br from-card via-card to-card/80 border-primary/20">
-            <CardContent className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2 flex-1">
-                    <h2 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-                      Overall Assessment
-                    </h2>
-                    <p className="text-sm text-foreground leading-relaxed">
-                      {evaluation.summary}
-                    </p>
-                  </div>
-                  <div className="text-right ml-8">
-                    <div className="text-5xl font-display font-light text-primary mb-1">
-                      {evaluation.scores.overall.toFixed(1)}
-                    </div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide">
-                      out of 10
-                    </div>
-                  </div>
-                </div>
-              </div>
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold">Interview Feedback</h1>
+          <p className="text-muted-foreground mt-2">
+            Detailed analysis of your performance
+          </p>
+        </div>
+
+        {/* AI Summary */}
+        {feedback.summary && (
+          <Card className="mb-8 border-primary/20">
+            <CardContent className="pt-6">
+              <p className="text-lg leading-relaxed">{feedback.summary}</p>
             </CardContent>
           </Card>
+        )}
 
-          {/* Score Breakdown */}
-          <ScoreBreakdown scores={evaluation.scores} />
+        {/* Overall Score */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Overall Score</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col items-center justify-center py-8">
+              <div
+                className={`text-7xl font-bold ${getScoreColor(scorePercentage)}`}
+              >
+                {overallScore.toFixed(1)}
+              </div>
+              <p className="text-muted-foreground mt-2">out of 10</p>
+            </div>
+          </CardContent>
+        </Card>
 
-          {/* Rubric Cards */}
-          <div className="space-y-3">
-            <h2 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-              Detailed Scores
-            </h2>
-            <RubricSection scores={evaluation.scores} />
-          </div>
+        {/* Dimension Scores */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Performance Breakdown</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {dimensions.map((dimension) => {
+              const score = dimension.score || 0;
+              const percentage = (score / 10) * 100;
 
-          {/* Strengths and Improvements Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <StrengthsList strengths={evaluation.strengths} />
-            <ImprovementsList improvements={evaluation.improvements} />
-          </div>
+              return (
+                <div key={dimension.name} className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">{dimension.name}</span>
+                    <span className={`font-semibold ${getScoreColor(percentage)}`}>
+                      {score}/10
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Progress value={percentage} className="h-2" />
+                    <div
+                      className={`absolute inset-0 h-2 rounded-full ${getProgressColor(percentage)} transition-all`}
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
 
-          {/* Practice Drills */}
-          <DrillList drills={evaluation.drills} />
+        {/* Strengths */}
+        {feedback.strengths && feedback.strengths.length > 0 && (
+          <Card className="mb-8 border-green-500/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="h-5 w-5" />
+                What Went Well
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3">
+                {feedback.strengths.map((strength, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-base">{strength}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
-          {/* Transcript */}
-          {transcript.length > 0 ? (
-            <TranscriptViewer transcript={transcript} />
-          ) : (
-            <Card className="bg-card border-border">
-              <CardContent className="p-8 text-center">
-                <p className="text-muted-foreground text-sm">
-                  Transcript will be available once session recording is complete
+        {/* Areas to Improve */}
+        {feedback.improvements && feedback.improvements.length > 0 && (
+          <Card className="mb-8 border-orange-500/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-orange-600">
+                <TrendingUp className="h-5 w-5" />
+                Areas to Improve
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3">
+                {feedback.improvements.map((improvement, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <TrendingUp className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-base">{improvement}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Practice Drills */}
+        {feedback.drills && feedback.drills.length > 0 && (
+          <Card className="mb-8 border-blue-500/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-blue-600">
+                <Target className="h-5 w-5" />
+                Practice Recommendations
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3">
+                {feedback.drills.map((drill, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <Target className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-base">{drill}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Interview Transcript */}
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                Interview Transcript
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setTranscriptExpanded(!transcriptExpanded)}
+              >
+                {transcriptExpanded ? (
+                  <>
+                    <ChevronUp className="h-4 w-4 mr-2" />
+                    Collapse
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4 mr-2" />
+                    Expand
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+          {transcriptExpanded && (
+            <CardContent>
+              {loadingTranscript ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : transcriptData.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  No transcript available for this session
                 </p>
-              </CardContent>
-            </Card>
+              ) : (
+                <div className="space-y-4">
+                  {transcriptData.map((turn, index) => (
+                    <div
+                      key={turn.id}
+                      className={`flex ${turn.speaker === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[80%] rounded-lg px-4 py-3 ${
+                          turn.speaker === "user"
+                            ? "bg-primary/10 text-foreground"
+                            : "bg-muted text-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-semibold uppercase tracking-wide">
+                            {turn.speaker === "user" ? "You" : "Interviewer"}
+                          </span>
+                          {turn.startedAt && (
+                            <span className="text-xs text-muted-foreground">
+                              {formatTimestamp(turn.startedAt)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {turn.text || "(No text recorded)"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

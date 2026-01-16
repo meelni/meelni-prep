@@ -30,7 +30,7 @@ interface TimeInvestmentProps {
 const chartConfig = {
   minutes: {
     label: "Minutes",
-    color: "hsl(var(--chart-2))",
+    color: "#8b5cf6", // Purple-500 - matching other charts for consistency
   },
 } satisfies ChartConfig;
 

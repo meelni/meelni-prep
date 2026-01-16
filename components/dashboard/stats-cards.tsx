@@ -33,17 +33,17 @@ export function StatsCards({
     },
     {
       label: "Avg Score",
-      value: averageScore ? `${averageScore.toFixed(1)}/10` : "N/A",
+      value: averageScore !== undefined && averageScore !== null ? `${averageScore.toFixed(1)}/10` : "N/A",
       trend: trends?.scoreChange,
     },
     {
       label: "Total Practice",
-      value: totalMinutes ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "0m",
+      value: totalMinutes !== undefined && totalMinutes !== null ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "0m",
       trend: trends?.minutesChange,
     },
     {
       label: "Completion Rate",
-      value: completionRate ? `${Math.round(completionRate)}%` : "0%",
+      value: completionRate !== undefined && completionRate !== null ? `${Math.round(completionRate)}%` : "0%",
       trend: trends?.completionRateChange,
     },
   ];
