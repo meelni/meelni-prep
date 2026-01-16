@@ -2,8 +2,9 @@
 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { Clock, Calendar, MessageSquare } from "lucide-react";
+import { Clock, Calendar, MessageSquare, ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import type { Session } from "@/lib/api/queries";
 import { analytics } from "@/lib/analytics/analytics-service";
@@ -87,6 +88,11 @@ export function SessionList({ sessions, onSessionClick }: SessionListProps) {
           }
         };
 
+        const feedbackStatus = session.feedback?.status;
+        const overallScore = session.feedback?.overallScore;
+        const hasFeedback = feedbackStatus === "completed" && overallScore !== null;
+        const isProcessing = feedbackStatus === "pending" || feedbackStatus === "processing";
+
         return (
           <motion.div
             key={session.id}
@@ -94,51 +100,65 @@ export function SessionList({ sessions, onSessionClick }: SessionListProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05, duration: 0.3 }}
           >
-            <Link href={`/feedback/${session.id}`} onClick={handleSessionClick}>
-              <Card className="p-6 bg-surface/50 border-border/50 hover:border-primary/30 transition-all duration-300 cursor-pointer group">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 space-y-3">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <Badge
-                        className={
-                          roundTypeColors[session.roundType] || "bg-muted"
-                        }
-                      >
-                        {roundTypeLabels[session.roundType] || session.roundType}
+            <Card className="p-6 bg-surface/50 border-border/50 hover:border-primary/30 transition-all duration-300">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 space-y-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <Badge
+                      className={
+                        roundTypeColors[session.roundType] || "bg-muted"
+                      }
+                    >
+                      {roundTypeLabels[session.roundType] || session.roundType}
+                    </Badge>
+                    {!isCompleted && (
+                      <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+                        In Progress
                       </Badge>
-                      {!isCompleted && (
-                        <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
-                          In Progress
-                        </Badge>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1.5">
-                        <Calendar className="w-4 h-4" />
-                        <span>
-                          {startDate.toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </span>
-                      </div>
-                      {duration !== null && (
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="w-4 h-4" />
-                          <span>{duration} min</span>
-                        </div>
-                      )}
-                    </div>
+                    )}
+                    {isProcessing && (
+                      <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20">
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        Generating...
+                      </Badge>
+                    )}
                   </div>
 
-                  <div className="text-sm text-muted-foreground group-hover:text-primary transition-colors">
-                    View →
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4" />
+                      <span>
+                        {startDate.toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                    </div>
+                    {duration !== null && (
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-4 h-4" />
+                        <span>{duration} min</span>
+                      </div>
+                    )}
+                    {hasFeedback && overallScore && (
+                      <div className="flex items-center gap-1.5 font-medium text-primary">
+                        Score: {Math.round(parseFloat(overallScore))}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </Card>
-            </Link>
+
+                {hasFeedback && (
+                  <Link href={`/feedback/${session.id}`} onClick={handleSessionClick}>
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      View Feedback
+                      <ExternalLink className="w-4 h-4" />
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </Card>
           </motion.div>
         );
       })}
