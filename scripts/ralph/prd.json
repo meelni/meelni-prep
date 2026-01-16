@@ -24,6 +24,79 @@
   ],
   "userStories": [
     {
+      "id": "BUG-001",
+      "title": "Fix analytics stats showing blank/NaN values",
+      "description": "Dashboard stats cards show blank total sessions, '/ out of 10' for avg score, and 'm' for total time",
+      "theme": "See Your Progress",
+      "acceptanceCriteria": [
+        "Total sessions shows actual count (not blank)",
+        "Average score shows number before '/ out of 10'",
+        "Total time shows number before 'm'",
+        "Handle edge case of zero sessions gracefully",
+        "npm run typecheck passes"
+      ],
+      "priority": 0,
+      "passes": true,
+      "notes": "Fixed falsy value checks - changed from truthy checks to explicit null/undefined checks to handle 0 values correctly",
+      "estimatedHours": 1,
+      "userValue": "Users can see their actual stats"
+    },
+    {
+      "id": "BUG-002",
+      "title": "Fix chart colors invisible on dark theme",
+      "description": "Charts show black lines/text on black background - score trend, time investment, competency breakdown all invisible",
+      "theme": "See Your Progress",
+      "acceptanceCriteria": [
+        "Score trend chart lines visible (use brand colors)",
+        "Time investment bar chart bars visible",
+        "Competency breakdown radar has visible text and polygon",
+        "Chart backgrounds use appropriate theme colors",
+        "All charts work in both light and dark modes",
+        "npm run typecheck passes"
+      ],
+      "priority": 0,
+      "passes": true,
+      "notes": "Fixed chart colors by ensuring stroke and fill attributes use theme-aware CSS variables (hsl(var(--border)), hsl(var(--muted-foreground)))",
+      "estimatedHours": 2,
+      "userValue": "Users can actually see their progress charts"
+    },
+    {
+      "id": "BUG-003",
+      "title": "Fix competency breakdown showing 0% with no data",
+      "description": "Competency radar shows 0% and 'Strongest: Structure' even when user has sessions with scores",
+      "theme": "See Your Progress",
+      "acceptanceCriteria": [
+        "Radar chart displays actual scores from feedback",
+        "Strongest competency shows real highest-scoring dimension",
+        "Handle missing feedback gracefully (show message, not 0%)",
+        "Percentages calculated correctly from dimension scores",
+        "npm run typecheck passes"
+      ],
+      "priority": 0,
+      "passes": true,
+      "notes": "Fixed by including dimension scores in session query and filtering sessions with null scores in aggregation logic",
+      "estimatedHours": 2,
+      "userValue": "Users see their real competency breakdown"
+    },
+    {
+      "id": "BUG-004",
+      "title": "Fix NaN percentage in interview type distribution",
+      "description": "Performance by interview type shows 'NaN percentage' instead of actual percentage",
+      "theme": "See Your Progress",
+      "acceptanceCriteria": [
+        "Type distribution shows correct percentages",
+        "Handle division by zero (no sessions)",
+        "Show 'No data yet' if user has no sessions",
+        "Percentages add up to 100%",
+        "npm run typecheck passes"
+      ],
+      "priority": 0,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 1,
+      "userValue": "Users see which interview types they've practiced"
+    },
+    {
       "id": "PROG-001",
       "title": "Build feedback results page",
       "description": "Users need to see detailed feedback after each interview to understand their performance",
@@ -38,7 +111,7 @@
         "npm run typecheck passes",
         "npm run build passes"
       ],
-      "priority": 1,
+      "priority": 5,
       "passes": true,
       "notes": "Completed: Created feedback page with overall score, 5 dimension scores with progress bars, loading skeleton, and state handling",
       "estimatedHours": 4,
@@ -58,7 +131,7 @@
         "Make each item scannable (short phrases, not paragraphs)",
         "npm run typecheck passes"
       ],
-      "priority": 2,
+      "priority": 6,
       "passes": true,
       "notes": "Completed: Added summary, strengths, improvements, and drills sections with color-coded Cards and icons",
       "estimatedHours": 3,
@@ -78,7 +151,7 @@
         "Highlight key moments if available",
         "npm run typecheck passes"
       ],
-      "priority": 3,
+      "priority": 7,
       "passes": true,
       "notes": "Completed: Added transcript API endpoint, expand/collapse UI, chat-style display with timestamps, lazy loading on expand",
       "estimatedHours": 3,
@@ -97,7 +170,7 @@
         "Add score preview on hover or inline",
         "npm run typecheck passes"
       ],
-      "priority": 4,
+      "priority": 8,
       "passes": true,
       "notes": "Completed: Added feedback button to SessionList with conditional rendering based on status, score preview shown inline, 'Generating...' badge with spinner for pending/processing states",
       "estimatedHours": 2,
@@ -117,7 +190,7 @@
         "Add to dashboard analytics section",
         "npm run typecheck passes"
       ],
-      "priority": 5,
+      "priority": 9,
       "passes": true,
       "notes": "Completed: Added linear regression trend line to existing PerformanceTrend chart. Chart calculates trend line using linear regression formula and displays it as a dashed line to show improvement direction over time.",
       "estimatedHours": 3,
@@ -137,7 +210,7 @@
         "Add to dashboard analytics section",
         "npm run typecheck passes"
       ],
-      "priority": 6,
+      "priority": 10,
       "passes": true,
       "notes": "Already implemented as CompetencyBreakdown in analytics section. All acceptance criteria met: RadarChart with 5 dimensions, average score calculation, brand colors, tooltips, integrated in dashboard.",
       "estimatedHours": 3,
@@ -157,7 +230,7 @@
         "npm run db:push succeeds",
         "npm run typecheck passes"
       ],
-      "priority": 7,
+      "priority": 11,
       "passes": true,
       "notes": "Completed: Added streak tracking columns to app_user, created updateStreak() utility, integrated streak updates in interview end API, added getUserStreak() query, displayed streak on dashboard with fire icon and at-risk warnings",
       "estimatedHours": 4,
@@ -176,7 +249,7 @@
         "npm run db:push succeeds",
         "npm run typecheck passes"
       ],
-      "priority": 8,
+      "priority": 12,
       "passes": true,
       "notes": "Completed: Created user_achievement table, defined 7 badges in /lib/achievements.ts (milestones, excellence, streaks, exploration), integrated achievement checking in interview end API",
       "estimatedHours": 4,
@@ -196,9 +269,9 @@
         "Add to dashboard overview section",
         "npm run typecheck passes"
       ],
-      "priority": 9,
-      "passes": false,
-      "notes": "",
+      "priority": 13,
+      "passes": true,
+      "notes": "Completed: Created BadgeDisplay component with badge icons, horizontal row, locked badges grayed out, tooltips, NEW indicator for recent badges, integrated in overview section",
       "estimatedHours": 3,
       "userValue": "Visual rewards for consistent practice"
     },
@@ -215,7 +288,7 @@
         "Add to dashboard analytics section",
         "npm run typecheck passes"
       ],
-      "priority": 10,
+      "priority": 14,
       "passes": true,
       "notes": "Completed: Enhanced existing TypeDistribution component with gap indicator. Orange alert banner shows missing interview types with list of unpracticed categories.",
       "estimatedHours": 2,
@@ -234,7 +307,7 @@
         "Add to dashboard overview section",
         "npm run typecheck passes"
       ],
-      "priority": 11,
+      "priority": 15,
       "passes": false,
       "notes": "",
       "estimatedHours": 3,
@@ -253,7 +326,7 @@
         "npm run db:push succeeds",
         "npm run typecheck passes"
       ],
-      "priority": 12,
+      "priority": 16,
       "passes": false,
       "notes": "",
       "estimatedHours": 3,
@@ -272,7 +345,7 @@
         "Handle empty state with helpful message",
         "npm run typecheck passes"
       ],
-      "priority": 13,
+      "priority": 17,
       "passes": false,
       "notes": "",
       "estimatedHours": 2,
@@ -290,7 +363,7 @@
         "Add to dashboard analytics section",
         "npm run typecheck passes"
       ],
-      "priority": 14,
+      "priority": 18,
       "passes": false,
       "notes": "",
       "estimatedHours": 3,
@@ -309,7 +382,7 @@
         "Include 1-2 tips for improving that dimension",
         "npm run typecheck passes"
       ],
-      "priority": 15,
+      "priority": 19,
       "passes": false,
       "notes": "",
       "estimatedHours": 3,
@@ -329,7 +402,7 @@
         "npm run db:push succeeds",
         "npm run typecheck passes"
       ],
-      "priority": 16,
+      "priority": 20,
       "passes": false,
       "notes": "",
       "estimatedHours": 4,
@@ -348,7 +421,7 @@
         "Show company badge on question cards",
         "npm run typecheck passes"
       ],
-      "priority": 17,
+      "priority": 21,
       "passes": false,
       "notes": "",
       "estimatedHours": 2,
@@ -367,7 +440,7 @@
         "Add sendEmail helper function",
         "npm run typecheck passes"
       ],
-      "priority": 18,
+      "priority": 22,
       "passes": false,
       "notes": "",
       "estimatedHours": 2,
@@ -386,7 +459,7 @@
         "Email subject: 'Your interview feedback is ready!'",
         "npm run typecheck passes"
       ],
-      "priority": 19,
+      "priority": 23,
       "passes": false,
       "notes": "",
       "estimatedHours": 3,
@@ -405,7 +478,7 @@
         "Only send to users with at least 1 interview",
         "npm run typecheck passes"
       ],
-      "priority": 20,
+      "priority": 24,
       "passes": false,
       "notes": "",
       "estimatedHours": 4,
@@ -424,7 +497,7 @@
         "Add 'Practice Now' CTA button",
         "npm run typecheck passes"
       ],
-      "priority": 21,
+      "priority": 25,
       "passes": false,
       "notes": "",
       "estimatedHours": 3,
@@ -444,7 +517,7 @@
         "npm run db:push succeeds",
         "npm run typecheck passes"
       ],
-      "priority": 22,
+      "priority": 26,
       "passes": false,
       "notes": "",
       "estimatedHours": 3,
@@ -463,7 +536,7 @@
         "Make emails shareable (social preview)",
         "npm run typecheck passes"
       ],
-      "priority": 23,
+      "priority": 27,
       "passes": false,
       "notes": "",
       "estimatedHours": 3,
@@ -482,7 +555,7 @@
         "Disable start button if no quota",
         "npm run typecheck passes"
       ],
-      "priority": 24,
+      "priority": 28,
       "passes": false,
       "notes": "",
       "estimatedHours": 2,
@@ -502,7 +575,7 @@
         "npm run typecheck passes",
         "npm run build passes"
       ],
-      "priority": 25,
+      "priority": 29,
       "passes": false,
       "notes": "",
       "estimatedHours": 4,
