@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle2, TrendingUp, Target } from "lucide-react";
 
 interface FeedbackData {
   id: string;
@@ -283,6 +283,15 @@ export default function FeedbackPage() {
           </p>
         </div>
 
+        {/* AI Summary */}
+        {feedback.summary && (
+          <Card className="mb-8 border-primary/20">
+            <CardContent className="pt-6">
+              <p className="text-lg leading-relaxed">{feedback.summary}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Overall Score */}
         <Card className="mb-8">
           <CardHeader>
@@ -301,7 +310,7 @@ export default function FeedbackPage() {
         </Card>
 
         {/* Dimension Scores */}
-        <Card>
+        <Card className="mb-8">
           <CardHeader>
             <CardTitle>Performance Breakdown</CardTitle>
           </CardHeader>
@@ -330,6 +339,72 @@ export default function FeedbackPage() {
             })}
           </CardContent>
         </Card>
+
+        {/* Strengths */}
+        {feedback.strengths && feedback.strengths.length > 0 && (
+          <Card className="mb-8 border-green-500/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="h-5 w-5" />
+                What Went Well
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3">
+                {feedback.strengths.map((strength, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-base">{strength}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Areas to Improve */}
+        {feedback.improvements && feedback.improvements.length > 0 && (
+          <Card className="mb-8 border-orange-500/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-orange-600">
+                <TrendingUp className="h-5 w-5" />
+                Areas to Improve
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3">
+                {feedback.improvements.map((improvement, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <TrendingUp className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-base">{improvement}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Practice Drills */}
+        {feedback.drills && feedback.drills.length > 0 && (
+          <Card className="mb-8 border-blue-500/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-blue-600">
+                <Target className="h-5 w-5" />
+                Practice Recommendations
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3">
+                {feedback.drills.map((drill, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <Target className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-base">{drill}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
