@@ -31,6 +31,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **Contributing** → `.claude/CONTRIBUTING.md`
 - **Deployment** → `.claude/DEPLOYMENT.md` (high-level overview)
 - **Sprint Documentation** → `.claude/sprints/README.md` (active feature work tracking)
+- **Ralph (Autonomous Agent)** → `.claude/RALPH.md` (automated development loop)
 
 ### Sprint Documentation (`.claude/sprints/`)
 - **Active Sprints** → `.claude/sprints/` (current feature development)
@@ -58,6 +59,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **Debugging LiveKit agents** → `docs/LIVEKIT_DEBUGGING.md`
 - **PostHog analytics troubleshooting** → `.claude/archive/sprints/posthog-analytics-2025-11/POSTHOG_TESTING_GUIDE.md`
 - **Starting a new feature/sprint** → `.claude/sprints/README.md` (USE THIS!)
+- **Autonomous development (Ralph)** → `.claude/RALPH.md` + `scripts/ralph/`
 - **Adding new features** → `docs/templates/FEATURE_TEMPLATE.md`
 - **Creating ADRs** → `docs/templates/ADR_TEMPLATE.md`
 - **API reference** → `docs/api/README.md`
