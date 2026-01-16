@@ -23,6 +23,7 @@ import {
   Building2,
   Filter,
   Search,
+  Bookmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
@@ -54,6 +55,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const [sortBy, setSortBy] = useState<"recent" | "company" | "type">("recent");
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<Set<string>>(new Set());
 
   // Fetch questions
   useEffect(() => {
@@ -88,6 +90,21 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
     fetchQuestions();
   }, [selectedType]);
+
+  // Fetch bookmarked question IDs
+  useEffect(() => {
+    async function fetchBookmarks() {
+      try {
+        const res = await fetch("/api/questions/bookmark");
+        const data = await res.json();
+        setBookmarkedQuestionIds(new Set(data.questionIds || []));
+      } catch (error) {
+        console.error("Error fetching bookmarks:", error);
+      }
+    }
+
+    fetchBookmarks();
+  }, []);
 
   // Clear all filters
   const clearAllFilters = () => {
@@ -173,9 +190,81 @@ export const QuestionsSection = memo(function QuestionsSection() {
     }
   };
 
-  const handleBookmark = () => {
-    // TODO: Implement bookmark functionality
-    alert(`Bookmarked ${selectedQuestions.size} questions (placeholder)`);
+  const handleBookmark = async () => {
+    if (selectedQuestions.size === 0) return;
+
+    try {
+      // Optimistic UI update
+      const questionsToBookmark = Array.from(selectedQuestions);
+      setBookmarkedQuestionIds(prev => {
+        const updated = new Set(prev);
+        questionsToBookmark.forEach(id => updated.add(id));
+        return updated;
+      });
+
+      // Bookmark all selected questions
+      await Promise.all(
+        questionsToBookmark.map(questionId =>
+          fetch("/api/questions/bookmark", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ questionId }),
+          })
+        )
+      );
+
+      // Clear selection after bookmarking
+      setSelectedQuestions(new Set());
+    } catch (error) {
+      console.error("Error bookmarking questions:", error);
+      // Revert optimistic update on error
+      const res = await fetch("/api/questions/bookmark");
+      const data = await res.json();
+      setBookmarkedQuestionIds(new Set(data.questionIds || []));
+    }
+  };
+
+  const toggleBookmark = async (questionId: string) => {
+    const isBookmarked = bookmarkedQuestionIds.has(questionId);
+
+    // Optimistic UI update
+    setBookmarkedQuestionIds(prev => {
+      const updated = new Set(prev);
+      if (isBookmarked) {
+        updated.delete(questionId);
+      } else {
+        updated.add(questionId);
+      }
+      return updated;
+    });
+
+    try {
+      if (isBookmarked) {
+        // Remove bookmark
+        await fetch(`/api/questions/bookmark?questionId=${questionId}`, {
+          method: "DELETE",
+        });
+      } else {
+        // Add bookmark
+        await fetch("/api/questions/bookmark", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId }),
+        });
+      }
+    } catch (error) {
+      console.error("Error toggling bookmark:", error);
+      // Revert optimistic update on error
+      setBookmarkedQuestionIds(prev => {
+        const updated = new Set(prev);
+        if (isBookmarked) {
+          updated.add(questionId);
+        } else {
+          updated.delete(questionId);
+        }
+        return updated;
+      });
+    }
   };
 
   const handleCreatePracticeSet = () => {
@@ -360,14 +449,33 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
                           {/* Action */}
                           <TableCell className="px-4 py-3.5 text-right">
-                            <Button
-                              size="sm"
-                              onClick={() => handleTryQuestion(question.id, question.questionType)}
-                              className="gap-2"
-                            >
-                              <Play className="w-4 h-4" />
-                              Try Question
-                            </Button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => toggleBookmark(question.id)}
+                                className={cn(
+                                  "p-2 rounded-lg transition-colors",
+                                  bookmarkedQuestionIds.has(question.id)
+                                    ? "text-primary bg-primary/10 hover:bg-primary/20"
+                                    : "text-muted-foreground hover:text-primary hover:bg-primary/5"
+                                )}
+                                aria-label={bookmarkedQuestionIds.has(question.id) ? "Remove bookmark" : "Bookmark question"}
+                              >
+                                <Bookmark
+                                  className={cn(
+                                    "w-4 h-4",
+                                    bookmarkedQuestionIds.has(question.id) && "fill-current"
+                                  )}
+                                />
+                              </button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleTryQuestion(question.id, question.questionType)}
+                                className="gap-2"
+                              >
+                                <Play className="w-4 h-4" />
+                                Try Question
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -428,6 +536,8 @@ export const QuestionsSection = memo(function QuestionsSection() {
                       ]
                     }
                     index={index}
+                    isBookmarked={bookmarkedQuestionIds.has(question.id)}
+                    onToggleBookmark={() => toggleBookmark(question.id)}
                   />
                 ))}
               </div>

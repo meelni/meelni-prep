@@ -288,6 +288,21 @@ export const userAchievement = pgTable("user_achievement", {
   userAchievementUnique: index("user_achievement_user_achievement_idx").on(table.userId, table.achievementId),
 }));
 
+// PRAC-001: Bookmarked questions for later practice
+export const bookmarkedQuestion = pgTable("bookmarked_question", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+  questionId: uuid("question_id").references(() => interviewQuestion.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Index for user lookups
+  userIdIdx: index("bookmarked_question_user_id_idx").on(table.userId),
+  // Index for question lookups
+  questionIdIdx: index("bookmarked_question_question_id_idx").on(table.questionId),
+  // Unique constraint: user can only bookmark each question once
+  userQuestionUnique: index("bookmarked_question_user_question_idx").on(table.userId, table.questionId),
+}));
+
 // ==================== Relations ====================
 // These enable Drizzle's relational query API (e.g., `with: { feedback: true }`)
 
@@ -350,6 +365,17 @@ export const userAchievementRelations = relations(userAchievement, ({ one }) => 
   user: one(appUser, {
     fields: [userAchievement.userId],
     references: [appUser.id],
+  }),
+}));
+
+export const bookmarkedQuestionRelations = relations(bookmarkedQuestion, ({ one }) => ({
+  user: one(appUser, {
+    fields: [bookmarkedQuestion.userId],
+    references: [appUser.id],
+  }),
+  question: one(interviewQuestion, {
+    fields: [bookmarkedQuestion.questionId],
+    references: [interviewQuestion.id],
   }),
 }));
 
