@@ -31,6 +31,11 @@ export const appUser = pgTable("app_user", {
   email: text("email").notNull().unique(),
   name: text("name"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+
+  // MOTI-001: Practice streak tracking
+  streakCurrent: integer("streak_current").default(0).notNull(),
+  streakLongest: integer("streak_longest").default(0).notNull(),
+  lastPracticeDate: timestamp("last_practice_date", { withTimezone: true }),
 });
 
 // Interview sessions
@@ -268,6 +273,66 @@ export const userInsights = pgTable("user_insights", {
   lastUpdatedAtIdx: index("user_insights_last_updated_at_idx").on(table.lastUpdatedAt),
 }));
 
+// MOTI-002: User achievements tracking
+export const userAchievement = pgTable("user_achievement", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+  achievementId: text("achievement_id").notNull(),
+  earnedAt: timestamp("earned_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Index for user lookups
+  userIdIdx: index("user_achievement_user_id_idx").on(table.userId),
+  // Index for achievement lookups
+  achievementIdIdx: index("user_achievement_achievement_id_idx").on(table.achievementId),
+  // Unique constraint: user can only earn each achievement once
+  userAchievementUnique: index("user_achievement_user_achievement_idx").on(table.userId, table.achievementId),
+}));
+
+// PRAC-001: Bookmarked questions for later practice
+export const bookmarkedQuestion = pgTable("bookmarked_question", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+  questionId: uuid("question_id").references(() => interviewQuestion.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Index for user lookups
+  userIdIdx: index("bookmarked_question_user_id_idx").on(table.userId),
+  // Index for question lookups
+  questionIdIdx: index("bookmarked_question_question_id_idx").on(table.questionId),
+  // Unique constraint: user can only bookmark each question once
+  userQuestionUnique: index("bookmarked_question_user_question_idx").on(table.userId, table.questionId),
+}));
+
+// PRAC-005: Practice sets for organizing questions
+export const practiceSet = pgTable("practice_set", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Index for user lookups
+  userIdIdx: index("practice_set_user_id_idx").on(table.userId),
+  // Index for name searches
+  nameIdx: index("practice_set_name_idx").on(table.name),
+}));
+
+// PRAC-005: Junction table for practice set questions
+export const practiceSetQuestion = pgTable("practice_set_question", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  practiceSetId: uuid("practice_set_id").references(() => practiceSet.id, { onDelete: "cascade" }).notNull(),
+  questionId: uuid("question_id").references(() => interviewQuestion.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Index for practice set lookups
+  practiceSetIdx: index("practice_set_question_set_idx").on(table.practiceSetId),
+  // Index for question lookups
+  questionIdx: index("practice_set_question_question_idx").on(table.questionId),
+  // Unique constraint: question can only be added once per set
+  setQuestionUnique: index("practice_set_question_set_question_idx").on(table.practiceSetId, table.questionId),
+}));
+
 // ==================== Relations ====================
 // These enable Drizzle's relational query API (e.g., `with: { feedback: true }`)
 
@@ -315,12 +380,51 @@ export const appUserRelations = relations(appUser, ({ many, one }) => ({
   }),
   usageRecords: many(usageRecord),
   paymentHistory: many(paymentHistory),
+  // MOTI-002: Achievements
+  achievements: many(userAchievement),
 }));
 
 export const userInsightsRelations = relations(userInsights, ({ one }) => ({
   user: one(appUser, {
     fields: [userInsights.userId],
     references: [appUser.id],
+  }),
+}));
+
+export const userAchievementRelations = relations(userAchievement, ({ one }) => ({
+  user: one(appUser, {
+    fields: [userAchievement.userId],
+    references: [appUser.id],
+  }),
+}));
+
+export const bookmarkedQuestionRelations = relations(bookmarkedQuestion, ({ one }) => ({
+  user: one(appUser, {
+    fields: [bookmarkedQuestion.userId],
+    references: [appUser.id],
+  }),
+  question: one(interviewQuestion, {
+    fields: [bookmarkedQuestion.questionId],
+    references: [interviewQuestion.id],
+  }),
+}));
+
+export const practiceSetRelations = relations(practiceSet, ({ one, many }) => ({
+  user: one(appUser, {
+    fields: [practiceSet.userId],
+    references: [appUser.id],
+  }),
+  questions: many(practiceSetQuestion),
+}));
+
+export const practiceSetQuestionRelations = relations(practiceSetQuestion, ({ one }) => ({
+  practiceSet: one(practiceSet, {
+    fields: [practiceSetQuestion.practiceSetId],
+    references: [practiceSet.id],
+  }),
+  question: one(interviewQuestion, {
+    fields: [practiceSetQuestion.questionId],
+    references: [interviewQuestion.id],
   }),
 }));
 

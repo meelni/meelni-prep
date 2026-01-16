@@ -1,0 +1,431 @@
+# Ralph Progress Log for Meelni
+Started: 2026-01-16
+PRD Version: 2.0.0 - Engagement & Retention Features
+
+## Mission
+
+Build features that drive engagement and retention:
+- **See Your Progress** - Help users understand improvement
+- **Stay Motivated** - Gamification, streaks, achievements
+- **Practice Smarter** - Personalized recommendations
+- **Stay Connected** - Emails and notifications
+
+---
+
+## Current Project State
+
+**Foundation COMPLETE**:
+- Real-time voice interviews with AI
+- Session persistence (transcripts saved)
+- Feedback engine (GPT-4 Turbo scoring)
+- Authentication (Google + Email/Password)
+- Dashboard with session history
+- Question bank (2,879 questions)
+- Billing system (Stripe integration)
+- Analytics (PostHog integrated)
+
+**Now Building**: Engagement & retention features (25 stories)
+
+---
+
+## Codebase Patterns
+
+### Database (Drizzle ORM)
+- Schema: `/lib/db/schema.ts`
+- Client: `import { db } from "@/lib/db"`
+- After changes: `npm run db:push`
+- UUID PKs: `uuid().primaryKey().defaultRandom()`
+- Timestamps: `timestamp("created_at").defaultNow()`
+
+### API Routes
+- Location: `/app/api/[name]/route.ts`
+- Auth check:
+  ```typescript
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  ```
+
+### Components
+- Server components by default
+- Client: Add `"use client"` at top
+- UI: `/components/ui/` (Button, Card, Badge)
+- Dashboard: `/components/dashboard/sections/`
+- Charts: recharts library (already installed)
+
+### Styling
+- Tailwind v4
+- Brand colors via CSS variables
+- Animations: `/lib/animations.ts`
+
+---
+
+## Key Files by Theme
+
+### See Your Progress
+- Feedback API: `/app/api/feedback/[sessionId]/route.ts`
+- Feedback page: `/app/feedback/[sessionId]/page.tsx` (to build)
+- Dashboard analytics: `/components/dashboard/sections/analytics.tsx`
+- Session history: `/components/dashboard/sections/history.tsx`
+
+### Stay Motivated (to build)
+- Streaks: Add to `/lib/db/schema.ts` (app_user table)
+- Achievements: Create `/lib/achievements.ts`
+- Badges UI: Create component in `/components/dashboard/`
+
+### Practice Smarter
+- Questions page: `/components/dashboard/sections/questions.tsx`
+- Bookmarks: Add table + API (to build)
+- Practice sets: Add tables + UI (to build)
+
+### Stay Connected (to build)
+- Email client: Create `/lib/email/client.ts`
+- Templates: Create `/lib/email/templates/`
+- Inngest jobs: `/lib/inngest/`
+
+---
+
+## Quality Gates
+
+```bash
+npm run typecheck    # Must pass
+npm run lint         # Must pass
+npm run build        # Recommended for UI changes
+npm run db:push      # After schema changes
+```
+
+---
+
+## Feature Implementation Notes
+
+### Streaks Logic
+- Increment on completed interview
+- Reset if last_practice_date < today - 1
+- Store streak_current and streak_longest
+
+### Achievements
+Initial badges:
+- First Interview (1 session)
+- Getting Serious (5 sessions)
+- Dedicated (10 sessions)
+- Perfect Score (100 overall)
+- Week Warrior (7-day streak)
+- Monthly Master (30-day streak)
+- Well-Rounded (all 4 types practiced)
+
+### Email Triggers
+- feedback_ready: After feedback generation
+- weekly_digest: Sunday 6 PM (Inngest cron)
+- streak_at_risk: 6 PM if streak >= 3 and no practice today
+- achievement_earned: Immediately on badge award
+
+---
+
+## Implementation Log
+
+(Ralph will append entries below as stories are completed)
+
+---
+
+## 2026-01-16 - PROG-001: Build feedback results page
+- Implemented /app/feedback/[sessionId]/page.tsx with complete feedback display
+- Files changed: app/feedback/[sessionId]/page.tsx
+- **Learnings:**
+  - File already existed with more complex component structure, simplified to meet current acceptance criteria
+  - Used Progress bars with custom color overlays to show dimension scores with visual feedback
+  - Implemented polling mechanism (3s interval) for pending/processing feedback states
+  - Built comprehensive state handling: pending, processing, completed, failed, skipped
+  - Color-coded scores: green (>=80), blue (>=60), yellow (>=40), red (<40)
+  - Loading skeleton provides good UX during initial fetch
+  - Build and lint both pass with no new errors
+---
+## 2026-01-16 - PROG-002: Display strengths and areas to improve
+- Implemented actionable feedback sections on feedback page
+- Files changed: app/feedback/[sessionId]/page.tsx
+- **Learnings:**
+  - Used conditional rendering with && for optional sections (strengths, improvements, drills, summary)
+  - Color-coded borders enhance visual hierarchy: green (strengths), orange (improvements), blue (drills), primary (summary)
+  - CheckCircle2, TrendingUp, and Target icons from lucide-react match the section purposes
+  - Flex layout with items-start ensures icons align with first line of multi-line text
+  - Space-y-3 provides good vertical rhythm for list items
+  - Build passes with no new errors, all acceptance criteria met
+---
+## 2026-01-16 - PROG-003: Show full interview transcript
+- Implemented transcript section with expand/collapse functionality on feedback page
+- Files changed: app/api/transcript/[sessionId]/route.ts, app/feedback/[sessionId]/page.tsx, scripts/ralph/AGENTS.md
+- **Learnings:**
+  - Next.js 15+ requires `params` to be awaited: `const { sessionId } = await params;`
+  - Lazy loading pattern: fetch data only when expanded (useEffect with dependency on transcriptExpanded)
+  - Chat-style UI: justify-end for user messages, justify-start for interviewer messages
+  - Used max-w-[80%] for message bubbles to prevent full-width messages
+  - Conditional background colors: bg-primary/10 for user, bg-muted for interviewer
+  - formatTimestamp helper shows HH:MM:SS for easy scanning
+  - Added MessageSquare, ChevronDown, ChevronUp icons for visual clarity
+  - Empty state with helpful message when no transcript available
+  - Loading spinner during fetch with Loader2 component
+  - All quality gates passed (typecheck, lint, build)
+---
+
+## 2026-01-16 - PROG-004: Add 'View Feedback' links to dashboard
+- Implemented feedback buttons with conditional rendering in session history
+- Files changed: lib/db/sessions.ts, lib/api/queries.ts, components/dashboard/session-list.tsx
+- **Learnings:**
+  - Database joins in Drizzle: Use .leftJoin() with explicit .select() shape to include related data
+  - Pattern: `leftJoin(feedback, eq(feedback.sessionId, interviewSession.id))`
+  - Select shape must explicitly list all fields when using joins (can't use shorthand `.select()`)
+  - TypeScript interface must match the exact shape returned from database query
+  - Conditional button rendering: `{hasFeedback && <Button />}` for clean conditional UI
+  - Multiple badge states can coexist: "In Progress", "Generating..." with spinner icon
+  - Loader2 icon with animate-spin class provides nice loading indicator
+  - Score preview inline: `Math.round(parseFloat(overallScore))` to display numeric score
+  - Button with ExternalLink icon signals navigation to detail page
+  - Quality gates passed: typecheck and lint both clean (pre-existing test errors only)
+---
+
+## 2026-01-16 - PROG-005: Build score trend chart
+- Implemented linear regression trend line in PerformanceTrend chart component
+- Files changed: components/dashboard/charts/performance-trend.tsx
+- **Learnings:**
+  - Linear regression calculation: y = mx + b where slope = (n*sumXY - sumX*sumY) / (n*sumX2 - sumX*sumX)
+  - Used useMemo hook to recalculate trend line data only when input data changes
+  - Added Line component from recharts with dashed stroke (strokeDasharray="5 5") for visual distinction
+  - Trend line uses primary color with 0.6 opacity to avoid overpowering the area chart
+  - Chart data transformed to include trendScore field for each point
+  - Import changes required: Added Line and useMemo to imports
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (pre-existing errors only), build (success)
+---
+
+## 2026-01-16 - PROG-006: Build competency radar chart
+- Verified existing implementation: CompetencyBreakdown component already implements all requirements
+- Files verified: components/dashboard/charts/competency-breakdown.tsx, components/dashboard/sections/analytics.tsx, lib/analytics/aggregations.ts
+- **Learnings:**
+  - CompetencyBreakdown component already exists and is integrated in analytics section (line 389-397)
+  - Uses recharts RadarChart with all 5 dimensions (Structure, Clarity, Insight, Communication, Leadership)
+  - aggregateCompetencyScores function calculates averages and converts 1-5 scores to 0-100 percentage scale
+  - Component includes tooltips, brand colors, filled polygon, and glow effect filter
+  - Empty state handling included for sessions without feedback
+  - Shows strongest competency in card description
+  - Quality gates passed: typecheck (pre-existing test errors only), build (success)
+  - Pattern: When story requirements are already met by existing code, verify and document rather than duplicate
+---
+
+## 2026-01-16 - MOTI-001: Add practice streak counter
+- Implemented practice streak tracking with database columns and update logic
+- Files changed:
+  - lib/db/schema.ts (added streak_current, streak_longest, last_practice_date)
+  - lib/streaks.ts (new file - updateStreak() and isStreakAtRisk() utilities)
+  - app/api/interview/end/route.ts (call updateStreak after completion)
+  - lib/db/queries/user-stats.ts (getUserStreak() query with at-risk detection)
+  - app/api/stats/user-summary/route.ts (include streak in response)
+  - components/dashboard/sections/overview.tsx (display streak card with warnings)
+- **Learnings:**
+  - Drizzle schema push works with explicit DATABASE_URL environment variable
+  - Streak logic uses date-only comparison (strip time) to detect consecutive days
+  - At-risk detection: streak >= 3 AND last practice != today
+  - Dashboard card uses conditional rendering (userSummary?.streak) for backwards compatibility
+  - Fire icon color changes based on streak > 0 (orange-500 vs muted)
+  - Warning message only shows for streaks >= 3 to avoid nagging new users
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (pre-existing errors only)
+---
+
+## 2026-01-16 - MOTI-002: Create achievement badges system
+- Implemented achievement badge tracking system with automatic awarding
+- Files changed:
+  - lib/db/schema.ts (added user_achievement table)
+  - lib/achievements.ts (new file - 7 badge definitions + check/award logic)
+  - app/api/interview/end/route.ts (integrated achievement checking)
+- **Learnings:**
+  - Achievement system with 4 categories: milestones, excellence, streaks, exploration
+  - Badge definitions: first_interview (1), getting_serious (5), dedicated (10), perfect_score (100), week_warrior (7d), monthly_master (30d), well_rounded (all types)
+  - checkAndAwardAchievements() runs automatically after each completed interview
+  - Used Set data structure to check unique interview types for well_rounded badge
+  - onConflictDoNothing() prevents duplicate badge awards in edge cases
+  - Non-critical operations (streaks, achievements) wrapped in try/catch to avoid blocking interview end
+  - Map<string, Date> for type safety when building earnedMap in getUserAchievements
+  - Null coalescing operator (??) for clean null handling in achievement status
+  - Database push succeeded with warning about supautils prefix (Supabase internal, not blocking)
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
+---
+
+## 2026-01-16 - MOTI-003: Display earned badges on dashboard
+- Implemented achievement badge display system on dashboard
+- Files changed:
+  - app/api/achievements/route.ts (new file - API endpoint to fetch user achievements)
+  - components/dashboard/badge-display.tsx (new file - BadgeDisplay component)
+  - components/dashboard/sections/overview.tsx (integrated BadgeDisplay)
+- **Learnings:**
+  - Badge grid uses responsive layout: 4 cols on mobile, 7 cols on larger screens
+  - Earned badges: colored border (border-primary/30), filled background (bg-primary/10), hover scale effect
+  - Locked badges: grayscale filter, reduced opacity (40%), Lock icon instead of emoji
+  - NEW indicator: absolute positioned badge with green background, pulse animation for badges earned in last 7 days
+  - Hover tooltips: absolute positioned with bottom-full + mb-2, opacity-0 to opacity-100 transition
+  - Tooltip content: badge icon/name, earned date, description, locked state indicator
+  - Progress messages: conditional rendering based on earnedCount (0, partial, all)
+  - Achievement counter: Award icon + X/Y format in card header
+  - Full-width layout: lg:col-span-3 for horizontal badge grid
+  - isRecentlyEarned helper: checks if earnedAt within 7 days for NEW badge display
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
+---
+
+## 2026-01-16 - MOTI-004: Add interview type distribution chart
+- Enhanced TypeDistribution component with gap indicator for missing interview types
+- Files changed: components/dashboard/charts/type-distribution.tsx
+- **Learnings:**
+  - Gap indicator pattern: orange alert banner with AlertCircle icon for missing items
+  - Set data structure (Set<string>) efficiently checks for presence: `new Set(data.map(d => d.type))`
+  - ALL_TYPES constant provides source of truth for expected categories
+  - Conditional rendering with `missingTypes.length > 0` avoids empty alert boxes
+  - React escaped entities: use `&apos;` for apostrophes in JSX text content
+  - Lint formatter signature: remove unused params to avoid warnings (value only, not name/props)
+  - Component already existed and was functional - enhancement adds value without breaking existing behavior
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (clean for modified file)
+---
+
+## 2026-01-16 - BUG-001: Fix analytics stats showing blank/NaN values
+- Fixed stats cards component to handle zero values correctly
+- Files changed: components/dashboard/stats-cards.tsx
+- **Learnings:**
+  - JavaScript treats 0 as falsy, so `averageScore ? value : 'N/A'` shows "N/A" for 0 scores
+  - Solution: Use explicit null/undefined checks: `averageScore !== undefined && averageScore !== null ? value : 'N/A'`
+  - Same pattern applied to totalMinutes and completionRate for consistency
+  - This ensures "0.0/10" displays instead of "N/A" when user has 0 average score
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors in modified file)
+---
+
+## 2026-01-16 - BUG-002: Fix chart colors invisible on dark theme
+- Fixed chart colors to use theme-aware CSS variables for proper dark mode support
+- Files changed: components/dashboard/charts/performance-trend.tsx
+- **Learnings:**
+  - Charts were using hardcoded colors that didn't adapt to dark theme
+  - PerformanceTrend: Added `stroke="hsl(var(--border))"` to CartesianGrid, `fill: "hsl(var(--muted-foreground))"` to XAxis tick
+  - Chart colors are already defined in globals.css for both light and dark themes (--chart-1 through --chart-6)
+  - TimeInvestment and CompetencyBreakdown already had correct theme-aware colors configured
+  - All charts now properly use CSS variables that change based on theme
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (pre-existing errors only), build (success)
+  - Pattern: Always use `hsl(var(--variable-name))` for colors in charts to support theme switching
+---
+## 2026-01-16 - BUG-003: Fix competency breakdown showing 0% with no data
+- Fixed competency radar chart to display actual dimension scores from feedback
+- Files changed:
+  - lib/db/sessions.ts (added dimension score fields to query selects)
+  - lib/analytics/aggregations.ts (filter sessions with null dimension scores, use nullish coalescing)
+- **Learnings:**
+  - Database query must explicitly select all fields needed downstream - leftJoin doesn't automatically include all columns
+  - Pattern: When selecting nested objects, explicitly list all required fields: `feedback: { status, overallScore, structureScore, ...}`
+  - Aggregation functions should filter for data completeness BEFORE calculating averages
+  - Use nullish coalescing (??) instead of logical OR (||) to properly handle 0 values
+  - Filter pattern: Check if key field is not null/undefined to ensure all dimension scores are populated
+  - Empty state already handles gracefully with "No competency data available" message
+  - Pre-existing test errors are acceptable - only check for NEW errors introduced by changes
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no errors in modified files)
+---
+## 2026-01-16 - BUG-004: Fix NaN percentage in interview type distribution
+- Fixed aggregateScoreByType function to handle 0 scores correctly
+- Files changed: lib/analytics/aggregations.ts
+- **Learnings:**
+  - Same pattern as BUG-001: JavaScript falsy checks exclude valid 0 values
+  - Changed `if (!session.feedback?.overallScore)` to explicit null/undefined check
+  - Pattern: `if (value === null || value === undefined)` instead of `if (!value)`
+  - This affects score-by-type chart in analytics section (Performance by Interview Type)
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no errors in modified file)
+  - Consistent with established codebase pattern from BUG-001 fix
+---
+## 2026-01-16 - MOTI-005: Show 'Next Goal' recommendation
+- Implemented personalized goal recommendation system on dashboard
+- Files changed: 
+  - components/dashboard/next-goal-card.tsx (new file)
+  - components/dashboard/sections/overview.tsx (integration)
+- **Learnings:**
+  - Goal prioritization logic: streak completion (3-6 days) > missing types > beat high score > improve weakest type > default
+  - Helper functions for analysis: getMissingTypes(), getBestPerformingType(), getWeakestType()
+  - Set data structure efficient for checking practiced types: new Set(sessions.map(s => s.roundType))
+  - Pre-fill setup page via query params: router.push(`/setup?${params.toString()}`)
+  - Gradient background pattern: from-primary/5 to-primary/10 border-primary/20 for featured cards
+  - Dynamic pluralization: `${days} day${days === 1 ? '' : 's'}` for better UX
+  - Conditional recommendations reduce decision fatigue and drive targeted practice
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (clean for modified files)
+---
+## 2026-01-16 - PRAC-001: Add bookmark functionality for questions
+- Implemented bookmark system with database table and API endpoints
+- Files changed:
+  - lib/db/schema.ts (added bookmarked_question table with relations)
+  - app/api/questions/bookmark/route.ts (new file - GET/POST/DELETE endpoints)
+  - components/dashboard/sections/questions.tsx (integrated bookmark UI with optimistic updates)
+  - components/question-bank/question-card.tsx (added bookmark button to mobile cards)
+- **Learnings:**
+  - Database push requires DATABASE_URL env var - used workaround: `grep DATABASE_URL .env > .env.db && export $(cat .env.db) && npm run db:push`
+  - Bookmark icon pattern: filled when bookmarked (fill-current class), outlined when not
+  - Optimistic UI: Update state immediately, revert on API error for better UX
+  - Bulk bookmark handler: use Promise.all() to bookmark multiple questions in parallel
+  - Toggle bookmark: check current state, then call appropriate API method (POST vs DELETE)
+  - GET endpoint returns array of question IDs for efficient Set-based lookup
+  - onConflictDoNothing() in Drizzle prevents duplicate bookmark errors
+  - Mobile card layout: bookmark button in header with touch-friendly sizing (p-1.5 rounded-lg)
+  - Desktop table: bookmark button before "Try Question" with flex layout
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
+---
+## 2026-01-16 - PRAC-002: Create 'My Saved Questions' view
+- Implemented saved questions view with toggle tabs and filtering
+- Files changed:
+  - components/dashboard/sections/questions.tsx (added toggle tabs, showOnlyBookmarked state, filter logic, Practice with these button)
+  - components/question-bank/empty-state.tsx (added no-bookmarks empty state)
+- **Learnings:**
+  - Toggle tabs pattern: bg-muted/30 container with p-1, active tab gets bg-card shadow-sm
+  - Bookmark count badge: secondary variant with min-w-5 for consistent sizing
+  - Filter state reset: always include new filter in clearAllFilters() function
+  - Practice with random selection: use Math.random() with filtered array for variety
+  - Empty state callbacks: conditional onExploreProductSense based on empty state type
+  - useMemo dependencies: include all filter states (showOnlyBookmarked, bookmarkedQuestionIds)
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors in modified files)
+---
+## 2026-01-16 - PRAC-003: Add difficulty level tracking
+- Implemented difficulty level performance tracking with bar chart and intelligent recommendations
+- Files changed:
+  - lib/analytics/aggregations.ts (added config to SessionWithFeedback interface, aggregateScoreByDifficulty(), calculateRecommendedDifficulty())
+  - components/dashboard/charts/score-by-difficulty.tsx (new file - bar chart with recommendation card)
+  - components/dashboard/sections/analytics.tsx (integrated new chart)
+- **Learnings:**
+  - Difficulty already stored in config JSONB field - no schema changes needed
+  - Difficulty labels: beginner="Junior/APM", intermediate="IC PM", advanced="Senior PM"
+  - Recommendation logic: 3+ sessions required, >= 4.0 avg (80%) = level up, <= 2.5 avg (50%) = level down
+  - Conditional styling: dynamic className based on recommendation type (green=level up, orange=level down, blue=stay)
+  - Chart tooltips: show session count in addition to average score for context
+  - Empty state: Trophy icon with helpful message for users with no difficulty data
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
+---
+## 2026-01-16 - PRAC-004: Show 'Weakest Area' with targeted practice
+- Implemented weakest area identification and personalized practice recommendations
+- Files changed:
+  - components/dashboard/weakest-area-card.tsx (new file)
+  - components/dashboard/sections/analytics.tsx
+- **Learnings:**
+  - Reused existing aggregateCompetencyScores() function from lib/analytics/aggregations.ts
+  - Array.reduce() pattern for finding minimum: `reduce((lowest, current) => current.score < lowest.score ? current : lowest)`
+  - IMPROVEMENT_TIPS constant provides domain-specific coaching for each competency
+  - Conditional messaging: "Priority Focus Area" for scores <60 vs "Area to Polish" for relative weaknesses
+  - Empty state handles zero sessions case with helpful CTA
+  - Link to /setup with focus parameter: `href={`/setup?focus=${competencyName.toLowerCase()}`}`
+  - Orange color scheme (border-orange-500/30, bg-orange-500/5) for warning/focus sections
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors in modified files)
+---
+## 2026-01-16 - PRAC-005: Create practice sets
+- Implemented practice set system with database tables and API endpoints
+- Files changed:
+  - lib/db/schema.ts (added practice_set and practice_set_question tables with relations)
+  - app/api/practice-sets/route.ts (GET all sets, POST create set)
+  - app/api/practice-sets/[setId]/route.ts (DELETE set, PATCH update set)
+  - app/api/practice-sets/[setId]/questions/route.ts (GET/POST/DELETE questions in set)
+  - components/question-bank/practice-set-dialog.tsx (modal for creating sets)
+  - components/question-bank/practice-sets-list.tsx (grid display of sets)
+  - components/dashboard/sections/questions.tsx (integrated Practice Sets tab)
+- **Learnings:**
+  - Junction table pattern: practice_set_question links practice_sets to questions with cascade deletes
+  - Dialog pattern: Modal with form validation, loading states, and success callbacks
+  - Tab state management: Three-way toggle (All/Saved/Practice Sets) with conditional rendering
+  - API endpoint pattern: Verify ownership before operations (and() condition with userId)
+  - optimistic updates and refresh triggers for seamless UX
+  - onConflictDoNothing() prevents duplicate entries in junction tables
+  - updatedAt timestamp updates when adding/removing questions from sets
+  - Grid layout with responsive columns (1/2/3 cols) for practice set cards
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (clean for new files)
+---

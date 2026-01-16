@@ -16,6 +16,10 @@ export interface Session {
   startedAt: Date | string;
   endedAt: Date | string | null;
   createdAt?: Date | string;
+  feedback?: {
+    status: string | null;
+    overallScore: string | null;
+  };
 }
 
 export interface SessionsResponse {

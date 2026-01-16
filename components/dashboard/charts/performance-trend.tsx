@@ -1,6 +1,6 @@
 "use client";
 
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, Line } from "recharts";
 import {
   Card,
   CardContent,
@@ -11,7 +11,7 @@ import {
 import { ChartConfig, ChartContainer } from "@/components/ui/chart";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo, useEffect } from "react";
 import { useSpring, useMotionValueEvent } from "motion/react";
 
 interface PerformanceTrendData {
@@ -30,7 +30,7 @@ interface PerformanceTrendProps {
 const chartConfig = {
   score: {
     label: "Score",
-    color: "hsl(var(--chart-1))",
+    color: "#8b5cf6", // Purple-500 - matching ClippedAreaChart for consistency
   },
 } satisfies ChartConfig;
 
@@ -38,12 +38,15 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
   const chartRef = useRef<HTMLDivElement>(null);
   const [axis, setAxis] = useState(0);
 
-  // Motion values for smooth animations
+  // Get latest score for initial value
+  const latestScore = data.length > 0 ? data[data.length - 1].score : 0;
+
+  // Motion values for smooth animations - initialize with latest score
   const springX = useSpring(0, {
     damping: 30,
     stiffness: 100,
   });
-  const springY = useSpring(0, {
+  const springY = useSpring(latestScore, {
     damping: 30,
     stiffness: 100,
   });
@@ -51,6 +54,38 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
   useMotionValueEvent(springX, "change", (latest) => {
     setAxis(latest);
   });
+
+  // Initialize axis to full width on mount so chart is visible immediately
+  useEffect(() => {
+    const width = chartRef.current?.getBoundingClientRect().width || 0;
+    if (width > 0) {
+      setAxis(width);
+      springX.set(width);
+    }
+    // Set springY to latest score on mount
+    springY.set(latestScore);
+  }, [springX, springY, latestScore]);
+
+  // Calculate linear regression trend line
+  const trendLineData = useMemo(() => {
+    if (data.length < 2) return [];
+
+    // Calculate linear regression: y = mx + b
+    const n = data.length;
+    const sumX = data.reduce((sum, _, i) => sum + i, 0);
+    const sumY = data.reduce((sum, point) => sum + point.score, 0);
+    const sumXY = data.reduce((sum, point, i) => sum + i * point.score, 0);
+    const sumX2 = data.reduce((sum, _, i) => sum + i * i, 0);
+
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    // Generate trend line points
+    return data.map((point, i) => ({
+      ...point,
+      trendScore: slope * i + intercept,
+    }));
+  }, [data]);
 
   // Calculate trend
   const trend = data.length >= 2
@@ -61,7 +96,7 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
     : "0";
 
   const currentScore = data.length > 0
-    ? (springY.get() || data[data.length - 1].score).toFixed(0)
+    ? (springY.get() || latestScore).toFixed(0)
     : "0";
 
   if (data.length === 0) {
@@ -99,7 +134,7 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
           <AreaChart
             className="overflow-visible"
             accessibilityLayer
-            data={data}
+            data={trendLineData.length > 0 ? trendLineData : data}
             onMouseMove={(state) => {
               const x = state.activeCoordinate?.x;
               const dataValue = state.activePayload?.[0]?.value;
@@ -110,7 +145,7 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
             }}
             onMouseLeave={() => {
               springX.set(chartRef.current?.getBoundingClientRect().width || 0);
-              springY.jump(data[data.length - 1].score);
+              springY.jump(latestScore);
             }}
             onClick={(state) => {
               if (onSessionClick && state.activePayload?.[0]?.payload) {
@@ -127,6 +162,7 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
             <CartesianGrid
               vertical={false}
               strokeDasharray="3 3"
+              stroke="hsl(var(--border))"
               horizontalCoordinatesGenerator={(props) => {
                 const { height } = props;
                 return [0, height - 30];
@@ -137,7 +173,7 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
               tickLine={false}
               axisLine={false}
               tickMargin={8}
-              tick={{ fontSize: 12 }}
+              tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
             />
             <Area
               dataKey="score"
@@ -180,6 +216,18 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
             >
               {springY.get().toFixed(0)}%
             </text>
+            {/* Trend line showing improvement direction */}
+            {trendLineData.length > 0 && (
+              <Line
+                dataKey="trendScore"
+                type="monotone"
+                stroke="hsl(var(--primary))"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+                strokeOpacity={0.6}
+              />
+            )}
             {/* Ghost line behind graph */}
             <Area
               dataKey="score"

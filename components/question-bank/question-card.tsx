@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Play, Calendar, Building2 } from "lucide-react";
+import { Play, Calendar, Building2, Bookmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface QuestionCardProps {
@@ -19,6 +19,8 @@ interface QuestionCardProps {
   onTryQuestion: () => void;
   badgeClassName?: string;
   index?: number;
+  isBookmarked?: boolean;
+  onToggleBookmark?: () => void;
 }
 
 export function QuestionCard({
@@ -28,6 +30,8 @@ export function QuestionCard({
   onTryQuestion,
   badgeClassName,
   index = 0,
+  isBookmarked = false,
+  onToggleBookmark,
 }: QuestionCardProps) {
   // Format date as relative time
   const formatDate = (date: Date | null) => {
@@ -70,16 +74,40 @@ export function QuestionCard({
         />
       </div>
 
-      {/* Header: Company and Date badges */}
+      {/* Header: Company, Date badges, and Bookmark button */}
       <div className="flex items-center justify-between mb-3 pl-8">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Building2 className="w-3.5 h-3.5 opacity-60" />
-          <span>{question.company || "N/A"}</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Building2 className="w-3.5 h-3.5 opacity-60" />
+            <span>{question.company || "N/A"}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Calendar className="w-3.5 h-3.5 opacity-60" />
+            <span>{formatDate(question.askedAt)}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Calendar className="w-3.5 h-3.5 opacity-60" />
-          <span>{formatDate(question.askedAt)}</span>
-        </div>
+        {onToggleBookmark && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleBookmark();
+            }}
+            className={cn(
+              "p-1.5 rounded-lg transition-colors touch-manipulation",
+              isBookmarked
+                ? "text-primary bg-primary/10"
+                : "text-muted-foreground hover:text-primary hover:bg-primary/5"
+            )}
+            aria-label={isBookmarked ? "Remove bookmark" : "Bookmark question"}
+          >
+            <Bookmark
+              className={cn(
+                "w-4 h-4",
+                isBookmarked && "fill-current"
+              )}
+            />
+          </button>
+        )}
       </div>
 
       {/* Question Text - 2 line clamp */}

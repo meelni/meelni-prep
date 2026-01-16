@@ -1,10 +1,10 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Search, Filter, Sparkles } from "lucide-react";
+import { Search, Filter, Sparkles, Bookmark } from "lucide-react";
 import { LucideIcon } from "lucide-react";
 
-type EmptyStateType = "no-search" | "no-filter" | "first-time";
+type EmptyStateType = "no-search" | "no-filter" | "first-time" | "no-bookmarks";
 
 interface EmptyStateProps {
   type: EmptyStateType;
@@ -44,6 +44,13 @@ const EMPTY_STATE_CONFIG: Record<
     title: "Welcome to the Question Bank",
     description:
       "Browse 2,879 real PM interview questions from top companies. Click \"Try Question\" to start practicing immediately.",
+  },
+  "no-bookmarks": {
+    icon: Bookmark,
+    iconBg: "bg-muted/30",
+    title: "No saved questions yet",
+    description:
+      "Start building your personalized practice list by bookmarking questions. Click the bookmark icon on any question to save it.",
   },
 };
 
@@ -110,6 +117,12 @@ export function EmptyState({
         {type === "first-time" && onExploreProductSense && (
           <Button onClick={onExploreProductSense}>
             Explore Product Sense Questions
+          </Button>
+        )}
+
+        {type === "no-bookmarks" && onExploreProductSense && (
+          <Button onClick={onExploreProductSense}>
+            Browse Question Bank
           </Button>
         )}
       </div>
