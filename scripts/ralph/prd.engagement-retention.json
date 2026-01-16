@@ -1,0 +1,512 @@
+{
+  "name": "Meelni Engagement & Retention Features",
+  "description": "Feature-focused roadmap to drive user engagement and retention. Organized around user value: see progress, stay motivated, keep practicing.",
+  "version": "2.0.0",
+  "created": "2026-01-16",
+  "branchName": "ralph/engagement-features",
+  "themes": [
+    {
+      "name": "See Your Progress",
+      "description": "Help users understand how they're improving over time"
+    },
+    {
+      "name": "Stay Motivated",
+      "description": "Gamification, streaks, and achievements to keep users coming back"
+    },
+    {
+      "name": "Practice Smarter",
+      "description": "Personalized recommendations and targeted practice"
+    },
+    {
+      "name": "Stay Connected",
+      "description": "Notifications and reminders to maintain engagement"
+    }
+  ],
+  "userStories": [
+    {
+      "id": "PROG-001",
+      "title": "Build feedback results page",
+      "description": "Users need to see detailed feedback after each interview to understand their performance",
+      "theme": "See Your Progress",
+      "acceptanceCriteria": [
+        "Create /app/feedback/[sessionId]/page.tsx",
+        "Display overall score prominently (large number with color indicator)",
+        "Show 5 dimension scores: structure, clarity, insight, communication, leadership",
+        "Use progress bars or radial charts for visual impact",
+        "Add loading skeleton while fetching",
+        "Redirect to signin if not authenticated",
+        "npm run typecheck passes",
+        "npm run build passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 4,
+      "userValue": "Users can finally see their detailed performance breakdown"
+    },
+    {
+      "id": "PROG-002",
+      "title": "Display strengths and areas to improve",
+      "description": "Show actionable feedback on what went well and what to work on",
+      "theme": "See Your Progress",
+      "acceptanceCriteria": [
+        "Add strengths section with green checkmark icons",
+        "Add improvements section with orange arrow icons",
+        "Add drills section with practice recommendations",
+        "Display AI-generated summary at the top",
+        "Use Card components with appropriate colors",
+        "Make each item scannable (short phrases, not paragraphs)",
+        "npm run typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Users know exactly what to focus on next"
+    },
+    {
+      "id": "PROG-003",
+      "title": "Show full interview transcript",
+      "description": "Let users review exactly what they said during the interview",
+      "theme": "See Your Progress",
+      "acceptanceCriteria": [
+        "Fetch transcript turns for the session",
+        "Display as chat-style conversation (user vs interviewer)",
+        "Show timestamps for each turn",
+        "Alternate message alignment (user right, interviewer left)",
+        "Add expand/collapse for long transcripts",
+        "Highlight key moments if available",
+        "npm run typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Users can learn from reviewing their actual responses"
+    },
+    {
+      "id": "PROG-004",
+      "title": "Add 'View Feedback' links to dashboard",
+      "description": "Easy navigation from session history to detailed feedback",
+      "theme": "See Your Progress",
+      "acceptanceCriteria": [
+        "Add 'View Feedback' button to each session in history list",
+        "Link to /feedback/[sessionId]",
+        "Show button only when feedback is ready (not pending)",
+        "Show 'Generating...' badge if feedback still processing",
+        "Add score preview on hover or inline",
+        "npm run typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 2,
+      "userValue": "One-click access to feedback from anywhere"
+    },
+    {
+      "id": "PROG-005",
+      "title": "Build score trend chart",
+      "description": "Visualize improvement over time with a line chart",
+      "theme": "See Your Progress",
+      "acceptanceCriteria": [
+        "Create ScoreTrendChart component using recharts",
+        "Plot overall_score over time (x-axis: date, y-axis: score 0-100)",
+        "Show data points for each completed interview",
+        "Add trend line showing improvement direction",
+        "Handle case with < 3 data points gracefully",
+        "Add to dashboard analytics section",
+        "npm run typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Users can see they're actually improving"
+    },
+    {
+      "id": "PROG-006",
+      "title": "Build competency radar chart",
+      "description": "Spider chart showing strengths across 5 dimensions",
+      "theme": "See Your Progress",
+      "acceptanceCriteria": [
+        "Create CompetencyRadar component using recharts RadarChart",
+        "Display 5 axes: structure, clarity, insight, communication, leadership",
+        "Calculate average scores from all sessions",
+        "Use filled polygon with brand colors",
+        "Add tooltips showing exact scores",
+        "Add to dashboard analytics section",
+        "npm run typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Users understand their strengths and weaknesses at a glance"
+    },
+    {
+      "id": "MOTI-001",
+      "title": "Add practice streak counter",
+      "description": "Track consecutive days of practice to build habits",
+      "theme": "Stay Motivated",
+      "acceptanceCriteria": [
+        "Add streak_current and streak_longest columns to app_user table",
+        "Update streak on each completed interview",
+        "Reset streak if user misses a day",
+        "Display streak prominently on dashboard (fire emoji + number)",
+        "Show 'Keep your streak!' message if at risk",
+        "npm run db:push succeeds",
+        "npm run typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 4,
+      "userValue": "Gamification drives daily engagement"
+    },
+    {
+      "id": "MOTI-002",
+      "title": "Create achievement badges system",
+      "description": "Award badges for milestones to celebrate progress",
+      "theme": "Stay Motivated",
+      "acceptanceCriteria": [
+        "Create user_achievements table (user_id, achievement_id, earned_at)",
+        "Define initial badges: First Interview, 5 Interviews, 10 Interviews, Perfect Score, 7-Day Streak, 30-Day Streak, All Types Practiced",
+        "Create /lib/achievements.ts with badge definitions and check logic",
+        "Award badges automatically after each interview",
+        "npm run db:push succeeds",
+        "npm run typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 4,
+      "userValue": "Achievements provide dopamine hits and goals"
+    },
+    {
+      "id": "MOTI-003",
+      "title": "Display earned badges on dashboard",
+      "description": "Show off achievements to motivate continued practice",
+      "theme": "Stay Motivated",
+      "acceptanceCriteria": [
+        "Create BadgeDisplay component with badge icons",
+        "Show earned badges in a horizontal row",
+        "Show locked badges as grayed out (teaser)",
+        "Add tooltip with badge name and description",
+        "Show 'NEW' indicator for recently earned badges",
+        "Add to dashboard overview section",
+        "npm run typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Visual rewards for consistent practice"
+    },
+    {
+      "id": "MOTI-004",
+      "title": "Add interview type distribution chart",
+      "description": "Show which types the user has practiced most",
+      "theme": "Stay Motivated",
+      "acceptanceCriteria": [
+        "Create donut chart showing distribution by round_type",
+        "Categories: product_sense, behavioral, execution, strategy",
+        "Show count and percentage for each",
+        "Highlight if user is missing any type (gap indicator)",
+        "Add to dashboard analytics section",
+        "npm run typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 2,
+      "userValue": "Encourages practicing all interview types"
+    },
+    {
+      "id": "MOTI-005",
+      "title": "Show 'Next Goal' recommendation",
+      "description": "Personalized suggestion for what to do next",
+      "theme": "Stay Motivated",
+      "acceptanceCriteria": [
+        "Create NextGoalCard component",
+        "Analyze user's history and suggest next action",
+        "Examples: 'Try a Strategy interview', 'Beat your high score', 'Complete your 7-day streak'",
+        "Link directly to setup page with pre-filled config",
+        "Add to dashboard overview section",
+        "npm run typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Reduces decision fatigue, increases sessions"
+    },
+    {
+      "id": "PRAC-001",
+      "title": "Add bookmark functionality for questions",
+      "description": "Let users save questions for later practice",
+      "theme": "Practice Smarter",
+      "acceptanceCriteria": [
+        "Create bookmarked_questions table (user_id, question_id, created_at)",
+        "Add POST/DELETE /api/questions/bookmark endpoint",
+        "Add bookmark icon (heart or bookmark) to question cards",
+        "Toggle bookmark state on click with optimistic UI",
+        "npm run db:push succeeds",
+        "npm run typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Users can curate their own practice list"
+    },
+    {
+      "id": "PRAC-002",
+      "title": "Create 'My Saved Questions' view",
+      "description": "Dedicated page to see all bookmarked questions",
+      "theme": "Practice Smarter",
+      "acceptanceCriteria": [
+        "Add 'Saved' tab or filter to questions section",
+        "Show only bookmarked questions when filtered",
+        "Display bookmark count in tab",
+        "Add 'Practice with these' button to start interview with saved questions",
+        "Handle empty state with helpful message",
+        "npm run typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 2,
+      "userValue": "Quick access to personally curated practice"
+    },
+    {
+      "id": "PRAC-003",
+      "title": "Add difficulty level tracking",
+      "description": "Track performance at different difficulty levels",
+      "theme": "Practice Smarter",
+      "acceptanceCriteria": [
+        "Ensure difficulty is saved with each interview session",
+        "Create chart showing score by difficulty (easy, medium, hard)",
+        "Calculate and display 'recommended difficulty' based on recent scores",
+        "Add to dashboard analytics section",
+        "npm run typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Users can level up as they improve"
+    },
+    {
+      "id": "PRAC-004",
+      "title": "Show 'Weakest Area' with targeted practice",
+      "description": "Identify lowest-scoring dimension and suggest practice",
+      "theme": "Practice Smarter",
+      "acceptanceCriteria": [
+        "Calculate average score per dimension across all sessions",
+        "Identify the lowest-scoring dimension",
+        "Create WeakestAreaCard component showing the weakness",
+        "Add 'Practice This' button linking to relevant questions",
+        "Include 1-2 tips for improving that dimension",
+        "npm run typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Personalized guidance to improve fastest"
+    },
+    {
+      "id": "PRAC-005",
+      "title": "Create practice sets",
+      "description": "Let users create named collections of questions",
+      "theme": "Practice Smarter",
+      "acceptanceCriteria": [
+        "Create practice_sets table (id, user_id, name, created_at)",
+        "Create practice_set_questions junction table",
+        "Add 'Create Practice Set' button to questions page",
+        "Allow adding questions to existing sets",
+        "Show sets list with question counts",
+        "npm run db:push succeeds",
+        "npm run typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 4,
+      "userValue": "Organized prep for specific interview targets"
+    },
+    {
+      "id": "PRAC-006",
+      "title": "Add company-specific question filtering",
+      "description": "Filter questions by target company",
+      "theme": "Practice Smarter",
+      "acceptanceCriteria": [
+        "Check if company field exists in questions table",
+        "Add company filter dropdown to questions page",
+        "Show unique companies in dropdown",
+        "Filter questions when company selected",
+        "Show company badge on question cards",
+        "npm run typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 2,
+      "userValue": "Targeted prep for specific company interviews"
+    },
+    {
+      "id": "CONN-001",
+      "title": "Set up email infrastructure with Resend",
+      "description": "Foundation for all email communications",
+      "theme": "Stay Connected",
+      "acceptanceCriteria": [
+        "Install resend package",
+        "Create /lib/email/client.ts with Resend client initialization",
+        "Add RESEND_API_KEY to .env.example",
+        "Create base email template with Meelni branding",
+        "Add sendEmail helper function",
+        "npm run typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 2,
+      "userValue": "Enables all email features"
+    },
+    {
+      "id": "CONN-002",
+      "title": "Send feedback ready email",
+      "description": "Notify users when their interview feedback is available",
+      "theme": "Stay Connected",
+      "acceptanceCriteria": [
+        "Create feedback-ready email template",
+        "Include: overall score, quick summary, link to full feedback",
+        "Trigger email when feedback generation completes",
+        "Add to feedback generation flow (Inngest job or API)",
+        "Email subject: 'Your interview feedback is ready!'",
+        "npm run typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Brings users back to see their results"
+    },
+    {
+      "id": "CONN-003",
+      "title": "Send weekly progress digest",
+      "description": "Weekly summary email with stats and encouragement",
+      "theme": "Stay Connected",
+      "acceptanceCriteria": [
+        "Create weekly-digest email template",
+        "Include: interviews this week, average score, streak status, best improvement",
+        "Add personalized message based on activity level",
+        "Set up Inngest cron job for weekly send (Sunday evening)",
+        "Only send to users with at least 1 interview",
+        "npm run typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 4,
+      "userValue": "Re-engages users weekly"
+    },
+    {
+      "id": "CONN-004",
+      "title": "Send streak at risk reminder",
+      "description": "Remind users before their streak resets",
+      "theme": "Stay Connected",
+      "acceptanceCriteria": [
+        "Create streak-reminder email template",
+        "Trigger if user has streak >= 3 and hasn't practiced today",
+        "Send in evening (6 PM user timezone or default)",
+        "Include current streak and encouragement",
+        "Add 'Practice Now' CTA button",
+        "npm run typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Saves streaks, drives daily engagement"
+    },
+    {
+      "id": "CONN-005",
+      "title": "Add email preferences to settings",
+      "description": "Let users control which emails they receive",
+      "theme": "Stay Connected",
+      "acceptanceCriteria": [
+        "Add email preferences columns to app_user (weekly_digest, streak_reminders, feedback_notifications)",
+        "Create email preferences UI in settings section",
+        "Toggle switches for each email type",
+        "Save preferences to database",
+        "Respect preferences when sending emails",
+        "npm run db:push succeeds",
+        "npm run typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Users control their experience"
+    },
+    {
+      "id": "CONN-006",
+      "title": "Send achievement earned notification",
+      "description": "Celebrate when users earn new badges",
+      "theme": "Stay Connected",
+      "acceptanceCriteria": [
+        "Create achievement email template with badge image",
+        "Trigger email when badge is awarded",
+        "Include badge name, description, and encouragement",
+        "Show 'next badge to earn' teaser",
+        "Make emails shareable (social preview)",
+        "npm run typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 3,
+      "userValue": "Celebrates wins, reinforces behavior"
+    },
+    {
+      "id": "CONN-007",
+      "title": "Add usage quota indicator to setup",
+      "description": "Show remaining interviews before starting",
+      "theme": "Stay Connected",
+      "acceptanceCriteria": [
+        "Fetch user's remaining quota on /setup page",
+        "Display 'X interviews remaining this month'",
+        "Show warning styling if < 3 remaining",
+        "Add upgrade CTA if quota exhausted",
+        "Disable start button if no quota",
+        "npm run typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 2,
+      "userValue": "Transparency drives trust and upgrades"
+    },
+    {
+      "id": "CONN-008",
+      "title": "Build account settings page",
+      "description": "Central place for profile and preferences",
+      "theme": "Stay Connected",
+      "acceptanceCriteria": [
+        "Replace 'Coming Soon' placeholder in settings section",
+        "Display user profile (name, email, member since)",
+        "Show subscription status and manage billing link",
+        "Include email preferences toggles",
+        "Add account deletion option with confirmation",
+        "npm run typecheck passes",
+        "npm run build passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": "",
+      "estimatedHours": 4,
+      "userValue": "Users feel in control of their account"
+    }
+  ]
+}
