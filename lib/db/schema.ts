@@ -273,6 +273,21 @@ export const userInsights = pgTable("user_insights", {
   lastUpdatedAtIdx: index("user_insights_last_updated_at_idx").on(table.lastUpdatedAt),
 }));
 
+// MOTI-002: User achievements tracking
+export const userAchievement = pgTable("user_achievement", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+  achievementId: text("achievement_id").notNull(),
+  earnedAt: timestamp("earned_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Index for user lookups
+  userIdIdx: index("user_achievement_user_id_idx").on(table.userId),
+  // Index for achievement lookups
+  achievementIdIdx: index("user_achievement_achievement_id_idx").on(table.achievementId),
+  // Unique constraint: user can only earn each achievement once
+  userAchievementUnique: index("user_achievement_user_achievement_idx").on(table.userId, table.achievementId),
+}));
+
 // ==================== Relations ====================
 // These enable Drizzle's relational query API (e.g., `with: { feedback: true }`)
 
@@ -320,11 +335,20 @@ export const appUserRelations = relations(appUser, ({ many, one }) => ({
   }),
   usageRecords: many(usageRecord),
   paymentHistory: many(paymentHistory),
+  // MOTI-002: Achievements
+  achievements: many(userAchievement),
 }));
 
 export const userInsightsRelations = relations(userInsights, ({ one }) => ({
   user: one(appUser, {
     fields: [userInsights.userId],
+    references: [appUser.id],
+  }),
+}));
+
+export const userAchievementRelations = relations(userAchievement, ({ one }) => ({
+  user: one(appUser, {
+    fields: [userAchievement.userId],
     references: [appUser.id],
   }),
 }));

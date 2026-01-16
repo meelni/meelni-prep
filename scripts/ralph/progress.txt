@@ -209,3 +209,22 @@ Initial badges:
   - Pattern: When story requirements are already met by existing code, verify and document rather than duplicate
 ---
 
+## 2026-01-16 - MOTI-001: Add practice streak counter
+- Implemented practice streak tracking with database columns and update logic
+- Files changed:
+  - lib/db/schema.ts (added streak_current, streak_longest, last_practice_date)
+  - lib/streaks.ts (new file - updateStreak() and isStreakAtRisk() utilities)
+  - app/api/interview/end/route.ts (call updateStreak after completion)
+  - lib/db/queries/user-stats.ts (getUserStreak() query with at-risk detection)
+  - app/api/stats/user-summary/route.ts (include streak in response)
+  - components/dashboard/sections/overview.tsx (display streak card with warnings)
+- **Learnings:**
+  - Drizzle schema push works with explicit DATABASE_URL environment variable
+  - Streak logic uses date-only comparison (strip time) to detect consecutive days
+  - At-risk detection: streak >= 3 AND last practice != today
+  - Dashboard card uses conditional rendering (userSummary?.streak) for backwards compatibility
+  - Fire icon color changes based on streak > 0 (orange-500 vs muted)
+  - Warning message only shows for streaks >= 3 to avoid nagging new users
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (pre-existing errors only)
+---
+

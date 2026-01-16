@@ -158,8 +158,8 @@
         "npm run typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed: Added streak tracking columns to app_user, created updateStreak() utility, integrated streak updates in interview end API, added getUserStreak() query, displayed streak on dashboard with fire icon and at-risk warnings",
       "estimatedHours": 4,
       "userValue": "Gamification drives daily engagement"
     },
