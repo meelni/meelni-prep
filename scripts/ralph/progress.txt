@@ -366,7 +366,7 @@ Initial badges:
 ---
 ## 2026-01-16 - PRAC-002: Create 'My Saved Questions' view
 - Implemented saved questions view with toggle tabs and filtering
-- Files changed: 
+- Files changed:
   - components/dashboard/sections/questions.tsx (added toggle tabs, showOnlyBookmarked state, filter logic, Practice with these button)
   - components/question-bank/empty-state.tsx (added no-bookmarks empty state)
 - **Learnings:**
@@ -377,4 +377,19 @@ Initial badges:
   - Empty state callbacks: conditional onExploreProductSense based on empty state type
   - useMemo dependencies: include all filter states (showOnlyBookmarked, bookmarkedQuestionIds)
   - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors in modified files)
+---
+## 2026-01-16 - PRAC-003: Add difficulty level tracking
+- Implemented difficulty level performance tracking with bar chart and intelligent recommendations
+- Files changed:
+  - lib/analytics/aggregations.ts (added config to SessionWithFeedback interface, aggregateScoreByDifficulty(), calculateRecommendedDifficulty())
+  - components/dashboard/charts/score-by-difficulty.tsx (new file - bar chart with recommendation card)
+  - components/dashboard/sections/analytics.tsx (integrated new chart)
+- **Learnings:**
+  - Difficulty already stored in config JSONB field - no schema changes needed
+  - Difficulty labels: beginner="Junior/APM", intermediate="IC PM", advanced="Senior PM"
+  - Recommendation logic: 3+ sessions required, >= 4.0 avg (80%) = level up, <= 2.5 avg (50%) = level down
+  - Conditional styling: dynamic className based on recommendation type (green=level up, orange=level down, blue=stay)
+  - Chart tooltips: show session count in addition to average score for context
+  - Empty state: Trophy icon with helpful message for users with no difficulty data
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
 ---
