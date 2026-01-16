@@ -44,6 +44,12 @@ export function Footer() {
               >
                 Blog
               </a>
+              <a
+                href="/contact"
+                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+              >
+                Contact
+              </a>
             </nav>
           </div>
 

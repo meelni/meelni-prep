@@ -108,6 +108,8 @@ export const SettingsSection = memo(function SettingsSection() {
     }
   };
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const handleDeleteAccount = async () => {
     const confirmed = window.confirm(
       "Are you sure you want to delete your account? This action cannot be undone. All your interview data, transcripts, and progress will be permanently deleted."
@@ -121,8 +123,34 @@ export const SettingsSection = memo(function SettingsSection() {
       if (doubleConfirm) {
         const userInput = window.prompt("Type DELETE to confirm:");
         if (userInput === "DELETE") {
-          // TODO: Implement account deletion API
-          alert("Account deletion is not yet implemented. Please contact support.");
+          setIsDeleting(true);
+          try {
+            const response = await fetch("/api/user/delete", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ confirmation: "DELETE" }),
+            });
+
+            if (!response.ok) {
+              const data = await response.json();
+              throw new Error(data.error || "Failed to delete account");
+            }
+
+            // Account deleted - redirect to home
+            alert("Your account has been deleted. You will be redirected to the home page.");
+            window.location.href = "/";
+          } catch (error) {
+            console.error("Failed to delete account:", error);
+            alert(
+              error instanceof Error
+                ? error.message
+                : "Failed to delete account. Please contact support at support@meelni.com"
+            );
+          } finally {
+            setIsDeleting(false);
+          }
         }
       }
     }
@@ -269,9 +297,10 @@ export const SettingsSection = memo(function SettingsSection() {
               variant="outline"
               className="w-full md:w-auto border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600"
               onClick={handleDeleteAccount}
+              disabled={isDeleting}
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Delete Account
+              {isDeleting ? "Deleting..." : "Delete Account"}
             </Button>
             <p className="text-xs text-muted-foreground">
               Permanently delete your account and all associated data. This action cannot be undone.

@@ -14,6 +14,8 @@ import {
   Loader2,
   Crown,
   Infinity,
+  XCircle,
+  RotateCcw,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
@@ -53,6 +55,9 @@ export function BillingSection() {
   const [loadingPayments, setLoadingPayments] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [managingSubscription, setManagingSubscription] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancellingSubscription, setCancellingSubscription] = useState(false);
+  const [reactivatingSubscription, setReactivatingSubscription] = useState(false);
 
   // Fetch subscription data
   useEffect(() => {
@@ -142,6 +147,70 @@ export function BillingSection() {
       console.error("Error opening billing portal:", err);
       alert("Failed to open billing portal. Please try again.");
       setManagingSubscription(false);
+    }
+  }
+
+  // Handle cancel subscription
+  async function handleCancelSubscription(cancelImmediately: boolean = false) {
+    setCancellingSubscription(true);
+    try {
+      const response = await fetch("/api/billing/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cancelImmediately }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to cancel subscription");
+      }
+
+      const data = await response.json();
+      alert(data.message);
+
+      // Refresh subscription data
+      const subResponse = await fetch("/api/billing/subscription");
+      if (subResponse.ok) {
+        const subData = await subResponse.json();
+        setSubscription(subData);
+      }
+
+      setShowCancelModal(false);
+    } catch (err) {
+      console.error("Error cancelling subscription:", err);
+      alert(err instanceof Error ? err.message : "Failed to cancel subscription. Please try again.");
+    } finally {
+      setCancellingSubscription(false);
+    }
+  }
+
+  // Handle reactivate subscription
+  async function handleReactivateSubscription() {
+    setReactivatingSubscription(true);
+    try {
+      const response = await fetch("/api/billing/cancel", {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to reactivate subscription");
+      }
+
+      const data = await response.json();
+      alert(data.message);
+
+      // Refresh subscription data
+      const subResponse = await fetch("/api/billing/subscription");
+      if (subResponse.ok) {
+        const subData = await subResponse.json();
+        setSubscription(subData);
+      }
+    } catch (err) {
+      console.error("Error reactivating subscription:", err);
+      alert(err instanceof Error ? err.message : "Failed to reactivate subscription. Please try again.");
+    } finally {
+      setReactivatingSubscription(false);
     }
   }
 
@@ -284,8 +353,38 @@ export function BillingSection() {
                   </p>
                 )}
 
+                {/* Cancellation Notice */}
+                {subscription.cancelAtPeriodEnd && (
+                  <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                    <p className="text-sm text-orange-600 dark:text-orange-400">
+                      <strong>Subscription ending:</strong> Your subscription will be canceled on{" "}
+                      {subscription.currentPeriodEnd && formatDate(subscription.currentPeriodEnd)}.
+                      You'll retain access until then.
+                    </p>
+                    <Button
+                      onClick={handleReactivateSubscription}
+                      disabled={reactivatingSubscription}
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                    >
+                      {reactivatingSubscription ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Reactivating...
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="w-4 h-4 mr-2" />
+                          Keep My Subscription
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
                 {/* Actions */}
-                <div className="flex gap-3 pt-2">
+                <div className="flex flex-col gap-3 pt-2">
                   {subscription.tier === "free" ? (
                     <Button
                       onClick={() => (window.location.href = "/pricing")}
@@ -295,24 +394,38 @@ export function BillingSection() {
                       Upgrade Plan
                     </Button>
                   ) : (
-                    <Button
-                      onClick={handleManageSubscription}
-                      disabled={managingSubscription}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      {managingSubscription ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Loading...
-                        </>
-                      ) : (
-                        <>
-                          <CreditCard className="w-4 h-4 mr-2" />
-                          Manage Subscription
-                        </>
+                    <>
+                      <Button
+                        onClick={handleManageSubscription}
+                        disabled={managingSubscription}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        {managingSubscription ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="w-4 h-4 mr-2" />
+                            Update Payment Method
+                          </>
+                        )}
+                      </Button>
+
+                      {/* Cancel Subscription Button - California ARL Compliance */}
+                      {!subscription.cancelAtPeriodEnd && subscription.status !== "canceled" && (
+                        <Button
+                          onClick={() => setShowCancelModal(true)}
+                          variant="ghost"
+                          className="w-full text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                        >
+                          <XCircle className="w-4 h-4 mr-2" />
+                          Cancel Subscription
+                        </Button>
                       )}
-                    </Button>
+                    </>
                   )}
                 </div>
               </>
@@ -498,6 +611,78 @@ export function BillingSection() {
           )}
         </CardContent>
       </Card>
+
+      {/* Cancel Subscription Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowCancelModal(false)}
+          />
+
+          {/* Modal */}
+          <div className="relative bg-card border border-border rounded-xl shadow-xl max-w-md w-full mx-4 p-6 space-y-6">
+            <div className="space-y-2">
+              <h3 className="text-xl font-display font-light text-foreground">
+                Cancel Subscription
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                We're sorry to see you go. Please choose how you'd like to cancel:
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {/* Cancel at period end option */}
+              <button
+                onClick={() => handleCancelSubscription(false)}
+                disabled={cancellingSubscription}
+                className="w-full p-4 text-left rounded-lg border border-border hover:border-primary/50 transition-colors"
+              >
+                <div className="font-medium text-foreground">Cancel at end of billing period</div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Keep access until {subscription?.currentPeriodEnd && formatDate(subscription.currentPeriodEnd)}.
+                  You won't be charged again.
+                </p>
+              </button>
+
+              {/* Cancel immediately option */}
+              <button
+                onClick={() => handleCancelSubscription(true)}
+                disabled={cancellingSubscription}
+                className="w-full p-4 text-left rounded-lg border border-red-500/30 hover:border-red-500/50 transition-colors"
+              >
+                <div className="font-medium text-red-500">Cancel immediately</div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  End subscription now and receive a prorated refund for unused time.
+                </p>
+              </button>
+            </div>
+
+            {cancellingSubscription && (
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Processing cancellation...
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowCancelModal(false)}
+                disabled={cancellingSubscription}
+                className="flex-1"
+              >
+                Keep Subscription
+              </Button>
+            </div>
+
+            <p className="text-xs text-center text-muted-foreground">
+              Need help? <a href="/contact" className="text-primary hover:underline">Contact support</a>
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
