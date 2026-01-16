@@ -303,6 +303,36 @@ export const bookmarkedQuestion = pgTable("bookmarked_question", {
   userQuestionUnique: index("bookmarked_question_user_question_idx").on(table.userId, table.questionId),
 }));
 
+// PRAC-005: Practice sets for organizing questions
+export const practiceSet = pgTable("practice_set", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Index for user lookups
+  userIdIdx: index("practice_set_user_id_idx").on(table.userId),
+  // Index for name searches
+  nameIdx: index("practice_set_name_idx").on(table.name),
+}));
+
+// PRAC-005: Junction table for practice set questions
+export const practiceSetQuestion = pgTable("practice_set_question", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  practiceSetId: uuid("practice_set_id").references(() => practiceSet.id, { onDelete: "cascade" }).notNull(),
+  questionId: uuid("question_id").references(() => interviewQuestion.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Index for practice set lookups
+  practiceSetIdx: index("practice_set_question_set_idx").on(table.practiceSetId),
+  // Index for question lookups
+  questionIdx: index("practice_set_question_question_idx").on(table.questionId),
+  // Unique constraint: question can only be added once per set
+  setQuestionUnique: index("practice_set_question_set_question_idx").on(table.practiceSetId, table.questionId),
+}));
+
 // ==================== Relations ====================
 // These enable Drizzle's relational query API (e.g., `with: { feedback: true }`)
 
@@ -375,6 +405,25 @@ export const bookmarkedQuestionRelations = relations(bookmarkedQuestion, ({ one 
   }),
   question: one(interviewQuestion, {
     fields: [bookmarkedQuestion.questionId],
+    references: [interviewQuestion.id],
+  }),
+}));
+
+export const practiceSetRelations = relations(practiceSet, ({ one, many }) => ({
+  user: one(appUser, {
+    fields: [practiceSet.userId],
+    references: [appUser.id],
+  }),
+  questions: many(practiceSetQuestion),
+}));
+
+export const practiceSetQuestionRelations = relations(practiceSetQuestion, ({ one }) => ({
+  practiceSet: one(practiceSet, {
+    fields: [practiceSetQuestion.practiceSetId],
+    references: [practiceSet.id],
+  }),
+  question: one(interviewQuestion, {
+    fields: [practiceSetQuestion.questionId],
     references: [interviewQuestion.id],
   }),
 }));
