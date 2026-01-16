@@ -79,6 +79,7 @@ import {
   getUserWeeklyTrend,
   getUserMilestones,
   getUserRecentActivity,
+  getUserStreak,
 } from "@/lib/db/queries/user-stats";
 
 export async function GET(req: NextRequest) {
@@ -98,11 +99,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch all user statistics in parallel
-    const [summary, trends, milestones, recentActivity] = await Promise.all([
+    const [summary, trends, milestones, recentActivity, streak] = await Promise.all([
       getUserSessionSummary(user.id),
       getUserWeeklyTrend(user.id),
       getUserMilestones(user.id),
       getUserRecentActivity(user.id, 20), // Fetch last 20 sessions to ensure we get 8-10 with scores
+      getUserStreak(user.id), // MOTI-001: Fetch practice streak
     ]);
 
     // Format response with proper types
@@ -124,6 +126,11 @@ export async function GET(req: NextRequest) {
           perfectScore: milestones.perfectScore,
           improving: milestones.improving,
           consistent: milestones.consistent,
+        },
+        streak: {
+          streakCurrent: streak.streakCurrent,
+          streakLongest: streak.streakLongest,
+          isAtRisk: streak.isAtRisk,
         },
         recentActivity: recentActivity.map((activity) => ({
           sessionId: activity.sessionId,

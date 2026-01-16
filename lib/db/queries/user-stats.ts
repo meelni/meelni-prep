@@ -8,7 +8,7 @@
  */
 
 import { db } from "../index";
-import { interviewSession, feedback, transcriptTurn } from "../schema";
+import { interviewSession, feedback, transcriptTurn, appUser } from "../schema";
 import { eq, and, gte, lte, desc, sql, count } from "drizzle-orm";
 
 /**
@@ -500,5 +500,69 @@ export async function getUserRecentActivity(
   } catch (error) {
     console.error("Error fetching user recent activity:", error);
     return [];
+  }
+}
+
+/**
+ * User streak data (MOTI-001)
+ */
+export interface UserStreak {
+  streakCurrent: number;
+  streakLongest: number;
+  isAtRisk: boolean;
+}
+
+/**
+ * Get user's practice streak data
+ *
+ * @param userId - User ID
+ * @returns Current streak, longest streak, and at-risk flag
+ */
+export async function getUserStreak(userId: string): Promise<UserStreak> {
+  try {
+    const [user] = await db
+      .select({
+        streakCurrent: appUser.streakCurrent,
+        streakLongest: appUser.streakLongest,
+        lastPracticeDate: appUser.lastPracticeDate,
+      })
+      .from(appUser)
+      .where(eq(appUser.id, userId));
+
+    if (!user) {
+      return {
+        streakCurrent: 0,
+        streakLongest: 0,
+        isAtRisk: false,
+      };
+    }
+
+    // Check if streak is at risk (hasn't practiced today and has an active streak)
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const lastPractice = user.lastPracticeDate
+      ? new Date(
+          user.lastPracticeDate.getFullYear(),
+          user.lastPracticeDate.getMonth(),
+          user.lastPracticeDate.getDate()
+        )
+      : null;
+
+    const isAtRisk =
+      user.streakCurrent > 0 &&
+      (!lastPractice || lastPractice.getTime() !== today.getTime());
+
+    return {
+      streakCurrent: user.streakCurrent,
+      streakLongest: user.streakLongest,
+      isAtRisk,
+    };
+  } catch (error) {
+    console.error("Error fetching user streak:", error);
+    return {
+      streakCurrent: 0,
+      streakLongest: 0,
+      isAtRisk: false,
+    };
   }
 }
