@@ -17,6 +17,8 @@ import { BulkActionToolbar } from "@/components/question-bank/bulk-action-toolba
 import { EmptyState } from "@/components/question-bank/empty-state";
 import { QuestionCard } from "@/components/question-bank/question-card";
 import { MobileFilterDrawer } from "@/components/question-bank/mobile-filter-drawer";
+import { PracticeSetDialog } from "@/components/question-bank/practice-set-dialog";
+import { PracticeSetsList } from "@/components/question-bank/practice-sets-list";
 import {
   Play,
   Calendar,
@@ -24,6 +26,7 @@ import {
   Filter,
   Search,
   Bookmark,
+  FolderPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
@@ -57,6 +60,9 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<Set<string>>(new Set());
   const [showOnlyBookmarked, setShowOnlyBookmarked] = useState(false);
+  const [showPracticeSets, setShowPracticeSets] = useState(false);
+  const [isPracticeSetDialogOpen, setIsPracticeSetDialogOpen] = useState(false);
+  const [practiceSetRefreshTrigger, setPracticeSetRefreshTrigger] = useState(0);
 
   // Fetch questions
   useEffect(() => {
@@ -275,8 +281,17 @@ export const QuestionsSection = memo(function QuestionsSection() {
   };
 
   const handleCreatePracticeSet = () => {
-    // TODO: Implement practice set creation
-    alert(`Creating practice set with ${selectedQuestions.size} questions (placeholder)`);
+    setIsPracticeSetDialogOpen(true);
+  };
+
+  const handlePracticeSetSuccess = () => {
+    setPracticeSetRefreshTrigger(prev => prev + 1);
+    setSelectedQuestions(new Set());
+  };
+
+  const handleSelectPracticeSet = (setId: string) => {
+    // TODO: Navigate to practice set detail view or start practice with set questions
+    console.log("Selected practice set:", setId);
   };
 
   const handleDeselectAll = () => {
@@ -334,10 +349,13 @@ export const QuestionsSection = memo(function QuestionsSection() {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg">
           <button
-            onClick={() => setShowOnlyBookmarked(false)}
+            onClick={() => {
+              setShowOnlyBookmarked(false);
+              setShowPracticeSets(false);
+            }}
             className={cn(
               "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200",
-              !showOnlyBookmarked
+              !showOnlyBookmarked && !showPracticeSets
                 ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
@@ -345,21 +363,39 @@ export const QuestionsSection = memo(function QuestionsSection() {
             All Questions
           </button>
           <button
-            onClick={() => setShowOnlyBookmarked(true)}
+            onClick={() => {
+              setShowOnlyBookmarked(true);
+              setShowPracticeSets(false);
+            }}
             className={cn(
               "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2",
-              showOnlyBookmarked
+              showOnlyBookmarked && !showPracticeSets
                 ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <Bookmark className={cn("w-4 h-4", showOnlyBookmarked && "fill-current")} />
+            <Bookmark className={cn("w-4 h-4", showOnlyBookmarked && !showPracticeSets && "fill-current")} />
             Saved
             {bookmarkedQuestionIds.size > 0 && (
               <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
                 {bookmarkedQuestionIds.size}
               </Badge>
             )}
+          </button>
+          <button
+            onClick={() => {
+              setShowPracticeSets(true);
+              setShowOnlyBookmarked(false);
+            }}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2",
+              showPracticeSets
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <FolderPlus className="w-4 h-4" />
+            Practice Sets
           </button>
         </div>
 
@@ -373,7 +409,14 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
       {/* Questions Content */}
       <div>
-        {emptyStateType ? (
+        {showPracticeSets ? (
+          <div className="rounded-lg border border-border overflow-hidden bg-card p-6">
+            <PracticeSetsList
+              onSelectSet={handleSelectPracticeSet}
+              refreshTrigger={practiceSetRefreshTrigger}
+            />
+          </div>
+        ) : emptyStateType ? (
           <div className="rounded-lg border border-border overflow-hidden bg-card">
             <EmptyState
               type={emptyStateType}
@@ -626,6 +669,14 @@ export const QuestionsSection = memo(function QuestionsSection() {
         selectedType={selectedType}
         onSelectType={setSelectedType}
         onClearAll={clearAllFilters}
+      />
+
+      {/* Practice Set Dialog */}
+      <PracticeSetDialog
+        isOpen={isPracticeSetDialogOpen}
+        onClose={() => setIsPracticeSetDialogOpen(false)}
+        selectedQuestionIds={Array.from(selectedQuestions)}
+        onSuccess={handlePracticeSetSuccess}
       />
 
       {/* Live region for accessibility */}
