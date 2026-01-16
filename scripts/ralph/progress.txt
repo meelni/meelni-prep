@@ -364,3 +364,17 @@ Initial badges:
   - Desktop table: bookmark button before "Try Question" with flex layout
   - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
 ---
+## 2026-01-16 - PRAC-002: Create 'My Saved Questions' view
+- Implemented saved questions view with toggle tabs and filtering
+- Files changed: 
+  - components/dashboard/sections/questions.tsx (added toggle tabs, showOnlyBookmarked state, filter logic, Practice with these button)
+  - components/question-bank/empty-state.tsx (added no-bookmarks empty state)
+- **Learnings:**
+  - Toggle tabs pattern: bg-muted/30 container with p-1, active tab gets bg-card shadow-sm
+  - Bookmark count badge: secondary variant with min-w-5 for consistent sizing
+  - Filter state reset: always include new filter in clearAllFilters() function
+  - Practice with random selection: use Math.random() with filtered array for variety
+  - Empty state callbacks: conditional onExploreProductSense based on empty state type
+  - useMemo dependencies: include all filter states (showOnlyBookmarked, bookmarkedQuestionIds)
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors in modified files)
+---

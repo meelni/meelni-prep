@@ -30,11 +30,11 @@ interface ScoreByTypeProps {
 const chartConfig = {
   yourScore: {
     label: "Your Score",
-    color: "hsl(var(--chart-1))",
+    color: "#8b5cf6", // Purple-500 - matching other charts for consistency
   },
   avgScore: {
     label: "Platform Average",
-    color: "hsl(var(--chart-3))",
+    color: "#c4b5fd", // Purple-300 - lighter shade for comparison
   },
 } satisfies ChartConfig;
 
@@ -81,16 +81,6 @@ export function ScoreByType({ data, onTypeClick }: ScoreByTypeProps) {
               }
             }}
           >
-            <rect
-              x="0"
-              y="0"
-              width="100%"
-              height="85%"
-              fill="url(#score-by-type-pattern-dots)"
-            />
-            <defs>
-              <DottedBackgroundPattern />
-            </defs>
             <CartesianGrid
               vertical={false}
               strokeDasharray="3 3"
@@ -115,10 +105,12 @@ export function ScoreByType({ data, onTypeClick }: ScoreByTypeProps) {
             />
             <YAxis
               domain={[0, 100]}
+              ticks={[0, 20, 40, 60, 80, 100]}
               tickLine={false}
               axisLine={false}
               tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
               tickFormatter={(value) => `${value}%`}
+              allowDataOverflow={true}
             />
             <ChartTooltip
               cursor={false}
@@ -156,27 +148,6 @@ export function ScoreByType({ data, onTypeClick }: ScoreByTypeProps) {
     </Card>
   );
 }
-
-const DottedBackgroundPattern = () => {
-  return (
-    <pattern
-      id="score-by-type-pattern-dots"
-      x="0"
-      y="0"
-      width="10"
-      height="10"
-      patternUnits="userSpaceOnUse"
-    >
-      <circle
-        className="dark:text-muted/40 text-muted"
-        cx="2"
-        cy="2"
-        r="1"
-        fill="currentColor"
-      />
-    </pattern>
-  );
-};
 
 function ComparisonBadge({ yourScore, avgScore }: { yourScore: number; avgScore: number }) {
   const diff = yourScore - avgScore;

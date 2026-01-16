@@ -28,7 +28,7 @@ interface CompetencyBreakdownProps {
 const chartConfig = {
   score: {
     label: "Score",
-    color: "hsl(var(--chart-1))",
+    color: "#8b5cf6", // Purple-500 - matching GlowingRadarChart for consistency
   },
 } satisfies ChartConfig;
 

@@ -10,6 +10,7 @@ export interface SessionWithFeedback {
   roundType: string;
   startedAt: Date;
   endedAt: Date | null;
+  config?: any; // JSONB field containing difficulty and other settings
   feedback: {
     overallScore: number;
     structureScore: number;
@@ -181,7 +182,7 @@ export function aggregateScoreByType(sessions: SessionWithFeedback[]) {
 
   return Object.entries(typeScores).map(([type, data]) => ({
     type: typeLabels[type] || type,
-    yourScore: (data.total / data.count) * 20, // 1-5 → 0-100 scale
+    yourScore: (data.total / data.count) * 10, // 0-10 → 0-100 scale
     avgScore: 72, // Placeholder - would come from platform aggregates
   }));
 }
@@ -224,5 +225,145 @@ export function calculateSummaryStats(sessions: SessionWithFeedback[]) {
     avgScore: Number(avgScore.toFixed(1)),
     totalMinutes,
     completionRate: Number(completionRate.toFixed(0)),
+  };
+}
+
+/**
+ * Score by Difficulty: Calculate average scores per difficulty level
+ * PRAC-003: Track performance at different difficulty levels
+ */
+export function aggregateScoreByDifficulty(sessions: SessionWithFeedback[]) {
+  // Filter sessions with feedback and difficulty in config
+  const sessionsWithDifficulty = sessions.filter(
+    (s) =>
+      s.feedback?.overallScore !== null &&
+      s.feedback?.overallScore !== undefined &&
+      s.config?.difficulty
+  );
+
+  // Group by difficulty and calculate averages
+  const difficultyScores = sessionsWithDifficulty.reduce((acc, session) => {
+    const difficulty = session.config.difficulty;
+    const score = session.feedback!.overallScore;
+
+    if (!acc[difficulty]) {
+      acc[difficulty] = { total: 0, count: 0 };
+    }
+
+    acc[difficulty].total += score;
+    acc[difficulty].count += 1;
+
+    return acc;
+  }, {} as Record<string, { total: number; count: number }>);
+
+  // Map difficulty keys to display labels
+  const difficultyLabels: Record<string, string> = {
+    beginner: "Junior/APM",
+    intermediate: "IC PM",
+    advanced: "Senior PM",
+  };
+
+  // Return chart data with average scores (0-100 scale)
+  return Object.entries(difficultyScores).map(([difficulty, data]) => ({
+    difficulty: difficultyLabels[difficulty] || difficulty,
+    difficultyKey: difficulty,
+    avgScore: (data.total / data.count) * 20, // 1-5 → 0-100 scale
+    sessionCount: data.count,
+  }));
+}
+
+/**
+ * Recommended Difficulty: Calculate recommended next difficulty based on recent scores
+ * PRAC-003: Help users level up as they improve
+ *
+ * Logic:
+ * - Look at last 3 sessions for current difficulty
+ * - If average score >= 4.0 (80%) → recommend level up
+ * - If average score <= 2.5 (50%) → recommend level down
+ * - Otherwise → stay at current level
+ */
+export function calculateRecommendedDifficulty(sessions: SessionWithFeedback[]): {
+  recommended: string;
+  currentDifficulty: string | null;
+  avgScore: number | null;
+  reason: string;
+} {
+  // Get sessions with feedback and difficulty, sorted by date (newest first)
+  const sessionsWithDifficulty = sessions
+    .filter(
+      (s) =>
+        s.feedback?.overallScore !== null &&
+        s.feedback?.overallScore !== undefined &&
+        s.config?.difficulty
+    )
+    .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+
+  // No data yet
+  if (sessionsWithDifficulty.length === 0) {
+    return {
+      recommended: "intermediate",
+      currentDifficulty: null,
+      avgScore: null,
+      reason: "Start with intermediate level",
+    };
+  }
+
+  // Get current difficulty from most recent session
+  const currentDifficulty = sessionsWithDifficulty[0].config.difficulty;
+
+  // Get last 3 sessions for current difficulty
+  const recentSessionsAtCurrentLevel = sessionsWithDifficulty
+    .filter((s) => s.config.difficulty === currentDifficulty)
+    .slice(0, 3);
+
+  // Need at least 3 sessions to make recommendation
+  if (recentSessionsAtCurrentLevel.length < 3) {
+    return {
+      recommended: currentDifficulty,
+      currentDifficulty,
+      avgScore: null,
+      reason: `Complete ${3 - recentSessionsAtCurrentLevel.length} more session(s) at current level`,
+    };
+  }
+
+  // Calculate average score (1-5 scale)
+  const avgScore =
+    recentSessionsAtCurrentLevel.reduce(
+      (sum, s) => sum + s.feedback!.overallScore,
+      0
+    ) / recentSessionsAtCurrentLevel.length;
+
+  // Difficulty progression: beginner → intermediate → advanced
+  const difficultyOrder = ["beginner", "intermediate", "advanced"];
+  const currentIndex = difficultyOrder.indexOf(currentDifficulty);
+
+  // Level up: avg >= 4.0 (80%)
+  if (avgScore >= 4.0 && currentIndex < difficultyOrder.length - 1) {
+    const nextLevel = difficultyOrder[currentIndex + 1];
+    return {
+      recommended: nextLevel,
+      currentDifficulty,
+      avgScore,
+      reason: `Great performance! Ready to level up (avg: ${avgScore.toFixed(1)}/5)`,
+    };
+  }
+
+  // Level down: avg <= 2.5 (50%)
+  if (avgScore <= 2.5 && currentIndex > 0) {
+    const prevLevel = difficultyOrder[currentIndex - 1];
+    return {
+      recommended: prevLevel,
+      currentDifficulty,
+      avgScore,
+      reason: `Consider stepping down for better learning (avg: ${avgScore.toFixed(1)}/5)`,
+    };
+  }
+
+  // Stay at current level
+  return {
+    recommended: currentDifficulty,
+    currentDifficulty,
+    avgScore,
+    reason: `Keep practicing at current level (avg: ${avgScore.toFixed(1)}/5)`,
   };
 }
