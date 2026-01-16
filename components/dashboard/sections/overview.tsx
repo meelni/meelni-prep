@@ -10,6 +10,7 @@ import { ClippedAreaChart } from "@/components/dashboard/charts/clipped-area-cha
 import { GlowingRadarChart } from "@/components/dashboard/charts/glowing-radar-chart";
 import { SessionList } from "@/components/dashboard/session-list";
 import { EmptyStateCard } from "@/components/dashboard/empty-state-card";
+import { BadgeDisplay } from "@/components/dashboard/badge-display";
 import type { Session } from "@/lib/api/queries";
 import { analytics } from "@/lib/analytics/analytics-service";
 
@@ -386,6 +387,9 @@ export const OverviewSection = memo(function OverviewSection({
             </CardContent>
           </Card>
         )}
+
+        {/* Achievements - MOTI-003 */}
+        <BadgeDisplay className="lg:col-span-3 bg-card border-border" />
 
         {/* Start Mock Card - Full Width */}
         <Card className="lg:col-span-3 bg-card border-border hover:border-primary/30 transition-all duration-300">
