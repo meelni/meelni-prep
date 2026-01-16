@@ -94,6 +94,7 @@ import {
   SessionTier,
 } from "@/lib/evaluation/session-validator";
 import { isSessionOwnedByUser, getSessionById } from "@/lib/db/sessions";
+import { updateStreak } from "@/lib/streaks";
 
 // Rate limiting: Track requests per user (in-memory, simple approach)
 // Production: Use Redis or Upstash Rate Limiting
@@ -279,6 +280,14 @@ export async function POST(req: NextRequest) {
         rubricVersion: "1.0.0",
       })
       .returning();
+
+    // 11.5. Update user's practice streak (MOTI-001)
+    try {
+      await updateStreak(user.id);
+    } catch (streakError) {
+      // Log error but don't fail the request - streak update is non-critical
+      console.error("Failed to update practice streak:", streakError);
+    }
 
     // 12. Trigger Inngest job for feedback generation
     try {
