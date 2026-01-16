@@ -22,6 +22,7 @@ import {
   ScoreByType,
 } from "@/components/dashboard/charts";
 import { ScoreByDifficulty } from "@/components/dashboard/charts/score-by-difficulty";
+import { WeakestAreaCard } from "@/components/dashboard/weakest-area-card";
 import {
   aggregatePerformanceTrend,
   aggregateCompetencyScores,
@@ -438,6 +439,11 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
           data={scoreByDifficultyData}
           recommendedDifficulty={recommendedDifficulty}
         />
+      </motion.div>
+
+      {/* PRAC-004: Weakest Area Card - Full Width */}
+      <motion.div variants={fadeInUp}>
+        <WeakestAreaCard sessions={sessions} />
       </motion.div>
     </motion.div>
   );
