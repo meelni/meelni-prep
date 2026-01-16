@@ -393,3 +393,18 @@ Initial badges:
   - Empty state: Trophy icon with helpful message for users with no difficulty data
   - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors)
 ---
+## 2026-01-16 - PRAC-004: Show 'Weakest Area' with targeted practice
+- Implemented weakest area identification and personalized practice recommendations
+- Files changed:
+  - components/dashboard/weakest-area-card.tsx (new file)
+  - components/dashboard/sections/analytics.tsx
+- **Learnings:**
+  - Reused existing aggregateCompetencyScores() function from lib/analytics/aggregations.ts
+  - Array.reduce() pattern for finding minimum: `reduce((lowest, current) => current.score < lowest.score ? current : lowest)`
+  - IMPROVEMENT_TIPS constant provides domain-specific coaching for each competency
+  - Conditional messaging: "Priority Focus Area" for scores <60 vs "Area to Polish" for relative weaknesses
+  - Empty state handles zero sessions case with helpful CTA
+  - Link to /setup with focus parameter: `href={`/setup?focus=${competencyName.toLowerCase()}`}`
+  - Orange color scheme (border-orange-500/30, bg-orange-500/5) for warning/focus sections
+  - Quality gates passed: typecheck (pre-existing test errors only), lint (no new errors in modified files)
+---
