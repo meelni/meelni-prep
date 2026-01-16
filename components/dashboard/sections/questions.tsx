@@ -56,6 +56,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<Set<string>>(new Set());
+  const [showOnlyBookmarked, setShowOnlyBookmarked] = useState(false);
 
   // Fetch questions
   useEffect(() => {
@@ -110,12 +111,18 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const clearAllFilters = () => {
     setSearchQuery("");
     setSelectedType("All Types");
+    setShowOnlyBookmarked(false);
   };
 
   // Filter and sort questions
   const filteredQuestions = useMemo(() => {
     return questions
       .filter((q) => {
+        // Bookmark filter
+        if (showOnlyBookmarked && !bookmarkedQuestionIds.has(q.id)) {
+          return false;
+        }
+
         // Search filter (debounced)
         const matchesSearch =
           debouncedSearchQuery === "" ||
@@ -143,7 +150,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
           return a.questionType.localeCompare(b.questionType);
         }
       });
-  }, [questions, debouncedSearchQuery, selectedType, sortBy]);
+  }, [questions, debouncedSearchQuery, selectedType, sortBy, showOnlyBookmarked, bookmarkedQuestionIds]);
 
   const handleTryQuestion = (questionId: string, questionType: string) => {
     // Map display question type to roundType
@@ -277,8 +284,9 @@ export const QuestionsSection = memo(function QuestionsSection() {
   };
 
   // Determine empty state type
-  const getEmptyStateType = (): "no-search" | "no-filter" | "first-time" | null => {
+  const getEmptyStateType = (): "no-search" | "no-filter" | "first-time" | "no-bookmarks" | null => {
     if (filteredQuestions.length > 0) return null;
+    if (showOnlyBookmarked && bookmarkedQuestionIds.size === 0) return "no-bookmarks";
     if (debouncedSearchQuery) return "no-search";
     if (selectedType !== "All Types") return "no-filter";
     if (questions.length === 0) return "first-time";
@@ -286,6 +294,18 @@ export const QuestionsSection = memo(function QuestionsSection() {
   };
 
   const emptyStateType = getEmptyStateType();
+
+  // Handler to practice with bookmarked questions
+  const handlePracticeWithBookmarked = () => {
+    if (bookmarkedQuestionIds.size === 0) return;
+
+    // Navigate to interview with a random bookmarked question
+    const bookmarkedQuestions = questions.filter(q => bookmarkedQuestionIds.has(q.id));
+    if (bookmarkedQuestions.length > 0) {
+      const randomQuestion = bookmarkedQuestions[Math.floor(Math.random() * bookmarkedQuestions.length)];
+      handleTryQuestion(randomQuestion.id, randomQuestion.questionType);
+    }
+  };
 
   if (loading) {
     return (
@@ -310,6 +330,47 @@ export const QuestionsSection = memo(function QuestionsSection() {
         </p>
       </div>
 
+      {/* View Tabs */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg">
+          <button
+            onClick={() => setShowOnlyBookmarked(false)}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200",
+              !showOnlyBookmarked
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            All Questions
+          </button>
+          <button
+            onClick={() => setShowOnlyBookmarked(true)}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2",
+              showOnlyBookmarked
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Bookmark className={cn("w-4 h-4", showOnlyBookmarked && "fill-current")} />
+            Saved
+            {bookmarkedQuestionIds.size > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
+                {bookmarkedQuestionIds.size}
+              </Badge>
+            )}
+          </button>
+        </div>
+
+        {showOnlyBookmarked && bookmarkedQuestionIds.size > 0 && (
+          <Button onClick={handlePracticeWithBookmarked} className="gap-2">
+            <Play className="w-4 h-4" />
+            Practice with these
+          </Button>
+        )}
+      </div>
+
       {/* Questions Content */}
       <div>
         {emptyStateType ? (
@@ -317,7 +378,11 @@ export const QuestionsSection = memo(function QuestionsSection() {
             <EmptyState
               type={emptyStateType}
               onClearFilters={clearAllFilters}
-              onExploreProductSense={() => setSelectedType("Product Sense")}
+              onExploreProductSense={
+                emptyStateType === "no-bookmarks"
+                  ? () => setShowOnlyBookmarked(false)
+                  : () => setSelectedType("Product Sense")
+              }
               onBackToDashboard={() => router.push("/dashboard")}
               selectedType={selectedType}
             />
