@@ -8,11 +8,10 @@ import { ArrowRight, Sparkles, Calendar, Loader2, Flame, AlertCircle } from "luc
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { ClippedAreaChart } from "@/components/dashboard/charts/clipped-area-chart";
 import { GlowingRadarChart } from "@/components/dashboard/charts/glowing-radar-chart";
-import { SessionList } from "@/components/dashboard/session-list";
 import { EmptyStateCard } from "@/components/dashboard/empty-state-card";
 import { BadgeDisplay } from "@/components/dashboard/badge-display";
+import { NextGoalCard } from "@/components/dashboard/next-goal-card";
 import type { Session } from "@/lib/api/queries";
-import { analytics } from "@/lib/analytics/analytics-service";
 
 interface OverviewSectionProps {
   sessions: Session[];
@@ -215,7 +214,7 @@ export const OverviewSection = memo(function OverviewSection({
       <div className="space-y-2">
         <h2 className="text-2xl font-display font-light text-foreground">Overview</h2>
         <p className="text-muted-foreground font-sans">
-          Track your progress and see how you're improving across all interview types.
+          Track your progress and see how you&apos;re improving across all interview types.
         </p>
       </div>
 
@@ -390,6 +389,9 @@ export const OverviewSection = memo(function OverviewSection({
 
         {/* Achievements - MOTI-003 */}
         <BadgeDisplay className="lg:col-span-3 bg-card border-border" />
+
+        {/* Next Goal - MOTI-005 */}
+        <NextGoalCard sessions={sessions} userSummary={userSummary} />
 
         {/* Start Mock Card - Full Width */}
         <Card className="lg:col-span-3 bg-card border-border hover:border-primary/30 transition-all duration-300">
