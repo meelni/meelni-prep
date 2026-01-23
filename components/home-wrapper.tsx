@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, createContext, useContext, useEffect } from "react";
+import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/sections/header";
 import { Hero } from "@/components/sections/hero";
+import { DiscontinuedBanner } from "@/components/discontinued-banner";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 
@@ -11,11 +12,7 @@ interface HomeWrapperProps {
   children: React.ReactNode;
 }
 
-// Create context for demo modal state
-const DemoModalContext = createContext<(open: boolean) => void>(() => {});
-
 export function HomeWrapper({ children }: HomeWrapperProps) {
-  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const searchParams = useSearchParams();
 
   // Track Web Vitals performance
@@ -32,18 +29,11 @@ export function HomeWrapper({ children }: HomeWrapperProps) {
   }, [searchParams]);
 
   return (
-    <DemoModalContext.Provider value={setIsDemoModalOpen}>
-      <Header isDemoModalOpen={isDemoModalOpen} />
-      <Hero
-        isDemoModalOpen={isDemoModalOpen}
-        setIsDemoModalOpen={setIsDemoModalOpen}
-      />
+    <>
+      <DiscontinuedBanner />
+      <Header />
+      <Hero />
       {children}
-    </DemoModalContext.Provider>
+    </>
   );
-}
-
-// Export hook to use demo modal context
-export function useDemoModal() {
-  return useContext(DemoModalContext);
 }

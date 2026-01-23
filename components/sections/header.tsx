@@ -1,15 +1,11 @@
 "use client";
 
 import { Icons } from "@/components/icons";
-import { MobileDrawer } from "@/components/mobile-drawer";
-import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import Link from "next/link";
-import { ArrowRight, LayoutDashboard } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useAuth } from "@/app/providers/auth-provider";
 
 const navLinks = [
   { name: "Features", href: "#features" },
@@ -19,14 +15,9 @@ const navLinks = [
   { name: "Blog", href: "/blog" },
 ];
 
-interface HeaderProps {
-  isDemoModalOpen?: boolean;
-}
-
-export function Header({ isDemoModalOpen = false }: HeaderProps) {
+export function Header() {
   const [activeSection, setActiveSection] = useState("");
   const [isScrolled, setIsScrolled] = useState(false);
-  const { user, isLoading } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -58,9 +49,7 @@ export function Header({ isDemoModalOpen = false }: HeaderProps) {
   };
 
   return (
-    <AnimatePresence>
-      {!isDemoModalOpen && (
-        <motion.header
+    <motion.header
           className={cn(
             "sticky top-0 z-50 w-full transition-all duration-300",
             isScrolled
@@ -137,63 +126,14 @@ export function Header({ isDemoModalOpen = false }: HeaderProps) {
             })}
           </nav>
 
-          {/* Auth-Aware CTA Buttons (Desktop) */}
-          <motion.div
-            className="hidden lg:flex items-center gap-3"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, delay: 0.4 }}
-          >
-            {isLoading ? (
-              // Loading skeleton
-              <div className="w-[180px] h-[36px] bg-muted/50 animate-pulse rounded-lg" />
-            ) : user ? (
-              // Logged in: Show Dashboard button only
-              <Link href="/dashboard">
-                <Button
-                  size="sm"
-                  className="group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-[14px] px-5 shadow-sm hover:shadow-md transition-all duration-300"
-                >
-                  <LayoutDashboard className="mr-1.5 w-4 h-4" />
-                  Dashboard
-                </Button>
-              </Link>
-            ) : (
-              // Logged out: Show Log In + Start A Mock
-              <>
-                <Link href="/auth/signin">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-[14px] font-medium hover:text-primary transition-colors duration-200"
-                  >
-                    Log In
-                  </Button>
-                </Link>
-                <Link href="/dashboard">
-                  <Button
-                    size="sm"
-                    className="group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-[14px] px-5 shadow-sm hover:shadow-md transition-all duration-300"
-                  >
-                    {siteConfig.cta}
-                    <ArrowRight className="ml-1.5 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
-                  </Button>
-                </Link>
-              </>
-            )}
-          </motion.div>
+          {/* Auth buttons hidden - service discontinued */}
 
-          {/* Mobile Menu */}
-          <div className="lg:hidden">
-            <MobileDrawer />
-          </div>
+          {/* Mobile menu hidden - service discontinued */}
         </div>
       </div>
 
       {/* Subtle gradient border */}
       <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-border/50 to-transparent" />
     </motion.header>
-      )}
-    </AnimatePresence>
   );
 }
