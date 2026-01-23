@@ -1,52 +1,14 @@
 "use client";
 
-import { AuroraText } from "@/components/aurora-text";
-import { Icons } from "@/components/icons";
 import { Section } from "@/components/section";
-import { buttonVariants } from "@/components/ui/button";
-import { DotPattern } from "@/components/ui/dot-pattern";
 import { AnimatedBars } from "@/components/ui/animated-bars";
 import CheckeredBackground from "@/components/ui/checkered-background";
 import { DemoModal } from "@/components/demo-modal";
 import { siteConfig } from "@/lib/config";
-import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const ease = [0.16, 1, 0.3, 1] as const;
-
-function HeroPill() {
-  return (
-    <motion.a
-      href="/blog/introducing-dev-ai"
-      className="flex w-auto items-center space-x-2 rounded-full bg-primary/20 px-2 py-1 ring-1 ring-accent whitespace-pre"
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.8, ease }}
-    >
-      <div className="w-fit rounded-full bg-accent px-2 py-0.5 text-left text-label text-primary">
-        ✨ New
-      </div>
-      <p className="text-label text-primary">
-        AI-Powered Mock Interviews
-      </p>
-      <svg
-        width="12"
-        height="12"
-        className="ml-1"
-        viewBox="0 0 12 12"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M8.78141 5.33312L5.20541 1.75712L6.14808 0.814453L11.3334 5.99979L6.14808 11.1851L5.20541 10.2425L8.78141 6.66645H0.666748V5.33312H8.78141Z"
-          fill="hsl(var(--primary))"
-        />
-      </svg>
-    </motion.a>
-  );
-}
 
 function HeroTitles() {
   return (
@@ -91,134 +53,48 @@ function HeroTitles() {
 }
 
 interface HeroCTAProps {
-  isDemoModalOpen: boolean;
-  setIsDemoModalOpen: (open: boolean) => void;
+  onDemoClick: () => void;
 }
 
-function HeroCTA({ isDemoModalOpen, setIsDemoModalOpen }: HeroCTAProps) {
-  const handleStartMockClick = () => {
-    const { analytics } = require('@/lib/analytics/analytics-service');
-    analytics.track('cta_clicked', {
-      button_text: 'Start A Mock',
-      location: 'hero',
-      destination: '/dashboard',
-    });
-  };
-
-  const handleDemoClick = () => {
-    const { analytics } = require('@/lib/analytics/analytics-service');
-    analytics.track('cta_clicked', {
-      button_text: 'Talk to Meelni',
-      location: 'hero',
-      destination: 'demo_modal',
-    });
-    analytics.track('demo_modal_opened', {
-      trigger_source: 'hero',
-    });
-    setIsDemoModalOpen(true);
-  };
-
+function HeroCTA({ onDemoClick }: HeroCTAProps) {
   return (
-    <>
-      <div className="relative mt-8">
-        <motion.div
-          className="flex w-full max-w-2xl flex-col items-start justify-start gap-4 sm:flex-row"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8, duration: 0.8, ease }}
+    <div className="relative mt-8">
+      <motion.div
+        className="flex w-full max-w-2xl flex-col items-start justify-start"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.8, duration: 0.8, ease }}
+      >
+        {/* Demo button */}
+        <button
+          onClick={onDemoClick}
+          className="group relative w-full sm:w-auto overflow-hidden rounded-xl border-2 border-primary/60 bg-primary/10 backdrop-blur-md px-8 py-4 font-semibold transition-all duration-300 hover:border-primary hover:bg-primary/20 hover:scale-[1.02] active:scale-[0.98]"
         >
-          {/* Primary CTA - Start A Mock (routes to dashboard with auth) */}
-          <Link
-            href="/dashboard"
-            onClick={handleStartMockClick}
-            className="group relative w-full sm:w-auto overflow-hidden rounded-xl bg-gradient-to-r from-primary via-primary/90 to-primary/80 px-8 py-4 text-primary-foreground font-semibold shadow-lg shadow-primary/30 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <div className="relative z-10 flex items-center gap-3">
-              <svg
-                className="w-5 h-5 transition-transform duration-300 group-hover:scale-110"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <span>Start A Mock</span>
-              <svg
-                className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M13 7l5 5m0 0l-5 5m5-5H6"
-                />
-              </svg>
-            </div>
-            {/* Shimmer effect on hover */}
-            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-background/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-          </Link>
-
-          {/* Secondary CTA - Talk to Meelni (opens demo modal, no auth) */}
-          <button
-            onClick={handleDemoClick}
-            className="group relative w-full sm:w-auto overflow-hidden rounded-xl border-2 border-border/60 bg-card/40 backdrop-blur-md px-8 py-4 font-semibold transition-all duration-300 hover:border-primary/70 hover:bg-card/60 hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <div className="relative z-10 flex items-center gap-3">
-              <svg
-                className="w-5 h-5 transition-transform duration-300 group-hover:scale-110"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-                />
-              </svg>
-              <span>Talk to Meelni</span>
-            </div>
-          </button>
+          <div className="relative z-10 flex items-center gap-3">
+            <svg
+              className="w-5 h-5 text-primary transition-transform duration-300 group-hover:scale-110"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+              />
+            </svg>
+            <span className="text-primary">Talk to Meelni</span>
+          </div>
+        </button>
       </motion.div>
-
-        {/* Subtle helper text */}
-        <motion.p
-          className="mt-4 text-body text-muted-foreground/80"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.2, duration: 0.6 }}
-        >
-          Try a quick demo or customize your full interview
-        </motion.p>
-      </div>
-
-      {/* Demo Modal */}
-      <DemoModal isOpen={isDemoModalOpen} onClose={() => setIsDemoModalOpen(false)} />
-    </>
+    </div>
   );
 }
 
-interface HeroProps {
-  isDemoModalOpen: boolean;
-  setIsDemoModalOpen: (open: boolean) => void;
-}
-
-export function Hero({ isDemoModalOpen, setIsDemoModalOpen }: HeroProps) {
+export function Hero() {
   const [isMobile, setIsMobile] = useState(true);
+  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -233,51 +109,53 @@ export function Hero({ isDemoModalOpen, setIsDemoModalOpen }: HeroProps) {
   }, []);
 
   return (
-    <Section id="hero" className="max-w-none relative pb-4 bg-background overflow-hidden">
-      {/* Checkered background layer - vibrant purple glow */}
-      <CheckeredBackground
-        className="absolute inset-0 z-0"
-        cellSize="50px"
-        strokeWidth="1.5px"
-        color="hsl(var(--primary))"
-        opacity={0.15}
-        fade={false}
-      />
+    <>
+      <Section id="hero" className="max-w-none relative pb-4 bg-background overflow-hidden">
+        {/* Checkered background layer - vibrant purple glow */}
+        <CheckeredBackground
+          className="absolute inset-0 z-0"
+          cellSize="50px"
+          strokeWidth="1.5px"
+          color="hsl(var(--primary))"
+          opacity={0.15}
+          fade={false}
+        />
 
-      {/* Radial glow effect for depth */}
-      <div className="absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
+        {/* Radial glow effect for depth */}
+        <div className="absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
 
-      {/* Gradient overlays for visual depth */}
-      {/* Top gradient - fades near header */}
-      <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-background via-background/90 to-transparent z-[1]" />
+        {/* Gradient overlays for visual depth */}
+        {/* Top gradient - fades near header */}
+        <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-background via-background/90 to-transparent z-[1]" />
 
-      {/* Left side gradient - creates depth */}
-      <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-background via-background/70 to-transparent z-[1]" />
+        {/* Left side gradient - creates depth */}
+        <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-background via-background/70 to-transparent z-[1]" />
 
-      {/* Bottom gradient - smooth transition to next section */}
-      <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent z-[1]" />
+        {/* Bottom gradient - smooth transition to next section */}
+        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent z-[1]" />
 
-      <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-x-8 w-full px-6 pt-12 pb-4 lg:px-24 lg:pt-16 lg:pb-4 lg:h-[550px] items-center">
-        <div className="flex flex-col justify-center items-start lg:col-span-1">
-          <HeroTitles />
-          <HeroCTA
-            isDemoModalOpen={isDemoModalOpen}
-            setIsDemoModalOpen={setIsDemoModalOpen}
-          />
-        </div>
-        {!isMobile && (
-          <div className="relative h-[500px] lg:col-span-1 flex items-center justify-center">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.8, delay: 0.5 }}
-              className="flex items-center justify-center"
-            >
-              <AnimatedBars barCount={60} />
-            </motion.div>
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-x-8 w-full px-6 pt-12 pb-4 lg:px-24 lg:pt-16 lg:pb-4 lg:h-[550px] items-center">
+          <div className="flex flex-col justify-center items-start lg:col-span-1">
+            <HeroTitles />
+            <HeroCTA onDemoClick={() => setIsDemoModalOpen(true)} />
           </div>
-        )}
-      </div>
-    </Section>
+          {!isMobile && (
+            <div className="relative h-[500px] lg:col-span-1 flex items-center justify-center">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.8, delay: 0.5 }}
+                className="flex items-center justify-center"
+              >
+                <AnimatedBars barCount={60} />
+              </motion.div>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* Demo Modal */}
+      <DemoModal isOpen={isDemoModalOpen} onClose={() => setIsDemoModalOpen(false)} />
+    </>
   );
 }
