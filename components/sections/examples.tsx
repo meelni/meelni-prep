@@ -4,7 +4,6 @@ import { FeatureSelector } from "@/components/feature-selector";
 import { Section } from "@/components/section";
 import { codeToHtml } from "shiki";
 import { useEffect, useState } from "react";
-import { useDemoModal } from "@/components/home-wrapper";
 
 interface FeatureOption {
   id: number;
@@ -141,7 +140,6 @@ const featureOptions: FeatureOption[] = [
 ];
 
 export function Examples() {
-  const setIsDemoModalOpen = useDemoModal();
   const [features, setFeatures] = useState<Array<FeatureOption & { code: string }>>([]);
 
   useEffect(() => {
@@ -164,33 +162,9 @@ export function Examples() {
     <Section id="examples">
       <div className="pt-16 pb-6 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
-          {/* Header with inline voice preview button */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
-              Practice with Meelni
-            </h2>
-            <button
-              onClick={() => setIsDemoModalOpen(true)}
-              className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 hover:bg-primary/10 hover:border-primary/40 transition-all duration-300 hover:scale-105 active:scale-95"
-            >
-              <svg
-                className="w-4 h-4 text-primary transition-transform duration-300 group-hover:scale-110"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-                />
-              </svg>
-              <span className="text-xs font-medium text-primary/80 group-hover:text-primary transition-colors">
-                Preview voice
-              </span>
-            </button>
-          </div>
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground mb-4">
+            Practice with Meelni
+          </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
             Experience AI-powered coaching across different PM interview types
           </p>

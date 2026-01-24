@@ -1,10 +1,7 @@
 "use client";
 
 import { Section } from "@/components/section";
-import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 
 export function CTA() {
   return (
@@ -28,25 +25,18 @@ export function CTA() {
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
-              Ready to ace your next PM interview?
+              Thank you for your interest in Meelni
             </motion.h2>
 
-            <motion.div
+            <motion.p
+              className="text-muted-foreground text-lg max-w-2xl mx-auto"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: 0.4 }}
             >
-              <Link href="/setup">
-                <Button
-                  size="lg"
-                  className="group bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-semibold text-[15px] px-8 transition-all duration-300"
-                >
-                  Get Started
-                  <ArrowRight className="ml-2 w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
-                </Button>
-              </Link>
-            </motion.div>
+              This service has been discontinued. We appreciate everyone who tried our AI-powered mock interview platform.
+            </motion.p>
           </div>
 
           {/* Bottom border with glow */}
