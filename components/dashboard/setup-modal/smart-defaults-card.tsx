@@ -2,27 +2,29 @@
 
 import { motion } from "framer-motion";
 import { Zap, ArrowRight } from "lucide-react";
-import { breathingPulse } from "@/lib/animations";
+import { SelectableCard } from "@/components/ui/selectable-card";
 
 interface SmartDefaultsCardProps {
   onClick: () => void;
 }
 
+const MotionSelectableCard = motion.create(SelectableCard);
+
 export function SmartDefaultsCard({ onClick }: SmartDefaultsCardProps) {
   return (
-    <motion.button
+    <MotionSelectableCard
       onClick={onClick}
-      className="relative w-full p-5 rounded-xl border-2 border-primary/30 bg-gradient-to-br from-primary/5 via-primary/10 to-primary/5 text-left overflow-hidden group"
+      className="rounded-xl border-primary/30 bg-gradient-to-br from-primary/5 via-primary/10 to-primary/5 p-5"
       whileHover={{
         scale: 1.02,
-        boxShadow: '0 8px 40px rgb(var(--primary) / 0.4)',
+        boxShadow: '0 8px 40px color-mix(in oklab, var(--primary) 40%, transparent)',
       }}
       whileTap={{ scale: 0.98 }}
       animate={{
         boxShadow: [
-          '0 4px 20px rgb(var(--primary) / 0.2)',
-          '0 6px 30px rgb(var(--primary) / 0.35)',
-          '0 4px 20px rgb(var(--primary) / 0.2)',
+          '0 4px 20px color-mix(in oklab, var(--primary) 20%, transparent)',
+          '0 6px 30px color-mix(in oklab, var(--primary) 35%, transparent)',
+          '0 4px 20px color-mix(in oklab, var(--primary) 20%, transparent)',
         ],
       }}
       transition={{
@@ -89,6 +91,6 @@ export function SmartDefaultsCard({ onClick }: SmartDefaultsCardProps) {
       <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
         <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary/0 via-primary/50 to-primary/0 blur-xl" />
       </div>
-    </motion.button>
+    </MotionSelectableCard>
   );
 }

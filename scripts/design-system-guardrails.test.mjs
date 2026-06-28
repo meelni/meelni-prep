@@ -1,0 +1,863 @@
+import assert from "node:assert/strict";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import test from "node:test";
+
+const ROOTS = ["app", "components", "lib"];
+const EXTENSIONS = new Set([".css", ".ts", ".tsx"]);
+const INVALID_TOKEN_WRAPPER =
+  /\b(?:hsl|rgb)\(\s*var\(--[a-z0-9-]+\)\s*(?:\/[^)]*)?\)/g;
+
+async function* walk(dir) {
+  const entries = await readdir(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      yield* walk(path);
+      continue;
+    }
+
+    const extension = entry.name.slice(entry.name.lastIndexOf("."));
+    if (EXTENSIONS.has(extension)) {
+      yield path;
+    }
+  }
+}
+
+test("design tokens are not wrapped in legacy hsl()/rgb() color functions", async () => {
+  const violations = [];
+
+  for (const root of ROOTS) {
+    for await (const file of walk(root)) {
+      const content = await readFile(file, "utf8");
+      const matches = content.matchAll(INVALID_TOKEN_WRAPPER);
+
+      for (const match of matches) {
+        const line = content.slice(0, match.index).split("\n").length;
+        violations.push(`${file}:${line} ${match[0]}`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("referenced custom design utilities are declared in globals.css", async () => {
+  const globals = await readFile("app/globals.css", "utf8");
+  const source = [];
+
+  for (const root of ROOTS) {
+    for await (const file of walk(root)) {
+      source.push(await readFile(file, "utf8"));
+    }
+  }
+
+  const allSource = source.join("\n");
+  const expectations = [
+    {
+      className: "bg-surface",
+      declared: globals.includes("--color-surface:"),
+    },
+    {
+      className: "gradient-text",
+      declared: globals.includes(".gradient-text"),
+    },
+    {
+      className: "gradient-bg",
+      declared: globals.includes(".gradient-bg"),
+    },
+  ];
+
+  const missing = expectations
+    .filter(
+      ({ className, declared }) => allSource.includes(className) && !declared
+    )
+    .map(({ className }) => className);
+
+  assert.deepEqual(missing, []);
+});
+
+test("priority product surfaces use shared action primitives", async () => {
+  const files = [
+    "app/interview/page.tsx",
+    "components/dashboard/layout/sidebar.tsx",
+    "components/sections/hero.tsx",
+  ];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (content.includes("<button")) {
+      violations.push(file);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("priority product surfaces use shared app-surface primitives", async () => {
+  const surfaceSource = await readFile("components/ui/app-surface.tsx", "utf8");
+  const requiredExports = [
+    "AppSurface",
+    "AppSurfaceHeader",
+    "AppSurfaceTitle",
+    "AppSurfaceDescription",
+    "StatusPill",
+  ];
+  const missingExports = requiredExports.filter(
+    (name) =>
+      !surfaceSource.includes(` ${name}`) &&
+      !surfaceSource.includes(`{ ${name}`)
+  );
+
+  const priorityFiles = [
+    {
+      file: "app/interview/page.tsx",
+      requiredImports: ["AppSurface", "StatusPill"],
+    },
+    {
+      file: "components/dashboard/layout/sidebar.tsx",
+      requiredImports: ["AppSurface"],
+    },
+  ];
+  const missingImports = [];
+
+  for (const { file, requiredImports } of priorityFiles) {
+    const content = await readFile(file, "utf8");
+    for (const importName of requiredImports) {
+      if (!content.includes(importName)) {
+        missingImports.push(`${file}:${importName}`);
+      }
+    }
+  }
+
+  assert.deepEqual([...missingExports, ...missingImports], []);
+});
+
+test("auth pages use shared form and action primitives", async () => {
+  const files = [
+    "app/auth/signin/page.tsx",
+    "app/auth/signup/page.tsx",
+    "app/auth/forgot-password/page.tsx",
+    "app/auth/reset-password/page.tsx",
+  ];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (content.includes("<button")) {
+      violations.push(`${file}:button`);
+    }
+    if (content.includes("<input")) {
+      violations.push(`${file}:input`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("setup selectors use the shared selectable-card primitive", async () => {
+  const selectableCardSource = await readFile(
+    "components/ui/selectable-card.tsx",
+    "utf8"
+  );
+  const requiredExports = [
+    "SelectableCard",
+    "SelectableCardIcon",
+    "SelectableCardCheck",
+    "SelectableCardLockOverlay",
+  ];
+  const missingExports = requiredExports.filter(
+    (name) =>
+      !selectableCardSource.includes(` ${name}`) &&
+      !selectableCardSource.includes(`{ ${name}`)
+  );
+
+  const files = [
+    "app/setup/components/round-selector.tsx",
+    "app/setup/components/difficulty-selector.tsx",
+    "components/dashboard/setup-modal.tsx",
+    "components/dashboard/setup-modal/smart-defaults-card.tsx",
+  ];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (!content.includes("SelectableCard")) {
+      violations.push(`${file}:SelectableCard`);
+    }
+    if (content.includes("<Card")) {
+      violations.push(`${file}:Card`);
+    }
+    if (content.includes("<svg")) {
+      violations.push(`${file}:svg`);
+    }
+    if (content.includes("motion.button")) {
+      violations.push(`${file}:motion.button`);
+    }
+  }
+
+  assert.deepEqual([...missingExports, ...violations], []);
+});
+
+test("priority dashboard cards use shared dashboard surface primitives", async () => {
+  const surfaceSource = await readFile(
+    "components/dashboard/dashboard-surface.tsx",
+    "utf8"
+  );
+  const requiredExports = [
+    "DashboardMetricCard",
+    "DashboardChartCard",
+    "DashboardStateCard",
+    "DashboardSkeletonCard",
+    "DashboardSectionCard",
+    "DashboardActionCard",
+  ];
+  const missingExports = requiredExports.filter(
+    (name) =>
+      !surfaceSource.includes(` ${name}`) &&
+      !surfaceSource.includes(`{ ${name}`)
+  );
+
+  const expectations = [
+    {
+      file: "components/dashboard/stats-cards.tsx",
+      requiredImport: "DashboardMetricCard",
+    },
+    {
+      file: "components/dashboard/sections/analytics.tsx",
+      requiredImport: "DashboardMetricCard",
+    },
+    {
+      file: "components/dashboard/charts/clipped-area-chart.tsx",
+      requiredImport: "DashboardChartCard",
+    },
+    {
+      file: "components/dashboard/charts/glowing-radar-chart.tsx",
+      requiredImport: "DashboardChartCard",
+    },
+    {
+      file: "components/dashboard/charts/performance-trend.tsx",
+      requiredImport: "DashboardChartCard",
+    },
+    {
+      file: "components/dashboard/charts/competency-breakdown.tsx",
+      requiredImport: "DashboardChartCard",
+    },
+    {
+      file: "components/dashboard/charts/score-by-type.tsx",
+      requiredImport: "DashboardChartCard",
+    },
+    {
+      file: "components/dashboard/charts/time-investment.tsx",
+      requiredImport: "DashboardChartCard",
+    },
+    {
+      file: "components/dashboard/charts/type-distribution.tsx",
+      requiredImport: "DashboardChartCard",
+    },
+    {
+      file: "components/dashboard/charts/score-by-difficulty.tsx",
+      requiredImport: "DashboardChartCard",
+    },
+    {
+      file: "components/dashboard/sections/analytics.tsx",
+      requiredImport: "DashboardStateCard",
+    },
+    {
+      file: "components/dashboard/sections/analytics.tsx",
+      requiredImport: "DashboardSkeletonCard",
+    },
+    {
+      file: "components/dashboard/sections/overview.tsx",
+      requiredImport: "DashboardSectionCard",
+    },
+    {
+      file: "components/dashboard/sections/overview.tsx",
+      requiredImport: "DashboardStateCard",
+    },
+    {
+      file: "components/dashboard/sections/overview.tsx",
+      requiredImport: "DashboardActionCard",
+    },
+    {
+      file: "components/dashboard/next-goal-card.tsx",
+      requiredImport: "DashboardActionCard",
+    },
+    {
+      file: "components/dashboard/badge-display.tsx",
+      requiredImport: "DashboardSectionCard",
+    },
+    {
+      file: "components/dashboard/badge-display.tsx",
+      requiredImport: "DashboardSkeletonCard",
+    },
+    {
+      file: "components/dashboard/error.tsx",
+      requiredImport: "DashboardStateCard",
+    },
+    {
+      file: "components/dashboard/loading.tsx",
+      requiredImport: "DashboardSkeletonCard",
+    },
+    {
+      file: "components/dashboard/weakest-area-card.tsx",
+      requiredImport: "DashboardActionCard",
+    },
+    {
+      file: "components/dashboard/sections/history.tsx",
+      requiredImport: "DashboardSkeletonCard",
+    },
+    {
+      file: "components/dashboard/session-list.tsx",
+      requiredImport: "DashboardStateCard",
+    },
+    {
+      file: "components/dashboard/session-list.tsx",
+      requiredImport: "DashboardActionCard",
+    },
+    {
+      file: "components/dashboard/score-chart.tsx",
+      requiredImport: "DashboardChartCard",
+    },
+    {
+      file: "components/dashboard/score-chart.tsx",
+      requiredImport: "DashboardStateCard",
+    },
+    {
+      file: "components/dashboard/competency-radar.tsx",
+      requiredImport: "DashboardChartCard",
+    },
+    {
+      file: "components/dashboard/competency-radar.tsx",
+      requiredImport: "DashboardStateCard",
+    },
+    {
+      file: "components/dashboard/sections/settings.tsx",
+      requiredImport: "DashboardSectionCard",
+    },
+    {
+      file: "components/dashboard/sections/settings.tsx",
+      requiredImport: "DashboardActionCard",
+    },
+    {
+      file: "components/dashboard/sections/billing.tsx",
+      requiredImport: "DashboardSectionCard",
+    },
+    {
+      file: "components/dashboard/sections/billing.tsx",
+      requiredImport: "DashboardStateCard",
+    },
+    {
+      file: "components/dashboard/sections/billing.tsx",
+      requiredImport: "DashboardSkeletonCard",
+    },
+    {
+      file: "components/dashboard/sections/billing.tsx",
+      requiredImport: "DashboardActionCard",
+    },
+    {
+      file: "components/dashboard/sections/questions.tsx",
+      requiredImport: "DashboardSectionCard",
+    },
+    {
+      file: "components/dashboard/sections/questions.tsx",
+      requiredImport: "DashboardSkeletonCard",
+    },
+    {
+      file: "components/dashboard/quota-exceeded-modal.tsx",
+      requiredImport: "DashboardSectionCard",
+    },
+    {
+      file: "components/dashboard/quota-exceeded-modal.tsx",
+      requiredImport: "DashboardActionCard",
+    },
+    {
+      file: "components/dashboard/tier-upgrade-modal.tsx",
+      requiredImport: "DashboardSectionCard",
+    },
+    {
+      file: "components/dashboard/tier-upgrade-modal.tsx",
+      requiredImport: "DashboardActionCard",
+    },
+  ];
+  const missingImports = [];
+
+  for (const { file, requiredImport } of expectations) {
+    const content = await readFile(file, "utf8");
+    if (!content.includes(requiredImport)) {
+      missingImports.push(`${file}:${requiredImport}`);
+    }
+    if (
+      file === "components/dashboard/sections/analytics.tsx" &&
+      content.includes("@/components/ui/card")
+    ) {
+      missingImports.push(`${file}:ui/card`);
+    }
+    if (
+      [
+        "components/dashboard/sections/overview.tsx",
+        "components/dashboard/next-goal-card.tsx",
+      ].includes(file) &&
+      content.includes("@/components/ui/card")
+    ) {
+      missingImports.push(`${file}:ui/card`);
+    }
+    if (
+      [
+        "components/dashboard/badge-display.tsx",
+        "components/dashboard/weakest-area-card.tsx",
+        "components/dashboard/sections/history.tsx",
+        "components/dashboard/session-list.tsx",
+        "components/dashboard/score-chart.tsx",
+        "components/dashboard/competency-radar.tsx",
+        "components/dashboard/error.tsx",
+        "components/dashboard/loading.tsx",
+        "components/dashboard/sections/settings.tsx",
+        "components/dashboard/sections/billing.tsx",
+        "components/dashboard/sections/questions.tsx",
+        "components/dashboard/quota-exceeded-modal.tsx",
+        "components/dashboard/tier-upgrade-modal.tsx",
+      ].includes(file) &&
+      content.includes("@/components/ui/card")
+    ) {
+      missingImports.push(`${file}:ui/card`);
+    }
+    if (
+      file === "components/dashboard/sections/billing.tsx" &&
+      content.includes("<button")
+    ) {
+      missingImports.push(`${file}:button`);
+    }
+    if (
+      file === "components/dashboard/sections/questions.tsx" &&
+      content.includes("<button")
+    ) {
+      missingImports.push(`${file}:button`);
+    }
+    if (
+      file === "components/dashboard/badge-display.tsx" &&
+      content.includes("<button")
+    ) {
+      missingImports.push(`${file}:button`);
+    }
+    if (
+      file === "components/dashboard/error.tsx" &&
+      /bg-(?:orange|red|green|blue|purple)-500|text-(?:orange|red|green|blue|purple)-500/.test(
+        content
+      )
+    ) {
+      missingImports.push(`${file}:status-color`);
+    }
+  }
+
+  assert.deepEqual([...missingExports, ...missingImports], []);
+});
+
+test("priority chart configs use shared chart tokens instead of literal colors", async () => {
+  const files = [
+    "components/dashboard/charts/glowing-radar-chart.tsx",
+    "components/dashboard/charts/performance-trend.tsx",
+    "components/dashboard/charts/clipped-area-chart.tsx",
+    "components/dashboard/charts/score-by-type.tsx",
+    "components/dashboard/charts/time-investment.tsx",
+    "components/dashboard/charts/competency-breakdown.tsx",
+    "components/feedback/score-breakdown.tsx",
+  ];
+  const violations = [];
+  const literalColor = /color:\s*["']#[0-9A-Fa-f]{3,6}["']/;
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (literalColor.test(content)) {
+      violations.push(file);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("dashboard helper callouts use semantic status tokens", async () => {
+  const globals = await readFile("app/globals.css", "utf8");
+  const missingTokens = [
+    "--color-success:",
+    "--color-warning:",
+    "--color-info:",
+    "--success:",
+    "--warning:",
+    "--info:",
+  ].filter((token) => !globals.includes(token));
+
+  const files = [
+    "components/dashboard/stats/milestone-badge.tsx",
+    "components/dashboard/stats/trend-indicator.tsx",
+    "components/dashboard/weakest-area-card.tsx",
+    "components/dashboard/next-goal-card.tsx",
+    "components/dashboard/charts/score-by-difficulty.tsx",
+    "components/dashboard/charts/type-distribution.tsx",
+    "components/dashboard/charts/clipped-area-chart.tsx",
+  ];
+  const rawStatusColor =
+    /\b(?:bg|text|border|hover:bg|hover:border)-(?:green|orange|blue|red|purple)-500(?:\/\d+)?\b/;
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (rawStatusColor.test(content)) {
+      violations.push(`${file}:raw-status-color`);
+    }
+  }
+
+  assert.deepEqual([...missingTokens, ...violations], []);
+});
+
+test("question bank child components use shared controls", async () => {
+  const textareaSource = await readFile(
+    "components/ui/textarea.tsx",
+    "utf8"
+  ).catch(() => "");
+  const missingExports = textareaSource.includes("Textarea")
+    ? []
+    : ["components/ui/textarea.tsx:Textarea"];
+  const files = [
+    "components/question-bank/filter-popover.tsx",
+    "components/question-bank/mobile-filter-drawer.tsx",
+    "components/question-bank/question-card.tsx",
+    "components/question-bank/practice-sets-list.tsx",
+    "components/question-bank/practice-set-dialog.tsx",
+    "components/question-bank/search-autocomplete.tsx",
+  ];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (content.includes("<button")) {
+      violations.push(`${file}:button`);
+    }
+    if (!content.includes("@/components/ui/button")) {
+      violations.push(`${file}:Button`);
+    }
+  }
+
+  const formExpectations = [
+    {
+      file: "components/question-bank/search-autocomplete.tsx",
+      requiredImports: ["@/components/ui/input"],
+      bannedPatterns: ["<input"],
+    },
+    {
+      file: "components/question-bank/practice-set-dialog.tsx",
+      requiredImports: [
+        "@/components/ui/dialog",
+        "@/components/ui/input",
+        "@/components/ui/label",
+        "@/components/ui/textarea",
+      ],
+      bannedPatterns: ["<input", "<textarea"],
+    },
+  ];
+
+  for (const { file, requiredImports, bannedPatterns } of formExpectations) {
+    const content = await readFile(file, "utf8");
+    for (const requiredImport of requiredImports) {
+      if (!content.includes(requiredImport)) {
+        violations.push(`${file}:${requiredImport}`);
+      }
+    }
+    for (const bannedPattern of bannedPatterns) {
+      if (content.includes(bannedPattern)) {
+        violations.push(`${file}:${bannedPattern}`);
+      }
+    }
+  }
+
+  assert.deepEqual([...missingExports, ...violations], []);
+});
+
+test("marketing index pages use shared marketing surfaces and actions", async () => {
+  const surfaceSource = await readFile(
+    "components/marketing/marketing-surface.tsx",
+    "utf8"
+  ).catch(() => "");
+  const requiredExports = [
+    "MarketingPage",
+    "MarketingHero",
+    "MarketingEyebrow",
+    "MarketingCard",
+    "MarketingCtaCard",
+    "MarketingMetaRow",
+  ];
+  const missingExports = requiredExports.filter(
+    (name) =>
+      !surfaceSource.includes(` ${name}`) &&
+      !surfaceSource.includes(`{ ${name}`)
+  );
+
+  const files = ["app/blog/page.tsx", "app/companies/page.tsx"];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    for (const importName of requiredExports) {
+      if (!content.includes(importName)) {
+        violations.push(`${file}:${importName}`);
+      }
+    }
+    if (!content.includes("@/components/ui/button")) {
+      violations.push(`${file}:Button`);
+    }
+    if (content.includes("<svg")) {
+      violations.push(`${file}:svg`);
+    }
+    if (content.includes("text-[")) {
+      violations.push(`${file}:arbitrary-text`);
+    }
+  }
+
+  assert.deepEqual([...missingExports, ...violations], []);
+});
+
+test("pricing result pages use shared marketing state surfaces", async () => {
+  const files = [
+    "app/pricing/success/page.tsx",
+    "app/pricing/canceled/page.tsx",
+  ];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    for (const importName of ["MarketingPage", "MarketingCtaCard"]) {
+      if (!content.includes(importName)) {
+        violations.push(`${file}:${importName}`);
+      }
+    }
+    if (!content.includes("@/components/ui/button")) {
+      violations.push(`${file}:Button`);
+    }
+    if (content.includes("@/components/ui/card")) {
+      violations.push(`${file}:ui/card`);
+    }
+    if (/\b(?:bg|text|border)-green-500/.test(content)) {
+      violations.push(`${file}:raw-success-color`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("blog detail page uses shared marketing article primitives", async () => {
+  const surfaceSource = await readFile(
+    "components/marketing/marketing-surface.tsx",
+    "utf8"
+  );
+  const requiredExports = [
+    "MarketingArticleHeader",
+    "MarketingProse",
+    "MarketingCtaCard",
+    "MarketingPage",
+    "MarketingMetaRow",
+  ];
+  const missingExports = requiredExports.filter(
+    (name) =>
+      !surfaceSource.includes(` ${name}`) &&
+      !surfaceSource.includes(`{ ${name}`)
+  );
+
+  const file = "app/blog/[id]/page.tsx";
+  const content = await readFile(file, "utf8");
+  const violations = [];
+
+  for (const importName of requiredExports) {
+    if (!content.includes(importName)) {
+      violations.push(`${file}:${importName}`);
+    }
+  }
+  if (!content.includes("@/components/ui/button")) {
+    violations.push(`${file}:Button`);
+  }
+  if (content.includes("<svg")) {
+    violations.push(`${file}:svg`);
+  }
+  if (content.includes("text-[")) {
+    violations.push(`${file}:arbitrary-text`);
+  }
+  if (/\b(?:bg|text|border)-(?:red|green)-500/.test(content)) {
+    violations.push(`${file}:raw-status-color`);
+  }
+
+  assert.deepEqual([...missingExports, ...violations], []);
+});
+
+test("contact page uses shared marketing and form primitives", async () => {
+  const file = "app/contact/page.tsx";
+  const content = await readFile(file, "utf8");
+  const violations = [];
+
+  const requiredImports = [
+    "MarketingPage",
+    "MarketingHero",
+    "MarketingEyebrow",
+    "MarketingCtaCard",
+    "MarketingCard",
+    "SelectableCard",
+    "@/components/ui/textarea",
+    "@/components/ui/button",
+  ];
+
+  for (const importName of requiredImports) {
+    if (!content.includes(importName)) {
+      violations.push(`${file}:${importName}`);
+    }
+  }
+  if (content.includes("@/components/ui/card")) {
+    violations.push(`${file}:ui/card`);
+  }
+  if (content.includes("<button")) {
+    violations.push(`${file}:button`);
+  }
+  if (content.includes("<textarea")) {
+    violations.push(`${file}:textarea`);
+  }
+  if (/\b(?:bg|text|border)-(?:red|green)-500/.test(content)) {
+    violations.push(`${file}:raw-status-color`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("priority feedback surfaces use shared feedback primitives", async () => {
+  const surfaceSource = await readFile(
+    "components/feedback/feedback-surface.tsx",
+    "utf8"
+  );
+  const requiredExports = [
+    "FeedbackSectionCard",
+    "FeedbackScoreCard",
+    "FeedbackStateCard",
+    "FeedbackStatusPage",
+    "FeedbackMetricCard",
+    "FeedbackActionItem",
+  ];
+  const missingExports = requiredExports.filter(
+    (name) =>
+      !surfaceSource.includes(` ${name}`) &&
+      !surfaceSource.includes(`{ ${name}`)
+  );
+
+  const expectations = [
+    {
+      file: "components/feedback/feedback-display.tsx",
+      requiredImports: [
+        "FeedbackSectionCard",
+        "FeedbackScoreCard",
+        "FeedbackStateCard",
+      ],
+    },
+    {
+      file: "components/feedback/score-breakdown.tsx",
+      requiredImports: ["FeedbackSectionCard"],
+    },
+    {
+      file: "components/feedback/strengths-list.tsx",
+      requiredImports: ["FeedbackSectionCard"],
+    },
+    {
+      file: "components/feedback/improvements-list.tsx",
+      requiredImports: ["FeedbackSectionCard"],
+    },
+    {
+      file: "components/feedback/drill-list.tsx",
+      requiredImports: ["FeedbackSectionCard"],
+    },
+    {
+      file: "components/feedback/transcript-viewer.tsx",
+      requiredImports: ["FeedbackSectionCard", "FeedbackStateCard"],
+    },
+    {
+      file: "components/feedback/feedback-partial.tsx",
+      requiredImports: [
+        "FeedbackStatusPage",
+        "FeedbackSectionCard",
+        "FeedbackMetricCard",
+        "FeedbackActionItem",
+      ],
+    },
+    {
+      file: "components/feedback/feedback-insufficient.tsx",
+      requiredImports: [
+        "FeedbackStatusPage",
+        "FeedbackSectionCard",
+        "FeedbackMetricCard",
+        "FeedbackActionItem",
+      ],
+    },
+    {
+      file: "components/feedback/feedback-abandoned.tsx",
+      requiredImports: [
+        "FeedbackStatusPage",
+        "FeedbackSectionCard",
+        "FeedbackActionItem",
+      ],
+    },
+    {
+      file: "components/feedback/attempt-comparison.tsx",
+      requiredImports: ["FeedbackSectionCard", "FeedbackActionItem"],
+    },
+    {
+      file: "app/feedback/[sessionId]/compare/page.tsx",
+      requiredImports: [
+        "FeedbackSectionCard",
+        "FeedbackStateCard",
+        "FeedbackStatusPage",
+        "SelectableCard",
+      ],
+    },
+    {
+      file: "app/feedback/[sessionId]/page.tsx",
+      requiredImports: [
+        "FeedbackStatusPage",
+        "FeedbackSectionCard",
+        "FeedbackScoreCard",
+        "FeedbackActionItem",
+      ],
+    },
+    {
+      file: "components/feedback/rubric-section.tsx",
+      requiredImports: ["FeedbackSectionCard"],
+    },
+    {
+      file: "app/feedback/[sessionId]/components/feedback-loading.tsx",
+      requiredImports: [
+        "FeedbackStatusPage",
+        "FeedbackSectionCard",
+        "FeedbackActionItem",
+      ],
+    },
+  ];
+  const violations = [];
+
+  for (const { file, requiredImports } of expectations) {
+    const content = await readFile(file, "utf8");
+    for (const importName of requiredImports) {
+      if (!content.includes(importName)) {
+        violations.push(`${file}:${importName}`);
+      }
+    }
+    if (content.includes("@/components/ui/card")) {
+      violations.push(`${file}:ui/card`);
+    }
+    if (
+      [
+        "app/feedback/[sessionId]/compare/page.tsx",
+        "app/feedback/[sessionId]/components/feedback-loading.tsx",
+      ].includes(file) &&
+      content.includes("<button")
+    ) {
+      violations.push(`${file}:button`);
+    }
+  }
+
+  assert.deepEqual([...missingExports, ...violations], []);
+});

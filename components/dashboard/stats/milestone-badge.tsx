@@ -23,8 +23,8 @@ const MILESTONES: Record<MilestoneType, Milestone> = {
     description: "Completed 5 sessions in 5 consecutive days",
     icon: Flame,
     emoji: "🔥",
-    color: "text-orange-500",
-    bgColor: "bg-orange-500/10",
+    color: "text-warning",
+    bgColor: "bg-warning/10",
   },
   perfect: {
     type: "perfect",
@@ -32,8 +32,8 @@ const MILESTONES: Record<MilestoneType, Milestone> = {
     description: "Achieved an overall score of 90 or higher",
     icon: Target,
     emoji: "🎯",
-    color: "text-green-500",
-    bgColor: "bg-green-500/10",
+    color: "text-success",
+    bgColor: "bg-success/10",
   },
   improving: {
     type: "improving",
@@ -41,8 +41,8 @@ const MILESTONES: Record<MilestoneType, Milestone> = {
     description: "3 consecutive sessions with increasing scores",
     icon: TrendingUp,
     emoji: "📈",
-    color: "text-blue-500",
-    bgColor: "bg-blue-500/10",
+    color: "text-info",
+    bgColor: "bg-info/10",
   },
   consistent: {
     type: "consistent",
@@ -50,8 +50,8 @@ const MILESTONES: Record<MilestoneType, Milestone> = {
     description: "Completed 10 or more sessions",
     icon: Star,
     emoji: "⭐",
-    color: "text-purple-500",
-    bgColor: "bg-purple-500/10",
+    color: "text-primary",
+    bgColor: "bg-primary/10",
   },
 };
 
@@ -64,7 +64,7 @@ interface MilestoneBadgeProps {
 export function MilestoneBadge({
   type,
   showTooltip = true,
-  compact = false
+  compact = false,
 }: MilestoneBadgeProps) {
   const milestone = MILESTONES[type];
   const Icon = milestone.icon;
@@ -82,7 +82,7 @@ export function MilestoneBadge({
         }}
         whileHover={{ scale: 1.05 }}
         className={cn(
-          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full",
+          "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5",
           "cursor-pointer transition-all duration-200",
           milestone.bgColor,
           compact ? "px-2 py-1" : "px-3 py-1.5"
@@ -92,7 +92,7 @@ export function MilestoneBadge({
           <span className="text-sm">{milestone.emoji}</span>
         ) : (
           <>
-            <Icon className={cn("w-3.5 h-3.5", milestone.color)} />
+            <Icon className={cn("h-3.5 w-3.5", milestone.color)} />
             <span className={cn("text-xs font-medium", milestone.color)}>
               {milestone.label}
             </span>
@@ -102,21 +102,21 @@ export function MilestoneBadge({
 
       {/* Tooltip on hover */}
       {showTooltip && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50">
-          <div className="bg-card border border-border rounded-lg px-3 py-2 shadow-lg min-w-[200px]">
-            <div className="flex items-center gap-2 mb-1">
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <div className="bg-card border-border min-w-[200px] rounded-lg border px-3 py-2 shadow-lg">
+            <div className="mb-1 flex items-center gap-2">
               <span className="text-base">{milestone.emoji}</span>
               <span className={cn("text-sm font-medium", milestone.color)}>
                 {milestone.label}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               {milestone.description}
             </p>
           </div>
           {/* Arrow */}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
-            <div className="w-2 h-2 bg-card border-r border-b border-border rotate-45"></div>
+          <div className="absolute top-full left-1/2 -mt-1 -translate-x-1/2">
+            <div className="bg-card border-border h-2 w-2 rotate-45 border-r border-b"></div>
           </div>
         </div>
       )}
@@ -129,7 +129,10 @@ interface MilestoneBadgesProps {
   compact?: boolean;
 }
 
-export function MilestoneBadges({ milestones, compact = false }: MilestoneBadgesProps) {
+export function MilestoneBadges({
+  milestones,
+  compact = false,
+}: MilestoneBadgesProps) {
   if (milestones.length === 0) {
     return null;
   }

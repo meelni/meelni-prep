@@ -11,7 +11,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  DashboardActionCard,
+  DashboardSectionCard,
+} from "@/components/dashboard/dashboard-surface";
 import {
   Lock,
   Crown,
@@ -91,7 +94,8 @@ export function TierUpgradeModal({
     {
       icon: TrendingUp,
       title: "2,879 Curated Questions",
-      description: "Access our complete database of real PM interview questions",
+      description:
+        "Access our complete database of real PM interview questions",
     },
     {
       icon: Zap,
@@ -104,12 +108,12 @@ export function TierUpgradeModal({
     <Dialog open={isOpen} onOpenChange={handleDismiss}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <Lock className="w-6 h-6 text-primary" />
+          <div className="mb-2 flex items-center gap-3">
+            <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
+              <Lock className="text-primary h-6 w-6" />
             </div>
             <div>
-              <DialogTitle className="text-2xl font-display font-light">
+              <DialogTitle className="font-display text-2xl font-light">
                 Unlock {requestedTypeLabel} Interviews
               </DialogTitle>
               <DialogDescription className="text-muted-foreground mt-1">
@@ -121,43 +125,46 @@ export function TierUpgradeModal({
 
         <div className="space-y-6">
           {/* Current Tier Info */}
-          <Card className="p-4 bg-muted/30 border-border">
+          <DashboardSectionCard
+            title="Current Plan"
+            action={
+              <div className="text-muted-foreground text-sm">
+                Limited access
+              </div>
+            }
+          >
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm text-muted-foreground mb-1">Current Plan</div>
-                <div className="text-2xl font-bold font-mono text-foreground capitalize">
+                <div className="text-foreground font-mono text-2xl font-bold capitalize">
                   {currentTier}
                 </div>
               </div>
-              <div className="text-sm text-muted-foreground">
-                Limited access
-              </div>
             </div>
-          </Card>
+          </DashboardSectionCard>
 
           {/* Pro Features */}
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <Crown className="w-5 h-5 text-primary" />
-              <h3 className="font-display font-light text-lg text-foreground">
+            <div className="mb-4 flex items-center gap-2">
+              <Crown className="text-primary h-5 w-5" />
+              <h3 className="font-display text-foreground text-lg font-light">
                 Upgrade to Pro for Full Access
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {proFeatures.map((feature, index) => (
                 <div
                   key={index}
-                  className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card/50 hover:bg-card transition-colors"
+                  className="border-border bg-card/50 hover:bg-card flex items-start gap-3 rounded-lg border p-3 transition-colors"
                 >
-                  <div className="p-2 rounded-lg bg-primary/10 flex-shrink-0">
-                    <feature.icon className="w-4 h-4 text-primary" />
+                  <div className="bg-primary/10 flex-shrink-0 rounded-lg p-2">
+                    <feature.icon className="text-primary h-4 w-4" />
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-foreground mb-1">
+                    <div className="text-foreground mb-1 text-sm font-medium">
                       {feature.title}
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-muted-foreground text-xs">
                       {feature.description}
                     </div>
                   </div>
@@ -167,36 +174,34 @@ export function TierUpgradeModal({
           </div>
 
           {/* Pricing Highlight */}
-          <Card className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm text-muted-foreground mb-1">Pro Plan</div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-foreground">$29</span>
-                  <span className="text-muted-foreground">/month</span>
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Or save 31% with annual billing
-                </div>
-              </div>
-              <CheckCircle2 className="w-8 h-8 text-primary" />
+          <DashboardActionCard
+            variant="accent"
+            eyebrow="Pro Plan"
+            icon={<Crown className="h-5 w-5" />}
+            title="Full access for $29/month"
+            description="Or save 31% with annual billing."
+            action={<CheckCircle2 className="text-primary h-8 w-8" />}
+          >
+            <div className="flex items-baseline gap-2">
+              <span className="text-foreground text-3xl font-bold">$29</span>
+              <span className="text-muted-foreground">/month</span>
             </div>
-          </Card>
+          </DashboardActionCard>
         </div>
 
-        <DialogFooter className="flex-col sm:flex-row gap-3">
+        <DialogFooter className="flex-col gap-3 sm:flex-row">
           <Button
             variant="outline"
             onClick={handleDismiss}
-            className="w-full sm:w-auto order-2 sm:order-1"
+            className="order-2 w-full sm:order-1 sm:w-auto"
           >
             Maybe Later
           </Button>
           <Button
             onClick={handleViewPlans}
-            className="w-full sm:w-auto order-1 sm:order-2 bg-primary text-primary-foreground hover:bg-primary/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 order-1 w-full sm:order-2 sm:w-auto"
           >
-            <Crown className="w-4 h-4 mr-2" />
+            <Crown className="mr-2 h-4 w-4" />
             View Plans
           </Button>
         </DialogFooter>

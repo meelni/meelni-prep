@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DashboardActionCard,
+  DashboardSectionCard,
+  DashboardSkeletonCard,
+  DashboardStateCard,
+} from "@/components/dashboard/dashboard-surface";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -12,7 +17,6 @@ import {
   AlertCircle,
   FileText,
   Loader2,
-  Crown,
   Infinity,
   XCircle,
   RotateCcw,
@@ -57,7 +61,8 @@ export function BillingSection() {
   const [managingSubscription, setManagingSubscription] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
-  const [reactivatingSubscription, setReactivatingSubscription] = useState(false);
+  const [reactivatingSubscription, setReactivatingSubscription] =
+    useState(false);
 
   // Fetch subscription data
   useEffect(() => {
@@ -178,7 +183,11 @@ export function BillingSection() {
       setShowCancelModal(false);
     } catch (err) {
       console.error("Error cancelling subscription:", err);
-      alert(err instanceof Error ? err.message : "Failed to cancel subscription. Please try again.");
+      alert(
+        err instanceof Error
+          ? err.message
+          : "Failed to cancel subscription. Please try again."
+      );
     } finally {
       setCancellingSubscription(false);
     }
@@ -208,7 +217,11 @@ export function BillingSection() {
       }
     } catch (err) {
       console.error("Error reactivating subscription:", err);
-      alert(err instanceof Error ? err.message : "Failed to reactivate subscription. Please try again.");
+      alert(
+        err instanceof Error
+          ? err.message
+          : "Failed to reactivate subscription. Please try again."
+      );
     } finally {
       setReactivatingSubscription(false);
     }
@@ -259,358 +272,354 @@ export function BillingSection() {
 
   if (isLoading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <div className="text-center space-y-3">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
-          <p className="text-sm text-muted-foreground">Loading billing information...</p>
+      <DashboardSkeletonCard className="flex min-h-[400px] items-center justify-center">
+        <div className="space-y-3 text-center">
+          <Loader2 className="text-primary mx-auto h-8 w-8 animate-spin" />
+          <p className="text-muted-foreground text-sm">
+            Loading billing information...
+          </p>
         </div>
-      </div>
+      </DashboardSkeletonCard>
     );
   }
 
   // Error state
   if (error) {
     return (
-      <div className="p-6">
-        <Card className="bg-destructive/10 border-destructive/20">
-          <CardContent className="p-6 flex items-center gap-4">
-            <AlertCircle className="w-8 h-8 text-destructive" />
-            <div>
-              <p className="font-semibold text-destructive">Failed to load billing data</p>
-              <p className="text-sm text-muted-foreground">{error}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <DashboardStateCard
+        tone="danger"
+        icon={<AlertCircle className="h-8 w-8" />}
+        title="Failed to load billing data"
+        description={error}
+        className="py-8"
+      />
     );
   }
 
-  const showUpgradeBanner = subscription?.tier === "free" && (usage?.currentUsage || 0) >= 1;
+  const showUpgradeBanner =
+    subscription?.tier === "free" && (usage?.currentUsage || 0) >= 1;
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Subscription Card */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-              Current Subscription
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {subscription ? (
-              <>
-                {/* Tier and Status */}
-                <div className="flex items-center gap-3">
-                  <Badge variant={getTierBadgeVariant(subscription.tier)} className="text-sm">
-                    {subscription.tier.toUpperCase()}
-                  </Badge>
-                  <Badge variant={getStatusBadgeVariant(subscription.status)} className="text-xs">
-                    {subscription.status === "trialing"
-                      ? "FREE TRIAL"
-                      : subscription.status.replace("_", " ").toUpperCase()}
-                  </Badge>
+        <DashboardSectionCard
+          title="Current Subscription"
+          contentClassName="space-y-6"
+        >
+          {subscription ? (
+            <>
+              {/* Tier and Status */}
+              <div className="flex items-center gap-3">
+                <Badge
+                  variant={getTierBadgeVariant(subscription.tier)}
+                  className="text-sm"
+                >
+                  {subscription.tier.toUpperCase()}
+                </Badge>
+                <Badge
+                  variant={getStatusBadgeVariant(subscription.status)}
+                  className="text-xs"
+                >
+                  {subscription.status === "trialing"
+                    ? "FREE TRIAL"
+                    : subscription.status.replace("_", " ").toUpperCase()}
+                </Badge>
+              </div>
+
+              {/* Billing Info */}
+              {subscription.tier !== "free" && subscription.price && (
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-foreground font-mono text-3xl font-bold">
+                      {formatCurrency(
+                        subscription.price,
+                        subscription.currency || "USD"
+                      )}
+                    </span>
+                    <span className="text-muted-foreground text-sm">
+                      /
+                      {subscription.billingCycle === "annual"
+                        ? "year"
+                        : "month"}
+                    </span>
+                  </div>
+                  {subscription.currentPeriodEnd && (
+                    <p className="text-muted-foreground text-sm">
+                      {subscription.status === "trialing"
+                        ? "Trial ends on"
+                        : subscription.cancelAtPeriodEnd
+                          ? "Ends on"
+                          : "Renews on"}{" "}
+                      {formatDate(subscription.currentPeriodEnd)}
+                    </p>
+                  )}
                 </div>
+              )}
 
-                {/* Billing Info */}
-                {subscription.tier !== "free" && subscription.price && (
-                  <div className="space-y-2">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold font-mono text-foreground">
-                        {formatCurrency(subscription.price, subscription.currency || "USD")}
-                      </span>
-                      <span className="text-muted-foreground text-sm">
-                        /{subscription.billingCycle === "annual" ? "year" : "month"}
-                      </span>
-                    </div>
-                    {subscription.currentPeriodEnd && (
-                      <p className="text-sm text-muted-foreground">
-                        {subscription.status === "trialing"
-                          ? "Trial ends on"
-                          : subscription.cancelAtPeriodEnd
-                            ? "Ends on"
-                            : "Renews on"}{" "}
-                        {formatDate(subscription.currentPeriodEnd)}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Trial status message */}
-                {subscription.status === "trialing" && (
-                  <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
-                    <p className="text-sm text-foreground">
-                      <strong>Free Trial Active</strong> - You have full access to {subscription.tier.toUpperCase()} features.
-                      No charges until your trial ends.
-                    </p>
-                  </div>
-                )}
-
-                {/* Free tier message */}
-                {subscription.tier === "free" && (
-                  <p className="text-sm text-muted-foreground">
-                    You're on the free tier with limited interviews per month.
+              {/* Trial status message */}
+              {subscription.status === "trialing" && (
+                <div className="border-primary/20 bg-primary/10 rounded-lg border p-3">
+                  <p className="text-foreground text-sm">
+                    <strong>Free Trial Active</strong> - You have full access to{" "}
+                    {subscription.tier.toUpperCase()} features. No charges until
+                    your trial ends.
                   </p>
-                )}
+                </div>
+              )}
 
-                {/* Cancellation Notice */}
-                {subscription.cancelAtPeriodEnd && (
-                  <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
-                    <p className="text-sm text-orange-600 dark:text-orange-400">
-                      <strong>Subscription ending:</strong> Your subscription will be canceled on{" "}
-                      {subscription.currentPeriodEnd && formatDate(subscription.currentPeriodEnd)}.
-                      You'll retain access until then.
-                    </p>
+              {/* Free tier message */}
+              {subscription.tier === "free" && (
+                <p className="text-muted-foreground text-sm">
+                  You're on the free tier with limited interviews per month.
+                </p>
+              )}
+
+              {/* Cancellation Notice */}
+              {subscription.cancelAtPeriodEnd && (
+                <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    <strong>Subscription ending:</strong> Your subscription will
+                    be canceled on{" "}
+                    {subscription.currentPeriodEnd &&
+                      formatDate(subscription.currentPeriodEnd)}
+                    . You'll retain access until then.
+                  </p>
+                  <Button
+                    onClick={handleReactivateSubscription}
+                    disabled={reactivatingSubscription}
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                  >
+                    {reactivatingSubscription ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Reactivating...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        Keep My Subscription
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex flex-col gap-3 pt-2">
+                {subscription.tier === "free" ? (
+                  <Button
+                    onClick={() => (window.location.href = "/pricing")}
+                    className="w-full"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Upgrade Plan
+                  </Button>
+                ) : (
+                  <>
                     <Button
-                      onClick={handleReactivateSubscription}
-                      disabled={reactivatingSubscription}
+                      onClick={handleManageSubscription}
+                      disabled={managingSubscription}
                       variant="outline"
-                      size="sm"
-                      className="mt-2"
+                      className="w-full"
                     >
-                      {reactivatingSubscription ? (
+                      {managingSubscription ? (
                         <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Reactivating...
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
                         </>
                       ) : (
                         <>
-                          <RotateCcw className="w-4 h-4 mr-2" />
-                          Keep My Subscription
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          Update Payment Method
                         </>
                       )}
                     </Button>
-                  </div>
-                )}
 
-                {/* Actions */}
-                <div className="flex flex-col gap-3 pt-2">
-                  {subscription.tier === "free" ? (
-                    <Button
-                      onClick={() => (window.location.href = "/pricing")}
-                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                    >
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Upgrade Plan
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        onClick={handleManageSubscription}
-                        disabled={managingSubscription}
-                        variant="outline"
-                        className="w-full"
-                      >
-                        {managingSubscription ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Loading...
-                          </>
-                        ) : (
-                          <>
-                            <CreditCard className="w-4 h-4 mr-2" />
-                            Update Payment Method
-                          </>
-                        )}
-                      </Button>
-
-                      {/* Cancel Subscription Button - California ARL Compliance */}
-                      {!subscription.cancelAtPeriodEnd && subscription.status !== "canceled" && (
+                    {/* Cancel Subscription Button - California ARL Compliance */}
+                    {!subscription.cancelAtPeriodEnd &&
+                      subscription.status !== "canceled" && (
                         <Button
                           onClick={() => setShowCancelModal(true)}
                           variant="ghost"
-                          className="w-full text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive w-full"
                         >
-                          <XCircle className="w-4 h-4 mr-2" />
+                          <XCircle className="mr-2 h-4 w-4" />
                           Cancel Subscription
                         </Button>
                       )}
-                    </>
-                  )}
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">No subscription data available</p>
-            )}
-          </CardContent>
-        </Card>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              No subscription data available
+            </p>
+          )}
+        </DashboardSectionCard>
 
         {/* Usage Quota Card */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-              Usage This Period
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {usage ? (
-              <>
-                {/* Usage Stats */}
-                <div className="space-y-3">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold font-mono text-foreground">
-                      {usage.currentUsage}
-                    </span>
-                    <span className="text-muted-foreground text-sm">
-                      / {usage.limit === null ? "∞" : usage.limit} interviews
-                    </span>
-                    {usage.limit === null && (
-                      <Badge variant="success" className="ml-2">
-                        <Infinity className="w-3 h-3 mr-1" />
-                        Unlimited
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Progress bar (only for free tier) */}
-                  {usage.limit !== null && (
-                    <div className="space-y-2">
-                      <Progress value={getUsagePercentage()} className="h-2" />
-                      <p className="text-xs text-muted-foreground">{getUsagePercentage()}% used</p>
-                    </div>
+        <DashboardSectionCard
+          title="Usage This Period"
+          contentClassName="space-y-6"
+        >
+          {usage ? (
+            <>
+              {/* Usage Stats */}
+              <div className="space-y-3">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-foreground font-mono text-3xl font-bold">
+                    {usage.currentUsage}
+                  </span>
+                  <span className="text-muted-foreground text-sm">
+                    / {usage.limit === null ? "∞" : usage.limit} interviews
+                  </span>
+                  {usage.limit === null && (
+                    <Badge variant="success" className="ml-2">
+                      <Infinity className="mr-1 h-3 w-3" />
+                      Unlimited
+                    </Badge>
                   )}
                 </div>
 
-                {/* Period dates */}
-                <p className="text-sm text-muted-foreground">
-                  {new Date(usage.periodStart).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })}{" "}
-                  -{" "}
-                  {new Date(usage.periodEnd).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </p>
-
-                {/* Warning when approaching quota */}
-                {isApproachingQuota() && (
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
-                    <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-orange-500">Approaching quota limit</p>
-                      <p className="text-xs text-muted-foreground">
-                        You've used {getUsagePercentage()}% of your monthly quota. Consider upgrading
-                        for unlimited interviews.
-                      </p>
-                    </div>
+                {/* Progress bar (only for free tier) */}
+                {usage.limit !== null && (
+                  <div className="space-y-2">
+                    <Progress value={getUsagePercentage()} className="h-2" />
+                    <p className="text-muted-foreground text-xs">
+                      {getUsagePercentage()}% used
+                    </p>
                   </div>
                 )}
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">No usage data available</p>
-            )}
-          </CardContent>
-        </Card>
+              </div>
+
+              {/* Period dates */}
+              <p className="text-muted-foreground text-sm">
+                {new Date(usage.periodStart).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })}{" "}
+                -{" "}
+                {new Date(usage.periodEnd).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
+
+              {/* Warning when approaching quota */}
+              {isApproachingQuota() && (
+                <div className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
+                  <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-amber-500">
+                      Approaching quota limit
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      You've used {getUsagePercentage()}% of your monthly quota.
+                      Consider upgrading for unlimited interviews.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              No usage data available
+            </p>
+          )}
+        </DashboardSectionCard>
       </div>
 
       {/* Upgrade CTA Banner (for free tier users with usage) */}
       {showUpgradeBanner && (
-        <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-display font-light text-lg text-foreground">
-                    Unlock Unlimited Interviews
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Upgrade to Pro for unlimited practice sessions and advanced features
-                  </p>
-                </div>
-              </div>
-              <Button
-                onClick={() => (window.location.href = "/pricing")}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                View Plans
-                <ExternalLink className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <DashboardActionCard
+          variant="accent"
+          icon={<Sparkles className="h-5 w-5" />}
+          title="Unlock Unlimited Interviews"
+          description="Upgrade to Pro for unlimited practice sessions and advanced features."
+          action={
+            <Button onClick={() => (window.location.href = "/pricing")}>
+              View Plans
+              <ExternalLink className="ml-2 h-4 w-4" />
+            </Button>
+          }
+        />
       )}
 
       {/* Payment History */}
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-            Payment History
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loadingPayments ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            </div>
-          ) : payments.length > 0 ? (
-            <div className="space-y-3">
-              {payments.map((payment) => (
-                <div
-                  key={payment.id}
-                  className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-sm text-foreground">
-                          {formatCurrency(payment.amount, payment.currency)}
-                        </p>
-                        <Badge
-                          variant={
-                            payment.status === "succeeded"
-                              ? "success"
-                              : payment.status === "pending"
-                                ? "default"
-                                : "destructive"
-                          }
-                          className="text-xs"
-                        >
-                          {payment.status}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(payment.createdAt).toLocaleDateString("en-US", {
-                          month: "long",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </p>
-                    </div>
+      <DashboardSectionCard title="Payment History">
+        {loadingPayments ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="text-primary h-6 w-6 animate-spin" />
+          </div>
+        ) : payments.length > 0 ? (
+          <div className="space-y-3">
+            {payments.map((payment) => (
+              <div
+                key={payment.id}
+                className="hover:bg-muted/50 flex items-center justify-between rounded-lg p-3 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-full">
+                    <FileText className="text-primary h-5 w-5" />
                   </div>
-                  {payment.receiptUrl && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => window.open(payment.receiptUrl, "_blank")}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
-                  )}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-foreground text-sm font-medium">
+                        {formatCurrency(payment.amount, payment.currency)}
+                      </p>
+                      <Badge
+                        variant={
+                          payment.status === "succeeded"
+                            ? "success"
+                            : payment.status === "pending"
+                              ? "default"
+                              : "destructive"
+                        }
+                        className="text-xs"
+                      >
+                        {payment.status}
+                      </Badge>
+                    </div>
+                    <p className="text-muted-foreground text-xs">
+                      {new Date(payment.createdAt).toLocaleDateString("en-US", {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </p>
+                  </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 space-y-3">
-              <FileText className="w-12 h-12 mx-auto text-muted-foreground/50" />
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">No payment history</p>
-                <p className="text-xs text-muted-foreground/70">
-                  Your payment history will appear here once you make a purchase
-                </p>
+                {payment.receiptUrl && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => window.open(payment.receiptUrl, "_blank")}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-3 py-8 text-center">
+            <FileText className="text-muted-foreground/50 mx-auto h-12 w-12" />
+            <div>
+              <p className="text-muted-foreground text-sm font-medium">
+                No payment history
+              </p>
+              <p className="text-muted-foreground/70 text-xs">
+                Your payment history will appear here once you make a purchase
+              </p>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </DashboardSectionCard>
 
       {/* Cancel Subscription Modal */}
       {showCancelModal && (
@@ -622,46 +631,62 @@ export function BillingSection() {
           />
 
           {/* Modal */}
-          <div className="relative bg-card border border-border rounded-xl shadow-xl max-w-md w-full mx-4 p-6 space-y-6">
+          <div className="border-border bg-card relative mx-4 w-full max-w-md space-y-6 rounded-xl border p-6 shadow-xl">
             <div className="space-y-2">
-              <h3 className="text-xl font-display font-light text-foreground">
+              <h3 className="font-display text-foreground text-xl font-light">
                 Cancel Subscription
               </h3>
-              <p className="text-sm text-muted-foreground">
-                We're sorry to see you go. Please choose how you'd like to cancel:
+              <p className="text-muted-foreground text-sm">
+                We're sorry to see you go. Please choose how you'd like to
+                cancel:
               </p>
             </div>
 
             <div className="space-y-3">
               {/* Cancel at period end option */}
-              <button
+              <Button
+                type="button"
+                variant="outline"
                 onClick={() => handleCancelSubscription(false)}
                 disabled={cancellingSubscription}
-                className="w-full p-4 text-left rounded-lg border border-border hover:border-primary/50 transition-colors"
+                className="hover:border-primary/50 h-auto w-full justify-start p-4 text-left whitespace-normal"
               >
-                <div className="font-medium text-foreground">Cancel at end of billing period</div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Keep access until {subscription?.currentPeriodEnd && formatDate(subscription.currentPeriodEnd)}.
-                  You won't be charged again.
-                </p>
-              </button>
+                <span>
+                  <span className="text-foreground block font-medium">
+                    Cancel at end of billing period
+                  </span>
+                  <span className="text-muted-foreground mt-1 block text-sm">
+                    Keep access until{" "}
+                    {subscription?.currentPeriodEnd &&
+                      formatDate(subscription.currentPeriodEnd)}
+                    . You won't be charged again.
+                  </span>
+                </span>
+              </Button>
 
               {/* Cancel immediately option */}
-              <button
+              <Button
+                type="button"
+                variant="outline"
                 onClick={() => handleCancelSubscription(true)}
                 disabled={cancellingSubscription}
-                className="w-full p-4 text-left rounded-lg border border-red-500/30 hover:border-red-500/50 transition-colors"
+                className="border-destructive/30 hover:border-destructive/50 h-auto w-full justify-start p-4 text-left whitespace-normal"
               >
-                <div className="font-medium text-red-500">Cancel immediately</div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  End subscription now and receive a prorated refund for unused time.
-                </p>
-              </button>
+                <span>
+                  <span className="text-destructive block font-medium">
+                    Cancel immediately
+                  </span>
+                  <span className="text-muted-foreground mt-1 block text-sm">
+                    End subscription now and receive a prorated refund for
+                    unused time.
+                  </span>
+                </span>
+              </Button>
             </div>
 
             {cancellingSubscription && (
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
+              <div className="text-muted-foreground flex items-center justify-center gap-2 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" />
                 Processing cancellation...
               </div>
             )}
@@ -677,8 +702,11 @@ export function BillingSection() {
               </Button>
             </div>
 
-            <p className="text-xs text-center text-muted-foreground">
-              Need help? <a href="/contact" className="text-primary hover:underline">Contact support</a>
+            <p className="text-muted-foreground text-center text-xs">
+              Need help?{" "}
+              <a href="/contact" className="text-primary hover:underline">
+                Contact support
+              </a>
             </p>
           </div>
         </div>

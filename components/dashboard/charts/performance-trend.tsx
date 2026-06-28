@@ -1,14 +1,8 @@
 "use client";
 
 import { Area, AreaChart, CartesianGrid, XAxis, Line } from "recharts";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { ChartConfig, ChartContainer } from "@/components/ui/chart";
+import { DashboardChartCard } from "@/components/dashboard/dashboard-surface";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { useRef, useState, useMemo, useEffect } from "react";
@@ -30,11 +24,14 @@ interface PerformanceTrendProps {
 const chartConfig = {
   score: {
     label: "Score",
-    color: "#8b5cf6", // Purple-500 - matching ClippedAreaChart for consistency
+    color: "var(--chart-1)",
   },
 } satisfies ChartConfig;
 
-export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps) {
+export function PerformanceTrend({
+  data,
+  onSessionClick,
+}: PerformanceTrendProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const [axis, setAxis] = useState(0);
 
@@ -88,178 +85,185 @@ export function PerformanceTrend({ data, onSessionClick }: PerformanceTrendProps
   }, [data]);
 
   // Calculate trend
-  const trend = data.length >= 2
-    ? data[data.length - 1].score - data[0].score
-    : 0;
-  const trendPercentage = data.length >= 2 && data[0].score > 0
-    ? ((trend / data[0].score) * 100).toFixed(1)
-    : "0";
+  const trend =
+    data.length >= 2 ? data[data.length - 1].score - data[0].score : 0;
+  const trendPercentage =
+    data.length >= 2 && data[0].score > 0
+      ? ((trend / data[0].score) * 100).toFixed(1)
+      : "0";
 
-  const currentScore = data.length > 0
-    ? (springY.get() || latestScore).toFixed(0)
-    : "0";
+  const currentScore =
+    data.length > 0 ? (springY.get() || latestScore).toFixed(0) : "0";
 
   if (data.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Performance Trend</CardTitle>
-          <CardDescription>No session data available</CardDescription>
-        </CardHeader>
-        <CardContent className="h-[300px] lg:h-[400px] flex items-center justify-center text-muted-foreground">
-          <p className="text-sm">Complete your first interview to see your performance trend</p>
-        </CardContent>
-      </Card>
+      <DashboardChartCard
+        title="Performance Trend"
+        description="No session data available"
+        contentClassName="flex h-[300px] items-center justify-center text-muted-foreground lg:h-[400px]"
+      >
+        <p className="text-sm">
+          Complete your first interview to see your performance trend
+        </p>
+      </DashboardChartCard>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <span className="text-2xl font-mono">{currentScore}%</span>
-          <Badge variant={trend >= 0 ? "default" : "secondary"} className="ml-2">
-            {trend >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-            <span>{trend >= 0 ? "+" : ""}{trendPercentage}%</span>
-          </Badge>
-        </CardTitle>
-        <CardDescription>Overall score trend (last {data.length} sessions)</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ChartContainer
-          ref={chartRef}
-          className="h-[300px] lg:h-[400px] w-full"
-          config={chartConfig}
+    <DashboardChartCard
+      title={
+        <span className="flex items-center gap-2">
+          <span className="font-mono text-2xl">{currentScore}%</span>
+        </span>
+      }
+      description={`Overall score trend (last ${data.length} sessions)`}
+      action={
+        <Badge variant={trend >= 0 ? "default" : "secondary"} className="ml-2">
+          {trend >= 0 ? (
+            <TrendingUp className="h-4 w-4" />
+          ) : (
+            <TrendingDown className="h-4 w-4" />
+          )}
+          <span>
+            {trend >= 0 ? "+" : ""}
+            {trendPercentage}%
+          </span>
+        </Badge>
+      }
+    >
+      <ChartContainer
+        ref={chartRef}
+        className="h-[300px] w-full lg:h-[400px]"
+        config={chartConfig}
+      >
+        <AreaChart
+          className="overflow-visible"
+          accessibilityLayer
+          data={trendLineData.length > 0 ? trendLineData : data}
+          onMouseMove={(state) => {
+            const x = state.activeCoordinate?.x;
+            const dataValue = state.activePayload?.[0]?.value;
+            if (x && dataValue !== undefined) {
+              springX.set(x);
+              springY.set(dataValue);
+            }
+          }}
+          onMouseLeave={() => {
+            springX.set(chartRef.current?.getBoundingClientRect().width || 0);
+            springY.jump(latestScore);
+          }}
+          onClick={(state) => {
+            if (onSessionClick && state.activePayload?.[0]?.payload) {
+              const sessionId = state.activePayload[0].payload.sessionId;
+              onSessionClick(sessionId);
+            }
+          }}
+          margin={{
+            right: 0,
+            left: 0,
+            top: 20,
+          }}
         >
-          <AreaChart
-            className="overflow-visible"
-            accessibilityLayer
-            data={trendLineData.length > 0 ? trendLineData : data}
-            onMouseMove={(state) => {
-              const x = state.activeCoordinate?.x;
-              const dataValue = state.activePayload?.[0]?.value;
-              if (x && dataValue !== undefined) {
-                springX.set(x);
-                springY.set(dataValue);
-              }
+          <CartesianGrid
+            vertical={false}
+            strokeDasharray="3 3"
+            stroke="var(--border)"
+            horizontalCoordinatesGenerator={(props) => {
+              const { height } = props;
+              return [0, height - 30];
             }}
-            onMouseLeave={() => {
-              springX.set(chartRef.current?.getBoundingClientRect().width || 0);
-              springY.jump(latestScore);
-            }}
-            onClick={(state) => {
-              if (onSessionClick && state.activePayload?.[0]?.payload) {
-                const sessionId = state.activePayload[0].payload.sessionId;
-                onSessionClick(sessionId);
-              }
-            }}
-            margin={{
-              right: 0,
-              left: 0,
-              top: 20,
-            }}
+          />
+          <XAxis
+            dataKey="date"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+          />
+          <Area
+            dataKey="score"
+            type="monotone"
+            fill="url(#gradient-performance-trend)"
+            fillOpacity={0.4}
+            stroke="var(--color-score)"
+            strokeWidth={2}
+            clipPath={`inset(0 ${
+              Number(chartRef.current?.getBoundingClientRect().width) - axis
+            } 0 0)`}
+          />
+          {/* Vertical indicator line */}
+          <line
+            x1={axis}
+            y1={0}
+            x2={axis}
+            y2={"85%"}
+            stroke="var(--color-score)"
+            strokeDasharray="3 3"
+            strokeLinecap="round"
+            strokeOpacity={0.3}
+          />
+          {/* Score label */}
+          <rect
+            x={Math.max(0, axis - 50)}
+            y={0}
+            width={50}
+            height={20}
+            fill="var(--color-score)"
+            rx={4}
+          />
+          <text
+            x={Math.max(25, axis - 25)}
+            fontWeight={600}
+            fontSize={12}
+            y={14}
+            textAnchor="middle"
+            fill="var(--primary-foreground)"
           >
-            <CartesianGrid
-              vertical={false}
-              strokeDasharray="3 3"
-              stroke="hsl(var(--border))"
-              horizontalCoordinatesGenerator={(props) => {
-                const { height } = props;
-                return [0, height - 30];
-              }}
-            />
-            <XAxis
-              dataKey="date"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-            />
-            <Area
-              dataKey="score"
+            {springY.get().toFixed(0)}%
+          </text>
+          {/* Trend line showing improvement direction */}
+          {trendLineData.length > 0 && (
+            <Line
+              dataKey="trendScore"
               type="monotone"
-              fill="url(#gradient-performance-trend)"
-              fillOpacity={0.4}
-              stroke="var(--color-score)"
+              stroke="var(--primary)"
               strokeWidth={2}
-              clipPath={`inset(0 ${
-                Number(chartRef.current?.getBoundingClientRect().width) - axis
-              } 0 0)`}
+              strokeDasharray="5 5"
+              dot={false}
+              strokeOpacity={0.6}
             />
-            {/* Vertical indicator line */}
-            <line
-              x1={axis}
-              y1={0}
-              x2={axis}
-              y2={"85%"}
-              stroke="var(--color-score)"
-              strokeDasharray="3 3"
-              strokeLinecap="round"
-              strokeOpacity={0.3}
-            />
-            {/* Score label */}
-            <rect
-              x={Math.max(0, axis - 50)}
-              y={0}
-              width={50}
-              height={20}
-              fill="var(--color-score)"
-              rx={4}
-            />
-            <text
-              x={Math.max(25, axis - 25)}
-              fontWeight={600}
-              fontSize={12}
-              y={14}
-              textAnchor="middle"
-              fill="var(--primary-foreground)"
+          )}
+          {/* Ghost line behind graph */}
+          <Area
+            dataKey="score"
+            type="monotone"
+            fill="none"
+            stroke="var(--color-score)"
+            strokeOpacity={0.15}
+            strokeWidth={1}
+          />
+          <defs>
+            <linearGradient
+              id="gradient-performance-trend"
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
             >
-              {springY.get().toFixed(0)}%
-            </text>
-            {/* Trend line showing improvement direction */}
-            {trendLineData.length > 0 && (
-              <Line
-                dataKey="trendScore"
-                type="monotone"
-                stroke="hsl(var(--primary))"
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={false}
-                strokeOpacity={0.6}
+              <stop
+                offset="5%"
+                stopColor="var(--color-score)"
+                stopOpacity={0.3}
               />
-            )}
-            {/* Ghost line behind graph */}
-            <Area
-              dataKey="score"
-              type="monotone"
-              fill="none"
-              stroke="var(--color-score)"
-              strokeOpacity={0.15}
-              strokeWidth={1}
-            />
-            <defs>
-              <linearGradient
-                id="gradient-performance-trend"
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-              >
-                <stop
-                  offset="5%"
-                  stopColor="var(--color-score)"
-                  stopOpacity={0.3}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="var(--color-score)"
-                  stopOpacity={0}
-                />
-              </linearGradient>
-            </defs>
-          </AreaChart>
-        </ChartContainer>
-      </CardContent>
-    </Card>
+              <stop
+                offset="95%"
+                stopColor="var(--color-score)"
+                stopOpacity={0}
+              />
+            </linearGradient>
+          </defs>
+        </AreaChart>
+      </ChartContainer>
+    </DashboardChartCard>
   );
 }

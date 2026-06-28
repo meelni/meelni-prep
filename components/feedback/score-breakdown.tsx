@@ -1,13 +1,12 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FeedbackSectionCard } from "@/components/feedback/feedback-surface";
 import {
   RadarChart,
   PolarGrid,
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
-  ResponsiveContainer,
 } from "recharts";
 import {
   ChartConfig,
@@ -24,7 +23,7 @@ interface ScoreBreakdownProps {
 const chartConfig = {
   score: {
     label: "Score",
-    color: "#8b5cf6", // Purple-500 - visible in both light and dark mode (matches dashboard)
+    color: "var(--chart-1)",
   },
 } satisfies ChartConfig;
 
@@ -39,66 +38,57 @@ export function ScoreBreakdown({ scores }: ScoreBreakdownProps) {
   ];
 
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-              Performance Breakdown
-            </CardTitle>
-            <p className="text-xs text-muted-foreground/70 mt-1">
-              Your scores across key competencies
-            </p>
+    <FeedbackSectionCard
+      title="Performance Breakdown"
+      description="Your scores across key competencies"
+      action={
+        <div className="text-right">
+          <div className="font-display text-primary text-3xl font-light">
+            {scores.overall.toFixed(1)}
           </div>
-          <div className="text-right">
-            <div className="text-3xl font-display font-light text-primary">
-              {scores.overall.toFixed(1)}
-            </div>
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">
-              Overall
-            </div>
+          <div className="text-muted-foreground text-xs tracking-wide uppercase">
+            Overall
           </div>
         </div>
-      </CardHeader>
-      <CardContent>
-        <ChartContainer config={chartConfig} className="h-[320px] w-full">
-          <RadarChart data={radarData} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-            <ChartTooltip
-              cursor={false}
-              content={<ChartTooltipContent />}
-            />
-            <PolarAngleAxis dataKey="competency" />
-            <PolarGrid strokeDasharray="3 3" />
-            <PolarRadiusAxis
-              angle={90}
-              domain={[0, 10]}
-              tickCount={6}
-              axisLine={false}
-              tick={false}
-            />
-            <Radar
-              stroke="var(--color-score)"
-              strokeWidth={2}
-              dataKey="score"
-              fill="var(--color-score)"
-              fillOpacity={0.3}
-              filter="url(#stroke-line-glow)"
-            />
-            <defs>
-              <filter
-                id="stroke-line-glow"
-                x="-20%"
-                y="-20%"
-                width="140%"
-                height="140%"
-              >
-                <feGaussianBlur stdDeviation="10" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
-            </defs>
-          </RadarChart>
-        </ChartContainer>
-      </CardContent>
-    </Card>
+      }
+    >
+      <ChartContainer config={chartConfig} className="h-[320px] w-full">
+        <RadarChart
+          data={radarData}
+          margin={{ top: 10, right: 20, bottom: 10, left: 20 }}
+        >
+          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+          <PolarAngleAxis dataKey="competency" />
+          <PolarGrid strokeDasharray="3 3" />
+          <PolarRadiusAxis
+            angle={90}
+            domain={[0, 10]}
+            tickCount={6}
+            axisLine={false}
+            tick={false}
+          />
+          <Radar
+            stroke="var(--color-score)"
+            strokeWidth={2}
+            dataKey="score"
+            fill="var(--color-score)"
+            fillOpacity={0.3}
+            filter="url(#stroke-line-glow)"
+          />
+          <defs>
+            <filter
+              id="stroke-line-glow"
+              x="-20%"
+              y="-20%"
+              width="140%"
+              height="140%"
+            >
+              <feGaussianBlur stdDeviation="10" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+        </RadarChart>
+      </ChartContainer>
+    </FeedbackSectionCard>
   );
 }

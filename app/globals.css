@@ -13,6 +13,7 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-surface: var(--surface);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
@@ -24,6 +25,9 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -32,6 +36,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -57,32 +62,32 @@
 
   --bg-image-grid-1: linear-gradient(
     to right,
-    hsl(var(--border)) 1px,
+    var(--border) 1px,
     transparent 1px
   );
   --bg-image-grid-2: linear-gradient(
     to right,
-    hsl(var(--border)) 1px,
+    var(--border) 1px,
     transparent 1px
   );
   --bg-image-grid-3: linear-gradient(
     to right,
-    hsl(var(--border)) 1px,
+    var(--border) 1px,
     transparent 1px
   );
   --bg-image-grid-4: linear-gradient(
     to right,
-    hsl(var(--border)) 1px,
+    var(--border) 1px,
     transparent 1px
   );
   --bg-image-grid-5: linear-gradient(
     to right,
-    hsl(var(--border)) 1px,
+    var(--border) 1px,
     transparent 1px
   );
   --bg-image-grid-6: linear-gradient(
     to right,
-    hsl(var(--border)) 1px,
+    var(--border) 1px,
     transparent 1px
   );
 
@@ -198,6 +203,7 @@
   --foreground: oklch(0.15 0.005 264);
   --card: oklch(0.98 0.003 264);
   --card-foreground: oklch(0.15 0.005 264);
+  --surface: oklch(0.96 0.006 264);
   --popover: oklch(0.98 0.003 264);
   --popover-foreground: oklch(0.15 0.005 264);
   /* Purple-blue primary for light backgrounds */
@@ -211,31 +217,34 @@
   --accent-foreground: oklch(0.15 0.005 264);
   --destructive: oklch(0.55 0.22 15);
   --destructive-foreground: oklch(0.98 0.004 264);
+  --success: oklch(0.56 0.16 145);
+  --warning: oklch(0.64 0.17 65);
+  --info: oklch(0.55 0.18 240);
   /* Subtle borders for light theme */
   --border: oklch(0.88 0.01 264);
   --input: oklch(0.88 0.01 264);
   --ring: oklch(0.55 0.22 285);
   --radius: 0.5rem;
   /* Chart colors - vivid for light backgrounds */
-  --chart-1: oklch(0.55 0.20 241);
-  --chart-2: oklch(0.50 0.18 220);
+  --chart-1: oklch(0.55 0.2 241);
+  --chart-2: oklch(0.5 0.18 220);
   --chart-3: oklch(0.48 0.15 200);
-  --chart-4: oklch(0.58 0.20 285);
+  --chart-4: oklch(0.58 0.2 285);
   --chart-5: oklch(0.62 0.22 295);
-  --chart-6: oklch(0.60 0.25 285);
+  --chart-6: oklch(0.6 0.25 285);
 
   /* Chart gradients */
-  --chart-gradient-from: oklch(0.55 0.20 241 / 0.8);
-  --chart-gradient-to: oklch(0.55 0.20 241 / 0.1);
+  --chart-gradient-from: oklch(0.55 0.2 241 / 0.8);
+  --chart-gradient-to: oklch(0.55 0.2 241 / 0.1);
 
   /* Chart glow effect */
-  --chart-glow: oklch(0.55 0.20 241 / 0.5);
+  --chart-glow: oklch(0.55 0.2 241 / 0.5);
   /* Accent colors */
-  --color-1: oklch(0.60 0.25 15);
-  --color-2: oklch(0.60 0.25 321);
-  --color-3: oklch(0.60 0.25 241);
-  --color-4: oklch(0.60 0.25 195);
-  --color-5: oklch(0.60 0.25 130);
+  --color-1: oklch(0.6 0.25 15);
+  --color-2: oklch(0.6 0.25 321);
+  --color-3: oklch(0.6 0.25 241);
+  --color-4: oklch(0.6 0.25 195);
+  --color-5: oklch(0.6 0.25 130);
 
   --sidebar: oklch(0.98 0.003 264);
   --sidebar-foreground: oklch(0.15 0.005 264);
@@ -253,46 +262,50 @@
   --foreground: oklch(0.95 0.005 264);
   --card: oklch(0.18 0.008 264);
   --card-foreground: oklch(0.95 0.005 264);
+  --surface: oklch(0.2 0.01 264);
   --popover: oklch(0.18 0.008 264);
   --popover-foreground: oklch(0.95 0.005 264);
   /* Vibrant purple-blue primary for dark backgrounds */
-  --primary: oklch(0.70 0.22 285);
+  --primary: oklch(0.7 0.22 285);
   --primary-foreground: oklch(0.98 0.004 264);
   --secondary: oklch(0.25 0.015 264);
   --secondary-foreground: oklch(0.95 0.005 264);
   --muted: oklch(0.22 0.01 264);
-  --muted-foreground: oklch(0.60 0.015 264);
+  --muted-foreground: oklch(0.6 0.015 264);
   --accent: oklch(0.28 0.02 264);
   --accent-foreground: oklch(0.95 0.005 264);
   --destructive: oklch(0.55 0.22 15);
   --destructive-foreground: oklch(0.98 0.004 264);
+  --success: oklch(0.72 0.16 145);
+  --warning: oklch(0.76 0.16 75);
+  --info: oklch(0.7 0.18 240);
   /* Subtle borders for dark theme */
   --border: oklch(0.28 0.015 264);
   --input: oklch(0.28 0.015 264);
-  --ring: oklch(0.70 0.22 285);
+  --ring: oklch(0.7 0.22 285);
   /* Chart colors - vibrant for dark backgrounds */
-  --chart-1: oklch(0.70 0.22 285);  /* Meelni purple-blue primary */
-  --chart-2: oklch(0.65 0.20 240);  /* Deeper blue */
-  --chart-3: oklch(0.75 0.18 300);  /* Lighter purple */
-  --chart-4: oklch(0.68 0.15 260);  /* Muted blue-purple */
-  --chart-5: oklch(0.50 0.05 260);  /* Muted gray-blue */
-  --chart-6: oklch(0.75 0.25 285);  /* Bright accent */
+  --chart-1: oklch(0.7 0.22 285); /* Meelni purple-blue primary */
+  --chart-2: oklch(0.65 0.2 240); /* Deeper blue */
+  --chart-3: oklch(0.75 0.18 300); /* Lighter purple */
+  --chart-4: oklch(0.68 0.15 260); /* Muted blue-purple */
+  --chart-5: oklch(0.5 0.05 260); /* Muted gray-blue */
+  --chart-6: oklch(0.75 0.25 285); /* Bright accent */
 
   /* Chart gradients */
-  --chart-gradient-from: oklch(0.70 0.22 285 / 0.8);
-  --chart-gradient-to: oklch(0.70 0.22 285 / 0.1);
+  --chart-gradient-from: oklch(0.7 0.22 285 / 0.8);
+  --chart-gradient-to: oklch(0.7 0.22 285 / 0.1);
 
   /* Chart glow effect */
-  --chart-glow: oklch(0.70 0.22 285 / 0.5);
+  --chart-glow: oklch(0.7 0.22 285 / 0.5);
 
   --sidebar: oklch(0.18 0.008 264);
   --sidebar-foreground: oklch(0.95 0.005 264);
-  --sidebar-primary: oklch(0.70 0.22 285);
+  --sidebar-primary: oklch(0.7 0.22 285);
   --sidebar-primary-foreground: oklch(0.98 0.004 264);
   --sidebar-accent: oklch(0.25 0.015 264);
   --sidebar-accent-foreground: oklch(0.95 0.005 264);
   --sidebar-border: oklch(0.28 0.015 264);
-  --sidebar-ring: oklch(0.70 0.22 285);
+  --sidebar-ring: oklch(0.7 0.22 285);
 }
 
 @layer base {
@@ -341,7 +354,7 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
+    background: var(--border);
   }
 
   /* Typography utilities based on specified font specs */
@@ -359,6 +372,25 @@
 }
 
 @layer utilities {
+  .gradient-text {
+    background-image: linear-gradient(
+      135deg,
+      var(--foreground),
+      color-mix(in oklab, var(--primary) 75%, var(--foreground))
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .gradient-bg {
+    background-image: linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--primary) 14%, transparent),
+      color-mix(in oklab, var(--accent) 62%, transparent)
+    );
+  }
+
   /* Display headings - Everett 300 */
   .text-display-xl {
     font-family: var(--font-display);
@@ -414,12 +446,12 @@
   }
 
   .scrollbar-thumb-border::-webkit-scrollbar-thumb {
-    background: rgb(var(--border));
+    background: var(--border);
     border-radius: 3px;
   }
 
   .scrollbar-thumb-border:hover::-webkit-scrollbar-thumb {
-    background: rgb(var(--primary) / 0.5);
+    background: color-mix(in oklab, var(--primary) 50%, transparent);
   }
 
   /* Fade in up animation for table rows */
@@ -462,14 +494,22 @@
 
   /* Smooth avatar glow */
   .avatar-glow {
-    filter: drop-shadow(0 0 var(--glow-radius, 20px) oklch(0.70 0.22 285 / var(--glow-opacity, 0.15)));
+    filter: drop-shadow(
+      0 0 var(--glow-radius, 20px)
+        oklch(0.7 0.22 285 / var(--glow-opacity, 0.15))
+    );
     transition: filter 0.3s ease;
   }
 
   /* Urgency pulse for low time */
   @keyframes urgency-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.6;
+    }
   }
 
   .timer-urgent {

@@ -1,7 +1,7 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
 import { motion } from "framer-motion";
+import { DashboardMetricCard } from "@/components/dashboard/dashboard-surface";
 import { TrendIndicator } from "./stats/trend-indicator";
 import { analytics } from "@/lib/analytics/analytics-service";
 
@@ -65,27 +65,19 @@ export function StatsCards({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.1, duration: 0.3 }}
         >
-          <Card
-            className="p-6 bg-card border-border hover:border-primary/30 transition-all duration-300 min-h-[140px] flex flex-col justify-between cursor-pointer"
+          <DashboardMetricCard
+            label={stat.label}
+            value={stat.value}
+            indicator={
+              stat.trend !== undefined && stat.trend !== null ? (
+                <TrendIndicator
+                  value={stat.trend}
+                  isNew={totalSessions === 0 && index === 0}
+                />
+              ) : null
+            }
             onClick={() => handleStatCardClick(stat.label)}
-          >
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-muted-foreground h-5 flex items-center">
-                {stat.label}
-              </p>
-              <p className="text-3xl font-bold text-foreground h-10 flex items-center font-mono">
-                {stat.value}
-              </p>
-              <div className="h-6 flex items-center">
-                {stat.trend !== undefined && stat.trend !== null && (
-                  <TrendIndicator
-                    value={stat.trend}
-                    isNew={totalSessions === 0 && index === 0}
-                  />
-                )}
-              </div>
-            </div>
-          </Card>
+          />
         </motion.div>
       ))}
     </div>

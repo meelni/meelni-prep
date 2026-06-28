@@ -1,7 +1,16 @@
 import { blogPosts } from "@/lib/blog-data";
-import { Calendar, Clock, Home, ChevronRight } from "lucide-react";
+import { ArrowRight, Calendar, ChevronRight, Clock, Home } from "lucide-react";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
+import {
+  MarketingCard,
+  MarketingCtaCard,
+  MarketingEyebrow,
+  MarketingHero,
+  MarketingMetaRow,
+  MarketingPage,
+} from "@/components/marketing/marketing-surface";
+import { Button } from "@/components/ui/button";
 
 export const metadata = {
   title: "Blog | Meelni",
@@ -92,7 +101,7 @@ function BlogStructuredData() {
 
 export default function BlogIndex() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-muted/5 to-background">
+    <MarketingPage>
       {/* Structured Data for SEO */}
       <BlogStructuredData />
 
@@ -122,69 +131,66 @@ export default function BlogIndex() {
 
       {/* Page Header */}
       <div className="max-w-6xl mx-auto px-6 py-12">
-        <div className="text-center space-y-6 mb-20">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 mb-4">
-            <div className="h-6 w-6 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
-              <span className="text-[10px] font-bold text-primary-foreground">M</span>
-            </div>
-            <span className="text-[13px] font-semibold text-primary">Meelni Blog</span>
-          </div>
-          <h1 className="text-[48px] sm:text-[64px] font-display font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent leading-[1.1]">
-            Interview Insights
-          </h1>
-          <p className="text-[19px] text-foreground/70 max-w-2xl mx-auto leading-relaxed">
-            Frameworks, strategies, and real interview walkthroughs from our PM coaching practice
-          </p>
-        </div>
+        <MarketingHero
+          eyebrow={<MarketingEyebrow mark="M">Meelni Blog</MarketingEyebrow>}
+          title="Interview Insights"
+          description="Frameworks, strategies, and real interview walkthroughs from our PM coaching practice"
+        />
 
         {/* Blog Posts Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {blogPosts.map((post) => (
-            <Link key={post.id} href={`/blog/${post.id}`}>
-              <article className="group h-full bg-card/60 backdrop-blur-sm border border-border/40 rounded-2xl overflow-hidden transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10 hover:-translate-y-2">
-                {/* Category Badge */}
-                <div className="p-6 pb-4">
-                  <span className="inline-block px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/10 to-primary/5 text-primary text-[11px] font-semibold tracking-wide uppercase border border-primary/20">
-                    {post.category}
-                  </span>
-                </div>
+            <MarketingCard key={post.id}>
+              <div className="p-6 pb-4">
+                <MarketingEyebrow className="px-3 py-1.5 text-xs uppercase tracking-wide">
+                  {post.category}
+                </MarketingEyebrow>
+              </div>
 
-                {/* Content */}
-                <div className="px-6 pb-6 space-y-4">
-                  <h2 className="text-[21px] font-display font-bold leading-tight text-foreground group-hover:text-primary transition-colors duration-200 min-h-[3.5rem]">
+              <div className="flex flex-1 flex-col gap-4 px-6 pb-6">
+                <div className="space-y-4">
+                  <h2 className="font-display min-h-14 text-xl font-bold leading-tight text-foreground transition-colors duration-200 group-hover:text-primary">
                     {post.title}
                   </h2>
-                  <p className="text-[15px] text-foreground/70 line-clamp-3 leading-relaxed">
+                  <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">
                     {post.excerpt}
                   </p>
-
-                  {/* Meta Info */}
-                  <div className="flex items-center gap-4 text-[12px] text-muted-foreground pt-3 border-t border-border/30">
-                    <div className="flex items-center gap-1.5 mt-3">
-                      <Calendar className="h-3.5 w-3.5" />
-                      <span>{post.date}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-3">
-                      <Clock className="h-3.5 w-3.5" />
-                      <span>{post.readTime}</span>
-                    </div>
-                  </div>
-
-                  {/* Read more indicator */}
-                  <div className="pt-2">
-                    <span className="text-[14px] font-medium text-primary group-hover:gap-2 inline-flex items-center gap-1 transition-all duration-200">
-                      Read article
-                      <svg className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </span>
-                  </div>
                 </div>
-              </article>
-            </Link>
+
+                <div className="mt-auto space-y-4">
+                  <MarketingMetaRow
+                    items={[
+                      { icon: Calendar, label: post.date },
+                      { icon: Clock, label: post.readTime },
+                    ]}
+                  />
+                  <Button asChild variant="link" className="h-auto p-0">
+                    <Link href={`/blog/${post.id}`} className="gap-1">
+                      Read article
+                      <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </MarketingCard>
           ))}
         </div>
+
+        <MarketingCtaCard
+          className="mt-20"
+          mark="M"
+          title="Practice the frameworks you are reading"
+          description="Turn interview advice into sharper answers with focused mock interviews and feedback."
+          action={
+            <Button asChild size="lg" variant="glow">
+              <Link href="/setup">
+                Start mock interview
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          }
+        />
       </div>
-    </div>
+    </MarketingPage>
   );
 }

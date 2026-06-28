@@ -308,7 +308,7 @@ const Card3 = () => {
       <div className="relative flex flex-col gap-y-5 items-center justify-between h-full w-full">
         <div className="border-b items-center justify-center overflow-hidden rounded-t-xl h-4/5 w-full flex">
           <div className="relative flex items-center justify-center h-full w-full">
-            <div className="absolute top-0 right-0 bottom-0 left-0 bg-[radial-gradient(circle,hsl(var(--accent)/0.3)_0%,transparent_100%)]"></div>
+            <div className="absolute top-0 right-0 bottom-0 left-0 bg-[radial-gradient(circle,color-mix(in oklab, var(--accent) 30%, transparent)_0%,transparent_100%)]"></div>
             <OrbitingCircles duration={15} delay={0} radius={40} reverse>
               <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
                 <HeadsetIcon className="h-5 w-5 text-white" />
