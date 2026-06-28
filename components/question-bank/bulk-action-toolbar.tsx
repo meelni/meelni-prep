@@ -25,7 +25,11 @@ export function BulkActionToolbar({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 100, opacity: 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="fixed bottom-6 left-[280px] right-0 mx-auto w-fit px-4 md:px-6 py-4 rounded-xl bg-card/95 backdrop-blur-xl border border-border shadow-xl shadow-primary/10 flex flex-col sm:flex-row items-center gap-3 md:gap-4 z-10 max-w-[calc(100vw-2rem)] md:max-w-none"
+          style={{
+            left: "var(--question-bank-toolbar-offset, 280px)",
+            maxWidth: "calc(100vw - 2rem)",
+          }}
+          className="fixed right-0 bottom-6 z-10 mx-auto flex w-fit flex-col items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-4 shadow-xl shadow-primary/10 backdrop-blur-xl sm:flex-row md:gap-4 md:px-6"
           role="toolbar"
           aria-label="Bulk actions"
         >

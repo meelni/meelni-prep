@@ -45,7 +45,7 @@ export function PublicQuestionCard({
       transition={{ delay: index * 0.05, duration: 0.3 }}
       whileTap={{ scale: 0.98 }}
       className={cn(
-        "relative p-4 border rounded-lg bg-card transition-all duration-150 min-h-[140px] flex flex-col",
+        "relative p-4 border rounded-lg bg-card transition-all duration-150 min-h-36 flex flex-col",
         "border-border hover:border-primary/50 hover:shadow-sm"
       )}
     >
