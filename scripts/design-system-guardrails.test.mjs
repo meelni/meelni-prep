@@ -579,6 +579,22 @@ test("tailwind indicator uses semantic dev surface tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("live waveform uses semantic canvas color fallback", async () => {
+  const file = "components/ui/live-waveform.tsx";
+  const content = await readFile(file, "utf8");
+  const violations = [];
+
+  if (!content.includes('getPropertyValue("--foreground")')) {
+    violations.push(`${file}:foreground-token-fallback`);
+  }
+
+  if (content.includes('"#000"') || content.includes("'#000'")) {
+    violations.push(`${file}:literal-black-fallback`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
