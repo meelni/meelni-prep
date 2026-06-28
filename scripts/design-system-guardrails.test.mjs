@@ -872,6 +872,22 @@ test("priority chart configs use shared chart tokens instead of literal colors",
   assert.deepEqual(violations, []);
 });
 
+test("shared chart markers use named radius scale utilities", async () => {
+  const file = "components/ui/chart.tsx";
+  const content = await readFile(file, "utf8");
+  const violations = [];
+
+  if (content.includes("rounded-[2px]")) {
+    violations.push(`${file}:arbitrary-radius`);
+  }
+
+  if (!content.includes("rounded-sm")) {
+    violations.push(`${file}:rounded-sm`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("example chart components use semantic chart and surface tokens", async () => {
   const files = [
     "components/charts/clipped-area-chart.tsx",
