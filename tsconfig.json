@@ -21,9 +21,9 @@
     ],
     "paths": {
       "@/*": ["./*"],
-      "@meelni/agent": ["packages/agent/src/index.ts"],
-      "@meelni/core": ["packages/core/src/index.ts"],
-      "@meelni/integrations": ["packages/integrations/src/index.ts"]
+      "@meelni/agent": ["lib/internal/agent.ts"],
+      "@meelni/core": ["lib/internal/core.ts"],
+      "@meelni/integrations": ["lib/internal/integrations.ts"]
     }
   },
   "include": [
