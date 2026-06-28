@@ -440,6 +440,10 @@
     min-height: 460px;
   }
 
+  .min-h-dashboard-loading {
+    min-height: 400px;
+  }
+
   /* Display headings - Everett 300 */
   .text-display-hero {
     font-family: var(--font-display);
