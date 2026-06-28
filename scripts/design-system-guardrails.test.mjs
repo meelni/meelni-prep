@@ -236,6 +236,45 @@ test("setup difficulty selector uses semantic selection tones", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("primary active states use semantic foreground tokens", async () => {
+  const expectations = [
+    {
+      file: "components/mobile-drawer.tsx",
+      required: [],
+      banned: ["text-white"],
+    },
+    {
+      file: "components/dashboard/setup-modal/step-indicator.tsx",
+      required: ["text-primary-foreground", "bg-primary-foreground"],
+      banned: ["text-white", "bg-white"],
+    },
+    {
+      file: "app/setup/setup-content.tsx",
+      required: ["text-primary-foreground"],
+      banned: ["text-white"],
+    },
+  ];
+  const violations = [];
+
+  for (const { file, required, banned } of expectations) {
+    const content = await readFile(file, "utf8");
+
+    for (const token of required) {
+      if (!content.includes(token)) {
+        violations.push(`${file}:${token}`);
+      }
+    }
+
+    for (const token of banned) {
+      if (content.includes(token)) {
+        violations.push(`${file}:${token}`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",

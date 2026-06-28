@@ -1,7 +1,7 @@
 "use client";
 
 import { Icons } from "@/components/icons";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent,
@@ -57,7 +57,7 @@ export function MobileDrawer() {
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: "default" }),
-                  "text-white rounded-full"
+                  "text-primary-foreground rounded-full"
                 )}
               >
                 Go to Dashboard
@@ -79,7 +79,7 @@ export function MobileDrawer() {
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: "default" }),
-                  "text-white rounded-full"
+                  "text-primary-foreground rounded-full"
                 )}
               >
                 {siteConfig.cta}

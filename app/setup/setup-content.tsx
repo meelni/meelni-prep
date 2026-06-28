@@ -381,7 +381,7 @@ export function SetupContent() {
                     className={
                       "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all " +
                       (step >= s.num
-                        ? "bg-primary text-white"
+                        ? "bg-primary text-primary-foreground"
                         : "bg-muted text-muted-foreground")
                     }
                   >
