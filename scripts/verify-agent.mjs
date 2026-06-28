@@ -11,6 +11,7 @@ const requiredChecks = [
   ["typecheck", "npm", ["run", "typecheck"]],
   ["local tests", "npm", ["run", "test:local"]],
   ["fixture tests", "npm", ["run", "test:fixtures"]],
+  ["workflow tests", "npm", ["run", "test:workflows"]],
   ["core tests", "npm", ["run", "test:core"]],
   ["agent tests", "npm", ["run", "test:agent"]],
   ["integration tests", "npm", ["run", "test:integrations"]],
