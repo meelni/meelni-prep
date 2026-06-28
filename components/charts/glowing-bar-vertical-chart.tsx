@@ -69,8 +69,8 @@ export function GlowingBarVerticalChart() {
           <CardTitle>
             Vertical Bar Chart
             <Badge
-              variant="outline"
-              className="text-red-500 bg-red-500/10 border-none ml-2"
+              variant="destructive"
+              className="ml-2"
             >
               <TrendingDown className="h-4 w-4" />
               <span>-5.2%</span>
@@ -138,7 +138,7 @@ export function GlowingBarVerticalChart() {
             <Bar
               stackId="a"
               barSize={8}
-              className="dark:text-[#1A1A1C] text-[#E4E4E7]"
+              className="text-muted"
               dataKey="mobile"
               fill="var(--color-mobile)"
               radius={4}

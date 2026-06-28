@@ -73,7 +73,7 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
 
             {/* Message bubble */}
             <div
-              className={`flex-1 max-w-[80%] ${
+              className={`flex-1 max-w-message-bubble ${
                 turn.speaker === "user" ? "items-end" : "items-start"
               } flex flex-col gap-1`}
             >

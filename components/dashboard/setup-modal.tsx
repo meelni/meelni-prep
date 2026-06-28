@@ -15,6 +15,19 @@ import {
   Mic,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  SelectableCard,
+  SelectableCardCheck,
+  SelectableCardIcon,
+} from "@/components/ui/selectable-card";
 import { StepIndicator } from "./setup-modal/step-indicator";
 import { SmartDefaultsCard } from "./setup-modal/smart-defaults-card";
 
@@ -94,6 +107,8 @@ const EMOTION_OPTIONS = [
   { value: "encouraging", label: "Encouraging" },
   { value: "neutral", label: "Neutral" },
 ];
+
+const MotionSelectableCard = motion.create(SelectableCard);
 
 export function SetupModal({
   isOpen,
@@ -188,7 +203,7 @@ export function SetupModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-overlay/50 backdrop-blur-sm"
         onClick={onClose}
       />
 
@@ -210,13 +225,15 @@ export function SetupModal({
               Configure your practice session
             </p>
           </div>
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={onClose}
-            className="p-2 hover:bg-accent rounded-lg transition-colors"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
         {/* Step Indicator */}
@@ -270,22 +287,16 @@ export function SetupModal({
                   {INTERVIEW_TYPES.map((type) => {
                     const isSelected = config.roundType === type.id;
                     return (
-                      <motion.button
+                      <MotionSelectableCard
                         key={type.id}
+                        selected={isSelected}
                         onClick={() => selectInterviewType(type.id)}
-                        className={`
-                          group relative p-4 rounded-lg border-2 text-left overflow-hidden
-                          ${
-                            isSelected
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/30 hover:bg-accent/50"
-                          }
-                        `}
+                        className="p-4"
                         whileHover={{
                           y: -2,
                           scale: 1.01,
                           boxShadow: isSelected
-                            ? '0 8px 30px rgb(var(--primary) / 0.25)'
+                            ? '0 8px 30px color-mix(in oklab, var(--primary) 25%, transparent)'
                             : '0 4px 20px rgb(0 0 0 / 0.1)',
                         }}
                         whileTap={{ scale: 0.98, y: 0 }}
@@ -295,7 +306,7 @@ export function SetupModal({
                           damping: 30,
                         }}
                         animate={isSelected ? {
-                          boxShadow: '0 4px 20px rgb(var(--primary) / 0.15)',
+                          boxShadow: '0 4px 20px color-mix(in oklab, var(--primary) 15%, transparent)',
                         } : {}}
                       >
                         {/* Selection Glow Effect */}
@@ -315,14 +326,6 @@ export function SetupModal({
 
                         <div className="relative flex items-start gap-3">
                           <motion.div
-                            className={`
-                              p-2 rounded-lg transition-colors
-                              ${
-                                isSelected
-                                  ? "bg-primary/10 text-primary"
-                                  : "bg-muted text-muted-foreground group-hover:text-primary"
-                              }
-                            `}
                             whileHover={{
                               scale: 1.05,
                             }}
@@ -332,7 +335,9 @@ export function SetupModal({
                               damping: 25,
                             }}
                           >
-                            <type.icon className="w-5 h-5" />
+                            <SelectableCardIcon selected={isSelected}>
+                              <type.icon className="w-5 h-5" />
+                            </SelectableCardIcon>
                           </motion.div>
                           <div className="flex-1 min-w-0">
                             <h3 className="font-semibold text-sm mb-1">{type.title}</h3>
@@ -340,8 +345,11 @@ export function SetupModal({
                               {type.description}
                             </p>
                           </div>
+                          <div className="h-5 w-5 shrink-0">
+                            {isSelected && <SelectableCardCheck size="sm" />}
+                          </div>
                         </div>
-                      </motion.button>
+                      </MotionSelectableCard>
                     );
                   })}
                 </div>
@@ -384,22 +392,16 @@ export function SetupModal({
                 {MODE_OPTIONS.map((mode) => {
                   const isSelected = config.mode === mode.id;
                   return (
-                    <motion.button
+                    <MotionSelectableCard
                       key={mode.id}
+                      selected={isSelected}
                       onClick={() => selectMode(mode.id)}
-                      className={`
-                        w-full p-4 rounded-lg border-2 text-left overflow-hidden relative
-                        ${
-                          isSelected
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/30 hover:bg-accent/50"
-                        }
-                      `}
+                      className="p-4"
                       whileHover={{
                         y: -2,
                         scale: 1.005,
                         boxShadow: isSelected
-                          ? '0 6px 25px rgb(var(--primary) / 0.2)'
+                          ? '0 6px 25px color-mix(in oklab, var(--primary) 20%, transparent)'
                           : '0 4px 15px rgb(0 0 0 / 0.08)',
                       }}
                       whileTap={{ scale: 0.99, y: 0 }}
@@ -409,7 +411,7 @@ export function SetupModal({
                         damping: 30,
                       }}
                       animate={isSelected ? {
-                        boxShadow: '0 4px 15px rgb(var(--primary) / 0.12)',
+                        boxShadow: '0 4px 15px color-mix(in oklab, var(--primary) 12%, transparent)',
                       } : {}}
                     >
                       {/* Selection Glow */}
@@ -428,46 +430,15 @@ export function SetupModal({
                       )}
 
                       <div className="relative flex items-center gap-3">
-                        <motion.div
-                          className={`
-                            w-5 h-5 rounded-full border-2 flex items-center justify-center
-                            ${
-                              isSelected
-                                ? "border-primary bg-primary"
-                                : "border-muted-foreground"
-                            }
-                          `}
-                          animate={isSelected ? {
-                            scale: [1, 1.1, 1],
-                          } : {}}
-                          transition={{
-                            duration: 0.3,
-                            ease: [0.34, 1.56, 0.64, 1],
-                          }}
-                        >
-                          <AnimatePresence mode="wait">
-                            {isSelected && (
-                              <motion.div
-                                key="selected-dot"
-                                className="w-2 h-2 rounded-full bg-white"
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                exit={{ scale: 0 }}
-                                transition={{
-                                  type: 'spring',
-                                  stiffness: 400,
-                                  damping: 25,
-                                }}
-                              />
-                            )}
-                          </AnimatePresence>
-                        </motion.div>
+                        <div className="h-5 w-5 shrink-0">
+                          {isSelected && <SelectableCardCheck size="sm" />}
+                        </div>
                         <div className="flex-1">
                           <h4 className="font-semibold text-sm mb-0.5">{mode.title}</h4>
                           <p className="text-xs text-muted-foreground">{mode.description}</p>
                         </div>
                       </div>
-                    </motion.button>
+                    </MotionSelectableCard>
                   );
                 })}
               </motion.div>
@@ -507,13 +478,11 @@ export function SetupModal({
                 </div>
 
                 {/* Collapsible Advanced Settings */}
-                <motion.button
+                <Button
+                  type="button"
+                  variant="outline"
                   onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-                  className="w-full p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors flex items-center justify-between"
-                  whileHover={{
-                    borderColor: 'rgb(var(--primary) / 0.3)',
-                  }}
-                  whileTap={{ scale: 0.98 }}
+                  className="h-auto w-full justify-between rounded-lg p-4"
                 >
                   <div className="flex items-center gap-3">
                     <motion.div
@@ -543,7 +512,7 @@ export function SetupModal({
                   >
                     <ChevronDown className="w-5 h-5 text-muted-foreground" />
                   </motion.div>
-                </motion.button>
+                </Button>
 
                 <AnimatePresence>
                   {showAdvancedSettings && (
@@ -562,7 +531,7 @@ export function SetupModal({
                             {config.voiceSettings?.speed.toFixed(1)}x
                           </span>
                         </label>
-                        <input
+                        <Input
                           type="range"
                           min="0.8"
                           max="1.2"
@@ -571,7 +540,7 @@ export function SetupModal({
                           onChange={(e) =>
                             updateVoiceSettings({ speed: parseFloat(e.target.value) })
                           }
-                          className="w-full accent-primary"
+                          className="h-2 w-full cursor-pointer rounded-full border-0 bg-muted p-0 accent-primary"
                         />
                         <div className="flex justify-between text-xs text-muted-foreground">
                           <span>Slower</span>
@@ -582,17 +551,26 @@ export function SetupModal({
                       {/* Emotion Dropdown */}
                       <div className="space-y-2">
                         <label className="text-sm font-medium">Voice Emotion</label>
-                        <select
+                        <Select
                           value={config.voiceSettings?.emotion || "confident"}
-                          onChange={(e) => updateVoiceSettings({ emotion: e.target.value })}
-                          className="w-full p-2.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          onValueChange={(emotion) =>
+                            updateVoiceSettings({ emotion })
+                          }
                         >
-                          {EMOTION_OPTIONS.map((emotion) => (
-                            <option key={emotion.value} value={emotion.value}>
-                              {emotion.label}
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger className="w-full rounded-lg">
+                            <SelectValue placeholder="Voice emotion" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {EMOTION_OPTIONS.map((emotion) => (
+                              <SelectItem
+                                key={emotion.value}
+                                value={emotion.value}
+                              >
+                                {emotion.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </motion.div>
                   )}

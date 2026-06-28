@@ -381,7 +381,7 @@ export function SetupContent() {
                     className={
                       "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all " +
                       (step >= s.num
-                        ? "bg-primary text-white"
+                        ? "bg-primary text-primary-foreground"
                         : "bg-muted text-muted-foreground")
                     }
                   >
@@ -419,7 +419,7 @@ export function SetupContent() {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 text-sm"
+                className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
               >
                 {error}
               </motion.div>

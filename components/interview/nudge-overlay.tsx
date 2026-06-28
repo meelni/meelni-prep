@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect } from "react";
 import {
@@ -40,27 +41,31 @@ interface NudgeOverlayProps {
 // Nudge config for icons and colors
 const nudgeConfig: Record<
   NudgeType,
-  { icon: typeof TrendingUp; label: string; color: string }
+  { icon: typeof TrendingUp; label: string; color: string; surface: string }
 > = {
   metric_missing: {
     icon: TrendingUp,
     label: "Quantify",
-    color: "text-blue-500",
+    color: "text-info",
+    surface: "bg-info/10",
   },
   move_on: {
     icon: ArrowRight,
     label: "Move Forward",
-    color: "text-purple-500",
+    color: "text-primary",
+    surface: "bg-primary/10",
   },
   clarify_first: {
     icon: HelpCircle,
     label: "Clarify",
-    color: "text-amber-500",
+    color: "text-warning",
+    surface: "bg-warning/10",
   },
   framework_element: {
     icon: Lightbulb,
     label: "Framework",
     color: "text-primary",
+    surface: "bg-primary/10",
   },
 };
 
@@ -156,7 +161,9 @@ export function NudgeOverlay({
               {/* Nudge Header */}
               <div className="flex items-start gap-3 p-4">
                 <div
-                  className={`flex-shrink-0 p-2 bg-primary/10 rounded-lg ${
+                  className={`flex-shrink-0 p-2 rounded-lg ${
+                    nudgeConfig[nudge.type].surface
+                  } ${
                     nudgeConfig[nudge.type].color
                   }`}
                 >
@@ -175,13 +182,16 @@ export function NudgeOverlay({
                     {nudge.message}
                   </p>
                 </div>
-                <button
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
                   onClick={onDismiss}
-                  className="flex-shrink-0 p-1 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted/50"
+                  className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   aria-label="Dismiss nudge"
                 >
                   <X className="w-4 h-4" />
-                </button>
+                </Button>
               </div>
 
               {/* Progress Bar (visual feedback for auto-dismiss) */}
@@ -261,7 +271,7 @@ export function NudgeOverlay({
                   )}
                 </motion.div>
                 <span
-                  className={`text-[10px] leading-tight text-center max-w-[60px] ${
+                  className={`text-label text-center max-w-[60px] ${
                     element.covered
                       ? "text-primary font-medium"
                       : "text-muted-foreground/60"

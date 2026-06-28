@@ -50,17 +50,17 @@ export function Header() {
 
   return (
     <motion.header
-          className={cn(
-            "sticky top-0 z-50 w-full transition-all duration-300",
-            isScrolled
-              ? "h-[60px] bg-background/95 backdrop-blur-xl border-b border-border/60"
-              : "h-[72px] bg-background/80 backdrop-blur-lg"
-          )}
-          initial={{ y: -100 }}
-          animate={{ y: 0 }}
-          exit={{ y: -100, opacity: 0 }}
-          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-        >
+      className={cn(
+        "sticky top-0 z-50 w-full transition-all duration-300",
+        isScrolled
+          ? "h-14 bg-background/95 backdrop-blur-xl border-b border-border/60"
+          : "h-16 bg-background/80 backdrop-blur-lg"
+      )}
+      initial={{ y: -100 }}
+      animate={{ y: 0 }}
+      exit={{ y: -100, opacity: 0 }}
+      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+    >
       <div className="container max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-full">
           {/* Logo */}
@@ -75,7 +75,7 @@ export function Header() {
             >
               <Icons.logo className="w-7 h-7 text-primary transition-transform duration-300 group-hover:scale-110" />
             </motion.div>
-            <span className="font-sans font-semibold text-[20px] text-foreground">
+            <span className="font-sans text-xl font-semibold text-foreground">
               {siteConfig.name}
             </span>
           </Link>
@@ -95,25 +95,25 @@ export function Header() {
                   {isExternalRoute ? (
                     <Link
                       href={link.href}
-                      className="relative text-[15px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 group"
+                      className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 group"
                     >
                       {link.name}
 
                       {/* Underline animation */}
-                      <span className="absolute -bottom-1 left-1/2 h-[2px] bg-primary transition-all duration-300 ease-out w-0 -translate-x-1/2 group-hover:w-full" />
+                      <span className="absolute -bottom-1 left-1/2 h-0.5 bg-primary transition-all duration-300 ease-out w-0 -translate-x-1/2 group-hover:w-full" />
                     </Link>
                   ) : (
                     <a
                       href={link.href}
                       onClick={(e) => handleSmoothScroll(e, link.href)}
-                      className="relative text-[15px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 group"
+                      className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 group"
                     >
                       {link.name}
 
                       {/* Underline animation */}
                       <span
                         className={cn(
-                          "absolute -bottom-1 left-1/2 h-[2px] bg-primary transition-all duration-300 ease-out",
+                          "absolute -bottom-1 left-1/2 h-0.5 bg-primary transition-all duration-300 ease-out",
                           isActive
                             ? "w-full -translate-x-1/2"
                             : "w-0 -translate-x-1/2 group-hover:w-full"

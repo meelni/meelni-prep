@@ -10,22 +10,26 @@ interface TrendIndicatorProps {
   isNew?: boolean;
 }
 
-export function TrendIndicator({ value, label = "vs last week", isNew = false }: TrendIndicatorProps) {
+export function TrendIndicator({
+  value,
+  label = "vs last week",
+  isNew = false,
+}: TrendIndicatorProps) {
   // Determine trend direction and color
   const isPositive = value > 0;
   const isNeutral = value === 0;
 
   const trendColor = isPositive
-    ? "text-green-500"
+    ? "text-success"
     : isNeutral
-    ? "text-muted-foreground"
-    : "text-red-500";
+      ? "text-muted-foreground"
+      : "text-destructive";
 
   const bgColor = isPositive
-    ? "bg-green-500/10"
+    ? "bg-success/10"
     : isNeutral
-    ? "bg-muted/30"
-    : "bg-red-500/10";
+      ? "bg-muted/30"
+      : "bg-destructive/10";
 
   // Show "New!" badge if no previous data exists
   if (isNew) {
@@ -34,9 +38,9 @@ export function TrendIndicator({ value, label = "vs last week", isNew = false }:
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.3 }}
-        className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary"
+        className="bg-primary/10 text-primary inline-flex items-center gap-1 rounded-full px-2 py-1"
       >
-        <Sparkles className="w-3 h-3" />
+        <Sparkles className="h-3 w-3" />
         <span className="text-xs font-medium">New!</span>
       </motion.div>
     );
@@ -48,7 +52,7 @@ export function TrendIndicator({ value, label = "vs last week", isNew = false }:
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.3, delay: 0.1 }}
       className={cn(
-        "inline-flex items-center gap-1 px-2 py-1 rounded-full",
+        "inline-flex items-center gap-1 rounded-full px-2 py-1",
         bgColor
       )}
     >
@@ -59,20 +63,16 @@ export function TrendIndicator({ value, label = "vs last week", isNew = false }:
           transition={{ type: "spring", stiffness: 300, damping: 20 }}
         >
           {isPositive ? (
-            <ArrowUp className={cn("w-3 h-3", trendColor)} />
+            <ArrowUp className={cn("h-3 w-3", trendColor)} />
           ) : (
-            <ArrowDown className={cn("w-3 h-3", trendColor)} />
+            <ArrowDown className={cn("h-3 w-3", trendColor)} />
           )}
         </motion.div>
       )}
       <span className={cn("text-xs font-medium", trendColor)}>
         {isNeutral ? "—" : `${isPositive ? "+" : ""}${value.toFixed(0)}%`}
       </span>
-      {label && (
-        <span className="text-xs text-muted-foreground">
-          {label}
-        </span>
-      )}
+      {label && <span className="text-muted-foreground text-xs">{label}</span>}
     </motion.div>
   );
 }

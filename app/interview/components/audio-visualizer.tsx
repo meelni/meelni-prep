@@ -10,6 +10,7 @@ import { Track } from "livekit-client";
 import { motion } from "framer-motion";
 import { Orb, AgentState as OrbAgentState } from "@/components/ui/orb";
 import { useTrackVolume } from "@livekit/components-react";
+import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
 
 export function AudioVisualizer() {
   const { localParticipant } = useLocalParticipant();
@@ -151,9 +152,6 @@ export function AudioVisualizer() {
   const isUserSpeaking = isUserSpeakingDebounced;
   const isAgentActive = displayAgentState === "speaking" || displayAgentState === "thinking";
 
-  // Meelni purple-blue colors (hex format for THREE.js compatibility)
-  const meelniColors: [string, string] = ["#a855f7", "#7c3aed"];
-
   // Only pass volume to Orb when actually speaking (above threshold) to prevent flickering
   const displayUserVolume = normalizedUserVolume > 0.3 ? normalizedUserVolume : 0;
   const displayAgentVolume = normalizedAgentVolume > 0.15 ? normalizedAgentVolume : 0;
@@ -163,7 +161,7 @@ export function AudioVisualizer() {
       {/* Large Orb with Audio Reactivity */}
       <div className="relative w-full max-w-md aspect-square">
         <Orb
-          colors={meelniColors}
+          colors={MEELNI_ORB_COLORS}
           agentState={orbAgentState}
           volumeMode="manual"
           getInputVolume={() => displayUserVolume}

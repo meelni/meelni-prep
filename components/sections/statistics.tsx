@@ -30,7 +30,7 @@ export function Statistics() {
         className="border-x border-t"
         style={{
           backgroundImage:
-            "radial-gradient(circle at bottom center, hsl(var(--secondary) / 0.4), hsl(var(--background)))",
+            "radial-gradient(circle at bottom center, color-mix(in oklab, var(--secondary) 40%, transparent), var(--background))",
         }}
       >
         <div className="grid grid-cols-1 sm:grid-cols-3">

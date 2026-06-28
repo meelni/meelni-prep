@@ -2,7 +2,18 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { X, FolderPlus, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { FolderPlus, Loader2 } from "lucide-react";
 
 interface PracticeSetDialogProps {
   isOpen: boolean;
@@ -21,8 +32,6 @@ export function PracticeSetDialog({
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,65 +88,59 @@ export function PracticeSetDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-md bg-card border border-border rounded-lg shadow-lg">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <FolderPlus className="w-5 h-5 text-primary" />
+            <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-lg">
+              <FolderPlus className="text-primary h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-display font-medium text-foreground">
+              <DialogTitle className="font-display text-foreground text-lg font-medium">
                 Create Practice Set
-              </h2>
-              <p className="text-sm text-muted-foreground">
+              </DialogTitle>
+              <DialogDescription>
                 {selectedQuestionIds.length > 0
                   ? `Add ${selectedQuestionIds.length} selected question${selectedQuestionIds.length === 1 ? "" : "s"}`
                   : "Create an empty set"}
-              </p>
+              </DialogDescription>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            aria-label="Close dialog"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        </DialogHeader>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Name Input */}
-          <div>
-            <label htmlFor="set-name" className="block text-sm font-medium text-foreground mb-2">
+          <div className="space-y-2">
+            <Label htmlFor="set-name">
               Name<span className="text-destructive ml-1">*</span>
-            </label>
-            <input
+            </Label>
+            <Input
               id="set-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., Meta Product Strategy Questions"
-              className="w-full px-4 py-2.5 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150"
               maxLength={100}
               disabled={isSubmitting}
             />
           </div>
 
           {/* Description Input */}
-          <div>
-            <label htmlFor="set-description" className="block text-sm font-medium text-foreground mb-2">
-              Description (optional)
-            </label>
-            <textarea
+          <div className="space-y-2">
+            <Label htmlFor="set-description">Description (optional)</Label>
+            <Textarea
               id="set-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Add notes about this practice set..."
               rows={3}
-              className="w-full px-4 py-2.5 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150 resize-none"
+              className="resize-none"
               maxLength={500}
               disabled={isSubmitting}
             />
@@ -145,13 +148,13 @@ export function PracticeSetDialog({
 
           {/* Error Message */}
           {error && (
-            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+            <div className="bg-destructive/10 border-destructive/20 text-destructive rounded-lg border p-3 text-sm">
               {error}
             </div>
           )}
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <DialogFooter className="gap-3 pt-2">
             <Button
               type="button"
               variant="ghost"
@@ -160,22 +163,26 @@ export function PracticeSetDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting || !name.trim()} className="gap-2">
+            <Button
+              type="submit"
+              disabled={isSubmitting || !name.trim()}
+              className="gap-2"
+            >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Creating...
                 </>
               ) : (
                 <>
-                  <FolderPlus className="w-4 h-4" />
+                  <FolderPlus className="h-4 w-4" />
                   Create Set
                 </>
               )}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

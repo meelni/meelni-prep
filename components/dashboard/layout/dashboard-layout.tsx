@@ -61,7 +61,7 @@ export function DashboardLayout({
       {/* Mobile Overlay */}
       {!sidebarCollapsed && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          className="fixed inset-0 bg-overlay/50 z-40 md:hidden"
           onClick={() => setSidebarCollapsed(true)}
         />
       )}

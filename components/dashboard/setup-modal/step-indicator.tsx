@@ -74,13 +74,13 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
                           damping: 25,
                         }}
                       >
-                        <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                        <Check className="w-3.5 h-3.5 text-primary-foreground" strokeWidth={3} />
                       </motion.div>
                     )}
                     {isActive && (
                       <motion.div
                         key="pulse"
-                        className="w-2 h-2 rounded-full bg-white"
+                        className="w-2 h-2 rounded-full bg-primary-foreground"
                         animate={{
                           scale: [1, 1.2, 1],
                           opacity: [1, 0.8, 1],

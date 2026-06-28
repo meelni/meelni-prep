@@ -10,8 +10,21 @@
 
 "use client";
 
+import { Button } from "@/components/ui/button";
+import {
+  ArrowRight,
+  HelpCircle,
+  Lightbulb,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react";
 import { useState } from "react";
-import { NudgeOverlay, Nudge, FrameworkCoverage, NudgeType } from "./nudge-overlay";
+import {
+  NudgeOverlay,
+  Nudge,
+  FrameworkCoverage,
+  NudgeType,
+} from "./nudge-overlay";
 
 const mockFrameworkCoverage: FrameworkCoverage = [
   { name: "Clarify", covered: true },
@@ -39,6 +52,42 @@ const mockNudges: Record<NudgeType, Nudge> = {
     message: "Consider discussing the tradeoffs of your proposed solution.",
   },
 };
+
+const nudgeDemoButtons: Array<{
+  type: NudgeType;
+  label: string;
+  icon: LucideIcon;
+  className: string;
+}> = [
+  {
+    type: "metric_missing",
+    label: "Metric Missing",
+    icon: TrendingUp,
+    className:
+      "border-info/20 bg-info/10 text-info hover:bg-info/15 hover:text-info",
+  },
+  {
+    type: "move_on",
+    label: "Move On",
+    icon: ArrowRight,
+    className:
+      "border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+  },
+  {
+    type: "clarify_first",
+    label: "Clarify First",
+    icon: HelpCircle,
+    className:
+      "border-warning/20 bg-warning/10 text-warning hover:bg-warning/15 hover:text-warning",
+  },
+  {
+    type: "framework_element",
+    label: "Framework Element",
+    icon: Lightbulb,
+    className:
+      "border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+  },
+];
 
 export function NudgeOverlayTestDemo() {
   const [currentNudge, setCurrentNudge] = useState<Nudge | null>(null);
@@ -68,30 +117,18 @@ export function NudgeOverlayTestDemo() {
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">Test Nudge Types</h2>
           <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => showNudge("metric_missing")}
-              className="p-4 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors"
-            >
-              📊 Metric Missing
-            </button>
-            <button
-              onClick={() => showNudge("move_on")}
-              className="p-4 bg-purple-500/10 text-purple-500 border border-purple-500/20 rounded-lg hover:bg-purple-500/20 transition-colors"
-            >
-              ⏭️ Move On
-            </button>
-            <button
-              onClick={() => showNudge("clarify_first")}
-              className="p-4 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-lg hover:bg-amber-500/20 transition-colors"
-            >
-              ❓ Clarify First
-            </button>
-            <button
-              onClick={() => showNudge("framework_element")}
-              className="p-4 bg-primary/10 text-primary border border-primary/20 rounded-lg hover:bg-primary/20 transition-colors"
-            >
-              💡 Framework Element
-            </button>
+            {nudgeDemoButtons.map(({ type, label, icon: Icon, className }) => (
+              <Button
+                key={type}
+                type="button"
+                variant="outline"
+                onClick={() => showNudge(type)}
+                className={`h-auto justify-start gap-3 rounded-lg p-4 ${className}`}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                {label}
+              </Button>
+            ))}
           </div>
         </div>
 
@@ -100,32 +137,36 @@ export function NudgeOverlayTestDemo() {
           <h2 className="text-xl font-semibold">Framework Coverage Controls</h2>
           <div className="grid grid-cols-5 gap-4">
             {coverage.map((element, index) => (
-              <button
+              <Button
                 key={index}
+                type="button"
+                variant="outline"
                 onClick={() => toggleCoverageElement(index)}
-                className={`p-4 rounded-lg border transition-colors ${
+                className={`h-auto flex-col rounded-lg p-4 ${
                   element.covered
-                    ? "bg-primary/10 text-primary border-primary/20"
+                    ? "border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
                     : "bg-muted/50 text-muted-foreground border-border"
                 }`}
               >
                 <div className="text-sm font-medium">{element.name}</div>
                 <div className="text-xs mt-1">
-                  {element.covered ? "✅ Covered" : "⚪ Not Covered"}
+                  {element.covered ? "Covered" : "Not Covered"}
                 </div>
-              </button>
+              </Button>
             ))}
           </div>
         </div>
 
         {/* Clear Nudge Button */}
         <div>
-          <button
+          <Button
+            type="button"
+            variant="outline"
             onClick={() => setCurrentNudge(null)}
-            className="px-6 py-3 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg hover:bg-destructive/20 transition-colors"
+            className="border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
           >
             Clear Current Nudge
-          </button>
+          </Button>
         </div>
 
         {/* Instructions */}

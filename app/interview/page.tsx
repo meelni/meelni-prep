@@ -5,7 +5,10 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { sessionKeys } from "@/lib/api/queries";
-import { LiveKitRoomWrapper, TranscriptTurn } from "@/components/interview/livekit-room";
+import {
+  LiveKitRoomWrapper,
+  TranscriptTurn,
+} from "@/components/interview/livekit-room";
 import { TranscriptPanel } from "./components/transcript-panel";
 import { AudioVisualizer } from "./components/audio-visualizer";
 import { InterviewControls } from "./components/interview-controls";
@@ -21,6 +24,14 @@ import { useLocalParticipant } from "@livekit/components-react";
 import { RoomAudioRenderer } from "@livekit/components-react";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { Loader2, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  AppSurface,
+  AppSurfaceDescription,
+  AppSurfaceHeader,
+  AppSurfaceTitle,
+  StatusPill,
+} from "@/components/ui/app-surface";
 import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
 import { analytics } from "@/lib/analytics/analytics-service";
 
@@ -49,7 +60,7 @@ function InterviewPageContent() {
   const searchParams = useSearchParams();
 
   // Track Web Vitals performance
-  useWebVitals('interview');
+  useWebVitals("interview");
 
   // Config from Setup Modal (query params)
   const roundType = searchParams.get("roundType");
@@ -81,7 +92,9 @@ function InterviewPageContent() {
   const [transcriptSaveErrors, setTranscriptSaveErrors] = useState(0);
   const [transcriptQueue] = useState(() => getTranscriptQueue());
   const [currentNudge, setCurrentNudge] = useState<Nudge | null>(null);
-  const [frameworkCoverage, setFrameworkCoverage] = useState<FrameworkCoverage>([]);
+  const [frameworkCoverage, setFrameworkCoverage] = useState<FrameworkCoverage>(
+    []
+  );
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const initializedRef = useRef(false);
 
@@ -171,7 +184,7 @@ function InterviewPageContent() {
       setLoading(false);
 
       // Track interview started
-      analytics.track('interview_started', {
+      analytics.track("interview_started", {
         session_id: data.sessionId,
         interview_type: roundType,
         mode: mode,
@@ -179,7 +192,11 @@ function InterviewPageContent() {
       });
     } catch (err) {
       console.error("Error creating session:", err);
-      setError(err instanceof Error ? err.message : "Failed to create interview session");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to create interview session"
+      );
       setLoading(false);
     }
   };
@@ -201,7 +218,7 @@ function InterviewPageContent() {
       setLoading(false);
 
       // Track interview started
-      analytics.track('interview_started', {
+      analytics.track("interview_started", {
         session_id: sessionId ?? session?.id ?? "",
         interview_type: sessionData.config?.roundType,
         mode: sessionData.config?.mode,
@@ -225,7 +242,10 @@ function InterviewPageContent() {
       );
 
       if (isDuplicate) {
-        console.log("[Interview] Skipping duplicate transcript:", turn.text.substring(0, 50));
+        console.log(
+          "[Interview] Skipping duplicate transcript:",
+          turn.text.substring(0, 50)
+        );
         return prev; // Don't add duplicate
       }
 
@@ -253,7 +273,10 @@ function InterviewPageContent() {
       if (!result.success) {
         // Failed, but queued for retry
         setTranscriptSaveErrors((prev) => prev + 1);
-        console.warn("[Interview] Transcript save failed, queued for retry:", result.error);
+        console.warn(
+          "[Interview] Transcript save failed, queued for retry:",
+          result.error
+        );
       } else if (transcriptSaveErrors > 0) {
         // Success after previous errors - reset error count
         setTranscriptSaveErrors(0);
@@ -342,7 +365,9 @@ function InterviewPageContent() {
 
     // Set timer to auto-end session
     const timer = setTimeout(() => {
-      console.log(`[Interview] Auto-ending session after ${session.config.duration} minutes`);
+      console.log(
+        `[Interview] Auto-ending session after ${session.config.duration} minutes`
+      );
       setShowEndModal(true);
     }, remaining);
 
@@ -353,8 +378,10 @@ function InterviewPageContent() {
     setIsEndingSession(true);
     try {
       // Track interview ended
-      const duration = sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0;
-      analytics.track('interview_ended', {
+      const duration = sessionStartTime
+        ? (Date.now() - sessionStartTime) / 1000
+        : 0;
+      analytics.track("interview_ended", {
         session_id: sessionId ?? session?.id ?? "",
         duration_seconds: duration,
         ended_naturally: true,
@@ -381,9 +408,9 @@ function InterviewPageContent() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/20">
+      <div className="from-background via-background to-muted/20 flex min-h-screen items-center justify-center bg-gradient-to-b">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <Loader2 className="text-primary h-8 w-8 animate-spin" />
           <p className="text-muted-foreground">Loading interview room...</p>
         </div>
       </div>
@@ -392,16 +419,17 @@ function InterviewPageContent() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/20">
+      <div className="from-background via-background to-muted/20 flex min-h-screen items-center justify-center bg-gradient-to-b">
         <div className="max-w-md text-center">
-          <h1 className="text-2xl font-bold mb-4">Failed to Load Interview</h1>
+          <h1 className="mb-4 text-2xl font-bold">Failed to Load Interview</h1>
           <p className="text-muted-foreground mb-6">{error}</p>
-          <button
+          <Button
+            type="button"
             onClick={() => router.push("/dashboard")}
-            className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            className="px-6 py-3"
           >
             Back to Dashboard
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -409,9 +437,9 @@ function InterviewPageContent() {
 
   if (!session || !token || !url) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/20">
+      <div className="from-background via-background to-muted/20 flex min-h-screen items-center justify-center bg-gradient-to-b">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <Loader2 className="text-primary h-8 w-8 animate-spin" />
           <p className="text-muted-foreground">Connecting to room...</p>
         </div>
       </div>
@@ -437,9 +465,9 @@ function InterviewPageContent() {
           const newMutedState = !isMuted;
           setIsMuted(newMutedState);
           // Track mic toggle
-          analytics.track('mic_toggled', {
+          analytics.track("mic_toggled", {
             session_id: sessionId ?? session.id,
-            new_state: newMutedState ? 'muted' : 'unmuted',
+            new_state: newMutedState ? "muted" : "unmuted",
           });
         }}
         onEndSession={() => setShowEndModal(true)}
@@ -487,32 +515,38 @@ function InterviewRoomContent({
   const estimatedDuration = session.config?.duration || 30;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
+    <div className="from-background via-background to-muted/20 min-h-screen bg-gradient-to-b">
       {/* Header */}
-      <header className="sticky top-0 z-40 w-full bg-background/80 backdrop-blur-md border-b border-border/50">
-        <div className="container max-w-7xl mx-auto h-16 px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-full">
+      <header className="bg-background/80 border-border/50 sticky top-0 z-40 w-full border-b backdrop-blur-md">
+        <div className="container mx-auto h-16 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-full items-center justify-between">
             <div className="flex items-center gap-4">
               <ConnectionIndicator />
               {session.config?.roundType && (
-                <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="text-muted-foreground hidden items-center gap-2 text-sm md:flex">
                   <span className="text-primary font-medium">
-                    {session.config.roundType.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                    {session.config.roundType
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, (l: string) => l.toUpperCase())}
                   </span>
                   {session.config.mode && (
                     <>
                       <span>•</span>
-                      <span>{session.config.mode.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}</span>
+                      <span>
+                        {session.config.mode
+                          .replace(/_/g, " ")
+                          .replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                      </span>
                     </>
                   )}
                 </div>
               )}
               {transcriptSaveErrors > 0 && (
-                <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950/30 px-3 py-1 rounded-full border border-amber-200 dark:border-amber-800">
-                  <AlertCircle className="w-3.5 h-3.5" />
+                <StatusPill tone="warning" className="text-sm">
+                  <AlertCircle className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Saving transcript...</span>
                   <span className="sm:hidden">{transcriptSaveErrors}</span>
-                </div>
+                </StatusPill>
               )}
             </div>
             <TimerDisplay
@@ -524,37 +558,36 @@ function InterviewRoomContent({
       </header>
 
       {/* Main Content */}
-      <main className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="container mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Question Display */}
         {session.question && (
-          <div className="mb-6 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 border border-primary/20 rounded-xl p-6 shadow-sm">
-            <div className="flex items-start justify-between gap-4 mb-3">
+          <AppSurface variant="accent" size="lg" className="mb-6 rounded-xl">
+            <div className="mb-3 flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="px-3 py-1 bg-primary/10 border border-primary/30 rounded-full">
-                  <span className="text-xs font-semibold text-primary uppercase tracking-wider">
-                    Interview Question
-                  </span>
-                </div>
+                <StatusPill
+                  tone="primary"
+                  className="font-semibold tracking-wider uppercase"
+                >
+                  Interview Question
+                </StatusPill>
                 {session.question.company && (
-                  <div className="px-3 py-1 bg-background/50 border border-border rounded-full">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {session.question.company}
-                    </span>
-                  </div>
+                  <StatusPill tone="muted">
+                    {session.question.company}
+                  </StatusPill>
                 )}
               </div>
             </div>
-            <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-wrap">
+            <p className="text-foreground/90 text-base leading-relaxed whitespace-pre-wrap">
               {session.question.text}
             </p>
-          </div>
+          </AppSurface>
         )}
 
         {/* Grid Layout: AudioVisualizer (with Orb) + Transcript Sidebar */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
+        <div className="grid h-[calc(100vh-12rem)] grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Center: AudioVisualizer (contains Orb + state indicators) + Controls */}
-          <div className="lg:col-span-2 flex flex-col items-center justify-center gap-12">
-            <div className="w-full h-full max-h-[500px]">
+          <div className="flex flex-col items-center justify-center gap-12 lg:col-span-2">
+            <div className="h-full max-h-[500px] w-full">
               <AudioVisualizer />
             </div>
             <InterviewControls
@@ -565,15 +598,21 @@ function InterviewRoomContent({
           </div>
 
           {/* Right Sidebar: Transcript */}
-          <div className="lg:col-span-1 bg-surface border border-border rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-border bg-muted/50">
-              <h2 className="text-lg font-semibold">Transcript</h2>
-              <p className="text-xs text-muted-foreground">Live conversation transcript</p>
-            </div>
+          <AppSurface
+            variant="panel"
+            size="none"
+            className="overflow-hidden rounded-xl lg:col-span-1"
+          >
+            <AppSurfaceHeader>
+              <AppSurfaceTitle>Transcript</AppSurfaceTitle>
+              <AppSurfaceDescription>
+                Live conversation transcript
+              </AppSurfaceDescription>
+            </AppSurfaceHeader>
             <div className="h-[calc(100%-80px)]">
               <TranscriptPanel turns={transcript} />
             </div>
-          </div>
+          </AppSurface>
         </div>
       </main>
     </div>
@@ -584,9 +623,9 @@ export default function InterviewPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="bg-background flex min-h-screen items-center justify-center">
           <div className="flex flex-col items-center gap-4">
-            <div className="w-8 h-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
             <p className="text-muted-foreground">Loading interview...</p>
           </div>
         </div>

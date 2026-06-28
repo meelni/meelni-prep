@@ -4,25 +4,13 @@ import { lazy, Suspense } from "react";
 import { FirstTimeUserExperience } from "@/components/dashboard/first-time-user-experience";
 import { useSessions } from "@/lib/api/queries";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
-import { Loader2 } from "lucide-react";
 import { DashboardError } from "@/components/dashboard/error";
+import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
 import { useEffect } from "react";
 import { analytics } from "@/lib/analytics/analytics-service";
 
 // Lazy load overview section
 const OverviewSection = lazy(() => import("@/components/dashboard/sections/overview").then(m => ({ default: m.OverviewSection })));
-
-// Section loading fallback component
-function SectionLoading() {
-  return (
-    <div className="flex items-center justify-center min-h-[400px]">
-      <div className="flex flex-col items-center gap-3">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading section...</p>
-      </div>
-    </div>
-  );
-}
 
 export default function DashboardPage() {
   // Track Web Vitals performance
@@ -66,7 +54,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <Suspense fallback={<SectionLoading />}>
+    <Suspense fallback={<DashboardLoadingState />}>
       <OverviewSection
         sessions={sessions}
         loadingSessions={sessionsLoading}

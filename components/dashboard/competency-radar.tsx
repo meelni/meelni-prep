@@ -1,7 +1,19 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
-import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from "recharts";
+import {
+  DashboardChartCard,
+  DashboardStateCard,
+} from "@/components/dashboard/dashboard-surface";
+import { RadarIcon } from "lucide-react";
+import {
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  ResponsiveContainer,
+  Tooltip,
+} from "recharts";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { useEffect, useRef } from "react";
 
@@ -23,92 +35,93 @@ export function CompetencyRadar({ data }: CompetencyRadarProps) {
     if (data.length > 0 && !hasTrackedView.current) {
       hasTrackedView.current = true;
 
-      const hasScores = data.some(d => d.score > 0);
+      const hasScores = data.some((d) => d.score > 0);
       const avgScore = hasScores
         ? data.reduce((sum, d) => sum + d.score, 0) / data.length
         : undefined;
 
-      analytics.track('competency_radar_viewed', {
+      analytics.track("competency_radar_viewed", {
         competencies_count: data.length,
         has_scores: hasScores,
-        avg_competency_score: avgScore ? Math.round(avgScore * 10) / 10 : undefined,
+        avg_competency_score: avgScore
+          ? Math.round(avgScore * 10) / 10
+          : undefined,
       });
     }
   }, [data]);
 
   const handleRadarClick = () => {
-    analytics.track('chart_interacted', {
-      chart_type: 'competency_radar',
-      interaction_type: 'click',
+    analytics.track("chart_interacted", {
+      chart_type: "competency_radar",
+      interaction_type: "click",
       data_point: `${data.length} competencies`,
     });
   };
 
   if (data.length === 0) {
     return (
-      <Card className="p-8 bg-surface/30 border-border/30">
-        <div className="text-center space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">
-            No competency data yet
-          </p>
-          <p className="text-xs text-muted-foreground/70">
-            Complete interviews with feedback to see your competency breakdown
-          </p>
-        </div>
-      </Card>
+      <DashboardStateCard
+        icon={<RadarIcon className="h-8 w-8" />}
+        title="No competency data yet"
+        description="Complete interviews with feedback to see your competency breakdown."
+        className="py-8"
+      />
     );
   }
 
   return (
-    <Card className="p-6 bg-surface/50 border-border/50">
-      <div className="space-y-4">
-        <div className="space-y-1">
-          <h3 className="text-lg font-semibold text-foreground">
-            Competency Breakdown
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Your average scores across key competencies
-          </p>
-        </div>
-
-        <div className="h-[360px] w-full" onClick={handleRadarClick}>
-          <ResponsiveContainer width="100%" height="100%">
-            <RadarChart data={data} margin={{ top: 30, right: 40, bottom: 30, left: 40 }}>
-              <PolarGrid stroke="rgba(128, 128, 128, 0.2)" />
-              <PolarAngleAxis
-                dataKey="competency"
-                stroke="rgba(128, 128, 128, 0.5)"
-                fontSize={11}
-                tick={{ fill: "rgba(255, 255, 255, 0.7)", width: 60 }}
-              />
-              <PolarRadiusAxis
-                angle={90}
-                domain={[0, 10]}
-                stroke="rgba(128, 128, 128, 0.3)"
-                tick={false}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgba(24, 24, 27, 0.95)",
-                  border: "1px solid rgba(128, 128, 128, 0.2)",
-                  borderRadius: "8px",
-                  padding: "12px",
-                }}
-                formatter={(value: number) => [`${value.toFixed(1)}/10`, "Score"]}
-                labelStyle={{ color: "rgba(255, 255, 255, 0.9)", marginBottom: "4px", fontWeight: 600 }}
-                itemStyle={{ color: "rgba(34, 197, 94, 1)" }}
-              />
-              <Radar
-                name="Score"
-                dataKey="score"
-                stroke="rgba(34, 197, 94, 1)"
-                fill="rgba(34, 197, 94, 0.3)"
-                strokeWidth={2}
-              />
-            </RadarChart>
-          </ResponsiveContainer>
-        </div>
+    <DashboardChartCard
+      title="Competency Breakdown"
+      description="Your average scores across key competencies"
+    >
+      <div className="h-chart-radar w-full" onClick={handleRadarClick}>
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart
+            data={data}
+            margin={{ top: 30, right: 40, bottom: 30, left: 40 }}
+          >
+            <PolarGrid stroke="var(--border)" strokeOpacity={0.3} />
+            <PolarAngleAxis
+              dataKey="competency"
+              stroke="var(--muted-foreground)"
+              strokeOpacity={0.6}
+              fontSize={11}
+              tick={{ fill: "var(--muted-foreground)", width: 60 }}
+            />
+            <PolarRadiusAxis
+              angle={90}
+              domain={[0, 10]}
+              stroke="var(--border)"
+              strokeOpacity={0.3}
+              tick={false}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "var(--card)",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                padding: "12px",
+                color: "var(--foreground)",
+              }}
+              formatter={(value: number) => [`${value.toFixed(1)}/10`, "Score"]}
+              labelStyle={{
+                color: "var(--foreground)",
+                marginBottom: "4px",
+                fontWeight: 600,
+              }}
+              itemStyle={{ color: "var(--primary)" }}
+            />
+            <Radar
+              name="Score"
+              dataKey="score"
+              stroke="var(--primary)"
+              fill="var(--primary)"
+              fillOpacity={0.18}
+              strokeWidth={2}
+            />
+          </RadarChart>
+        </ResponsiveContainer>
       </div>
-    </Card>
+    </DashboardChartCard>
   );
 }

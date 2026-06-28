@@ -9,7 +9,7 @@ export function ExploreHero() {
     <section className="relative pt-24 sm:pt-32 pb-12 sm:pb-16 px-4 sm:px-6">
       {/* Radial gradient background */}
       <div className="absolute inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgb(var(--primary)/0.08),transparent_70%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,color-mix(in oklab, var(--primary) 8%, transparent),transparent_70%)]" />
       </div>
 
       {/* Content */}

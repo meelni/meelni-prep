@@ -25,7 +25,11 @@ export function BulkActionToolbar({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 100, opacity: 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="fixed bottom-6 left-[280px] right-0 mx-auto w-fit px-4 md:px-6 py-4 rounded-xl bg-card/95 backdrop-blur-xl border border-border shadow-xl shadow-primary/10 flex flex-col sm:flex-row items-center gap-3 md:gap-4 z-10 max-w-[calc(100vw-2rem)] md:max-w-none"
+          style={{
+            left: "var(--question-bank-toolbar-offset, 280px)",
+            maxWidth: "calc(100vw - 2rem)",
+          }}
+          className="fixed right-0 bottom-6 z-10 mx-auto flex w-fit flex-col items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-4 shadow-xl shadow-primary/10 backdrop-blur-xl sm:flex-row md:gap-4 md:px-6"
           role="toolbar"
           aria-label="Bulk actions"
         >
@@ -42,7 +46,7 @@ export function BulkActionToolbar({
               size="sm"
               variant="default"
               onClick={onBookmark}
-              className="gap-2 min-h-[44px] w-full sm:w-auto"
+              className="gap-2 min-h-11 w-full sm:w-auto"
             >
               <Bookmark className="w-4 h-4" />
               Bookmark
@@ -52,7 +56,7 @@ export function BulkActionToolbar({
               size="sm"
               variant="outline"
               onClick={onCreatePracticeSet}
-              className="gap-2 min-h-[44px] w-full sm:w-auto"
+              className="gap-2 min-h-11 w-full sm:w-auto"
             >
               <FolderPlus className="w-4 h-4" />
               <span className="hidden sm:inline">Create Practice Set</span>
@@ -63,7 +67,7 @@ export function BulkActionToolbar({
               size="sm"
               variant="ghost"
               onClick={onDeselectAll}
-              className="gap-2 min-h-[44px] w-full sm:w-auto"
+              className="gap-2 min-h-11 w-full sm:w-auto"
             >
               <X className="w-4 h-4" />
               Deselect All
