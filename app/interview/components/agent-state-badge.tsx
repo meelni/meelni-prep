@@ -18,25 +18,25 @@ const stateConfig = {
     glowColor: "shadow-muted/0",
   },
   listening: {
-    color: "bg-blue-500/10 border-blue-500/20",
-    textColor: "text-blue-100",
+    color: "bg-info/10 border-info/20",
+    textColor: "text-info",
     icon: <Mic className="w-4 h-4" />,
     label: "Listening",
-    glowColor: "shadow-blue-500/20",
+    glowColor: "shadow-info/20",
   },
   thinking: {
-    color: "bg-purple-500/10 border-purple-500/20",
-    textColor: "text-purple-100",
+    color: "bg-primary/10 border-primary/20",
+    textColor: "text-primary",
     icon: <Loader2 className="w-4 h-4 animate-spin" />,
     label: "Thinking",
-    glowColor: "shadow-purple-500/20",
+    glowColor: "shadow-primary/20",
   },
   speaking: {
-    color: "bg-green-500/10 border-green-500/20",
-    textColor: "text-green-100",
+    color: "bg-success/10 border-success/20",
+    textColor: "text-success",
     icon: <Volume2 className="w-4 h-4" />,
     label: "Speaking",
-    glowColor: "shadow-green-500/20",
+    glowColor: "shadow-success/20",
   },
 } as const;
 
@@ -63,7 +63,7 @@ export function AgentStateBadge({ state }: AgentStateBadgeProps) {
       </span>
       {state === "listening" && (
         <motion.div
-          className="w-2 h-2 rounded-full bg-blue-400"
+          className="w-2 h-2 rounded-full bg-info"
           animate={{ opacity: [1, 0.3, 1] }}
           transition={{ duration: 1.5, repeat: Infinity }}
         />

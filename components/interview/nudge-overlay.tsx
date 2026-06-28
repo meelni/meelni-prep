@@ -40,27 +40,31 @@ interface NudgeOverlayProps {
 // Nudge config for icons and colors
 const nudgeConfig: Record<
   NudgeType,
-  { icon: typeof TrendingUp; label: string; color: string }
+  { icon: typeof TrendingUp; label: string; color: string; surface: string }
 > = {
   metric_missing: {
     icon: TrendingUp,
     label: "Quantify",
-    color: "text-blue-500",
+    color: "text-info",
+    surface: "bg-info/10",
   },
   move_on: {
     icon: ArrowRight,
     label: "Move Forward",
-    color: "text-purple-500",
+    color: "text-primary",
+    surface: "bg-primary/10",
   },
   clarify_first: {
     icon: HelpCircle,
     label: "Clarify",
-    color: "text-amber-500",
+    color: "text-warning",
+    surface: "bg-warning/10",
   },
   framework_element: {
     icon: Lightbulb,
     label: "Framework",
     color: "text-primary",
+    surface: "bg-primary/10",
   },
 };
 
@@ -156,7 +160,9 @@ export function NudgeOverlay({
               {/* Nudge Header */}
               <div className="flex items-start gap-3 p-4">
                 <div
-                  className={`flex-shrink-0 p-2 bg-primary/10 rounded-lg ${
+                  className={`flex-shrink-0 p-2 rounded-lg ${
+                    nudgeConfig[nudge.type].surface
+                  } ${
                     nudgeConfig[nudge.type].color
                   }`}
                 >
