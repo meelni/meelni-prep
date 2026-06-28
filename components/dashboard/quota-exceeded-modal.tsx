@@ -84,8 +84,8 @@ export function QuotaExceededModal({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <div className="mb-2 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10">
-              <AlertCircle className="h-6 w-6 text-amber-500" />
+            <div className="bg-warning/10 flex h-12 w-12 items-center justify-center rounded-full">
+              <AlertCircle className="text-warning h-6 w-6" />
             </div>
             <div>
               <DialogTitle className="font-display text-2xl font-light">
@@ -103,10 +103,7 @@ export function QuotaExceededModal({
           <DashboardSectionCard
             title="Current Usage"
             action={
-              <Badge
-                variant="outline"
-                className="border-amber-500/50 text-amber-500"
-              >
+              <Badge variant="warning">
                 Quota Exceeded
               </Badge>
             }

@@ -105,12 +105,12 @@ export function SessionList({ sessions, onSessionClick }: SessionListProps) {
                 !isCompleted || isProcessing ? (
                   <div className="flex flex-wrap items-center gap-2">
                     {!isCompleted && (
-                      <Badge className="border-yellow-500/20 bg-yellow-500/10 text-yellow-500">
+                      <Badge variant="warning">
                         In Progress
                       </Badge>
                     )}
                     {isProcessing && (
-                      <Badge className="border-blue-500/20 bg-blue-500/10 text-blue-500">
+                      <Badge variant="info">
                         <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                         Generating...
                       </Badge>
