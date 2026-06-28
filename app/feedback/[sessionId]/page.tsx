@@ -2,10 +2,25 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, CheckCircle2, TrendingUp, Target, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  CheckCircle2,
+  TrendingUp,
+  Target,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+} from "lucide-react";
+
+import {
+  FeedbackActionItem,
+  FeedbackScoreCard,
+  FeedbackSectionCard,
+  FeedbackStatusPage,
+} from "@/components/feedback/feedback-surface";
 
 interface FeedbackData {
   id: string;
@@ -50,40 +65,35 @@ interface TranscriptResponse {
 
 function LoadingSkeleton() {
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="bg-background min-h-screen">
+      <div className="container mx-auto max-w-4xl px-4 py-8">
         {/* Header Skeleton */}
         <div className="mb-8">
-          <div className="h-8 w-32 bg-muted animate-pulse rounded mb-4" />
-          <div className="h-12 w-64 bg-muted animate-pulse rounded" />
+          <div className="bg-muted mb-4 h-8 w-32 animate-pulse rounded" />
+          <div className="bg-muted h-12 w-64 animate-pulse rounded" />
         </div>
 
-        {/* Overall Score Skeleton */}
-        <Card className="mb-8">
-          <CardHeader>
-            <div className="h-6 w-40 bg-muted animate-pulse rounded" />
-          </CardHeader>
-          <CardContent>
+        <div className="mb-8">
+          <FeedbackSectionCard
+            title={<div className="bg-muted h-6 w-40 animate-pulse rounded" />}
+          >
             <div className="flex items-center justify-center py-8">
-              <div className="h-32 w-32 bg-muted animate-pulse rounded-full" />
+              <div className="bg-muted h-32 w-32 animate-pulse rounded-full" />
             </div>
-          </CardContent>
-        </Card>
+          </FeedbackSectionCard>
+        </div>
 
-        {/* Dimension Scores Skeleton */}
-        <Card>
-          <CardHeader>
-            <div className="h-6 w-48 bg-muted animate-pulse rounded" />
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="space-y-2">
-                <div className="h-5 w-32 bg-muted animate-pulse rounded" />
-                <div className="h-2 w-full bg-muted animate-pulse rounded" />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <FeedbackSectionCard
+          title={<div className="bg-muted h-6 w-48 animate-pulse rounded" />}
+          contentClassName="space-y-6"
+        >
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="space-y-2">
+              <div className="bg-muted h-5 w-32 animate-pulse rounded" />
+              <div className="bg-muted h-2 w-full animate-pulse rounded" />
+            </div>
+          ))}
+        </FeedbackSectionCard>
       </div>
     </div>
   );
@@ -108,7 +118,9 @@ export default function FeedbackPage() {
   const router = useRouter();
   const sessionId = params.sessionId as string;
 
-  const [feedbackData, setFeedbackData] = useState<FeedbackResponse | null>(null);
+  const [feedbackData, setFeedbackData] = useState<FeedbackResponse | null>(
+    null
+  );
   const [transcriptData, setTranscriptData] = useState<TranscriptTurn[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +150,9 @@ export default function FeedbackPage() {
           setTimeout(fetchFeedback, 3000); // Poll every 3 seconds
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load feedback");
+        setError(
+          err instanceof Error ? err.message : "Failed to load feedback"
+        );
       } finally {
         setLoading(false);
       }
@@ -188,114 +202,84 @@ export default function FeedbackPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/dashboard")}
-            className="mb-6"
-          >
+      <FeedbackStatusPage
+        tone="danger"
+        icon={<AlertCircle className="h-8 w-8" />}
+        title="Feedback Unavailable"
+        description={error}
+        actions={
+          <Button onClick={() => router.push("/dashboard")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            Go to Dashboard
           </Button>
-          <Card>
-            <CardContent className="py-8 text-center">
-              <p className="text-red-500">{error}</p>
-              <Button onClick={() => router.push("/dashboard")} className="mt-4">
-                Go to Dashboard
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+        }
+      />
     );
   }
 
   // Processing state
-  if (feedbackData?.status === "pending" || feedbackData?.status === "processing") {
+  if (
+    feedbackData?.status === "pending" ||
+    feedbackData?.status === "processing"
+  ) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/dashboard")}
-            className="mb-6"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
-          </Button>
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
-              <h2 className="text-2xl font-semibold mb-2">
-                {feedbackData.status === "pending" ? "Preparing Feedback" : "Generating Feedback"}
-              </h2>
-              <p className="text-muted-foreground mb-4">
-                Our AI is analyzing your interview performance...
-              </p>
-              {feedbackData.estimatedTimeRemaining !== undefined && (
-                <p className="text-sm text-muted-foreground">
-                  Estimated time remaining: {feedbackData.estimatedTimeRemaining} seconds
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <FeedbackStatusPage
+        icon={<Loader2 className="h-8 w-8 animate-spin" />}
+        title={
+          feedbackData.status === "pending"
+            ? "Preparing Feedback"
+            : "Generating Feedback"
+        }
+        description="Our AI is analyzing your interview performance..."
+        actions={
+          feedbackData.estimatedTimeRemaining !== undefined && (
+            <p className="text-muted-foreground text-sm">
+              Estimated time remaining: {feedbackData.estimatedTimeRemaining}{" "}
+              seconds
+            </p>
+          )
+        }
+      />
     );
   }
 
   // Failed state
   if (feedbackData?.status === "failed") {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/dashboard")}
-            className="mb-6"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+      <FeedbackStatusPage
+        tone="danger"
+        icon={<AlertCircle className="h-8 w-8" />}
+        title="Feedback Generation Failed"
+        description={
+          feedbackData.error ||
+          "Something went wrong while generating feedback."
+        }
+        actions={
+          <Button onClick={() => router.push("/dashboard")}>
+            Go to Dashboard
           </Button>
-          <Card>
-            <CardContent className="py-8 text-center">
-              <p className="text-red-500 mb-2">Feedback generation failed</p>
-              <p className="text-muted-foreground text-sm">{feedbackData.error}</p>
-              <Button onClick={() => router.push("/dashboard")} className="mt-4">
-                Go to Dashboard
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+        }
+      />
     );
   }
 
   // Skipped state
   if (feedbackData?.status === "skipped") {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/dashboard")}
-            className="mb-6"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+      <FeedbackStatusPage
+        tone="warning"
+        icon={<AlertCircle className="h-8 w-8" />}
+        title="Feedback Not Available"
+        description={
+          feedbackData.skipReason ||
+          "This session is not eligible for feedback."
+        }
+        actions={
+          <Button onClick={() => router.push("/dashboard")}>
+            Go to Dashboard
           </Button>
-          <Card>
-            <CardContent className="py-8 text-center">
-              <p className="text-yellow-500 mb-2">Feedback Not Available</p>
-              <p className="text-muted-foreground text-sm">{feedbackData.skipReason}</p>
-              <Button onClick={() => router.push("/dashboard")} className="mt-4">
-                Go to Dashboard
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+        }
+      />
     );
   }
 
@@ -318,8 +302,8 @@ export default function FeedbackPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="bg-background min-h-screen">
+      <div className="container mx-auto max-w-4xl px-4 py-8">
         {/* Header */}
         <Button
           variant="ghost"
@@ -339,50 +323,48 @@ export default function FeedbackPage() {
 
         {/* AI Summary */}
         {feedback.summary && (
-          <Card className="mb-8 border-primary/20">
-            <CardContent className="pt-6">
+          <div className="mb-8">
+            <FeedbackSectionCard title="AI Summary">
               <p className="text-lg leading-relaxed">{feedback.summary}</p>
-            </CardContent>
-          </Card>
+            </FeedbackSectionCard>
+          </div>
         )}
 
         {/* Overall Score */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Overall Score</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col items-center justify-center py-8">
-              <div
-                className={`text-7xl font-bold ${getScoreColor(scorePercentage)}`}
-              >
+        <div className="mb-8">
+          <FeedbackScoreCard
+            score={
+              <span className={getScoreColor(scorePercentage)}>
                 {overallScore.toFixed(1)}
-              </div>
-              <p className="text-muted-foreground mt-2">out of 10</p>
-            </div>
-          </CardContent>
-        </Card>
+              </span>
+            }
+            label="Overall Score"
+            description="out of 10"
+          />
+        </div>
 
         {/* Dimension Scores */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Performance Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <div className="mb-8">
+          <FeedbackSectionCard
+            title="Performance Breakdown"
+            contentClassName="space-y-6"
+          >
             {dimensions.map((dimension) => {
               const score = dimension.score || 0;
               const percentage = (score / 10) * 100;
 
               return (
                 <div key={dimension.name} className="space-y-2">
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <span className="font-medium">{dimension.name}</span>
-                    <span className={`font-semibold ${getScoreColor(percentage)}`}>
+                    <span
+                      className={`font-semibold ${getScoreColor(percentage)}`}
+                    >
                       {score}/10
                     </span>
                   </div>
                   <div className="relative">
-                    <Progress value={percentage} className="h-2" />
+                    <div className="bg-muted/30 h-2 w-full rounded-full" />
                     <div
                       className={`absolute inset-0 h-2 rounded-full ${getProgressColor(percentage)} transition-all`}
                       style={{ width: `${percentage}%` }}
@@ -391,115 +373,116 @@ export default function FeedbackPage() {
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
+          </FeedbackSectionCard>
+        </div>
 
         {/* Strengths */}
         {feedback.strengths && feedback.strengths.length > 0 && (
-          <Card className="mb-8 border-green-500/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-green-600">
-                <CheckCircle2 className="h-5 w-5" />
-                What Went Well
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div className="mb-8">
+            <FeedbackSectionCard
+              title="What Went Well"
+              icon={<CheckCircle2 className="h-5 w-5" />}
+              tone="success"
+            >
               <ul className="space-y-3">
                 {feedback.strengths.map((strength, index) => (
-                  <li key={index} className="flex items-start gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-base">{strength}</span>
-                  </li>
+                  <FeedbackActionItem
+                    key={index}
+                    icon={<CheckCircle2 className="h-5 w-5" />}
+                    tone="success"
+                  >
+                    {strength}
+                  </FeedbackActionItem>
                 ))}
               </ul>
-            </CardContent>
-          </Card>
+            </FeedbackSectionCard>
+          </div>
         )}
 
         {/* Areas to Improve */}
         {feedback.improvements && feedback.improvements.length > 0 && (
-          <Card className="mb-8 border-orange-500/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-orange-600">
-                <TrendingUp className="h-5 w-5" />
-                Areas to Improve
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div className="mb-8">
+            <FeedbackSectionCard
+              title="Areas to Improve"
+              icon={<TrendingUp className="h-5 w-5" />}
+              tone="warning"
+            >
               <ul className="space-y-3">
                 {feedback.improvements.map((improvement, index) => (
-                  <li key={index} className="flex items-start gap-3">
-                    <TrendingUp className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-base">{improvement}</span>
-                  </li>
+                  <FeedbackActionItem
+                    key={index}
+                    icon={<TrendingUp className="h-5 w-5" />}
+                    tone="warning"
+                  >
+                    {improvement}
+                  </FeedbackActionItem>
                 ))}
               </ul>
-            </CardContent>
-          </Card>
+            </FeedbackSectionCard>
+          </div>
         )}
 
         {/* Practice Drills */}
         {feedback.drills && feedback.drills.length > 0 && (
-          <Card className="mb-8 border-blue-500/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-blue-600">
-                <Target className="h-5 w-5" />
-                Practice Recommendations
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div className="mb-8">
+            <FeedbackSectionCard
+              title="Practice Recommendations"
+              icon={<Target className="h-5 w-5" />}
+              tone="info"
+            >
               <ul className="space-y-3">
                 {feedback.drills.map((drill, index) => (
-                  <li key={index} className="flex items-start gap-3">
-                    <Target className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-base">{drill}</span>
-                  </li>
+                  <FeedbackActionItem
+                    key={index}
+                    icon={<Target className="h-5 w-5" />}
+                    tone="info"
+                  >
+                    {drill}
+                  </FeedbackActionItem>
                 ))}
               </ul>
-            </CardContent>
-          </Card>
+            </FeedbackSectionCard>
+          </div>
         )}
 
         {/* Interview Transcript */}
-        <Card className="mb-8">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
-                Interview Transcript
-              </CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setTranscriptExpanded(!transcriptExpanded)}
-              >
-                {transcriptExpanded ? (
-                  <>
-                    <ChevronUp className="h-4 w-4 mr-2" />
-                    Collapse
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-4 w-4 mr-2" />
-                    Expand
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardHeader>
+        <FeedbackSectionCard
+          title="Interview Transcript"
+          icon={<MessageSquare className="h-5 w-5" />}
+          action={
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTranscriptExpanded(!transcriptExpanded)}
+            >
+              {transcriptExpanded ? (
+                <>
+                  <ChevronUp className="mr-2 h-4 w-4" />
+                  Collapse
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="mr-2 h-4 w-4" />
+                  Expand
+                </>
+              )}
+            </Button>
+          }
+          className="mb-8"
+        >
           {transcriptExpanded && (
-            <CardContent>
+            <>
               {loadingTranscript ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <Loader2 className="text-primary h-8 w-8 animate-spin" />
                 </div>
               ) : transcriptData.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
+                <p className="text-muted-foreground py-8 text-center">
                   No transcript available for this session
                 </p>
               ) : (
                 <div className="space-y-4">
-                  {transcriptData.map((turn, index) => (
+                  {transcriptData.map((turn) => (
                     <div
                       key={turn.id}
                       className={`flex ${turn.speaker === "user" ? "justify-end" : "justify-start"}`}
@@ -511,12 +494,12 @@ export default function FeedbackPage() {
                             : "bg-muted text-foreground"
                         }`}
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-semibold uppercase tracking-wide">
+                        <div className="mb-1 flex items-center gap-2">
+                          <span className="text-xs font-semibold tracking-wide uppercase">
                             {turn.speaker === "user" ? "You" : "Interviewer"}
                           </span>
                           {turn.startedAt && (
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-muted-foreground text-xs">
                               {formatTimestamp(turn.startedAt)}
                             </span>
                           )}
@@ -529,9 +512,9 @@ export default function FeedbackPage() {
                   ))}
                 </div>
               )}
-            </CardContent>
+            </>
           )}
-        </Card>
+        </FeedbackSectionCard>
       </div>
     </div>
   );

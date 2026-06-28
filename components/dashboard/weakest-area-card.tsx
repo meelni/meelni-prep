@@ -1,7 +1,7 @@
 "use client";
 
 import { TrendingDown, ArrowRight } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { DashboardActionCard } from "@/components/dashboard/dashboard-surface";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { aggregateCompetencyScores } from "@/lib/analytics/aggregations";
@@ -42,27 +42,21 @@ export function WeakestAreaCard({ sessions }: WeakestAreaCardProps) {
   // No data available
   if (competencyScores.length === 0) {
     return (
-      <Card className="p-6 border-orange-500/30 bg-orange-500/5">
-        <div className="flex items-start gap-4">
-          <div className="rounded-lg bg-orange-500/10 p-3">
-            <TrendingDown className="h-6 w-6 text-orange-500" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-lg mb-2">
-              Focus Area
-            </h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Complete at least one interview to identify areas for improvement.
-            </p>
+      <DashboardActionCard
+        className="border-warning/30 bg-warning/5"
+        icon={<TrendingDown className="text-warning h-5 w-5" />}
+        eyebrow="Focus Area"
+        title="Focus Area"
+        description="Complete at least one interview to identify areas for improvement."
+        action={
+          <Button asChild size="sm">
             <Link href="/setup">
-              <Button size="sm">
-                Start First Interview
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
+              Start First Interview
+              <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
-          </div>
-        </div>
-      </Card>
+          </Button>
+        }
+      />
     );
   }
 
@@ -80,37 +74,40 @@ export function WeakestAreaCard({ sessions }: WeakestAreaCardProps) {
   const title = isActuallyWeak ? "Priority Focus Area" : "Area to Polish";
 
   return (
-    <Card className="p-6 border-orange-500/30 bg-orange-500/5">
-      <div className="flex items-start gap-4">
-        <div className="rounded-lg bg-orange-500/10 p-3">
-          <TrendingDown className="h-6 w-6 text-orange-500" />
-        </div>
-        <div className="flex-1">
-          <h3 className="font-semibold text-lg mb-1">{title}</h3>
-          <p className="text-sm text-muted-foreground mb-3">
-            Your <span className="font-medium text-orange-600">{competencyName}</span> is
-            scoring {score}/100 - focus here for fastest improvement.
-          </p>
-
-          {/* Improvement Tips */}
-          <div className="space-y-2 mb-4">
-            {tips.map((tip, index) => (
-              <div key={index} className="flex items-start gap-2 text-sm">
-                <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-orange-500 flex-shrink-0" />
-                <p className="text-muted-foreground">{tip}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Practice This Button */}
+    <DashboardActionCard
+      className="border-warning/30 bg-warning/5"
+      icon={<TrendingDown className="text-warning h-5 w-5" />}
+      eyebrow="Focus Area"
+      title={title}
+      description={
+        <>
+          Your{" "}
+          <span className="text-warning font-medium">{competencyName}</span> is
+          scoring {score}/100 - focus here for fastest improvement.
+        </>
+      }
+      action={
+        <Button
+          asChild
+          size="sm"
+          variant="outline"
+          className="border-warning/50 hover:bg-warning/10"
+        >
           <Link href={`/setup?focus=${competencyName.toLowerCase()}`}>
-            <Button size="sm" variant="outline" className="border-orange-500/50 hover:bg-orange-500/10">
-              Practice This
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
+            Practice This
+            <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
-        </div>
+        </Button>
+      }
+    >
+      <div className="space-y-2">
+        {tips.map((tip, index) => (
+          <div key={index} className="flex items-start gap-2 text-sm">
+            <div className="bg-warning mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full" />
+            <p className="text-muted-foreground">{tip}</p>
+          </div>
+        ))}
       </div>
-    </Card>
+    </DashboardActionCard>
   );
 }

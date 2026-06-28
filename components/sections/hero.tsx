@@ -2,10 +2,12 @@
 
 import { Section } from "@/components/section";
 import { AnimatedBars } from "@/components/ui/animated-bars";
+import { Button } from "@/components/ui/button";
 import CheckeredBackground from "@/components/ui/checkered-background";
 import { DemoModal } from "@/components/demo-modal";
 import { siteConfig } from "@/lib/config";
 import { motion } from "framer-motion";
+import { Mic } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const ease = [0.16, 1, 0.3, 1] as const;
@@ -14,7 +16,7 @@ function HeroTitles() {
   return (
     <div className="flex w-full max-w-3xl flex-col pt-8">
       <motion.h1
-        className="text-left text-display-xl md:text-[56px] md:leading-[56px] font-display font-light text-foreground tracking-tight"
+        className="text-display-xl font-display text-foreground text-left font-light tracking-tight md:text-[56px] md:leading-[56px]"
         initial={{ filter: "blur(10px)", opacity: 0, y: 50 }}
         animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
         transition={{
@@ -24,7 +26,7 @@ function HeroTitles() {
         }}
       >
         <motion.span
-          className="inline-block text-balance bg-gradient-to-r from-foreground via-foreground/90 to-foreground/80 bg-clip-text text-transparent"
+          className="from-foreground via-foreground/90 to-foreground/80 inline-block bg-gradient-to-r bg-clip-text text-balance text-transparent"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{
@@ -37,7 +39,7 @@ function HeroTitles() {
         </motion.span>
       </motion.h1>
       <motion.p
-        className="text-left max-w-xl mt-4 text-body text-muted-foreground text-balance"
+        className="text-body text-muted-foreground mt-4 max-w-xl text-left text-balance"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{
@@ -65,28 +67,17 @@ function HeroCTA({ onDemoClick }: HeroCTAProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.8, duration: 0.8, ease }}
       >
-        {/* Demo button */}
-        <button
+        <Button
+          type="button"
           onClick={onDemoClick}
-          className="group relative w-full sm:w-auto overflow-hidden rounded-xl border-2 border-primary/60 bg-primary/10 backdrop-blur-md px-8 py-4 font-semibold transition-all duration-300 hover:border-primary hover:bg-primary/20 hover:scale-[1.02] active:scale-[0.98]"
+          variant="outline"
+          className="group border-primary/60 bg-primary/10 text-primary hover:border-primary hover:bg-primary/20 relative h-auto w-full overflow-hidden rounded-xl border-2 px-8 py-4 font-semibold backdrop-blur-md transition-all duration-300 sm:w-auto"
         >
           <div className="relative z-10 flex items-center gap-3">
-            <svg
-              className="w-5 h-5 text-primary transition-transform duration-300 group-hover:scale-110"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-              />
-            </svg>
+            <Mic className="text-primary h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
             <span className="text-primary">Talk to Meelni</span>
           </div>
-        </button>
+        </Button>
       </motion.div>
     </div>
   );
@@ -110,37 +101,40 @@ export function Hero() {
 
   return (
     <>
-      <Section id="hero" className="max-w-none relative pb-4 bg-background overflow-hidden">
+      <Section
+        id="hero"
+        className="bg-background relative max-w-none overflow-hidden pb-4"
+      >
         {/* Checkered background layer - vibrant purple glow */}
         <CheckeredBackground
           className="absolute inset-0 z-0"
           cellSize="50px"
           strokeWidth="1.5px"
-          color="hsl(var(--primary))"
+          color="var(--primary)"
           opacity={0.15}
           fade={false}
         />
 
         {/* Radial glow effect for depth */}
-        <div className="absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
+        <div className="from-primary/20 absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] via-transparent to-transparent" />
 
         {/* Gradient overlays for visual depth */}
         {/* Top gradient - fades near header */}
-        <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-background via-background/90 to-transparent z-[1]" />
+        <div className="from-background via-background/90 absolute top-0 right-0 left-0 z-[1] h-32 bg-gradient-to-b to-transparent" />
 
         {/* Left side gradient - creates depth */}
-        <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-background via-background/70 to-transparent z-[1]" />
+        <div className="from-background via-background/70 absolute inset-y-0 left-0 z-[1] w-1/2 bg-gradient-to-r to-transparent" />
 
         {/* Bottom gradient - smooth transition to next section */}
-        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent z-[1]" />
+        <div className="from-background absolute right-0 bottom-0 left-0 z-[1] h-24 bg-gradient-to-t to-transparent" />
 
-        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-x-8 w-full px-6 pt-12 pb-4 lg:px-24 lg:pt-16 lg:pb-4 lg:h-[550px] items-center">
-          <div className="flex flex-col justify-center items-start lg:col-span-1">
+        <div className="relative z-10 grid w-full grid-cols-1 items-center gap-x-8 px-6 pt-12 pb-4 lg:h-[550px] lg:grid-cols-2 lg:px-24 lg:pt-16 lg:pb-4">
+          <div className="flex flex-col items-start justify-center lg:col-span-1">
             <HeroTitles />
             <HeroCTA onDemoClick={() => setIsDemoModalOpen(true)} />
           </div>
           {!isMobile && (
-            <div className="relative h-[500px] lg:col-span-1 flex items-center justify-center">
+            <div className="relative flex h-[500px] items-center justify-center lg:col-span-1">
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -155,7 +149,10 @@ export function Hero() {
       </Section>
 
       {/* Demo Modal */}
-      <DemoModal isOpen={isDemoModalOpen} onClose={() => setIsDemoModalOpen(false)} />
+      <DemoModal
+        isOpen={isDemoModalOpen}
+        onClose={() => setIsDemoModalOpen(false)}
+      />
     </>
   );
 }

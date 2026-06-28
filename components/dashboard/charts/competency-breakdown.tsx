@@ -2,18 +2,12 @@
 
 import { PolarAngleAxis, PolarGrid, Radar, RadarChart } from "recharts";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { DashboardChartCard } from "@/components/dashboard/dashboard-surface";
 
 interface CompetencyData {
   competency: string;
@@ -28,22 +22,26 @@ interface CompetencyBreakdownProps {
 const chartConfig = {
   score: {
     label: "Score",
-    color: "#8b5cf6", // Purple-500 - matching GlowingRadarChart for consistency
+    color: "var(--chart-1)",
   },
 } satisfies ChartConfig;
 
-export function CompetencyBreakdown({ data, onCompetencyClick }: CompetencyBreakdownProps) {
+export function CompetencyBreakdown({
+  data,
+  onCompetencyClick,
+}: CompetencyBreakdownProps) {
   if (data.length === 0) {
     return (
-      <Card>
-        <CardHeader className="items-center pb-4">
-          <CardTitle>Competency Breakdown</CardTitle>
-          <CardDescription>No competency data available</CardDescription>
-        </CardHeader>
-        <CardContent className="h-[300px] lg:h-[400px] flex items-center justify-center text-muted-foreground">
-          <p className="text-sm">Complete interviews to see your competency scores</p>
-        </CardContent>
-      </Card>
+      <DashboardChartCard
+        title="Competency Breakdown"
+        description="No competency data available"
+        centeredHeader
+        contentClassName="flex h-[300px] items-center justify-center text-muted-foreground lg:h-[400px]"
+      >
+        <p className="text-sm">
+          Complete interviews to see your competency scores
+        </p>
+      </DashboardChartCard>
     );
   }
 
@@ -53,63 +51,67 @@ export function CompetencyBreakdown({ data, onCompetencyClick }: CompetencyBreak
   );
 
   return (
-    <Card>
-      <CardHeader className="items-center pb-4">
-        <CardTitle>Competency Breakdown</CardTitle>
-        <CardDescription>
-          Strongest: <span className="text-primary font-semibold">{strongest.competency}</span> ({strongest.score.toFixed(0)}%)
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="pb-0">
-        <ChartContainer
-          config={chartConfig}
-          className="mx-auto aspect-square max-h-[400px]"
+    <DashboardChartCard
+      title="Competency Breakdown"
+      description={
+        <>
+          Strongest:{" "}
+          <span className="text-primary font-semibold">
+            {strongest.competency}
+          </span>{" "}
+          ({strongest.score.toFixed(0)}%)
+        </>
+      }
+      centeredHeader
+      contentClassName="pb-0 pt-3"
+    >
+      <ChartContainer
+        config={chartConfig}
+        className="mx-auto aspect-square max-h-[400px]"
+      >
+        <RadarChart
+          data={data}
+          onClick={(state) => {
+            if (onCompetencyClick && state.activeLabel) {
+              onCompetencyClick(state.activeLabel);
+            }
+          }}
         >
-          <RadarChart
-            data={data}
-            onClick={(state) => {
-              if (onCompetencyClick && state.activeLabel) {
-                onCompetencyClick(state.activeLabel);
-              }
-            }}
-          >
-            <ChartTooltip
-              cursor={false}
-              content={<ChartTooltipContent
+          <ChartTooltip
+            cursor={false}
+            content={
+              <ChartTooltipContent
                 formatter={(value) => `${Number(value).toFixed(0)}%`}
-              />}
-            />
-            <PolarAngleAxis
-              dataKey="competency"
-              tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-            />
-            <PolarGrid
-              strokeDasharray="3 3"
-              stroke="hsl(var(--border))"
-            />
-            <Radar
-              stroke="var(--color-score)"
-              dataKey="score"
-              fill="var(--color-score)"
-              fillOpacity={0.2}
-              strokeWidth={2}
-              filter="url(#competency-glow)"
-            />
-            <defs>
-              <filter
-                id="competency-glow"
-                x="-50%"
-                y="-50%"
-                width="200%"
-                height="200%"
-              >
-                <feGaussianBlur stdDeviation="8" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
-            </defs>
-          </RadarChart>
-        </ChartContainer>
-      </CardContent>
-    </Card>
+              />
+            }
+          />
+          <PolarAngleAxis
+            dataKey="competency"
+            tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+          />
+          <PolarGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <Radar
+            stroke="var(--color-score)"
+            dataKey="score"
+            fill="var(--color-score)"
+            fillOpacity={0.2}
+            strokeWidth={2}
+            filter="url(#competency-glow)"
+          />
+          <defs>
+            <filter
+              id="competency-glow"
+              x="-50%"
+              y="-50%"
+              width="200%"
+              height="200%"
+            >
+              <feGaussianBlur stdDeviation="8" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+        </RadarChart>
+      </ChartContainer>
+    </DashboardChartCard>
   );
 }

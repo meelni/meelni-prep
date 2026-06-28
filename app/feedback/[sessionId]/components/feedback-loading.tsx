@@ -3,9 +3,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Orb } from "@/components/ui/orb";
+import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { Check, AlertCircle, X, Loader2, RefreshCw } from "lucide-react";
-import { fadeInUp, scaleIn, progressBar } from "@/lib/animations";
+import { fadeInUp } from "@/lib/animations";
+import {
+  FeedbackActionItem,
+  FeedbackSectionCard,
+  FeedbackStatusPage,
+} from "@/components/feedback/feedback-surface";
 
 interface Stage {
   label: string;
@@ -38,10 +44,12 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
   const [currentStage, setCurrentStage] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
   const [estimatedTime, setEstimatedTime] = useState(45);
-  const [status, setStatus] = useState<"pending" | "processing" | "completed" | "failed" | "skipped">("pending");
+  const [status, setStatus] = useState<
+    "pending" | "processing" | "completed" | "failed" | "skipped"
+  >("pending");
   const [error, setError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
-  const [pollCount, setPollCount] = useState(0);
+  const [, setPollCount] = useState(0);
 
   const MAX_POLLS = 30; // 30 polls * 3s = 90s timeout
 
@@ -52,7 +60,9 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       const data = await res.json();
 
       if (data.status === "completed" && data.feedback) {
-        console.log("[FeedbackLoading] Feedback complete, redirecting to feedback page");
+        console.log(
+          "[FeedbackLoading] Feedback complete, redirecting to feedback page"
+        );
         setStatus("completed");
         setProgress(100); // Set to 100% before redirect
         // Small delay to show 100% completion, then redirect
@@ -63,7 +73,10 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       }
 
       if (data.status === "failed") {
-        console.error("[FeedbackLoading] Feedback generation failed:", data.error);
+        console.error(
+          "[FeedbackLoading] Feedback generation failed:",
+          data.error
+        );
         setStatus("failed");
         setError(data.error || "Feedback generation failed. Please try again.");
         return;
@@ -88,20 +101,27 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       setPollCount((prevCount) => {
         const newCount = prevCount + 1;
 
-        console.log(`[FeedbackLoading] Polling feedback status (attempt ${newCount}/${MAX_POLLS})`);
+        console.log(
+          `[FeedbackLoading] Polling feedback status (attempt ${newCount}/${MAX_POLLS})`
+        );
         console.log("[FeedbackLoading] Poll response:", data);
 
         // Check for timeout
         if (newCount >= MAX_POLLS) {
           console.error("[FeedbackLoading] Timeout reached after 90 seconds");
           setStatus("failed");
-          setError("Feedback generation timed out after 90 seconds. Please try again.");
+          setError(
+            "Feedback generation timed out after 90 seconds. Please try again."
+          );
         }
 
         // Update progress
         const elapsed = (newCount - 1) * 3; // Time elapsed before this poll
         const estimatedTotal = 60;
-        const calculatedProgress = Math.min(95, (elapsed / estimatedTotal) * 100);
+        const calculatedProgress = Math.min(
+          95,
+          (elapsed / estimatedTotal) * 100
+        );
         setProgress((prev) => Math.max(prev, calculatedProgress));
 
         return newCount;
@@ -182,7 +202,9 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       setIsRetrying(false);
     } catch (err) {
       console.error("[FeedbackLoading] Error retrying feedback:", err);
-      setError(err instanceof Error ? err.message : "Failed to regenerate feedback");
+      setError(
+        err instanceof Error ? err.message : "Failed to regenerate feedback"
+      );
       setIsRetrying(false);
     }
   };
@@ -192,199 +214,172 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
   };
 
   // Render error state
-  if (status === "failed" || error) {
+  if (status === "failed" || (error && status !== "skipped")) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
-        <motion.div
-          className="max-w-md w-full"
-          initial="initial"
-          animate="animate"
-          variants={fadeInUp}
-        >
-          <div className="bg-card border border-border rounded-2xl p-8 text-center">
-            <motion.div
-              className="w-16 h-16 mx-auto mb-6 bg-destructive/10 rounded-full flex items-center justify-center"
-              variants={scaleIn}
-            >
-              <AlertCircle className="w-8 h-8 text-destructive" />
-            </motion.div>
-            <h1 className="text-2xl font-bold mb-3">Generation Failed</h1>
-            <p className="text-muted-foreground mb-6">
-              {error || "An unexpected error occurred while generating your feedback."}
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleRetry}
-                disabled={isRetrying}
-                className="flex-1 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isRetrying ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Retrying...</span>
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    <span>Retry</span>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={handleSkip}
-                className="flex-1 px-6 py-3 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-colors"
-              >
-                Skip
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      </div>
+      <FeedbackStatusPage
+        tone="danger"
+        icon={<AlertCircle className="h-8 w-8" />}
+        title="Generation Failed"
+        description={
+          error ||
+          "An unexpected error occurred while generating your feedback."
+        }
+        actions={
+          <>
+            <Button onClick={handleRetry} disabled={isRetrying}>
+              {isRetrying ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Retrying
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Retry
+                </>
+              )}
+            </Button>
+            <Button variant="outline" onClick={handleSkip}>
+              Skip
+            </Button>
+          </>
+        }
+      />
     );
   }
 
   // Render skipped state
   if (status === "skipped") {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
-        <motion.div
-          className="max-w-md w-full"
-          initial="initial"
-          animate="animate"
-          variants={fadeInUp}
-        >
-          <div className="bg-card border border-border rounded-2xl p-8 text-center">
-            <motion.div
-              className="w-16 h-16 mx-auto mb-6 bg-amber-500/10 rounded-full flex items-center justify-center"
-              variants={scaleIn}
-            >
-              <X className="w-8 h-8 text-amber-500" />
-            </motion.div>
-            <h1 className="text-2xl font-bold mb-3">Feedback Skipped</h1>
-            <p className="text-muted-foreground mb-6">
-              Feedback generation was skipped for this session. You can start a new interview from the dashboard.
-            </p>
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-            >
-              Back to Dashboard
-            </button>
-          </div>
-        </motion.div>
-      </div>
+      <FeedbackStatusPage
+        tone="warning"
+        icon={<X className="h-8 w-8" />}
+        title="Feedback Skipped"
+        description="Feedback generation was skipped for this session. You can start a new interview from the dashboard."
+        actions={
+          <Button onClick={() => router.push("/dashboard")}>
+            Back to Dashboard
+          </Button>
+        }
+      />
     );
   }
 
   // Render loading state
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
-      <motion.div
-        className="max-w-2xl w-full"
-        initial="initial"
-        animate="animate"
-        variants={fadeInUp}
-      >
-        {/* Animated Orb */}
-        <div className="w-full max-w-[200px] h-[200px] mx-auto mb-8">
-          <Orb
-            agentState="thinking"
-            volumeMode="manual"
-            manualInput={0.5}
-            manualOutput={0.6}
-            className="w-full h-full"
-          />
-        </div>
-
-        {/* Rotating Messages */}
-        <div className="mb-8 text-center h-16 flex items-center justify-center">
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={messageIndex}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3 }}
-              className="text-lg text-foreground/80"
-            >
-              {messages[messageIndex]}
-            </motion.p>
-          </AnimatePresence>
-        </div>
-
-        {/* Progress Bar */}
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-muted-foreground">
-              Analyzing your interview...
-            </span>
-            <span className="text-sm font-medium text-primary">
+    <FeedbackStatusPage
+      tone="info"
+      icon={<Loader2 className="h-8 w-8 animate-spin" />}
+      title="Generating Feedback"
+      description="Your personalized interview review is being prepared."
+      contentClassName="max-w-4xl"
+    >
+      <motion.div initial="initial" animate="animate" variants={fadeInUp}>
+        <FeedbackSectionCard
+          title="Analyzing your interview"
+          description="This usually takes less than a minute."
+          tone="info"
+          action={
+            <span className="text-primary text-sm font-medium">
               {Math.round(progress)}%
             </span>
-          </div>
-          <div className="h-2 bg-muted rounded-full overflow-hidden">
-            <motion.div
-              className="h-full bg-gradient-to-r from-primary via-primary/80 to-primary"
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
+          }
+          contentClassName="space-y-8"
+        >
+          <div className="mx-auto h-44 w-full max-w-44">
+            <Orb
+              agentState="thinking"
+              volumeMode="manual"
+              manualInput={0.5}
+              manualOutput={0.6}
+              className="h-full w-full"
             />
           </div>
-        </div>
 
-        {/* Stages */}
-        <div className="space-y-4 mb-8">
-          {stages.map((stage, index) => {
-            const isComplete = currentStage > index;
-            const isCurrent = currentStage === index;
-
-            return (
-              <motion.div
-                key={stage.label}
-                className="flex items-center gap-3"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
+          <div
+            className="flex min-h-16 items-center justify-center text-center"
+            aria-live="polite"
+          >
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={messageIndex}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+                className="text-foreground/80 text-lg"
               >
-                <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
-                    isComplete
-                      ? "bg-primary text-primary-foreground"
-                      : isCurrent
-                      ? "bg-primary/20 border-2 border-primary"
-                      : "bg-muted border-2 border-border"
-                  }`}
-                >
-                  {isComplete ? (
-                    <Check className="w-4 h-4" />
-                  ) : isCurrent ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                  ) : (
-                    <span className="text-xs text-muted-foreground">{index + 1}</span>
-                  )}
-                </div>
-                <span
-                  className={`text-sm font-medium transition-colors ${
-                    isComplete || isCurrent ? "text-foreground" : "text-muted-foreground"
-                  }`}
-                >
-                  {stage.label}
-                </span>
-              </motion.div>
-            );
-          })}
-        </div>
+                {messages[messageIndex]}
+              </motion.p>
+            </AnimatePresence>
+          </div>
 
-        {/* Estimated Time */}
-        <div className="text-center">
-          <p className="text-sm text-muted-foreground">
-            Estimated time remaining:{" "}
-            <span className="font-medium text-primary">
-              {estimatedTime > 0 ? `${estimatedTime}s` : "Almost done..."}
-            </span>
-          </p>
-        </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground text-sm font-medium">
+                Progress
+              </span>
+              <span className="text-primary text-sm font-medium">
+                {Math.round(progress)}%
+              </span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label="Feedback generation progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+              className="bg-muted h-2 overflow-hidden rounded-full"
+            >
+              <motion.div
+                className="from-primary via-primary/80 to-primary h-full bg-gradient-to-r"
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              />
+            </div>
+          </div>
+
+          <ul className="space-y-3">
+            {stages.map((stage, index) => {
+              const isComplete = currentStage > index;
+              const isCurrent = currentStage === index;
+
+              return (
+                <FeedbackActionItem
+                  key={stage.label}
+                  tone={isComplete ? "success" : isCurrent ? "info" : "default"}
+                  marker={
+                    isComplete ? (
+                      <Check className="h-4 w-4" />
+                    ) : isCurrent ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      index + 1
+                    )
+                  }
+                  title={stage.label}
+                >
+                  {isComplete
+                    ? "Complete"
+                    : isCurrent
+                      ? "In progress"
+                      : "Waiting"}
+                </FeedbackActionItem>
+              );
+            })}
+          </ul>
+
+          <div className="text-center">
+            <p className="text-muted-foreground text-sm">
+              Estimated time remaining:{" "}
+              <span className="text-primary font-medium">
+                {estimatedTime > 0 ? `${estimatedTime}s` : "Almost done..."}
+              </span>
+            </p>
+          </div>
+        </FeedbackSectionCard>
       </motion.div>
-    </div>
+    </FeedbackStatusPage>
   );
 }

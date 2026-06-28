@@ -2,9 +2,13 @@
 
 import { useState, useEffect, memo } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles, Calendar, Loader2, Flame, AlertCircle } from "lucide-react";
+import {
+  DashboardActionCard,
+  DashboardSectionCard,
+  DashboardStateCard,
+} from "@/components/dashboard/dashboard-surface";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { ClippedAreaChart } from "@/components/dashboard/charts/clipped-area-chart";
 import { GlowingRadarChart } from "@/components/dashboard/charts/glowing-radar-chart";
@@ -163,46 +167,36 @@ export const OverviewSection = memo(function OverviewSection({
     return (
       <div className="p-6 space-y-6">
         <div className="max-w-2xl mx-auto">
-          <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-            <CardContent className="p-12 text-center space-y-6">
-              <div className="space-y-3">
-                <Sparkles className="w-16 h-16 mx-auto text-primary" />
-                <h2 className="text-3xl font-display font-light text-foreground">
-                  Welcome to Meelni!
-                </h2>
-                <p className="text-lg text-muted-foreground max-w-md mx-auto">
-                  Start your first mock interview to see your performance analytics, track your
-                  progress, and get AI-powered feedback.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <Button
-                  size="lg"
-                  onClick={() => router.push("/setup")}
-                  className="w-full sm:w-auto group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-display font-light shadow-md hover:shadow-lg transition-all duration-300"
-                >
-                  Start Your First Interview
-                  <ArrowRight className="ml-2 w-5 h-5 transition-transform duration-300 group-hover:translate-x-1" />
-                </Button>
-
-                <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                    Real-time AI coaching
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                    Instant feedback
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                    Track progress
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <DashboardStateCard
+            icon={<Sparkles className="h-8 w-8" />}
+            title="Welcome to Meelni!"
+            description="Start your first mock interview to see your performance analytics, track your progress, and get AI-powered feedback."
+            action={
+              <Button
+                size="lg"
+                onClick={() => router.push("/setup")}
+                className="group w-full sm:w-auto"
+              >
+                Start Your First Interview
+                <ArrowRight className="ml-2 w-5 h-5 transition-transform duration-300 group-hover:translate-x-1" />
+              </Button>
+            }
+          >
+            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-green-500" />
+                Real-time AI coaching
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                Instant feedback
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-purple-500" />
+                Track progress
+              </span>
+            </div>
+          </DashboardStateCard>
         </div>
       </div>
     );
@@ -240,151 +234,133 @@ export const OverviewSection = memo(function OverviewSection({
         </div>
 
         {/* Recent Activity */}
-        <Card className="lg:col-span-1 bg-card border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-              Recent Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-0 max-h-80 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full">
-              {recentActivity.length > 0 ? (
-                recentActivity.map((activity, index) => (
-                  <div key={index} className="relative pl-6 pb-4 last:pb-0">
-                    {/* Connecting line (not on last item) */}
-                    {index < recentActivity.length - 1 && (
-                      <div className="absolute left-2 top-2 bottom-0 w-px bg-border"></div>
-                    )}
+        <DashboardSectionCard title="Recent Activity" className="lg:col-span-1">
+          <div className="space-y-0 max-h-80 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full">
+            {recentActivity.length > 0 ? (
+              recentActivity.map((activity, index) => (
+                <div key={index} className="relative pl-6 pb-4 last:pb-0">
+                  {/* Connecting line (not on last item) */}
+                  {index < recentActivity.length - 1 && (
+                    <div className="absolute left-2 top-2 bottom-0 w-px bg-border"></div>
+                  )}
 
-                    {/* Timeline dot */}
-                    <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full border-2 border-primary bg-background flex items-center justify-center">
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                  {/* Timeline dot */}
+                  <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full border-2 border-primary bg-background flex items-center justify-center">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                  </div>
+
+                  {/* Activity content */}
+                  <div className="text-xs hover:bg-muted p-2 rounded transition-colors">
+                    <div className="text-muted-foreground font-mono text-xs mb-1">
+                      {activity.time}
                     </div>
-
-                    {/* Activity content */}
-                    <div className="text-xs hover:bg-muted p-2 rounded transition-colors">
-                      <div className="text-muted-foreground font-mono text-xs mb-1">
-                        {activity.time}
-                      </div>
-                      <div className="text-foreground">
-                        Completed{" "}
-                        <span className="text-primary font-medium capitalize">{activity.type}</span>{" "}
-                        interview
-                      </div>
-                      <div className="text-muted-foreground mt-1">
-                        Score: {activity.score !== "N/A" ? `${activity.score}/10` : "Pending"} •{" "}
-                        {activity.duration}
-                      </div>
+                    <div className="text-foreground">
+                      Completed{" "}
+                      <span className="text-primary font-medium capitalize">{activity.type}</span>{" "}
+                      interview
+                    </div>
+                    <div className="text-muted-foreground mt-1">
+                      Score: {activity.score !== "N/A" ? `${activity.score}/10` : "Pending"} •{" "}
+                      {activity.duration}
                     </div>
                   </div>
-                ))
-              ) : (
-                <EmptyStateCard
-                  icon={<Calendar className="w-8 h-8" />}
-                  title="No activity yet"
-                  description="Your recent interview activity will appear here once you complete your first mock interview."
-                  cta={{
-                    label: "Start Your First Interview",
-                    action: () => router.push("/setup"),
-                  }}
-                />
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                </div>
+              ))
+            ) : (
+              <EmptyStateCard
+                icon={<Calendar className="w-8 h-8" />}
+                title="No activity yet"
+                description="Your recent interview activity will appear here once you complete your first mock interview."
+                cta={{
+                  label: "Start Your First Interview",
+                  action: () => router.push("/setup"),
+                }}
+              />
+            )}
+          </div>
+        </DashboardSectionCard>
 
         {/* Interview Type Breakdown */}
-        <Card className="lg:col-span-2 bg-card border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-              Interview Type Breakdown
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Product Sense */}
-              <div className="space-y-1">
-                <div className="text-2xl font-bold font-mono text-foreground">
-                  {interviewTypeBreakdown.productSense}
-                </div>
-                <div className="text-xs text-muted-foreground">Product Sense</div>
+        <DashboardSectionCard
+          title="Interview Type Breakdown"
+          className="lg:col-span-2"
+        >
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Product Sense */}
+            <div className="space-y-1">
+              <div className="text-2xl font-bold font-mono text-foreground">
+                {interviewTypeBreakdown.productSense}
               </div>
-
-              {/* Analytical */}
-              <div className="space-y-1">
-                <div className="text-2xl font-bold font-mono text-foreground">
-                  {interviewTypeBreakdown.analytical}
-                </div>
-                <div className="text-xs text-muted-foreground">Analytical</div>
-              </div>
-
-              {/* Leadership */}
-              <div className="space-y-1">
-                <div className="text-2xl font-bold font-mono text-foreground">
-                  {interviewTypeBreakdown.leadership}
-                </div>
-                <div className="text-xs text-muted-foreground">Leadership</div>
-              </div>
-
-              {/* Strategy */}
-              <div className="space-y-1">
-                <div className="text-2xl font-bold font-mono text-foreground">
-                  {interviewTypeBreakdown.strategy}
-                </div>
-                <div className="text-xs text-muted-foreground">Strategy</div>
-              </div>
+              <div className="text-xs text-muted-foreground">Product Sense</div>
             </div>
-          </CardContent>
-        </Card>
+
+            {/* Analytical */}
+            <div className="space-y-1">
+              <div className="text-2xl font-bold font-mono text-foreground">
+                {interviewTypeBreakdown.analytical}
+              </div>
+              <div className="text-xs text-muted-foreground">Analytical</div>
+            </div>
+
+            {/* Leadership */}
+            <div className="space-y-1">
+              <div className="text-2xl font-bold font-mono text-foreground">
+                {interviewTypeBreakdown.leadership}
+              </div>
+              <div className="text-xs text-muted-foreground">Leadership</div>
+            </div>
+
+            {/* Strategy */}
+            <div className="space-y-1">
+              <div className="text-2xl font-bold font-mono text-foreground">
+                {interviewTypeBreakdown.strategy}
+              </div>
+              <div className="text-xs text-muted-foreground">Strategy</div>
+            </div>
+          </div>
+        </DashboardSectionCard>
 
         {/* Practice Streak - MOTI-001 */}
         {userSummary?.streak && (
-          <Card className="lg:col-span-1 bg-card border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-                Practice Streak
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* Current Streak */}
-                <div className="flex items-center gap-3">
-                  <Flame className={`w-8 h-8 ${userSummary.streak.streakCurrent > 0 ? 'text-orange-500' : 'text-muted-foreground'}`} />
-                  <div>
-                    <div className="text-3xl font-bold font-mono text-foreground">
-                      {userSummary.streak.streakCurrent}
-                    </div>
-                    <div className="text-xs text-muted-foreground">Day Streak</div>
+          <DashboardSectionCard title="Practice Streak" className="lg:col-span-1">
+            <div className="space-y-4">
+              {/* Current Streak */}
+              <div className="flex items-center gap-3">
+                <Flame className={`w-8 h-8 ${userSummary.streak.streakCurrent > 0 ? 'text-orange-500' : 'text-muted-foreground'}`} />
+                <div>
+                  <div className="text-3xl font-bold font-mono text-foreground">
+                    {userSummary.streak.streakCurrent}
                   </div>
+                  <div className="text-xs text-muted-foreground">Day Streak</div>
                 </div>
-
-                {/* Longest Streak */}
-                <div className="pt-3 border-t border-border">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Longest Streak</span>
-                    <span className="text-sm font-mono text-foreground">
-                      {userSummary.streak.streakLongest} days
-                    </span>
-                  </div>
-                </div>
-
-                {/* At Risk Warning */}
-                {userSummary.streak.isAtRisk && userSummary.streak.streakCurrent >= 3 && (
-                  <div className="pt-3 border-t border-border">
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
-                      <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium text-orange-500">Keep your streak!</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Practice today to maintain your {userSummary.streak.streakCurrent}-day streak.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
-            </CardContent>
-          </Card>
+
+              {/* Longest Streak */}
+              <div className="pt-3 border-t border-border">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Longest Streak</span>
+                  <span className="text-sm font-mono text-foreground">
+                    {userSummary.streak.streakLongest} days
+                  </span>
+                </div>
+              </div>
+
+              {/* At Risk Warning */}
+              {userSummary.streak.isAtRisk && userSummary.streak.streakCurrent >= 3 && (
+                <div className="pt-3 border-t border-border">
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                    <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-orange-500">Keep your streak!</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Practice today to maintain your {userSummary.streak.streakCurrent}-day streak.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </DashboardSectionCard>
         )}
 
         {/* Achievements - MOTI-003 */}
@@ -394,35 +370,19 @@ export const OverviewSection = memo(function OverviewSection({
         <NextGoalCard sessions={sessions} userSummary={userSummary} />
 
         {/* Start Mock Card - Full Width */}
-        <Card className="lg:col-span-3 bg-card border-border hover:border-primary/30 transition-all duration-300">
-          <CardContent className="p-8">
-            <div className="flex items-center justify-between">
-              <div className="space-y-3 flex-1">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  <span className="text-sm font-display font-light text-primary">Ready to practice?</span>
-                </div>
-                <h2 className="text-2xl font-display font-light text-foreground">
-                  Start Your Mock Interview
-                </h2>
-                <p className="text-muted-foreground font-sans max-w-2xl">
-                  Choose your interview type, difficulty, and voice settings. Practice product
-                  sense, analytical thinking, leadership, or strategy interviews with our AI coach.
-                </p>
-              </div>
-              <div className="ml-6">
-                <Button
-                  size="lg"
-                  onClick={() => router.push("/setup")}
-                  className="group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-display font-light shadow-sm hover:shadow-md transition-all duration-300"
-                >
-                  Start Mock Interview
-                  <ArrowRight className="ml-2 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <DashboardActionCard
+          className="lg:col-span-3"
+          icon={<Sparkles className="w-5 h-5" />}
+          eyebrow="Ready to practice?"
+          title="Start Your Mock Interview"
+          description="Choose your interview type, difficulty, and voice settings. Practice product sense, analytical thinking, leadership, or strategy interviews with our AI coach."
+          action={
+            <Button size="lg" onClick={() => router.push("/setup")} className="group">
+              Start Mock Interview
+              <ArrowRight className="ml-2 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+            </Button>
+          }
+        />
       </div>
     </div>
   );

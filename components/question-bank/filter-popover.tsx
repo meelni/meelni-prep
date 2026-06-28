@@ -62,12 +62,12 @@ export function FilterPopover({
           className="gap-2"
           aria-label={`Filters${activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ""}`}
         >
-          <Filter className="w-4 h-4" />
+          <Filter className="h-4 w-4" />
           <span>Filters</span>
           {activeFilterCount > 0 && (
             <Badge
               variant="default"
-              className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full"
+              className="ml-1 h-5 min-w-5 rounded-full px-1.5 text-xs"
             >
               {activeFilterCount}
             </Badge>
@@ -84,70 +84,77 @@ export function FilterPopover({
         onEscapeKeyDown={() => setIsOpen(false)}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold text-foreground">
+        <div className="border-border flex items-center justify-between border-b px-4 py-3">
+          <h3 className="text-foreground text-sm font-semibold">
             Filter & Sort
           </h3>
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setIsOpen(false)}
-            className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted/50 transition-colors"
+            className="h-6 w-6"
             aria-label="Close filters"
           >
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
+            <X className="text-muted-foreground h-4 w-4" />
+          </Button>
         </div>
 
         {/* Content */}
-        <div className="px-4 py-4 space-y-6 max-h-[60vh] overflow-y-auto">
+        <div className="max-h-[60vh] space-y-6 overflow-y-auto px-4 py-4">
           {/* Question Type */}
           <div>
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+            <h4 className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
               Question Type
             </h4>
             <div className="space-y-1.5">
               {QUESTION_TYPES.map((type) => (
-                <button
+                <Button
                   key={type}
+                  type="button"
+                  variant={selectedType === type ? "default" : "ghost"}
                   onClick={() => onSelectType(type)}
                   className={cn(
-                    "w-full px-3 py-2 rounded-md text-sm font-medium text-left transition-colors",
+                    "w-full justify-start px-3 py-2 text-left text-sm font-medium",
                     selectedType === type
                       ? "bg-primary text-primary-foreground"
                       : "text-foreground hover:bg-muted/50"
                   )}
                 >
                   {type}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
 
           {/* Sort By */}
           <div>
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+            <h4 className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
               Sort By
             </h4>
             <div className="space-y-1.5">
               {SORT_OPTIONS.map((option) => (
-                <button
+                <Button
                   key={option.value}
+                  type="button"
+                  variant={sortBy === option.value ? "default" : "ghost"}
                   onClick={() => onSortChange(option.value)}
                   className={cn(
-                    "w-full px-3 py-2 rounded-md text-sm font-medium text-left transition-colors",
+                    "w-full justify-start px-3 py-2 text-left text-sm font-medium",
                     sortBy === option.value
                       ? "bg-primary text-primary-foreground"
                       : "text-foreground hover:bg-muted/50"
                   )}
                 >
                   {option.label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex gap-2 px-4 py-3 border-t border-border">
+        <div className="border-border flex gap-2 border-t px-4 py-3">
           <Button
             variant="outline"
             onClick={handleClearAll}

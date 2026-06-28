@@ -183,9 +183,9 @@ export const stepTransition = (direction: number): Variants => ({
 export const breathingPulse = {
   animate: {
     boxShadow: [
-      '0 4px 20px rgb(var(--primary) / 0.2)',
-      '0 6px 30px rgb(var(--primary) / 0.35)',
-      '0 4px 20px rgb(var(--primary) / 0.2)',
+      '0 4px 20px color-mix(in oklab, var(--primary) 20%, transparent)',
+      '0 6px 30px color-mix(in oklab, var(--primary) 35%, transparent)',
+      '0 4px 20px color-mix(in oklab, var(--primary) 20%, transparent)',
     ],
     transition: {
       duration: 2.5,
@@ -239,7 +239,7 @@ export const spinnerRotation = {
 // Focus ring animation
 export const focusRing = {
   focus: {
-    boxShadow: '0 0 0 3px rgb(var(--primary) / 0.3)',
+    boxShadow: '0 0 0 3px color-mix(in oklab, var(--primary) 30%, transparent)',
     transition: {
       type: 'spring',
       stiffness: 300,

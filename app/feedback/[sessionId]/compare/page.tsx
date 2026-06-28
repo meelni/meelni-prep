@@ -2,10 +2,15 @@
 
 import { useAuth } from "@/app/providers/auth-provider";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icons } from "@/components/icons";
 import { AttemptComparison } from "@/components/feedback/attempt-comparison";
+import {
+  FeedbackSectionCard,
+  FeedbackStateCard,
+  FeedbackStatusPage,
+} from "@/components/feedback/feedback-surface";
+import { SelectableCard } from "@/components/ui/selectable-card";
 import { motion } from "framer-motion";
 import { ArrowLeft, GitCompare, AlertCircle } from "lucide-react";
 import Link from "next/link";
@@ -32,7 +37,9 @@ export default function ComparePage() {
   const [roundType, setRoundType] = useState<string>("");
   const [selectedAttempt1, setSelectedAttempt1] = useState<string | null>(null);
   const [selectedAttempt2, setSelectedAttempt2] = useState<string | null>(null);
-  const [comparisonData, setComparisonData] = useState<ComparisonData | null>(null);
+  const [comparisonData, setComparisonData] = useState<ComparisonData | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [comparing, setComparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,15 +121,15 @@ export default function ComparePage() {
   // Loading state
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center">
+      <div className="from-background via-background to-muted/20 flex min-h-screen items-center justify-center bg-gradient-to-b">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.3 }}
           className="flex flex-col items-center gap-4"
         >
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading attempts...</p>
+          <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
+          <p className="text-muted-foreground text-sm">Loading attempts...</p>
         </motion.div>
       </div>
     );
@@ -131,40 +138,40 @@ export default function ComparePage() {
   // Error state
   if (error && !attempts.length) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center">
-        <Card className="p-8 max-w-md">
-          <div className="text-center space-y-4">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
-            <p className="text-lg font-medium text-foreground">{error}</p>
-            <Link href={`/feedback/${sessionId}`}>
-              <Button>
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Feedback
-              </Button>
-            </Link>
-          </div>
-        </Card>
-      </div>
+      <FeedbackStatusPage
+        tone="danger"
+        icon={<AlertCircle className="h-8 w-8" />}
+        title={error}
+        description="We could not load the attempts for this feedback session."
+        actions={
+          <Link href={`/feedback/${sessionId}`}>
+            <Button>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Feedback
+            </Button>
+          </Link>
+        }
+      />
     );
   }
 
   // No other attempts available
   if (attempts.length < 2) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
+      <div className="from-background via-background to-muted/20 min-h-screen bg-gradient-to-b">
         {/* Header */}
-        <header className="sticky top-0 z-50 w-full bg-background/80 backdrop-blur-md border-b border-border/50">
-          <div className="container max-w-7xl mx-auto h-16 px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-full">
-              <Link href="/dashboard" className="flex items-center gap-3 group">
-                <Icons.logo className="w-6 h-6 text-primary transition-transform duration-300 group-hover:scale-110" />
-                <span className="font-sans font-semibold text-lg text-foreground">
+        <header className="bg-background/80 border-border/50 sticky top-0 z-50 w-full border-b backdrop-blur-md">
+          <div className="container mx-auto h-16 max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex h-full items-center justify-between">
+              <Link href="/dashboard" className="group flex items-center gap-3">
+                <Icons.logo className="text-primary h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
+                <span className="text-foreground font-sans text-lg font-semibold">
                   Meelni
                 </span>
               </Link>
               <Link href={`/feedback/${sessionId}`}>
                 <Button variant="ghost" size="sm">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  <ArrowLeft className="mr-2 h-4 w-4" />
                   Back to Feedback
                 </Button>
               </Link>
@@ -173,22 +180,15 @@ export default function ComparePage() {
         </header>
 
         {/* Empty State */}
-        <main className="container max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <Card className="p-12 text-center">
-            <div className="space-y-6">
-              <div className="w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center mx-auto">
-                <GitCompare className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold text-foreground">
-                  No Other Attempts Yet
-                </h2>
-                <p className="text-muted-foreground max-w-md mx-auto">
-                  Complete more {roundTypeLabels[roundType]} interviews to compare
-                  your progress and track improvements over time.
-                </p>
-              </div>
-              <div className="flex gap-3 justify-center">
+        <main className="container mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
+          <FeedbackStateCard
+            icon={<GitCompare className="h-10 w-10" />}
+            title="No Other Attempts Yet"
+            description={`Complete more ${
+              roundTypeLabels[roundType] || roundType
+            } interviews to compare your progress and track improvements over time.`}
+            action={
+              <div className="flex justify-center gap-3">
                 <Link href="/setup">
                   <Button>Start Another Interview</Button>
                 </Link>
@@ -196,8 +196,8 @@ export default function ComparePage() {
                   <Button variant="outline">View Feedback</Button>
                 </Link>
               </div>
-            </div>
-          </Card>
+            }
+          />
         </main>
       </div>
     );
@@ -213,20 +213,20 @@ export default function ComparePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
+    <div className="from-background via-background to-muted/20 min-h-screen bg-gradient-to-b">
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full bg-background/80 backdrop-blur-md border-b border-border/50">
-        <div className="container max-w-7xl mx-auto h-16 px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-full">
-            <Link href="/dashboard" className="flex items-center gap-3 group">
-              <Icons.logo className="w-6 h-6 text-primary transition-transform duration-300 group-hover:scale-110" />
-              <span className="font-sans font-semibold text-lg text-foreground">
+      <header className="bg-background/80 border-border/50 sticky top-0 z-50 w-full border-b backdrop-blur-md">
+        <div className="container mx-auto h-16 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-full items-center justify-between">
+            <Link href="/dashboard" className="group flex items-center gap-3">
+              <Icons.logo className="text-primary h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
+              <span className="text-foreground font-sans text-lg font-semibold">
                 Meelni
               </span>
             </Link>
             <Link href={`/feedback/${sessionId}`}>
               <Button variant="ghost" size="sm">
-                <ArrowLeft className="w-4 h-4 mr-2" />
+                <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Feedback
               </Button>
             </Link>
@@ -235,7 +235,7 @@ export default function ComparePage() {
       </header>
 
       {/* Main Content */}
-      <main className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <main className="container mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <motion.div
           variants={staggerContainer}
           initial="initial"
@@ -249,12 +249,12 @@ export default function ComparePage() {
                 {roundTypeLabels[roundType] || roundType}
               </Badge>
               <Badge className="bg-muted/50 text-muted-foreground border-border/50">
-                <GitCompare className="w-3 h-3 mr-1" />
+                <GitCompare className="mr-1 h-3 w-3" />
                 Comparison
               </Badge>
             </div>
 
-            <h1 className="text-4xl font-bold tracking-tight text-foreground">
+            <h1 className="text-foreground text-4xl font-bold tracking-tight">
               Compare Attempts
             </h1>
 
@@ -266,82 +266,79 @@ export default function ComparePage() {
 
           {/* Attempt Selection */}
           <motion.div variants={fadeInUp}>
-            <Card className="p-6 bg-surface/50 border-border/50">
-              <h3 className="text-lg font-semibold text-foreground mb-4">
-                Select Attempts to Compare
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FeedbackSectionCard
+              title="Select Attempts to Compare"
+              icon={<GitCompare className="h-5 w-5" />}
+            >
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {/* Attempt 1 Selection */}
                 <div className="space-y-3">
-                  <label className="text-sm font-medium text-foreground">
+                  <label className="text-foreground text-sm font-medium">
                     Earlier Attempt
                   </label>
                   <div className="space-y-2">
                     {attempts
                       .filter((attempt) => attempt.id !== selectedAttempt2)
                       .map((attempt) => (
-                        <button
+                        <SelectableCard
                           key={attempt.id}
                           onClick={() => setSelectedAttempt1(attempt.id)}
-                          className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                            selectedAttempt1 === attempt.id
-                              ? "border-primary bg-primary/5"
-                              : "border-border/50 bg-card hover:border-primary/50"
-                          }`}
+                          selected={selectedAttempt1 === attempt.id}
                         >
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-sm font-medium text-foreground">
+                          <div className="mb-2 flex items-start justify-between">
+                            <span className="text-foreground text-sm font-medium">
                               {formatDate(attempt.startedAt)}
                             </span>
                             {attempt.overallScore !== null && (
-                              <Badge className="bg-muted/50 text-muted-foreground border-border/50">
+                              <Badge className="border-border/50 bg-muted/50 text-muted-foreground">
                                 {attempt.overallScore}/10
                               </Badge>
                             )}
                           </div>
                           {attempt.overallScore === null && (
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-muted-foreground text-xs">
                               No feedback yet
                             </span>
                           )}
-                        </button>
+                        </SelectableCard>
                       ))}
                   </div>
                 </div>
 
                 {/* Attempt 2 Selection (Current) */}
                 <div className="space-y-3">
-                  <label className="text-sm font-medium text-foreground">
+                  <label className="text-foreground text-sm font-medium">
                     Latest Attempt
                   </label>
                   <div className="space-y-2">
                     {attempts
                       .filter((attempt) => attempt.id === selectedAttempt2)
                       .map((attempt) => (
-                        <div
+                        <SelectableCard
                           key={attempt.id}
-                          className="w-full p-4 rounded-lg border-2 border-primary bg-primary/5"
+                          selected
+                          disabled
+                          className="cursor-default disabled:opacity-100"
                         >
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-sm font-medium text-foreground">
+                          <div className="mb-2 flex items-start justify-between">
+                            <span className="text-foreground text-sm font-medium">
                               {formatDate(attempt.startedAt)}
                             </span>
                             {attempt.overallScore !== null && (
-                              <Badge className="bg-primary/10 text-primary border-primary/20">
+                              <Badge className="border-primary/20 bg-primary/10 text-primary">
                                 {attempt.overallScore}/10
                               </Badge>
                             )}
                           </div>
-                          <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
+                          <Badge className="border-primary/20 bg-primary/10 text-primary text-xs">
                             Current Session
                           </Badge>
-                        </div>
+                        </SelectableCard>
                       ))}
                   </div>
                 </div>
               </div>
-            </Card>
+            </FeedbackSectionCard>
           </motion.div>
 
           {/* Comparison Display */}
@@ -350,8 +347,8 @@ export default function ComparePage() {
               variants={fadeInUp}
               className="flex flex-col items-center gap-4 py-12"
             >
-              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-muted-foreground">
+              <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
+              <p className="text-muted-foreground text-sm">
                 Loading comparison...
               </p>
             </motion.div>
@@ -363,11 +360,11 @@ export default function ComparePage() {
 
           {!comparing && !comparisonData && selectedAttempt1 && (
             <motion.div variants={fadeInUp}>
-              <Card className="p-8 text-center">
-                <p className="text-muted-foreground">
-                  Select both attempts to view the comparison
-                </p>
-              </Card>
+              <FeedbackStateCard
+                icon={<GitCompare className="h-10 w-10" />}
+                title="Select Both Attempts"
+                description="Select both attempts to view the comparison."
+              />
             </motion.div>
           )}
         </motion.div>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DashboardActionCard } from "@/components/dashboard/dashboard-surface";
 import { Target, ArrowRight, TrendingUp, Flame } from "lucide-react";
 import type { Session } from "@/lib/api/queries";
 
@@ -42,8 +42,8 @@ export function NextGoalCard({ sessions, userSummary }: NextGoalCardProps) {
     if (currentStreak >= 3 && currentStreak < 7) {
       return {
         title: "Complete your 7-day streak",
-        description: `You're ${7 - currentStreak} day${7 - currentStreak === 1 ? '' : 's'} away from earning the Week Warrior badge! Keep the momentum going.`,
-        icon: <Flame className="w-5 h-5 text-orange-500" />,
+        description: `You're ${7 - currentStreak} day${7 - currentStreak === 1 ? "" : "s"} away from earning the Week Warrior badge! Keep the momentum going.`,
+        icon: <Flame className="text-warning h-5 w-5" />,
         setupParams: {
           interview_type: getMostPracticedType(completedSessions),
         },
@@ -57,7 +57,7 @@ export function NextGoalCard({ sessions, userSummary }: NextGoalCardProps) {
       return {
         title: `Try a ${formatTypeName(nextType)} interview`,
         description: `You haven't practiced ${formatTypeName(nextType)} interviews yet. Earn the Well-Rounded badge by trying all types!`,
-        icon: <Target className="w-5 h-5 text-primary" />,
+        icon: <Target className="text-primary h-5 w-5" />,
         setupParams: {
           interview_type: nextType,
         },
@@ -66,12 +66,16 @@ export function NextGoalCard({ sessions, userSummary }: NextGoalCardProps) {
 
     // Goal 3: Beat your high score
     if (avgScore > 0 && avgScore < 90) {
-      const highScore = Math.max(...completedSessions.map((s) => s.feedback?.overallScore ? parseFloat(s.feedback.overallScore) : 0));
+      const highScore = Math.max(
+        ...completedSessions.map((s) =>
+          s.feedback?.overallScore ? parseFloat(s.feedback.overallScore) : 0
+        )
+      );
       const targetScore = Math.min(100, Math.ceil(highScore / 10) * 10 + 10); // Round up to next 10
       return {
         title: "Beat your high score",
         description: `Your best score is ${highScore.toFixed(1)}/10. Let's aim for ${targetScore}/10 on your next interview!`,
-        icon: <TrendingUp className="w-5 h-5 text-green-500" />,
+        icon: <TrendingUp className="text-success h-5 w-5" />,
         setupParams: {
           interview_type: getBestPerformingType(completedSessions),
         },
@@ -84,7 +88,7 @@ export function NextGoalCard({ sessions, userSummary }: NextGoalCardProps) {
       return {
         title: `Improve your ${formatTypeName(weakestType)} skills`,
         description: `${formatTypeName(weakestType)} interviews are your opportunity area. Practice makes perfect!`,
-        icon: <Target className="w-5 h-5 text-primary" />,
+        icon: <Target className="text-primary h-5 w-5" />,
         setupParams: {
           interview_type: weakestType,
         },
@@ -94,10 +98,12 @@ export function NextGoalCard({ sessions, userSummary }: NextGoalCardProps) {
     // Default: Keep practicing
     return {
       title: "Keep up the great work",
-      description: "You're doing amazing! Practice another interview to maintain your progress.",
-      icon: <Target className="w-5 h-5 text-primary" />,
+      description:
+        "You're doing amazing! Practice another interview to maintain your progress.",
+      icon: <Target className="text-primary h-5 w-5" />,
       setupParams: {
-        interview_type: getMostPracticedType(completedSessions) || "product_sense",
+        interview_type:
+          getMostPracticedType(completedSessions) || "product_sense",
       },
     };
   };
@@ -106,46 +112,39 @@ export function NextGoalCard({ sessions, userSummary }: NextGoalCardProps) {
 
   const handleStartInterview = () => {
     // Navigate to setup with pre-filled interview type
-    const params = new URLSearchParams(goal.setupParams as Record<string, string>);
+    const params = new URLSearchParams(
+      goal.setupParams as Record<string, string>
+    );
     router.push(`/setup?${params.toString()}`);
   };
 
   return (
-    <Card className="lg:col-span-3 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20 hover:border-primary/30 transition-all duration-300">
-      <CardContent className="p-8">
-        <div className="flex items-center justify-between">
-          <div className="space-y-3 flex-1">
-            <div className="flex items-center gap-2">
-              {goal.icon}
-              <span className="text-sm font-display font-light text-primary">Next Goal</span>
-            </div>
-            <h2 className="text-2xl font-display font-light text-foreground">
-              {goal.title}
-            </h2>
-            <p className="text-muted-foreground font-sans max-w-2xl">
-              {goal.description}
-            </p>
-          </div>
-          <div className="ml-6">
-            <Button
-              size="lg"
-              onClick={handleStartInterview}
-              className="group bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-display font-light shadow-sm hover:shadow-md transition-all duration-300"
-            >
-              Start Practice
-              <ArrowRight className="ml-2 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <DashboardActionCard
+      className="lg:col-span-3"
+      variant="accent"
+      icon={goal.icon}
+      eyebrow="Next Goal"
+      title={goal.title}
+      description={goal.description}
+      action={
+        <Button size="lg" onClick={handleStartInterview} className="group">
+          Start Practice
+          <ArrowRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+        </Button>
+      }
+    />
   );
 }
 
 // Helper functions
 
 function getMissingTypes(sessions: Session[]): RoundType[] {
-  const allTypes: RoundType[] = ["product_sense", "analytical", "leadership", "strategy"];
+  const allTypes: RoundType[] = [
+    "product_sense",
+    "analytical",
+    "leadership",
+    "strategy",
+  ];
   const practicedTypes = new Set(sessions.map((s) => s.roundType as RoundType));
   return allTypes.filter((type) => !practicedTypes.has(type));
 }
@@ -158,7 +157,9 @@ function getMostPracticedType(sessions: Session[]): RoundType {
     typeCounts[s.roundType] = (typeCounts[s.roundType] || 0) + 1;
   });
 
-  const mostPracticed = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
+  const mostPracticed = Object.entries(typeCounts).sort(
+    (a, b) => b[1] - a[1]
+  )[0];
   return (mostPracticed?.[0] as RoundType) || "product_sense";
 }
 

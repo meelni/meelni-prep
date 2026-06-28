@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FeedbackSectionCard } from "@/components/feedback/feedback-surface";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dumbbell, Lightbulb, ArrowRight } from "lucide-react";
@@ -19,52 +19,48 @@ export function DrillList({ drills }: DrillListProps) {
     const title = typeof drill === "string" ? drill : drill.title;
     // Placeholder for future drill navigation
     console.log("Starting drill:", title);
-    alert(`Practice drill "${title}" is coming soon! This will navigate you to a focused practice session.`);
+    alert(
+      `Practice drill "${title}" is coming soon! This will navigate you to a focused practice session.`
+    );
   };
 
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <Dumbbell className="w-5 h-5 text-primary" />
-          <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-            Recommended Practice Drills
-          </CardTitle>
-        </div>
-        <p className="text-xs text-muted-foreground/70 mt-1">
-          Targeted exercises to improve your weakest areas
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {drills.map((drill, index) => {
-          // Handle both string array and object array formats
-          const isString = typeof drill === "string";
-          const title = isString ? drill : drill.title;
-          const description = isString ? null : drill.description;
-          const tips = isString ? null : drill.tips;
+    <FeedbackSectionCard
+      title="Recommended Practice Drills"
+      description="Targeted exercises to improve your weakest areas"
+      icon={<Dumbbell className="h-5 w-5" />}
+      tone="info"
+      contentClassName="space-y-3"
+    >
+      {drills.map((drill, index) => {
+        // Handle both string array and object array formats
+        const isString = typeof drill === "string";
+        const title = isString ? drill : drill.title;
+        const description = isString ? null : drill.description;
+        const tips = isString ? null : drill.tips;
 
-          return (
+        return (
           <div
             key={index}
-            className="group border border-border/50 rounded-lg p-4 hover:border-primary/30 transition-all duration-300 cursor-pointer"
+            className="group border-border/50 hover:border-primary/30 cursor-pointer rounded-lg border p-4 transition-all duration-300"
             onClick={() => handleDrillClick(drill)}
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 space-y-3">
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge
                       variant="default"
-                      className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                      className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"
                     >
                       Drill {index + 1}
                     </Badge>
                   </div>
-                  <h3 className="text-base font-display font-light text-foreground group-hover:text-primary transition-colors">
+                  <h3 className="font-display text-foreground group-hover:text-primary text-base font-light transition-colors">
                     {title}
                   </h3>
                   {description && (
-                    <p className="text-sm text-muted-foreground leading-relaxed">
+                    <p className="text-muted-foreground text-sm leading-relaxed">
                       {description}
                     </p>
                   )}
@@ -72,14 +68,17 @@ export function DrillList({ drills }: DrillListProps) {
 
                 {/* Tips */}
                 {tips && tips.length > 0 && (
-                  <div className="space-y-2 pl-4 border-l-2 border-primary/20">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70 uppercase tracking-wide font-display font-light">
-                      <Lightbulb className="w-3.5 h-3.5" />
+                  <div className="border-primary/20 space-y-2 border-l-2 pl-4">
+                    <div className="font-display text-muted-foreground/70 flex items-center gap-1.5 text-xs font-light tracking-wide uppercase">
+                      <Lightbulb className="h-3.5 w-3.5" />
                       <span>Tips</span>
                     </div>
                     <ul className="space-y-1">
                       {tips.map((tip, tipIndex) => (
-                        <li key={tipIndex} className="text-xs text-muted-foreground leading-relaxed flex items-start gap-2">
+                        <li
+                          key={tipIndex}
+                          className="text-muted-foreground flex items-start gap-2 text-xs leading-relaxed"
+                        >
                           <span className="text-primary mt-0.5">•</span>
                           <span>{tip}</span>
                         </li>
@@ -91,20 +90,19 @@ export function DrillList({ drills }: DrillListProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                className="opacity-0 transition-opacity duration-300 group-hover:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDrillClick(drill);
                 }}
               >
                 <span className="text-xs">Start</span>
-                <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                <ArrowRight className="ml-1 h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
-          );
-        })}
-      </CardContent>
-    </Card>
+        );
+      })}
+    </FeedbackSectionCard>
   );
 }
