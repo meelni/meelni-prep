@@ -423,6 +423,10 @@
     height: 400px;
   }
 
+  .max-h-chart-sm {
+    max-height: 250px;
+  }
+
   .max-h-chart-radar-sm {
     max-height: 280px;
   }
