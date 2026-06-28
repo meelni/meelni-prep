@@ -200,7 +200,7 @@ export function SearchAutocomplete({
                     variant="ghost"
                     onClick={() => handleSelect(company)}
                     onMouseEnter={() => setHighlightedIndex(index)}
-                    className={`flex min-h-[48px] w-full items-center justify-between px-3 py-3 text-left transition-colors md:min-h-0 md:py-2.5 ${
+                    className={`flex min-h-12 w-full items-center justify-between px-3 py-3 text-left transition-colors md:min-h-0 md:py-2.5 ${
                       highlightedIndex === index
                         ? "bg-primary/5"
                         : "hover:bg-primary/5"
@@ -235,7 +235,7 @@ export function SearchAutocomplete({
                       variant="ghost"
                       onClick={() => handleSelect(question)}
                       onMouseEnter={() => setHighlightedIndex(actualIndex)}
-                      className={`min-h-[48px] w-full px-3 py-3 text-left transition-colors md:min-h-0 md:py-2.5 ${
+                      className={`min-h-12 w-full px-3 py-3 text-left transition-colors md:min-h-0 md:py-2.5 ${
                         highlightedIndex === actualIndex
                           ? "bg-primary/5"
                           : "hover:bg-primary/5"

@@ -1343,6 +1343,7 @@ test("question bank child components use shared controls", async () => {
     ? []
     : ["components/ui/textarea.tsx:Textarea"];
   const files = [
+    "components/question-bank/bulk-action-toolbar.tsx",
     "components/question-bank/filter-popover.tsx",
     "components/question-bank/mobile-filter-drawer.tsx",
     "components/question-bank/question-card.tsx",
@@ -1359,6 +1360,9 @@ test("question bank child components use shared controls", async () => {
     }
     if (!content.includes("@/components/ui/button")) {
       violations.push(`${file}:Button`);
+    }
+    if (/min-h-\[(?:44|48)px\]/.test(content)) {
+      violations.push(`${file}:arbitrary-touch-target`);
     }
   }
 
