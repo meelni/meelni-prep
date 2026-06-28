@@ -14,6 +14,7 @@
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-surface: var(--surface);
+  --color-overlay: var(--overlay);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
@@ -204,6 +205,7 @@
   --card: oklch(0.98 0.003 264);
   --card-foreground: oklch(0.15 0.005 264);
   --surface: oklch(0.96 0.006 264);
+  --overlay: oklch(0.12 0.01 264);
   --popover: oklch(0.98 0.003 264);
   --popover-foreground: oklch(0.15 0.005 264);
   /* Purple-blue primary for light backgrounds */
@@ -263,6 +265,7 @@
   --card: oklch(0.18 0.008 264);
   --card-foreground: oklch(0.95 0.005 264);
   --surface: oklch(0.2 0.01 264);
+  --overlay: oklch(0.08 0.006 264);
   --popover: oklch(0.18 0.008 264);
   --popover-foreground: oklch(0.95 0.005 264);
   /* Vibrant purple-blue primary for dark backgrounds */
