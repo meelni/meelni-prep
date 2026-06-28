@@ -11,34 +11,34 @@ type FeedbackTone = "default" | "success" | "warning" | "info" | "danger";
 
 const toneClasses: Record<FeedbackTone, string> = {
   default: "",
-  success: "border-emerald-500/20 bg-emerald-500/5 dark:border-emerald-500/25",
-  warning: "border-amber-500/20 bg-amber-500/5 dark:border-amber-500/25",
-  info: "border-blue-500/20 bg-blue-500/5 dark:border-blue-500/25",
-  danger: "border-red-500/20 bg-red-500/5 dark:border-red-500/25",
+  success: "border-success/20 bg-success/5",
+  warning: "border-warning/20 bg-warning/5",
+  info: "border-info/20 bg-info/5",
+  danger: "border-destructive/20 bg-destructive/5",
 };
 
 const iconToneClasses: Record<FeedbackTone, string> = {
   default: "text-primary",
-  success: "text-emerald-500",
-  warning: "text-amber-500",
-  info: "text-blue-500",
-  danger: "text-red-500",
+  success: "text-success",
+  warning: "text-warning",
+  info: "text-info",
+  danger: "text-destructive",
 };
 
 const toneIndicatorClasses: Record<FeedbackTone, string> = {
   default: "border-primary/10 bg-primary/5 text-primary",
-  success: "border-emerald-500/10 bg-emerald-500/5 text-emerald-500",
-  warning: "border-amber-500/10 bg-amber-500/5 text-amber-500",
-  info: "border-blue-500/10 bg-blue-500/5 text-blue-500",
-  danger: "border-red-500/10 bg-red-500/5 text-red-500",
+  success: "border-success/10 bg-success/5 text-success",
+  warning: "border-warning/10 bg-warning/5 text-warning",
+  info: "border-info/10 bg-info/5 text-info",
+  danger: "border-destructive/10 bg-destructive/5 text-destructive",
 };
 
 const statusPageBackgroundClasses: Record<FeedbackTone, string> = {
   default: "to-primary/5",
-  success: "to-emerald-500/5",
-  warning: "to-amber-500/5",
-  info: "to-blue-500/5",
-  danger: "to-red-500/5",
+  success: "to-success/5",
+  warning: "to-warning/5",
+  info: "to-info/5",
+  danger: "to-destructive/5",
 };
 
 interface FeedbackSectionCardProps
