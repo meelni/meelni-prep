@@ -192,7 +192,7 @@ export const SettingsSection = memo(function SettingsSection() {
           <motion.span
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
-            className="text-sm text-emerald-600 dark:text-emerald-400"
+            className="text-success text-sm"
           >
             Settings saved successfully!
           </motion.span>
@@ -331,7 +331,7 @@ export const SettingsSection = memo(function SettingsSection() {
           <motion.span
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
-            className="text-sm text-emerald-600 dark:text-emerald-400"
+            className="text-success text-sm"
           >
             Settings saved successfully!
           </motion.span>
