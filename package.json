@@ -75,7 +75,7 @@
     "drizzle-orm": "^0.44.7",
     "framer-motion": "^12.23.24",
     "googleapis": "^165.0.0",
-    "inngest": "^3.45.1",
+    "inngest": "^3.54.2",
     "livekit-client": "^2.15.14",
     "livekit-server-sdk": "^2.14.0",
     "lucide-react": "^0.552.0",
