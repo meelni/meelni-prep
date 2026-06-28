@@ -46,10 +46,10 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-full border-l border-white/10">
+    <div className="flex flex-col h-full border-l border-primary-foreground/10">
       {/* Terminal-style Header */}
-      <div className="px-4 py-3 border-b border-white/10">
-        <span className="text-xs font-mono text-white/60">transcript.log</span>
+      <div className="px-4 py-3 border-b border-primary-foreground/10">
+        <span className="text-xs font-mono text-primary-foreground/60">transcript.log</span>
       </div>
 
       {/* Messages (Terminal output style) */}
@@ -82,7 +82,7 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
                   {message.speaker === "user" ? "user" : "agent"}
                 </span>
                 <span className={`flex-1 ${
-                  message.isFinal ? "text-white/90" : "text-white/40 italic"
+                  message.isFinal ? "text-primary-foreground/90" : "text-primary-foreground/40 italic"
                 }`}>
                   {message.text}
                   {!message.isFinal && <span className="animate-pulse ml-1">...</span>}
@@ -355,7 +355,7 @@ function DemoControls({
   };
 
   return (
-    <div className="relative h-full w-full flex bg-gradient-to-br from-black via-black to-purple-950/20">
+    <div className="relative h-full w-full flex bg-gradient-to-br from-overlay via-overlay to-primary/20">
       {/* Main area: Centered content */}
       <div className="flex-1 flex flex-col items-center justify-center relative px-4 sm:px-8 md:px-16">
         {/* Timer and Demo Badge (top-right) */}
@@ -378,8 +378,8 @@ function DemoControls({
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className={`bg-white/5 backdrop-blur-xl px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border ${
-                  timeRemaining <= 60 ? "border-destructive/40 bg-destructive/10" : "border-white/10"
+                className={`bg-primary-foreground/5 backdrop-blur-xl px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border ${
+                  timeRemaining <= 60 ? "border-destructive/40 bg-destructive/10" : "border-primary-foreground/10"
                 }`}
               >
                 <div className="flex items-center gap-1.5 sm:gap-2">
@@ -387,11 +387,11 @@ function DemoControls({
                     timeRemaining <= 60 ? "bg-destructive animate-pulse" : "bg-primary"
                   }`} />
                   <span className={`text-xs sm:text-sm font-mono font-semibold tabular-nums ${
-                    timeRemaining <= 60 ? "text-destructive" : "text-white/90"
+                    timeRemaining <= 60 ? "text-destructive" : "text-primary-foreground/90"
                   }`}>
                     {formatTime(timeRemaining)}
                   </span>
-                  <span className="hidden sm:inline text-white/50 text-xs">remaining</span>
+                  <span className="hidden sm:inline text-primary-foreground/50 text-xs">remaining</span>
                 </div>
               </motion.div>
             )}
@@ -410,10 +410,10 @@ function DemoControls({
                 className="text-center space-y-6"
               >
                 <div className="space-y-3">
-                  <h2 className="text-3xl font-semibold text-white">
+                  <h2 className="text-3xl font-semibold text-primary-foreground">
                     Demo Complete!
                   </h2>
-                  <p className="text-white/60 text-base max-w-lg mx-auto">
+                  <p className="text-primary-foreground/60 text-base max-w-lg mx-auto">
                     Thank you for trying Meelni. Ready to practice with a full interview?
                   </p>
                 </div>
@@ -429,7 +429,7 @@ function DemoControls({
                       });
                     }
                   }}
-                  className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-background px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105"
+                  className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105"
                 >
                   Start Full Interview
                   <ArrowRight className="h-5 w-5" />
@@ -463,10 +463,10 @@ function DemoControls({
                 exit={{ opacity: 0 }}
                 className="text-center space-y-3"
               >
-                <h2 className="text-2xl font-semibold text-white/90">
+                <h2 className="text-2xl font-semibold text-primary-foreground/90">
                   Connecting...
                 </h2>
-                <p className="text-white/50 text-sm max-w-md">
+                <p className="text-primary-foreground/50 text-sm max-w-md">
                   Establishing secure connection...
                 </p>
               </motion.div>
@@ -481,9 +481,9 @@ function DemoControls({
               transition={{ delay: 0.3 }}
             >
               {!isConnected ? (
-                <div className="flex items-center gap-3 bg-white/5 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10">
+                <div className="flex items-center gap-3 bg-primary-foreground/5 backdrop-blur-xl px-6 py-3 rounded-2xl border border-primary-foreground/10">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <span className="text-white/70 text-sm font-medium">Connecting to Meelni...</span>
+                  <span className="text-primary-foreground/70 text-sm font-medium">Connecting to Meelni...</span>
                 </div>
               ) : agentState === "listening" ? (
                 <div className="flex items-center gap-3 bg-info/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-info/20">
@@ -518,7 +518,7 @@ function DemoControls({
             transition={{ delay: 0.4 }}
             className="absolute bottom-4 sm:bottom-8 md:bottom-12 left-1/2 -translate-x-1/2"
           >
-            <div className="flex items-center gap-3 sm:gap-4 bg-white/5 backdrop-blur-2xl rounded-2xl px-4 sm:px-6 md:px-8 py-3 sm:py-4 border border-white/10 shadow-2xl">
+            <div className="flex items-center gap-3 sm:gap-4 bg-primary-foreground/5 backdrop-blur-2xl rounded-2xl px-4 sm:px-6 md:px-8 py-3 sm:py-4 border border-primary-foreground/10 shadow-2xl">
               {/* Mic button */}
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -530,15 +530,15 @@ function DemoControls({
                   ${
                     isMuted
                       ? "bg-destructive/80 hover:bg-destructive"
-                      : "bg-white/10 hover:bg-white/20"
+                      : "bg-primary-foreground/10 hover:bg-primary-foreground/20"
                   }
                   disabled:opacity-50 disabled:cursor-not-allowed
                 `}
               >
                 {isMuted ? (
-                  <MicOff className="h-5 w-5 text-white" />
+                  <MicOff className="h-5 w-5 text-primary-foreground" />
                 ) : (
-                  <Mic className="h-5 w-5 text-white" />
+                  <Mic className="h-5 w-5 text-primary-foreground" />
                 )}
                 {!isMuted && isConnected && (
                   <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-success animate-pulse" />
@@ -546,16 +546,16 @@ function DemoControls({
               </motion.button>
 
               {/* Divider */}
-              <div className="w-px h-8 bg-white/10" />
+              <div className="w-px h-8 bg-primary-foreground/10" />
 
               {/* Close button */}
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={onClose}
-                className="p-4 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-300 shadow-lg"
+                className="p-4 rounded-xl bg-primary-foreground/10 hover:bg-primary-foreground/20 transition-all duration-300 shadow-lg"
               >
-                <X className="h-5 w-5 text-white" />
+                <X className="h-5 w-5 text-primary-foreground" />
               </motion.button>
             </div>
           </motion.div>
@@ -692,7 +692,7 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-sm"
+            className="fixed inset-0 z-[9999] bg-overlay/95 backdrop-blur-sm"
           />
 
           {/* Full-screen Modal Container (LiveKit style) */}
@@ -704,15 +704,15 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
             className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
           >
             {/* Inner modal with border/frame */}
-            <div className="relative w-full h-full max-w-[1600px] max-h-[900px] rounded-2xl border border-white/10 bg-gradient-to-br from-black via-black to-purple-950/20 shadow-2xl overflow-hidden">
+            <div className="relative w-full h-full max-w-[1600px] max-h-[900px] rounded-2xl border border-primary-foreground/10 bg-gradient-to-br from-overlay via-overlay to-primary/20 shadow-2xl overflow-hidden">
               {/* Keyboard shortcut hint - bottom left - Hidden on mobile */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
-                className="hidden sm:flex absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-50 items-center gap-2 px-3 py-2 rounded-lg bg-white/5 backdrop-blur-xl border border-white/10 text-xs text-white/60"
+                className="hidden sm:flex absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-50 items-center gap-2 px-3 py-2 rounded-lg bg-primary-foreground/5 backdrop-blur-xl border border-primary-foreground/10 text-xs text-primary-foreground/60"
               >
-                <kbd className="px-2 py-1 rounded bg-white/10 border border-white/20 font-mono text-white/80">
+                <kbd className="px-2 py-1 rounded bg-primary-foreground/10 border border-primary-foreground/20 font-mono text-primary-foreground/80">
                   ESC
                 </kbd>
                 <span>to close</span>
@@ -737,7 +737,7 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
               ) : isLoading || !token ? (
                 <div className="flex flex-col items-center justify-center h-full gap-6">
                   <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                  <p className="text-white/80 font-medium">
+                  <p className="text-primary-foreground/80 font-medium">
                     Connecting to Meelni...
                   </p>
                 </div>
