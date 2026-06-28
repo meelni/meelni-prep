@@ -106,25 +106,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createSession } from "@/lib/db/sessions";
-import { upsertUser } from "@/lib/db/users";
-import { getRandomQuestion, getRandomRecentQuestion, recordQuestionUsage } from "@/lib/db/questions";
-import { incrementUsage } from "@/lib/services/usage-service";
-import { getUserTier } from "@/lib/services/permissions-service.server";
-import { buildInterviewRoomMetadata } from "@meelni/agent";
-import {
-  canAccessInterviewType,
-  getAllowedInterviewTypes,
-  INTERVIEW_TYPE_LABELS,
-  type RoundType,
-} from "@meelni/core";
-import {
-  buildInterviewRoomName,
-  createLiveKitInterviewProvider,
-  getLiveKitEnvironment,
-} from "@meelni/integrations";
-
-const INTERVIEW_AGENT_ID = "CA_yawKG67rCMG4"; // Main interview agent with all fixes
+import { getLiveKitEnvironment } from "@/lib/internal/integrations";
+import { startInterviewSessionWorkflow } from "@/lib/workflows/start-session";
 
 export async function POST(req: NextRequest) {
   try {
@@ -141,249 +124,34 @@ export async function POST(req: NextRequest) {
 
     // Parse request body first to access roundType
     const body = await req.json();
-    const {
-      roundType,
-      mode = "voice_video",
-      role = "pm",
-      persona,
-      config,
-      questionId, // Optional: pre-selected question ID from question bank
-    } = body;
-
-    // Validate required fields
-    if (!roundType) {
-      return NextResponse.json(
-        { error: "roundType is required" },
-        { status: 400 }
-      );
-    }
-
-    // Validate roundType
-    const validRoundTypes = [
-      "behavioral",
-      "product_sense",
-      "execution",
-      "strategy",
-    ];
-    if (!validRoundTypes.includes(roundType)) {
-      return NextResponse.json(
-        { error: "Invalid roundType" },
-        { status: 400 }
-      );
-    }
-
-    // Tier-based access control: Check if user can access this interview type
-    try {
-      const userTier = await getUserTier(user.id);
-
-      if (!canAccessInterviewType(userTier, roundType as RoundType)) {
-        const allowedTypes = getAllowedInterviewTypes(userTier);
-        const requestedTypeLabel = INTERVIEW_TYPE_LABELS[roundType as RoundType];
-
-        return NextResponse.json(
-          {
-            error: "interview_type_locked",
-            message: `${requestedTypeLabel} interviews require a Pro subscription. Upgrade to unlock all 4 interview types.`,
-            currentTier: userTier,
-            requestedType: roundType,
-            allowedTypes: allowedTypes,
-            upgradeUrl: "/pricing",
-          },
-          { status: 403 }
-        );
-      }
-    } catch (error) {
-      console.error("Permissions check error:", getErrorMessage(error));
-      // Fail closed: return 503 if permissions service is unavailable
-      return NextResponse.json(
-        {
-          error: "service_unavailable",
-          message: "Unable to verify interview type access. Please try again in a moment.",
-        },
-        { status: 503 }
-      );
-    }
-
-    // Quota enforcement: Check and increment usage atomically
-    // This prevents race conditions and ensures fair usage limits
-    try {
-      const incrementResult = await incrementUsage(user.id);
-
-      if (!incrementResult.success) {
-        // Quota exceeded - return 403 with upgrade information
-        return NextResponse.json(
-          {
-            error: "quota_exceeded",
-            message: incrementResult.reason || "Monthly interview quota exceeded",
-            currentUsage: incrementResult.currentUsage || 0,
-            limit: incrementResult.limit || 0,
-            upgradeUrl: "/pricing",
-          },
-          { status: 403 }
-        );
-      }
-    } catch (error) {
-      console.error("Quota check error:", getErrorMessage(error));
-      // Fail closed: return 503 Service Unavailable if quota service is down
-      // This prevents unlimited access if the billing system is unavailable
-      return NextResponse.json(
-        {
-          error: "service_unavailable",
-          message: "Unable to verify interview quota. Please try again in a moment.",
-        },
-        { status: 503 }
-      );
-    }
-
     // Validate required environment variables
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (!livekitEnv.ok) {
-      console.error("Missing LiveKit environment variables:", livekitEnv.error.message);
+      console.error(
+        "Missing LiveKit environment variables:",
+        livekitEnv.error.message
+      );
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
       );
     }
 
-    // Fetch a question from the question bank
-    // If questionId is provided, use that specific question
-    // Otherwise, fetch a random question for this round type
-    let question;
-
-    if (questionId) {
-      // Use pre-selected question from question bank
-      const { getQuestionById } = await import("@/lib/db/questions");
-      question = await getQuestionById(questionId);
-
-      if (!question) {
-        return NextResponse.json(
-          { error: `Question not found: ${questionId}` },
-          { status: 404 }
-        );
-      }
-
-      console.log(`[Session Start] Using pre-selected question:`, {
-        id: question.id,
-        type: question.questionType,
-        company: question.company,
-        text_preview: question.questionText.substring(0, 100) + "...",
-      });
-    } else {
-      // Map interview types to database question types (supports multiple types per interview)
-      const QUESTION_TYPE_MAP: Record<string, string[]> = {
-        behavioral: ["Behavioral"],
-        product_sense: ["Product Sense", "Product design/strategy"],
-        execution: ["Execution", "Estimation", "A/B Testing", "Pricing"],
-        strategy: ["Product Strategy"],
-      };
-
-      const dbQuestionTypes = QUESTION_TYPE_MAP[roundType];
-      if (!dbQuestionTypes) {
-        return NextResponse.json(
-          { error: `Invalid interview type: ${roundType}` },
-          { status: 400 }
-        );
-      }
-
-      // Check if user has question preference (recent questions)
-      const recentDays = config?.questionPreference?.recentDays;
-      question = recentDays
-        ? await getRandomRecentQuestion(recentDays, dbQuestionTypes)
-        : await getRandomQuestion(dbQuestionTypes);
-
-      if (!question) {
-        const typesList = dbQuestionTypes.join('" or "');
-        const errorMsg = `No questions available for interview type "${roundType}" (looks for: "${typesList}")${recentDays ? ` from the last ${recentDays} days` : ''}. Try selecting "All Questions" or a different interview type.`;
-        console.warn(`[Session Start] ${errorMsg}`);
-
-        return NextResponse.json(
-          { error: errorMsg },
-          { status: 404 }
-        );
-      }
-
-      console.log(`[Session Start] Random question selected:`, {
-        id: question.id,
-        type: question.questionType,
-        company: question.company,
-        text_preview: question.questionText.substring(0, 100) + "...",
-        user_selected_round_type: roundType,
-        mapped_db_types: dbQuestionTypes.join(", "),
-        total_available_types: dbQuestionTypes.length,
-      });
-    }
-
-    // Ensure user exists in app_user table (for existing authenticated users)
-    await upsertUser({
-      id: user.id,
-      email: user.email!,
-      name: user.user_metadata?.name || user.user_metadata?.full_name || null,
-    });
-
-    // Generate unique room name
-    const roomName = buildInterviewRoomName();
-
-    // Create session in database
-    const session = await createSession({
-      userId: user.id,
-      role,
-      roundType,
-      mode,
-      persona,
-      livekitRoomName: roomName,
-      config: config || {},
-    });
-
-    // Record question usage if a question was selected
-    if (question) {
-      await recordQuestionUsage(session.id, question.id);
-    }
-
-    const roomMetadata = buildInterviewRoomMetadata({
-      session_id: session.id,
-      round_type: roundType as RoundType,
-      mode,
-      config: config || {},
-      question: question ? {
-        id: question.id,
-        text: question.questionText,
-        company: question.company,
-        type: question.questionType,
-        askedAt: question.askedAt,
-      } : null,
-    });
-
-    const livekit = createLiveKitInterviewProvider();
-    const livekitResult = await livekit.startInterviewRoom({
-      agentId: INTERVIEW_AGENT_ID,
-      identity: user.id,
-      participantName: user.email || user.id,
-      roomName,
-      metadata: roomMetadata,
+    const result = await startInterviewSessionWorkflow({
+      user: {
+        id: user.id,
+        email: user.email,
+        metadata: user.user_metadata,
+      },
+      body,
       env: livekitEnv.data,
     });
 
-    if (!livekitResult.ok) {
-      console.error("LiveKit interview start error:", livekitResult.error);
-      return NextResponse.json(
-        { error: "Failed to start voice interview" },
-        { status: livekitResult.error.retryable ? 503 : 500 }
-      );
+    if (!result.ok) {
+      return NextResponse.json(result.body, { status: result.status });
     }
 
-    // Return session info and LiveKit credentials
-    return NextResponse.json({
-      sessionId: session.id,
-      roomName,
-      token: livekitResult.data.token,
-      url: livekitResult.data.url,
-      config: session.config,
-      question: question ? {
-        id: question.id,
-        text: question.questionText,
-        company: question.company,
-      } : null,
-    });
+    return NextResponse.json(result.body);
   } catch (error) {
     console.error("Error starting session:", error);
     return NextResponse.json(
@@ -391,8 +159,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

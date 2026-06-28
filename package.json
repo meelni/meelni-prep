@@ -32,6 +32,7 @@
     "test:python-agent": "python3 -m unittest agent/test_runtime_contracts.py",
     "test:local": "node --test scripts/*.test.mjs",
     "test:fixtures": "tsx --test packages/test-fixtures/src/*.test.ts",
+    "test:workflows": "tsx --test lib/workflows/*.test.ts",
     "test:sheets": "tsx scripts/test-google-sheets-connection.ts",
     "test:feedback": "tsx --env-file=.env.local scripts/test-feedback-generation.ts",
     "validate:skills": "node scripts/validate-skills.mjs",
