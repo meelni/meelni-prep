@@ -513,6 +513,22 @@ test("dashboard helper callouts use semantic status tokens", async () => {
   assert.deepEqual([...missingTokens, ...violations], []);
 });
 
+test("shared status primitives use semantic status tokens", async () => {
+  const files = ["components/ui/badge.tsx", "components/ui/app-surface.tsx"];
+  const rawStatusUtility =
+    /\b(?:bg|text|border|hover:bg|dark:bg|dark:text|dark:border)-(?:amber|blue|emerald|green|orange|purple|red|yellow)-\d+(?:\/\d+)?\b/;
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (rawStatusUtility.test(content)) {
+      violations.push(`${file}:raw-status-utility`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("question bank child components use shared controls", async () => {
   const textareaSource = await readFile(
     "components/ui/textarea.tsx",
