@@ -200,11 +200,7 @@ export function Sidebar({
           )}
           aria-label="Start new interview"
         >
-          <Sparkles
-            size={18}
-            className="h-[18px] w-[18px] flex-shrink-0"
-            aria-hidden="true"
-          />
+          <Sparkles className="size-5 flex-shrink-0" aria-hidden="true" />
           {!collapsed && <span className="ml-2">New Interview</span>}
         </Button>
 
@@ -232,9 +228,8 @@ export function Sidebar({
                 <div className="from-primary/50 via-primary to-primary/50 absolute top-0 bottom-0 left-0 w-1 rounded-r bg-gradient-to-b" />
               )}
               <item.icon
-                size={18}
                 className={cn(
-                  "h-[18px] w-[18px] flex-shrink-0 transition-opacity",
+                  "size-5 flex-shrink-0 transition-opacity",
                   activeSection === item.id ? "opacity-100" : "opacity-70"
                 )}
                 aria-hidden="true"
