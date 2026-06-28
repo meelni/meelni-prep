@@ -69,7 +69,7 @@ export function QuestionSignInModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm"
+            className="fixed inset-0 z-[9999] bg-overlay/80 backdrop-blur-sm"
           />
 
           {/* Modal Container */}

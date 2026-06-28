@@ -275,6 +275,55 @@ test("primary active states use semantic foreground tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("priority overlays use the shared overlay color token", async () => {
+  const globals = await readFile("app/globals.css", "utf8");
+  const files = [
+    {
+      file: "components/explore/question-signin-modal.tsx",
+      required: "bg-overlay/80",
+    },
+    {
+      file: "components/dashboard/setup-modal.tsx",
+      required: "bg-overlay/50",
+    },
+    {
+      file: "components/dashboard/sections/billing.tsx",
+      required: "bg-overlay/50",
+    },
+    {
+      file: "components/dashboard/layout/dashboard-layout.tsx",
+      required: "bg-overlay/50",
+    },
+    {
+      file: "app/interview/components/end-session-modal.tsx",
+      required: "bg-overlay/50",
+    },
+  ];
+  const violations = [];
+
+  if (!globals.includes("--color-overlay: var(--overlay);")) {
+    violations.push("app/globals.css:--color-overlay");
+  }
+
+  if (!globals.includes("--overlay:")) {
+    violations.push("app/globals.css:--overlay");
+  }
+
+  for (const { file, required } of files) {
+    const content = await readFile(file, "utf8");
+
+    if (!content.includes(required)) {
+      violations.push(`${file}:${required}`);
+    }
+
+    if (content.includes("bg-black/")) {
+      violations.push(`${file}:bg-black`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
