@@ -47,7 +47,7 @@ export function Testimonials() {
                     />
                   )}
                   <div>
-                    <h3 className="text-[16px] leading-[24px] font-sans font-semibold text-foreground">
+                    <h3 className="text-base leading-6 font-sans font-semibold text-foreground">
                       {testimonial.name}
                     </h3>
                     <p className="text-label text-muted-foreground">
