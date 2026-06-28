@@ -699,6 +699,44 @@ test("docs and pricing pages use shared public-page status surfaces", async () =
   assert.deepEqual(violations, []);
 });
 
+test("legal pages use shared marketing article primitives", async () => {
+  const files = ["app/privacy/page.tsx", "app/terms/page.tsx"];
+  const requiredImports = [
+    "Header",
+    "MarketingPage",
+    "MarketingArticleHeader",
+    "MarketingEyebrow",
+    "MarketingProse",
+  ];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    for (const importName of requiredImports) {
+      if (!content.includes(importName)) {
+        violations.push(`${file}:${importName}`);
+      }
+    }
+    if (content.includes("min-h-screen bg-background")) {
+      violations.push(`${file}:bespoke-page-shell`);
+    }
+    if (content.includes("max-w-4xl mx-auto px-6 py-16")) {
+      violations.push(`${file}:bespoke-content-shell`);
+    }
+    if (content.includes("<button")) {
+      violations.push(`${file}:button`);
+    }
+    if (content.includes("<svg")) {
+      violations.push(`${file}:svg`);
+    }
+    if (content.includes("text-[")) {
+      violations.push(`${file}:arbitrary-text`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("blog detail page uses shared marketing article primitives", async () => {
   const surfaceSource = await readFile(
     "components/marketing/marketing-surface.tsx",
