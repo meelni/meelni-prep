@@ -389,7 +389,9 @@ Status:
 - Added guardrail coverage for the blog detail renderer to prevent inline SVG arrows, page-local arbitrary text sizes, and raw red/green status utilities from returning.
 - Contact page submitted, header, form, reason selector, error, direct-contact, response-time, and quick-help surfaces now use shared marketing/app/form/selectable primitives instead of local card shells, raw buttons, raw textarea markup, and raw red/green status colors.
 - Added guardrail coverage for the contact page to prevent `ui/card`, raw buttons, raw textarea markup, and raw red/green status utilities from returning.
-- Remaining P2 work: migrate blog/company detail renderers, pricing/contact/legal/docs pages, and lower-level landing sections onto the same public-page vocabulary.
+- Company detail pages now use shared marketing page, article header, eyebrow, meta-row, CTA-card, and button primitives for the core public SEO shell, show-more controls, mini CTA, final CTA, and back link; local arbitrary text sizes and inline SVG arrows were removed from the renderer.
+- Added guardrail coverage for the company detail renderer to prevent raw buttons, inline SVG arrows, and page-local arbitrary text sizes from returning.
+- Remaining P2 work: migrate docs/legal/pricing pages and lower-level landing sections onto the same public-page vocabulary.
 
 ## Acceptance Criteria
 
