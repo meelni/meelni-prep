@@ -29,6 +29,9 @@ const integrationIconToneClasses: Record<IntegrationIconTone, string> = {
   danger: "bg-destructive/10 text-destructive",
 };
 
+const mockLineClass = "h-2 rounded-full bg-muted";
+const mockLineStrongClass = "h-2 rounded-full bg-foreground/40 dark:bg-foreground/70";
+
 function IntegrationIconBadge({
   icon: Icon,
   tone,
@@ -150,9 +153,9 @@ export function Card1() {
             >
               <IntegrationIconBadge icon={SearchIcon} tone="info" />
               <div className="flex flex-col gap-y-2">
-                <div className="h-2 w-32 rounded-full bg-neutral-800/50 dark:bg-neutral-200/80"></div>
-                <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
-                <div className="text-xs text-neutral-500">
+                <div className={`${mockLineStrongClass} w-32`}></div>
+                <div className={`${mockLineClass} w-48`}></div>
+                <div className="text-xs text-muted-foreground">
                   Google Search API integration
                 </div>
               </div>
@@ -163,10 +166,10 @@ export function Card1() {
             >
               <IntegrationIconBadge icon={DatabaseIcon} tone="success" />
               <div className="flex flex-col gap-y-2">
-                <div className="h-2 w-32 rounded-full bg-neutral-800/50 dark:bg-neutral-200/80"></div>
-                <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
-                <div className="h-2 w-20 rounded-full bg-slate-400/50"></div>
-                <div className="text-xs text-neutral-500">
+                <div className={`${mockLineStrongClass} w-32`}></div>
+                <div className={`${mockLineClass} w-48`}></div>
+                <div className={`${mockLineClass} w-20`}></div>
+                <div className="text-xs text-muted-foreground">
                   PostgreSQL database connection
                 </div>
               </div>
@@ -177,11 +180,11 @@ export function Card1() {
             >
               <IntegrationIconBadge icon={MessageSquareIcon} tone="primary" />
               <div className="flex flex-col gap-y-2">
-                <div className="h-2 w-32 rounded-full bg-neutral-800/50 dark:bg-neutral-200/80"></div>
-                <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
-                <div className="h-2 w-20 rounded-full bg-slate-400/50"></div>
-                <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
-                <div className="text-xs text-neutral-500">
+                <div className={`${mockLineStrongClass} w-32`}></div>
+                <div className={`${mockLineClass} w-48`}></div>
+                <div className={`${mockLineClass} w-20`}></div>
+                <div className={`${mockLineClass} w-48`}></div>
+                <div className="text-xs text-muted-foreground">
                   OpenAI GPT-3.5 API integration
                 </div>
               </div>
