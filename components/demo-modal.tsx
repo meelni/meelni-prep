@@ -19,6 +19,7 @@ import type { Participant, TrackPublication, TranscriptionSegment } from "liveki
 import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { Button } from "@/components/ui/button";
 
 // Transcript message type
 interface TranscriptMessage {
@@ -723,12 +724,14 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
                       <X className="h-8 w-8 text-destructive" />
                     </div>
                     <p className="text-destructive font-medium">{error}</p>
-                    <button
+                    <Button
+                      type="button"
                       onClick={fetchDemoToken}
-                      className="px-8 py-3 rounded-xl bg-primary text-background font-semibold hover:bg-primary/90 transition-all duration-200"
+                      size="lg"
+                      className="rounded-xl font-semibold"
                     >
                       Try Again
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : isLoading || !token ? (

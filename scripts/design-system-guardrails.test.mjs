@@ -698,6 +698,27 @@ test("demo modal status indicators use semantic status tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("overlay dismiss actions use shared button primitives", async () => {
+  const files = [
+    "components/interview/nudge-overlay.tsx",
+    "components/cookie-consent-banner.tsx",
+    "components/demo-modal.tsx",
+  ];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (!content.includes("@/components/ui/button")) {
+      violations.push(`${file}:Button`);
+    }
+    if (content.includes("<button")) {
+      violations.push(`${file}:button`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("landing feature selector uses shared controls and semantic status tokens", async () => {
   const file = "components/feature-selector.tsx";
   const content = await readFile(file, "utf8");
