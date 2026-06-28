@@ -1194,3 +1194,42 @@ test("feedback surface tones use semantic status tokens", async () => {
 
   assert.deepEqual(violations, []);
 });
+
+test("feedback result indicators use semantic status tokens", async () => {
+  const files = [
+    "app/feedback/[sessionId]/page.tsx",
+    "components/feedback/feedback-display.tsx",
+    "components/feedback/attempt-comparison.tsx",
+  ];
+  const rawStatusUtility =
+    /\b(?:bg|text|border)-(?:blue|green|orange|red|yellow)-500(?:\/\d+)?\b/;
+  const requiredTokens = [
+    "text-success",
+    "bg-success",
+    "text-info",
+    "bg-info",
+    "text-warning",
+    "bg-warning",
+    "text-destructive",
+    "bg-destructive",
+  ];
+  const source = [];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    source.push(content);
+    if (rawStatusUtility.test(content)) {
+      violations.push(`${file}:raw-status-utility`);
+    }
+  }
+
+  const combinedSource = source.join("\n");
+  for (const token of requiredTokens) {
+    if (!combinedSource.includes(token)) {
+      violations.push(token);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
