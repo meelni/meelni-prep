@@ -11,6 +11,7 @@ Use this skill to move quickly without scattering changes. A vertical slice shou
 
 - Read `AGENTS.md`, `docs/architecture/target-monorepo.md`, and `docs/operations/tooling.md`.
 - Pick the closest slice below before editing.
+- For meaningful product or engineering changes, fill or mentally answer `docs/templates/AGENT_TASK_INTAKE.md` before implementation.
 - Keep app routes thin: authenticate, parse input, call a workflow, map response.
 - Prefer package exports from `@meelni/core`, `@meelni/agent`, and `@meelni/integrations` for durable contracts.
 - Run `npm run verify:agent` before opening or merging meaningful changes.

@@ -4,6 +4,16 @@ This directory contains templates for creating consistent documentation across t
 
 ## Available Templates
 
+### [Agent Task Intake](./AGENT_TASK_INTAKE.md)
+Use before meaningful agent-authored product or engineering changes.
+
+**When to use**:
+- Starting a cross-layer feature or behavior change
+- Scoping work for Codex, Claude, or another coding agent
+- Capturing validation and rollout expectations before implementation
+
+**Where to put**: Copy into the relevant sprint, plan, or PR notes when persistent tracking is needed.
+
 ### [Feature Documentation Template](./FEATURE_TEMPLATE.md)
 Use when documenting a new feature or major component.
 
@@ -55,6 +65,7 @@ Match your documentation need to the appropriate template:
 |-------------------|----------|----------|
 | Architecture decision | ADR Template | `docs/architecture/adrs/` |
 | Feature deep dive | Feature Template | `docs/features/` |
+| Agent-authored task intake | Agent Task Intake | Sprint, plan, or PR notes |
 | API endpoint | API Template | `docs/api/` |
 | Troubleshooting guide | Troubleshooting Template | `.claude/TROUBLESHOOTING.md` |
 | Setup guide | Development Template | `docs/development/` |
