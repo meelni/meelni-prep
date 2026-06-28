@@ -19,7 +19,8 @@ packages/
 
 - The Next.js app still lives at the repository root.
 - The Python LiveKit runtime still lives in `agent/`.
-- The first workspace packages are stubs and should only gain code when a vertical slice needs a shared boundary.
+- The first workspace packages hold shared contracts for current vertical slices.
+- `lib/internal/*` files are Vercel-safe TypeScript path shim entrypoints that re-export package code; do not put canonical implementation there.
 
 ## Migration Rules
 
