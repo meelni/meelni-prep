@@ -798,6 +798,46 @@ test("chart trend badges use semantic badge variants", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("test demo surfaces use shared controls and semantic tones", async () => {
+  const files = [
+    "components/interview/nudge-overlay.test-demo.tsx",
+    "components/ui/animated-number.tsx",
+  ];
+  const rawDemoTone =
+    /\b(?:bg|text|border|hover:bg|hover:text|hover:border)-(?:amber|blue|green|purple|red)-500(?:\/\d+)?\b/;
+  const requiredTokens = [
+    "Button",
+    "text-info",
+    "bg-info",
+    "text-warning",
+    "bg-warning",
+    "text-success",
+    "text-destructive",
+  ];
+  const violations = [];
+  const source = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    source.push(content);
+    if (content.includes("<button")) {
+      violations.push(`${file}:button`);
+    }
+    if (rawDemoTone.test(content)) {
+      violations.push(`${file}:raw-demo-tone`);
+    }
+  }
+
+  const combinedSource = source.join("\n");
+  for (const token of requiredTokens) {
+    if (!combinedSource.includes(token)) {
+      violations.push(token);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("question bank child components use shared controls", async () => {
   const textareaSource = await readFile(
     "components/ui/textarea.tsx",

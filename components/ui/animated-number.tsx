@@ -2,6 +2,7 @@
 
 import { motion, useSpring, useTransform } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface AnimatedNumberProps {
@@ -179,12 +180,12 @@ export function AnimatedNumberTest() {
     <div className="p-8 space-y-8 bg-background min-h-screen">
       <div className="space-y-2">
         <h2 className="text-2xl font-bold">AnimatedNumber Test Suite</h2>
-        <button
+        <Button
+          type="button"
           onClick={() => setTrigger((t) => t + 1)}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
         >
           Re-trigger All Animations
-        </button>
+        </Button>
       </div>
 
       {/* Basic Integer */}
@@ -305,7 +306,7 @@ export function AnimatedNumberTest() {
         </h3>
         <div
           key={`negative-${trigger}`}
-          className="text-3xl font-mono font-bold text-red-500"
+          className="text-3xl font-mono font-bold text-destructive"
         >
           <AnimatedNumber value={-42} />
         </div>
@@ -318,7 +319,7 @@ export function AnimatedNumberTest() {
         </h3>
         <div
           key={`prefix-${trigger}`}
-          className="text-3xl font-mono font-bold text-green-500"
+          className="text-3xl font-mono font-bold text-success"
         >
           <AnimatedNumber
             value={1234.56}
