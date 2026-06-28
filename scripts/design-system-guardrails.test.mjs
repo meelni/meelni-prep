@@ -1742,6 +1742,9 @@ test("dashboard question filters use shared controls and semantic type colors", 
   if (rawQuestionTypeColor.test(content)) {
     violations.push(`${file}:raw-question-type-color`);
   }
+  if (content.includes("shadow-[")) {
+    violations.push(`${file}:arbitrary-shadow`);
+  }
 
   assert.deepEqual(violations, []);
 });
