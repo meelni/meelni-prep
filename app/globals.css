@@ -457,6 +457,11 @@
     height: 60vh;
   }
 
+  /* Message and transcript sizing utilities */
+  .max-w-message-bubble {
+    max-width: 80%;
+  }
+
   /* Display headings - Everett 300 */
   .text-display-hero {
     font-family: var(--font-display);

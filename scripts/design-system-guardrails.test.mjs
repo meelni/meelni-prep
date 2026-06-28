@@ -1188,12 +1188,17 @@ test("dashboard analytics comparison indicators use semantic tokens", async () =
 });
 
 test("interview runtime indicators use semantic status tokens", async () => {
+  const globals = await readFile("app/globals.css", "utf8");
   const files = [
     "app/interview/components/agent-state-badge.tsx",
     "app/interview/components/connection-indicator.tsx",
     "app/interview/components/end-session-modal.tsx",
     "app/interview/components/interview-controls.tsx",
     "components/interview/nudge-overlay.tsx",
+  ];
+  const messageFiles = [
+    "app/interview/components/transcript-panel.tsx",
+    "app/feedback/[sessionId]/page.tsx",
   ];
   const rawStatusUtility =
     /\b(?:bg|text|border|shadow|hover:bg|hover:text|hover:border)-(?:blue|purple|green|red|amber|orange)-\d+(?:\/\d+)?\b/;
@@ -1210,6 +1215,10 @@ test("interview runtime indicators use semantic status tokens", async () => {
   const violations = [];
   const source = [];
 
+  if (!globals.includes(".max-w-message-bubble")) {
+    violations.push("app/globals.css:.max-w-message-bubble");
+  }
+
   for (const file of files) {
     const content = await readFile(file, "utf8");
     source.push(content);
@@ -1222,6 +1231,16 @@ test("interview runtime indicators use semantic status tokens", async () => {
   for (const token of requiredTokens) {
     if (!combinedSource.includes(token)) {
       violations.push(token);
+    }
+  }
+
+  for (const file of messageFiles) {
+    const content = await readFile(file, "utf8");
+    if (!content.includes("max-w-message-bubble")) {
+      violations.push(`${file}:max-w-message-bubble`);
+    }
+    if (content.includes("max-w-[80%]")) {
+      violations.push(`${file}:arbitrary-message-width`);
     }
   }
 
