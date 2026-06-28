@@ -17,6 +17,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   SelectableCard,
   SelectableCardCheck,
   SelectableCardIcon,
@@ -544,17 +551,26 @@ export function SetupModal({
                       {/* Emotion Dropdown */}
                       <div className="space-y-2">
                         <label className="text-sm font-medium">Voice Emotion</label>
-                        <select
+                        <Select
                           value={config.voiceSettings?.emotion || "confident"}
-                          onChange={(e) => updateVoiceSettings({ emotion: e.target.value })}
-                          className="w-full p-2.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          onValueChange={(emotion) =>
+                            updateVoiceSettings({ emotion })
+                          }
                         >
-                          {EMOTION_OPTIONS.map((emotion) => (
-                            <option key={emotion.value} value={emotion.value}>
-                              {emotion.label}
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger className="w-full rounded-lg">
+                            <SelectValue placeholder="Voice emotion" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {EMOTION_OPTIONS.map((emotion) => (
+                              <SelectItem
+                                key={emotion.value}
+                                value={emotion.value}
+                              >
+                                {emotion.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </motion.div>
                   )}
