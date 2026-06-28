@@ -234,9 +234,21 @@ test("setup selectors use the shared selectable-card primitive", async () => {
     }
     if (
       file === "components/dashboard/setup-modal.tsx" &&
+      !content.includes('from "@/components/ui/select"')
+    ) {
+      violations.push(`${file}:Select`);
+    }
+    if (
+      file === "components/dashboard/setup-modal.tsx" &&
       content.includes("<input")
     ) {
       violations.push(`${file}:input`);
+    }
+    if (
+      file === "components/dashboard/setup-modal.tsx" &&
+      content.includes("<select")
+    ) {
+      violations.push(`${file}:select`);
     }
   }
 
