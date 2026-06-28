@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createLiveKitStartFixture } from "@meelni/test-fixtures";
+
 import {
   buildInterviewRoomName,
   createLiveKitInterviewProvider,
@@ -22,7 +24,7 @@ test("declares the provider set used by the current app", () => {
     "stripe",
     "posthog",
     "google_sheets",
-    "inngest"
+    "inngest",
   ]);
 });
 
@@ -30,10 +32,12 @@ test("livekit env contract captures server keys and websocket URL alternatives",
   const contract = getProviderEnvContract("livekit");
 
   assert.equal(contract.provider, "livekit");
-  assert.deepEqual(
-    listProviderEnvVars("livekit"),
-    ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "NEXT_PUBLIC_LIVEKIT_URL", "LIVEKIT_URL"]
-  );
+  assert.deepEqual(listProviderEnvVars("livekit"), [
+    "LIVEKIT_API_KEY",
+    "LIVEKIT_API_SECRET",
+    "NEXT_PUBLIC_LIVEKIT_URL",
+    "LIVEKIT_URL",
+  ]);
 });
 
 test("missing env detection supports required vars and at-least-one groups", () => {
@@ -46,13 +50,13 @@ test("missing env detection supports required vars and at-least-one groups", () 
 
   assert.deepEqual(missing, [
     "LIVEKIT_API_SECRET",
-    "NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL"
+    "NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL",
   ]);
 });
 
 test("google sheets contract exposes supported credential alternatives", () => {
   assert.deepEqual(findMissingRequiredEnv("google_sheets", {}), [
-    "GOOGLE_SHEET_CSV_URL or GOOGLE_SHEETS_API_KEY or GOOGLE_SHEETS_CREDENTIALS_BASE64 or GOOGLE_SHEETS_CREDENTIALS or GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"
+    "GOOGLE_SHEET_CSV_URL or GOOGLE_SHEETS_API_KEY or GOOGLE_SHEETS_CREDENTIALS_BASE64 or GOOGLE_SHEETS_CREDENTIALS or GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
   ]);
 });
 
@@ -110,6 +114,7 @@ test("buildInterviewRoomName creates deterministic interview room names for test
 });
 
 test("LiveKit provider creates room, dispatches agent, and mints token", async () => {
+  const fixture = createLiveKitStartFixture();
   const calls: string[] = [];
   const provider: LiveKitInterviewProvider = createLiveKitInterviewProvider({
     accessTokenFactory: class {
@@ -134,21 +139,14 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
     }),
   });
 
-  const result = await provider.startInterviewRoom({
-    agentId: "agent-1",
-    identity: "user-1",
-    participantName: "user@example.com",
-    roomName: "interview-1",
-    metadata: { round_type: "product_sense" },
-    env: { apiKey: "key", apiSecret: "secret", url: "wss://lk" },
-  });
+  const result = await provider.startInterviewRoom(fixture.input);
 
   assert.equal(result.ok, true);
   if (result.ok) {
     assert.deepEqual(result.data, {
-      roomName: "interview-1",
+      roomName: fixture.input.roomName,
       token: "token-1",
-      url: "wss://lk",
+      url: fixture.input.env.url,
     });
   }
   assert.deepEqual(calls, ["room", "dispatch", "grant", "jwt"]);
