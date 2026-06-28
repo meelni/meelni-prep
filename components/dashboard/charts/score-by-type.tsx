@@ -38,7 +38,7 @@ export function ScoreByType({ data, onTypeClick }: ScoreByTypeProps) {
       <DashboardChartCard
         title="Performance by Interview Type"
         description="No comparison data available"
-        contentClassName="flex h-[300px] items-center justify-center text-muted-foreground lg:h-[350px]"
+        contentClassName="flex h-chart-md items-center justify-center text-muted-foreground lg:h-chart-md-plus"
       >
         <p className="text-sm">
           Complete interviews across different types to see comparisons
@@ -70,7 +70,7 @@ export function ScoreByType({ data, onTypeClick }: ScoreByTypeProps) {
     >
       <ChartContainer
         config={chartConfig}
-        className="h-[300px] w-full lg:h-[350px]"
+        className="h-chart-md w-full lg:h-chart-md-plus"
       >
         <BarChart
           accessibilityLayer

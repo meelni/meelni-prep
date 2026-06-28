@@ -398,6 +398,27 @@
     top: var(--header-height);
   }
 
+  /* Dashboard chart height utilities */
+  .h-chart-sm {
+    height: 250px;
+  }
+
+  .h-chart-md {
+    height: 300px;
+  }
+
+  .h-chart-md-plus {
+    height: 350px;
+  }
+
+  .h-chart-lg {
+    height: 400px;
+  }
+
+  .max-h-chart-lg {
+    max-height: 400px;
+  }
+
   /* Display headings - Everett 300 */
   .text-display-hero {
     font-family: var(--font-display);

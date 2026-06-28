@@ -100,7 +100,7 @@ export function PerformanceTrend({
       <DashboardChartCard
         title="Performance Trend"
         description="No session data available"
-        contentClassName="flex h-[300px] items-center justify-center text-muted-foreground lg:h-[400px]"
+        contentClassName="flex h-chart-md items-center justify-center text-muted-foreground lg:h-chart-lg"
       >
         <p className="text-sm">
           Complete your first interview to see your performance trend
@@ -133,7 +133,7 @@ export function PerformanceTrend({
     >
       <ChartContainer
         ref={chartRef}
-        className="h-[300px] w-full lg:h-[400px]"
+        className="h-chart-md w-full lg:h-chart-lg"
         config={chartConfig}
       >
         <AreaChart
