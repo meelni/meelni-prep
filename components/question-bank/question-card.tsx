@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Play, Calendar, Building2, Bookmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -64,11 +65,9 @@ export function QuestionCard({
     >
       {/* Checkbox - Top left corner with touch-friendly size */}
       <div className="absolute top-3 left-3">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={selected}
           onChange={onToggleSelect}
-          className="border-border text-primary focus:ring-primary/20 h-5 w-5 rounded focus:ring-2"
           aria-label={`Select question: ${question.questionText}`}
           aria-checked={selected}
         />
