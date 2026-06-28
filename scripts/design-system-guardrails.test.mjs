@@ -1024,6 +1024,7 @@ test("shared chart markers use named radius scale utilities", async () => {
 });
 
 test("example chart components use semantic chart and surface tokens", async () => {
+  const globals = await readFile("app/globals.css", "utf8");
   const files = [
     "components/charts/clipped-area-chart.tsx",
     "components/charts/default-multiple-bar-chart.tsx",
@@ -1035,6 +1036,10 @@ test("example chart components use semantic chart and surface tokens", async () 
   ];
   const violations = [];
 
+  if (!globals.includes(".max-h-chart-sm")) {
+    violations.push("app/globals.css:.max-h-chart-sm");
+  }
+
   for (const file of files) {
     const content = await readFile(file, "utf8");
     if (/color:\s*["']#[0-9A-Fa-f]{3,6}["']/.test(content)) {
@@ -1042,6 +1047,9 @@ test("example chart components use semantic chart and surface tokens", async () 
     }
     if (/\b(?:text|bg|border)-\[#[0-9A-Fa-f]{3,8}\]/.test(content)) {
       violations.push(`${file}:tailwind-literal`);
+    }
+    if (/\bmax-h-\[250px\]/.test(content)) {
+      violations.push(`${file}:arbitrary-chart-height`);
     }
   }
 
