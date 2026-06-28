@@ -26,6 +26,21 @@ async function* walk(dir) {
   }
 }
 
+async function* walkAll(dir) {
+  const entries = await readdir(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      yield* walkAll(path);
+      continue;
+    }
+
+    yield path;
+  }
+}
+
 test("design tokens are not wrapped in legacy hsl()/rgb() color functions", async () => {
   const violations = [];
 
@@ -37,6 +52,20 @@ test("design tokens are not wrapped in legacy hsl()/rgb() color functions", asyn
       for (const match of matches) {
         const line = content.slice(0, match.index).split("\n").length;
         violations.push(`${file}:${line} ${match[0]}`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("ui source tree does not keep tracked backup files", async () => {
+  const violations = [];
+
+  for (const root of ROOTS) {
+    for await (const file of walkAll(root)) {
+      if (file.endsWith(".bak")) {
+        violations.push(file);
       }
     }
   }
