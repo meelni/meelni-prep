@@ -324,6 +324,28 @@ test("priority overlays use the shared overlay color token", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("interview control rail uses semantic surface tokens", async () => {
+  const file = "app/interview/components/interview-controls.tsx";
+  const content = await readFile(file, "utf8");
+  const required = ["bg-card/80", "border-border"];
+  const banned = ["bg-white/", "border-white/"];
+  const violations = [];
+
+  for (const token of required) {
+    if (!content.includes(token)) {
+      violations.push(`${file}:${token}`);
+    }
+  }
+
+  for (const token of banned) {
+    if (content.includes(token)) {
+      violations.push(`${file}:${token}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
