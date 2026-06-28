@@ -482,6 +482,28 @@ test("landing border text uses semantic foreground treatment", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("landing checkered background uses semantic color defaults", async () => {
+  const componentFile = "components/ui/checkered-background.tsx";
+  const heroFile = "components/sections/hero.tsx";
+  const component = await readFile(componentFile, "utf8");
+  const hero = await readFile(heroFile, "utf8");
+  const violations = [];
+
+  if (!component.includes('color = "var(--primary)"')) {
+    violations.push(`${componentFile}:semantic-default-color`);
+  }
+
+  if (/#[0-9A-Fa-f]{6}/.test(component)) {
+    violations.push(`${componentFile}:literal-color`);
+  }
+
+  if (!hero.includes('color="var(--primary)"')) {
+    violations.push(`${heroFile}:semantic-checkered-color`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
