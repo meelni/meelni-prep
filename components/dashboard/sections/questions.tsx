@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, memo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -46,14 +48,10 @@ interface Question {
 }
 
 const QUESTION_TYPE_COLORS = {
-  Behavioral:
-    "bg-blue-500/8 text-blue-600 dark:text-blue-400 border-blue-500/20",
-  "Product Sense":
-    "bg-purple-500/8 text-purple-600 dark:text-purple-400 border-purple-500/20",
-  Execution:
-    "bg-green-500/8 text-green-600 dark:text-green-400 border-green-500/20",
-  "Product Strategy":
-    "bg-orange-500/8 text-orange-600 dark:text-orange-400 border-orange-500/20",
+  Behavioral: "border-info/20 bg-info/10 text-info",
+  "Product Sense": "border-primary/20 bg-primary/10 text-primary",
+  Execution: "border-success/20 bg-success/10 text-success",
+  "Product Strategy": "border-warning/20 bg-warning/10 text-warning",
 };
 
 export const QuestionsSection = memo(function QuestionsSection() {
@@ -506,12 +504,12 @@ export const QuestionsSection = memo(function QuestionsSection() {
                 <div className="flex items-center gap-3">
                   <div className="relative flex-1">
                     <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-                    <input
+                    <Input
                       type="text"
                       placeholder="Search questions by text or company..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="bg-card border-border text-foreground placeholder:text-muted-foreground focus:ring-primary/20 focus:border-primary w-full rounded-lg border py-2.5 pr-4 pl-10 text-sm transition-all duration-150 focus:ring-2 focus:outline-none"
+                      className="bg-card pl-10"
                       aria-label="Search questions"
                     />
                   </div>
@@ -535,15 +533,14 @@ export const QuestionsSection = memo(function QuestionsSection() {
                     <TableRow className="hover:bg-transparent">
                       {/* Checkbox column */}
                       <TableHead className="h-11 w-12 px-4">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={
                             selectedQuestions.size ===
                               filteredQuestions.length &&
                             filteredQuestions.length > 0
                           }
                           onChange={toggleSelectAll}
-                          className="border-border text-primary focus:ring-primary/20 h-4 w-4 rounded focus:ring-2"
+                          className="h-4 w-4"
                           aria-label="Select all questions"
                         />
                       </TableHead>
@@ -578,13 +575,12 @@ export const QuestionsSection = memo(function QuestionsSection() {
                         >
                           {/* Checkbox */}
                           <TableCell className="px-4 py-3.5">
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={isSelected}
                               onChange={() =>
                                 toggleQuestionSelection(question.id)
                               }
-                              className="border-border text-primary focus:ring-primary/20 h-4 w-4 rounded focus:ring-2"
+                              className="h-4 w-4"
                               aria-label={`Select question: ${question.questionText}`}
                               aria-checked={isSelected}
                             />
@@ -697,12 +693,12 @@ export const QuestionsSection = memo(function QuestionsSection() {
                   <div className="flex items-center gap-3">
                     <div className="relative flex-1">
                       <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-                      <input
+                      <Input
                         type="text"
                         placeholder="Search questions..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="bg-card border-border text-foreground placeholder:text-muted-foreground focus:ring-primary/20 focus:border-primary min-h-[44px] w-full rounded-lg border py-2.5 pr-4 pl-10 text-sm transition-all duration-150 focus:ring-2 focus:outline-none"
+                        className="min-h-11 bg-card pl-10"
                         aria-label="Search questions"
                       />
                     </div>
