@@ -10,11 +10,12 @@ const requiredChecks = [
   ["skills", "npm", ["run", "validate:skills"]],
   ["typecheck", "npm", ["run", "typecheck"]],
   ["local tests", "npm", ["run", "test:local"]],
+  ["fixture tests", "npm", ["run", "test:fixtures"]],
   ["core tests", "npm", ["run", "test:core"]],
   ["agent tests", "npm", ["run", "test:agent"]],
   ["integration tests", "npm", ["run", "test:integrations"]],
   ["lint", "npm", ["run", "lint"]],
-  ["build", "npm", ["run", "build"]]
+  ["build", "npm", ["run", "build"]],
 ];
 
 const optionalChecks = [
@@ -23,8 +24,9 @@ const optionalChecks = [
     command: "npm",
     args: ["run", "test:python-agent"],
     when: () => existsSync(resolve(repoRoot, "agent/venv/bin/python")),
-    skipReason: "agent/venv is missing; run `npm run setup:local` to enable Python agent validation."
-  }
+    skipReason:
+      "agent/venv is missing; run `npm run setup:local` to enable Python agent validation.",
+  },
 ];
 
 for (const [name, command, args] of requiredChecks) {
@@ -48,7 +50,7 @@ function run(name, command, args) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
     shell: process.platform === "win32",
-    stdio: "inherit"
+    stdio: "inherit",
   });
 
   if (result.status !== 0) {
