@@ -81,7 +81,7 @@ export function Features() {
                   {/* Content */}
                   <div className="relative z-10">
                     <h3 className={cn(
-                      "text-[20px] leading-[28px] font-sans font-semibold text-foreground mb-2 transition-all duration-300 tracking-tight",
+                      "text-xl leading-7 font-sans font-semibold text-foreground mb-2 transition-all duration-300 tracking-tight",
                       "group-hover:bg-gradient-to-r group-hover:bg-clip-text group-hover:text-transparent",
                       featureColors[index].gradient
                     )}>

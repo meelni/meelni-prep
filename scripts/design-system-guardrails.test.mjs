@@ -810,6 +810,24 @@ test("public top chrome uses semantic status and type primitives", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("landing content sections use shared type scale utilities", async () => {
+  const files = [
+    "components/sections/blog.tsx",
+    "components/sections/features.tsx",
+    "components/sections/testimonials.tsx",
+  ];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (content.includes("text-[")) {
+      violations.push(`${file}:arbitrary-text`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("blog detail page uses shared marketing article primitives", async () => {
   const surfaceSource = await readFile(
     "components/marketing/marketing-surface.tsx",
