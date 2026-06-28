@@ -42,7 +42,7 @@ export function BulkActionToolbar({
               size="sm"
               variant="default"
               onClick={onBookmark}
-              className="gap-2 min-h-[44px] w-full sm:w-auto"
+              className="gap-2 min-h-11 w-full sm:w-auto"
             >
               <Bookmark className="w-4 h-4" />
               Bookmark
@@ -52,7 +52,7 @@ export function BulkActionToolbar({
               size="sm"
               variant="outline"
               onClick={onCreatePracticeSet}
-              className="gap-2 min-h-[44px] w-full sm:w-auto"
+              className="gap-2 min-h-11 w-full sm:w-auto"
             >
               <FolderPlus className="w-4 h-4" />
               <span className="hidden sm:inline">Create Practice Set</span>
@@ -63,7 +63,7 @@ export function BulkActionToolbar({
               size="sm"
               variant="ghost"
               onClick={onDeselectAll}
-              className="gap-2 min-h-[44px] w-full sm:w-auto"
+              className="gap-2 min-h-11 w-full sm:w-auto"
             >
               <X className="w-4 h-4" />
               Deselect All

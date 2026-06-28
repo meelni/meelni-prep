@@ -102,7 +102,7 @@ export function MobileFilterDrawer({
                       variant={selectedType === type ? "default" : "quiet"}
                       onClick={() => onSelectType(type)}
                       className={cn(
-                        "flex min-h-[48px] w-full items-center justify-start rounded-lg px-4 py-3 text-left text-sm font-medium transition-all duration-150",
+                        "flex min-h-12 w-full items-center justify-start rounded-lg px-4 py-3 text-left text-sm font-medium transition-all duration-150",
                         selectedType === type
                           ? "bg-primary text-primary-foreground shadow-primary/20 shadow-sm"
                           : "bg-muted/30 text-foreground hover:bg-muted/50"
