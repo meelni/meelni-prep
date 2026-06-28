@@ -6,7 +6,7 @@ import test from "node:test";
 const ROOTS = ["app", "components", "lib"];
 const EXTENSIONS = new Set([".css", ".ts", ".tsx"]);
 const INVALID_TOKEN_WRAPPER =
-  /(?:hsl|rgb)\(\s*var\(--[a-z0-9-]+\)\s*(?:(?:\/|,)[^)]*)?\)/g;
+  /(?:hsl|rgb|rgba)\(\s*var\(--[a-z0-9-]+\)\s*(?:(?:\/|,)[^)]*)?\)/g;
 
 async function* walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });

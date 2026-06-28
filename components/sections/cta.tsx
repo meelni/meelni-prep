@@ -10,7 +10,7 @@ export function CTA() {
         <div className="max-w-4xl mx-auto">
           {/* Top border with glow */}
           <motion.div
-            className="h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent mb-12 shadow-[0_0_8px_rgba(var(--primary),0.3)]"
+            className="h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent mb-12 shadow-lg shadow-primary/20"
             initial={{ opacity: 0, scaleX: 0 }}
             whileInView={{ opacity: 1, scaleX: 1 }}
             viewport={{ once: true }}
@@ -41,7 +41,7 @@ export function CTA() {
 
           {/* Bottom border with glow */}
           <motion.div
-            className="h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent mt-12 shadow-[0_0_8px_rgba(var(--primary),0.3)]"
+            className="h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent mt-12 shadow-lg shadow-primary/20"
             initial={{ opacity: 0, scaleX: 0 }}
             whileInView={{ opacity: 1, scaleX: 1 }}
             viewport={{ once: true }}
