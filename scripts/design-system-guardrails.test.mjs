@@ -1166,3 +1166,31 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
 
   assert.deepEqual([...missingExports, ...violations], []);
 });
+
+test("feedback surface tones use semantic status tokens", async () => {
+  const file = "components/feedback/feedback-surface.tsx";
+  const content = await readFile(file, "utf8");
+  const rawStatusUtility =
+    /\b(?:bg|text|border|to|dark:border)-(?:amber|blue|emerald|green|orange|purple|red|yellow)-\d+(?:\/\d+)?\b/;
+  const requiredTokens = [
+    "border-success",
+    "bg-success",
+    "text-success",
+    "border-warning",
+    "bg-warning",
+    "text-warning",
+    "border-info",
+    "bg-info",
+    "text-info",
+    "border-destructive",
+    "bg-destructive",
+    "text-destructive",
+  ];
+  const violations = requiredTokens.filter((token) => !content.includes(token));
+
+  if (rawStatusUtility.test(content)) {
+    violations.push(`${file}:raw-status-utility`);
+  }
+
+  assert.deepEqual(violations, []);
+});
