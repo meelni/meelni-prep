@@ -706,7 +706,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
                       type="button"
                       variant="outline"
                       onClick={() => setIsFilterDrawerOpen(true)}
-                      className="flex min-h-[44px] items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
+                      className="flex min-h-11 items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
                       aria-label="Open filters"
                     >
                       <Filter className="h-4 w-4" />

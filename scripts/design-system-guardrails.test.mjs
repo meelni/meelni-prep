@@ -1364,6 +1364,9 @@ test("question bank child components use shared controls", async () => {
     if (/min-h-\[(?:44|48)px\]/.test(content)) {
       violations.push(`${file}:arbitrary-touch-target`);
     }
+    if (/left-\[280px\]|max-w-\[calc\(100vw-2rem\)\]|min-h-\[140px\]/.test(content)) {
+      violations.push(`${file}:arbitrary-question-bank-layout`);
+    }
   }
 
   const formExpectations = [
@@ -1710,7 +1713,12 @@ test("explore question surfaces use shared form and action primitives", async ()
     {
       file: "components/question-bank/question-card.tsx",
       requiredImports: ["@/components/ui/checkbox", "@/components/ui/button"],
-      bannedPatterns: ["<input"],
+      bannedPatterns: ["<input", "min-h-[140px]"],
+    },
+    {
+      file: "components/explore/public-question-card.tsx",
+      requiredImports: ["@/components/ui/badge"],
+      bannedPatterns: ["min-h-[140px]"],
     },
   ];
   const violations = [];
@@ -1760,6 +1768,9 @@ test("dashboard question filters use shared controls and semantic type colors", 
   }
   if (content.includes("shadow-[")) {
     violations.push(`${file}:arbitrary-shadow`);
+  }
+  if (/min-h-\[(?:44|48)px\]/.test(content)) {
+    violations.push(`${file}:arbitrary-touch-target`);
   }
 
   assert.deepEqual(violations, []);

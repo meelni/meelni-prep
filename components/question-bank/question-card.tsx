@@ -57,7 +57,7 @@ export function QuestionCard({
       transition={{ delay: index * 0.05, duration: 0.3 }}
       whileTap={{ scale: 0.98 }}
       className={cn(
-        "bg-card relative flex min-h-[140px] flex-col rounded-lg border p-4 transition-all duration-150",
+        "bg-card relative flex min-h-36 flex-col rounded-lg border p-4 transition-all duration-150",
         selected
           ? "border-primary shadow-primary/20 shadow-sm"
           : "border-border hover:border-primary/50 hover:shadow-sm"
