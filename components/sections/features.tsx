@@ -5,17 +5,28 @@ import { siteConfig } from "@/lib/config";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-// Color schemes for each feature - vibrant for dark backgrounds
-const featureColors = [
-  { gradient: "from-cyan-400 to-blue-500", glow: "shadow-cyan-500/20", iconBg: "bg-gradient-to-br from-cyan-400 to-blue-500" },
-  { gradient: "from-purple-400 to-pink-500", glow: "shadow-purple-500/20", iconBg: "bg-gradient-to-br from-purple-400 to-pink-500" },
-  { gradient: "from-orange-400 to-red-500", glow: "shadow-orange-500/20", iconBg: "bg-gradient-to-br from-orange-400 to-red-500" },
-  { gradient: "from-green-400 to-emerald-500", glow: "shadow-green-500/20", iconBg: "bg-gradient-to-br from-green-400 to-emerald-500" },
-  { gradient: "from-blue-400 to-indigo-500", glow: "shadow-blue-500/20", iconBg: "bg-gradient-to-br from-blue-400 to-indigo-500" },
-  { gradient: "from-pink-400 to-purple-500", glow: "shadow-pink-500/20", iconBg: "bg-gradient-to-br from-pink-400 to-purple-500" },
+const featureTones = [
+  {
+    badge: "border-primary/20 bg-primary/10 text-primary",
+    title: "group-hover:text-primary",
+    shadow: "hover:shadow-primary/10",
+  },
+  {
+    badge: "border-info/20 bg-info/10 text-info",
+    title: "group-hover:text-info",
+    shadow: "hover:shadow-info/10",
+  },
+  {
+    badge: "border-success/20 bg-success/10 text-success",
+    title: "group-hover:text-success",
+    shadow: "hover:shadow-success/10",
+  },
+  {
+    badge: "border-warning/20 bg-warning/10 text-warning",
+    title: "group-hover:text-warning",
+    shadow: "hover:shadow-warning/10",
+  },
 ];
-
-
 
 export function Features() {
   const features = siteConfig.features;
@@ -62,18 +73,20 @@ export function Features() {
                   bounce: 0.3
                 }}
               >
-                {/* Card with glass morphism and glow */}
+                {/* Card with glass morphism and semantic tone feedback */}
                 <div className={cn(
                   "relative w-full p-6 rounded-2xl border border-border/60 bg-card/50 backdrop-blur-md transition-all duration-300 hover:-translate-y-2",
                   "hover:border-primary/50 hover:shadow-2xl",
-                  featureColors[index].glow
+                  featureTones[index % featureTones.length].shadow
                 )}>
                   {/* Number Badge */}
-                  <div className="absolute top-6 right-6 opacity-30 group-hover:opacity-100 transition-opacity duration-300 z-20">
-                    <span className={cn(
-                      "text-code-sm font-mono font-normal bg-gradient-to-r bg-clip-text text-transparent",
-                      featureColors[index].gradient
-                    )}>
+                  <div className="absolute top-6 right-6 z-20 transition-opacity duration-300 opacity-70 group-hover:opacity-100">
+                    <span
+                      className={cn(
+                        "inline-flex min-w-9 items-center justify-center rounded-full border px-2 py-1 text-code-sm font-mono font-normal",
+                        featureTones[index % featureTones.length].badge
+                      )}
+                    >
                       {String(index + 1).padStart(2, '0')}
                     </span>
                   </div>
@@ -81,9 +94,8 @@ export function Features() {
                   {/* Content */}
                   <div className="relative z-10">
                     <h3 className={cn(
-                      "text-xl leading-7 font-sans font-semibold text-foreground mb-2 transition-all duration-300 tracking-tight",
-                      "group-hover:bg-gradient-to-r group-hover:bg-clip-text group-hover:text-transparent",
-                      featureColors[index].gradient
+                      "text-xl leading-7 font-sans font-semibold text-foreground mb-2 transition-colors duration-300 tracking-tight",
+                      featureTones[index % featureTones.length].title
                     )}>
                       {feature.name}
                     </h3>
