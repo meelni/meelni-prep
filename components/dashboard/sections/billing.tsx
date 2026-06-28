@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   DashboardActionCard,
+  DashboardLoadingState,
   DashboardSectionCard,
   DashboardSkeletonCard,
   DashboardStateCard,
@@ -272,13 +273,11 @@ export function BillingSection() {
 
   if (isLoading) {
     return (
-      <DashboardSkeletonCard className="flex min-h-[400px] items-center justify-center">
-        <div className="space-y-3 text-center">
-          <Loader2 className="text-primary mx-auto h-8 w-8 animate-spin" />
-          <p className="text-muted-foreground text-sm">
-            Loading billing information...
-          </p>
-        </div>
+      <DashboardSkeletonCard className="min-h-dashboard-loading">
+        <DashboardLoadingState
+          className="min-h-0"
+          label="Loading billing information..."
+        />
       </DashboardSkeletonCard>
     );
   }

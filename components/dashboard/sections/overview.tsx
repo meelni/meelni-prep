@@ -3,9 +3,10 @@
 import { useState, useEffect, memo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles, Calendar, Loader2, Flame, AlertCircle } from "lucide-react";
+import { ArrowRight, Sparkles, Calendar, Flame, AlertCircle } from "lucide-react";
 import {
   DashboardActionCard,
+  DashboardLoadingState,
   DashboardSectionCard,
   DashboardStateCard,
 } from "@/components/dashboard/dashboard-surface";
@@ -152,14 +153,7 @@ export const OverviewSection = memo(function OverviewSection({
   const isNewUser = totalSessions === 0;
 
   if (loadingSummary || loadingSessions) {
-    return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <div className="text-center space-y-3">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
-          <p className="text-sm text-muted-foreground">Loading dashboard...</p>
-        </div>
-      </div>
-    );
+    return <DashboardLoadingState className="p-6" label="Loading dashboard..." />;
   }
 
   // Show empty state for new users

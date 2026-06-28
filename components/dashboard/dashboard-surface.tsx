@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { LucideIcon } from "lucide-react";
+import { Loader2, type LucideIcon } from "lucide-react";
 
 import {
   AppSurface,
@@ -179,6 +179,33 @@ interface DashboardSkeletonCardProps
   variant?: "metric" | "chart";
 }
 
+interface DashboardLoadingStateProps
+  extends React.HTMLAttributes<HTMLDivElement> {
+  label?: React.ReactNode;
+}
+
+function DashboardLoadingState({
+  className,
+  label = "Loading section...",
+  children,
+  ...props
+}: DashboardLoadingStateProps) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-dashboard-loading items-center justify-center",
+        className
+      )}
+      {...props}
+    >
+      <div className="flex flex-col items-center gap-3 text-center">
+        {children || <Loader2 className="h-8 w-8 animate-spin text-primary" />}
+        {label && <p className="text-sm text-muted-foreground">{label}</p>}
+      </div>
+    </div>
+  );
+}
+
 function DashboardSkeletonCard({
   className,
   variant = "metric",
@@ -311,6 +338,7 @@ export {
   DashboardMetricCard,
   DashboardChartCard,
   DashboardStateCard,
+  DashboardLoadingState,
   DashboardSkeletonCard,
   DashboardSectionCard,
   DashboardActionCard,

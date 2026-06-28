@@ -22,6 +22,7 @@ import { MobileFilterDrawer } from "@/components/question-bank/mobile-filter-dra
 import { PracticeSetDialog } from "@/components/question-bank/practice-set-dialog";
 import { PracticeSetsList } from "@/components/question-bank/practice-sets-list";
 import {
+  DashboardLoadingState,
   DashboardSectionCard,
   DashboardSkeletonCard,
 } from "@/components/dashboard/dashboard-surface";
@@ -356,14 +357,12 @@ export const QuestionsSection = memo(function QuestionsSection() {
     return (
       <DashboardSkeletonCard
         variant="chart"
-        className="m-6 flex min-h-[400px] items-center justify-center"
+        className="m-6 min-h-dashboard-loading"
       >
-        <div className="flex flex-col items-center gap-4">
-          <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
-          <p className="text-muted-foreground text-sm">
-            Loading question bank...
-          </p>
-        </div>
+        <DashboardLoadingState
+          className="min-h-0"
+          label="Loading question bank..."
+        />
       </DashboardSkeletonCard>
     );
   }

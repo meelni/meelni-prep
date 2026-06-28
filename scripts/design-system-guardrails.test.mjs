@@ -955,6 +955,58 @@ test("dashboard surface primitives use named size utilities", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("dashboard loading states use shared loading primitive", async () => {
+  const globals = await readFile("app/globals.css", "utf8");
+  const surfaceSource = await readFile(
+    "components/dashboard/dashboard-surface.tsx",
+    "utf8"
+  );
+  const pageFiles = [
+    "app/dashboard/page.tsx",
+    "app/dashboard/analytics/page.tsx",
+    "app/dashboard/history/page.tsx",
+    "app/dashboard/questions/page.tsx",
+    "app/dashboard/settings/page.tsx",
+  ];
+  const loadingFiles = [
+    ...pageFiles,
+    "components/dashboard/sections/billing.tsx",
+    "components/dashboard/sections/overview.tsx",
+    "components/dashboard/sections/questions.tsx",
+  ];
+  const violations = [];
+
+  if (!globals.includes(".min-h-dashboard-loading")) {
+    violations.push("app/globals.css:.min-h-dashboard-loading");
+  }
+
+  if (!surfaceSource.includes("DashboardLoadingState")) {
+    violations.push("components/dashboard/dashboard-surface.tsx:DashboardLoadingState");
+  }
+
+  for (const file of pageFiles) {
+    const content = await readFile(file, "utf8");
+    if (!content.includes("DashboardLoadingState")) {
+      violations.push(`${file}:DashboardLoadingState`);
+    }
+    if (content.includes("function SectionLoading")) {
+      violations.push(`${file}:SectionLoading`);
+    }
+    if (content.includes('from "lucide-react"')) {
+      violations.push(`${file}:local-loader-icon`);
+    }
+  }
+
+  for (const file of loadingFiles) {
+    const content = await readFile(file, "utf8");
+    if (content.includes("min-h-[400px]")) {
+      violations.push(`${file}:arbitrary-loading-height`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("shared chart markers use named radius scale utilities", async () => {
   const file = "components/ui/chart.tsx";
   const content = await readFile(file, "utf8");
