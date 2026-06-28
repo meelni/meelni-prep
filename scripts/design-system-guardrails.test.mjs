@@ -578,6 +578,35 @@ test("dashboard overview status indicators use semantic tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("dashboard analytics comparison indicators use semantic tokens", async () => {
+  const files = [
+    "components/dashboard/sections/analytics.tsx",
+    "components/dashboard/charts/score-by-type.tsx",
+  ];
+  const rawStatusUtility =
+    /\b(?:bg|text|border)-(?:green|orange|red)-500(?:\/\d+)?\b/;
+  const requiredTokens = ["text-success", "text-warning", "text-destructive"];
+  const violations = [];
+  const source = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    source.push(content);
+    if (rawStatusUtility.test(content)) {
+      violations.push(`${file}:raw-status-utility`);
+    }
+  }
+
+  const combinedSource = source.join("\n");
+  for (const token of requiredTokens) {
+    if (!combinedSource.includes(token)) {
+      violations.push(token);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("question bank child components use shared controls", async () => {
   const textareaSource = await readFile(
     "components/ui/textarea.tsx",
