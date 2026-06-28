@@ -557,6 +557,28 @@ test("dot pattern uses semantic decorative color", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("tailwind indicator uses semantic dev surface tokens", async () => {
+  const file = "components/tailwind-indicator.tsx";
+  const content = await readFile(file, "utf8");
+  const required = ["bg-popover", "text-popover-foreground", "border-border"];
+  const banned = ["bg-gray-", "text-white"];
+  const violations = [];
+
+  for (const token of required) {
+    if (!content.includes(token)) {
+      violations.push(`${file}:${token}`);
+    }
+  }
+
+  for (const token of banned) {
+    if (content.includes(token)) {
+      violations.push(`${file}:${token}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
