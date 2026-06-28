@@ -37,7 +37,7 @@ export function TimeInvestment({
       <DashboardChartCard
         title="Time Investment"
         description="No time data available"
-        contentClassName="flex h-[300px] items-center justify-center text-muted-foreground lg:h-[350px]"
+        contentClassName="flex h-chart-md items-center justify-center text-muted-foreground lg:h-chart-md-plus"
       >
         <p className="text-sm">
           Complete interviews to see your time investment
@@ -80,7 +80,7 @@ export function TimeInvestment({
     >
       <ChartContainer
         config={chartConfig}
-        className="h-[300px] w-full lg:h-[350px]"
+        className="h-chart-md w-full lg:h-chart-md-plus"
       >
         <BarChart accessibilityLayer data={data}>
           <CartesianGrid

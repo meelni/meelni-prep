@@ -890,6 +890,41 @@ test("priority chart configs use shared chart tokens instead of literal colors",
   assert.deepEqual(violations, []);
 });
 
+test("dashboard charts use named height utilities", async () => {
+  const globals = await readFile("app/globals.css", "utf8");
+  const files = [
+    "components/dashboard/charts/clipped-area-chart.tsx",
+    "components/dashboard/charts/performance-trend.tsx",
+    "components/dashboard/charts/competency-breakdown.tsx",
+    "components/dashboard/charts/score-by-type.tsx",
+    "components/dashboard/charts/time-investment.tsx",
+    "components/dashboard/charts/type-distribution.tsx",
+  ];
+  const violations = [];
+  const requiredUtilities = [
+    ".h-chart-sm",
+    ".h-chart-md",
+    ".h-chart-md-plus",
+    ".h-chart-lg",
+    ".max-h-chart-lg",
+  ];
+
+  for (const utility of requiredUtilities) {
+    if (!globals.includes(utility)) {
+      violations.push(`app/globals.css:${utility}`);
+    }
+  }
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (/\b(?:h|max-h)-\[(?:250|300|350|400)px\]/.test(content)) {
+      violations.push(`${file}:arbitrary-chart-height`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("shared chart markers use named radius scale utilities", async () => {
   const file = "components/ui/chart.tsx";
   const content = await readFile(file, "utf8");

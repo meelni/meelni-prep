@@ -36,7 +36,7 @@ export function CompetencyBreakdown({
         title="Competency Breakdown"
         description="No competency data available"
         centeredHeader
-        contentClassName="flex h-[300px] items-center justify-center text-muted-foreground lg:h-[400px]"
+        contentClassName="flex h-chart-md items-center justify-center text-muted-foreground lg:h-chart-lg"
       >
         <p className="text-sm">
           Complete interviews to see your competency scores
@@ -67,7 +67,7 @@ export function CompetencyBreakdown({
     >
       <ChartContainer
         config={chartConfig}
-        className="mx-auto aspect-square max-h-[400px]"
+        className="mx-auto aspect-square max-h-chart-lg"
       >
         <RadarChart
           data={data}

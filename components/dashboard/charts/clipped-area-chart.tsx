@@ -90,7 +90,7 @@ export function ClippedAreaChart({ data }: ClippedAreaChartProps) {
     >
       <ChartContainer
         ref={chartRef}
-        className="h-[250px] w-full"
+        className="h-chart-sm w-full"
         config={chartConfig}
       >
         <AreaChart
