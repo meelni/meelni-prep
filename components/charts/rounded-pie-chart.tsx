@@ -61,8 +61,8 @@ export function RoundedPieChart() {
         <CardTitle>
           Pie Chart
           <Badge
-            variant="outline"
-            className="text-green-500 bg-green-500/10 border-none ml-2"
+            variant="success"
+            className="ml-2"
           >
             <TrendingUp className="h-4 w-4" />
             <span>5.2%</span>
