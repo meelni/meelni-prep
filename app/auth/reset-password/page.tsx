@@ -49,9 +49,9 @@ export default function ResetPasswordPage() {
       setTimeout(() => {
         router.push("/auth/signin");
       }, 2000);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Password update error:", err);
-      setError(err.message || "Failed to update password. Please try again.");
+      setError(err instanceof Error ? err.message : "Failed to update password. Please try again.");
       setIsSubmitting(false);
     }
   };

@@ -37,7 +37,13 @@ const chartConfig = {
 
 export function GlowingRadarChart({ data }: GlowingRadarChartProps) {
   // Custom tooltip content that shows full competency names (excluding Structure)
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({
+    active,
+    payload,
+  }: {
+    active?: boolean;
+    payload?: Array<{ payload: CompetencyDataPoint }>;
+  }) => {
     if (!active || !payload || !payload.length) return null;
 
     const dataPoint = payload[0].payload;

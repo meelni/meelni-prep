@@ -80,7 +80,10 @@ interface SessionWithFeedback {
   roundType: string;
   startedAt: Date | null;
   endedAt: Date | null;
-  config: any;
+  config: {
+    difficulty?: string;
+    [key: string]: unknown;
+  };
   feedback: {
     overallScore: string;
     structureScore: number | null;
@@ -176,7 +179,7 @@ export async function aggregateUserInsights(userId: string): Promise<UserInsight
   // Group by difficulty (from session config)
   const byDifficultyRaw = groupBy(
     completedSessions,
-    (s) => s.config?.difficulty || "intermediate"
+    (s) => typeof s.config?.difficulty === "string" ? s.config.difficulty : "intermediate"
   );
   const byDifficulty = {
     junior: calculateDifficultyStats(byDifficultyRaw["junior"] || []),

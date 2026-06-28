@@ -10,7 +10,10 @@ export interface SessionWithFeedback {
   roundType: string;
   startedAt: Date;
   endedAt: Date | null;
-  config?: any; // JSONB field containing difficulty and other settings
+  config?: {
+    difficulty?: string;
+    [key: string]: unknown;
+  }; // JSONB field containing difficulty and other settings
   feedback: {
     overallScore: number;
     structureScore: number;
@@ -235,10 +238,10 @@ export function calculateSummaryStats(sessions: SessionWithFeedback[]) {
 export function aggregateScoreByDifficulty(sessions: SessionWithFeedback[]) {
   // Filter sessions with feedback and difficulty in config
   const sessionsWithDifficulty = sessions.filter(
-    (s) =>
+    (s): s is SessionWithFeedback & { config: { difficulty: string } } =>
       s.feedback?.overallScore !== null &&
       s.feedback?.overallScore !== undefined &&
-      s.config?.difficulty
+      typeof s.config?.difficulty === "string"
   );
 
   // Group by difficulty and calculate averages
@@ -291,10 +294,10 @@ export function calculateRecommendedDifficulty(sessions: SessionWithFeedback[]):
   // Get sessions with feedback and difficulty, sorted by date (newest first)
   const sessionsWithDifficulty = sessions
     .filter(
-      (s) =>
+      (s): s is SessionWithFeedback & { config: { difficulty: string } } =>
         s.feedback?.overallScore !== null &&
         s.feedback?.overallScore !== undefined &&
-        s.config?.difficulty
+        typeof s.config?.difficulty === "string"
     )
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
 
@@ -309,7 +312,8 @@ export function calculateRecommendedDifficulty(sessions: SessionWithFeedback[]):
   }
 
   // Get current difficulty from most recent session
-  const currentDifficulty = sessionsWithDifficulty[0].config.difficulty;
+  const firstSession = sessionsWithDifficulty[0];
+  const currentDifficulty = firstSession.config.difficulty;
 
   // Get last 3 sessions for current difficulty
   const recentSessionsAtCurrentLevel = sessionsWithDifficulty
@@ -339,7 +343,7 @@ export function calculateRecommendedDifficulty(sessions: SessionWithFeedback[]):
 
   // Level up: avg >= 4.0 (80%)
   if (avgScore >= 4.0 && currentIndex < difficultyOrder.length - 1) {
-    const nextLevel = difficultyOrder[currentIndex + 1];
+    const nextLevel = difficultyOrder[currentIndex + 1] ?? currentDifficulty;
     return {
       recommended: nextLevel,
       currentDifficulty,
@@ -350,7 +354,7 @@ export function calculateRecommendedDifficulty(sessions: SessionWithFeedback[]):
 
   // Level down: avg <= 2.5 (50%)
   if (avgScore <= 2.5 && currentIndex > 0) {
-    const prevLevel = difficultyOrder[currentIndex - 1];
+    const prevLevel = difficultyOrder[currentIndex - 1] ?? currentDifficulty;
     return {
       recommended: prevLevel,
       currentDifficulty,

@@ -1,5 +1,6 @@
 import { Icons } from "@/components/icons";
 import { siteConfig } from "@/lib/config";
+import Link from "next/link";
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -38,12 +39,12 @@ export function Footer() {
               >
                 Pricing
               </a>
-              <a
+              <Link
                 href="/blog"
                 className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
               >
                 Blog
-              </a>
+              </Link>
               <a
                 href="/contact"
                 className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"

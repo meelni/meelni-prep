@@ -95,8 +95,8 @@ export function ScoreByDifficulty({ data, recommendedDifficulty }: ScoreByDiffic
                   border: "1px solid hsl(var(--border))",
                   borderRadius: "8px",
                 }}
-                formatter={(value: number, name: string, props: any) => {
-                  const sessionCount = props.payload.sessionCount;
+                formatter={(value: number, _name: string, props: { payload?: { sessionCount?: number } }) => {
+                  const sessionCount = props.payload?.sessionCount ?? 0;
                   return [
                     `${Math.round(value)}% (${sessionCount} session${sessionCount === 1 ? "" : "s"})`,
                     "Avg Score",

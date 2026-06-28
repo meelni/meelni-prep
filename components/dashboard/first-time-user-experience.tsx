@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 export function FirstTimeUserExperience() {
   const router = useRouter();
@@ -13,7 +14,6 @@ export function FirstTimeUserExperience() {
 
   // Track first-time user experience view
   useEffect(() => {
-    const { analytics } = require('@/lib/analytics/analytics-service');
     analytics.track('ftue_viewed', {
       user_id: user?.id,
     });
@@ -27,7 +27,6 @@ export function FirstTimeUserExperience() {
 
   // Track CTA click
   const handleStartInterview = () => {
-    const { analytics } = require('@/lib/analytics/analytics-service');
     analytics.track('ftue_cta_clicked', {
       user_id: user?.id,
       cta_text: 'Start Your First Mock Interview',

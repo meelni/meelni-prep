@@ -7,6 +7,7 @@ import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { Loader2 } from "lucide-react";
 import { DashboardError } from "@/components/dashboard/error";
 import { useEffect } from "react";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 // Lazy load overview section
 const OverviewSection = lazy(() => import("@/components/dashboard/sections/overview").then(m => ({ default: m.OverviewSection })));
@@ -29,7 +30,6 @@ export default function DashboardPage() {
 
   // Track dashboard section views
   useEffect(() => {
-    const { analytics } = require('@/lib/analytics/analytics-service');
     analytics.track('dashboard_viewed', {
       section: 'overview',
     });

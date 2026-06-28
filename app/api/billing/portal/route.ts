@@ -5,17 +5,6 @@ import { subscription } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 
-// Initialize Stripe
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-
-if (!STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY environment variable is required");
-}
-
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2025-10-29.clover",
-});
-
 /**
  * POST /api/billing/portal
  *
@@ -32,6 +21,8 @@ const stripe = new Stripe(STRIPE_SECRET_KEY, {
  */
 export async function POST(req: Request) {
   try {
+    const stripe = getStripe();
+
     // Check authentication
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -82,13 +73,13 @@ export async function POST(req: Request) {
     // Verify customer exists in current Stripe mode (test vs live)
     try {
       await stripe.customers.retrieve(sub.stripeCustomerId);
-    } catch (stripeError: any) {
+    } catch (stripeError) {
       // Customer doesn't exist in current mode (likely test customer ID with live keys)
-      console.error(`Stripe customer ${sub.stripeCustomerId} not found:`, stripeError.message);
+      console.error(`Stripe customer ${sub.stripeCustomerId} not found:`, getErrorMessage(stripeError));
 
       // Check if this is a mode mismatch (test customer with live keys or vice versa)
       const isTestCustomer = sub.stripeCustomerId.startsWith('cus_') && !sub.stripeCustomerId.includes('live');
-      const isLiveMode = STRIPE_SECRET_KEY?.startsWith('sk_live');
+      const isLiveMode = process.env.STRIPE_SECRET_KEY?.startsWith('sk_live');
 
       if (isTestCustomer && isLiveMode) {
         return NextResponse.json(
@@ -126,4 +117,20 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getStripe() {
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY environment variable is required");
+  }
+
+  return new Stripe(stripeSecretKey, {
+    apiVersion: "2025-10-29.clover",
+  });
 }

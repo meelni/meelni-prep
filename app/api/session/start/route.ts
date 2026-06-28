@@ -109,7 +109,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createSession } from "@/lib/db/sessions";
 import { upsertUser } from "@/lib/db/users";
 import { getRandomQuestion, getRandomRecentQuestion, recordQuestionUsage } from "@/lib/db/questions";
-import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
 import { incrementUsage } from "@/lib/services/usage-service";
 import { getUserTier } from "@/lib/services/permissions-service.server";
 import { buildInterviewRoomMetadata } from "@meelni/agent";
@@ -119,11 +118,13 @@ import {
   INTERVIEW_TYPE_LABELS,
   type RoundType,
 } from "@meelni/core";
+import {
+  buildInterviewRoomName,
+  createLiveKitInterviewProvider,
+  getLiveKitEnvironment,
+} from "@meelni/integrations";
 
-const livekit_api_key = process.env.LIVEKIT_API_KEY;
-const livekit_api_secret = process.env.LIVEKIT_API_SECRET;
-const livekit_url =
-  process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL;
+const INTERVIEW_AGENT_ID = "CA_yawKG67rCMG4"; // Main interview agent with all fixes
 
 export async function POST(req: NextRequest) {
   try {
@@ -235,8 +236,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate required environment variables
-    if (!livekit_api_key || !livekit_api_secret || !livekit_url) {
-      console.error("Missing LiveKit environment variables");
+    const livekitEnv = getLiveKitEnvironment(process.env);
+    if (!livekitEnv.ok) {
+      console.error("Missing LiveKit environment variables:", livekitEnv.error.message);
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
@@ -319,9 +321,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Generate unique room name
-    const roomName = `interview-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 8)}`;
+    const roomName = buildInterviewRoomName();
 
     // Create session in database
     const session = await createSession({
@@ -339,68 +339,44 @@ export async function POST(req: NextRequest) {
       await recordQuestionUsage(session.id, question.id);
     }
 
-    // Create LiveKit room with metadata
-    const roomClient = new RoomServiceClient(livekit_url, livekit_api_key, livekit_api_secret);
-    try {
-      const roomMetadata = buildInterviewRoomMetadata({
-        session_id: session.id,
-        round_type: roundType as RoundType,
-        mode,
-        config: config || {},
-        question: question ? {
-          id: question.id,
-          text: question.questionText,
-          company: question.company,
-          type: question.questionType,
-          askedAt: question.askedAt,
-        } : null,
-      });
+    const roomMetadata = buildInterviewRoomMetadata({
+      session_id: session.id,
+      round_type: roundType as RoundType,
+      mode,
+      config: config || {},
+      question: question ? {
+        id: question.id,
+        text: question.questionText,
+        company: question.company,
+        type: question.questionType,
+        askedAt: question.askedAt,
+      } : null,
+    });
 
-      await roomClient.createRoom({
-        name: roomName,
-        metadata: JSON.stringify(roomMetadata),
-        emptyTimeout: 3600, // Room auto-deletes 1 hour after last participant
-        maxParticipants: 2, // User + agent only
-      });
-    } catch (error) {
-      const message = getErrorMessage(error);
-      if (!message.includes("already exists")) {
-        console.error("Room creation error:", message);
-      }
-    }
-
-    // Dispatch Cloud agent to the room
-    const INTERVIEW_AGENT_ID = "CA_yawKG67rCMG4"; // Main interview agent with all fixes
-    const dispatchClient = new AgentDispatchClient(livekit_url, livekit_api_key, livekit_api_secret);
-    try {
-      await dispatchClient.createDispatch(roomName, INTERVIEW_AGENT_ID);
-      console.log(`Dispatched agent ${INTERVIEW_AGENT_ID} to room ${roomName}`);
-    } catch (error) {
-      console.error("Agent dispatch error:", error);
-      // Continue anyway - user can still join, agent might auto-join
-    }
-
-    // Generate LiveKit access token
-    const at = new AccessToken(livekit_api_key, livekit_api_secret, {
+    const livekit = createLiveKitInterviewProvider();
+    const livekitResult = await livekit.startInterviewRoom({
+      agentId: INTERVIEW_AGENT_ID,
       identity: user.id,
-      name: user.email || user.id,
+      participantName: user.email || user.id,
+      roomName,
+      metadata: roomMetadata,
+      env: livekitEnv.data,
     });
 
-    at.addGrant({
-      room: roomName,
-      roomJoin: true,
-      canPublish: true,
-      canSubscribe: true,
-    });
-
-    const token = await at.toJwt();
+    if (!livekitResult.ok) {
+      console.error("LiveKit interview start error:", livekitResult.error);
+      return NextResponse.json(
+        { error: "Failed to start voice interview" },
+        { status: livekitResult.error.retryable ? 503 : 500 }
+      );
+    }
 
     // Return session info and LiveKit credentials
     return NextResponse.json({
       sessionId: session.id,
       roomName,
-      token,
-      url: livekit_url,
+      token: livekitResult.data.token,
+      url: livekitResult.data.url,
       config: session.config,
       question: question ? {
         id: question.id,

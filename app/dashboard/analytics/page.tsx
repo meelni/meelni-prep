@@ -3,6 +3,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { Loader2 } from "lucide-react";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 // Lazy load analytics section
 const AnalyticsSection = lazy(() => import("@/components/dashboard/sections/analytics").then(m => ({ default: m.AnalyticsSection })));
@@ -25,7 +26,6 @@ export default function AnalyticsPage() {
 
   // Track dashboard section views
   useEffect(() => {
-    const { analytics } = require('@/lib/analytics/analytics-service');
     analytics.track('dashboard_viewed', {
       section: 'analytics',
     });

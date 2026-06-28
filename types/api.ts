@@ -390,13 +390,18 @@ export interface User {
 /**
  * Type guard to check if response is an API error
  */
-export function isAPIError(response: any): response is APIError {
-  return response && typeof response.error === 'string';
+export function isAPIError(response: unknown): response is APIError {
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    "error" in response &&
+    typeof response.error === "string"
+  );
 }
 
 /**
  * Type guard to check if response is a validation error
  */
-export function isValidationError(response: any): response is ValidationError {
+export function isValidationError(response: unknown): response is ValidationError {
   return isAPIError(response) && ('fields' in response ? typeof response.fields === 'object' : true);
 }

@@ -42,6 +42,8 @@ export type AnalyticsEvent =
   | "mic_toggled"
   // Dashboard Events
   | "dashboard_viewed"
+  | "ftue_cta_clicked"
+  | "ftue_viewed"
   | "session_history_viewed"
   | "session_details_clicked"
   | "feedback_viewed"
@@ -194,6 +196,13 @@ interface InterviewProperties {
 interface DashboardProperties {
   dashboard_viewed: {
     section: "overview" | "history" | "analytics" | "feedback" | "settings" | "questions";
+  };
+  ftue_cta_clicked: {
+    user_id?: string;
+    cta_text: string;
+  };
+  ftue_viewed: {
+    user_id?: string;
   };
   session_history_viewed: {
     section: "history" | "overview";

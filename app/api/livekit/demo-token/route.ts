@@ -132,11 +132,11 @@ export async function POST(req: NextRequest) {
 
         const dispatch = await dispatchClient.createDispatch(roomName, DEMO_AGENT_ID);
         console.log(`Demo agent (${DEMO_AGENT_ID}) dispatched to room: ${roomName}`, dispatch);
-      } catch (dispatchError: any) {
-        console.error('Agent dispatch error:', dispatchError.message);
+      } catch (dispatchError) {
+        console.error('Agent dispatch error:', getErrorMessage(dispatchError));
       }
-    } catch (error: any) {
-      console.error("Demo room creation error:", error.message);
+    } catch (error) {
+      console.error("Demo room creation error:", getErrorMessage(error));
       // Continue even if room creation fails - token generation might still work
     }
 
@@ -168,4 +168,8 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

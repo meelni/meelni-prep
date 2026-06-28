@@ -31,8 +31,8 @@ export function AudioVisualizer() {
   )?.track;
 
   // Get audio volumes for reactivity
-  const userVolume = useTrackVolume(userAudioTrack as any);
-  const agentVolume = useTrackVolume(agentAudioTrack as any);
+  const userVolume = useTrackVolume(userAudioTrack as Parameters<typeof useTrackVolume>[0]);
+  const agentVolume = useTrackVolume(agentAudioTrack as Parameters<typeof useTrackVolume>[0]);
 
   // Normalize volumes to 0-1 range (same as demo)
   const normalizedUserVolume = Math.min(userVolume, 100) / 100;
