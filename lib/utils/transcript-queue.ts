@@ -6,7 +6,19 @@
  * database unavailability.
  */
 
-import { TranscriptTurnInput, QueuedTranscriptSave, TranscriptSaveResult } from "@/lib/types/session";
+import type {
+  QueuedTranscriptSave,
+  TranscriptSaveResult,
+  TranscriptTurnInput,
+} from "@meelni/core";
+
+type SerializedQueuedTranscriptSave = Omit<QueuedTranscriptSave, "turn" | "lastAttempt"> & {
+  turn: Omit<TranscriptTurnInput, "startedAt" | "endedAt"> & {
+    startedAt?: string;
+    endedAt?: string;
+  };
+  lastAttempt: string;
+};
 
 /**
  * Queue configuration
@@ -271,8 +283,8 @@ export class TranscriptQueue {
     try {
       const stored = localStorage.getItem(QUEUE_CONFIG.storageKey);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        this.queue = parsed.map((item: any) => ({
+        const parsed = JSON.parse(stored) as SerializedQueuedTranscriptSave[];
+        this.queue = parsed.map((item) => ({
           ...item,
           turn: {
             ...item.turn,

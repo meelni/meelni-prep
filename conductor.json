@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "setup": "./scripts/conductor-setup.sh",
-    "run": "./scripts/conductor-run.sh"
+    "setup": "npm run setup:local",
+    "run": "npm run dev:local"
   },
-  "runScriptMode": "nonconcurrent"
+  "runScriptMode": "concurrent"
 }

@@ -26,6 +26,8 @@ from livekit.plugins.turn_detector.english import EnglishModel
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import parse_room_metadata
+from shared.runtime_config import get_model_config, get_tts_config
+from shared.transcript_events import TRANSCRIPT_DATA_TOPIC, create_transcript_event
 from shared.utils.prompt_builder import build_agent_prompt
 
 load_dotenv()
@@ -73,7 +75,7 @@ async def entrypoint(ctx: JobContext):
 
     # NEW: Log question info if provided
     if question:
-        question_text = question.get("question_text", "")
+        question_text = question.get("text") or question.get("question_text", "")
         company = question.get("company", "N/A")
         logger.info(f"Question from bank: '{question_text[:60]}...' (Company: {company})")
     else:
@@ -89,26 +91,22 @@ async def entrypoint(ctx: JobContext):
         # NEW: Pass question to fallback prompt as well
         instructions = build_agent_prompt("product_sense", config, question)
 
-    # Extract model settings from config
-    stt_model = config.get("stt_model", "deepgram/nova-3")
-    llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
-
-    # Default to ElevenLabs voice (via LiveKit Inference - no API key needed)
-    # Voice ID: cgSgspJ2msm6clMCkdW9
-    # Format: elevenlabs/model:voiceId
-    default_voice_id = "cgSgspJ2msm6clMCkdW9"
-    tts_model = config.get("tts_model", f"elevenlabs/eleven_turbo_v2_5:{default_voice_id}")
-
-    # Extract TTS parameters from config
-    voice_id = config.get("voice", default_voice_id)
-    speed = config.get("speed", 1.0)
-    emotion = config.get("emotion", "professional")
-    volume = config.get("volume", 1.0)
+    model_config = get_model_config(config)
+    tts_config = get_tts_config(config)
+    stt_model = model_config["stt_model"]
+    llm_model = model_config["llm_model"]
+    tts_model = model_config["tts_model"]
 
     logger.info(f"STT Model: {stt_model}")
     logger.info(f"LLM Model: {llm_model}")
     logger.info(f"TTS Model: {tts_model}")
-    logger.info(f"TTS Config: voice={voice_id}, speed={speed}, emotion={emotion}, volume={volume}")
+    logger.info(
+        "TTS Config: voice=%s, speed=%s, emotion=%s, volume=%s",
+        tts_config["voice"],
+        tts_config["speed"],
+        tts_config["emotion"],
+        tts_config["volume"],
+    )
     logger.info("Initializing voice agent session with LiveKit inference...")
 
     # Note: Using string-based TTS model with LiveKit Inference
@@ -128,12 +126,12 @@ async def entrypoint(ctx: JobContext):
     def on_user_transcript(event: UserInputTranscribedEvent):
         """Capture user speech transcript and publish to frontend"""
         if event.is_final:  # Only publish final transcripts, not interim
-            transcript_data = {
-                "speaker": "user",
-                "text": event.transcript,
-                "timestamp": event.created_at,
-                "is_final": event.is_final,
-            }
+            transcript_data = create_transcript_event(
+                speaker="user",
+                text=event.transcript,
+                timestamp=event.created_at,
+                is_final=event.is_final,
+            )
 
             # Publish via LiveKit data track
             logger.info(f"[Transcript] User: {event.transcript[:50]}...")
@@ -143,7 +141,7 @@ async def entrypoint(ctx: JobContext):
             asyncio.ensure_future(
                 ctx.room.local_participant.publish_data(
                     json.dumps(transcript_data).encode("utf-8"),
-                    topic="transcript"
+                    topic=TRANSCRIPT_DATA_TOPIC
                 )
             )
 
@@ -187,12 +185,11 @@ async def entrypoint(ctx: JobContext):
                                     agent_text += item.text + " "
 
                 if agent_text.strip():
-                    transcript_data = {
-                        "speaker": "interviewer",  # Frontend expects "interviewer" not "agent"
-                        "text": agent_text.strip(),
-                        "timestamp": event.created_at,
-                        "is_final": True,
-                    }
+                    transcript_data = create_transcript_event(
+                        speaker="interviewer",
+                        text=agent_text.strip(),
+                        timestamp=event.created_at,
+                    )
 
                     logger.info(f"[Transcript] Agent: {agent_text[:50].strip()}...")
 
@@ -201,7 +198,7 @@ async def entrypoint(ctx: JobContext):
                     asyncio.ensure_future(
                         ctx.room.local_participant.publish_data(
                             json.dumps(transcript_data).encode("utf-8"),
-                            topic="transcript"
+                            topic=TRANSCRIPT_DATA_TOPIC
                         )
                     )
             except Exception as e:

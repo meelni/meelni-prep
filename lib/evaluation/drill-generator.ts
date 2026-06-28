@@ -3,7 +3,7 @@
  * Generates targeted practice drills based on weak areas in interview performance
  */
 
-import { RubricScores, DrillSuggestion } from "@/lib/types/evaluation";
+import type { DrillSuggestion, RubricScores } from "@meelni/core";
 
 /**
  * Drill templates for each dimension
