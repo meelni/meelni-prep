@@ -100,7 +100,7 @@ export function Header() {
                       {link.name}
 
                       {/* Underline animation */}
-                      <span className="absolute -bottom-1 left-1/2 h-[2px] bg-primary transition-all duration-300 ease-out w-0 -translate-x-1/2 group-hover:w-full" />
+                      <span className="absolute -bottom-1 left-1/2 h-0.5 bg-primary transition-all duration-300 ease-out w-0 -translate-x-1/2 group-hover:w-full" />
                     </Link>
                   ) : (
                     <a
@@ -113,7 +113,7 @@ export function Header() {
                       {/* Underline animation */}
                       <span
                         className={cn(
-                          "absolute -bottom-1 left-1/2 h-[2px] bg-primary transition-all duration-300 ease-out",
+                          "absolute -bottom-1 left-1/2 h-0.5 bg-primary transition-all duration-300 ease-out",
                           isActive
                             ? "w-full -translate-x-1/2"
                             : "w-0 -translate-x-1/2 group-hover:w-full"
