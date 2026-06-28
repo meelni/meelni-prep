@@ -74,7 +74,7 @@ export function SessionList({ sessions, onSessionClick }: SessionListProps) {
           const sessionAge = (Date.now() - new Date(session.startedAt).getTime()) / (1000 * 60 * 60 * 24);
 
           // Track session details click
-          const sessionFeedback = (session as any).feedback;
+          const sessionFeedback = session.feedback;
           analytics.track("session_details_clicked", {
             session_id: session.id,
             interview_type: session.roundType,

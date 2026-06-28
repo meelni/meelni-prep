@@ -5,6 +5,7 @@ import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 function SignUpContent() {
   const { signUpWithEmail, signInWithGoogle, user, isLoading: authLoading } = useAuth();
@@ -20,7 +21,6 @@ function SignUpContent() {
 
   // Track page view
   useEffect(() => {
-    const { analytics } = require('@/lib/analytics/analytics-service');
     analytics.track('auth_signup_started', {
       source: searchParams?.get('source') || 'direct',
     });
@@ -71,14 +71,15 @@ function SignUpContent() {
       await signUpWithEmail(email, password);
       setSuccess(true);
       setIsSigningUp(false);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Sign up error:", err);
-      const errorMessage = err.message || "Failed to sign up. Please try again.";
+      const errorMessage = err instanceof Error
+        ? err.message
+        : "Failed to sign up. Please try again.";
       setError(errorMessage);
       setIsSigningUp(false);
 
       // Track signup failure
-      const { analytics } = require('@/lib/analytics/analytics-service');
       analytics.track('auth_signup_failed', {
         method: 'email',
         error: errorMessage,

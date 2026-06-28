@@ -523,7 +523,7 @@ async function initializeUsageRecord(
  * Used within db.transaction() to maintain atomicity
  */
 async function initializeUsageRecordInTransaction(
-  tx: any,
+  tx: Pick<typeof db, "insert" | "select">,
   userId: string,
   periodStart: Date,
   periodEnd: Date,

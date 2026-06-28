@@ -82,9 +82,9 @@ export async function POST(req: Request) {
     // Verify customer exists in current Stripe mode (test vs live)
     try {
       await stripe.customers.retrieve(sub.stripeCustomerId);
-    } catch (stripeError: any) {
+    } catch (stripeError) {
       // Customer doesn't exist in current mode (likely test customer ID with live keys)
-      console.error(`Stripe customer ${sub.stripeCustomerId} not found:`, stripeError.message);
+      console.error(`Stripe customer ${sub.stripeCustomerId} not found:`, getErrorMessage(stripeError));
 
       // Check if this is a mode mismatch (test customer with live keys or vice versa)
       const isTestCustomer = sub.stripeCustomerId.startsWith('cus_') && !sub.stripeCustomerId.includes('live');
@@ -126,4 +126,8 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

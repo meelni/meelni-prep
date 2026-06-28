@@ -139,9 +139,9 @@ export async function POST(req: NextRequest) {
           subscription: syncedData,
           message: "Subscription synced from Stripe",
         });
-      } catch (stripeError: any) {
+      } catch (stripeError) {
         // Subscription may have been deleted
-        if (stripeError.code === "resource_missing") {
+        if (isStripeResourceMissing(stripeError)) {
           // Mark as canceled in our database
           await db
             .update(subscription)
@@ -199,6 +199,15 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function isStripeResourceMissing(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "resource_missing"
+  );
 }
 
 /**

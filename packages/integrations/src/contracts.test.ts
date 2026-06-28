@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildInterviewRoomName,
+  createLiveKitInterviewProvider,
   findMissingRequiredEnv,
+  getLiveKitEnvironment,
   getProviderEnvContract,
   INTEGRATION_PROVIDERS,
   isProviderFailure,
   listProviderEnvVars,
   providerFailure,
-  providerSuccess
+  providerSuccess,
+  type LiveKitInterviewProvider,
 } from "./index";
 
 test("declares the provider set used by the current app", () => {
@@ -68,4 +72,84 @@ test("provider results normalize success and retryable failures", () => {
   assert.equal(isProviderFailure(failure), true);
   assert.equal(failure.ok, false);
   assert.equal(failure.error.retryable, true);
+});
+
+test("getLiveKitEnvironment reports missing required LiveKit config", () => {
+  const result = getLiveKitEnvironment({});
+
+  assert.equal(result.ok, false);
+  assert.equal(result.provider, "livekit");
+  assert.equal(result.error.code, "livekit_env_missing");
+  assert.equal(result.error.retryable, false);
+});
+
+test("getLiveKitEnvironment accepts public or server websocket URL", () => {
+  const result = getLiveKitEnvironment({
+    LIVEKIT_API_KEY: "key",
+    LIVEKIT_API_SECRET: "secret",
+    LIVEKIT_URL: "wss://server.livekit.cloud",
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.deepEqual(result.data, {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://server.livekit.cloud",
+    });
+  }
+});
+
+test("buildInterviewRoomName creates deterministic interview room names for tests", () => {
+  const name = buildInterviewRoomName({
+    now: 1782600000000,
+    random: () => 0.5,
+  });
+
+  assert.match(name, /^interview-1782600000000-/);
+});
+
+test("LiveKit provider creates room, dispatches agent, and mints token", async () => {
+  const calls: string[] = [];
+  const provider: LiveKitInterviewProvider = createLiveKitInterviewProvider({
+    accessTokenFactory: class {
+      addGrant() {
+        calls.push("grant");
+      }
+
+      async toJwt() {
+        calls.push("jwt");
+        return "token-1";
+      }
+    },
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        calls.push("dispatch");
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        calls.push("room");
+      },
+    }),
+  });
+
+  const result = await provider.startInterviewRoom({
+    agentId: "agent-1",
+    identity: "user-1",
+    participantName: "user@example.com",
+    roomName: "interview-1",
+    metadata: { round_type: "product_sense" },
+    env: { apiKey: "key", apiSecret: "secret", url: "wss://lk" },
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.deepEqual(result.data, {
+      roomName: "interview-1",
+      token: "token-1",
+      url: "wss://lk",
+    });
+  }
+  assert.deepEqual(calls, ["room", "dispatch", "grant", "jwt"]);
 });

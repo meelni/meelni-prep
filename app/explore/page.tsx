@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
 import { ExploreStructuredData } from "@/components/explore/structured-data";
@@ -214,14 +215,14 @@ export default function ExplorePage() {
         <nav aria-label="Breadcrumb" className="max-w-4xl mx-auto px-4 sm:px-6 pt-6">
           <ol className="flex items-center gap-2 text-sm text-muted-foreground">
             <li>
-              <a
+              <Link
                 href="/"
                 className="flex items-center gap-1.5 hover:text-foreground transition-colors"
                 aria-label="Home"
               >
                 <Home className="w-4 h-4" />
                 <span>Home</span>
-              </a>
+              </Link>
             </li>
             <li aria-hidden="true">
               <BreadcrumbArrow className="w-4 h-4" />

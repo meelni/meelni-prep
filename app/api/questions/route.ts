@@ -61,6 +61,8 @@ const VALID_QUESTION_TYPES = [
   "strategy",
 ] as const;
 
+type QuestionType = (typeof VALID_QUESTION_TYPES)[number];
+
 export async function GET(req: NextRequest) {
   try {
     // Parse query parameters
@@ -91,7 +93,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Validate question type if provided
-    if (type && !VALID_QUESTION_TYPES.includes(type as any)) {
+    if (type && !VALID_QUESTION_TYPES.includes(type as QuestionType)) {
       return NextResponse.json(
         {
           error: "Invalid question type",

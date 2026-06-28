@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import type { DashboardUser } from "./dashboard-layout";
 
 interface SidebarProps {
   activeSection: string;
@@ -17,7 +18,7 @@ interface SidebarProps {
   totalSessions?: number;
   totalMinutes?: number;
   avgScore?: number;
-  user?: any;
+  user?: DashboardUser | null;
   onSignOut?: () => void;
 }
 

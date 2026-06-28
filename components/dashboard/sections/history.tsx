@@ -17,7 +17,7 @@ export const HistorySection = memo(function HistorySection({ sessions, loadingSe
     if (!loadingSessions) {
       // Check if any sessions have feedback by checking if overallScore exists
       const hasFeedback = sessions.some((s) => {
-        return (s as any).feedback?.overallScore !== null && (s as any).feedback?.overallScore !== undefined;
+        return s.feedback?.overallScore !== null && s.feedback?.overallScore !== undefined;
       });
 
       analytics.track("session_history_viewed", {

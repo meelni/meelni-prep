@@ -9,8 +9,15 @@ interface DashboardLayoutProps {
   totalSessions?: number;
   totalMinutes?: number;
   avgScore?: number;
-  user?: any;
+  user?: DashboardUser | null;
   onSignOut?: () => void;
+}
+
+export interface DashboardUser {
+  email?: string | null;
+  user_metadata?: {
+    full_name?: string | null;
+  };
 }
 
 export function DashboardLayout({

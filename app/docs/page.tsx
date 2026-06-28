@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import Link from 'next/link';
 import SwaggerUIReact from 'swagger-ui-react';
 import 'swagger-ui-react/swagger-ui.css';
 
@@ -48,12 +49,12 @@ export default function APIDocsPage() {
                 Comprehensive API reference for the Meelni interview platform
               </p>
             </div>
-            <a
+            <Link
               href="/"
               className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
             >
               ← Back to App
-            </a>
+            </Link>
           </div>
         </div>
       </header>
