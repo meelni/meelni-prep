@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  transpilePackages: ["@meelni/agent", "@meelni/core", "@meelni/integrations"],
   async headers() {
     return [
       {

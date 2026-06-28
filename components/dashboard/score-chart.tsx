@@ -57,7 +57,9 @@ export function ScoreChart({ data }: ScoreChartProps) {
     };
   }, [data, isHovered]);
 
-  const handleChartClick = (dataPoint: any) => {
+  const handleChartClick = (dataPoint: {
+    activePayload?: Array<{ payload?: ScoreDataPoint }>;
+  }) => {
     if (dataPoint && dataPoint.activePayload) {
       const point = dataPoint.activePayload[0]?.payload;
       analytics.track('chart_interacted', {

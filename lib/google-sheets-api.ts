@@ -145,7 +145,7 @@ export async function fetchSheetViaAPI(
 /**
  * Parse raw sheet values into structured rows
  */
-function parseSheetValues(values: any[][]): SheetRow[] {
+function parseSheetValues(values: unknown[][]): SheetRow[] {
   if (values.length === 0) return [];
 
   // First row is header

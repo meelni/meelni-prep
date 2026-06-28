@@ -21,9 +21,9 @@ interface FeedbackProps {
     communicationScore: number | null;
     leadershipScore: number | null;
     overallScore: string | null;
-    strengths: any;
-    improvements: any;
-    drills: any;
+    strengths: string[] | null;
+    improvements: string[] | null;
+    drills: string[] | null;
     summary: string | null;
   } | null;
   onGenerate?: () => void;

@@ -6,10 +6,6 @@ import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { z } from "zod";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-10-29.clover",
-});
-
 // Request validation schema
 const checkoutSchema = z.object({
   tier: z.enum(["pro"]),
@@ -19,6 +15,8 @@ const checkoutSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    const stripe = getStripe();
+
     // 1. Parse and validate request body
     const body = await req.json();
     const { tier, billingPeriod } = checkoutSchema.parse(body);
@@ -153,4 +151,16 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function getStripe() {
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY environment variable is required");
+  }
+
+  return new Stripe(stripeSecretKey, {
+    apiVersion: "2025-10-29.clover",
+  });
 }

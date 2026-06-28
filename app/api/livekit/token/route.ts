@@ -107,8 +107,8 @@ export async function POST(req: NextRequest) {
             { status: 403 }
           );
         }
-      } catch (error: any) {
-        console.error("Quota check error:", error.message);
+      } catch (error) {
+        console.error("Quota check error:", getErrorMessage(error));
         // Fail closed: return 503 Service Unavailable if quota service is down
         return NextResponse.json(
           {
@@ -160,12 +160,13 @@ export async function POST(req: NextRequest) {
         });
 
         console.log("Room created with metadata");
-      } catch (error: any) {
-        if (error.message?.includes("already exists")) {
+      } catch (error) {
+        const message = getErrorMessage(error);
+        if (message.includes("already exists")) {
           console.log("Room already exists, updating metadata");
           await roomClient.updateRoomMetadata(roomName, metadataStr);
         } else {
-          console.error("Room creation error:", error.message);
+          console.error("Room creation error:", message);
         }
       }
     }
@@ -196,4 +197,8 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

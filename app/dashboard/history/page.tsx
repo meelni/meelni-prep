@@ -5,6 +5,7 @@ import { useSessions } from "@/lib/api/queries";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { Loader2 } from "lucide-react";
 import { DashboardError } from "@/components/dashboard/error";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 // Lazy load history section
 const HistorySection = lazy(() => import("@/components/dashboard/sections/history").then(m => ({ default: m.HistorySection })));
@@ -27,7 +28,6 @@ export default function HistoryPage() {
 
   // Track dashboard section views
   useEffect(() => {
-    const { analytics } = require('@/lib/analytics/analytics-service');
     analytics.track('dashboard_viewed', {
       section: 'history',
     });

@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-10-29.clover",
-});
-
 /**
  * POST /api/customer-portal
  *
@@ -13,6 +9,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
  */
 export async function POST(request: NextRequest) {
   try {
+    const stripe = getStripe();
+
     // Get authenticated user
     const supabase = await createClient();
     const {
@@ -43,9 +41,9 @@ export async function POST(request: NextRequest) {
     // Verify customer exists in current Stripe mode (test vs live)
     try {
       await stripe.customers.retrieve(stripeCustomerId);
-    } catch (stripeError: any) {
+    } catch (stripeError) {
       // Customer doesn't exist in current mode (likely test customer ID with live keys)
-      console.error(`Stripe customer ${stripeCustomerId} not found:`, stripeError.message);
+      console.error(`Stripe customer ${stripeCustomerId} not found:`, getErrorMessage(stripeError));
 
       // Check if this is a mode mismatch (test customer with live keys or vice versa)
       const isTestCustomer = stripeCustomerId.startsWith('cus_') && !stripeCustomerId.includes('live');
@@ -85,4 +83,20 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getStripe() {
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY environment variable is required");
+  }
+
+  return new Stripe(stripeSecretKey, {
+    apiVersion: "2025-10-29.clover",
+  });
 }

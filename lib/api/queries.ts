@@ -12,7 +12,7 @@ export interface Session {
   mode: string;
   persona?: string;
   livekitRoomName?: string;
-  config?: any;
+  config?: Record<string, unknown>;
   startedAt: Date | string;
   endedAt: Date | string | null;
   createdAt?: Date | string;

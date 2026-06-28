@@ -22,12 +22,19 @@ import { RoomAudioRenderer } from "@livekit/components-react";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { Loader2, AlertCircle } from "lucide-react";
 import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 interface InterviewSession {
   id: string;
   livekit_room_name: string;
   started_at: string;
-  config: any;
+  config: {
+    duration?: number;
+    difficulty?: string;
+    mode?: string;
+    roundType?: string;
+    [key: string]: unknown;
+  };
   question?: {
     id: string;
     text: string;
@@ -164,7 +171,6 @@ function InterviewPageContent() {
       setLoading(false);
 
       // Track interview started
-      const { analytics } = require('@/lib/analytics/analytics-service');
       analytics.track('interview_started', {
         session_id: data.sessionId,
         interview_type: roundType,
@@ -195,9 +201,8 @@ function InterviewPageContent() {
       setLoading(false);
 
       // Track interview started
-      const { analytics } = require('@/lib/analytics/analytics-service');
       analytics.track('interview_started', {
-        session_id: sessionId,
+        session_id: sessionId ?? session?.id ?? "",
         interview_type: sessionData.config?.roundType,
         mode: sessionData.config?.mode,
         skill_level: sessionData.config?.difficulty,
@@ -348,10 +353,9 @@ function InterviewPageContent() {
     setIsEndingSession(true);
     try {
       // Track interview ended
-      const { analytics } = require('@/lib/analytics/analytics-service');
       const duration = sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0;
       analytics.track('interview_ended', {
-        session_id: sessionId,
+        session_id: sessionId ?? session?.id ?? "",
         duration_seconds: duration,
         ended_naturally: true,
         interview_type: session?.config?.roundType,
@@ -433,9 +437,8 @@ function InterviewPageContent() {
           const newMutedState = !isMuted;
           setIsMuted(newMutedState);
           // Track mic toggle
-          const { analytics } = require('@/lib/analytics/analytics-service');
           analytics.track('mic_toggled', {
-            session_id: sessionId,
+            session_id: sessionId ?? session.id,
             new_state: newMutedState ? 'muted' : 'unmuted',
           });
         }}

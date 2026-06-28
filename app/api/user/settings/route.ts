@@ -117,7 +117,10 @@ export async function PUT(request: NextRequest) {
     const settings = validationResult.data;
 
     // Convert camelCase to snake_case for database
-    const dbSettings: any = {
+    const dbSettings: Partial<typeof userSettings.$inferInsert> & {
+      userId: string;
+      updatedAt: Date;
+    } = {
       userId: user.id,
       updatedAt: new Date(),
     };

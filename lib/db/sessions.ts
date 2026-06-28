@@ -9,12 +9,12 @@ export interface CreateSessionInput {
   mode: "voice_video" | "text";
   persona?: string;
   livekitRoomName?: string;
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
 }
 
 export interface UpdateSessionInput {
   endedAt?: Date;
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
 }
 
 /**

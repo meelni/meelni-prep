@@ -1,10 +1,6 @@
 import OpenAI from "openai";
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 export interface EvaluationResult {
   scores: {
     structure: number;
@@ -32,6 +28,7 @@ export async function generateFeedback(
   }
 
   try {
+    const openai = getOpenAI();
     const userPrompt = getEvaluationPrompt(roundType, transcript);
 
     const completion = await openai.chat.completions.create({
@@ -86,6 +83,16 @@ export async function generateFeedback(
  */
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function getOpenAI() {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY environment variable is required");
+  }
+
+  return new OpenAI({ apiKey });
 }
 
 /**

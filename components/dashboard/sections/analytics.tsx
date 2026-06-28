@@ -12,6 +12,7 @@ import {
   Award,
   Sparkles,
   Loader2,
+  type LucideIcon,
 } from "lucide-react";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import {
@@ -202,7 +203,7 @@ function StatCard({
   change,
   suffix = "",
 }: {
-  icon: any;
+  icon: LucideIcon;
   label: string;
   value: number;
   change?: number;
@@ -286,11 +287,17 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
 
         // Transform sessions to include feedback (filter out sessions without feedback)
         // Convert date strings to Date objects for aggregation functions
-        const sessionsWithFeedback = sessionsData.sessions
-          .filter((s: any) => s.feedback !== null)
-          .map((s: any) => ({
+        const sessionsWithFeedback = (sessionsData.sessions as Array<SessionWithFeedback & {
+          startedAt: string | Date | null;
+          endedAt: string | Date | null;
+        }>)
+          .filter((s): s is SessionWithFeedback & {
+            startedAt: string | Date;
+            endedAt: string | Date | null;
+          } => s.feedback !== null && s.startedAt !== null)
+          .map((s) => ({
             ...s,
-            startedAt: s.startedAt ? new Date(s.startedAt) : null,
+            startedAt: new Date(s.startedAt),
             endedAt: s.endedAt ? new Date(s.endedAt) : null,
           }));
         setSessions(sessionsWithFeedback);

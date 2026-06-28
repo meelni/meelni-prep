@@ -2,9 +2,22 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set");
+function createDb() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL environment variable is not set");
+  }
+
+  const client = postgres(databaseUrl);
+  return drizzle(client, { schema });
 }
 
-const client = postgres(process.env.DATABASE_URL);
-export const db = drizzle(client, { schema });
+type Database = ReturnType<typeof createDb>;
+
+export const db: Database = process.env.DATABASE_URL
+  ? createDb()
+  : new Proxy({} as Database, {
+      get() {
+        throw new Error("DATABASE_URL environment variable is not set");
+      },
+    });

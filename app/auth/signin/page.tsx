@@ -5,6 +5,7 @@ import { useAuth } from "@/app/providers/auth-provider";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 function SignInContent() {
   const { signInWithGoogle, signInWithEmail, user, isLoading: authLoading } = useAuth();
@@ -18,7 +19,6 @@ function SignInContent() {
 
   // Track page view
   useEffect(() => {
-    const { analytics } = require('@/lib/analytics/analytics-service');
     analytics.track('auth_signin_started', {
       source: searchParams?.get('source') || 'direct',
     });
@@ -54,14 +54,15 @@ function SignInContent() {
       await signInWithEmail(email, password);
       // Redirect will happen via the useEffect hook
       router.push(redirectTo);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Sign in error:", err);
-      const errorMessage = err.message || "Failed to sign in. Please check your credentials.";
+      const errorMessage = err instanceof Error
+        ? err.message
+        : "Failed to sign in. Please check your credentials.";
       setError(errorMessage);
       setIsSigningIn(false);
 
       // Track signin failure
-      const { analytics } = require('@/lib/analytics/analytics-service');
       analytics.track('auth_signin_failed', {
         method: 'email',
         error: errorMessage,

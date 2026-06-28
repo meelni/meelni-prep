@@ -15,6 +15,7 @@ import {
 import { Orb, AgentState as OrbAgentState } from "@/components/ui/orb";
 import { Track } from "livekit-client";
 import { ConnectionState } from "livekit-client";
+import type { Participant, TrackPublication, TranscriptionSegment } from "livekit-client";
 import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { analytics } from "@/lib/analytics/analytics-service";
@@ -139,10 +140,10 @@ function DemoControls({
   }, [localParticipant, localParticipant?.isMicrophoneEnabled]);
 
   // Audio reactivity for Orb (same as interview page)
-  const userVolume = useTrackVolume(audioTrack?.publication?.track as any);
+  const userVolume = useTrackVolume(audioTrack?.publication?.track as Parameters<typeof useTrackVolume>[0]);
   const firstRemoteParticipant = room?.remoteParticipants ? Array.from(room.remoteParticipants.values())[0] : undefined;
   const agentAudioTrack = firstRemoteParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
-  const agentVolume = useTrackVolume(agentAudioTrack as any);
+  const agentVolume = useTrackVolume(agentAudioTrack as Parameters<typeof useTrackVolume>[0]);
 
   // Normalize volumes from 0-100
   const normalizedUserVolume = Math.min(userVolume, 100) / 100;
@@ -230,19 +231,18 @@ function DemoControls({
     if (!room) return;
 
     const handleTranscription = (
-      segments: any[],
-      participant: any,
-      publication: any
+      segments: TranscriptionSegment[],
+      participant?: Participant,
+      _publication?: TrackPublication
     ) => {
-      segments.forEach((segment: any) => {
+      segments.forEach((segment) => {
         // Show both interim and final transcripts (Option A)
         if (segment.text && segment.text.trim()) {
           // Check participant identity and kind
           const isAgentParticipant =
             participant?.identity?.includes("agent") ||
             participant?.identity?.includes("Agent") ||
-            participant?.name?.toLowerCase().includes("agent") ||
-            participant?.kind === "agent";
+            participant?.name?.toLowerCase().includes("agent");
 
           const speaker = isAgentParticipant ? "agent" : "user";
           const messageId = `${speaker}-${Date.now()}`;
@@ -257,7 +257,7 @@ function DemoControls({
             speaker: speaker,
             text: segment.text.trim(),
             timestamp: new Date(),
-            isFinal: segment.final,
+            isFinal: Boolean(segment.final),
           };
 
           setMessages((prev) => {
