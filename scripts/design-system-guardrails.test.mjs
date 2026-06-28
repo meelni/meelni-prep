@@ -389,6 +389,7 @@ test("voice orb surfaces use shared runtime color tokens", async () => {
     () => ""
   );
   const files = [
+    "components/ui/orb.tsx",
     "components/demo-modal.tsx",
     "app/interview/components/audio-visualizer.tsx",
     "app/interview/components/interview-stage.tsx",
@@ -404,6 +405,13 @@ test("voice orb surfaces use shared runtime color tokens", async () => {
 
     if (!content.includes("MEELNI_ORB_COLORS")) {
       violations.push(`${file}:MEELNI_ORB_COLORS`);
+    }
+
+    if (
+      file === "components/ui/orb.tsx" &&
+      !content.includes("colors = MEELNI_ORB_COLORS")
+    ) {
+      violations.push(`${file}:default-orb-colors`);
     }
 
     if (/colors=\{\[\s*["']#[0-9A-Fa-f]{6}/.test(content)) {

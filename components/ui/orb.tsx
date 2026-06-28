@@ -5,6 +5,8 @@ import { useTexture } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
 
+import { MEELNI_ORB_COLORS } from "@/lib/design-tokens"
+
 export type AgentState = null | "thinking" | "listening" | "talking"
 
 type OrbProps = {
@@ -24,7 +26,7 @@ type OrbProps = {
 }
 
 export function Orb({
-  colors = ["#CADCFC", "#A0B9D1"],
+  colors = MEELNI_ORB_COLORS,
   colorsRef,
   resizeDebounce = 100,
   seed,
