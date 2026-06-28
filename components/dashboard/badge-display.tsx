@@ -103,7 +103,7 @@ export function BadgeDisplay({ className }: BadgeDisplayProps) {
 
               {/* NEW indicator for recently earned badges */}
               {achievement.earned && isRecentlyEarned(achievement.earnedAt) && (
-                <div className="bg-primary text-primary-foreground absolute -top-1 -right-1 animate-pulse rounded-full px-1.5 py-0.5 text-[9px] font-bold">
+                <div className="text-label bg-primary text-primary-foreground absolute -top-1 -right-1 animate-pulse rounded-full px-1.5 py-0.5">
                   NEW
                 </div>
               )}

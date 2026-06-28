@@ -731,6 +731,29 @@ test("overlay dismiss actions use shared button primitives", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("priority microcopy uses shared type scale utilities", async () => {
+  const files = [
+    "components/demo-modal.tsx",
+    "components/interview/nudge-overlay.tsx",
+    "components/dashboard/charts/glowing-radar-chart.tsx",
+    "components/dashboard/badge-display.tsx",
+  ];
+  const arbitraryMicrocopy = /\btext-\[(?:9px|10px|0\.70rem)\]\b/;
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (!content.includes("text-label")) {
+      violations.push(`${file}:text-label`);
+    }
+    if (arbitraryMicrocopy.test(content)) {
+      violations.push(`${file}:arbitrary-microcopy`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("landing feature selector uses shared controls and semantic status tokens", async () => {
   const file = "components/feature-selector.tsx";
   const content = await readFile(file, "utf8");

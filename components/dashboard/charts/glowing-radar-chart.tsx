@@ -53,7 +53,7 @@ export function GlowingRadarChart({ data }: GlowingRadarChartProps) {
       <div className="bg-background rounded-lg border p-2 shadow-sm">
         <div className="grid gap-2">
           <div className="flex flex-col">
-            <span className="text-muted-foreground text-[0.70rem] uppercase">
+            <span className="text-label text-muted-foreground uppercase">
               {fullName}
             </span>
             <span className="text-foreground font-bold">
