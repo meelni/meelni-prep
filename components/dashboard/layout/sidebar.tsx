@@ -1,8 +1,19 @@
 "use client";
 
-import { ChevronLeft, Monitor, History, BarChart3, Settings, Sparkles, LogOut, Moon, Sun, BookOpen } from "lucide-react";
+import {
+  ChevronLeft,
+  Monitor,
+  History,
+  BarChart3,
+  Settings,
+  Sparkles,
+  LogOut,
+  Moon,
+  Sun,
+  BookOpen,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Icons } from "@/components/icons";
+import { AppSurface } from "@/components/ui/app-surface";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -47,22 +58,42 @@ export function Sidebar({
 
     // Save to database immediately
     try {
-      await fetch('/api/user/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme: newTheme })
+      await fetch("/api/user/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: newTheme }),
       });
     } catch (err) {
-      console.error('Failed to save theme:', err);
+      console.error("Failed to save theme:", err);
     }
   };
 
   const navigationItems = [
     { id: "overview", icon: Monitor, label: "Overview", href: "/dashboard" },
-    { id: "history", icon: History, label: "Interview History", href: "/dashboard/history" },
-    { id: "questions", icon: BookOpen, label: "Question Bank", href: "/dashboard/questions" },
-    { id: "analytics", icon: BarChart3, label: "Analytics", href: "/dashboard/analytics" },
-    { id: "settings", icon: Settings, label: "Settings", href: "/dashboard/settings" },
+    {
+      id: "history",
+      icon: History,
+      label: "Interview History",
+      href: "/dashboard/history",
+    },
+    {
+      id: "questions",
+      icon: BookOpen,
+      label: "Question Bank",
+      href: "/dashboard/questions",
+    },
+    {
+      id: "analytics",
+      icon: BarChart3,
+      label: "Analytics",
+      href: "/dashboard/analytics",
+    },
+    {
+      id: "settings",
+      icon: Settings,
+      label: "Settings",
+      href: "/dashboard/settings",
+    },
   ];
 
   // All navigation items are always visible - empty states handle no-data scenarios
@@ -99,64 +130,82 @@ export function Sidebar({
       variants={sidebarVariants}
       initial={collapsed ? "collapsed" : "expanded"}
       animate={collapsed ? "collapsed" : "expanded"}
-      className="relative h-screen bg-card border-r border-border flex flex-col"
+      className="bg-card border-border relative flex h-screen flex-col border-r"
     >
       {/* Header Section - Branding + Theme + Collapse Toggle */}
-      <div className="flex items-center justify-between px-4 py-6 border-b border-border/30">
+      <div className="border-border/30 flex items-center justify-between border-b px-4 py-6">
         <Link href="/dashboard" className={cn("block", collapsed && "hidden")}>
-          <div className="text-xl font-display font-semibold text-foreground tracking-tight hover:text-primary transition-colors">
+          <div className="font-display text-foreground hover:text-primary text-xl font-semibold tracking-tight transition-colors">
             meelni
           </div>
         </Link>
         <div className={cn("flex items-center gap-1", collapsed && "mx-auto")}>
           {/* Theme Toggle - Only show when expanded */}
           {mounted && !collapsed && (
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={handleThemeToggle}
-              className="p-2 rounded-lg hover:bg-muted/50 transition-colors"
+              className="h-8 w-8 rounded-lg"
               aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
               title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
             >
               {theme === "dark" ? (
-                <Sun size={16} className="transition-opacity" aria-hidden="true" />
+                <Sun
+                  size={16}
+                  className="transition-opacity"
+                  aria-hidden="true"
+                />
               ) : (
-                <Moon size={16} className="transition-opacity" aria-hidden="true" />
+                <Moon
+                  size={16}
+                  className="transition-opacity"
+                  aria-hidden="true"
+                />
               )}
-            </button>
+            </Button>
           )}
           {/* Collapse Toggle */}
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setCollapsed(!collapsed)}
-            className="p-2 rounded-lg hover:bg-muted/50 transition-colors"
+            className="h-8 w-8 rounded-lg"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             <ChevronLeft
-              className={cn("transition-transform duration-300", collapsed && "rotate-180")}
+              className={cn(
+                "transition-transform duration-300",
+                collapsed && "rotate-180"
+              )}
               size={16}
             />
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="flex flex-col h-full px-4 py-6 gap-6">
+      <div className="flex h-full flex-col gap-6 px-4 py-6">
         {/* New Interview CTA - Gradient Glow */}
-        <button
+        <Button
+          type="button"
+          variant="glow"
           onClick={() => router.push("/setup")}
           className={cn(
-            "relative rounded-lg text-white font-medium text-sm transition-all duration-300 flex items-center",
-            collapsed ? "px-3 py-3 justify-center" : "px-4 py-2.5 justify-center gap-2",
-            "bg-gradient-to-r from-primary via-purple-500 to-primary",
-            "shadow-[0_0_20px_rgba(120,75,255,0.3)]",
-            "hover:shadow-[0_0_30px_rgba(120,75,255,0.5)]"
+            "relative flex items-center rounded-lg text-sm font-medium transition-all duration-300",
+            collapsed
+              ? "justify-center px-3 py-3"
+              : "justify-center gap-2 px-4 py-2.5"
           )}
           aria-label="Start new interview"
         >
-          <Sparkles size={18} className="flex-shrink-0 w-[18px] h-[18px]" aria-hidden="true" />
+          <Sparkles className="size-5 flex-shrink-0" aria-hidden="true" />
           {!collapsed && <span className="ml-2">New Interview</span>}
-        </button>
+        </Button>
 
         {/* Divider */}
-        <div className="h-px bg-border/50" />
+        <div className="bg-border/50 h-px" />
 
         {/* Navigation Items */}
         <nav className="flex flex-col gap-1">
@@ -166,7 +215,7 @@ export function Sidebar({
               href={item.href}
               className={cn(
                 "relative flex items-center rounded-lg text-sm transition-all duration-200",
-                collapsed ? "px-3 py-3 justify-center" : "px-3 py-2 gap-3",
+                collapsed ? "justify-center px-3 py-3" : "gap-3 px-3 py-2",
                 activeSection === item.id
                   ? "bg-primary/15 text-foreground font-medium"
                   : "text-muted-foreground hover:text-foreground hover:bg-card/50"
@@ -176,12 +225,11 @@ export function Sidebar({
             >
               {/* Subtle gradient accent for active state */}
               {activeSection === item.id && !collapsed && (
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-primary/50 via-primary to-primary/50 rounded-r" />
+                <div className="from-primary/50 via-primary to-primary/50 absolute top-0 bottom-0 left-0 w-1 rounded-r bg-gradient-to-b" />
               )}
               <item.icon
-                size={18}
                 className={cn(
-                  "flex-shrink-0 w-[18px] h-[18px] transition-opacity",
+                  "size-5 flex-shrink-0 transition-opacity",
                   activeSection === item.id ? "opacity-100" : "opacity-70"
                 )}
                 aria-hidden="true"
@@ -192,26 +240,32 @@ export function Sidebar({
         </nav>
 
         {/* Divider */}
-        <div className="h-px bg-border/50" />
+        <div className="bg-border/50 h-px" />
 
         {/* Stats Card - Compact */}
         {!collapsed && (
-          <div className="p-4 rounded-lg bg-card/50 border border-border/50 space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-muted-foreground">Sessions</span>
-              <span className="text-sm font-semibold text-foreground">{totalSessions}</span>
+          <AppSurface variant="muted" size="md" className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-xs">Sessions</span>
+              <span className="text-foreground text-sm font-semibold">
+                {totalSessions}
+              </span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-muted-foreground">Minutes</span>
-              <span className="text-sm font-semibold text-foreground">{formatMinutes(totalMinutes)}</span>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-xs">Minutes</span>
+              <span className="text-foreground text-sm font-semibold">
+                {formatMinutes(totalMinutes)}
+              </span>
             </div>
             {avgScore > 0 && (
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-muted-foreground">Avg Score</span>
-                <span className="text-sm font-semibold text-foreground">{avgScore.toFixed(1)}/10</span>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground text-xs">Avg Score</span>
+                <span className="text-foreground text-sm font-semibold">
+                  {avgScore.toFixed(1)}/10
+                </span>
               </div>
             )}
-          </div>
+          </AppSurface>
         )}
 
         {/* Flexible Spacer */}
@@ -219,12 +273,12 @@ export function Sidebar({
 
         {/* User Section - Card Design at Bottom */}
         {!collapsed ? (
-          <div className="p-4 rounded-lg bg-card/50 border border-border/50 space-y-3">
+          <AppSurface variant="muted" size="md" className="space-y-3">
             {user && (
               <div className="flex items-center gap-3">
                 {/* Avatar Circle */}
-                <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm font-medium text-primary">
+                <div className="bg-primary/10 border-primary/30 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border">
+                  <span className="text-primary text-sm font-medium">
                     {(user?.user_metadata?.full_name || user?.email || "U")
                       .split(" ")
                       .map((n: string) => n[0])
@@ -234,32 +288,36 @@ export function Sidebar({
                   </span>
                 </div>
                 {/* User Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-foreground truncate">
-                    {user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User"}
+                <div className="min-w-0 flex-1">
+                  <div className="text-foreground truncate text-sm font-medium">
+                    {user?.user_metadata?.full_name ||
+                      user?.email?.split("@")[0] ||
+                      "User"}
                   </div>
-                  <div className="text-xs text-muted-foreground truncate">
+                  <div className="text-muted-foreground truncate text-xs">
                     {user?.email}
                   </div>
                 </div>
               </div>
             )}
             {onSignOut && (
-              <button
+              <Button
+                type="button"
+                variant="quiet"
                 onClick={onSignOut}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-muted/50 hover:bg-muted transition-colors text-sm text-muted-foreground hover:text-foreground"
+                className="w-full gap-2 rounded-md px-3 py-2 text-sm"
               >
                 <LogOut size={14} />
                 Sign out
-              </button>
+              </Button>
             )}
-          </div>
+          </AppSurface>
         ) : (
           <div className="flex flex-col items-center gap-3">
             {/* User Avatar Circle */}
             {user && (
-              <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
-                <span className="text-sm font-medium text-primary">
+              <div className="bg-primary/10 border-primary/30 flex h-10 w-10 items-center justify-center rounded-full border">
+                <span className="text-primary text-sm font-medium">
                   {(user?.user_metadata?.full_name || user?.email || "U")
                     .split(" ")
                     .map((n: string) => n[0])
@@ -271,14 +329,17 @@ export function Sidebar({
             )}
             {/* Sign Out Icon */}
             {onSignOut && (
-              <button
+              <Button
+                type="button"
+                variant="quiet"
+                size="icon"
                 onClick={onSignOut}
-                className="p-2.5 rounded-lg bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                className="h-10 w-10 rounded-lg"
                 title="Sign out"
                 aria-label="Sign out"
               >
                 <LogOut size={16} />
-              </button>
+              </Button>
             )}
           </div>
         )}

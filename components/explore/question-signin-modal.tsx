@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Icons } from "@/components/icons";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 
 interface QuestionSignInModalProps {
@@ -68,7 +69,7 @@ export function QuestionSignInModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm"
+            className="fixed inset-0 z-[9999] bg-overlay/80 backdrop-blur-sm"
           />
 
           {/* Modal Container */}
@@ -82,13 +83,16 @@ export function QuestionSignInModal({
             {/* Modal Card */}
             <div className="relative w-full max-w-md rounded-2xl border border-border bg-background/95 backdrop-blur-xl p-8 shadow-2xl">
               {/* Close Button */}
-              <button
+              <Button
+                type="button"
+                variant="quiet"
+                size="icon"
                 onClick={onClose}
-                className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-muted/50 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute top-4 right-4 h-8 w-8"
                 aria-label="Close modal"
               >
                 <X className="w-4 h-4" />
-              </button>
+              </Button>
 
               {/* Heading */}
               <div className="text-center mb-6">
@@ -105,33 +109,41 @@ export function QuestionSignInModal({
               </div>
 
               {/* Google Sign In */}
-              <button
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
                 onClick={handleGoogleSignIn}
-                className="w-full px-6 py-4 rounded-xl border-2 border-border bg-background hover:border-primary/50 hover:bg-background/80 font-semibold transition-all duration-300 mb-4"
+                className="mb-4 h-14 w-full rounded-xl border-2 font-semibold"
               >
                 <div className="flex items-center justify-center gap-3">
                   <Icons.google className="w-5 h-5" />
                   <span>Continue with Google</span>
                 </div>
-              </button>
+              </Button>
 
               {/* Email Sign In */}
-              <button
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
                 onClick={handleEmailSignIn}
-                className="w-full px-6 py-4 rounded-xl border-2 border-border bg-background hover:border-primary/50 hover:bg-background/80 font-semibold transition-all duration-300"
+                className="h-14 w-full rounded-xl border-2 font-semibold"
               >
                 Continue with Email
-              </button>
+              </Button>
 
               {/* Footer */}
               <div className="mt-6 text-center text-sm text-muted-foreground">
                 Don't have an account?{" "}
-                <button
+                <Button
+                  type="button"
+                  variant="link"
                   onClick={handleSignUp}
-                  className="text-primary hover:text-primary/80 font-medium transition-colors"
+                  className="h-auto p-0 font-medium"
                 >
                   Sign up free
-                </button>
+                </Button>
               </div>
             </div>
           </motion.div>

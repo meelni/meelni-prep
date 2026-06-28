@@ -27,7 +27,7 @@ export function EndSessionModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-overlay/50 backdrop-blur-sm z-50"
           />
 
           {/* Modal */}
@@ -42,8 +42,8 @@ export function EndSessionModal({
             >
               {/* Icon */}
               <div className="flex justify-center mb-4">
-                <div className="p-3 bg-orange-100 dark:bg-orange-950 rounded-full">
-                  <AlertCircle className="w-8 h-8 text-orange-600" />
+                <div className="p-3 bg-warning/10 rounded-full">
+                  <AlertCircle className="w-8 h-8 text-warning" />
                 </div>
               </div>
 
@@ -69,10 +69,10 @@ export function EndSessionModal({
                   Cancel
                 </Button>
                 <Button
-                  variant="default"
+                  variant="destructive"
                   onClick={onConfirm}
                   disabled={isLoading}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                  className="flex-1"
                 >
                   {isLoading ? (
                     <>

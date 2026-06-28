@@ -1,4 +1,5 @@
 import { Icons } from "@/components/icons";
+import { StatusPill } from "@/components/ui/app-surface";
 import { siteConfig } from "@/lib/config";
 import Link from "next/link";
 
@@ -16,11 +17,11 @@ export function Footer() {
             <div>
               <div className="flex items-center gap-x-2 mb-4">
                 <Icons.logo className="h-6 w-6 text-primary" />
-                <h2 className="text-[20px] font-sans font-semibold text-foreground">
+                <h2 className="text-xl font-sans font-semibold text-foreground">
                   {siteConfig.name}
                 </h2>
               </div>
-              <p className="text-[15px] text-muted-foreground leading-relaxed max-w-xs">
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
                 {siteConfig.description}
               </p>
             </div>
@@ -29,25 +30,25 @@ export function Footer() {
             <nav className="flex flex-col gap-3">
               <a
                 href="#features"
-                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200"
               >
                 Features
               </a>
               <a
                 href="#pricing"
-                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200"
               >
                 Pricing
               </a>
               <Link
                 href="/blog"
-                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200"
               >
                 Blog
               </Link>
               <a
                 href="/contact"
-                className="text-[15px] text-muted-foreground hover:text-foreground transition-colors duration-200"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200"
               >
                 Contact
               </a>
@@ -56,7 +57,7 @@ export function Footer() {
 
           {/* Right Side: Connect - aligns with header CTA button */}
           <div>
-            <h3 className="text-[15px] font-sans font-semibold text-foreground mb-4">
+            <h3 className="text-sm font-sans font-semibold text-foreground mb-4">
               Connect
             </h3>
             <div className="flex gap-x-3">
@@ -77,7 +78,7 @@ export function Footer() {
         <div className="pt-8 border-t border-border/40">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             {/* Left: Copyright + Legal Links */}
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-2 text-[13px] text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-2 text-xs text-muted-foreground">
               <span>© {currentYear} {siteConfig.name}. All rights reserved.</span>
               <span className="hidden md:inline">|</span>
               <a
@@ -96,10 +97,9 @@ export function Footer() {
             </div>
 
             {/* Right: Status */}
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[13px] text-muted-foreground uppercase tracking-wider">All systems operational</span>
-            </div>
+            <StatusPill tone="success" className="uppercase tracking-wider">
+              All systems operational
+            </StatusPill>
           </div>
         </div>
       </div>

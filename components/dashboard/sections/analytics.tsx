@@ -2,7 +2,6 @@
 
 import { useState, useEffect, memo } from "react";
 import { motion } from "framer-motion";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   TrendingUp,
   TrendingDown,
@@ -15,6 +14,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
+import {
+  DashboardMetricCard,
+  DashboardSkeletonCard,
+  DashboardStateCard,
+} from "@/components/dashboard/dashboard-surface";
 import {
   PerformanceTrend,
   CompetencyBreakdown,
@@ -89,54 +93,52 @@ function EmptyState({ sessionsCompleted }: { sessionsCompleted: number }) {
       animate="animate"
       className="p-6 space-y-6"
     >
-      <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-        <CardContent className="p-12 text-center space-y-6">
-          <div className="space-y-3">
-            <Sparkles className="w-16 h-16 mx-auto text-primary" />
-            <h2 className="text-3xl font-display font-light text-foreground">
-              Building Your Analytics
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-md mx-auto">
-              You've completed {sessionsCompleted} {sessionsCompleted === 1 ? "session" : "sessions"}. Complete{" "}
-              {3 - sessionsCompleted} more to unlock detailed analytics and performance insights.
-            </p>
-          </div>
+      <DashboardStateCard
+        icon={<Sparkles className="h-8 w-8" />}
+        title="Building Your Analytics"
+        description={
+          <>
+            You've completed {sessionsCompleted}{" "}
+            {sessionsCompleted === 1 ? "session" : "sessions"}. Complete{" "}
+            {3 - sessionsCompleted} more to unlock detailed analytics and
+            performance insights.
+          </>
+        }
+      >
+        <div className="flex items-center justify-center gap-2">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className={`h-3 w-3 rounded-full ${
+                i <= sessionsCompleted
+                  ? "bg-primary"
+                  : "bg-muted-foreground/20"
+              }`}
+            />
+          ))}
+        </div>
 
-          <div className="flex items-center justify-center gap-2">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className={`w-3 h-3 rounded-full ${
-                  i <= sessionsCompleted
-                    ? "bg-primary"
-                    : "bg-muted-foreground/20"
-                }`}
-              />
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto pt-6">
-            <div className="p-4 bg-card rounded-lg border border-border">
-              <Target className="w-6 h-6 text-primary mx-auto mb-2" />
-              <div className="text-sm text-muted-foreground">
-                Performance trends
-              </div>
-            </div>
-            <div className="p-4 bg-card rounded-lg border border-border">
-              <Award className="w-6 h-6 text-primary mx-auto mb-2" />
-              <div className="text-sm text-muted-foreground">
-                Competency breakdown
-              </div>
-            </div>
-            <div className="p-4 bg-card rounded-lg border border-border">
-              <TrendingUp className="w-6 h-6 text-primary mx-auto mb-2" />
-              <div className="text-sm text-muted-foreground">
-                Improvement insights
-              </div>
+        <div className="mx-auto grid max-w-2xl grid-cols-1 gap-4 pt-6 md:grid-cols-3">
+          <div className="rounded-lg border border-border bg-card p-4">
+            <Target className="mx-auto mb-2 h-6 w-6 text-primary" />
+            <div className="text-sm text-muted-foreground">
+              Performance trends
             </div>
           </div>
-        </CardContent>
-      </Card>
+          <div className="rounded-lg border border-border bg-card p-4">
+            <Award className="mx-auto mb-2 h-6 w-6 text-primary" />
+            <div className="text-sm text-muted-foreground">
+              Competency breakdown
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-card p-4">
+            <TrendingUp className="mx-auto mb-2 h-6 w-6 text-primary" />
+            <div className="text-sm text-muted-foreground">
+              Improvement insights
+            </div>
+          </div>
+        </div>
+      </DashboardStateCard>
     </motion.div>
   );
 }
@@ -150,36 +152,14 @@ function LoadingState() {
       {/* Stats Cards Skeleton */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <Card key={i} className="bg-card border-border">
-            <CardContent className="p-6">
-              <div className="space-y-2">
-                <div className="h-4 w-20 bg-muted animate-pulse rounded" />
-                <div className="h-8 w-16 bg-muted animate-pulse rounded" />
-              </div>
-            </CardContent>
-          </Card>
+          <DashboardSkeletonCard key={i} />
         ))}
       </div>
 
       {/* Charts Skeleton */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <div className="h-5 w-32 bg-muted animate-pulse rounded" />
-          </CardHeader>
-          <CardContent>
-            <div className="h-[400px] bg-muted animate-pulse rounded" />
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <div className="h-5 w-32 bg-muted animate-pulse rounded" />
-          </CardHeader>
-          <CardContent>
-            <div className="h-[400px] bg-muted animate-pulse rounded" />
-          </CardContent>
-        </Card>
+        <DashboardSkeletonCard variant="chart" />
+        <DashboardSkeletonCard variant="chart" />
       </div>
 
       {/* Loading indicator */}
@@ -221,9 +201,9 @@ function StatCard({
   const changeColor =
     change !== undefined
       ? change > 0
-        ? "text-green-500"
+        ? "text-success"
         : change < 0
-          ? "text-red-500"
+          ? "text-destructive"
           : "text-muted-foreground"
       : "";
 
@@ -231,28 +211,25 @@ function StatCard({
 
   return (
     <motion.div variants={fadeInUp}>
-      <Card className="bg-card border-border hover:border-primary/30 transition-colors min-h-[140px] flex flex-col">
-        <CardContent className="p-6 flex-1 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-3">
-            <Icon className="w-5 h-5 text-primary" />
-            {ChangeIcon && change !== undefined && (
-              <div className={`flex items-center gap-1 text-xs ${changeColor}`}>
-                <ChangeIcon className="w-3 h-3" />
-                {Math.abs(change)}%
-              </div>
-            )}
-          </div>
-          <div className="space-y-1">
-            <div className="text-2xl font-mono font-bold text-foreground">
-              {value}
-              {suffix}
+      <DashboardMetricCard
+        icon={Icon}
+        label={label}
+        value={
+          <>
+            {value}
+            {suffix}
+          </>
+        }
+        indicator={
+          ChangeIcon && change !== undefined ? (
+            <div className={`flex items-center gap-1 text-xs ${changeColor}`}>
+              <ChangeIcon className="w-3 h-3" />
+              {Math.abs(change)}%
             </div>
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">
-              {label}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          ) : null
+        }
+        valueClassName="text-2xl"
+      />
     </motion.div>
   );
 }
@@ -321,11 +298,11 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
   if (error || !insights) {
     return (
       <div className="p-6">
-        <Card className="bg-destructive/5 border-destructive/20">
-          <CardContent className="p-8 text-center">
-            <p className="text-destructive">Failed to load analytics. Please try again later.</p>
-          </CardContent>
-        </Card>
+        <DashboardStateCard
+          title="Failed to load analytics"
+          description="Please try again later."
+          tone="danger"
+        />
       </div>
     );
   }

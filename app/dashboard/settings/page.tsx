@@ -2,23 +2,11 @@
 
 import { lazy, Suspense, useEffect } from "react";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
-import { Loader2 } from "lucide-react";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
 
 // Lazy load settings section
 const SettingsSection = lazy(() => import("@/components/dashboard/sections/settings").then(m => ({ default: m.SettingsSection })));
-
-// Section loading fallback component
-function SectionLoading() {
-  return (
-    <div className="flex items-center justify-center min-h-[400px]">
-      <div className="flex flex-col items-center gap-3">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading section...</p>
-      </div>
-    </div>
-  );
-}
 
 export default function SettingsPage() {
   // Track Web Vitals performance
@@ -32,7 +20,7 @@ export default function SettingsPage() {
   }, []);
 
   return (
-    <Suspense fallback={<SectionLoading />}>
+    <Suspense fallback={<DashboardLoadingState />}>
       <SettingsSection />
     </Suspense>
   );

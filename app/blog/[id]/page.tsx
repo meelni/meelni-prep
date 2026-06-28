@@ -1,10 +1,19 @@
 import { notFound } from "next/navigation";
 import { getBlogPostById, blogPosts, BlogPost as BlogPostType } from "@/lib/blog-data";
-import { Calendar, Clock, ArrowLeft, Home, ChevronRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Calendar, ChevronRight, Clock, Home } from "lucide-react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Header } from "@/components/sections/header";
+import {
+  MarketingArticleHeader,
+  MarketingCtaCard,
+  MarketingEyebrow,
+  MarketingMetaRow,
+  MarketingPage,
+  MarketingProse,
+} from "@/components/marketing/marketing-surface";
+import { Button } from "@/components/ui/button";
 
 export async function generateStaticParams() {
   return blogPosts.map((post) => ({
@@ -106,7 +115,7 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-muted/5 to-background">
+    <MarketingPage>
       {/* Structured Data for SEO */}
       <BlogPostStructuredData post={post} />
 
@@ -139,7 +148,7 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
           <li aria-hidden="true">
             <ChevronRight className="w-4 h-4" />
           </li>
-          <li aria-current="page" className="truncate max-w-[200px]">
+          <li aria-current="page" className="max-w-xs truncate">
             <span className="text-foreground font-medium">{post.title}</span>
           </li>
         </ol>
@@ -147,71 +156,67 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
 
       {/* Article */}
       <article className="max-w-3xl mx-auto px-6 py-12">
-        {/* Category Badge */}
-        <div className="mb-8">
-          <span className="inline-block px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/10 to-primary/5 text-primary text-[12px] font-semibold tracking-wide uppercase border border-primary/20">
-            {post.category}
-          </span>
-        </div>
-
-        {/* Title */}
-        <h1 className="text-[40px] sm:text-[52px] font-display font-bold tracking-tight mb-8 leading-[1.1] bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
-          {post.title}
-        </h1>
-
-        {/* Meta Info */}
-        <div className="flex items-center gap-6 text-[14px] text-muted-foreground mb-12 pb-10 border-b border-border/30">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/50 flex items-center justify-center">
-              <span className="text-[11px] font-bold text-primary-foreground">M</span>
-            </div>
-            <span className="font-semibold text-foreground">{post.author}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Calendar className="h-3.5 w-3.5" />
-            <span>{post.date}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock className="h-3.5 w-3.5" />
-            <span>{post.readTime}</span>
-          </div>
-        </div>
+        <MarketingArticleHeader
+          className="mb-12 border-b border-border/30 pb-10"
+          eyebrow={
+            <MarketingEyebrow className="px-3 py-1.5 text-xs uppercase tracking-wide">
+              {post.category}
+            </MarketingEyebrow>
+          }
+          title={post.title}
+          meta={
+            <MarketingMetaRow
+              className="border-t-0 pt-0 text-sm"
+              items={[
+                { icon: Calendar, label: post.date },
+                { icon: Clock, label: post.readTime },
+              ]}
+            >
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                  M
+                </span>
+                <span className="font-semibold text-foreground">{post.author}</span>
+              </div>
+            </MarketingMetaRow>
+          }
+        />
 
         {/* Content */}
-        <div className="prose prose-lg max-w-none">
+        <MarketingProse>
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
               h1: ({ children }) => (
-                <h1 className="text-[36px] font-display font-bold mt-16 mb-6 leading-tight text-foreground">{children}</h1>
+                <h1 className="font-display mt-16 mb-6 text-4xl font-bold leading-tight text-foreground">{children}</h1>
               ),
               h2: ({ children }) => (
-                <h2 className="text-[28px] font-display font-bold mt-14 mb-5 leading-tight text-foreground border-b border-border/20 pb-3">{children}</h2>
+                <h2 className="font-display mt-14 mb-5 border-b border-border/20 pb-3 text-3xl font-bold leading-tight text-foreground">{children}</h2>
               ),
               h3: ({ children }) => (
-                <h3 className="text-[22px] font-display font-semibold mt-10 mb-4 leading-tight text-foreground">{children}</h3>
+                <h3 className="font-display mt-10 mb-4 text-2xl font-semibold leading-tight text-foreground">{children}</h3>
               ),
               h4: ({ children }) => (
-                <h4 className="text-[18px] font-semibold mt-8 mb-3 text-foreground/90">{children}</h4>
+                <h4 className="mt-8 mb-3 text-lg font-semibold text-foreground/90">{children}</h4>
               ),
               p: ({ children }) => {
                 const text = typeof children === "string" ? children : "";
                 // Special styling for good/bad examples
                 if (text.startsWith("❌")) {
                   return (
-                    <p className="bg-red-500/5 border-l-4 border-red-500/40 rounded-r-lg px-5 py-4 my-6 text-[16px] leading-relaxed text-foreground/90">
+                    <p className="my-6 rounded-r-lg border-l-4 border-destructive/40 bg-destructive/5 px-5 py-4 text-base leading-relaxed text-foreground/90">
                       {children}
                     </p>
                   );
                 }
                 if (text.startsWith("✅")) {
                   return (
-                    <p className="bg-green-500/5 border-l-4 border-green-500/40 rounded-r-lg px-5 py-4 my-6 text-[16px] leading-relaxed text-foreground/90">
+                    <p className="my-6 rounded-r-lg border-l-4 border-success/40 bg-success/5 px-5 py-4 text-base leading-relaxed text-foreground/90">
                       {children}
                     </p>
                   );
                 }
-                return <p className="text-[18px] leading-[1.8] mb-6 text-foreground/85">{children}</p>;
+                return <p className="mb-6 text-lg leading-loose text-foreground/85">{children}</p>;
               },
               strong: ({ children }) => (
                 <strong className="font-semibold text-foreground">{children}</strong>
@@ -220,16 +225,16 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
                 <em className="italic text-foreground/90">{children}</em>
               ),
               ul: ({ children }) => (
-                <ul className="list-disc space-y-2 my-6 text-[17px] text-foreground/85 pl-6">{children}</ul>
+                <ul className="my-6 list-disc space-y-2 pl-6 text-base text-foreground/85">{children}</ul>
               ),
               ol: ({ children }) => (
-                <ol className="list-decimal space-y-2 my-6 text-[17px] text-foreground/85 pl-6">{children}</ol>
+                <ol className="my-6 list-decimal space-y-2 pl-6 text-base text-foreground/85">{children}</ol>
               ),
               li: ({ children }) => (
                 <li className="leading-[1.7] marker:text-primary/70 pl-2">{children}</li>
               ),
               blockquote: ({ children }) => (
-                <blockquote className="border-l-4 border-primary/40 bg-primary/5 pl-6 pr-4 py-4 italic text-foreground/80 my-8 rounded-r-lg text-[17px] leading-[1.7]">
+                <blockquote className="my-8 rounded-r-lg border-l-4 border-primary/40 bg-primary/5 py-4 pr-4 pl-6 text-base leading-relaxed text-foreground/80 italic">
                   {children}
                 </blockquote>
               ),
@@ -239,7 +244,7 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
                 </a>
               ),
               code: ({ children }) => (
-                <code className="px-2 py-0.5 rounded bg-muted text-[15px] font-mono text-foreground/90 border border-border/30">
+                <code className="rounded border border-border/30 bg-muted px-2 py-0.5 font-mono text-sm text-foreground/90">
                   {children}
                 </code>
               ),
@@ -250,7 +255,7 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
               ),
               table: ({ children }) => (
                 <div className="overflow-x-auto my-8 rounded-lg border border-border/40">
-                  <table className="w-full text-[15px]">{children}</table>
+                  <table className="w-full text-sm">{children}</table>
                 </div>
               ),
               thead: ({ children }) => (
@@ -269,48 +274,34 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
           >
             {post.content}
           </ReactMarkdown>
-        </div>
+        </MarketingProse>
 
         {/* CTA */}
-        <div className="mt-20 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-3xl" />
-          <div className="relative p-10 rounded-3xl border border-primary/20 backdrop-blur-sm">
-            <div className="flex items-start gap-4 mb-6">
-              <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary/20">
-                <span className="text-[18px] font-bold text-primary-foreground">M</span>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-[26px] font-display font-bold mb-2 text-foreground">
-                  Ready to practice with AI?
-                </h3>
-                <p className="text-[17px] text-foreground/70 leading-relaxed mb-6">
-                  Put these frameworks into action with Meelni's AI interview coach. Get real-time feedback and improve faster than solo practice.
-                </p>
-                <Link
-                  href="/setup"
-                  className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-gradient-to-r from-primary to-primary/90 text-primary-foreground font-semibold text-[16px] hover:shadow-lg hover:shadow-primary/25 hover:scale-[1.02] transition-all duration-200"
-                >
-                  Start practicing now
-                  <svg className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
+        <MarketingCtaCard
+          className="mt-20 text-left"
+          mark="M"
+          title="Ready to practice with AI?"
+          description="Put these frameworks into action with Meelni's AI interview coach. Get real-time feedback and improve faster than solo practice."
+          action={
+            <Button asChild size="lg" variant="glow">
+              <Link href="/setup">
+                Start practicing now
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          }
+        />
 
         {/* Related Posts Section (placeholder for future) */}
         <div className="mt-20 pt-12 border-t border-border/30">
-          <Link
-            href="/blog"
-            className="inline-flex items-center gap-2 text-[15px] text-muted-foreground hover:text-primary transition-colors duration-200 group"
-          >
-            <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
-            <span className="font-medium">View all posts</span>
-          </Link>
+          <Button asChild variant="link" className="h-auto p-0 text-muted-foreground">
+            <Link href="/blog" className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              View all posts
+            </Link>
+          </Button>
         </div>
       </article>
-    </div>
+    </MarketingPage>
   );
 }

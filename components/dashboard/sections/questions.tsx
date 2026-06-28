@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, memo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -19,6 +21,11 @@ import { QuestionCard } from "@/components/question-bank/question-card";
 import { MobileFilterDrawer } from "@/components/question-bank/mobile-filter-drawer";
 import { PracticeSetDialog } from "@/components/question-bank/practice-set-dialog";
 import { PracticeSetsList } from "@/components/question-bank/practice-sets-list";
+import {
+  DashboardLoadingState,
+  DashboardSectionCard,
+  DashboardSkeletonCard,
+} from "@/components/dashboard/dashboard-surface";
 import {
   Play,
   Calendar,
@@ -42,10 +49,10 @@ interface Question {
 }
 
 const QUESTION_TYPE_COLORS = {
-  Behavioral: "bg-blue-500/8 text-blue-600 dark:text-blue-400 border-blue-500/20",
-  "Product Sense": "bg-purple-500/8 text-purple-600 dark:text-purple-400 border-purple-500/20",
-  Execution: "bg-green-500/8 text-green-600 dark:text-green-400 border-green-500/20",
-  "Product Strategy": "bg-orange-500/8 text-orange-600 dark:text-orange-400 border-orange-500/20",
+  Behavioral: "border-info/20 bg-info/10 text-info",
+  "Product Sense": "border-primary/20 bg-primary/10 text-primary",
+  Execution: "border-success/20 bg-success/10 text-success",
+  "Product Strategy": "border-warning/20 bg-warning/10 text-warning",
 };
 
 export const QuestionsSection = memo(function QuestionsSection() {
@@ -56,9 +63,13 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [selectedType, setSelectedType] = useState("All Types");
   const [sortBy, setSortBy] = useState<"recent" | "company" | "type">("recent");
-  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
+  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(
+    new Set()
+  );
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
-  const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<Set<string>>(new Set());
+  const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<
+    Set<string>
+  >(new Set());
   const [showOnlyBookmarked, setShowOnlyBookmarked] = useState(false);
   const [showPracticeSets, setShowPracticeSets] = useState(false);
   const [isPracticeSetDialogOpen, setIsPracticeSetDialogOpen] = useState(false);
@@ -132,7 +143,9 @@ export const QuestionsSection = memo(function QuestionsSection() {
         // Search filter (debounced)
         const matchesSearch =
           debouncedSearchQuery === "" ||
-          q.questionText.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+          q.questionText
+            .toLowerCase()
+            .includes(debouncedSearchQuery.toLowerCase()) ||
           q.company?.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
 
         if (!matchesSearch) return false;
@@ -156,14 +169,21 @@ export const QuestionsSection = memo(function QuestionsSection() {
           return a.questionType.localeCompare(b.questionType);
         }
       });
-  }, [questions, debouncedSearchQuery, selectedType, sortBy, showOnlyBookmarked, bookmarkedQuestionIds]);
+  }, [
+    questions,
+    debouncedSearchQuery,
+    selectedType,
+    sortBy,
+    showOnlyBookmarked,
+    bookmarkedQuestionIds,
+  ]);
 
   const handleTryQuestion = (questionId: string, questionType: string) => {
     // Map display question type to roundType
     const typeMap: Record<string, string> = {
-      "Behavioral": "behavioral",
+      Behavioral: "behavioral",
       "Product Sense": "product_sense",
-      "Execution": "execution",
+      Execution: "execution",
       "Product Strategy": "strategy",
     };
 
@@ -209,15 +229,15 @@ export const QuestionsSection = memo(function QuestionsSection() {
     try {
       // Optimistic UI update
       const questionsToBookmark = Array.from(selectedQuestions);
-      setBookmarkedQuestionIds(prev => {
+      setBookmarkedQuestionIds((prev) => {
         const updated = new Set(prev);
-        questionsToBookmark.forEach(id => updated.add(id));
+        questionsToBookmark.forEach((id) => updated.add(id));
         return updated;
       });
 
       // Bookmark all selected questions
       await Promise.all(
-        questionsToBookmark.map(questionId =>
+        questionsToBookmark.map((questionId) =>
           fetch("/api/questions/bookmark", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -241,7 +261,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
     const isBookmarked = bookmarkedQuestionIds.has(questionId);
 
     // Optimistic UI update
-    setBookmarkedQuestionIds(prev => {
+    setBookmarkedQuestionIds((prev) => {
       const updated = new Set(prev);
       if (isBookmarked) {
         updated.delete(questionId);
@@ -268,7 +288,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
     } catch (error) {
       console.error("Error toggling bookmark:", error);
       // Revert optimistic update on error
-      setBookmarkedQuestionIds(prev => {
+      setBookmarkedQuestionIds((prev) => {
         const updated = new Set(prev);
         if (isBookmarked) {
           updated.add(questionId);
@@ -285,7 +305,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
   };
 
   const handlePracticeSetSuccess = () => {
-    setPracticeSetRefreshTrigger(prev => prev + 1);
+    setPracticeSetRefreshTrigger((prev) => prev + 1);
     setSelectedQuestions(new Set());
   };
 
@@ -299,9 +319,15 @@ export const QuestionsSection = memo(function QuestionsSection() {
   };
 
   // Determine empty state type
-  const getEmptyStateType = (): "no-search" | "no-filter" | "first-time" | "no-bookmarks" | null => {
+  const getEmptyStateType = ():
+    | "no-search"
+    | "no-filter"
+    | "first-time"
+    | "no-bookmarks"
+    | null => {
     if (filteredQuestions.length > 0) return null;
-    if (showOnlyBookmarked && bookmarkedQuestionIds.size === 0) return "no-bookmarks";
+    if (showOnlyBookmarked && bookmarkedQuestionIds.size === 0)
+      return "no-bookmarks";
     if (debouncedSearchQuery) return "no-search";
     if (selectedType !== "All Types") return "no-filter";
     if (questions.length === 0) return "first-time";
@@ -315,31 +341,39 @@ export const QuestionsSection = memo(function QuestionsSection() {
     if (bookmarkedQuestionIds.size === 0) return;
 
     // Navigate to interview with a random bookmarked question
-    const bookmarkedQuestions = questions.filter(q => bookmarkedQuestionIds.has(q.id));
+    const bookmarkedQuestions = questions.filter((q) =>
+      bookmarkedQuestionIds.has(q.id)
+    );
     if (bookmarkedQuestions.length > 0) {
-      const randomQuestion = bookmarkedQuestions[Math.floor(Math.random() * bookmarkedQuestions.length)];
+      const randomQuestion =
+        bookmarkedQuestions[
+          Math.floor(Math.random() * bookmarkedQuestions.length)
+        ];
       handleTryQuestion(randomQuestion.id, randomQuestion.questionType);
     }
   };
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">
-            Loading question bank...
-          </p>
-        </div>
-      </div>
+      <DashboardSkeletonCard
+        variant="chart"
+        className="m-6 min-h-dashboard-loading"
+      >
+        <DashboardLoadingState
+          className="min-h-0"
+          label="Loading question bank..."
+        />
+      </DashboardSkeletonCard>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="space-y-2">
-        <h2 className="text-2xl font-display font-light text-foreground">Question Bank</h2>
+        <h2 className="font-display text-foreground text-2xl font-light">
+          Question Bank
+        </h2>
         <p className="text-muted-foreground font-sans">
           Browse and practice with real interview questions from top companies.
         </p>
@@ -347,61 +381,79 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
       {/* View Tabs */}
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg">
-          <button
+        <div className="bg-muted/30 flex items-center gap-2 rounded-lg p-1">
+          <Button
+            type="button"
+            variant={
+              !showOnlyBookmarked && !showPracticeSets ? "secondary" : "ghost"
+            }
             onClick={() => {
               setShowOnlyBookmarked(false);
               setShowPracticeSets(false);
             }}
             className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200",
-              !showOnlyBookmarked && !showPracticeSets
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+              "rounded-md px-4 py-2 text-sm font-medium transition-all duration-200",
+              showOnlyBookmarked || showPracticeSets
+                ? "text-muted-foreground hover:text-foreground"
+                : "shadow-sm"
             )}
           >
             All Questions
-          </button>
-          <button
+          </Button>
+          <Button
+            type="button"
+            variant={
+              showOnlyBookmarked && !showPracticeSets ? "secondary" : "ghost"
+            }
             onClick={() => {
               setShowOnlyBookmarked(true);
               setShowPracticeSets(false);
             }}
             className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2",
+              "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all duration-200",
               showOnlyBookmarked && !showPracticeSets
-                ? "bg-card text-foreground shadow-sm"
+                ? "shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <Bookmark className={cn("w-4 h-4", showOnlyBookmarked && !showPracticeSets && "fill-current")} />
+            <Bookmark
+              className={cn(
+                "h-4 w-4",
+                showOnlyBookmarked && !showPracticeSets && "fill-current"
+              )}
+            />
             Saved
             {bookmarkedQuestionIds.size > 0 && (
-              <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
+              <Badge
+                variant="secondary"
+                className="ml-1 h-5 min-w-5 rounded-full px-1.5 text-xs"
+              >
                 {bookmarkedQuestionIds.size}
               </Badge>
             )}
-          </button>
-          <button
+          </Button>
+          <Button
+            type="button"
+            variant={showPracticeSets ? "secondary" : "ghost"}
             onClick={() => {
               setShowPracticeSets(true);
               setShowOnlyBookmarked(false);
             }}
             className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2",
+              "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all duration-200",
               showPracticeSets
-                ? "bg-card text-foreground shadow-sm"
+                ? "shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <FolderPlus className="w-4 h-4" />
+            <FolderPlus className="h-4 w-4" />
             Practice Sets
-          </button>
+          </Button>
         </div>
 
         {showOnlyBookmarked && bookmarkedQuestionIds.size > 0 && (
           <Button onClick={handlePracticeWithBookmarked} className="gap-2">
-            <Play className="w-4 h-4" />
+            <Play className="h-4 w-4" />
             Practice with these
           </Button>
         )}
@@ -410,14 +462,21 @@ export const QuestionsSection = memo(function QuestionsSection() {
       {/* Questions Content */}
       <div>
         {showPracticeSets ? (
-          <div className="rounded-lg border border-border overflow-hidden bg-card p-6">
+          <DashboardSectionCard
+            title="Practice Sets"
+            description="Organize selected questions into focused prep sets."
+          >
             <PracticeSetsList
               onSelectSet={handleSelectPracticeSet}
               refreshTrigger={practiceSetRefreshTrigger}
             />
-          </div>
+          </DashboardSectionCard>
         ) : emptyStateType ? (
-          <div className="rounded-lg border border-border overflow-hidden bg-card">
+          <DashboardSectionCard
+            title="Question Results"
+            description="Adjust filters or explore another practice path."
+            contentClassName="p-0"
+          >
             <EmptyState
               type={emptyStateType}
               onClearFilters={clearAllFilters}
@@ -429,22 +488,27 @@ export const QuestionsSection = memo(function QuestionsSection() {
               onBackToDashboard={() => router.push("/dashboard")}
               selectedType={selectedType}
             />
-          </div>
+          </DashboardSectionCard>
         ) : (
           <>
             {/* Desktop Table View (≥768px) */}
-            <div className="hidden md:block rounded-lg border border-border overflow-hidden bg-card shadow-sm">
+            <DashboardSectionCard
+              title="Questions"
+              description={`${filteredQuestions.length} questions found`}
+              className="hidden shadow-sm md:flex"
+              contentClassName="p-0"
+            >
               {/* Integrated Search/Filter Toolbar */}
-              <div className="px-6 py-4 border-b border-border/50 bg-card/40 backdrop-blur-sm">
+              <div className="border-border/50 bg-card/40 border-b px-6 py-4 backdrop-blur-sm">
                 <div className="flex items-center gap-3">
-                  <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                    <input
+                  <div className="relative flex-1">
+                    <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                    <Input
                       type="text"
                       placeholder="Search questions by text or company..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150"
+                      className="bg-card pl-10"
                       aria-label="Search questions"
                     />
                   </div>
@@ -459,23 +523,23 @@ export const QuestionsSection = memo(function QuestionsSection() {
               </div>
 
               {/* Table with Sticky Header */}
-              <div className="relative overflow-x-auto max-h-[calc(100vh-12rem)] scroll-smooth">
+              <div className="relative max-h-[calc(100vh-12rem)] overflow-x-auto scroll-smooth">
                 {/* Bottom fade gradient */}
-                <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-card to-transparent z-10" />
+                <div className="from-card pointer-events-none absolute right-0 bottom-0 left-0 z-10 h-12 bg-gradient-to-t to-transparent" />
 
                 <Table className="border-separate border-spacing-0">
-                  <TableHeader className="sticky top-0 z-20 bg-gradient-to-b from-card via-card/98 to-card/95 backdrop-blur-md border-b border-border/60 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.08)]">
+                  <TableHeader className="from-card via-card/98 to-card/95 border-border/60 sticky top-0 z-20 border-b bg-gradient-to-b shadow-sm shadow-border/40 backdrop-blur-md">
                     <TableRow className="hover:bg-transparent">
                       {/* Checkbox column */}
-                      <TableHead className="w-12 h-11 px-4">
-                        <input
-                          type="checkbox"
+                      <TableHead className="h-11 w-12 px-4">
+                        <Checkbox
                           checked={
-                            selectedQuestions.size === filteredQuestions.length &&
+                            selectedQuestions.size ===
+                              filteredQuestions.length &&
                             filteredQuestions.length > 0
                           }
                           onChange={toggleSelectAll}
-                          className="w-4 h-4 rounded border-border text-primary focus:ring-2 focus:ring-primary/20"
+                          className="h-4 w-4"
                           aria-label="Select all questions"
                         />
                       </TableHead>
@@ -483,7 +547,9 @@ export const QuestionsSection = memo(function QuestionsSection() {
                       <TableHead className="h-11 px-4">Type</TableHead>
                       <TableHead className="h-11 px-4">Company</TableHead>
                       <TableHead className="h-11 px-4">Asked Date</TableHead>
-                      <TableHead className="h-11 px-4 text-right">Action</TableHead>
+                      <TableHead className="h-11 px-4 text-right">
+                        Action
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -493,22 +559,27 @@ export const QuestionsSection = memo(function QuestionsSection() {
                         <TableRow
                           key={question.id}
                           className={cn(
-                            "transition-all duration-200 hover:bg-primary/[0.02]",
-                            "border-b border-border/40 last:border-0",
-                            isSelected && "bg-primary/[0.04] border-l-2 border-l-primary shadow-[inset_0_0_0_1px_rgb(var(--primary)/0.08)]"
+                            "hover:bg-primary/[0.02] transition-all duration-200",
+                            "border-border/40 border-b last:border-0",
+                            isSelected &&
+                              "bg-primary/[0.04] border-l-primary border-l-2 ring-1 ring-inset ring-primary/10"
                           )}
                           style={{
                             opacity: index < 20 ? 0 : 1,
-                            animation: index < 20 ? `fadeInUp 0.3s ease-out ${index * 0.015}s forwards` : 'none',
+                            animation:
+                              index < 20
+                                ? `fadeInUp 0.3s ease-out ${index * 0.015}s forwards`
+                                : "none",
                           }}
                         >
                           {/* Checkbox */}
                           <TableCell className="px-4 py-3.5">
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={isSelected}
-                              onChange={() => toggleQuestionSelection(question.id)}
-                              className="w-4 h-4 rounded border-border text-primary focus:ring-2 focus:ring-primary/20"
+                              onChange={() =>
+                                toggleQuestionSelection(question.id)
+                              }
+                              className="h-4 w-4"
                               aria-label={`Select question: ${question.questionText}`}
                               aria-checked={isSelected}
                             />
@@ -516,7 +587,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
                           {/* Question */}
                           <TableCell className="px-4 py-3.5">
-                            <p className="text-sm font-medium text-foreground line-clamp-2">
+                            <p className="text-foreground line-clamp-2 text-sm font-medium">
                               {question.questionText}
                             </p>
                           </TableCell>
@@ -537,19 +608,21 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
                           {/* Company */}
                           <TableCell className="px-4 py-3.5">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Building2 className="w-4 h-4 opacity-60" />
+                            <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                              <Building2 className="h-4 w-4 opacity-60" />
                               <span>{question.company || "N/A"}</span>
                             </div>
                           </TableCell>
 
                           {/* Date */}
                           <TableCell className="px-4 py-3.5">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Calendar className="w-4 h-4 opacity-60" />
+                            <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                              <Calendar className="h-4 w-4 opacity-60" />
                               <span>
                                 {question.askedAt
-                                  ? new Date(question.askedAt).toLocaleDateString()
+                                  ? new Date(
+                                      question.askedAt
+                                    ).toLocaleDateString()
                                   : "N/A"}
                               </span>
                             </div>
@@ -558,29 +631,42 @@ export const QuestionsSection = memo(function QuestionsSection() {
                           {/* Action */}
                           <TableCell className="px-4 py-3.5 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <button
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
                                 onClick={() => toggleBookmark(question.id)}
                                 className={cn(
-                                  "p-2 rounded-lg transition-colors",
+                                  "h-9 w-9 rounded-lg transition-colors",
                                   bookmarkedQuestionIds.has(question.id)
                                     ? "text-primary bg-primary/10 hover:bg-primary/20"
                                     : "text-muted-foreground hover:text-primary hover:bg-primary/5"
                                 )}
-                                aria-label={bookmarkedQuestionIds.has(question.id) ? "Remove bookmark" : "Bookmark question"}
+                                aria-label={
+                                  bookmarkedQuestionIds.has(question.id)
+                                    ? "Remove bookmark"
+                                    : "Bookmark question"
+                                }
                               >
                                 <Bookmark
                                   className={cn(
-                                    "w-4 h-4",
-                                    bookmarkedQuestionIds.has(question.id) && "fill-current"
+                                    "h-4 w-4",
+                                    bookmarkedQuestionIds.has(question.id) &&
+                                      "fill-current"
                                   )}
                                 />
-                              </button>
+                              </Button>
                               <Button
                                 size="sm"
-                                onClick={() => handleTryQuestion(question.id, question.questionType)}
+                                onClick={() =>
+                                  handleTryQuestion(
+                                    question.id,
+                                    question.questionType
+                                  )
+                                }
                                 className="gap-2"
                               >
-                                <Play className="w-4 h-4" />
+                                <Play className="h-4 w-4" />
                                 Try Question
                               </Button>
                             </div>
@@ -591,53 +677,62 @@ export const QuestionsSection = memo(function QuestionsSection() {
                   </TableBody>
                 </Table>
               </div>
-            </div>
+            </DashboardSectionCard>
 
             {/* Mobile Card Grid (<768px) */}
-            <div className="md:hidden space-y-4">
+            <div className="space-y-4 md:hidden">
               {/* Mobile Search/Filter Toolbar */}
-              <div className="rounded-lg border border-border overflow-hidden bg-card shadow-sm">
-                <div className="px-4 py-4 border-b border-border/50 bg-card/40">
+              <DashboardSectionCard
+                title="Search And Filters"
+                description={`${filteredQuestions.length} questions found`}
+                className="shadow-sm"
+                contentClassName="p-0"
+              >
+                <div className="bg-card/40 px-4 py-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex-1 relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                      <input
+                    <div className="relative flex-1">
+                      <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                      <Input
                         type="text"
                         placeholder="Search questions..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150 min-h-[44px]"
+                        className="min-h-11 bg-card pl-10"
                         aria-label="Search questions"
                       />
                     </div>
-                    <button
+                    <Button
+                      type="button"
+                      variant="outline"
                       onClick={() => setIsFilterDrawerOpen(true)}
-                      className="px-4 py-2.5 bg-card border border-border rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-muted/50 transition-colors min-h-[44px]"
+                      className="flex min-h-11 items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
                       aria-label="Open filters"
                     >
-                      <Filter className="w-4 h-4" />
+                      <Filter className="h-4 w-4" />
                       {selectedType !== "All Types" && (
                         <Badge
                           variant="default"
-                          className="h-5 min-w-5 px-1.5 text-xs rounded-full"
+                          className="h-5 min-w-5 rounded-full px-1.5 text-xs"
                         >
                           1
                         </Badge>
                       )}
-                    </button>
+                    </Button>
                   </div>
                 </div>
-              </div>
+              </DashboardSectionCard>
 
               {/* Mobile Question Cards */}
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {filteredQuestions.map((question, index) => (
                   <QuestionCard
                     key={question.id}
                     question={question}
                     selected={selectedQuestions.has(question.id)}
                     onToggleSelect={() => toggleQuestionSelection(question.id)}
-                    onTryQuestion={() => handleTryQuestion(question.id, question.questionType)}
+                    onTryQuestion={() =>
+                      handleTryQuestion(question.id, question.questionType)
+                    }
                     badgeClassName={
                       QUESTION_TYPE_COLORS[
                         question.questionType as keyof typeof QUESTION_TYPE_COLORS

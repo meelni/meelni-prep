@@ -3,24 +3,12 @@
 import { lazy, Suspense, useEffect } from "react";
 import { useSessions } from "@/lib/api/queries";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
-import { Loader2 } from "lucide-react";
 import { DashboardError } from "@/components/dashboard/error";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
 
 // Lazy load history section
 const HistorySection = lazy(() => import("@/components/dashboard/sections/history").then(m => ({ default: m.HistorySection })));
-
-// Section loading fallback component
-function SectionLoading() {
-  return (
-    <div className="flex items-center justify-center min-h-[400px]">
-      <div className="flex flex-col items-center gap-3">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading section...</p>
-      </div>
-    </div>
-  );
-}
 
 export default function HistoryPage() {
   // Track Web Vitals performance
@@ -50,7 +38,7 @@ export default function HistoryPage() {
   const sessions = data?.sessions || [];
 
   return (
-    <Suspense fallback={<SectionLoading />}>
+    <Suspense fallback={<DashboardLoadingState />}>
       <HistorySection sessions={sessions} loadingSessions={sessionsLoading} />
     </Suspense>
   );

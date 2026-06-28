@@ -2,10 +2,26 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  MarketingCard,
+  MarketingCtaCard,
+  MarketingEyebrow,
+  MarketingHero,
+  MarketingPage,
+} from "@/components/marketing/marketing-surface";
+import {
+  AppSurface,
+  AppSurfaceDescription,
+  AppSurfaceTitle,
+} from "@/components/ui/app-surface";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  SelectableCard,
+  SelectableCardIcon,
+} from "@/components/ui/selectable-card";
+import { Textarea } from "@/components/ui/textarea";
 import { Icons } from "@/components/icons";
 import {
   Mail,
@@ -84,42 +100,38 @@ export default function ContactPage() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full text-center">
-          <CardContent className="p-8 space-y-6">
-            <div className="w-16 h-16 mx-auto rounded-full bg-green-500/10 flex items-center justify-center">
-              <CheckCircle className="w-8 h-8 text-green-500" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-display font-light text-foreground">Message Sent</h2>
-              <p className="text-muted-foreground">
-                Thank you for reaching out. We'll get back to you within 24 hours.
-              </p>
-              {formData.reason === "billing" && (
-                <p className="text-sm text-primary">
-                  For billing issues, we prioritize responses within 4 hours during business hours.
-                </p>
-              )}
-            </div>
-            <div className="flex flex-col gap-3">
-              <Link href="/">
-                <Button variant="outline" className="w-full">
+      <MarketingPage className="flex items-center justify-center p-4">
+        <MarketingCtaCard
+          className="w-full max-w-md"
+          tone="success"
+          mark={<CheckCircle className="h-8 w-8" />}
+          title="Message Sent"
+          description="Thank you for reaching out. We'll get back to you within 24 hours."
+          action={
+            <div className="flex w-full flex-col gap-3">
+              <Button asChild variant="outline" className="w-full">
+                <Link href="/">
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Return to Home
-                </Button>
-              </Link>
-              <Link href="/dashboard">
-                <Button className="w-full">Go to Dashboard</Button>
-              </Link>
+                </Link>
+              </Button>
+              <Button asChild className="w-full">
+                <Link href="/dashboard">Go to Dashboard</Link>
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          }
+          footer={
+            formData.reason === "billing"
+              ? "For billing issues, we prioritize responses within 4 hours during business hours."
+              : undefined
+          }
+        />
+      </MarketingPage>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <MarketingPage>
       {/* Header */}
       <header className="border-b border-border/60 bg-background/95 backdrop-blur-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -128,12 +140,12 @@ export default function ContactPage() {
               <Icons.logo className="h-6 w-6 text-primary" />
               <span className="text-xl font-sans font-semibold text-foreground">Meelni</span>
             </Link>
-            <Link href="/">
-              <Button variant="ghost" size="sm">
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Home
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         </div>
       </header>
@@ -142,24 +154,25 @@ export default function ContactPage() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="space-y-8">
           {/* Page Header */}
-          <div className="text-center space-y-4">
-            <h1 className="text-4xl font-display font-light text-foreground">Contact Us</h1>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Have a question, need help with your subscription, or want to share feedback? We're
-              here to help.
-            </p>
-          </div>
+          <MarketingHero
+            className="mb-0"
+            eyebrow={<MarketingEyebrow icon={Mail}>Support</MarketingEyebrow>}
+            title="Contact Us"
+            description="Have a question, need help with your subscription, or want to share feedback? We're here to help."
+          />
 
           <div className="grid md:grid-cols-3 gap-8">
             {/* Contact Form */}
-            <Card className="md:col-span-2">
-              <CardHeader>
-                <CardTitle className="font-display font-light">Send us a message</CardTitle>
-                <CardDescription>
+            <AppSurface size="none" className="md:col-span-2">
+              <div className="border-b border-border/60 p-6">
+                <AppSurfaceTitle className="font-display font-light">
+                  Send us a message
+                </AppSurfaceTitle>
+                <AppSurfaceDescription className="mt-1 text-sm">
                   Fill out the form below and we'll get back to you as soon as possible.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+                </AppSurfaceDescription>
+              </div>
+              <div className="p-6">
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {/* Name & Email Row */}
                   <div className="grid sm:grid-cols-2 gap-4">
@@ -191,19 +204,21 @@ export default function ContactPage() {
                     <Label>What can we help you with?</Label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {reasons.map((reason) => (
-                        <button
+                        <SelectableCard
                           key={reason.value}
                           type="button"
+                          selected={formData.reason === reason.value}
                           onClick={() => setFormData({ ...formData, reason: reason.value })}
-                          className={`flex items-center gap-2 p-3 rounded-lg border text-sm transition-all ${
-                            formData.reason === reason.value
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border hover:border-primary/50 text-muted-foreground hover:text-foreground"
-                          }`}
+                          className="flex items-center gap-2 p-3 text-sm"
                         >
-                          {reason.icon}
+                          <SelectableCardIcon
+                            selected={formData.reason === reason.value}
+                            className="p-1"
+                          >
+                            {reason.icon}
+                          </SelectableCardIcon>
                           <span>{reason.label}</span>
-                        </button>
+                        </SelectableCard>
                       ))}
                     </div>
                   </div>
@@ -223,26 +238,26 @@ export default function ContactPage() {
                   {/* Message */}
                   <div className="space-y-2">
                     <Label htmlFor="message">Message</Label>
-                    <textarea
+                    <Textarea
                       id="message"
                       value={formData.message}
                       onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                       placeholder="Please provide as much detail as possible..."
                       required
                       rows={6}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                      className="resize-none"
                     />
                   </div>
 
                   {/* Error Message */}
                   {error && (
-                    <div className="flex items-start gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-                      <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                    <AppSurface className="flex items-start gap-3 border-destructive/20 bg-destructive/5">
+                      <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
                       <div className="space-y-1">
-                        <p className="text-sm font-medium text-red-500">Failed to send message</p>
+                        <p className="text-sm font-medium text-destructive">Failed to send message</p>
                         <p className="text-xs text-muted-foreground">{error}</p>
                       </div>
-                    </div>
+                    </AppSurface>
                   )}
 
                   {/* Submit Button */}
@@ -257,19 +272,19 @@ export default function ContactPage() {
                     )}
                   </Button>
                 </form>
-              </CardContent>
-            </Card>
+              </div>
+            </AppSurface>
 
             {/* Contact Info Sidebar */}
             <div className="space-y-6">
               {/* Direct Contact */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
+              <MarketingCard className="p-6">
+                <div className="pb-3">
+                  <h2 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
                     Direct Contact
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
+                  </h2>
+                </div>
+                <div className="space-y-4">
                   <a
                     href="mailto:support@meelni.com"
                     className="flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/50 transition-colors group"
@@ -298,17 +313,17 @@ export default function ContactPage() {
                       <p className="text-xs text-muted-foreground">Billing inquiries</p>
                     </div>
                   </a>
-                </CardContent>
-              </Card>
+                </div>
+              </MarketingCard>
 
               {/* Response Times */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
+              <MarketingCard className="p-6">
+                <div className="pb-3">
+                  <h2 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
                     Response Times
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
+                  </h2>
+                </div>
+                <div className="space-y-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Billing Issues</span>
                     <span className="font-medium text-foreground">&lt; 4 hours</span>
@@ -324,17 +339,17 @@ export default function ContactPage() {
                   <p className="text-xs text-muted-foreground pt-2 border-t border-border">
                     Business hours: Mon-Fri, 9am-6pm PST
                   </p>
-                </CardContent>
-              </Card>
+                </div>
+              </MarketingCard>
 
               {/* Quick Help */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
+              <MarketingCard className="p-6">
+                <div className="pb-3">
+                  <h2 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
                     Quick Help
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
+                  </h2>
+                </div>
+                <div className="space-y-2">
                   <Link
                     href="/dashboard?section=settings"
                     className="block text-sm text-primary hover:underline"
@@ -353,12 +368,12 @@ export default function ContactPage() {
                   <Link href="/terms" className="block text-sm text-primary hover:underline">
                     Terms of Service
                   </Link>
-                </CardContent>
-              </Card>
+                </div>
+              </MarketingCard>
             </div>
           </div>
         </div>
       </main>
-    </div>
+    </MarketingPage>
   );
 }

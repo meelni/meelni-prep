@@ -12,7 +12,7 @@ interface CheckeredBackgroundProps {
 }
 
 const CheckeredBackground = ({
-  color = "#5271ff",
+  color = "var(--primary)",
   cellSize = "25px",
   strokeWidth = "3px",
   className,

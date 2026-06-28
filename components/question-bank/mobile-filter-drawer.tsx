@@ -48,7 +48,7 @@ export function MobileFilterDrawer({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={onClose}
-            className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40"
+            className="bg-background/80 fixed inset-0 z-40 backdrop-blur-sm"
             aria-hidden="true"
           />
 
@@ -62,64 +62,69 @@ export function MobileFilterDrawer({
               stiffness: 300,
               damping: 30,
             }}
-            className="fixed inset-x-0 bottom-0 h-[60vh] bg-card border-t border-border rounded-t-2xl z-50 flex flex-col"
+            className="bg-card border-border fixed inset-x-0 bottom-0 z-50 flex h-question-filter-drawer flex-col rounded-t-2xl border-t"
             role="dialog"
             aria-modal="true"
             aria-labelledby="filter-drawer-title"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-4 border-b border-border shrink-0">
+            <div className="border-border flex shrink-0 items-center justify-between border-b px-4 py-4">
               <h2
                 id="filter-drawer-title"
-                className="text-lg font-semibold text-foreground"
+                className="text-foreground text-lg font-semibold"
               >
                 Filters
               </h2>
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 onClick={onClose}
-                className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-muted/50 transition-colors"
+                className="h-10 w-10 rounded-lg"
                 aria-label="Close filters"
               >
-                <X className="w-5 h-5 text-muted-foreground" />
-              </button>
+                <X className="text-muted-foreground h-5 w-5" />
+              </Button>
             </div>
 
             {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
+            <div className="flex-1 space-y-6 overflow-y-auto px-4 py-6">
               {/* Question Type Filter */}
               <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                <h3 className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
                   Question Type
                 </h3>
                 <div className="space-y-2">
                   {QUESTION_TYPES.map((type) => (
-                    <button
+                    <Button
                       key={type}
+                      type="button"
+                      variant={selectedType === type ? "default" : "quiet"}
                       onClick={() => onSelectType(type)}
                       className={cn(
-                        "w-full px-4 py-3 rounded-lg text-sm font-medium text-left transition-all duration-150 min-h-[48px] flex items-center",
+                        "flex min-h-12 w-full items-center justify-start rounded-lg px-4 py-3 text-left text-sm font-medium transition-all duration-150",
                         selectedType === type
-                          ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                          ? "bg-primary text-primary-foreground shadow-primary/20 shadow-sm"
                           : "bg-muted/30 text-foreground hover:bg-muted/50"
                       )}
                     >
                       {type}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
             </div>
 
             {/* Footer with action buttons */}
-            <div className="px-4 py-4 border-t border-border shrink-0 flex gap-3">
+            <div className="border-border flex shrink-0 gap-3 border-t px-4 py-4">
               <Button
                 variant="outline"
                 onClick={handleClearAndClose}
-                className="flex-1 h-12"
+                className="h-12 flex-1"
               >
                 Clear All
               </Button>
-              <Button onClick={handleApply} className="flex-1 h-12">
+              <Button onClick={handleApply} className="h-12 flex-1">
                 Apply Filters
               </Button>
             </div>

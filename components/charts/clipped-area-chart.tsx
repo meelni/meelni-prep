@@ -32,7 +32,7 @@ const chartData = [
 const chartConfig = {
   mobile: {
     label: "Mobile",
-    color: "#FCA070",
+    color: "var(--chart-1)",
   },
 } satisfies ChartConfig;
 

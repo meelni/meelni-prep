@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Play, Calendar, Building2, Bookmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -56,44 +57,45 @@ export function QuestionCard({
       transition={{ delay: index * 0.05, duration: 0.3 }}
       whileTap={{ scale: 0.98 }}
       className={cn(
-        "relative p-4 border rounded-lg bg-card transition-all duration-150 min-h-[140px] flex flex-col",
+        "bg-card relative flex min-h-36 flex-col rounded-lg border p-4 transition-all duration-150",
         selected
-          ? "border-primary shadow-sm shadow-primary/20"
+          ? "border-primary shadow-primary/20 shadow-sm"
           : "border-border hover:border-primary/50 hover:shadow-sm"
       )}
     >
       {/* Checkbox - Top left corner with touch-friendly size */}
       <div className="absolute top-3 left-3">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={selected}
           onChange={onToggleSelect}
-          className="w-5 h-5 rounded border-border text-primary focus:ring-2 focus:ring-primary/20"
           aria-label={`Select question: ${question.questionText}`}
           aria-checked={selected}
         />
       </div>
 
       {/* Header: Company, Date badges, and Bookmark button */}
-      <div className="flex items-center justify-between mb-3 pl-8">
+      <div className="mb-3 flex items-center justify-between pl-8">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Building2 className="w-3.5 h-3.5 opacity-60" />
+          <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <Building2 className="h-3.5 w-3.5 opacity-60" />
             <span>{question.company || "N/A"}</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Calendar className="w-3.5 h-3.5 opacity-60" />
+          <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <Calendar className="h-3.5 w-3.5 opacity-60" />
             <span>{formatDate(question.askedAt)}</span>
           </div>
         </div>
         {onToggleBookmark && (
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={(e) => {
               e.stopPropagation();
               onToggleBookmark();
             }}
             className={cn(
-              "p-1.5 rounded-lg transition-colors touch-manipulation",
+              "h-8 w-8 touch-manipulation rounded-lg transition-colors",
               isBookmarked
                 ? "text-primary bg-primary/10"
                 : "text-muted-foreground hover:text-primary hover:bg-primary/5"
@@ -101,17 +103,14 @@ export function QuestionCard({
             aria-label={isBookmarked ? "Remove bookmark" : "Bookmark question"}
           >
             <Bookmark
-              className={cn(
-                "w-4 h-4",
-                isBookmarked && "fill-current"
-              )}
+              className={cn("h-4 w-4", isBookmarked && "fill-current")}
             />
-          </button>
+          </Button>
         )}
       </div>
 
       {/* Question Text - 2 line clamp */}
-      <p className="text-sm text-foreground line-clamp-2 mb-3 flex-1 leading-relaxed">
+      <p className="text-foreground mb-3 line-clamp-2 flex-1 text-sm leading-relaxed">
         {question.questionText}
       </p>
 
@@ -126,10 +125,10 @@ export function QuestionCard({
       <Button
         size="sm"
         onClick={onTryQuestion}
-        className="w-full h-11 gap-2"
+        className="h-11 w-full gap-2"
         aria-label={`Start interview with question: ${question.questionText}`}
       >
-        <Play className="w-4 h-4" />
+        <Play className="h-4 w-4" />
         Try Question
       </Button>
     </motion.div>

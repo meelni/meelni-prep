@@ -44,13 +44,16 @@ export function ConversionCTA({ index }: ConversionCTAProps) {
       className="relative p-6 sm:p-8 rounded-xl border border-primary/20 bg-gradient-to-br from-primary/3 to-primary/8 shadow-sm hover:shadow-md transition-all duration-300"
     >
       {/* Dismiss button */}
-      <button
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
         onClick={handleDismiss}
-        className="absolute top-3 right-3 w-6 h-6 rounded-full bg-background/10 hover:bg-background/20 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+        className="absolute top-3 right-3 h-6 w-6 rounded-full text-muted-foreground hover:text-foreground"
         aria-label="Dismiss"
       >
         <X className="w-3 h-3" />
-      </button>
+      </Button>
 
       {/* Icon */}
       <div className="mb-4 inline-flex p-3 rounded-xl bg-primary/10 border border-primary/20">

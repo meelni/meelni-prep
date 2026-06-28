@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Lightbulb, Target, TrendingUp, Users, Pause, Play, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface FeatureOption {
   id: number;
@@ -191,10 +192,11 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
           {features.map((option, index) => {
             const Icon = interviewIcons[option.title as keyof typeof interviewIcons];
             return (
-              <button
+              <Button
                 key={option.id}
+                variant="ghost"
                 onClick={() => setSelectedIndex(index)}
-                className={`group relative px-4 py-3 rounded-xl font-medium transition-all duration-300 ${
+                className={`group relative h-auto px-4 py-3 rounded-xl font-medium transition-all duration-300 hover:bg-transparent ${
                   selectedIndex === index
                     ? "text-primary"
                     : "text-muted-foreground hover:text-foreground"
@@ -211,7 +213,7 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                   {Icon && <Icon className="w-4 h-4" />}
                   <span className="whitespace-nowrap">{option.title}</span>
                 </span>
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -222,30 +224,34 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
         {/* Playback Controls */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-border/60 bg-background/40 backdrop-blur-sm">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-500/80" />
-            <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-            <div className="w-3 h-3 rounded-full bg-green-500/80" />
+            <div className="w-3 h-3 rounded-full bg-destructive/80" />
+            <div className="w-3 h-3 rounded-full bg-warning/80" />
+            <div className="w-3 h-3 rounded-full bg-success/80" />
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={togglePause}
-              className="p-2 rounded-lg hover:bg-primary/10 transition-colors"
+              className="h-8 w-8 rounded-lg text-primary hover:bg-primary/10 hover:text-primary"
               title={isPaused ? "Resume" : "Pause"}
             >
               {isPaused ? (
-                <Play className="w-4 h-4 text-primary" />
+                <Play className="w-4 h-4" />
               ) : (
-                <Pause className="w-4 h-4 text-primary" />
+                <Pause className="w-4 h-4" />
               )}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleReset}
-              className="p-2 rounded-lg hover:bg-primary/10 transition-colors"
+              className="h-8 w-8 rounded-lg text-primary hover:bg-primary/10 hover:text-primary"
               title="Restart"
             >
-              <RotateCcw className="w-4 h-4 text-primary" />
-            </button>
+              <RotateCcw className="w-4 h-4" />
+            </Button>
           </div>
         </div>
 
@@ -264,7 +270,7 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                     key={index}
                     className="my-3 flex justify-center"
                   >
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs font-medium text-amber-400">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/10 border border-warning/30 text-xs font-medium text-warning">
                       <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
@@ -280,14 +286,14 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                     key={index}
                     className="leading-relaxed"
                   >
-                    <span className="text-cyan-400 font-semibold">Interviewer:</span>{" "}
+                    <span className="text-info font-semibold">Interviewer:</span>{" "}
                     <span className="text-foreground">
                       {message.content}
                       {isLastMessage && isTyping && (
                         <motion.span
                           animate={{ opacity: [1, 0, 1] }}
                           transition={{ duration: 0.8, repeat: Infinity }}
-                          className="inline-block w-1.5 h-4 bg-cyan-400 ml-1 align-middle"
+                          className="inline-block w-1.5 h-4 bg-info ml-1 align-middle"
                         />
                       )}
                     </span>

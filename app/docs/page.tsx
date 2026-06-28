@@ -4,6 +4,59 @@ import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import SwaggerUIReact from 'swagger-ui-react';
 import 'swagger-ui-react/swagger-ui.css';
+import {
+  Beaker,
+  BookOpen,
+  Download,
+  Home,
+  KeyRound,
+} from 'lucide-react';
+
+import {
+  MarketingEyebrow,
+  MarketingHero,
+  MarketingPage,
+} from '@/components/marketing/marketing-surface';
+import {
+  AppSurface,
+  AppSurfaceDescription,
+  AppSurfaceTitle,
+  StatusPill,
+} from '@/components/ui/app-surface';
+import { Button } from '@/components/ui/button';
+import { Header } from '@/components/sections/header';
+
+const docLinks = [
+  {
+    href: '/docs/API.md',
+    title: 'Full API Guide',
+    description: 'Authentication, endpoints, response shapes, and examples.',
+    icon: BookOpen,
+    status: 'Guide',
+  },
+  {
+    href: '/docs/AUTHENTICATION.md',
+    title: 'Authentication',
+    description: 'Token handling and identity flows for API integrations.',
+    icon: KeyRound,
+    status: 'Security',
+  },
+  {
+    href: '/docs/TESTING.md',
+    title: 'Testing Guide',
+    description: 'Recommended checks for local and integration workflows.',
+    icon: Beaker,
+    status: 'Quality',
+  },
+  {
+    href: '/docs/openapi.yaml',
+    title: 'OpenAPI Spec',
+    description: 'Download the machine-readable API contract.',
+    icon: Download,
+    status: 'YAML',
+    download: true,
+  },
+];
 
 export default function APIDocsPage() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,109 +91,105 @@ export default function APIDocsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-      {/* Header */}
-      <header className="border-b border-gray-200 bg-white/80 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Meelni API Documentation</h1>
-              <p className="mt-2 text-gray-600">
-                Comprehensive API reference for the Meelni interview platform
-              </p>
-            </div>
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
-            >
-              ← Back to App
-            </Link>
-          </div>
-        </div>
-      </header>
+    <MarketingPage>
+      <Header />
 
-      {/* Quick Links */}
-      <div className="border-b border-gray-200 bg-white">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex flex-wrap gap-4">
-            <a
-              href="/docs/API.md"
-              className="inline-flex items-center gap-2 rounded-md bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              📘 Full API Guide
-            </a>
-            <a
-              href="/docs/AUTHENTICATION.md"
-              className="inline-flex items-center gap-2 rounded-md bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 transition-colors hover:bg-green-100"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              🔐 Authentication
-            </a>
-            <a
-              href="/docs/TESTING.md"
-              className="inline-flex items-center gap-2 rounded-md bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              🧪 Testing Guide
-            </a>
-            <a
-              href="/docs/openapi.yaml"
-              className="inline-flex items-center gap-2 rounded-md bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-700 transition-colors hover:bg-orange-100"
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-            >
-              ⬇️ OpenAPI Spec
-            </a>
-          </div>
-        </div>
-      </div>
-
-      {/* Swagger UI */}
-      <div ref={containerRef} className="container mx-auto px-4 py-8">
-        <SwaggerUIReact
-          url="/docs/openapi.yaml"
-          docExpansion="list"
-          defaultModelsExpandDepth={1}
-          deepLinking={true}
-          displayOperationId={false}
-          filter={true}
-          showExtensions={true}
-          showCommonExtensions={true}
-          tryItOutEnabled={true}
+      <main className="mx-auto max-w-6xl px-6 py-12">
+        <MarketingHero
+          eyebrow={
+            <MarketingEyebrow icon={BookOpen}>Developer Docs</MarketingEyebrow>
+          }
+          title="API Documentation"
+          description="Comprehensive API reference for the Meelni interview platform, including OpenAPI exploration and downloadable guides."
         />
-      </div>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-200 bg-white py-8">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-            <p className="text-sm text-gray-600">
-              © 2025 Meelni. All rights reserved.
-            </p>
-            <div className="flex gap-6">
+        <div className="mb-8 flex justify-center">
+          <Button asChild variant="outline">
+            <Link href="/">
+              <Home className="mr-2 h-4 w-4" />
+              Back to Home
+            </Link>
+          </Button>
+        </div>
+
+        <div className="mb-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {docLinks.map((doc) => {
+            const Icon = doc.icon;
+
+            return (
               <a
-                href="mailto:humans@conductor.build"
-                className="text-sm text-gray-600 transition-colors hover:text-gray-900"
-              >
-                Support
-              </a>
-              <a
-                href="https://github.com/your-repo"
-                className="text-sm text-gray-600 transition-colors hover:text-gray-900"
+                key={doc.href}
+                href={doc.href}
+                className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 target="_blank"
                 rel="noopener noreferrer"
+                download={doc.download}
               >
-                GitHub
+                <AppSurface className="h-full transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/40 group-hover:shadow-md">
+                  <div className="mb-4 flex items-start justify-between gap-4">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <StatusPill tone="primary">{doc.status}</StatusPill>
+                  </div>
+                  <AppSurfaceTitle className="font-display text-base">
+                    {doc.title}
+                  </AppSurfaceTitle>
+                  <AppSurfaceDescription className="mt-2 text-sm leading-relaxed">
+                    {doc.description}
+                  </AppSurfaceDescription>
+                </AppSurface>
               </a>
-            </div>
+            );
+          })}
+        </div>
+
+        <AppSurface size="none" className="overflow-hidden">
+          <div className="border-b border-border/60 p-6">
+            <AppSurfaceTitle className="font-display text-2xl font-bold">
+              Interactive Reference
+            </AppSurfaceTitle>
+            <AppSurfaceDescription className="mt-2 text-sm leading-relaxed">
+              Explore endpoints, parameters, schemas, and request examples from the live OpenAPI contract.
+            </AppSurfaceDescription>
+          </div>
+          <div ref={containerRef} className="p-4 sm:p-6">
+            <SwaggerUIReact
+              url="/docs/openapi.yaml"
+              docExpansion="list"
+              defaultModelsExpandDepth={1}
+              deepLinking={true}
+              displayOperationId={false}
+              filter={true}
+              showExtensions={true}
+              showCommonExtensions={true}
+              tryItOutEnabled={true}
+            />
+          </div>
+        </AppSurface>
+      </main>
+
+      <footer className="border-t border-border/60 py-8">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 text-sm text-muted-foreground sm:flex-row">
+          <p>&copy; 2025 Meelni. All rights reserved.</p>
+          <div className="flex gap-6">
+            <a
+              href="mailto:humans@conductor.build"
+              className="transition-colors hover:text-foreground"
+            >
+              Support
+            </a>
+            <a
+              href="https://github.com/your-repo"
+              className="transition-colors hover:text-foreground"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              GitHub
+            </a>
           </div>
         </div>
       </footer>
-    </div>
+    </MarketingPage>
   );
 }

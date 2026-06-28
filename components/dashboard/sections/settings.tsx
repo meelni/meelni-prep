@@ -1,13 +1,21 @@
 "use client";
 
-import { memo } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { memo, useState, useEffect } from "react";
+import {
+  DashboardActionCard,
+  DashboardSectionCard,
+} from "@/components/dashboard/dashboard-surface";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
-import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useTheme } from "next-themes";
 import {
@@ -16,7 +24,7 @@ import {
   Save,
   Trash2,
   AlertTriangle,
-  CreditCard
+  CreditCard,
 } from "lucide-react";
 import { BillingSection } from "./billing";
 
@@ -30,7 +38,7 @@ interface SettingsState {
 }
 
 export const SettingsSection = memo(function SettingsSection() {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const { theme, setTheme } = useTheme();
   const [settings, setSettings] = useState<SettingsState>({
     displayName: user?.user_metadata?.full_name || "",
@@ -49,7 +57,7 @@ export const SettingsSection = memo(function SettingsSection() {
         if (response.ok) {
           const data = await response.json();
           if (data.settings) {
-            setSettings(prev => ({ ...prev, ...data.settings }));
+            setSettings((prev) => ({ ...prev, ...data.settings }));
             // Apply theme if it exists in settings
             if (data.settings.theme) {
               setTheme(data.settings.theme);
@@ -63,7 +71,7 @@ export const SettingsSection = memo(function SettingsSection() {
         if (savedSettings) {
           try {
             const parsed = JSON.parse(savedSettings);
-            setSettings(prev => ({ ...prev, ...parsed }));
+            setSettings((prev) => ({ ...prev, ...parsed }));
             if (parsed.theme) {
               setTheme(parsed.theme);
             }
@@ -83,16 +91,16 @@ export const SettingsSection = memo(function SettingsSection() {
 
     try {
       // Save to database via API
-      const response = await fetch('/api/user/settings', {
-        method: 'PUT',
+      const response = await fetch("/api/user/settings", {
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(settings)
+        body: JSON.stringify(settings),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save settings');
+        throw new Error("Failed to save settings");
       }
 
       // Also save to localStorage as backup
@@ -139,7 +147,9 @@ export const SettingsSection = memo(function SettingsSection() {
             }
 
             // Account deleted - redirect to home
-            alert("Your account has been deleted. You will be redirected to the home page.");
+            alert(
+              "Your account has been deleted. You will be redirected to the home page."
+            );
             window.location.href = "/";
           } catch (error) {
             console.error("Failed to delete account:", error);
@@ -157,10 +167,12 @@ export const SettingsSection = memo(function SettingsSection() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
+    <div className="max-w-5xl space-y-6 p-6">
       {/* Header */}
       <div className="space-y-2">
-        <h2 className="text-2xl font-display font-light text-foreground">Settings</h2>
+        <h2 className="font-display text-foreground text-2xl font-light">
+          Settings
+        </h2>
         <p className="text-muted-foreground font-sans">
           Manage your account preferences and application settings.
         </p>
@@ -173,14 +185,14 @@ export const SettingsSection = memo(function SettingsSection() {
           disabled={isSaving}
           className="gap-2"
         >
-          <Save className="w-4 h-4" />
+          <Save className="h-4 w-4" />
           {isSaving ? "Saving..." : "Save Changes"}
         </Button>
         {saveSuccess && (
           <motion.span
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
-            className="text-sm text-green-600 dark:text-green-400"
+            className="text-success text-sm"
           >
             Settings saved successfully!
           </motion.span>
@@ -188,142 +200,138 @@ export const SettingsSection = memo(function SettingsSection() {
       </div>
 
       {/* Account Settings */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <User className="w-5 h-5 text-primary" />
-            <CardTitle className="font-display font-light">Account</CardTitle>
-          </div>
-          <CardDescription>
-            Manage your personal information and account details.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="displayName">Display Name</Label>
-            <Input
-              id="displayName"
-              value={settings.displayName}
-              onChange={(e) => setSettings({ ...settings, displayName: e.target.value })}
-              placeholder="Your name"
-            />
-          </div>
+      <DashboardSectionCard
+        title={
+          <span className="flex items-center gap-2">
+            <User className="text-primary h-5 w-5" />
+            Account
+          </span>
+        }
+        description="Manage your personal information and account details."
+        contentClassName="space-y-4"
+      >
+        <div className="space-y-2">
+          <Label htmlFor="displayName">Display Name</Label>
+          <Input
+            id="displayName"
+            value={settings.displayName}
+            onChange={(e) =>
+              setSettings({ ...settings, displayName: e.target.value })
+            }
+            placeholder="Your name"
+          />
+        </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={settings.email}
-              disabled
-              className="opacity-60 cursor-not-allowed"
-            />
-            <p className="text-xs text-muted-foreground">
-              Email cannot be changed. Managed by Google OAuth.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            value={settings.email}
+            disabled
+            className="cursor-not-allowed opacity-60"
+          />
+          <p className="text-muted-foreground text-xs">
+            Email cannot be changed. Managed by Google OAuth.
+          </p>
+        </div>
+      </DashboardSectionCard>
 
       {/* Billing Section */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <CreditCard className="w-5 h-5 text-primary" />
-          <h3 className="text-xl font-display font-light text-foreground">Billing & Subscription</h3>
+          <CreditCard className="text-primary h-5 w-5" />
+          <h3 className="font-display text-foreground text-xl font-light">
+            Billing & Subscription
+          </h3>
         </div>
         <BillingSection />
       </div>
 
       {/* Appearance */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Palette className="w-5 h-5 text-primary" />
-            <CardTitle className="font-display font-light">Appearance</CardTitle>
-          </div>
-          <CardDescription>
-            Customize how Meelni looks and feels.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="theme">Theme</Label>
-            <Select
-              value={theme || settings.theme}
-              onValueChange={(value) => {
-                // Update both immediately
-                setTheme(value);
-                const newSettings = { ...settings, theme: value };
-                setSettings(newSettings);
+      <DashboardSectionCard
+        title={
+          <span className="flex items-center gap-2">
+            <Palette className="text-primary h-5 w-5" />
+            Appearance
+          </span>
+        }
+        description="Customize how Meelni looks and feels."
+        contentClassName="space-y-4"
+      >
+        <div className="space-y-2">
+          <Label htmlFor="theme">Theme</Label>
+          <Select
+            value={theme || settings.theme}
+            onValueChange={(value) => {
+              // Update both immediately
+              setTheme(value);
+              const newSettings = { ...settings, theme: value };
+              setSettings(newSettings);
 
-                // Save to database immediately
-                fetch('/api/user/settings', {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(newSettings)
-                }).catch(err => console.error('Failed to save theme:', err));
-              }}
-            >
-              <SelectTrigger id="theme">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="light">Light</SelectItem>
-                <SelectItem value="dark">Dark</SelectItem>
-                <SelectItem value="system">System</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Choose your preferred color scheme. System will match your device settings.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+              // Save to database immediately
+              fetch("/api/user/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(newSettings),
+              }).catch((err) => console.error("Failed to save theme:", err));
+            }}
+          >
+            <SelectTrigger id="theme">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="light">Light</SelectItem>
+              <SelectItem value="dark">Dark</SelectItem>
+              <SelectItem value="system">System</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-muted-foreground text-xs">
+            Choose your preferred color scheme. System will match your device
+            settings.
+          </p>
+        </div>
+      </DashboardSectionCard>
 
       {/* Danger Zone */}
-      <Card className="bg-card border-red-500/20 border-2">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
-            <CardTitle className="font-display font-light text-red-500">Danger Zone</CardTitle>
-          </div>
-          <CardDescription>
-            Irreversible actions that affect your account.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Button
-              variant="outline"
-              className="w-full md:w-auto border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600"
-              onClick={handleDeleteAccount}
-              disabled={isDeleting}
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              {isDeleting ? "Deleting..." : "Delete Account"}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Permanently delete your account and all associated data. This action cannot be undone.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <DashboardActionCard
+        icon={<AlertTriangle className="text-destructive h-5 w-5" />}
+        title="Danger Zone"
+        description="Irreversible actions that affect your account."
+        className="border-destructive/20 bg-destructive/5 hover:border-destructive/30"
+        action={
+          <Button
+            variant="outline"
+            className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={handleDeleteAccount}
+            disabled={isDeleting}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {isDeleting ? "Deleting..." : "Delete Account"}
+          </Button>
+        }
+      >
+        <p className="text-muted-foreground text-xs">
+          Permanently delete your account and all associated data. This action
+          cannot be undone.
+        </p>
+      </DashboardActionCard>
 
       {/* Bottom Save Button */}
-      <div className="flex items-center gap-3 pt-4 border-t border-border">
+      <div className="border-border flex items-center gap-3 border-t pt-4">
         <Button
           onClick={handleSaveSettings}
           disabled={isSaving}
           className="gap-2"
         >
-          <Save className="w-4 h-4" />
+          <Save className="h-4 w-4" />
           {isSaving ? "Saving..." : "Save Changes"}
         </Button>
         {saveSuccess && (
           <motion.span
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
-            className="text-sm text-green-600 dark:text-green-400"
+            className="text-success text-sm"
           >
             Settings saved successfully!
           </motion.span>

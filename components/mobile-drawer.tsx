@@ -1,7 +1,7 @@
 "use client";
 
 import { Icons } from "@/components/icons";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent,
@@ -33,7 +33,7 @@ export function MobileDrawer() {
             title="brand-logo"
             className="relative mr-6 flex items-center space-x-2"
           >
-            <Icons.logo className="w-auto h-[40px]" />
+            <Icons.logo className="h-10 w-auto" />
             <DrawerTitle>{siteConfig.name}</DrawerTitle>
           </Link>
           <DrawerDescription>{siteConfig.description}</DrawerDescription>
@@ -57,7 +57,7 @@ export function MobileDrawer() {
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: "default" }),
-                  "text-white rounded-full"
+                  "text-primary-foreground rounded-full"
                 )}
               >
                 Go to Dashboard
@@ -79,7 +79,7 @@ export function MobileDrawer() {
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: "default" }),
-                  "text-white rounded-full"
+                  "text-primary-foreground rounded-full"
                 )}
               >
                 {siteConfig.cta}
