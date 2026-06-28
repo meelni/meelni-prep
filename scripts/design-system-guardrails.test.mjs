@@ -513,7 +513,7 @@ test("landing border text uses semantic foreground treatment", async () => {
     "after:bg-muted-foreground/",
     "after:[text-shadow:0_1px_0_var(--background)]",
   ];
-  const banned = ["neutral-", "white", "black"];
+  const banned = ["neutral-", "white", "black", "text-["];
   const violations = [];
 
   for (const token of required) {
