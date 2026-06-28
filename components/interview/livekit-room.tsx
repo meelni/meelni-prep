@@ -3,6 +3,7 @@
 import { LiveKitRoom, useVoiceAssistant, useDataChannel } from "@livekit/components-react";
 import { useEffect, useState, useRef } from "react";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { parseTranscriptEvent } from "@meelni/agent";
 
 export interface TranscriptTurn {
   speaker: "user" | "interviewer";
@@ -118,7 +119,12 @@ function RoomContent({
         // Decode the data message (comes as Uint8Array)
         const decoder = new TextDecoder();
         const jsonString = decoder.decode(message.payload);
-        const transcriptData = JSON.parse(jsonString);
+        const transcriptData = parseTranscriptEvent(jsonString);
+
+        if (!transcriptData) {
+          console.warn("[Transcript] Ignoring invalid transcript event");
+          return;
+        }
 
         console.log("[Transcript] Received:", transcriptData);
 

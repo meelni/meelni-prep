@@ -14,7 +14,7 @@ import {
   FeedbackItem,
   calculateOverallScore,
   clampScore,
-} from "@/lib/types/evaluation";
+} from "@meelni/core";
 
 /**
  * Main evaluation function that orchestrates the entire scoring process

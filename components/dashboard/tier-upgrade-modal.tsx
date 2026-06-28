@@ -21,7 +21,7 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
-import { INTERVIEW_TYPE_LABELS, type RoundType } from "@/lib/services/permissions-service";
+import { INTERVIEW_TYPE_LABELS, type RoundType } from "@meelni/core";
 import { track, AnalyticsEvents } from "@/lib/analytics";
 
 interface TierUpgradeModalProps {

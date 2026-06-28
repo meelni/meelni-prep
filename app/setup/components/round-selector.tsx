@@ -4,9 +4,8 @@ import { motion } from "framer-motion";
 import { Users, Lightbulb, Target, TrendingUp, Lock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ROUND_TYPES, RoundType } from "@/lib/interview-config";
+import { ROUND_TYPES, getRequiredTierBadge, type RoundType } from "@meelni/core";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
-import { getRequiredTierBadge } from "@/lib/services/permissions-service";
 
 interface RoundSelectorProps {
   selected: RoundType | null;

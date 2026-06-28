@@ -112,12 +112,13 @@ import { getRandomQuestion, getRandomRecentQuestion, recordQuestionUsage } from 
 import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
 import { incrementUsage } from "@/lib/services/usage-service";
 import { getUserTier } from "@/lib/services/permissions-service.server";
+import { buildInterviewRoomMetadata } from "@meelni/agent";
 import {
   canAccessInterviewType,
   getAllowedInterviewTypes,
   INTERVIEW_TYPE_LABELS,
   type RoundType,
-} from "@/lib/services/permissions-service";
+} from "@meelni/core";
 
 const livekit_api_key = process.env.LIVEKIT_API_KEY;
 const livekit_api_secret = process.env.LIVEKIT_API_SECRET;
@@ -190,8 +191,8 @@ export async function POST(req: NextRequest) {
           { status: 403 }
         );
       }
-    } catch (error: any) {
-      console.error("Permissions check error:", error.message);
+    } catch (error) {
+      console.error("Permissions check error:", getErrorMessage(error));
       // Fail closed: return 503 if permissions service is unavailable
       return NextResponse.json(
         {
@@ -220,8 +221,8 @@ export async function POST(req: NextRequest) {
           { status: 403 }
         );
       }
-    } catch (error: any) {
-      console.error("Quota check error:", error.message);
+    } catch (error) {
+      console.error("Quota check error:", getErrorMessage(error));
       // Fail closed: return 503 Service Unavailable if quota service is down
       // This prevents unlimited access if the billing system is unavailable
       return NextResponse.json(
@@ -341,27 +342,30 @@ export async function POST(req: NextRequest) {
     // Create LiveKit room with metadata
     const roomClient = new RoomServiceClient(livekit_url, livekit_api_key, livekit_api_secret);
     try {
+      const roomMetadata = buildInterviewRoomMetadata({
+        session_id: session.id,
+        round_type: roundType as RoundType,
+        mode,
+        config: config || {},
+        question: question ? {
+          id: question.id,
+          text: question.questionText,
+          company: question.company,
+          type: question.questionType,
+          askedAt: question.askedAt,
+        } : null,
+      });
+
       await roomClient.createRoom({
         name: roomName,
-        metadata: JSON.stringify({
-          session_id: session.id,
-          round_type: roundType,
-          mode,
-          config: config || {},
-          question: question ? {
-            id: question.id,
-            text: question.questionText,
-            company: question.company,
-            type: question.questionType,
-            askedAt: question.askedAt,
-          } : null,
-        }),
+        metadata: JSON.stringify(roomMetadata),
         emptyTimeout: 3600, // Room auto-deletes 1 hour after last participant
         maxParticipants: 2, // User + agent only
       });
-    } catch (error: any) {
-      if (!error.message?.includes("already exists")) {
-        console.error("Room creation error:", error.message);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      if (!message.includes("already exists")) {
+        console.error("Room creation error:", message);
       }
     }
 
@@ -411,4 +415,8 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

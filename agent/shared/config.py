@@ -1,8 +1,14 @@
-"""Load interview configuration from LiveKit room metadata"""
+"""Load interview configuration from LiveKit room metadata."""
 
 import json
 import logging
 from typing import Dict, Any
+
+from shared.runtime_config import (
+    DEFAULT_INTERVIEW_RUNTIME_CONFIG,
+    get_tts_config,
+    normalize_runtime_config,
+)
 
 logger = logging.getLogger("agent-config")
 
@@ -15,10 +21,10 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
     {
         "round_type": "product_sense",
         "question": {
-            "question_id": "uuid",
-            "question_text": "How do you improve Slack?",
+            "id": "uuid",
+            "text": "How do you improve Slack?",
             "company": "Dropbox",
-            "question_type": "Product design/strategy"
+            "type": "Product design/strategy"
         },
         "config": {
             "difficulty": "intermediate",
@@ -45,77 +51,62 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         data = json.loads(metadata)
 
         round_type = data.get("round_type", "product_sense")
-        config = data.get("config", {})
-        # NEW: Extract question data from metadata
-        question = data.get("question")  # Can be None if no question provided
-
-        # Ensure all required config keys have defaults
-        config_with_defaults = {
-            "difficulty": config.get("difficulty", "intermediate"),
-            "voice": config.get("voice", "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"),  # Tessa
-            "speed": config.get("speed", 1.0),
-            "emotion": config.get("emotion", "professional"),
-            "volume": config.get("volume", 1.0),
-            "duration": config.get("duration", 30),
-            "feedback_mode": config.get("feedback_mode", "end_only"),
-            "persona": config.get("persona"),  # Optional
-            "stt_model": config.get("stt_model", "deepgram/nova-3"),
-            "llm_model": config.get("llm_model", "openai/gpt-4.1-mini"),
-            "tts_model": config.get("tts_model", "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"),
-        }
+        config_with_defaults = normalize_runtime_config(data.get("config", {}))
+        question = normalize_question(data.get("question"))
 
         # Log question info if provided
         if question:
-            question_text = question.get("question_text", "")[:50]  # First 50 chars
+            question_text = question.get("text", "")[:50]
             logger.info(f"Parsed metadata: round_type={round_type}, difficulty={config_with_defaults['difficulty']}, question='{question_text}...'")
         else:
             logger.info(f"Parsed metadata: round_type={round_type}, difficulty={config_with_defaults['difficulty']}, question=None")
 
         return {
+            "session_id": data.get("session_id"),
             "round_type": round_type,
-            "question": question,  # NEW: Include question data
+            "mode": data.get("mode"),
+            "question": question,
             "config": config_with_defaults,
         }
 
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse room metadata: {e}. Using defaults.")
-        # Fallback to defaults
-        return {
-            "round_type": "product_sense",
-            "question": None,  # NEW: No question in fallback
-            "config": {
-                "difficulty": "intermediate",
-                "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-                "speed": 1.0,
-                "emotion": "professional",
-                "volume": 1.0,
-                "duration": 30,
-                "feedback_mode": "end_only",
-                "persona": None,
-                "stt_model": "deepgram/nova-3",
-                "llm_model": "openai/gpt-5",
-                "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-            },
-        }
+        return get_fallback_room_metadata()
     except Exception as e:
         logger.error(f"Unexpected error parsing metadata: {e}. Using defaults.")
-        return {
-            "round_type": "product_sense",
-            "question": None,  # NEW: No question in fallback
-            "config": {
-                "difficulty": "intermediate",
-                "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-                "speed": 1.0,
-                "emotion": "professional",
-                "volume": 1.0,
-                "duration": 30,
-                "feedback_mode": "end_only",
-                "persona": None,
-                "stt_model": "deepgram/nova-3",
-                "llm_model": "openai/gpt-5",
-                "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-            },
-        }
+        return get_fallback_room_metadata()
+
+
+def normalize_question(question: Dict[str, Any] | None) -> Dict[str, Any] | None:
+    """Normalize production and legacy question-bank field names."""
+    if not isinstance(question, dict):
+        return None
+
+    question_id = question.get("id") or question.get("question_id") or ""
+    text = question.get("text") or question.get("question_text") or ""
+    question_type = question.get("type") or question.get("question_type") or ""
+
+    return {
+        "id": question_id,
+        "question_id": question_id,
+        "text": text,
+        "question_text": text,
+        "company": question.get("company"),
+        "type": question_type,
+        "question_type": question_type,
+        "askedAt": question.get("askedAt"),
+    }
+
+
+def get_fallback_room_metadata() -> Dict[str, Any]:
+    """Return the default metadata shape used when room metadata is missing."""
+    return {
+        "session_id": None,
+        "round_type": "product_sense",
+        "mode": None,
+        "question": None,
+        "config": DEFAULT_INTERVIEW_RUNTIME_CONFIG.copy(),
+    }
 
 
 def extract_tts_config(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -128,9 +119,4 @@ def extract_tts_config(config: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dict with TTS parameters (voice, speed, emotion, volume)
     """
-    return {
-        "voice": config.get("voice", "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"),
-        "speed": config.get("speed", 1.0),
-        "emotion": config.get("emotion", "professional"),
-        "volume": config.get("volume", 1.0),
-    }
+    return get_tts_config(config)

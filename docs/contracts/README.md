@@ -1,0 +1,13 @@
+# Contracts
+
+This directory is for stable behavior and payload contracts that should survive route, provider, or runtime changes.
+
+Good candidates:
+
+- interview session lifecycle;
+- LiveKit room metadata;
+- transcript events;
+- feedback status and response shapes;
+- question-bank records;
+- subscription entitlement and usage quota states;
+- analytics event schemas.

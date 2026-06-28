@@ -9,22 +9,20 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import {
   buildFullConfig,
-  MinimalInterviewConfig,
-  RoundType,
-  DifficultyLevel,
-} from "@/lib/interview-config";
+  getAllowedInterviewTypes,
+  getLockedInterviewTypes,
+  INTERVIEW_TYPE_LABELS,
+  type DifficultyLevel,
+  type MinimalInterviewConfig,
+  type RoundType,
+  type SubscriptionTier,
+} from "@meelni/core";
 import { validateSessionStart } from "@/lib/validation/setup-schema";
 import { RoundSelector } from "./components/round-selector";
 import { DifficultySelector } from "./components/difficulty-selector";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import { QuotaExceededModal } from "@/components/dashboard/quota-exceeded-modal";
 import { TierUpgradeModal } from "@/components/dashboard/tier-upgrade-modal";
-import {
-  getAllowedInterviewTypes,
-  getLockedInterviewTypes,
-  INTERVIEW_TYPE_LABELS,
-  type SubscriptionTier,
-} from "@/lib/services/permissions-service";
 import { track, AnalyticsEvents } from "@/lib/analytics";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
@@ -54,12 +52,10 @@ export function SetupContent() {
     company: string | null;
     type: string;
   } | null>(null);
-  const [loadingQuestion, setLoadingQuestion] = useState(false);
 
   // Subscription/tier state
   // Initialize with free tier defaults to prevent flash of unlocked content
   const [userTier, setUserTier] = useState<SubscriptionTier>("free");
-  const [allowedTypes, setAllowedTypes] = useState<RoundType[]>(getAllowedInterviewTypes("free"));
   const [lockedTypes, setLockedTypes] = useState<RoundType[]>(getLockedInterviewTypes("free"));
   const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
 
@@ -92,7 +88,6 @@ export function SetupContent() {
     if (!questionIdParam) return;
 
     async function fetchQuestion() {
-      setLoadingQuestion(true);
       try {
         const response = await fetch(`/api/questions/${questionIdParam}`);
         if (!response.ok) {
@@ -136,8 +131,6 @@ export function SetupContent() {
         });
       } catch (error) {
         console.error("Error fetching question:", error);
-      } finally {
-        setLoadingQuestion(false);
       }
     }
 
@@ -155,7 +148,6 @@ export function SetupContent() {
           console.error("Failed to fetch subscription");
           // Default to free tier on error
           setUserTier("free");
-          setAllowedTypes(getAllowedInterviewTypes("free"));
           setLockedTypes(getLockedInterviewTypes("free"));
           setIsLoadingSubscription(false);
           return;
@@ -165,7 +157,6 @@ export function SetupContent() {
         const tier = (data.tier || "free") as SubscriptionTier;
 
         setUserTier(tier);
-        setAllowedTypes(getAllowedInterviewTypes(tier));
         setLockedTypes(getLockedInterviewTypes(tier));
         setIsLoadingSubscription(false);
 
@@ -186,7 +177,6 @@ export function SetupContent() {
         console.error("Error fetching subscription:", error);
         // Default to free tier on error
         setUserTier("free");
-        setAllowedTypes(getAllowedInterviewTypes("free"));
         setLockedTypes(getLockedInterviewTypes("free"));
         setIsLoadingSubscription(false);
       }
@@ -375,7 +365,7 @@ export function SetupContent() {
               <span className="gradient-text">Setup Your Interview</span>
             </h1>
             <p className="text-sm text-muted-foreground">
-              Two quick choices and you're ready to practice
+              Two quick choices and you&apos;re ready to practice
             </p>
           </motion.div>
 

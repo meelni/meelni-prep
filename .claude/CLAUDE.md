@@ -1,5 +1,7 @@
 # CLAUDE.md: Codebase Living Operational Document
 
+> Canonical agent instructions now live in `../AGENTS.md`. Read that first for current repository workflow, architecture direction, skills, and migration rules. This file remains useful for historical product, architecture, and operational context.
+
 **Project**: Meelni - Real-Time AI Mock Interviews
 **Last Updated**: 2025-11-18
 **Version**: 2.1.0 - Sprint Documentation Pattern Established

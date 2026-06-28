@@ -3,8 +3,7 @@
 import { motion } from "framer-motion";
 import { Sprout, Zap, Trophy } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { DIFFICULTY_LEVELS, DifficultyLevel } from "@/lib/interview-config";
+import { DIFFICULTY_LEVELS, type DifficultyLevel } from "@meelni/core";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 
 interface DifficultySelectorProps {
