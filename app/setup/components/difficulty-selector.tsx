@@ -21,10 +21,19 @@ const iconMap = {
   Trophy,
 };
 
-const difficultyColors = {
-  beginner: "from-green-500 to-emerald-500",
-  intermediate: "from-yellow-500 to-orange-500",
-  advanced: "from-red-500 to-rose-500",
+const difficultyTones = {
+  beginner: {
+    surface: "bg-success/10",
+    icon: "text-success",
+  },
+  intermediate: {
+    surface: "bg-warning/10",
+    icon: "text-warning",
+  },
+  advanced: {
+    surface: "bg-destructive/10",
+    icon: "text-destructive",
+  },
 } as const;
 
 export function DifficultySelector({
@@ -51,6 +60,7 @@ export function DifficultySelector({
             const config = DIFFICULTY_LEVELS[difficulty];
             const Icon = iconMap[config.icon as keyof typeof iconMap];
             const isSelected = selected === difficulty;
+            const tone = difficultyTones[difficulty];
 
             return (
               <motion.div
@@ -63,9 +73,9 @@ export function DifficultySelector({
                   className="p-5 hover:scale-[1.01]"
                   onClick={() => onSelect(difficulty)}
                 >
-                  {/* Gradient background */}
+                  {/* Semantic selection background */}
                   <div
-                    className={`absolute inset-0 rounded-xl bg-gradient-to-br opacity-0 transition-opacity duration-200 ${difficultyColors[difficulty]} ${isSelected ? "opacity-5" : ""} `}
+                    className={`absolute inset-0 rounded-xl opacity-0 transition-opacity duration-200 ${tone.surface} ${isSelected ? "opacity-100" : ""} `}
                   />
 
                   <div className="relative flex h-full flex-col">
@@ -77,9 +87,7 @@ export function DifficultySelector({
                       >
                         <Icon
                           className={`h-5 w-5 ${
-                            isSelected
-                              ? "text-primary"
-                              : "text-muted-foreground"
+                            isSelected ? tone.icon : "text-muted-foreground"
                           } `}
                         />
                       </SelectableCardIcon>
