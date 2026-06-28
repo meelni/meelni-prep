@@ -3,6 +3,12 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { AlertCircle, ArrowLeft } from "lucide-react";
+import {
+  MarketingCtaCard,
+  MarketingEyebrow,
+  MarketingHero,
+  MarketingPage,
+} from "@/components/marketing/marketing-surface";
 import { Button } from "@/components/ui/button";
 import { Header } from "@/components/sections/header";
 
@@ -14,17 +20,24 @@ const fadeInUp = {
 
 export default function PricingPage() {
   return (
-    <div className="min-h-screen bg-background">
+    <MarketingPage>
       {/* Header */}
       <Header />
 
       {/* Hero Section */}
-      <section className="border-b border-border bg-gradient-to-b from-background to-muted/20 py-20">
-        <div className="container mx-auto px-4 text-center">
+      <section className="border-b border-border/60 py-20">
+        <div className="container mx-auto px-4">
           <motion.div {...fadeInUp}>
-            <h1 className="font-display text-5xl font-bold tracking-tight sm:text-6xl">
-              Pricing
-            </h1>
+            <MarketingHero
+              className="mb-0"
+              eyebrow={
+                <MarketingEyebrow icon={AlertCircle}>
+                  Subscription Update
+                </MarketingEyebrow>
+              }
+              title="Pricing"
+              description="Meelni is no longer accepting new subscriptions, but the public demo remains available from the homepage."
+            />
           </motion.div>
         </div>
       </section>
@@ -36,24 +49,23 @@ export default function PricingPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="max-w-2xl mx-auto rounded-2xl border border-amber-500/20 bg-amber-500/5 p-12 text-center"
+            className="mx-auto max-w-2xl"
           >
-            <AlertCircle className="h-16 w-16 text-amber-500 mx-auto mb-6" />
-            <h2 className="text-2xl font-semibold text-foreground mb-4">
-              Service Discontinued
-            </h2>
-            <p className="text-muted-foreground mb-8">
-              Meelni is no longer accepting new subscriptions. We appreciate everyone who supported our AI-powered mock interview platform during its operation.
-            </p>
-            <p className="text-muted-foreground mb-8">
-              You can still try our demo on the homepage to experience what Meelni was like.
-            </p>
-            <Link href="/">
-              <Button variant="outline" size="lg">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Home
-              </Button>
-            </Link>
+            <MarketingCtaCard
+              tone="muted"
+              mark={<AlertCircle className="h-7 w-7" />}
+              title="Service Discontinued"
+              description="Meelni is no longer accepting new subscriptions. We appreciate everyone who supported our AI-powered mock interview platform during its operation."
+              action={
+                <Button asChild variant="outline" size="lg">
+                  <Link href="/">
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Back to Home
+                  </Link>
+                </Button>
+              }
+              footer="You can still try our demo on the homepage to experience what Meelni was like."
+            />
           </motion.div>
         </div>
       </section>
@@ -72,6 +84,6 @@ export default function PricingPage() {
           </div>
         </div>
       </footer>
-    </div>
+    </MarketingPage>
   );
 }
