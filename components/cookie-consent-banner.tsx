@@ -40,13 +40,16 @@ export function CookieConsentBanner() {
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-md">
       <div className="relative rounded-lg border border-border bg-card p-4 shadow-lg backdrop-blur-xl">
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={handleDecline}
-          className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          className="absolute right-2 top-2 h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground"
           aria-label="Dismiss"
         >
           <X className="h-4 w-4" />
-        </button>
+        </Button>
         <div className="pr-6">
           <h3 className="mb-2 text-sm font-semibold">Cookie Preferences</h3>
           <p className="mb-4 text-xs text-muted-foreground">

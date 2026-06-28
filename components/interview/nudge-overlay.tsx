@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect } from "react";
 import {
@@ -181,13 +182,16 @@ export function NudgeOverlay({
                     {nudge.message}
                   </p>
                 </div>
-                <button
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
                   onClick={onDismiss}
-                  className="flex-shrink-0 p-1 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted/50"
+                  className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   aria-label="Dismiss nudge"
                 >
                   <X className="w-4 h-4" />
-                </button>
+                </Button>
               </div>
 
               {/* Progress Bar (visual feedback for auto-dismiss) */}
