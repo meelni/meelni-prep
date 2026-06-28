@@ -1,7 +1,199 @@
 /**
  * Public entrypoint for reusable test fixtures.
- *
- * Future homes: transcripts, question-bank examples, room metadata, feedback
- * responses, entitlement states, and LiveKit event fixtures.
  */
-export {};
+import type { InterviewRoomMetadata, TranscriptEvent } from "@meelni/agent";
+import type {
+  EvaluationResponse,
+  QuestionPracticePayload,
+  SessionMetadata,
+  TranscriptTurnInput,
+} from "@meelni/core";
+import type {
+  StartInterviewRoomInput,
+  StartedInterviewRoom,
+} from "@meelni/integrations";
+
+export const FIXTURE_CLOCK = {
+  startedAt: new Date("2026-06-27T17:30:00.000Z"),
+  firstUserTurnAt: new Date("2026-06-27T17:31:00.000Z"),
+  endedAt: new Date("2026-06-27T18:15:00.000Z"),
+} as const;
+
+export interface ProductSenseInterviewFixture {
+  session: SessionMetadata;
+  question: QuestionPracticePayload;
+  transcript: TranscriptTurnInput[];
+  roomMetadata: InterviewRoomMetadata;
+  feedback: EvaluationResponse;
+}
+
+export interface LiveKitStartFixture {
+  input: Omit<StartInterviewRoomInput, "metadata"> & {
+    metadata: InterviewRoomMetadata;
+  };
+  transcriptEvent: TranscriptEvent;
+  expectedStartedRoom: StartedInterviewRoom;
+}
+
+const productSenseInterviewFixture: ProductSenseInterviewFixture = {
+  session: {
+    id: "fixture-session-product-sense-1",
+    userId: "fixture-user-1",
+    role: "product_manager",
+    roundType: "product_sense",
+    mode: "voice_video",
+    persona: "senior-meta-pm",
+    livekitRoomName: "interview-1782600000000-i00000",
+    config: {
+      difficulty: "medium",
+      duration: 45,
+      voice: "cgSgspJ2msm6clMCkdW9",
+      sttModel: "deepgram/nova-3",
+      llmModel: "openai/gpt-4.1-mini",
+      ttsModel: "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
+    },
+    startedAt: FIXTURE_CLOCK.startedAt,
+    endedAt: FIXTURE_CLOCK.endedAt,
+  },
+  question: {
+    questionId: "fixture-question-product-sense-1",
+    questionText: "Design a product to help Meta users learn new skills.",
+    company: "Meta",
+    questionType: "Product Sense",
+  },
+  transcript: [
+    {
+      sessionId: "fixture-session-product-sense-1",
+      speaker: "interviewer",
+      startedAt: FIXTURE_CLOCK.startedAt,
+      endedAt: new Date("2026-06-27T17:30:08.000Z"),
+      text: "Let's start with the product goal. Design a product to help Meta users learn new skills.",
+      audioMs: 8000,
+      section: "prompt",
+    },
+    {
+      sessionId: "fixture-session-product-sense-1",
+      speaker: "user",
+      startedAt: FIXTURE_CLOCK.firstUserTurnAt,
+      endedAt: new Date("2026-06-27T17:32:10.000Z"),
+      text: "I would clarify whether we want to increase learning frequency, completion, or social sharing, then choose working adults as the first segment.",
+      audioMs: 70000,
+      latencyMs: 1800,
+      section: "clarifying_questions",
+    },
+    {
+      sessionId: "fixture-session-product-sense-1",
+      speaker: "interviewer",
+      startedAt: new Date("2026-06-27T17:32:12.000Z"),
+      endedAt: new Date("2026-06-27T17:32:24.000Z"),
+      text: "Good. Pick one segment and walk me through the core user problem.",
+      audioMs: 12000,
+      section: "follow_up",
+    },
+    {
+      sessionId: "fixture-session-product-sense-1",
+      speaker: "user",
+      startedAt: new Date("2026-06-27T17:32:26.000Z"),
+      endedAt: new Date("2026-06-27T17:34:06.000Z"),
+      text: "For working adults, the pain is not access to content. It is knowing what to learn next, staying accountable, and converting small gaps of time into visible progress.",
+      audioMs: 100000,
+      latencyMs: 1300,
+      section: "user_problem",
+    },
+  ],
+  roomMetadata: {
+    session_id: "fixture-session-product-sense-1",
+    round_type: "product_sense",
+    mode: "voice_video",
+    question: {
+      id: "fixture-question-product-sense-1",
+      text: "Design a product to help Meta users learn new skills.",
+      company: "Meta",
+      type: "Product Sense",
+      askedAt: FIXTURE_CLOCK.startedAt.toISOString(),
+    },
+    config: {
+      difficulty: "intermediate",
+      voice: "cgSgspJ2msm6clMCkdW9",
+      speed: 1,
+      emotion: "professional",
+      volume: 1,
+      duration: 45,
+      feedback_mode: "end_only",
+      stt_model: "deepgram/nova-3",
+      llm_model: "openai/gpt-4.1-mini",
+      tts_model: "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
+    },
+  },
+  feedback: {
+    session_id: "fixture-session-product-sense-1",
+    scores: {
+      structure: 8,
+      clarity: 8,
+      insight: 9,
+      communication: 7,
+      leadership: 7,
+      overall: 8,
+    },
+    strengths: [
+      {
+        dimension: "insight",
+        text: "Identifies a concrete user problem beyond content access.",
+        evidence_quote: "the pain is not access to content",
+      },
+    ],
+    improvements: [
+      {
+        dimension: "structure",
+        text: "State the north-star metric before comparing solution paths.",
+      },
+    ],
+    drills: [
+      {
+        title: "Metric-first framing",
+        description:
+          "Practice naming the target behavior and metric before ideating.",
+        tips: [
+          "Define the audience",
+          "Name the behavior",
+          "Select one measurable outcome",
+        ],
+      },
+    ],
+    summary: "Strong product-sense opening with a clear segment and user pain.",
+  },
+};
+
+const liveKitStartFixture: LiveKitStartFixture = {
+  input: {
+    agentId: "agent-product-sense-fixture",
+    identity: "fixture-user-1",
+    participantName: "savi@example.com",
+    roomName: "interview-1782600000000-i00000",
+    metadata: productSenseInterviewFixture.roomMetadata,
+    env: {
+      apiKey: "fixture-livekit-key",
+      apiSecret: "fixture-livekit-secret",
+      url: "wss://fixture.livekit.cloud",
+    },
+  },
+  transcriptEvent: {
+    speaker: "interviewer",
+    text: "Let's start with the product goal.",
+    timestamp: 1782600000,
+    is_final: true,
+  },
+  expectedStartedRoom: {
+    roomName: "interview-1782600000000-i00000",
+    token: "fixture-livekit-token",
+    url: "wss://fixture.livekit.cloud",
+  },
+};
+
+export function createProductSenseInterviewFixture(): ProductSenseInterviewFixture {
+  return structuredClone(productSenseInterviewFixture);
+}
+
+export function createLiveKitStartFixture(): LiveKitStartFixture {
+  return structuredClone(liveKitStartFixture);
+}

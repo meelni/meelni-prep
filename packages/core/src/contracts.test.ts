@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createProductSenseInterviewFixture } from "@meelni/test-fixtures";
+
 import {
   ALL_INTERVIEW_TYPES,
   buildFullConfig,
@@ -13,15 +15,13 @@ import {
   getRequiredTier,
   getRequiredTierBadge,
   isValidRoundType,
-  type QuestionPracticePayload,
-  type TranscriptTurnInput,
-  validateScores
+  validateScores,
 } from "./index";
 
 test("buildFullConfig applies system defaults and smart duration", () => {
   const config = buildFullConfig({
     difficulty: "advanced",
-    roundType: "strategy"
+    roundType: "strategy",
   });
 
   assert.equal(config.roundType, "strategy");
@@ -30,7 +30,10 @@ test("buildFullConfig applies system defaults and smart duration", () => {
   assert.equal(config.feedback_mode, "end_only");
   assert.equal(config.stt_model, "deepgram/nova-3");
   assert.equal(config.llm_model, "openai/gpt-4.1-mini");
-  assert.equal(config.tts_model, "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9");
+  assert.equal(
+    config.tts_model,
+    "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9"
+  );
 });
 
 test("interview type helpers preserve current PM interview access model", () => {
@@ -38,7 +41,7 @@ test("interview type helpers preserve current PM interview access model", () => 
     "product_sense",
     "behavioral",
     "execution",
-    "strategy"
+    "strategy",
   ]);
   assert.equal(isValidRoundType("product_sense"), true);
   assert.equal(isValidRoundType("sales"), false);
@@ -46,7 +49,11 @@ test("interview type helpers preserve current PM interview access model", () => 
   assert.equal(canAccessInterviewType("free", "product_sense"), true);
   assert.equal(canAccessInterviewType("free", "execution"), false);
   assert.deepEqual(getAllowedInterviewTypes("free"), ["product_sense"]);
-  assert.deepEqual(getLockedInterviewTypes("free"), ["behavioral", "execution", "strategy"]);
+  assert.deepEqual(getLockedInterviewTypes("free"), [
+    "behavioral",
+    "execution",
+    "strategy",
+  ]);
   assert.equal(getRequiredTier("strategy"), "pro");
   assert.equal(getRequiredTierBadge("behavioral"), "Pro");
 });
@@ -57,7 +64,7 @@ test("evaluation score helpers stay PM-rubric compatible", () => {
     communication: 7,
     insight: 9,
     leadership: 6,
-    structure: 8
+    structure: 8,
   });
 
   assert.equal(overall, 7.8);
@@ -70,27 +77,17 @@ test("evaluation score helpers stay PM-rubric compatible", () => {
       insight: 9,
       leadership: 6,
       overall,
-      structure: 8
+      structure: 8,
     }),
     true
   );
 });
 
 test("session and question payload contracts are available from core", () => {
-  const turn: TranscriptTurnInput = {
-    section: "opening",
-    sessionId: "session-1",
-    speaker: "user",
-    text: "I would start by clarifying the goal."
-  };
+  const fixture = createProductSenseInterviewFixture();
+  const turn = fixture.transcript.find((entry) => entry.speaker === "user");
+  const question = fixture.question;
 
-  const question: QuestionPracticePayload = {
-    company: "Meta",
-    questionId: "question-1",
-    questionText: "Design a product for education at Meta.",
-    questionType: "Product Sense"
-  };
-
-  assert.equal(turn.speaker, "user");
+  assert.equal(turn?.speaker, "user");
   assert.equal(question.company, "Meta");
 });
