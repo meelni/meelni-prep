@@ -15,6 +15,7 @@ import {
   Mic,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   SelectableCard,
   SelectableCardCheck,
@@ -523,7 +524,7 @@ export function SetupModal({
                             {config.voiceSettings?.speed.toFixed(1)}x
                           </span>
                         </label>
-                        <input
+                        <Input
                           type="range"
                           min="0.8"
                           max="1.2"
@@ -532,7 +533,7 @@ export function SetupModal({
                           onChange={(e) =>
                             updateVoiceSettings({ speed: parseFloat(e.target.value) })
                           }
-                          className="w-full accent-primary"
+                          className="h-2 w-full cursor-pointer rounded-full border-0 bg-muted p-0 accent-primary"
                         />
                         <div className="flex justify-between text-xs text-muted-foreground">
                           <span>Slower</span>
