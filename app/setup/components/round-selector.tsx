@@ -107,7 +107,7 @@ export function RoundSelector({
                 </p>
 
                 {/* Description - fixed min-height for consistency */}
-                <p className="text-muted-foreground mt-1.5 min-h-[2rem] flex-1 text-xs leading-relaxed">
+                <p className="text-muted-foreground mt-1.5 min-h-8 flex-1 text-xs leading-relaxed">
                   {config.description}
                 </p>
 
