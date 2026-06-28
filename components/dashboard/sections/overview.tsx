@@ -184,15 +184,15 @@ export const OverviewSection = memo(function OverviewSection({
           >
             <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
               <span className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-green-500" />
+                <span className="bg-success h-2 w-2 rounded-full" />
                 Real-time AI coaching
               </span>
               <span className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                <span className="bg-info h-2 w-2 rounded-full" />
                 Instant feedback
               </span>
               <span className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-purple-500" />
+                <span className="bg-primary h-2 w-2 rounded-full" />
                 Track progress
               </span>
             </div>
@@ -326,7 +326,7 @@ export const OverviewSection = memo(function OverviewSection({
             <div className="space-y-4">
               {/* Current Streak */}
               <div className="flex items-center gap-3">
-                <Flame className={`w-8 h-8 ${userSummary.streak.streakCurrent > 0 ? 'text-orange-500' : 'text-muted-foreground'}`} />
+                <Flame className={`w-8 h-8 ${userSummary.streak.streakCurrent > 0 ? 'text-warning' : 'text-muted-foreground'}`} />
                 <div>
                   <div className="text-3xl font-bold font-mono text-foreground">
                     {userSummary.streak.streakCurrent}
@@ -348,10 +348,10 @@ export const OverviewSection = memo(function OverviewSection({
               {/* At Risk Warning */}
               {userSummary.streak.isAtRisk && userSummary.streak.streakCurrent >= 3 && (
                 <div className="pt-3 border-t border-border">
-                  <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
-                    <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
+                  <div className="bg-warning/10 border-warning/20 flex items-start gap-2 rounded-lg border p-3">
+                    <AlertCircle className="text-warning mt-0.5 h-4 w-4 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-orange-500">Keep your streak!</p>
+                      <p className="text-warning text-sm font-medium">Keep your streak!</p>
                       <p className="text-xs text-muted-foreground mt-1">
                         Practice today to maintain your {userSummary.streak.streakCurrent}-day streak.
                       </p>
