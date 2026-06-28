@@ -260,7 +260,7 @@ const Card2 = () => {
             {logs.map((log, index) => (
               <motion.div
                 key={log.id}
-                className="p-4 bg-transparent backdrop-blur-md shadow-[0px_0px_40px_-25px_rgba(0,0,0,0.25)] border border-border origin-right w-full rounded-md flex items-center"
+                className="p-4 bg-transparent backdrop-blur-md shadow-sm shadow-border/50 border border-border origin-right w-full rounded-md flex items-center"
                 custom={index}
                 variants={{
                   initial: (index: number) => ({
