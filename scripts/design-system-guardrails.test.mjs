@@ -556,6 +556,28 @@ test("dashboard status badges use shared semantic status variants", async () => 
   assert.deepEqual(violations, []);
 });
 
+test("dashboard overview status indicators use semantic tokens", async () => {
+  const file = "components/dashboard/sections/overview.tsx";
+  const content = await readFile(file, "utf8");
+  const rawStatusUtility =
+    /\b(?:bg|text|border)-(?:blue|green|orange|purple)-500(?:\/\d+)?\b/;
+  const requiredTokens = [
+    "bg-success",
+    "bg-info",
+    "bg-primary",
+    "text-warning",
+    "bg-warning",
+    "border-warning",
+  ];
+  const violations = requiredTokens.filter((token) => !content.includes(token));
+
+  if (rawStatusUtility.test(content)) {
+    violations.push(`${file}:raw-status-utility`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("question bank child components use shared controls", async () => {
   const textareaSource = await readFile(
     "components/ui/textarea.tsx",
