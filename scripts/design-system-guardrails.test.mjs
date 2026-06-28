@@ -455,6 +455,33 @@ test("auth shell uses shared third-party brand color tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("landing border text uses semantic foreground treatment", async () => {
+  const file = "components/ui/border-number.tsx";
+  const content = await readFile(file, "utf8");
+  const required = [
+    "before:from-foreground/",
+    "before:to-muted-foreground/",
+    "after:bg-muted-foreground/",
+    "after:[text-shadow:0_1px_0_var(--background)]",
+  ];
+  const banned = ["neutral-", "white", "black"];
+  const violations = [];
+
+  for (const token of required) {
+    if (!content.includes(token)) {
+      violations.push(`${file}:${token}`);
+    }
+  }
+
+  for (const token of banned) {
+    if (content.includes(token)) {
+      violations.push(`${file}:${token}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
