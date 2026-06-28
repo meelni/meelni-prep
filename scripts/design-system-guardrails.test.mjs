@@ -1560,6 +1560,7 @@ test("lower landing sections use semantic status and text primitives", async () 
       bannedPatterns: [
         /\b(?:bg|text|border)-(?:blue|green|neutral|purple|slate|yellow|red)-(?:200|400|500|800)(?:\/\d+)?\b/,
         /\btext-white\b/,
+        /shadow-\[/,
       ],
     },
     {
