@@ -727,6 +727,38 @@ test("contact page uses shared marketing and form primitives", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("company detail page uses shared marketing article primitives", async () => {
+  const file = "app/companies/[slug]/page.tsx";
+  const content = await readFile(file, "utf8");
+  const violations = [];
+
+  const requiredImports = [
+    "MarketingPage",
+    "MarketingArticleHeader",
+    "MarketingEyebrow",
+    "MarketingMetaRow",
+    "MarketingCtaCard",
+    "@/components/ui/button",
+  ];
+
+  for (const importName of requiredImports) {
+    if (!content.includes(importName)) {
+      violations.push(`${file}:${importName}`);
+    }
+  }
+  if (content.includes("<button")) {
+    violations.push(`${file}:button`);
+  }
+  if (content.includes("<svg")) {
+    violations.push(`${file}:svg`);
+  }
+  if (content.includes("text-[")) {
+    violations.push(`${file}:arbitrary-text`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority feedback surfaces use shared feedback primitives", async () => {
   const surfaceSource = await readFile(
     "components/feedback/feedback-surface.tsx",
