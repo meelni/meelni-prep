@@ -19,7 +19,10 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@meelni/agent": ["./packages/agent/src/index.ts"],
+      "@meelni/core": ["./packages/core/src/index.ts"],
+      "@meelni/integrations": ["./packages/integrations/src/index.ts"]
     }
   },
   "include": [
