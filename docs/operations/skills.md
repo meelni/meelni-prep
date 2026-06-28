@@ -22,6 +22,7 @@ Edit `.agents/skills/*` first. Do not hand-edit symlinked copies.
 - `meelni-feedback-evaluation`: scoring, rubrics, feedback generation, drills, insights, and evaluation reliability.
 - `meelni-question-bank-seo`: explore pages, company pages, structured data, Google Sheets sync, and conversion from content to practice.
 - `meelni-product-strategy`: Product Compass, PM-focused product direction, relaunch strategy, pricing, trials, positioning, growth loops, AI/agent learning expansion, and enterprise path.
+- `meelni-vertical-slice-playbooks`: feature playbooks for interview/session, feedback/evaluation, billing/trials, question-bank SEO, and agent tooling changes.
 - `meelni-engineering-memory`: decisions, architecture docs, contracts, operations docs, product current-state updates, and OpenSpec maintenance.
 - `meelni-pr-prep`: pre-PR validation, docs/spec checks, and PR summary preparation.
 
