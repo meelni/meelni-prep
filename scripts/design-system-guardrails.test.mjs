@@ -1646,8 +1646,12 @@ test("explore question surfaces use shared form and action primitives", async ()
   const expectations = [
     {
       file: "app/explore/page.tsx",
-      requiredImports: ["@/components/ui/input", "@/components/ui/button"],
-      bannedPatterns: ["<input", "<button"],
+      requiredImports: [
+        "@/components/ui/input",
+        "@/components/ui/button",
+        "@/components/ui/select",
+      ],
+      bannedPatterns: ["<input", "<button", "<select", "top-["],
     },
     {
       file: "components/explore/question-signin-modal.tsx",
@@ -1678,6 +1682,9 @@ test("explore question surfaces use shared form and action primitives", async ()
       if (content.includes(bannedPattern)) {
         violations.push(`${file}:${bannedPattern}`);
       }
+    }
+    if (file === "app/explore/page.tsx" && !content.includes("top-header")) {
+      violations.push(`${file}:top-header`);
     }
   }
 

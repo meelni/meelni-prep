@@ -8,6 +8,13 @@ import { QuestionSignInModal } from "@/components/explore/question-signin-modal"
 import { ExploreStructuredData } from "@/components/explore/structured-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Search, ArrowRight, ChevronLeft, ChevronRight, Home, ChevronRight as BreadcrumbArrow } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
@@ -247,7 +254,7 @@ export default function ExplorePage() {
         </header>
 
         {/* Sticky Search & Filter Bar */}
-        <div className="sticky top-[60px] z-40">
+        <div className="sticky top-header z-40">
           {/* Solid background with backdrop blur */}
           <div className="bg-background/95 backdrop-blur-xl">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
@@ -265,17 +272,23 @@ export default function ExplorePage() {
                 </div>
 
                 {/* Type Filter */}
-                <select
+                <Select
                   value={selectedType}
-                  onChange={(e) => setSelectedType(e.target.value)}
-                  className="px-4 py-2.5 bg-background border border-border rounded-lg text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  onValueChange={setSelectedType}
                 >
-                  <option>All Types</option>
-                  <option>Product Sense</option>
-                  <option>Execution</option>
-                  <option>Behavioral</option>
-                  <option>Product Strategy</option>
-                </select>
+                  <SelectTrigger className="w-full rounded-lg font-medium sm:w-[180px]">
+                    <SelectValue placeholder="Question type" />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectItem value="All Types">All Types</SelectItem>
+                    <SelectItem value="Product Sense">Product Sense</SelectItem>
+                    <SelectItem value="Execution">Execution</SelectItem>
+                    <SelectItem value="Behavioral">Behavioral</SelectItem>
+                    <SelectItem value="Product Strategy">
+                      Product Strategy
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
