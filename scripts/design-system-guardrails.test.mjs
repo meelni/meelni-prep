@@ -647,6 +647,58 @@ test("pricing result pages use shared marketing state surfaces", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("docs and pricing pages use shared public-page status surfaces", async () => {
+  const expectations = [
+    {
+      file: "app/docs/page.tsx",
+      requiredImports: [
+        "MarketingPage",
+        "MarketingHero",
+        "MarketingEyebrow",
+        "AppSurface",
+        "StatusPill",
+        "@/components/ui/button",
+      ],
+    },
+    {
+      file: "app/pricing/page.tsx",
+      requiredImports: [
+        "MarketingPage",
+        "MarketingHero",
+        "MarketingCtaCard",
+        "@/components/ui/button",
+      ],
+    },
+    {
+      file: "components/sections/pricing.tsx",
+      requiredImports: ["AppSurface", "StatusPill"],
+    },
+  ];
+  const rawPublicStatusColor =
+    /\b(?:bg|text|border|from|via|to|hover:bg)-(?:amber|blue|green|orange|purple|gray)-(?:50|100|500|600|700|800|900)(?:\/\d+)?\b/;
+  const violations = [];
+
+  for (const { file, requiredImports } of expectations) {
+    const content = await readFile(file, "utf8");
+    for (const importName of requiredImports) {
+      if (!content.includes(importName)) {
+        violations.push(`${file}:${importName}`);
+      }
+    }
+    if (content.includes("<button")) {
+      violations.push(`${file}:button`);
+    }
+    if (content.includes("<svg")) {
+      violations.push(`${file}:svg`);
+    }
+    if (rawPublicStatusColor.test(content)) {
+      violations.push(`${file}:raw-public-status-color`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("blog detail page uses shared marketing article primitives", async () => {
   const surfaceSource = await readFile(
     "components/marketing/marketing-surface.tsx",

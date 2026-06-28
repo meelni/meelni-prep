@@ -3,6 +3,12 @@
 import { Section } from "@/components/section";
 import { motion } from "framer-motion";
 import { AlertCircle } from "lucide-react";
+import {
+  AppSurface,
+  AppSurfaceDescription,
+  AppSurfaceTitle,
+  StatusPill,
+} from "@/components/ui/app-surface";
 
 export function Pricing() {
   return (
@@ -28,15 +34,22 @@ export function Pricing() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-8 text-center"
+            className="mx-auto max-w-2xl"
           >
-            <AlertCircle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-foreground mb-2">
-              Service Discontinued
-            </h3>
-            <p className="text-muted-foreground max-w-lg mx-auto">
-              Meelni is no longer accepting new subscriptions. Thank you to everyone who supported our AI-powered mock interview platform.
-            </p>
+            <AppSurface variant="muted" size="lg" className="text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-warning/10 text-warning">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <StatusPill tone="warning" className="mb-4">
+                Subscription Update
+              </StatusPill>
+              <AppSurfaceTitle className="font-display text-xl">
+                Service Discontinued
+              </AppSurfaceTitle>
+              <AppSurfaceDescription className="mx-auto mt-3 max-w-lg text-sm leading-relaxed">
+                Meelni is no longer accepting new subscriptions. Thank you to everyone who supported our AI-powered mock interview platform.
+              </AppSurfaceDescription>
+            </AppSurface>
           </motion.div>
         </div>
       </div>
