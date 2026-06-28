@@ -121,6 +121,12 @@ test("priority product surfaces use shared action primitives", async () => {
     if (content.includes("<button")) {
       violations.push(file);
     }
+    if (
+      file === "components/dashboard/layout/sidebar.tsx" &&
+      (/[hw]-\[/.test(content) || content.includes("size={18}"))
+    ) {
+      violations.push(`${file}:arbitrary-icon-size`);
+    }
   }
 
   assert.deepEqual(violations, []);
