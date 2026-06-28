@@ -202,6 +202,28 @@ test("setup selectors use the shared selectable-card primitive", async () => {
   assert.deepEqual([...missingExports, ...violations], []);
 });
 
+test("setup difficulty selector uses semantic selection tones", async () => {
+  const file = "app/setup/components/difficulty-selector.tsx";
+  const content = await readFile(file, "utf8");
+  const rawDifficultyTone =
+    /\b(?:from|to|bg|text|border)-(?:emerald|green|orange|red|rose|yellow)-\d+(?:\/\d+)?\b/;
+  const requiredTokens = [
+    "bg-success",
+    "text-success",
+    "bg-warning",
+    "text-warning",
+    "bg-destructive",
+    "text-destructive",
+  ];
+  const violations = requiredTokens.filter((token) => !content.includes(token));
+
+  if (rawDifficultyTone.test(content)) {
+    violations.push(`${file}:raw-difficulty-tone`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
