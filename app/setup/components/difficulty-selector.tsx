@@ -105,7 +105,7 @@ export function DifficultySelector({
                     <h4 className="mt-3 font-semibold">{config.label}</h4>
 
                     {/* Description - fixed min-height for consistency */}
-                    <p className="text-muted-foreground mt-2 min-h-[2.5rem] text-xs leading-relaxed">
+                    <p className="text-muted-foreground mt-2 min-h-10 text-xs leading-relaxed">
                       {config.description}
                     </p>
 

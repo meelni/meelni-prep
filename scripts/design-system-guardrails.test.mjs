@@ -232,6 +232,9 @@ test("setup selectors use the shared selectable-card primitive", async () => {
     if (content.includes("motion.button")) {
       violations.push(`${file}:motion.button`);
     }
+    if (/min-h-\[(?:2|2\.5)rem\]/.test(content)) {
+      violations.push(`${file}:arbitrary-description-height`);
+    }
     if (
       file === "components/dashboard/setup-modal.tsx" &&
       !content.includes("@/components/ui/input")
