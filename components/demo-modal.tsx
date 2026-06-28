@@ -369,7 +369,7 @@ function DemoControls({
             {/* 5-Minute Demo Badge */}
             {!isConnected && !sessionEnded && (
               <div className="bg-primary/10 backdrop-blur-xl px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl border border-primary/20">
-                <span className="text-primary text-[10px] sm:text-xs font-semibold">5-MIN DEMO</span>
+                <span className="text-label text-primary">5-MIN DEMO</span>
               </div>
             )}
 

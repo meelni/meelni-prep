@@ -271,7 +271,7 @@ export function NudgeOverlay({
                   )}
                 </motion.div>
                 <span
-                  className={`text-[10px] leading-tight text-center max-w-[60px] ${
+                  className={`text-label text-center max-w-[60px] ${
                     element.covered
                       ? "text-primary font-medium"
                       : "text-muted-foreground/60"
