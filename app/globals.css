@@ -394,6 +394,10 @@
     );
   }
 
+  .top-header {
+    top: var(--header-height);
+  }
+
   /* Display headings - Everett 300 */
   .text-display-hero {
     font-family: var(--font-display);
