@@ -563,7 +563,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
                             "hover:bg-primary/[0.02] transition-all duration-200",
                             "border-border/40 border-b last:border-0",
                             isSelected &&
-                              "bg-primary/[0.04] border-l-primary border-l-2 shadow-[inset_0_0_0_1px_rgb(var(--primary)/0.08)]"
+                              "bg-primary/[0.04] border-l-primary border-l-2 ring-1 ring-inset ring-primary/10"
                           )}
                           style={{
                             opacity: index < 20 ? 0 : 1,
