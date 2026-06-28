@@ -395,6 +395,20 @@
   }
 
   /* Display headings - Everett 300 */
+  .text-display-hero {
+    font-family: var(--font-display);
+    font-weight: 300;
+    font-size: 48px;
+    line-height: 48px;
+  }
+
+  @media (width >= 48rem) {
+    .text-display-hero {
+      font-size: 56px;
+      line-height: 56px;
+    }
+  }
+
   .text-display-xl {
     font-family: var(--font-display);
     font-weight: 300;

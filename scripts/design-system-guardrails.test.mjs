@@ -1615,6 +1615,26 @@ test("landing content sections use shared type scale utilities", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("landing hero display type uses a named responsive utility", async () => {
+  const globals = await readFile("app/globals.css", "utf8");
+  const hero = await readFile("components/sections/hero.tsx", "utf8");
+  const violations = [];
+
+  if (!globals.includes(".text-display-hero")) {
+    violations.push("app/globals.css:text-display-hero");
+  }
+
+  if (!hero.includes("text-display-hero")) {
+    violations.push("components/sections/hero.tsx:text-display-hero");
+  }
+
+  if (hero.includes("text-[") || hero.includes("leading-[")) {
+    violations.push("components/sections/hero.tsx:arbitrary-display-type");
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("explore question surfaces use shared form and action primitives", async () => {
   const checkboxSource = await readFile("components/ui/checkbox.tsx", "utf8").catch(
     () => ""
