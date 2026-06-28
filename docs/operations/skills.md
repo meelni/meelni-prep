@@ -21,7 +21,7 @@ Edit `.agents/skills/*` first. Do not hand-edit symlinked copies.
 - `meelni-livekit-interview-runtime`: LiveKit interview sessions, room metadata, transcripts, turn-taking, runtime config, and agent prompts.
 - `meelni-feedback-evaluation`: scoring, rubrics, feedback generation, drills, insights, and evaluation reliability.
 - `meelni-question-bank-seo`: explore pages, company pages, structured data, Google Sheets sync, and conversion from content to practice.
-- `meelni-product-strategy`: PM-focused product direction, relaunch strategy, pricing, positioning, and growth.
+- `meelni-product-strategy`: Product Compass, PM-focused product direction, relaunch strategy, pricing, trials, positioning, growth loops, AI/agent learning expansion, and enterprise path.
 - `meelni-engineering-memory`: decisions, architecture docs, contracts, operations docs, product current-state updates, and OpenSpec maintenance.
 - `meelni-pr-prep`: pre-PR validation, docs/spec checks, and PR summary preparation.
 
