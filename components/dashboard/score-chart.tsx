@@ -112,7 +112,7 @@ export function ScoreChart({ data }: ScoreChartProps) {
       }
     >
       <div
-        className="h-[300px] w-full"
+        className="h-chart-md w-full"
         onMouseEnter={() => {
           setIsHovered(true);
           chartViewStartTime.current = Date.now();

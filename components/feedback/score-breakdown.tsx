@@ -52,7 +52,7 @@ export function ScoreBreakdown({ scores }: ScoreBreakdownProps) {
         </div>
       }
     >
-      <ChartContainer config={chartConfig} className="h-[320px] w-full">
+      <ChartContainer config={chartConfig} className="h-chart-feedback w-full">
         <RadarChart
           data={radarData}
           margin={{ top: 10, right: 20, bottom: 10, left: 20 }}

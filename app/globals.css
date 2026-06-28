@@ -411,12 +411,33 @@
     height: 350px;
   }
 
+  .h-chart-feedback {
+    height: 320px;
+  }
+
+  .h-chart-radar {
+    height: 360px;
+  }
+
   .h-chart-lg {
     height: 400px;
   }
 
+  .max-h-chart-radar-sm {
+    max-height: 280px;
+  }
+
   .max-h-chart-lg {
     max-height: 400px;
+  }
+
+  /* Dashboard surface size utilities */
+  .min-h-dashboard-metric-card {
+    min-height: 140px;
+  }
+
+  .min-h-dashboard-chart-card {
+    min-height: 460px;
   }
 
   /* Display headings - Everett 300 */
