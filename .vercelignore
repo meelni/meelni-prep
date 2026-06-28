@@ -24,6 +24,12 @@ __tests__/
 *.spec.ts
 *.spec.tsx
 
+# Workspace packages required by the root Next.js app
+!packages/
+!packages/**
+packages/**/*.test.ts
+packages/**/*.test.tsx
+
 # Git
 .git/
 .gitignore
