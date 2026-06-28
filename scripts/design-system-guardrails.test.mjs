@@ -1734,7 +1734,12 @@ test("public top chrome uses semantic status and type primitives", async () => {
     {
       file: "components/sections/header.tsx",
       requiredImports: ["Header"],
-      bannedPatterns: [/text-\[/],
+      bannedPatterns: [/text-\[/, /h-\[2px\]/],
+    },
+    {
+      file: "components/mobile-drawer.tsx",
+      requiredImports: ["Icons.logo"],
+      bannedPatterns: [/h-\[40px\]/],
     },
     {
       file: "components/theme-toggle.tsx",
