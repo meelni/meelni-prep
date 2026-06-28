@@ -138,7 +138,7 @@ export function GlowingBarVerticalChart() {
             <Bar
               stackId="a"
               barSize={8}
-              className="dark:text-[#1A1A1C] text-[#E4E4E7]"
+              className="text-muted"
               dataKey="mobile"
               fill="var(--color-mobile)"
               radius={4}

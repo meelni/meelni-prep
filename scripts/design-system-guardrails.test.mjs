@@ -872,6 +872,31 @@ test("priority chart configs use shared chart tokens instead of literal colors",
   assert.deepEqual(violations, []);
 });
 
+test("example chart components use semantic chart and surface tokens", async () => {
+  const files = [
+    "components/charts/clipped-area-chart.tsx",
+    "components/charts/default-multiple-bar-chart.tsx",
+    "components/charts/glowing-bar-vertical-chart.tsx",
+    "components/charts/glowing-stroke-radar-chart.tsx",
+    "components/charts/gradient-bar-chart.tsx",
+    "components/charts/partial-line-chart.tsx",
+    "components/charts/rounded-pie-chart.tsx",
+  ];
+  const violations = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (/color:\s*["']#[0-9A-Fa-f]{3,6}["']/.test(content)) {
+      violations.push(`${file}:chart-config-literal`);
+    }
+    if (/\b(?:text|bg|border)-\[#[0-9A-Fa-f]{3,8}\]/.test(content)) {
+      violations.push(`${file}:tailwind-literal`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("dashboard helper callouts use semantic status tokens", async () => {
   const globals = await readFile("app/globals.css", "utf8");
   const missingTokens = [
