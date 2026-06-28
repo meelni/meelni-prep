@@ -33,6 +33,7 @@
     "test:local": "node --test scripts/*.test.mjs",
     "test:fixtures": "tsx --test packages/test-fixtures/src/*.test.ts",
     "test:workflows": "tsx --test lib/workflows/*.test.ts",
+    "test:packages": "tsx --test scripts/package-entrypoints.test.ts",
     "test:sheets": "tsx scripts/test-google-sheets-connection.ts",
     "test:feedback": "tsx --env-file=.env.local scripts/test-feedback-generation.ts",
     "validate:skills": "node scripts/validate-skills.mjs",
