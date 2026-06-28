@@ -36,7 +36,7 @@ export function InterviewControls({
         transition={{ delay: 0.3 }}
         className="flex items-center justify-center"
       >
-        <div className="flex items-center gap-4 px-6 py-4 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full shadow-lg">
+        <div className="flex items-center gap-4 px-6 py-4 bg-card/80 backdrop-blur-xl border border-border rounded-full shadow-lg">
           {/* Mute/Unmute Button */}
           <Button
             variant={isMuted ? "outline" : "default"}
