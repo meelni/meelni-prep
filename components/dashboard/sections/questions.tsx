@@ -529,7 +529,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
                 <div className="from-card pointer-events-none absolute right-0 bottom-0 left-0 z-10 h-12 bg-gradient-to-t to-transparent" />
 
                 <Table className="border-separate border-spacing-0">
-                  <TableHeader className="from-card via-card/98 to-card/95 border-border/60 sticky top-0 z-20 border-b bg-gradient-to-b shadow-[0_2px_8px_-2px_rgba(0,0,0,0.08)] backdrop-blur-md">
+                  <TableHeader className="from-card via-card/98 to-card/95 border-border/60 sticky top-0 z-20 border-b bg-gradient-to-b shadow-sm shadow-border/40 backdrop-blur-md">
                     <TableRow className="hover:bg-transparent">
                       {/* Checkbox column */}
                       <TableHead className="h-11 w-12 px-4">
