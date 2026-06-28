@@ -541,6 +541,22 @@ test("landing checkered background uses semantic color defaults", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("dot pattern uses semantic decorative color", async () => {
+  const file = "components/ui/dot-pattern.tsx";
+  const content = await readFile(file, "utf8");
+  const violations = [];
+
+  if (!content.includes("text-muted-foreground/80")) {
+    violations.push(`${file}:muted-foreground`);
+  }
+
+  if (content.includes("text-neutral-")) {
+    violations.push(`${file}:neutral-color`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
