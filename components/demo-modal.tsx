@@ -76,7 +76,7 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
               {/* Terminal-style prompt */}
               <div className="flex items-baseline gap-3 text-xs leading-relaxed">
                 <span className={`flex-shrink-0 font-semibold min-w-[3rem] ${
-                  message.speaker === "user" ? "text-green-400" : "text-blue-400"
+                  message.speaker === "user" ? "text-success" : "text-info"
                 } ${!message.isFinal ? "opacity-50" : ""}`}>
                   {message.speaker === "user" ? "user" : "agent"}
                 </span>
@@ -378,15 +378,15 @@ function DemoControls({
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 className={`bg-white/5 backdrop-blur-xl px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border ${
-                  timeRemaining <= 60 ? "border-red-500/40 bg-red-500/10" : "border-white/10"
+                  timeRemaining <= 60 ? "border-destructive/40 bg-destructive/10" : "border-white/10"
                 }`}
               >
                 <div className="flex items-center gap-1.5 sm:gap-2">
                   <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${
-                    timeRemaining <= 60 ? "bg-red-400 animate-pulse" : "bg-primary"
+                    timeRemaining <= 60 ? "bg-destructive animate-pulse" : "bg-primary"
                   }`} />
                   <span className={`text-xs sm:text-sm font-mono font-semibold tabular-nums ${
-                    timeRemaining <= 60 ? "text-red-200" : "text-white/90"
+                    timeRemaining <= 60 ? "text-destructive" : "text-white/90"
                   }`}>
                     {formatTime(timeRemaining)}
                   </span>
@@ -481,27 +481,27 @@ function DemoControls({
             >
               {!isConnected ? (
                 <div className="flex items-center gap-3 bg-white/5 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10">
-                  <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   <span className="text-white/70 text-sm font-medium">Connecting to Meelni...</span>
                 </div>
               ) : agentState === "listening" ? (
-                <div className="flex items-center gap-3 bg-blue-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-blue-500/20">
-                  <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                  <span className="text-blue-100 text-sm font-medium">Listening</span>
+                <div className="flex items-center gap-3 bg-info/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-info/20">
+                  <div className="w-2 h-2 rounded-full bg-info animate-pulse" />
+                  <span className="text-info text-sm font-medium">Listening</span>
                 </div>
               ) : agentState === "thinking" ? (
-                <div className="flex items-center gap-3 bg-purple-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-purple-500/20">
+                <div className="flex items-center gap-3 bg-primary/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-primary/20">
                   <div className="flex gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0.1s" }} />
-                    <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0.2s" }} />
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0.1s" }} />
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0.2s" }} />
                   </div>
-                  <span className="text-purple-100 text-sm font-medium">Thinking</span>
+                  <span className="text-primary text-sm font-medium">Thinking</span>
                 </div>
               ) : agentState === "speaking" ? (
-                <div className="flex items-center gap-3 bg-green-500/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-green-500/20">
-                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-green-100 text-sm font-medium">Speaking</span>
+                <div className="flex items-center gap-3 bg-success/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-success/20">
+                  <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                  <span className="text-success text-sm font-medium">Speaking</span>
                 </div>
               ) : null}
             </motion.div>
@@ -528,7 +528,7 @@ function DemoControls({
                   relative p-4 rounded-xl transition-all duration-300 shadow-lg
                   ${
                     isMuted
-                      ? "bg-red-500/80 hover:bg-red-500"
+                      ? "bg-destructive/80 hover:bg-destructive"
                       : "bg-white/10 hover:bg-white/20"
                   }
                   disabled:opacity-50 disabled:cursor-not-allowed
@@ -540,7 +540,7 @@ function DemoControls({
                   <Mic className="h-5 w-5 text-white" />
                 )}
                 {!isMuted && isConnected && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-400 animate-pulse" />
+                  <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-success animate-pulse" />
                 )}
               </motion.button>
 
