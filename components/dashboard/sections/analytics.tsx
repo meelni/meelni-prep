@@ -201,9 +201,9 @@ function StatCard({
   const changeColor =
     change !== undefined
       ? change > 0
-        ? "text-green-500"
+        ? "text-success"
         : change < 0
-          ? "text-red-500"
+          ? "text-destructive"
           : "text-muted-foreground"
       : "";
 

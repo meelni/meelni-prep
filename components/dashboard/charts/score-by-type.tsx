@@ -168,7 +168,7 @@ function ComparisonBadge({
 
   return (
     <span
-      className={`flex items-center gap-1 text-xs ${isAbove ? "text-green-500" : "text-orange-500"}`}
+      className={`flex items-center gap-1 text-xs ${isAbove ? "text-success" : "text-warning"}`}
     >
       {isAbove ? (
         <TrendingUp className="h-3 w-3" />
