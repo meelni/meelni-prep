@@ -648,6 +648,34 @@ test("interview runtime indicators use semantic status tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("demo modal status indicators use semantic status tokens", async () => {
+  const file = "components/demo-modal.tsx";
+  const content = await readFile(file, "utf8");
+  const rawStatusUtility =
+    /\b(?:bg|text|border|hover:bg)-(?:blue|purple|green|red)-(?:100|200|400|500)(?:\/\d+)?\b/;
+  const requiredTokens = [
+    "text-info",
+    "bg-info",
+    "border-info",
+    "text-primary",
+    "bg-primary",
+    "border-primary",
+    "text-success",
+    "bg-success",
+    "border-success",
+    "text-destructive",
+    "bg-destructive",
+    "border-destructive",
+  ];
+  const violations = requiredTokens.filter((token) => !content.includes(token));
+
+  if (rawStatusUtility.test(content)) {
+    violations.push(`${file}:raw-status-utility`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("question bank child components use shared controls", async () => {
   const textareaSource = await readFile(
     "components/ui/textarea.tsx",
