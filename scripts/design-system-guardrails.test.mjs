@@ -1452,6 +1452,7 @@ test("test demo surfaces use shared controls and semantic tones", async () => {
 });
 
 test("question bank child components use shared controls", async () => {
+  const globals = await readFile("app/globals.css", "utf8");
   const textareaSource = await readFile(
     "components/ui/textarea.tsx",
     "utf8"
@@ -1469,6 +1470,16 @@ test("question bank child components use shared controls", async () => {
     "components/question-bank/search-autocomplete.tsx",
   ];
   const violations = [];
+  const requiredUtilities = [
+    ".max-h-question-filter-panel",
+    ".h-question-filter-drawer",
+  ];
+
+  for (const utility of requiredUtilities) {
+    if (!globals.includes(utility)) {
+      violations.push(`app/globals.css:${utility}`);
+    }
+  }
 
   for (const file of files) {
     const content = await readFile(file, "utf8");
@@ -1483,6 +1494,9 @@ test("question bank child components use shared controls", async () => {
     }
     if (/left-\[280px\]|max-w-\[calc\(100vw-2rem\)\]|min-h-\[140px\]/.test(content)) {
       violations.push(`${file}:arbitrary-question-bank-layout`);
+    }
+    if (/\b(?:h|max-h)-\[60vh\]/.test(content)) {
+      violations.push(`${file}:arbitrary-filter-panel-height`);
     }
   }
 

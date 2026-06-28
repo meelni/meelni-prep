@@ -101,7 +101,7 @@ export function FilterPopover({
         </div>
 
         {/* Content */}
-        <div className="max-h-[60vh] space-y-6 overflow-y-auto px-4 py-4">
+        <div className="max-h-question-filter-panel space-y-6 overflow-y-auto px-4 py-4">
           {/* Question Type */}
           <div>
             <h4 className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
