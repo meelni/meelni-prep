@@ -418,6 +418,22 @@ test("voice orb surfaces use shared runtime color tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("landing section grid uses semantic color tokens", async () => {
+  const file = "components/section.tsx";
+  const content = await readFile(file, "utf8");
+  const violations = [];
+
+  if (!content.includes('color="var(--muted-foreground)"')) {
+    violations.push(`${file}:muted-foreground-grid-color`);
+  }
+
+  if (/color="#[0-9A-Fa-f]{6}"/.test(content)) {
+    violations.push(`${file}:literal-grid-color`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
