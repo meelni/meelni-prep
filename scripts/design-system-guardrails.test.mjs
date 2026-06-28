@@ -346,6 +346,44 @@ test("interview control rail uses semantic surface tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("demo modal cinematic chrome uses semantic dark-surface tokens", async () => {
+  const file = "components/demo-modal.tsx";
+  const content = await readFile(file, "utf8");
+  const required = [
+    "bg-overlay/95",
+    "from-overlay",
+    "via-overlay",
+    "to-primary/20",
+    "bg-primary-foreground/",
+    "border-primary-foreground/",
+    "text-primary-foreground",
+  ];
+  const banned = [
+    "bg-black",
+    "from-black",
+    "via-black",
+    "to-purple",
+    "bg-white/",
+    "border-white/",
+    "text-white",
+  ];
+  const violations = [];
+
+  for (const token of required) {
+    if (!content.includes(token)) {
+      violations.push(`${file}:${token}`);
+    }
+  }
+
+  for (const token of banned) {
+    if (content.includes(token)) {
+      violations.push(`${file}:${token}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
