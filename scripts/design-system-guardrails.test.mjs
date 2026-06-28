@@ -607,6 +607,47 @@ test("dashboard analytics comparison indicators use semantic tokens", async () =
   assert.deepEqual(violations, []);
 });
 
+test("interview runtime indicators use semantic status tokens", async () => {
+  const files = [
+    "app/interview/components/agent-state-badge.tsx",
+    "app/interview/components/connection-indicator.tsx",
+    "app/interview/components/end-session-modal.tsx",
+    "app/interview/components/interview-controls.tsx",
+    "components/interview/nudge-overlay.tsx",
+  ];
+  const rawStatusUtility =
+    /\b(?:bg|text|border|shadow|hover:bg|hover:text|hover:border)-(?:blue|purple|green|red|amber|orange)-\d+(?:\/\d+)?\b/;
+  const requiredTokens = [
+    "text-info",
+    "bg-info",
+    "text-warning",
+    "bg-warning",
+    "text-success",
+    "bg-success",
+    "text-destructive",
+    "bg-destructive",
+  ];
+  const violations = [];
+  const source = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    source.push(content);
+    if (rawStatusUtility.test(content)) {
+      violations.push(`${file}:raw-status-utility`);
+    }
+  }
+
+  const combinedSource = source.join("\n");
+  for (const token of requiredTokens) {
+    if (!combinedSource.includes(token)) {
+      violations.push(token);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("question bank child components use shared controls", async () => {
   const textareaSource = await readFile(
     "components/ui/textarea.tsx",

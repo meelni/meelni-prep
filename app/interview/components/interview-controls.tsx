@@ -24,7 +24,7 @@ export function InterviewControls({
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="absolute -top-12 left-1/2 -translate-x-1/2 px-4 py-2 bg-red-500 text-white text-sm rounded-full shadow-lg whitespace-nowrap"
+          className="absolute -top-12 left-1/2 -translate-x-1/2 px-4 py-2 bg-destructive text-destructive-foreground text-sm rounded-full shadow-lg whitespace-nowrap"
         >
           Microphone muted
         </motion.div>
@@ -52,7 +52,7 @@ export function InterviewControls({
             )}
             {/* Active indicator when not muted */}
             {!isMuted && (
-              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-400 animate-pulse" />
+              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-success animate-pulse" />
             )}
           </Button>
 
@@ -61,7 +61,7 @@ export function InterviewControls({
             variant="outline"
             size="lg"
             onClick={onEndSession}
-            className="rounded-full w-14 h-14 p-0 border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all duration-300 hover:scale-105 active:scale-95"
+            className="rounded-full w-14 h-14 p-0 border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-all duration-300 hover:scale-105 active:scale-95"
             title="End interview session"
           >
             <PhoneOff className="w-6 h-6" />
