@@ -118,7 +118,7 @@ function AuthMessage({ children, title, tone }: AuthMessageProps) {
       className={cn(
         "mt-4 rounded-lg border px-4 py-3 text-sm",
         isSuccess
-          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          ? "border-success/20 bg-success/10 text-success"
           : "border-destructive/20 bg-destructive/10 text-destructive"
       )}
     >

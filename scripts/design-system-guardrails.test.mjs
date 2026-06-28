@@ -703,6 +703,43 @@ test("landing feature selector uses shared controls and semantic status tokens",
   assert.deepEqual(violations, []);
 });
 
+test("auth setup and settings status messages use semantic tokens", async () => {
+  const files = [
+    "components/auth/auth-shell.tsx",
+    "app/setup/setup-content.tsx",
+    "components/dashboard/sections/settings.tsx",
+  ];
+  const rawStatusUtility =
+    /\b(?:bg|text|border)-(?:emerald|red)-(?:400|500|600|700)(?:\/\d+)?\b/;
+  const requiredTokens = [
+    "border-success",
+    "bg-success",
+    "text-success",
+    "border-destructive",
+    "bg-destructive",
+    "text-destructive",
+  ];
+  const violations = [];
+  const source = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    source.push(content);
+    if (rawStatusUtility.test(content)) {
+      violations.push(`${file}:raw-status-utility`);
+    }
+  }
+
+  const combinedSource = source.join("\n");
+  for (const token of requiredTokens) {
+    if (!combinedSource.includes(token)) {
+      violations.push(token);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("question bank child components use shared controls", async () => {
   const textareaSource = await readFile(
     "components/ui/textarea.tsx",
