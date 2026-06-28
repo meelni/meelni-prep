@@ -3,6 +3,7 @@
 import { Section } from "@/components/section";
 import OrbitingCircles from "@/components/ui/orbiting-circles";
 import { cubicBezier, motion } from "framer-motion";
+import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangleIcon,
   BrainCircuitIcon,
@@ -16,6 +17,36 @@ import {
   UserSearch,
   XCircleIcon,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+type IntegrationIconTone = "info" | "success" | "primary" | "warning" | "danger";
+
+const integrationIconToneClasses: Record<IntegrationIconTone, string> = {
+  info: "bg-info/10 text-info",
+  success: "bg-success/10 text-success",
+  primary: "bg-primary/10 text-primary",
+  warning: "bg-warning/10 text-warning",
+  danger: "bg-destructive/10 text-destructive",
+};
+
+function IntegrationIconBadge({
+  icon: Icon,
+  tone,
+}: {
+  icon: LucideIcon;
+  tone: IntegrationIconTone;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-8 w-8 items-center justify-center rounded-full",
+        integrationIconToneClasses[tone]
+      )}
+    >
+      <Icon className="h-5 w-5" />
+    </div>
+  );
+}
 
 const containerVariants = {
   initial: {},
@@ -117,9 +148,7 @@ export function Card1() {
               variants={variant1}
               className="z-[1] flex h-full w-full items-center justify-between gap-x-2 rounded-md border bg-background p-5 px-2.5 "
             >
-              <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
-                <SearchIcon className="h-5 w-5 text-white" />
-              </div>
+              <IntegrationIconBadge icon={SearchIcon} tone="info" />
               <div className="flex flex-col gap-y-2">
                 <div className="h-2 w-32 rounded-full bg-neutral-800/50 dark:bg-neutral-200/80"></div>
                 <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
@@ -132,9 +161,7 @@ export function Card1() {
               variants={variant2}
               className="z-[2] flex h-full w-full items-center justify-between gap-x-2 rounded-md border bg-background p-5 px-2.5 "
             >
-              <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center">
-                <DatabaseIcon className="h-5 w-5 text-white" />
-              </div>
+              <IntegrationIconBadge icon={DatabaseIcon} tone="success" />
               <div className="flex flex-col gap-y-2">
                 <div className="h-2 w-32 rounded-full bg-neutral-800/50 dark:bg-neutral-200/80"></div>
                 <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
@@ -148,9 +175,7 @@ export function Card1() {
               variants={variant3}
               className="absolute bottom-0 z-[3] m-auto flex h-fit w-fit items-center justify-between gap-x-2 rounded-md border bg-background p-5 px-2.5 "
             >
-              <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
-                <MessageSquareIcon className="h-5 w-5 text-white" />
-              </div>
+              <IntegrationIconBadge icon={MessageSquareIcon} tone="primary" />
               <div className="flex flex-col gap-y-2">
                 <div className="h-2 w-32 rounded-full bg-neutral-800/50 dark:bg-neutral-200/80"></div>
                 <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
@@ -183,55 +208,40 @@ const Card2 = () => {
       type: "info",
       timestamp: "2023-12-15 14:23:45",
       message: "Agent initialized. Starting task execution.",
-      icon: (
-        <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
-          <InfoIcon className="h-5 w-5 text-white" />
-        </div>
-      ),
+      icon: InfoIcon,
+      tone: "info" as const,
     },
     {
       id: 2,
       type: "action",
       timestamp: "2023-12-15 14:23:47",
       message: "Retrieving data from external API...",
-      icon: (
-        <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center">
-          <DatabaseIcon className="h-5 w-5 text-white" />
-        </div>
-      ),
+      icon: DatabaseIcon,
+      tone: "success" as const,
     },
     {
       id: 3,
       type: "decision",
       timestamp: "2023-12-15 14:23:50",
       message: "Analyzing data. Confidence: 85%",
-      icon: (
-        <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
-          <BrainCircuitIcon className="h-5 w-5 text-white" />
-        </div>
-      ),
+      icon: BrainCircuitIcon,
+      tone: "primary" as const,
     },
     {
       id: 4,
       type: "warning",
       timestamp: "2023-12-15 14:23:52",
       message: "Potential anomaly detected in dataset.",
-      icon: (
-        <div className="h-8 w-8 rounded-full bg-yellow-500 flex items-center justify-center">
-          <AlertTriangleIcon className="h-5 w-5 text-white" />
-        </div>
-      ),
+      icon: AlertTriangleIcon,
+      tone: "warning" as const,
     },
     {
       id: 5,
       type: "error",
       timestamp: "2023-12-15 14:23:55",
       message: "Failed to connect to secondary database.",
-      icon: (
-        <div className="h-8 w-8 rounded-full bg-red-500 flex items-center justify-center">
-          <XCircleIcon className="h-5 w-5 text-white" />
-        </div>
-      ),
+      icon: XCircleIcon,
+      tone: "danger" as const,
     },
   ];
   return (
@@ -277,7 +287,9 @@ const Card2 = () => {
                   stiffness: 600,
                 }}
               >
-                <div className="mr-3">{log.icon}</div>
+                <div className="mr-3">
+                  <IntegrationIconBadge icon={log.icon} tone={log.tone} />
+                </div>
                 <div className="flex-grow">
                   <p className="text-foreground text-xs font-medium">
                     [{log.timestamp}] {log.type.toUpperCase()}
@@ -310,29 +322,19 @@ const Card3 = () => {
           <div className="relative flex items-center justify-center h-full w-full">
             <div className="absolute top-0 right-0 bottom-0 left-0 bg-[radial-gradient(circle,color-mix(in oklab, var(--accent) 30%, transparent)_0%,transparent_100%)]"></div>
             <OrbitingCircles duration={15} delay={0} radius={40} reverse>
-              <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
-                <HeadsetIcon className="h-5 w-5 text-white" />
-              </div>
+              <IntegrationIconBadge icon={HeadsetIcon} tone="info" />
             </OrbitingCircles>
             <OrbitingCircles duration={15} delay={20} radius={80}>
-              <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center">
-                <SquareTerminal className="h-5 w-5 text-white" />
-              </div>
+              <IntegrationIconBadge icon={SquareTerminal} tone="success" />
             </OrbitingCircles>
             <OrbitingCircles radius={120} duration={20} delay={20}>
-              <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
-                <UserSearch className="h-5 w-5 text-white" />
-              </div>
+              <IntegrationIconBadge icon={UserSearch} tone="primary" />
             </OrbitingCircles>
             <OrbitingCircles radius={160} duration={40} delay={20}>
-              <div className="h-8 w-8 rounded-full bg-yellow-500 flex items-center justify-center">
-                <MessageSquareIcon className="h-5 w-5 text-white" />
-              </div>
+              <IntegrationIconBadge icon={MessageSquareIcon} tone="warning" />
             </OrbitingCircles>
             <OrbitingCircles radius={200} duration={30}>
-              <div className="h-8 w-8 rounded-full bg-red-500 flex items-center justify-center">
-                <GitForkIcon className="h-5 w-5 text-white" />
-              </div>
+              <IntegrationIconBadge icon={GitForkIcon} tone="danger" />
             </OrbitingCircles>
           </div>
         </div>
