@@ -1,11 +1,30 @@
+import { ScrollText } from "lucide-react";
+
+import {
+  MarketingArticleHeader,
+  MarketingEyebrow,
+  MarketingPage,
+  MarketingProse,
+} from "@/components/marketing/marketing-surface";
+import { Header } from "@/components/sections/header";
+
 export default function TermsOfService() {
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto px-6 py-16">
-        <h1 className="text-4xl font-display font-bold mb-8">Terms of Service</h1>
-        <p className="text-sm text-muted-foreground mb-8">Last Updated: November 18, 2025</p>
+    <MarketingPage>
+      <Header />
+      <main className="mx-auto max-w-4xl px-6 py-16">
+        <MarketingArticleHeader
+          eyebrow={<MarketingEyebrow icon={ScrollText}>Legal</MarketingEyebrow>}
+          title="Terms of Service"
+          meta={
+            <p className="text-sm text-muted-foreground">
+              Last Updated: November 18, 2025
+            </p>
+          }
+        />
 
-        <div className="space-y-8 text-foreground/80">
+        <MarketingProse className="mt-10">
+          <div className="space-y-8">
           <section>
             <h2 className="text-2xl font-display font-semibold mb-4">1. Acceptance of Terms</h2>
             <p>
@@ -195,8 +214,9 @@ export default function TermsOfService() {
               </a>
             </p>
           </section>
-        </div>
-      </div>
-    </div>
+          </div>
+        </MarketingProse>
+      </main>
+    </MarketingPage>
   );
 }
