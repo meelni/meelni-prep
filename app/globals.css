@@ -444,6 +444,15 @@
     min-height: 400px;
   }
 
+  /* Question bank filter sizing utilities */
+  .max-h-question-filter-panel {
+    max-height: 60vh;
+  }
+
+  .h-question-filter-drawer {
+    height: 60vh;
+  }
+
   /* Display headings - Everett 300 */
   .text-display-hero {
     font-family: var(--font-display);
