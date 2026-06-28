@@ -45,7 +45,7 @@ function DashboardMetricCard({
 
   const classes = cn(
     appSurfaceVariants({ variant: "default", size: "lg" }),
-    "flex min-h-[140px] flex-col justify-between gap-4 text-left transition-colors hover:border-primary/30",
+    "flex min-h-dashboard-metric-card flex-col justify-between gap-4 text-left transition-colors hover:border-primary/30",
     onClick && "cursor-pointer",
     className
   );
@@ -189,7 +189,9 @@ function DashboardSkeletonCard({
     <AppSurface
       size="lg"
       className={cn(
-        variant === "metric" ? "min-h-[140px]" : "min-h-[460px]",
+        variant === "metric"
+          ? "min-h-dashboard-metric-card"
+          : "min-h-dashboard-chart-card",
         className
       )}
       {...props}
@@ -203,7 +205,7 @@ function DashboardSkeletonCard({
       ) : (
         <div className="space-y-6">
           <div className="h-5 w-36 animate-pulse rounded bg-muted" />
-          <div className="h-[360px] animate-pulse rounded bg-muted" />
+          <div className="h-chart-radar animate-pulse rounded bg-muted" />
         </div>
       ))}
     </AppSurface>

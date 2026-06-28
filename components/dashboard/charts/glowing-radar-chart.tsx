@@ -73,7 +73,7 @@ export function GlowingRadarChart({ data }: GlowingRadarChartProps) {
     >
       <ChartContainer
         config={chartConfig}
-        className="mx-auto aspect-square max-h-[280px]"
+        className="mx-auto aspect-square max-h-chart-radar-sm"
       >
         <RadarChart
           data={data}

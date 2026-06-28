@@ -893,19 +893,26 @@ test("priority chart configs use shared chart tokens instead of literal colors",
 test("dashboard charts use named height utilities", async () => {
   const globals = await readFile("app/globals.css", "utf8");
   const files = [
+    "components/dashboard/score-chart.tsx",
+    "components/dashboard/competency-radar.tsx",
     "components/dashboard/charts/clipped-area-chart.tsx",
+    "components/dashboard/charts/glowing-radar-chart.tsx",
     "components/dashboard/charts/performance-trend.tsx",
     "components/dashboard/charts/competency-breakdown.tsx",
     "components/dashboard/charts/score-by-type.tsx",
     "components/dashboard/charts/time-investment.tsx",
     "components/dashboard/charts/type-distribution.tsx",
+    "components/feedback/score-breakdown.tsx",
   ];
   const violations = [];
   const requiredUtilities = [
     ".h-chart-sm",
     ".h-chart-md",
     ".h-chart-md-plus",
+    ".h-chart-feedback",
+    ".h-chart-radar",
     ".h-chart-lg",
+    ".max-h-chart-radar-sm",
     ".max-h-chart-lg",
   ];
 
@@ -917,9 +924,32 @@ test("dashboard charts use named height utilities", async () => {
 
   for (const file of files) {
     const content = await readFile(file, "utf8");
-    if (/\b(?:h|max-h)-\[(?:250|300|350|400)px\]/.test(content)) {
+    if (/\b(?:h|max-h)-\[(?:250|280|300|320|350|360|400)px\]/.test(content)) {
       violations.push(`${file}:arbitrary-chart-height`);
     }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("dashboard surface primitives use named size utilities", async () => {
+  const globals = await readFile("app/globals.css", "utf8");
+  const file = "components/dashboard/dashboard-surface.tsx";
+  const content = await readFile(file, "utf8");
+  const violations = [];
+  const requiredUtilities = [
+    ".min-h-dashboard-metric-card",
+    ".min-h-dashboard-chart-card",
+  ];
+
+  for (const utility of requiredUtilities) {
+    if (!globals.includes(utility)) {
+      violations.push(`app/globals.css:${utility}`);
+    }
+  }
+
+  if (/\b(?:h|min-h)-\[(?:140|360|460)px\]/.test(content)) {
+    violations.push(`${file}:arbitrary-dashboard-surface-size`);
   }
 
   assert.deepEqual(violations, []);

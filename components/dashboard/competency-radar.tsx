@@ -74,7 +74,7 @@ export function CompetencyRadar({ data }: CompetencyRadarProps) {
       title="Competency Breakdown"
       description="Your average scores across key competencies"
     >
-      <div className="h-[360px] w-full" onClick={handleRadarClick}>
+      <div className="h-chart-radar w-full" onClick={handleRadarClick}>
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart
             data={data}
