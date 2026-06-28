@@ -877,6 +877,33 @@ test("explore question surfaces use shared form and action primitives", async ()
   assert.deepEqual([...missingExports, ...violations], []);
 });
 
+test("dashboard question filters use shared controls and semantic type colors", async () => {
+  const file = "components/dashboard/sections/questions.tsx";
+  const content = await readFile(file, "utf8");
+  const violations = [];
+  const requiredImports = [
+    "@/components/ui/input",
+    "@/components/ui/checkbox",
+    "DashboardSectionCard",
+  ];
+  const rawQuestionTypeColor =
+    /\b(?:bg|text|border)-(?:blue|green|purple|orange)-500(?:\/\d+)?\b/;
+
+  for (const importName of requiredImports) {
+    if (!content.includes(importName)) {
+      violations.push(`${file}:${importName}`);
+    }
+  }
+  if (content.includes("<input")) {
+    violations.push(`${file}:input`);
+  }
+  if (rawQuestionTypeColor.test(content)) {
+    violations.push(`${file}:raw-question-type-color`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("blog detail page uses shared marketing article primitives", async () => {
   const surfaceSource = await readFile(
     "components/marketing/marketing-surface.tsx",
