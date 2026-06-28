@@ -775,6 +775,41 @@ test("lower landing sections use semantic status and text primitives", async () 
   assert.deepEqual(violations, []);
 });
 
+test("public top chrome uses semantic status and type primitives", async () => {
+  const expectations = [
+    {
+      file: "components/discontinued-banner.tsx",
+      requiredImports: ["StatusPill"],
+      bannedPatterns: [
+        /\b(?:bg|text|border|from|via|to)-amber-500(?:\/\d+)?\b/,
+        /text-amber-/,
+      ],
+    },
+    {
+      file: "components/sections/header.tsx",
+      requiredImports: ["Header"],
+      bannedPatterns: [/text-\[/],
+    },
+  ];
+  const violations = [];
+
+  for (const { file, requiredImports, bannedPatterns } of expectations) {
+    const content = await readFile(file, "utf8");
+    for (const importName of requiredImports) {
+      if (!content.includes(importName)) {
+        violations.push(`${file}:${importName}`);
+      }
+    }
+    for (const pattern of bannedPatterns) {
+      if (pattern.test(content)) {
+        violations.push(`${file}:${pattern.source}`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("blog detail page uses shared marketing article primitives", async () => {
   const surfaceSource = await readFile(
     "components/marketing/marketing-surface.tsx",
