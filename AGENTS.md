@@ -51,6 +51,7 @@ packages/
 - Local dev, deployment, provider setup, and runbooks go in `docs/operations/`.
 - Product truth and strategic direction remain in `.claude/PRD.md`, docs, and future product docs.
 - Meaningful behavior changes should use `openspec/changes/` before implementation when alignment matters.
+- For meaningful agent-authored feature work, use `docs/templates/AGENT_TASK_INTAKE.md` to capture intent, slice, scope, validation, and rollout before editing.
 
 ## Skills
 
