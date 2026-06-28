@@ -149,7 +149,7 @@ export function FeedbackDisplay({
                 transition={{ delay: index * 0.1, duration: 0.3 }}
                 className="flex items-start gap-3"
               >
-                <div className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-green-500" />
+                <div className="bg-success mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full" />
                 <p className="text-foreground text-sm">{strength}</p>
               </motion.li>
             ))}
@@ -173,7 +173,7 @@ export function FeedbackDisplay({
                 transition={{ delay: index * 0.1, duration: 0.3 }}
                 className="flex items-start gap-3"
               >
-                <div className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-orange-500" />
+                <div className="bg-warning mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full" />
                 <p className="text-foreground text-sm">{improvement}</p>
               </motion.li>
             ))}
@@ -197,7 +197,7 @@ export function FeedbackDisplay({
                 transition={{ delay: index * 0.1, duration: 0.3 }}
                 className="flex items-start gap-3"
               >
-                <div className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-500" />
+                <div className="bg-info mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full" />
                 <p className="text-foreground text-sm">{drill}</p>
               </motion.li>
             ))}

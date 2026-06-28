@@ -40,11 +40,11 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
     }
 
     const isPositive = delta > 0;
-    const bgColor = isPositive ? "bg-green-500/10" : "bg-red-500/10";
-    const textColor = isPositive ? "text-green-500" : "text-red-500";
+    const bgColor = isPositive ? "bg-success/10" : "bg-destructive/10";
+    const textColor = isPositive ? "text-success" : "text-destructive";
     const borderColor = isPositive
-      ? "border-green-500/20"
-      : "border-red-500/20";
+      ? "border-success/20"
+      : "border-destructive/20";
     const Icon = isPositive ? TrendingUp : TrendingDown;
 
     return (
@@ -67,12 +67,12 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
     const percentage = (score / 10) * 100;
     const colorClass =
       percentage >= 80
-        ? "bg-green-500"
+        ? "bg-success"
         : percentage >= 60
-          ? "bg-blue-500"
+          ? "bg-info"
           : percentage >= 40
-            ? "bg-yellow-500"
-            : "bg-red-500";
+            ? "bg-warning"
+            : "bg-destructive";
 
     return (
       <div className="space-y-2">
@@ -208,7 +208,7 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
                 key={idx}
                 tone="success"
                 className="border-0 bg-transparent p-0 text-xs"
-                icon={<span className="mt-0.5 text-green-500">✓</span>}
+                icon={<span className="text-success mt-0.5">✓</span>}
               >
                 {strength}
               </FeedbackActionItem>
@@ -230,7 +230,7 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
                   key={idx}
                   tone="warning"
                   className="border-0 bg-transparent p-0 text-xs"
-                  icon={<span className="mt-0.5 text-yellow-500">→</span>}
+                  icon={<span className="text-warning mt-0.5">→</span>}
                 >
                   {improvement}
                 </FeedbackActionItem>

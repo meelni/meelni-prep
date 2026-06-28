@@ -100,17 +100,17 @@ function LoadingSkeleton() {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 80) return "text-green-500";
-  if (score >= 60) return "text-blue-500";
-  if (score >= 40) return "text-yellow-500";
-  return "text-red-500";
+  if (score >= 80) return "text-success";
+  if (score >= 60) return "text-info";
+  if (score >= 40) return "text-warning";
+  return "text-destructive";
 }
 
 function getProgressColor(score: number): string {
-  if (score >= 80) return "bg-green-500";
-  if (score >= 60) return "bg-blue-500";
-  if (score >= 40) return "bg-yellow-500";
-  return "bg-red-500";
+  if (score >= 80) return "bg-success";
+  if (score >= 60) return "bg-info";
+  if (score >= 40) return "bg-warning";
+  return "bg-destructive";
 }
 
 export default function FeedbackPage() {
