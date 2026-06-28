@@ -703,6 +703,31 @@ test("landing feature selector uses shared controls and semantic status tokens",
   assert.deepEqual(violations, []);
 });
 
+test("landing feature cards use semantic product tones", async () => {
+  const file = "components/sections/features.tsx";
+  const content = await readFile(file, "utf8");
+  const rawFeatureTone =
+    /\b(?:from|to|shadow|bg)-(?:cyan|blue|purple|pink|orange|red|green|emerald|indigo)-\d+(?:\/\d+)?\b/;
+  const requiredTokens = [
+    "text-primary",
+    "bg-primary",
+    "shadow-primary",
+    "text-info",
+    "bg-info",
+    "text-success",
+    "bg-success",
+    "text-warning",
+    "bg-warning",
+  ];
+  const violations = requiredTokens.filter((token) => !content.includes(token));
+
+  if (rawFeatureTone.test(content)) {
+    violations.push(`${file}:raw-feature-tone`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("auth setup and settings status messages use semantic tokens", async () => {
   const files = [
     "components/auth/auth-shell.tsx",
