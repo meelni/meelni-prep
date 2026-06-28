@@ -33,7 +33,9 @@
     "test:local": "node --test scripts/*.test.mjs",
     "test:sheets": "tsx scripts/test-google-sheets-connection.ts",
     "test:feedback": "tsx --env-file=.env.local scripts/test-feedback-generation.ts",
+    "validate:skills": "node scripts/validate-skills.mjs",
     "validate:env": "tsx --env-file=.env.local scripts/validate-env.ts",
+    "verify:agent": "node scripts/verify-agent.mjs",
     "ralph": "./scripts/ralph/ralph.sh",
     "ralph:status": "cat scripts/ralph/prd.json | jq '.userStories[] | {id, title, passes}'",
     "ralph:progress": "cat scripts/ralph/progress.txt"

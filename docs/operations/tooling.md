@@ -45,3 +45,11 @@ npm run test:local
 npm run typecheck
 npm run lint
 ```
+
+Before opening or merging agent-authored changes, run the standard agent verification suite:
+
+```bash
+npm run verify:agent
+```
+
+This runs the local doctor, canonical skill validation, TypeScript, local package tests, lint, and the production build. Python LiveKit agent tests run only when `agent/venv` exists.
