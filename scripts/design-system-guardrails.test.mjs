@@ -737,6 +737,44 @@ test("legal pages use shared marketing article primitives", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("lower landing sections use semantic status and text primitives", async () => {
+  const expectations = [
+    {
+      file: "components/sections/use-cases.tsx",
+      requiredImports: ["IntegrationIconBadge"],
+      bannedPatterns: [
+        /\b(?:bg|text|border)-(?:blue|green|purple|yellow|red)-500(?:\/\d+)?\b/,
+        /\btext-white\b/,
+      ],
+    },
+    {
+      file: "components/sections/footer.tsx",
+      requiredImports: ["StatusPill"],
+      bannedPatterns: [
+        /\b(?:bg|text|border)-green-500(?:\/\d+)?\b/,
+        /text-\[/,
+      ],
+    },
+  ];
+  const violations = [];
+
+  for (const { file, requiredImports, bannedPatterns } of expectations) {
+    const content = await readFile(file, "utf8");
+    for (const importName of requiredImports) {
+      if (!content.includes(importName)) {
+        violations.push(`${file}:${importName}`);
+      }
+    }
+    for (const pattern of bannedPatterns) {
+      if (pattern.test(content)) {
+        violations.push(`${file}:${pattern.source}`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("blog detail page uses shared marketing article primitives", async () => {
   const surfaceSource = await readFile(
     "components/marketing/marketing-surface.tsx",
