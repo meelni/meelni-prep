@@ -676,6 +676,33 @@ test("demo modal status indicators use semantic status tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("landing feature selector uses shared controls and semantic status tokens", async () => {
+  const file = "components/feature-selector.tsx";
+  const content = await readFile(file, "utf8");
+  const rawStatusUtility =
+    /\b(?:bg|text|border)-(?:red|yellow|green|amber|cyan)-(?:400|500)(?:\/\d+)?\b/;
+  const requiredTokens = [
+    "Button",
+    "text-info",
+    "bg-info",
+    "text-warning",
+    "bg-warning",
+    "border-warning",
+    "bg-success",
+    "bg-destructive",
+  ];
+  const violations = requiredTokens.filter((token) => !content.includes(token));
+
+  if (content.includes("<button")) {
+    violations.push(`${file}:button`);
+  }
+  if (rawStatusUtility.test(content)) {
+    violations.push(`${file}:raw-status-utility`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("question bank child components use shared controls", async () => {
   const textareaSource = await readFile(
     "components/ui/textarea.tsx",
