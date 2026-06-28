@@ -740,6 +740,39 @@ test("auth setup and settings status messages use semantic tokens", async () => 
   assert.deepEqual(violations, []);
 });
 
+test("chart trend badges use semantic badge variants", async () => {
+  const files = [
+    "components/charts/default-multiple-bar-chart.tsx",
+    "components/charts/glowing-bar-vertical-chart.tsx",
+    "components/charts/glowing-stroke-radar-chart.tsx",
+    "components/charts/gradient-bar-chart.tsx",
+    "components/charts/partial-line-chart.tsx",
+    "components/charts/rounded-pie-chart.tsx",
+  ];
+  const rawTrendBadge =
+    /\b(?:bg|text|border)-(?:green|red)-500(?:\/\d+)?\b/;
+  const requiredVariants = ['variant="success"', 'variant="destructive"'];
+  const violations = [];
+  const source = [];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    source.push(content);
+    if (rawTrendBadge.test(content)) {
+      violations.push(`${file}:raw-trend-badge`);
+    }
+  }
+
+  const combinedSource = source.join("\n");
+  for (const variant of requiredVariants) {
+    if (!combinedSource.includes(variant)) {
+      violations.push(variant);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("question bank child components use shared controls", async () => {
   const textareaSource = await readFile(
     "components/ui/textarea.tsx",
