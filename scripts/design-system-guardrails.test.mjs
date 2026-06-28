@@ -434,6 +434,27 @@ test("landing section grid uses semantic color tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("auth shell uses shared third-party brand color tokens", async () => {
+  const tokenSource = await readFile("lib/design-tokens.ts", "utf8");
+  const file = "components/auth/auth-shell.tsx";
+  const content = await readFile(file, "utf8");
+  const violations = [];
+
+  if (!tokenSource.includes("GOOGLE_LOGO_COLORS")) {
+    violations.push("lib/design-tokens.ts:GOOGLE_LOGO_COLORS");
+  }
+
+  if (!content.includes("GOOGLE_LOGO_COLORS")) {
+    violations.push(`${file}:GOOGLE_LOGO_COLORS`);
+  }
+
+  if (/fill="#[0-9A-Fa-f]{6}"/.test(content)) {
+    violations.push(`${file}:literal-google-fill`);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",
