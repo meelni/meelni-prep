@@ -384,6 +384,40 @@ test("demo modal cinematic chrome uses semantic dark-surface tokens", async () =
   assert.deepEqual(violations, []);
 });
 
+test("voice orb surfaces use shared runtime color tokens", async () => {
+  const tokenSource = await readFile("lib/design-tokens.ts", "utf8").catch(
+    () => ""
+  );
+  const files = [
+    "components/demo-modal.tsx",
+    "app/interview/components/audio-visualizer.tsx",
+    "app/interview/components/interview-stage.tsx",
+  ];
+  const violations = [];
+
+  if (!tokenSource.includes("MEELNI_ORB_COLORS")) {
+    violations.push("lib/design-tokens.ts:MEELNI_ORB_COLORS");
+  }
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+
+    if (!content.includes("MEELNI_ORB_COLORS")) {
+      violations.push(`${file}:MEELNI_ORB_COLORS`);
+    }
+
+    if (/colors=\{\[\s*["']#[0-9A-Fa-f]{6}/.test(content)) {
+      violations.push(`${file}:inline-orb-colors`);
+    }
+
+    if (/\[[\s\n]*["']#[0-9A-Fa-f]{6}["'][\s\n]*,[\s\n]*["']#[0-9A-Fa-f]{6}["'][\s\n]*\]/.test(content)) {
+      violations.push(`${file}:hex-color-pair`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("priority dashboard cards use shared dashboard surface primitives", async () => {
   const surfaceSource = await readFile(
     "components/dashboard/dashboard-surface.tsx",

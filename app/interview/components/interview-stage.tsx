@@ -6,6 +6,7 @@ import { AgentStateBadge } from "./agent-state-badge";
 import { InterviewControls } from "./interview-controls";
 import { AudioVisualizer } from "./audio-visualizer";
 import { useRef } from "react";
+import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
 
 type AgentState = "idle" | "listening" | "thinking" | "speaking";
 
@@ -60,7 +61,7 @@ export function InterviewStage({
           volumeMode="manual"
           inputVolumeRef={userVolumeRef}
           outputVolumeRef={agentVolumeRef}
-          colors={["#8B5CF6", "#6366F1"]} // Purple-blue gradient matching Meelni brand
+          colors={MEELNI_ORB_COLORS}
           className="w-full h-full"
         />
       </motion.div>

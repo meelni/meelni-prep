@@ -20,6 +20,7 @@ import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { Button } from "@/components/ui/button";
+import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
 
 // Transcript message type
 interface TranscriptMessage {
@@ -444,7 +445,7 @@ function DemoControls({
                 className="w-[250px] h-[250px] sm:w-[350px] sm:h-[350px] md:w-[400px] md:h-[400px]"
               >
                 <Orb
-                  colors={["#a855f7", "#7c3aed"]}
+                  colors={MEELNI_ORB_COLORS}
                   agentState={
                     agentState === "thinking" ? "thinking" :
                     agentState === "listening" ? "listening" :
