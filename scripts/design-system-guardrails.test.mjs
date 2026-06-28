@@ -828,6 +828,55 @@ test("landing content sections use shared type scale utilities", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("explore question surfaces use shared form and action primitives", async () => {
+  const checkboxSource = await readFile("components/ui/checkbox.tsx", "utf8").catch(
+    () => ""
+  );
+  const missingExports = checkboxSource.includes("Checkbox")
+    ? []
+    : ["components/ui/checkbox.tsx:Checkbox"];
+
+  const expectations = [
+    {
+      file: "app/explore/page.tsx",
+      requiredImports: ["@/components/ui/input", "@/components/ui/button"],
+      bannedPatterns: ["<input", "<button"],
+    },
+    {
+      file: "components/explore/question-signin-modal.tsx",
+      requiredImports: ["@/components/ui/button"],
+      bannedPatterns: ["<button"],
+    },
+    {
+      file: "components/explore/conversion-cta.tsx",
+      requiredImports: ["@/components/ui/button"],
+      bannedPatterns: ["<button"],
+    },
+    {
+      file: "components/question-bank/question-card.tsx",
+      requiredImports: ["@/components/ui/checkbox", "@/components/ui/button"],
+      bannedPatterns: ["<input"],
+    },
+  ];
+  const violations = [];
+
+  for (const { file, requiredImports, bannedPatterns } of expectations) {
+    const content = await readFile(file, "utf8");
+    for (const importName of requiredImports) {
+      if (!content.includes(importName)) {
+        violations.push(`${file}:${importName}`);
+      }
+    }
+    for (const bannedPattern of bannedPatterns) {
+      if (content.includes(bannedPattern)) {
+        violations.push(`${file}:${bannedPattern}`);
+      }
+    }
+  }
+
+  assert.deepEqual([...missingExports, ...violations], []);
+});
+
 test("blog detail page uses shared marketing article primitives", async () => {
   const surfaceSource = await readFile(
     "components/marketing/marketing-surface.tsx",

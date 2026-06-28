@@ -7,6 +7,7 @@ import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
 import { ExploreStructuredData } from "@/components/explore/structured-data";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Search, ArrowRight, ChevronLeft, ChevronRight, Home, ChevronRight as BreadcrumbArrow } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
@@ -254,12 +255,12 @@ export default function ExplorePage() {
                 {/* Search */}
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                  <input
+                  <Input
                     type="text"
                     placeholder="Search questions or companies..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    className="pl-10"
                   />
                 </div>
 
@@ -310,9 +311,11 @@ export default function ExplorePage() {
                   itemScope
                   itemType="https://schema.org/Question"
                 >
-                  <button
+                  <Button
+                    type="button"
+                    variant="ghost"
                     onClick={() => handleQuestionClick(question)}
-                    className="w-full text-left"
+                    className="h-auto w-full flex-col items-stretch justify-start rounded-lg p-0 text-left hover:bg-transparent hover:text-foreground"
                     aria-label={`Practice question: ${question.questionText}`}
                   >
                     {/* Metadata */}
@@ -358,7 +361,7 @@ export default function ExplorePage() {
                         />
                       </div>
                     </div>
-                  </button>
+                  </Button>
                 </article>
               ))}
             </div>
