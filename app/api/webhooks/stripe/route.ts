@@ -4,23 +4,6 @@ import { db } from "@/lib/db";
 import { stripeEventLog, subscription, paymentHistory, usageRecord, stripeCustomerMapping } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
-// Phase 0.5C: Environment variable validation (P0 fix #5)
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
-
-if (!STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY environment variable is required");
-}
-if (!STRIPE_WEBHOOK_SECRET) {
-  throw new Error("STRIPE_WEBHOOK_SECRET environment variable is required");
-}
-
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2025-10-29.clover",
-});
-
-const webhookSecret = STRIPE_WEBHOOK_SECRET;
-
 // Phase 0.5C: Price ID mapping from environment (P1 fix #9)
 const STRIPE_PRICE_IDS = {
   pro_monthly: process.env.STRIPE_PRO_MONTHLY_PRICE_ID,
@@ -42,6 +25,8 @@ const STRIPE_PRICE_IDS = {
  */
 export async function POST(req: NextRequest) {
   try {
+    const stripe = getStripe();
+    const webhookSecret = getStripeWebhookSecret();
     const body = await req.text();
     const signature = req.headers.get("stripe-signature");
 
@@ -162,6 +147,28 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function getStripe() {
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY environment variable is required");
+  }
+
+  return new Stripe(stripeSecretKey, {
+    apiVersion: "2025-10-29.clover",
+  });
+}
+
+function getStripeWebhookSecret() {
+  const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!stripeWebhookSecret) {
+    throw new Error("STRIPE_WEBHOOK_SECRET environment variable is required");
+  }
+
+  return stripeWebhookSecret;
 }
 
 /**
