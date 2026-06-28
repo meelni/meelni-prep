@@ -16,7 +16,7 @@ function HeroTitles() {
   return (
     <div className="flex w-full max-w-3xl flex-col pt-8">
       <motion.h1
-        className="text-display-xl font-display text-foreground text-left font-light tracking-tight md:text-[56px] md:leading-[56px]"
+        className="text-display-hero text-foreground text-left tracking-tight"
         initial={{ filter: "blur(10px)", opacity: 0, y: 50 }}
         animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
         transition={{
