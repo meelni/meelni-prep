@@ -7,6 +7,7 @@ import { QueryProvider } from "@/app/providers/query-provider";
 import { ThemeProvider } from "@/app/providers/theme-provider";
 import { AnalyticsPageview } from "@/app/providers/analytics-pageview";
 import { PostHogProvider } from "@/lib/analytics/posthog-provider";
+import { StatsigProvider } from "@/lib/feature-flags/statsig-provider";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { StructuredData } from "@/components/structured-data";
@@ -122,9 +123,11 @@ export default function RootLayout({
             <ErrorBoundary>
               <QueryProvider>
                 <AuthProvider>
-                  {children}
-                  <Toaster position="top-right" duration={3000} />
-                  <CookieConsentBanner />
+                  <StatsigProvider>
+                    {children}
+                    <Toaster position="top-right" duration={3000} />
+                    <CookieConsentBanner />
+                  </StatsigProvider>
                 </AuthProvider>
               </QueryProvider>
             </ErrorBoundary>
