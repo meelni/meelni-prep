@@ -5,11 +5,14 @@ import { createProductSenseInterviewFixture } from "@meelni/test-fixtures";
 
 import {
   ALL_INTERVIEW_TYPES,
+  BILLING_CATALOG,
+  BILLING_CATALOG_ORDER,
   buildFullConfig,
   calculateOverallScore,
   canAccessInterviewType,
   clampScore,
   getAllowedInterviewTypes,
+  getBillingCatalogItem,
   getDefaultDuration,
   getLockedInterviewTypes,
   getRequiredTier,
@@ -34,6 +37,37 @@ test("buildFullConfig applies system defaults and smart duration", () => {
     config.tts_model,
     "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9"
   );
+});
+
+test("billing catalog exposes accepted credit products", () => {
+  assert.deepEqual(BILLING_CATALOG_ORDER, [
+    "trial",
+    "interview_pass",
+    "starter",
+    "pro",
+    "admin_grant",
+  ]);
+
+  assert.equal(BILLING_CATALOG.trial.priceInCents, 0);
+  assert.equal(BILLING_CATALOG.trial.includedCredits, 2);
+  assert.equal(BILLING_CATALOG.trial.expiresAfterDays, 7);
+  assert.equal(BILLING_CATALOG.trial.rolloverCapCredits, 0);
+
+  assert.equal(BILLING_CATALOG.interview_pass.priceInCents, 900);
+  assert.equal(BILLING_CATALOG.interview_pass.includedCredits, 1);
+  assert.equal(BILLING_CATALOG.interview_pass.expiresAfterDays, 30);
+
+  assert.equal(BILLING_CATALOG.starter.priceInCents, 1900);
+  assert.equal(BILLING_CATALOG.starter.includedCredits, 4);
+  assert.equal(BILLING_CATALOG.starter.rolloverCapCredits, 4);
+  assert.equal(BILLING_CATALOG.starter.rolloverExpiresAfterDays, 60);
+
+  assert.equal(BILLING_CATALOG.pro.priceInCents, 4900);
+  assert.equal(BILLING_CATALOG.pro.includedCredits, 12);
+  assert.equal(BILLING_CATALOG.pro.rolloverCapCredits, 12);
+  assert.equal(BILLING_CATALOG.pro.rolloverExpiresAfterDays, 60);
+
+  assert.equal(getBillingCatalogItem("pro").displayName, "Pro");
 });
 
 test("interview type helpers preserve current PM interview access model", () => {
