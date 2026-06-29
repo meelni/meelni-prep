@@ -5,12 +5,16 @@ import { subscription } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { z } from "zod";
+import {
+  STRIPE_API_VERSION,
+  getCheckoutModeForCatalogId,
+  getStripePriceIdForCatalogId,
+} from "@/lib/billing/stripe-catalog";
 
 // Request validation schema
 const checkoutSchema = z.object({
-  tier: z.enum(["pro"]),
-  billingPeriod: z.enum(["monthly", "annual"]),
-  email: z.string().email().optional(), // Optional email for unauthenticated users
+  catalogId: z.enum(["interview_pass", "starter", "pro"]),
+  email: z.string().email().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -19,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Parse and validate request body
     const body = await req.json();
-    const { tier, billingPeriod } = checkoutSchema.parse(body);
+    const { catalogId } = checkoutSchema.parse(body);
 
     // 2. Check if user is authenticated (optional)
     const supabase = await createClient();
@@ -30,103 +34,96 @@ export async function POST(req: NextRequest) {
     const userId = session?.user.id;
     const userEmail = session?.user.email;
 
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Authentication required for checkout" },
+        { status: 401 }
+      );
+    }
+
     // 3. CRITICAL: Check for existing active subscription (prevent double-charge)
-    if (userId) {
-      const existingSubscription = await db
-        .select()
-        .from(subscription)
-        .where(eq(subscription.userId, userId))
-        .limit(1);
+    const existingSubscription = await db
+      .select()
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1);
 
-      if (existingSubscription.length > 0) {
-        const sub = existingSubscription[0];
+    const existingStripeCustomerId = existingSubscription[0]?.stripeCustomerId;
 
-        // Block if user already has an active paid subscription
-        if (
-          sub.tier !== "free" &&
-          (sub.status === "active" || sub.status === "trialing") &&
-          !sub.cancelAtPeriodEnd
-        ) {
-          return NextResponse.json(
-            {
-              error: "You already have an active subscription",
-              existingTier: sub.tier,
-              status: sub.status,
-            },
-            { status: 400 }
+    if (existingSubscription.length > 0) {
+      const sub = existingSubscription[0];
+
+      // Block duplicate subscription checkout, but allow one-time pass purchases.
+      if (
+        catalogId !== "interview_pass" &&
+        (sub.tier === "starter" || sub.tier === "pro") &&
+        (sub.status === "active" || sub.status === "trialing") &&
+        !sub.cancelAtPeriodEnd
+      ) {
+        return NextResponse.json(
+          {
+            error: "You already have an active subscription",
+            existingTier: sub.tier,
+            status: sub.status,
+          },
+          { status: 400 }
+        );
+      }
+
+      if (existingStripeCustomerId) {
+        try {
+          const existingSessions = await stripe.checkout.sessions.list({
+            customer: existingStripeCustomerId,
+            status: "open",
+            limit: 1,
+          });
+
+          const existingSession = existingSessions.data.find(
+            (openSession) => openSession.metadata?.catalogId === catalogId
           );
-        }
 
-        // If they have a Stripe customer ID, reuse it for better tracking
-        if (sub.stripeCustomerId) {
-          // Check if there's already an open checkout session for this customer
-          try {
-            const existingSessions = await stripe.checkout.sessions.list({
-              customer: sub.stripeCustomerId,
-              status: "open",
-              limit: 1,
+          if (existingSession) {
+            return NextResponse.json({
+              url: existingSession.url,
+              sessionId: existingSession.id,
+              reused: true,
             });
-
-            // If there's an open session for the same tier, return it instead of creating new
-            if (existingSessions.data.length > 0) {
-              const existingSession = existingSessions.data[0];
-              if (existingSession.metadata?.tier === tier) {
-                return NextResponse.json({
-                  url: existingSession.url,
-                  sessionId: existingSession.id,
-                  reused: true,
-                });
-              }
-            }
-          } catch (stripeError) {
-            console.warn("Could not check existing sessions:", stripeError);
-            // Continue with new session creation
           }
+        } catch (stripeError) {
+          console.warn("Could not check existing sessions:", stripeError);
         }
       }
     }
 
-    // 4. Map tier + billing period to Stripe price ID
-    const priceMap: Record<string, string> = {
-      "pro-monthly": process.env.STRIPE_PRO_MONTHLY_PRICE_ID!,
-      "pro-annual": process.env.STRIPE_PRO_ANNUAL_PRICE_ID!,
+    const priceId = getStripePriceIdForCatalogId(catalogId);
+    const mode = getCheckoutModeForCatalogId(catalogId);
+    const metadata = {
+      userId,
+      catalogId,
     };
 
-    const priceId = priceMap[`${tier}-${billingPeriod}`];
-    if (!priceId) {
-      return NextResponse.json(
-        { error: "Invalid tier or billing period" },
-        { status: 400 }
-      );
-    }
-
-    // 4. Determine trial period (7 days for Pro)
-    const trialPeriodDays = 7;
-
     // 5. Create Stripe Checkout session
-    // Only include customer_email if authenticated, otherwise Stripe will collect it
     const checkoutSession = await stripe.checkout.sessions.create({
-      ...(userEmail ? { customer_email: userEmail } : {}),
+      ...(existingStripeCustomerId
+        ? { customer: existingStripeCustomerId }
+        : userEmail
+          ? { customer_email: userEmail }
+          : {}),
       line_items: [
         {
           price: priceId,
           quantity: 1,
         },
       ],
-      mode: "subscription",
-      subscription_data: {
-        trial_period_days: trialPeriodDays,
-        metadata: {
-          ...(userId ? { userId } : {}),
-          tier,
-          billingPeriod,
-        },
-      },
-      metadata: {
-        ...(userId ? { userId } : {}),
-        tier,
-        billingPeriod,
-      },
+      mode,
+      ...(mode === "subscription"
+        ? {
+            subscription_data: {
+              metadata,
+            },
+          }
+        : {}),
+      metadata,
       success_url: `${req.nextUrl.origin}/pricing/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${req.nextUrl.origin}/pricing/canceled`,
       allow_promotion_codes: true,
@@ -161,6 +158,6 @@ function getStripe() {
   }
 
   return new Stripe(stripeSecretKey, {
-    apiVersion: "2025-10-29.clover",
+    apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
   });
 }
