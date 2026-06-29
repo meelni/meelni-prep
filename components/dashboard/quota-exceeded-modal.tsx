@@ -10,20 +10,17 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DashboardActionCard,
-  DashboardSectionCard,
 } from "@/components/dashboard/dashboard-surface";
 import {
   AlertCircle,
   Sparkles,
-  CheckCircle2,
-  Crown,
   TrendingUp,
   MessageSquare,
   Zap,
 } from "lucide-react";
+import { getPublicPricingPlans } from "@/lib/billing/catalog-presentation";
 
 interface QuotaExceededModalProps {
   isOpen: boolean;
@@ -36,46 +33,35 @@ interface QuotaExceededModalProps {
 export function QuotaExceededModal({
   isOpen,
   onClose,
-  currentUsage,
-  limit,
-  resetDate,
 }: QuotaExceededModalProps) {
   const router = useRouter();
+  const purchasePlans = getPublicPricingPlans().filter((plan) => plan.canPurchase);
 
   const handleViewPlans = () => {
     router.push("/pricing");
     onClose();
   };
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return "soon";
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
   const upgradeBenefits = [
     {
       icon: Sparkles,
-      title: "Unlimited Interviews",
-      description: "Practice as much as you want with no monthly limits",
+      title: "Any PM Round",
+      description: "Use credits for Product Sense, Behavioral, Execution, or Strategy",
     },
     {
       icon: MessageSquare,
-      title: "Advanced Feedback",
-      description: "Get detailed AI-powered insights after every session",
+      title: "Full Interviews",
+      description: "One credit starts one complete AI mock interview",
     },
     {
       icon: TrendingUp,
-      title: "Performance Analytics",
-      description: "Track your progress with comprehensive analytics",
+      title: "Rollover Plans",
+      description: "Starter and Pro can roll unused monthly credits forward",
     },
     {
       icon: Zap,
-      title: "Priority Support",
-      description: "Get help when you need it with priority access",
+      title: "Flexible Purchase",
+      description: "Buy one pass or choose a monthly credit plan",
     },
   ];
 
@@ -89,44 +75,21 @@ export function QuotaExceededModal({
             </div>
             <div>
               <DialogTitle className="font-display text-2xl font-light">
-                Monthly Quota Reached
+                No Credits Available
               </DialogTitle>
               <DialogDescription className="text-muted-foreground mt-1">
-                You've used all {limit} interviews this month
+                You need 1 interview credit to start a full mock interview.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Current Usage */}
-          <DashboardSectionCard
-            title="Current Usage"
-            action={
-              <Badge variant="warning">
-                Quota Exceeded
-              </Badge>
-            }
-            contentClassName="space-y-3"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-foreground font-mono text-2xl font-bold">
-                  {currentUsage} / {limit}
-                </div>
-              </div>
-            </div>
-            <div className="text-muted-foreground text-sm">
-              Your quota resets on {formatDate(resetDate)}
-            </div>
-          </DashboardSectionCard>
-
-          {/* Upgrade Benefits */}
           <div>
             <div className="mb-4 flex items-center gap-2">
-              <Crown className="text-primary h-5 w-5" />
+              <Sparkles className="text-primary h-5 w-5" />
               <h3 className="font-display text-foreground text-lg font-light">
-                Upgrade to Pro for Unlimited Access
+                Purchase Options
               </h3>
             </div>
 
@@ -152,20 +115,28 @@ export function QuotaExceededModal({
             </div>
           </div>
 
-          {/* Pricing Highlight */}
-          <DashboardActionCard
-            variant="accent"
-            eyebrow="Pro Plan"
-            icon={<Crown className="h-5 w-5" />}
-            title="Unlimited practice for $29/month"
-            description="Or save 17% with annual billing."
-            action={<CheckCircle2 className="text-primary h-8 w-8" />}
-          >
-            <div className="flex items-baseline gap-2">
-              <span className="text-foreground text-3xl font-bold">$29</span>
-              <span className="text-muted-foreground">/month</span>
-            </div>
-          </DashboardActionCard>
+          <div className="grid gap-3 md:grid-cols-3">
+            {purchasePlans.map((plan) => (
+              <DashboardActionCard
+                key={plan.catalogId}
+                variant={plan.popular ? "accent" : "default"}
+                eyebrow={plan.name}
+                icon={<Sparkles className="h-5 w-5" />}
+                title={plan.creditLabel}
+                description={plan.rolloverLabel ?? plan.expirationLabel}
+                action={<Sparkles className="text-primary h-6 w-6" />}
+              >
+                <div className="flex items-baseline gap-1">
+                  <span className="text-foreground text-2xl font-bold">
+                    {plan.priceLabel}
+                  </span>
+                  <span className="text-muted-foreground text-sm">
+                    /{plan.frequencyLabel}
+                  </span>
+                </div>
+              </DashboardActionCard>
+            ))}
+          </div>
         </div>
 
         <DialogFooter className="flex-col gap-3 sm:flex-row">
@@ -180,7 +151,7 @@ export function QuotaExceededModal({
             onClick={handleViewPlans}
             className="bg-primary text-primary-foreground hover:bg-primary/90 order-1 w-full sm:order-2 sm:w-auto"
           >
-            <Crown className="mr-2 h-4 w-4" />
+            <Sparkles className="mr-2 h-4 w-4" />
             View Plans
           </Button>
         </DialogFooter>

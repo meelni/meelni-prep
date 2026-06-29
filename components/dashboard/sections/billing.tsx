@@ -10,7 +10,6 @@ import {
 } from "@/components/dashboard/dashboard-surface";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   CreditCard,
   ExternalLink,
@@ -18,28 +17,44 @@ import {
   AlertCircle,
   FileText,
   Loader2,
-  Infinity,
   XCircle,
   RotateCcw,
+  Clock,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import {
+  getPublicPricingPlans,
+  type PublicPricingPlan,
+} from "@/lib/billing/catalog-presentation";
 
 // Type definitions
 interface Subscription {
-  tier: "free" | "pro";
+  tier: "free" | "starter" | "pro";
   status: "active" | "trialing" | "canceled" | "past_due";
   billingCycle?: "monthly" | "annual";
   currentPeriodEnd?: string;
   cancelAtPeriodEnd?: boolean;
-  price?: number; // in cents
+  priceInCents?: number;
   currency?: string;
 }
 
-interface Usage {
-  currentUsage: number;
-  limit: number | null; // null = unlimited
-  periodStart: string;
-  periodEnd: string;
+interface CreditGrantSummary {
+  id: string;
+  catalogId: string;
+  source: string;
+  originalCredits: number;
+  remainingCredits: number;
+  reservedCredits: number;
+  expiresAt: string | null;
+  rolloverEligible: boolean;
+}
+
+interface CreditBalance {
+  availableCredits: number;
+  reservedCredits: number;
+  expiringCredits: number;
+  nextCreditExpiresAt: string | null;
+  grants: CreditGrantSummary[];
 }
 
 interface Payment {
@@ -53,10 +68,10 @@ interface Payment {
 
 export function BillingSection() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
-  const [usage, setUsage] = useState<Usage | null>(null);
+  const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadingSubscription, setLoadingSubscription] = useState(true);
-  const [loadingUsage, setLoadingUsage] = useState(true);
+  const [loadingCredits, setLoadingCredits] = useState(true);
   const [loadingPayments, setLoadingPayments] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [managingSubscription, setManagingSubscription] = useState(false);
@@ -86,32 +101,25 @@ export function BillingSection() {
     fetchSubscription();
   }, []);
 
-  // Fetch usage data
+  // Fetch credit balance
   useEffect(() => {
-    async function fetchUsage() {
+    async function fetchCredits() {
       try {
-        const response = await fetch("/api/billing/usage");
+        const response = await fetch("/api/billing/credits");
         if (!response.ok) {
-          throw new Error("Failed to fetch usage");
+          throw new Error("Failed to fetch credits");
         }
         const data = await response.json();
-
-        // Map API response to component state
-        setUsage({
-          currentUsage: data.interviewsUsed,
-          limit: data.interviewsLimit === -1 ? null : data.interviewsLimit,
-          periodStart: data.periodStart,
-          periodEnd: data.periodEnd,
-        });
+        setCreditBalance(data);
       } catch (err) {
-        console.error("Error fetching usage:", err);
-        setError("Failed to load usage data");
+        console.error("Error fetching credits:", err);
+        setError("Failed to load credit data");
       } finally {
-        setLoadingUsage(false);
+        setLoadingCredits(false);
       }
     }
 
-    fetchUsage();
+    fetchCredits();
   }, []);
 
   // Fetch payment history
@@ -256,20 +264,16 @@ export function BillingSection() {
     }
   }
 
-  // Helper: Get usage percentage
-  function getUsagePercentage(): number {
-    if (!usage || usage.limit === null) return 0;
-    return Math.round((usage.currentUsage / usage.limit) * 100);
-  }
+  function getPlanForTier(tier: Subscription["tier"]): PublicPricingPlan | null {
+    if (tier === "free") {
+      return null;
+    }
 
-  // Helper: Check if approaching quota
-  function isApproachingQuota(): boolean {
-    if (!usage || usage.limit === null) return false;
-    return getUsagePercentage() >= 80;
+    return getPublicPricingPlans().find((plan) => plan.catalogId === tier) ?? null;
   }
 
   // Loading state
-  const isLoading = loadingSubscription || loadingUsage || loadingPayments;
+  const isLoading = loadingSubscription || loadingCredits || loadingPayments;
 
   if (isLoading) {
     return (
@@ -295,8 +299,10 @@ export function BillingSection() {
     );
   }
 
+  const currentPlan = subscription ? getPlanForTier(subscription.tier) : null;
   const showUpgradeBanner =
-    subscription?.tier === "free" && (usage?.currentUsage || 0) >= 1;
+    subscription?.tier === "free" &&
+    (creditBalance?.availableCredits ?? 0) === 0;
 
   return (
     <div className="space-y-6">
@@ -327,22 +333,22 @@ export function BillingSection() {
               </div>
 
               {/* Billing Info */}
-              {subscription.tier !== "free" && subscription.price && (
+              {currentPlan && (
                 <div className="space-y-2">
                   <div className="flex items-baseline gap-2">
                     <span className="text-foreground font-mono text-3xl font-bold">
-                      {formatCurrency(
-                        subscription.price,
-                        subscription.currency || "USD"
-                      )}
+                      {currentPlan.priceLabel}
                     </span>
                     <span className="text-muted-foreground text-sm">
-                      /
-                      {subscription.billingCycle === "annual"
-                        ? "year"
-                        : "month"}
+                      /{currentPlan.frequencyLabel}
                     </span>
                   </div>
+                  <p className="text-muted-foreground text-sm">
+                    {currentPlan.creditLabel}
+                    {currentPlan.rolloverLabel
+                      ? ` with ${currentPlan.rolloverLabel.toLowerCase()}`
+                      : ""}
+                  </p>
                   {subscription.currentPeriodEnd && (
                     <p className="text-muted-foreground text-sm">
                       {subscription.status === "trialing"
@@ -360,9 +366,8 @@ export function BillingSection() {
               {subscription.status === "trialing" && (
                 <div className="border-primary/20 bg-primary/10 rounded-lg border p-3">
                   <p className="text-foreground text-sm">
-                    <strong>Free Trial Active</strong> - You have full access to{" "}
-                    {subscription.tier.toUpperCase()} features. No charges until
-                    your trial ends.
+                    <strong>Trial Active</strong> - Trial credits are local to
+                    Meelni and expire after 7 days.
                   </p>
                 </div>
               )}
@@ -370,7 +375,8 @@ export function BillingSection() {
               {/* Free tier message */}
               {subscription.tier === "free" && (
                 <p className="text-muted-foreground text-sm">
-                  You're on the free tier with limited interviews per month.
+                  No active paid plan. You can use any available trial or pass
+                  credits, or choose a plan from pricing.
                 </p>
               )}
 
@@ -460,66 +466,87 @@ export function BillingSection() {
           )}
         </DashboardSectionCard>
 
-        {/* Usage Quota Card */}
+        {/* Credit Balance Card */}
         <DashboardSectionCard
-          title="Usage This Period"
+          title="Interview Credits"
           contentClassName="space-y-6"
         >
-          {usage ? (
+          {creditBalance ? (
             <>
-              {/* Usage Stats */}
               <div className="space-y-3">
                 <div className="flex items-baseline gap-2">
                   <span className="text-foreground font-mono text-3xl font-bold">
-                    {usage.currentUsage}
+                    {creditBalance.availableCredits}
                   </span>
                   <span className="text-muted-foreground text-sm">
-                    / {usage.limit === null ? "∞" : usage.limit} interviews
+                    available
                   </span>
-                  {usage.limit === null && (
-                    <Badge variant="success" className="ml-2">
-                      <Infinity className="mr-1 h-3 w-3" />
-                      Unlimited
-                    </Badge>
-                  )}
                 </div>
 
-                {/* Progress bar (only for free tier) */}
-                {usage.limit !== null && (
-                  <div className="space-y-2">
-                    <Progress value={getUsagePercentage()} className="h-2" />
-                    <p className="text-muted-foreground text-xs">
-                      {getUsagePercentage()}% used
-                    </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-border bg-card/50 p-3">
+                    <div className="text-muted-foreground text-xs">
+                      Reserved
+                    </div>
+                    <div className="font-mono text-lg font-semibold">
+                      {creditBalance.reservedCredits}
+                    </div>
                   </div>
+                  <div className="rounded-lg border border-border bg-card/50 p-3">
+                    <div className="text-muted-foreground text-xs">
+                      Expiring next
+                    </div>
+                    <div className="font-mono text-lg font-semibold">
+                      {creditBalance.expiringCredits}
+                    </div>
+                  </div>
+                </div>
+
+                {creditBalance.nextCreditExpiresAt && (
+                  <p className="text-muted-foreground flex items-center gap-2 text-sm">
+                    <Clock className="h-4 w-4" />
+                    Next credit expiration:{" "}
+                    {formatDate(creditBalance.nextCreditExpiresAt)}
+                  </p>
                 )}
               </div>
 
-              {/* Period dates */}
-              <p className="text-muted-foreground text-sm">
-                {new Date(usage.periodStart).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })}{" "}
-                -{" "}
-                {new Date(usage.periodEnd).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </p>
-
-              {/* Warning when approaching quota */}
-              {isApproachingQuota() && (
+              {creditBalance.grants.length > 0 ? (
+                <div className="space-y-2">
+                  {creditBalance.grants.map((grant) => (
+                    <div
+                      key={grant.id}
+                      className="rounded-lg border border-border bg-card/40 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium capitalize">
+                            {grant.catalogId.replace("_", " ")}
+                          </div>
+                          <div className="text-muted-foreground text-xs">
+                            {grant.source.replace("_", " ")}
+                            {grant.expiresAt
+                              ? ` · expires ${formatDate(grant.expiresAt)}`
+                              : " · subscription period"}
+                          </div>
+                        </div>
+                        <Badge variant="outline">
+                          {grant.remainingCredits} left
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
                 <div className="border-warning/20 bg-warning/10 flex items-start gap-3 rounded-lg border p-3">
-                  <AlertCircle className="text-warning mt-0.5 h-5 w-5 flex-shrink-0" />
-                  <div className="space-y-1">
+                  <AlertCircle className="text-warning mt-0.5 h-5 w-5 shrink-0" />
+                  <div>
                     <p className="text-warning text-sm font-medium">
-                      Approaching quota limit
+                      No usable credits
                     </p>
                     <p className="text-muted-foreground text-xs">
-                      You've used {getUsagePercentage()}% of your monthly quota.
-                      Consider upgrading for unlimited interviews.
+                      Buy an Interview Pass or choose a monthly plan to start a
+                      full mock interview.
                     </p>
                   </div>
                 </div>
@@ -527,19 +554,19 @@ export function BillingSection() {
             </>
           ) : (
             <p className="text-muted-foreground text-sm">
-              No usage data available
+              No credit data available
             </p>
           )}
         </DashboardSectionCard>
       </div>
 
-      {/* Upgrade CTA Banner (for free tier users with usage) */}
+      {/* Purchase CTA Banner (for users without active credits) */}
       {showUpgradeBanner && (
         <DashboardActionCard
           variant="accent"
           icon={<Sparkles className="h-5 w-5" />}
-          title="Unlock Unlimited Interviews"
-          description="Upgrade to Pro for unlimited practice sessions and advanced features."
+          title="Add interview credits"
+          description="Buy one Interview Pass or choose Starter or Pro for monthly credits."
           action={
             <Button onClick={() => (window.location.href = "/pricing")}>
               View Plans
