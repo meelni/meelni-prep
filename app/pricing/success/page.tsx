@@ -68,8 +68,8 @@ function CheckoutSuccessContent() {
         className="w-full max-w-md"
         tone="success"
         mark={<CheckCircle className="h-8 w-8" />}
-        title="Welcome to Meelni Pro!"
-        description="Your subscription has been activated. Your trial starts now!"
+        title="Credits added to your account"
+        description="Your purchase is complete. Your interview credits will be available as soon as Stripe finishes processing the webhook."
         action={
           <div className="flex w-full flex-col gap-3">
             <Button asChild size="lg" className="w-full">
@@ -77,14 +77,13 @@ function CheckoutSuccessContent() {
             </Button>
 
             <Button asChild size="lg" variant="outline" className="w-full">
-              <Link href="/setup">Start Your First Interview</Link>
+              <Link href="/setup">Start an Interview</Link>
             </Button>
           </div>
         }
         footer={
           <>
-            You won't be charged until your trial ends. Cancel anytime from your
-            dashboard.
+            Subscription plans can be managed from your billing settings.
           </>
         }
       />
