@@ -49,22 +49,28 @@ echo ""
 echo "🔵 Test 1: Checkout Session Creation API"
 echo "-----------------------------------------"
 
-test_case "Pro Monthly checkout session" \
+test_case "Interview Pass checkout session" \
     "curl -s -X POST http://localhost:3002/api/checkout/create-session \
     -H 'Content-Type: application/json' \
-    -d '{\"tier\":\"pro\",\"billingPeriod\":\"monthly\"}' \
+    -d '{\"catalogId\":\"interview_pass\"}' \
     | jq -e '.url' > /dev/null"
 
-test_case "Premium Annual checkout session" \
+test_case "Starter checkout session" \
     "curl -s -X POST http://localhost:3002/api/checkout/create-session \
     -H 'Content-Type: application/json' \
-    -d '{\"tier\":\"premium\",\"billingPeriod\":\"annual\"}' \
+    -d '{\"catalogId\":\"starter\"}' \
     | jq -e '.url' > /dev/null"
 
-test_case "Invalid tier rejected" \
+test_case "Pro checkout session" \
     "curl -s -X POST http://localhost:3002/api/checkout/create-session \
     -H 'Content-Type: application/json' \
-    -d '{\"tier\":\"invalid\",\"billingPeriod\":\"monthly\"}' \
+    -d '{\"catalogId\":\"pro\"}' \
+    | jq -e '.url' > /dev/null"
+
+test_case "Invalid catalog ID rejected" \
+    "curl -s -X POST http://localhost:3002/api/checkout/create-session \
+    -H 'Content-Type: application/json' \
+    -d '{\"catalogId\":\"invalid\"}' \
     | jq -e '.error' > /dev/null"
 
 echo ""
@@ -149,10 +155,9 @@ echo "---------------------------------"
 
 test_case "STRIPE_SECRET_KEY set" "[ -n \"$STRIPE_SECRET_KEY\" ]"
 test_case "STRIPE_WEBHOOK_SECRET set" "[ -n \"$STRIPE_WEBHOOK_SECRET\" ]"
+test_case "STRIPE_INTERVIEW_PASS_PRICE_ID set" "[ -n \"$STRIPE_INTERVIEW_PASS_PRICE_ID\" ]"
+test_case "STRIPE_STARTER_MONTHLY_PRICE_ID set" "[ -n \"$STRIPE_STARTER_MONTHLY_PRICE_ID\" ]"
 test_case "STRIPE_PRO_MONTHLY_PRICE_ID set" "[ -n \"$STRIPE_PRO_MONTHLY_PRICE_ID\" ]"
-test_case "STRIPE_PRO_ANNUAL_PRICE_ID set" "[ -n \"$STRIPE_PRO_ANNUAL_PRICE_ID\" ]"
-test_case "STRIPE_PREMIUM_MONTHLY_PRICE_ID set" "[ -n \"$STRIPE_PREMIUM_MONTHLY_PRICE_ID\" ]"
-test_case "STRIPE_PREMIUM_ANNUAL_PRICE_ID set" "[ -n \"$STRIPE_PREMIUM_ANNUAL_PRICE_ID\" ]"
 
 test_case "Using test mode keys" "echo $STRIPE_SECRET_KEY | grep -q sk_test_"
 

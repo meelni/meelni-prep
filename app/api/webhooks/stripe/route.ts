@@ -248,7 +248,7 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     }
   }
 
-  // In Stripe API 2025-10-29.clover, current_period_start/end moved to SubscriptionItem
+  // In recent Stripe API versions, current_period_start/end are read from the SubscriptionItem.
   const firstItem = stripeSubscription.items.data[0];
 
   const subscriptionData = {
@@ -424,7 +424,7 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
     });
   }
 
-  // In API 2025-10-29.clover, payment_intent moved to payments array
+  // In recent Stripe API versions, payment_intent moved to the invoice payments array.
   // For simplicity, we'll use null and rely on stripeInvoiceId for tracking
   // Use onConflictDoNothing() for idempotency (P1 fix #6)
   await db
@@ -473,7 +473,7 @@ async function handlePaymentFailed(event: Stripe.Event) {
   }
 
   // Record failed payment
-  // In API 2025-10-29.clover, payment_intent moved to payments array
+  // In recent Stripe API versions, payment_intent moved to the invoice payments array.
   // For simplicity, we'll use null and rely on stripeInvoiceId for tracking
   // Use onConflictDoNothing() for idempotency (P1 fix #6)
   await db

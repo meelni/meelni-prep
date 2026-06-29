@@ -18,6 +18,13 @@ STRIPE_STARTER_MONTHLY_PRICE_ID=price_...
 STRIPE_PRO_MONTHLY_PRICE_ID=price_...
 ```
 
+Create or reuse test-mode products and prices:
+
+```bash
+npm run stripe:setup-catalog -- --dry-run
+STRIPE_SECRET_KEY=sk_test_... npm run stripe:setup-catalog
+```
+
 ## Test Cards
 
 Success:
