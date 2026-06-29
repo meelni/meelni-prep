@@ -2,6 +2,16 @@ import {
   BILLING_CATALOG,
   type BillingCatalogId,
 } from "@meelni/core";
+import {
+  trackBillingCreditConsumed,
+  trackBillingCreditExpired,
+  trackBillingCreditGranted,
+  trackBillingCreditRefunded,
+  trackBillingCreditReleased,
+  trackBillingCreditReserved,
+  trackBillingCreditRolloverCreated,
+  trackBillingNoCredits,
+} from "./analytics";
 
 export type CreditGrantSource =
   | "trial"
@@ -197,6 +207,17 @@ export function createCreditLedgerService({
       );
 
       if (existing) {
+        trackBillingCreditGranted({
+          userId: input.userId,
+          catalogId: existing.catalogId,
+          creditSource: existing.source,
+          credits: existing.originalCredits,
+          balanceAfter: existing.remainingCredits,
+          idempotencyKey: input.idempotencyKey,
+          sourceId: input.sourceId,
+          grantId: existing.id,
+          duplicate: true,
+        });
         return { grant: existing };
       }
 
@@ -235,6 +256,17 @@ export function createCreditLedgerService({
         sourceId: input.sourceId ?? null,
         balanceAfter: grant.remainingCredits,
         metadata: input.metadata ?? null,
+      });
+
+      trackBillingCreditGranted({
+        userId: input.userId,
+        catalogId: input.catalogId,
+        creditSource: input.source,
+        credits: includedCredits,
+        balanceAfter: grant.remainingCredits,
+        idempotencyKey: input.idempotencyKey,
+        sourceId: input.sourceId,
+        grantId: grant.id,
       });
 
       return { grant };
@@ -300,6 +332,16 @@ export function createCreditLedgerService({
           balanceAfter: updatedGrant.remainingCredits,
           metadata: null,
         });
+        trackBillingCreditExpired({
+          userId,
+          catalogId: grant.catalogId,
+          creditSource: grant.source,
+          transactionType: "expire",
+          credits: grant.remainingCredits,
+          balanceAfter: updatedGrant.remainingCredits,
+          idempotencyKey: `expire:${grant.id}:${currentTime.toISOString()}`,
+          grantId: grant.id,
+        });
       }
 
       return { expiredCredits };
@@ -325,6 +367,13 @@ export function createCreditLedgerService({
       );
 
       if (availableCredits < requestedCredits) {
+        trackBillingNoCredits({
+          userId: input.userId,
+          credits: requestedCredits,
+          balanceAfter: availableCredits,
+          sessionId: input.sessionId,
+          reason: "insufficient_credits",
+        });
         throw new Error("insufficient_credits");
       }
 
@@ -370,6 +419,19 @@ export function createCreditLedgerService({
           sourceId: input.sessionId ?? null,
           balanceAfter: updatedGrant.remainingCredits,
           metadata: input.metadata ?? null,
+        });
+        trackBillingCreditReserved({
+          userId: input.userId,
+          catalogId: grant.catalogId,
+          creditSource: grant.source,
+          transactionType: "reserve",
+          credits: reservedFromGrant,
+          balanceAfter: updatedGrant.remainingCredits,
+          idempotencyKey: `reserve:${input.reservationKey}:${grant.id}`,
+          sourceId: input.sessionId,
+          sessionId: input.sessionId,
+          grantId: grant.id,
+          reservationId: reservation.id,
         });
         remainingToReserve -= reservedFromGrant;
       }
@@ -432,6 +494,18 @@ export function createCreditLedgerService({
         input.idempotencyKey
       );
       if (existing) {
+        trackBillingCreditRolloverCreated({
+          userId: input.userId,
+          catalogId: existing.catalogId,
+          creditSource: existing.source,
+          transactionType: "rollover",
+          credits: existing.originalCredits,
+          balanceAfter: existing.remainingCredits,
+          idempotencyKey: input.idempotencyKey,
+          sourceId: input.sourceId,
+          grantId: existing.id,
+          duplicate: true,
+        });
         return {
           rolledCredits: existing.originalCredits,
           grant: existing,
@@ -520,6 +594,18 @@ export function createCreditLedgerService({
         sourceId: input.sourceId ?? null,
         balanceAfter: rolloverGrant.remainingCredits,
         metadata: input.metadata ?? null,
+      });
+
+      trackBillingCreditRolloverCreated({
+        userId: input.userId,
+        catalogId: input.catalogId,
+        creditSource: "rollover",
+        transactionType: "rollover",
+        credits: rolledCredits,
+        balanceAfter: rolloverGrant.remainingCredits,
+        idempotencyKey: input.idempotencyKey,
+        sourceId: input.sourceId,
+        grantId: rolloverGrant.id,
       });
 
       return {
@@ -768,7 +854,66 @@ async function completeReservation({
     },
   });
 
+  const firstAllocation = allocations[0];
+  const firstGrant = firstAllocation
+    ? userGrants.find((grant) => grant.id === firstAllocation.grantId)
+    : null;
+  trackCompletedReservationEvent({
+    transactionType,
+    userId: reservation.userId,
+    catalogId: firstGrant?.catalogId,
+    creditSource: firstGrant?.source,
+    credits: reservation.credits,
+    idempotencyKey,
+    sessionId: reservation.sessionId,
+    reservationId: reservation.id,
+    grantId: firstGrant?.id,
+  });
+
   return { reservation: updatedReservation };
+}
+
+function trackCompletedReservationEvent({
+  transactionType,
+  userId,
+  catalogId,
+  creditSource,
+  credits,
+  idempotencyKey,
+  sessionId,
+  reservationId,
+  grantId,
+}: {
+  transactionType: CreditTransactionType;
+  userId: string;
+  catalogId?: BillingCatalogId;
+  creditSource?: CreditGrantSource;
+  credits: number;
+  idempotencyKey: string;
+  sessionId: string | null;
+  reservationId: string;
+  grantId?: string;
+}) {
+  const input = {
+    userId,
+    catalogId,
+    creditSource,
+    transactionType,
+    credits,
+    idempotencyKey,
+    sourceId: sessionId,
+    sessionId,
+    reservationId,
+    grantId,
+  };
+
+  if (transactionType === "consume") {
+    trackBillingCreditConsumed(input);
+  } else if (transactionType === "release") {
+    trackBillingCreditReleased(input);
+  } else if (transactionType === "refund") {
+    trackBillingCreditRefunded(input);
+  }
 }
 
 function canTransitionReservation(

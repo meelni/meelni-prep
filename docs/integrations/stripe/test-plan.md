@@ -277,6 +277,9 @@ Expected:
 
 ## Production Checklist
 
+- [ ] Complete the credit billing launch runbook in `docs/operations/credit-billing-launch.md`.
+- [ ] Snapshot existing production subscription and credit state before any backfill.
+- [ ] Confirm any active legacy paid users have an explicit migration treatment.
 - [ ] Live `STRIPE_*_PRICE_ID` values are configured for Interview Pass, Starter monthly, and Pro monthly.
 - [ ] Live webhook endpoint is configured for Checkout, subscription, invoice, and refund events.
 - [ ] Webhook signing secret is correct.
@@ -284,3 +287,4 @@ Expected:
 - [ ] A real low-value payment has been tested and refunded.
 - [ ] Stripe webhook failures are monitored through `stripe_event_log`.
 - [ ] Product analytics distinguish trial grants, checkout grants, subscription renewals, and rollover grants.
+- [ ] First top-up pricing decision checkpoint is scheduled after two weeks of launch data or 100 paid credit-consuming sessions.
