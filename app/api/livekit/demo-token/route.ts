@@ -25,7 +25,7 @@
  * - Departure timeout: 10 seconds grace period for re-join
  * - Max participants: 2 (user + demo agent only)
  * - Session duration: Controlled by token TTL (2 min) + agent behavior (60s demo)
- * - Agent: Cloud-hosted demo agent (CA_Wp8bi3bRroE2) explicitly dispatched via AgentDispatchClient
+ * - Agent: Cloud-hosted demo agent configured by LIVEKIT_DEMO_AGENT_NAME
  * - Agent behavior: 60-second product demo with one quick question and feedback
  * - Token TTL: 2 minutes (matches demo duration)
  *
@@ -60,8 +60,16 @@
  * @see /components/demo-modal.tsx for frontend demo UI
  */
 
-import { AccessToken, RoomServiceClient, AgentDispatchClient } from "livekit-server-sdk";
+import {
+  AccessToken,
+  RoomServiceClient,
+  AgentDispatchClient,
+} from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  getLiveKitAgentName,
+  getLiveKitEnvironment,
+} from "@/lib/internal/integrations";
 
 export async function POST(req: NextRequest) {
   try {
@@ -75,11 +83,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.LIVEKIT_API_KEY;
-    const apiSecret = process.env.LIVEKIT_API_SECRET;
-    const livekit_url = process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL;
+    const livekitEnv = getLiveKitEnvironment(process.env);
+    const demoAgentName = getLiveKitAgentName("demo", process.env);
 
-    if (!apiKey || !apiSecret || !livekit_url) {
+    if (!livekitEnv.ok) {
+      console.error(
+        "LiveKit demo configuration error:",
+        livekitEnv.error.message
+      );
+      return NextResponse.json(
+        { error: "LiveKit credentials not configured" },
+        { status: 500 }
+      );
+    }
+
+    if (!demoAgentName.ok) {
+      console.error(
+        "LiveKit demo configuration error:",
+        demoAgentName.error.message
+      );
       return NextResponse.json(
         { error: "LiveKit credentials not configured" },
         { status: 500 }
@@ -98,14 +120,14 @@ export async function POST(req: NextRequest) {
       duration: "60s",
       created_at: new Date().toISOString(),
       agent_type: "demo",
-      // Request specific agent
-      lk_agent: {
-        agent_name: "CA_Wp8bi3bRroE2",
-      },
     };
 
     // Create demo room with metadata
-    const roomClient = new RoomServiceClient(livekit_url, apiKey, apiSecret);
+    const roomClient = new RoomServiceClient(
+      livekitEnv.data.url,
+      livekitEnv.data.apiKey,
+      livekitEnv.data.apiSecret
+    );
 
     try {
       // Create room with agent dispatch enabled
@@ -123,42 +145,59 @@ export async function POST(req: NextRequest) {
       console.log(`Demo room created: ${roomName}`);
 
       // Dispatch the LiveKit Cloud demo agent to this room
-      // Agent ID: CA_t3sKQEihMQ7x (deployed to LiveKit Cloud)
-      const DEMO_AGENT_ID = "CA_t3sKQEihMQ7x";
-
       try {
         // Use AgentDispatchClient from SDK
-        const dispatchClient = new AgentDispatchClient(livekit_url, apiKey, apiSecret);
+        const dispatchClient = new AgentDispatchClient(
+          livekitEnv.data.url,
+          livekitEnv.data.apiKey,
+          livekitEnv.data.apiSecret
+        );
 
-        const dispatch = await dispatchClient.createDispatch(roomName, DEMO_AGENT_ID);
-        console.log(`Demo agent (${DEMO_AGENT_ID}) dispatched to room: ${roomName}`, dispatch);
+        const dispatch = await dispatchClient.createDispatch(
+          roomName,
+          demoAgentName.data
+        );
+        console.log(
+          `Demo agent (${demoAgentName.data}) dispatched to room: ${roomName}`,
+          dispatch
+        );
       } catch (dispatchError) {
-        console.error('Agent dispatch error:', getErrorMessage(dispatchError));
+        console.error("Agent dispatch error:", getErrorMessage(dispatchError));
+        return NextResponse.json(
+          { error: "Failed to dispatch demo agent" },
+          { status: 503 }
+        );
       }
     } catch (error) {
       console.error("Demo room creation error:", getErrorMessage(error));
-      // Continue even if room creation fails - token generation might still work
+      return NextResponse.json(
+        { error: "Failed to create demo room" },
+        { status: 503 }
+      );
     }
 
     // Generate participant token
-    const at = new AccessToken(apiKey, apiSecret, {
-      identity: participantName,
-      ttl: "2m", // Token expires in 2 minutes (demo duration)
-    });
+    const at = new AccessToken(
+      livekitEnv.data.apiKey,
+      livekitEnv.data.apiSecret,
+      {
+        identity: participantName,
+        ttl: "2m", // Token expires in 2 minutes (demo duration)
+      }
+    );
 
     at.addGrant({
       room: roomName,
       roomJoin: true,
       canPublish: true,
       canSubscribe: true,
-      agent: true, // Enable agent capabilities
     });
 
     const token = await at.toJwt();
 
     return NextResponse.json({
       token,
-      url: livekit_url,
+      url: livekitEnv.data.url,
       roomName, // Return room name for tracking
     });
   } catch (error) {

@@ -63,17 +63,31 @@ class RuntimeContractTests(unittest.TestCase):
         config = {
             **DEFAULT_INTERVIEW_RUNTIME_CONFIG,
             "voice": "voice-1",
-            "tts_model": "elevenlabs/model:voice-1",
+            "tts_model": "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
             "speed": 1.15,
         }
 
         self.assertEqual(get_model_config(config), {
             "stt_model": DEFAULT_INTERVIEW_RUNTIME_CONFIG["stt_model"],
             "llm_model": DEFAULT_INTERVIEW_RUNTIME_CONFIG["llm_model"],
-            "tts_model": "elevenlabs/model:voice-1",
+            "tts_model": "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
         })
         self.assertEqual(get_tts_config(config)["voice"], "voice-1")
         self.assertEqual(get_tts_config(config)["speed"], 1.15)
+
+    def test_runtime_helpers_reject_unknown_model_overrides(self):
+        config = {
+            **DEFAULT_INTERVIEW_RUNTIME_CONFIG,
+            "stt_model": "unknown/stt",
+            "llm_model": "openai/expensive-model",
+            "tts_model": "unknown/tts:voice",
+        }
+
+        self.assertEqual(get_model_config(config), {
+            "stt_model": DEFAULT_INTERVIEW_RUNTIME_CONFIG["stt_model"],
+            "llm_model": DEFAULT_INTERVIEW_RUNTIME_CONFIG["llm_model"],
+            "tts_model": DEFAULT_INTERVIEW_RUNTIME_CONFIG["tts_model"],
+        })
 
     def test_create_transcript_event_matches_frontend_contract(self):
         event = create_transcript_event(

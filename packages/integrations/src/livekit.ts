@@ -5,7 +5,11 @@ import {
 } from "livekit-server-sdk";
 
 import { findMissingRequiredEnv } from "./environment";
-import { providerFailure, providerSuccess, type ProviderResult } from "./results";
+import {
+  providerFailure,
+  providerSuccess,
+  type ProviderResult,
+} from "./results";
 
 export interface LiveKitEnvironment {
   apiKey: string;
@@ -13,8 +17,10 @@ export interface LiveKitEnvironment {
   url: string;
 }
 
+export type LiveKitAgentKind = "interview" | "demo";
+
 export interface StartInterviewRoomInput {
-  agentId: string;
+  agentName: string;
   identity: string;
   participantName: string;
   roomName: string;
@@ -57,7 +63,7 @@ type AccessTokenFactory = new (
 ) => AccessTokenLike;
 
 interface AgentDispatchClientLike {
-  createDispatch(roomName: string, agentId: string): Promise<unknown>;
+  createDispatch(roomName: string, agentName: string): Promise<unknown>;
 }
 
 type AgentDispatchClientFactory = (
@@ -101,6 +107,27 @@ export function getLiveKitEnvironment(
     apiSecret: envSource.LIVEKIT_API_SECRET!,
     url: url!,
   });
+}
+
+export function getLiveKitAgentName(
+  kind: LiveKitAgentKind,
+  envSource: Record<string, string | undefined> = process.env
+): ProviderResult<string> {
+  const envName =
+    kind === "interview"
+      ? "LIVEKIT_INTERVIEW_AGENT_NAME"
+      : "LIVEKIT_DEMO_AGENT_NAME";
+  const value = envSource[envName];
+
+  if (!value?.trim()) {
+    return providerFailure("livekit", {
+      code: "livekit_agent_name_missing",
+      message: `Missing LiveKit ${kind} agent name: ${envName}`,
+      retryable: false,
+    });
+  }
+
+  return providerSuccess("livekit", value.trim());
 }
 
 export function buildInterviewRoomName({
@@ -154,7 +181,7 @@ export function createLiveKitInterviewProvider({
       }
 
       try {
-        await dispatchClient.createDispatch(input.roomName, input.agentId);
+        await dispatchClient.createDispatch(input.roomName, input.agentName);
       } catch (error) {
         return providerFailure("livekit", {
           code: "livekit_agent_dispatch_failed",
@@ -164,10 +191,14 @@ export function createLiveKitInterviewProvider({
         });
       }
 
-      const token = new accessTokenFactory(input.env.apiKey, input.env.apiSecret, {
-        identity: input.identity,
-        name: input.participantName,
-      });
+      const token = new accessTokenFactory(
+        input.env.apiKey,
+        input.env.apiSecret,
+        {
+          identity: input.identity,
+          name: input.participantName,
+        }
+      );
 
       token.addGrant({
         room: input.roomName,

@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 const target = process.argv[2] ?? ".env.local";
 const environment = process.argv[3] ?? "preview";
 const siteUrl = "https://www.meelni.com";
+const previousEnv = readExistingEnv(target);
 
 execFileSync(
   "npx",
@@ -31,8 +32,47 @@ for (const [key, value] of Object.entries({
   env = upsert(env, key, value);
 }
 
+for (const key of [
+  "LIVEKIT_API_KEY",
+  "LIVEKIT_API_SECRET",
+  "NEXT_PUBLIC_LIVEKIT_URL",
+  "LIVEKIT_URL",
+  "LIVEKIT_INTERVIEW_AGENT_NAME",
+  "LIVEKIT_DEMO_AGENT_NAME",
+]) {
+  const pulled = readEnvValue(env, key);
+  const previous = previousEnv[key];
+  if (isBlank(pulled) && !isBlank(previous)) {
+    env = upsert(env, key, previous);
+  }
+}
+
 writeFileSync(target, env);
 console.log(`Refreshed ${target} and restored public browser config.`);
+
+function readExistingEnv(file) {
+  try {
+    return parseEnv(readFileSync(file, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function parseEnv(env) {
+  return Object.fromEntries(
+    env
+      .split(/\n/)
+      .map((line) => {
+        const index = line.indexOf("=");
+        if (index === -1 || line.startsWith("#")) {
+          return null;
+        }
+
+        return [line.slice(0, index), normalizeEnvValue(line.slice(index + 1))];
+      })
+      .filter(Boolean)
+  );
+}
 
 function readPublicDefaults() {
   const example = readFileSync(".env.example", "utf8");
@@ -94,4 +134,17 @@ function upsert(env, key, value) {
   const line = `${key}=${value}`;
   const pattern = new RegExp(`^${key}=.*$`, "m");
   return pattern.test(env) ? env.replace(pattern, line) : `${line}\n${env}`;
+}
+
+function readEnvValue(env, key) {
+  const match = env.match(new RegExp(`^${key}=(.*)$`, "m"));
+  return match ? normalizeEnvValue(match[1]) : undefined;
+}
+
+function normalizeEnvValue(value) {
+  return value.trim().replace(/^['"]|['"]$/g, "");
+}
+
+function isBlank(value) {
+  return value === undefined || value.trim() === "";
 }
