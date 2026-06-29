@@ -1,9 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { Section } from "@/components/section";
+import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import { FEATURE_GATES } from "@/lib/feature-flags/gates";
+import { useFeatureFlag } from "@/lib/feature-flags";
 
 export function CTA() {
+  const reactivationEnabled = useFeatureFlag(FEATURE_GATES.meelniReactivationAccess);
+
   return (
     <Section id="cta">
       <div className="py-16 px-4 sm:px-6 lg:px-8">
@@ -25,7 +31,9 @@ export function CTA() {
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
-              Thank you for your interest in Meelni
+              {reactivationEnabled
+                ? "Ready to practice with Meelni?"
+                : "Thank you for your interest in Meelni"}
             </motion.h2>
 
             <motion.p
@@ -35,8 +43,27 @@ export function CTA() {
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: 0.4 }}
             >
-              This service has been discontinued. We appreciate everyone who tried our AI-powered mock interview platform.
+              {reactivationEnabled
+                ? "Start a mock interview, explore the question bank, and pick up where the product experience leaves off."
+                : "This service has been discontinued. We appreciate everyone who tried our AI-powered mock interview platform."}
             </motion.p>
+
+            {reactivationEnabled && (
+              <motion.div
+                className="flex flex-col items-center justify-center gap-3 sm:flex-row"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.5 }}
+              >
+                <Button asChild size="lg">
+                  <Link href="/dashboard">Start a mock</Link>
+                </Button>
+                <Button asChild size="lg" variant="outline">
+                  <Link href="/explore">Explore questions</Link>
+                </Button>
+              </motion.div>
+            )}
           </div>
 
           {/* Bottom border with glow */}
