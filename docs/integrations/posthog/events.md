@@ -1,168 +1,66 @@
-# Analytics Events - Tier & Pricing Tracking
+# Analytics Events - Credit Billing
 
-## Overview
+Updated: 2026-06-29
 
-This document describes all analytics events tracked for the tier-based pricing and upgrade flow.
+This document describes analytics events relevant to the credit-based billing catalog. Client-side events still use the consent-aware analytics service. Credit lifecycle events are emitted server-side from the credit ledger and are skipped when PostHog keys are not configured.
 
-## Implementation
+## Credit Lifecycle Events
 
-All events are tracked using the `track()` function from `/lib/analytics.ts`.
+| Event | Trigger |
+| --- | --- |
+| `billing_credit_granted` | A trial, Checkout, subscription renewal, admin, migration, or refund grant is created or replayed idempotently. |
+| `billing_credit_reserved` | A session start reserves credit from one or more grants. |
+| `billing_credit_consumed` | A successful session start consumes a reservation. |
+| `billing_credit_released` | A failed system start releases a reservation back to the grant. |
+| `billing_credit_refunded` | A consumed reservation is refunded. |
+| `billing_credit_expired` | Expired remaining credits are zeroed. |
+| `billing_credit_rollover_created` | Eligible subscription credits roll into a rollover grant. |
+| `billing_no_credits` | A user attempts to start an interview without enough credits. |
 
-Currently logs to console in development. Easy to integrate with:
-- PostHog
-- Mixpanel
-- Segment
-- Amplitude
-- Google Analytics
+## Common Properties
 
-## Events Tracked
+- `catalog_id`: `trial`, `interview_pass`, `starter`, `pro`, or `admin_grant`.
+- `credit_source`: `trial`, `checkout`, `subscription_renewal`, `rollover`, `admin`, `refund`, or `migration`.
+- `transaction_type`: `grant`, `reserve`, `consume`, `release`, `refund`, `expire`, `adjustment`, or `rollover`.
+- `credits`: Number of credits in the event.
+- `balance_after`: Remaining balance on the affected grant when available.
+- `idempotency_key`: Ledger idempotency key.
+- `source_id`: Stripe session/invoice/event ID or other source reference.
+- `session_id`: Interview session ID when the event is tied to session start.
+- `grant_id`: Credit grant ID.
+- `reservation_id`: Credit reservation ID.
+- `duplicate`: `true` when an idempotent replay was observed.
+- `reason`: Error or no-credit reason.
 
-### 1. Setup Page Viewed
-**Event Name:** `Setup Page Viewed`
-**Triggered:** When user loads /setup page and subscription tier is fetched
-**Properties:**
-- `userTier`: string (free, pro, premium)
-- `allowedTypesCount`: number (1 for free, 4 for pro/premium)
-- `lockedTypesCount`: number (3 for free, 0 for pro/premium)
+## Funnel Questions
 
-**Use Case:** Understand funnel - how many free vs paid users start interview setup
+- Trial activation: users with `billing_credit_granted` where `catalog_id = trial`.
+- Purchase activation: users with `billing_credit_granted` from `checkout` or `subscription_renewal`.
+- Credit consumption: `billing_credit_consumed` by `catalog_id`.
+- No-credit pressure: `billing_no_credits` by user, catalog context, and time since signup.
+- Rollover health: `billing_credit_rollover_created` versus `billing_credit_expired`.
+- Stripe replay health: `billing_credit_granted` or `billing_credit_rollover_created` where `duplicate = true`.
 
----
+## Client-Side Purchase Intent Events
 
-### 2. Locked Interview Type Clicked
-**Event Name:** `Locked Interview Type Clicked`
-**Triggered:** When free tier user clicks on a locked interview type (Behavioral, Execution, or Strategy)
-**Properties:**
-- `interviewType`: string (behavioral, execution, strategy)
-- `interviewTypeLabel`: string (Behavioral, Execution, Strategy)
-- `currentTier`: string (typically "free")
+The older upgrade-modal events may still appear while compatibility UI exists:
 
-**Use Case:**
-- Which locked types are most popular? (helps prioritize features)
-- How many free users encounter paywall?
+- `Setup Page Viewed`
+- `Upgrade Modal Viewed`
+- `Upgrade Modal Dismissed`
+- `Upgrade Modal CTA Clicked`
+- `Quota Exceeded Modal Viewed`
+- `Quota Exceeded Modal Dismissed`
+- `Quota Exceeded Modal CTA Clicked`
 
----
-
-### 3. Upgrade Modal Viewed
-**Event Name:** `Upgrade Modal Viewed`
-**Triggered:** When tier upgrade modal opens after clicking locked interview type
-**Properties:**
-- `requestedType`: string (interview type user wanted)
-- `requestedTypeLabel`: string (human-readable label)
-- `currentTier`: string (free)
-
-**Use Case:**
-- Conversion funnel: Locked Click → Modal View
-- Which interview types drive most upgrade modal views?
-
----
-
-### 4. Upgrade Modal Dismissed
-**Event Name:** `Upgrade Modal Dismissed`
-**Triggered:** When user closes modal without upgrading ("Maybe Later" or X button)
-**Properties:**
-- `requestedType`: string
-- `requestedTypeLabel`: string
-- `currentTier`: string
-
-**Use Case:**
-- Measure drop-off rate
-- A/B test modal copy to reduce dismissals
-
----
-
-### 5. Upgrade Modal CTA Clicked
-**Event Name:** `Upgrade Modal CTA Clicked`
-**Triggered:** When user clicks "View Plans" button in upgrade modal
-**Properties:**
-- `requestedType`: string
-- `requestedTypeLabel`: string
-- `currentTier`: string
-
-**Use Case:**
-- Conversion funnel: Modal View → CTA Click → Pricing Page
-- Calculate upgrade intent rate
-
----
-
-## Key Metrics to Calculate
-
-### Upgrade Modal Conversion Rate
-```
-Modal CTA Clicks / Modal Views = Conversion Rate
-```
-Target: >20%
-
-### Interview Type Popularity (Free Tier)
-```
-Locked Clicks by Type / Total Locked Clicks = Type Distribution
-```
-Helps prioritize which interview types to promote
-
-### Free User Paywall Encounter Rate
-```
-Users with Locked Clicks / Total Free Users = Encounter Rate
-```
-Measures product-market fit for paid features
-
----
-
-## Sample Event Flow (Free Tier User)
-
-1. User loads /setup
-   - Event: `Setup Page Viewed` (userTier: free, lockedTypesCount: 3)
-
-2. User clicks "Behavioral" (locked)
-   - Event: `Locked Interview Type Clicked` (interviewType: behavioral)
-
-3. Modal opens
-   - Event: `Upgrade Modal Viewed` (requestedType: behavioral)
-
-4. User clicks "View Plans"
-   - Event: `Upgrade Modal CTA Clicked` (requestedType: behavioral)
-   - User redirected to /pricing
-
----
-
-## Integration Example
-
-### PostHog
-```typescript
-// lib/analytics.ts
-export function track(eventName: string, properties?: EventProperties): void {
-  if (typeof window !== 'undefined' && window.posthog) {
-    window.posthog.capture(eventName, properties);
-  }
-}
-```
-
-### Mixpanel
-```typescript
-export function track(eventName: string, properties?: EventProperties): void {
-  if (typeof window !== 'undefined' && window.mixpanel) {
-    window.mixpanel.track(eventName, properties);
-  }
-}
-```
-
----
-
-## Future Events (Not Yet Implemented)
-
-- `Interview Type Selected` - When user selects unlocked type
-- `Quota Modal Viewed` - When free user exceeds 3/month limit
-- `Quota Modal CTA Clicked` - When user clicks upgrade from quota modal
-- `Pricing Page Viewed` - Referral source tracking
-- `Checkout Started` - Stripe checkout initiated
-- `Subscription Created` - Successful upgrade
-
----
+Treat these as UI intent events only. Use server-side credit events as the source of truth for billing grants and consumption.
 
 ## Testing
 
-Run in development mode and check browser console:
-```
-[Analytics] Setup Page Viewed { userTier: 'free', allowedTypesCount: 1, lockedTypesCount: 3 }
-[Analytics] Locked Interview Type Clicked { interviewType: 'behavioral', ... }
-[Analytics] Upgrade Modal Viewed { requestedType: 'behavioral', ... }
-```
+Local tests should not require PostHog keys. When keys are configured in preview, trigger the flows below and confirm events in PostHog:
+
+1. Buy Interview Pass: expect `billing_credit_granted` with `catalog_id = interview_pass`, `credit_source = checkout`, `credits = 1`.
+2. Start an interview: expect `billing_credit_reserved` and `billing_credit_consumed`.
+3. Start with zero credits: expect `billing_no_credits`.
+4. Replay a Stripe Checkout event: expect `billing_credit_granted` with `duplicate = true`.
+5. Renewal with unused subscription credits: expect `billing_credit_rollover_created` followed by `billing_credit_granted`.
