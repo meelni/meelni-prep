@@ -9,16 +9,11 @@ import {
   BILLING_CATALOG_ORDER,
   buildFullConfig,
   calculateOverallScore,
-  canAccessInterviewType,
   clampScore,
   computeCreditEntitlements,
   type CreditEntitlementState,
-  getAllowedInterviewTypes,
   getBillingCatalogItem,
   getDefaultDuration,
-  getLockedInterviewTypes,
-  getRequiredTier,
-  getRequiredTierBadge,
   isValidRoundType,
   validateScores,
 } from "./index";
@@ -147,7 +142,7 @@ test("admin credit state can start interviews when credits are present", () => {
   assert.equal(entitlements.canSubscribe, false);
 });
 
-test("interview type helpers preserve current PM interview access model", () => {
+test("interview type helpers preserve PM round contracts", () => {
   assert.deepEqual(ALL_INTERVIEW_TYPES, [
     "product_sense",
     "behavioral",
@@ -157,16 +152,6 @@ test("interview type helpers preserve current PM interview access model", () => 
   assert.equal(isValidRoundType("product_sense"), true);
   assert.equal(isValidRoundType("sales"), false);
   assert.equal(getDefaultDuration("behavioral"), 30);
-  assert.equal(canAccessInterviewType("free", "product_sense"), true);
-  assert.equal(canAccessInterviewType("free", "execution"), false);
-  assert.deepEqual(getAllowedInterviewTypes("free"), ["product_sense"]);
-  assert.deepEqual(getLockedInterviewTypes("free"), [
-    "behavioral",
-    "execution",
-    "strategy",
-  ]);
-  assert.equal(getRequiredTier("strategy"), "pro");
-  assert.equal(getRequiredTierBadge("behavioral"), "Pro");
 });
 
 test("evaluation score helpers stay PM-rubric compatible", () => {
