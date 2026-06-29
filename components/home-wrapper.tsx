@@ -7,6 +7,8 @@ import { Hero } from "@/components/sections/hero";
 import { DiscontinuedBanner } from "@/components/discontinued-banner";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
+import { FEATURE_EVENTS, FEATURE_GATES } from "@/lib/feature-flags/gates";
+import { useFeatureFlag, useFeatureFlags } from "@/lib/feature-flags";
 
 interface HomeWrapperProps {
   children: React.ReactNode;
@@ -14,6 +16,8 @@ interface HomeWrapperProps {
 
 export function HomeWrapper({ children }: HomeWrapperProps) {
   const searchParams = useSearchParams();
+  const reactivationEnabled = useFeatureFlag(FEATURE_GATES.meelniReactivationAccess);
+  const { localDevId, logEvent, ready } = useFeatureFlags();
 
   // Track Web Vitals performance
   useWebVitals('landing_page');
@@ -28,9 +32,24 @@ export function HomeWrapper({ children }: HomeWrapperProps) {
     });
   }, [searchParams]);
 
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+
+    logEvent(
+      FEATURE_EVENTS.reactivationGateViewed,
+      reactivationEnabled ? "enabled" : "disabled",
+      {
+        gate: FEATURE_GATES.meelniReactivationAccess,
+        local_dev_id: localDevId ?? "unknown",
+      }
+    );
+  }, [localDevId, logEvent, ready, reactivationEnabled]);
+
   return (
     <>
-      <DiscontinuedBanner />
+      {!reactivationEnabled && <DiscontinuedBanner />}
       <Header />
       <Hero />
       {children}
