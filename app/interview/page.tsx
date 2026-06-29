@@ -97,6 +97,7 @@ function InterviewPageContent() {
   );
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const initializedRef = useRef(false);
+  const activeSessionId = session?.id ?? sessionId ?? "";
 
   // Invalidate queries when component unmounts (user leaves interview)
   useEffect(() => {
@@ -219,7 +220,7 @@ function InterviewPageContent() {
 
       // Track interview started
       analytics.track("interview_started", {
-        session_id: sessionId ?? session?.id ?? "",
+        session_id: sessionId ?? "",
         interview_type: sessionData.config?.roundType,
         mode: sessionData.config?.mode,
         skill_level: sessionData.config?.difficulty,
@@ -232,6 +233,13 @@ function InterviewPageContent() {
   };
 
   const handleTranscriptUpdate = async (turn: TranscriptTurn) => {
+    if (!activeSessionId) {
+      console.warn(
+        "[Interview] Transcript received before session ID was available"
+      );
+      return;
+    }
+
     // Check for duplicates first
     let isDuplicate = false;
     setTranscript((prev) => {
@@ -260,7 +268,7 @@ function InterviewPageContent() {
     // Save to database with automatic retry queue
     try {
       const result = await transcriptQueue.save({
-        sessionId: sessionId!,
+        sessionId: activeSessionId,
         speaker: turn.speaker,
         text: turn.text,
         startedAt: turn.startedAt,
@@ -288,7 +296,11 @@ function InterviewPageContent() {
     }
 
     // Analyze for nudges (only when user finishes speaking)
-    if (turn.speaker === "user" && sessionId && session?.config?.roundType) {
+    if (
+      turn.speaker === "user" &&
+      activeSessionId &&
+      session?.config?.roundType
+    ) {
       analyzeForNudges(turn);
     }
   };
@@ -303,7 +315,7 @@ function InterviewPageContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId: sessionId!,
+          sessionId: activeSessionId,
           interviewType: session!.config.roundType,
           currentTurn: {
             speaker: turn.speaker,
@@ -375,6 +387,13 @@ function InterviewPageContent() {
   }, [session]);
 
   const handleEndSession = async () => {
+    if (!activeSessionId) {
+      setError(
+        "Missing interview session. Please return to the dashboard and try again."
+      );
+      return;
+    }
+
     setIsEndingSession(true);
     try {
       // Track interview ended
@@ -382,7 +401,7 @@ function InterviewPageContent() {
         ? (Date.now() - sessionStartTime) / 1000
         : 0;
       analytics.track("interview_ended", {
-        session_id: sessionId ?? session?.id ?? "",
+        session_id: activeSessionId,
         duration_seconds: duration,
         ended_naturally: true,
         interview_type: session?.config?.roundType,
@@ -392,14 +411,14 @@ function InterviewPageContent() {
       await fetch("/api/interview/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ sessionId: activeSessionId }),
       });
 
       setShowEndModal(false);
       setIsEndingSession(false);
 
       // Navigate to feedback loading page
-      router.push(`/feedback/${sessionId}/loading`);
+      router.push(`/feedback/${activeSessionId}/loading`);
     } catch (error) {
       console.error("Failed to end session:", error);
       setIsEndingSession(false);
@@ -451,7 +470,7 @@ function InterviewPageContent() {
       token={token}
       url={url}
       roomName={session.livekit_room_name}
-      sessionId={sessionId!}
+      sessionId={activeSessionId}
       onTranscriptUpdate={handleTranscriptUpdate}
       onAgentStateChange={handleAgentStateChange}
     >

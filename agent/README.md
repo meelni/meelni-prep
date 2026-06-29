@@ -41,19 +41,21 @@ agent/
 ## 🎯 Two Agent Types
 
 ### Demo Agent (`demo/`)
+
 - **Purpose**: Quick 5-minute demos for landing page visitors
 - **Duration**: 5 minutes (auto-terminates)
 - **Questions**: 1 question from bank or fallback
 - **Tone**: Energetic, conversational, fast-paced
-- **Agent ID**: `CA_Wp8bi3bRroE2`
+- **Dispatch name**: configured with `LIVEKIT_DEMO_AGENT_NAME`
 - **Documentation**: [demo/README.md](demo/README.md)
 
 ### Interview Agent (`interview/`)
+
 - **Purpose**: Full mock interviews for authenticated users
 - **Duration**: 15, 30, or 45 minutes (configurable)
 - **Features**: 4 interview types, 3 difficulty levels, real-time transcripts
 - **Tone**: Professional, adaptive coaching
-- **Agent ID**: `CA_yawKG67rCMG4`
+- **Dispatch name**: configured with `LIVEKIT_INTERVIEW_AGENT_NAME`
 - **Documentation**: [interview/README.md](interview/README.md)
 
 ---
@@ -68,40 +70,47 @@ User speaks → Deepgram Nova-3 (STT) → GPT-4/GPT-4.1-mini (LLM) → ElevenLab
                                     Silero VAD (interruption detection)
 ```
 
-| Component | Provider | Purpose |
-|-----------|----------|---------|
-| **STT** | Deepgram Nova-3 | Speech-to-text with low latency |
-| **LLM** | GPT-4o (demo) / GPT-4.1-mini (interview) | Conversational intelligence |
-| **TTS** | ElevenLabs Eleven Turbo v2.5 | Natural speech synthesis |
-| **VAD** | Silero | Voice activity detection for barge-in |
+| Component | Provider                                 | Purpose                               |
+| --------- | ---------------------------------------- | ------------------------------------- |
+| **STT**   | Deepgram Nova-3                          | Speech-to-text with low latency       |
+| **LLM**   | GPT-4o (demo) / GPT-4.1-mini (interview) | Conversational intelligence           |
+| **TTS**   | ElevenLabs Eleven Turbo v2.5             | Natural speech synthesis              |
+| **VAD**   | Silero                                   | Voice activity detection for barge-in |
 
 ---
 
 ## ⚡ Quick Start
 
 ### Prerequisites
+
 - Python 3.10 or higher
 - Active LiveKit Cloud project
 - API keys: OpenAI, Deepgram
 
 ### 1. Create Virtual Environment
+
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 ### 2. Install Dependencies
+
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
 ### 3. Configure Environment
+
 Create a `.env` file in the agent directory:
+
 ```bash
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=your_api_key
 LIVEKIT_API_SECRET=your_api_secret
+LIVEKIT_INTERVIEW_AGENT_NAME=your_interview_agent_name
+LIVEKIT_DEMO_AGENT_NAME=your_demo_agent_name
 OPENAI_API_KEY=your_openai_key
 DEEPGRAM_API_KEY=your_deepgram_key
 ```
@@ -109,12 +118,14 @@ DEEPGRAM_API_KEY=your_deepgram_key
 ### 4. Run Agents Locally
 
 **Demo Agent:**
+
 ```bash
 cd demo
 python agent.py dev
 ```
 
 **Interview Agent:**
+
 ```bash
 cd interview
 python agent.py dev
@@ -127,12 +138,14 @@ python agent.py dev
 Both agents are deployed to LiveKit Cloud.
 
 **Deploy Demo Agent:**
+
 ```bash
 cd demo
 ./deploy.sh
 ```
 
 **Deploy Interview Agent:**
+
 ```bash
 cd interview
 ./deploy.sh
@@ -144,14 +157,14 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instruction
 
 ## 🔐 Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `LIVEKIT_URL` | ✅ | LiveKit WebSocket URL |
-| `LIVEKIT_API_KEY` | ✅ | LiveKit API key |
-| `LIVEKIT_API_SECRET` | ✅ | LiveKit API secret |
-| `OPENAI_API_KEY` | ✅ | OpenAI API key |
-| `DEEPGRAM_API_KEY` | ✅ | Deepgram API key (for Nova-3 ASR) |
-| `CARTESIA_API_KEY` | ❌ | **Not required** when using LiveKit Inference |
+| Variable             | Required | Description                                   |
+| -------------------- | -------- | --------------------------------------------- |
+| `LIVEKIT_URL`        | ✅       | LiveKit WebSocket URL                         |
+| `LIVEKIT_API_KEY`    | ✅       | LiveKit API key                               |
+| `LIVEKIT_API_SECRET` | ✅       | LiveKit API secret                            |
+| `OPENAI_API_KEY`     | ✅       | OpenAI API key                                |
+| `DEEPGRAM_API_KEY`   | ✅       | Deepgram API key (for Nova-3 ASR)             |
+| `CARTESIA_API_KEY`   | ❌       | **Not required** when using LiveKit Inference |
 
 **Note:** If running outside of Conductor, create a `.env` file in the `agent/` directory.
 
@@ -160,13 +173,16 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instruction
 ## 📖 How It Works
 
 ### 1. Room Connection
+
 When a user starts an interview:
+
 1. Next.js frontend generates a LiveKit access token via `/api/livekit/token`
 2. User joins a room with unique ID (e.g., `interview-abc123`)
 3. Agent worker detects new participant event
 4. Agent spawns instance and joins the same room
 
 ### 2. Voice Pipeline Orchestration
+
 The agent uses LiveKit's `AgentSession` API to orchestrate the voice pipeline:
 
 ```python
@@ -180,12 +196,14 @@ await session.start(agent=InterviewAgent(instructions=prompt), room=room)
 ```
 
 ### 3. Conversation Flow
+
 - User speaks → Deepgram transcribes audio in real-time
 - Transcript sent to GPT-4.1-mini → LLM generates response
 - Response synthesized by Cartesia TTS → Audio played to user
 - Silero VAD monitors audio → Detects when user interrupts (barge-in)
 
 ### 4. Interview State Management (Planned)
+
 - Track conversation turns and timestamps
 - Save transcript to Supabase database
 - Trigger post-session evaluation job (Inngest)
@@ -197,6 +215,7 @@ await session.start(agent=InterviewAgent(instructions=prompt), room=room)
 The agent accepts dynamic configuration via room metadata (passed from frontend setup page):
 
 ### Interview Configuration
+
 - **Role**: `interviewee` (user being interviewed) or `interviewer` (user conducting interview)
 - **Interview Type**: `product_sense`, `analytical`, `leadership`, `strategy`
 - **Mode**: `mock_interview`, `practice`, `learning`, etc.
@@ -204,7 +223,9 @@ The agent accepts dynamic configuration via room metadata (passed from frontend 
 - **Advanced**: Speed, emotion, volume, difficulty, time limits
 
 ### Dynamic Prompt System
+
 The agent adapts its instructions based on configuration:
+
 - **Interviewee mode**: Acts as experienced PM interviewer
 - **Interviewer mode**: Acts as candidate being interviewed
 - **Learning mode**: Teaches frameworks step-by-step
@@ -217,9 +238,11 @@ See [`agent.py`](./agent.py) for prompt templates.
 ## 🧪 Development
 
 ### Dev Mode (Auto-Reload)
+
 ```bash
 python agent.py dev
 ```
+
 - Watches `agent.py` for changes
 - Automatically restarts worker on file save
 - Ideal for rapid iteration
@@ -227,12 +250,14 @@ python agent.py dev
 **Note:** Changes to the `prewarm` function require manual restart.
 
 ### Testing Voice Pipeline
+
 1. Start agent: `python agent.py dev`
 2. Open frontend: `http://localhost:3000`
 3. Start interview and speak
 4. Check agent logs for STT/LLM/TTS flow
 
 ### Debugging
+
 - **Verbose logging**: Set `LOG_LEVEL=debug` in `.env`
 - **LiveKit logs**: Check [LiveKit Dashboard](https://cloud.livekit.io) for room events
 - **Audio issues**: Verify microphone permissions in browser
@@ -243,24 +268,30 @@ python agent.py dev
 ## 🚀 Deployment
 
 ### Railway
+
 ```bash
 railway up
 ```
+
 Set environment variables in Railway dashboard.
 
 ### Render
+
 1. Connect git repository
 2. Build command: `pip install -r agent/requirements.txt`
 3. Start command: `cd agent && python agent.py start`
 4. Add environment variables in Render dashboard
 
 ### Fly.io
+
 ```bash
 fly deploy
 ```
+
 Configure `fly.toml` with agent start command.
 
 ### Docker (Custom)
+
 ```dockerfile
 FROM python:3.10-slim
 WORKDIR /app
@@ -275,17 +306,22 @@ CMD ["python", "agent.py", "start"]
 ## 🔧 Customization
 
 ### Changing Voice Model
+
 Edit `agent.py` and update the TTS configuration:
+
 ```python
 tts_model = "cartesia/sonic-3:<VOICE_ID>"
 ```
 
 Find voice IDs:
+
 - [Cartesia Voice Library](https://docs.cartesia.ai/voices) (150+ voices)
 - API: `GET https://api.cartesia.ai/voices`
 
 ### Adjusting Speech Speed/Emotion
+
 Modify TTS parameters in session config:
+
 ```python
 tts = {
     "model": "sonic-3",
@@ -297,7 +333,9 @@ tts = {
 ```
 
 ### Custom Interviewer Instructions
+
 Edit the `InterviewAgent` class in `agent.py`:
+
 ```python
 class InterviewAgent(Agent):
     def __init__(self, instructions: str):
@@ -329,23 +367,28 @@ agent/
 ### Supported Round Types
 
 #### 1. **Behavioral** (STAR Method)
+
 Assesses leadership, collaboration, conflict resolution, decision making, and learning.
 
 **Framework**:
+
 - Situation: Context and background
 - Task: What needed to be done
 - Action: What YOU specifically did
 - Result: Outcome with metrics
 
 **Difficulty Adjustments**:
+
 - **Beginner**: High guidance, reminds of STAR framework explicitly
 - **Intermediate**: Moderate guidance, probes for missing elements
 - **Advanced**: Bar-raiser mode, expects polished answers with metrics
 
 #### 2. **Product Sense** (5-Step Framework)
+
 Assesses user empathy, creative thinking, prioritization, and business understanding.
 
 **Framework**:
+
 1. Clarify & Scope
 2. Identify Users
 3. Understand Pain Points
@@ -353,34 +396,41 @@ Assesses user empathy, creative thinking, prioritization, and business understan
 5. Prioritize & Recommend
 
 **Difficulty Adjustments**:
+
 - **Beginner**: Actively guides through 5 steps, suggests frameworks
 - **Intermediate**: Lets candidate drive, probes for missing elements
 - **Advanced**: Interrupts and challenges, expects PM maturity
 
 #### 3. **Execution** (Metrics & Trade-offs)
+
 Assesses analytical thinking, prioritization, technical depth, stakeholder management.
 
 **Key Areas**:
+
 - Metrics definition (North Star, leading/lagging)
 - Trade-off analysis (speed vs quality)
 - Technical understanding (APIs, scalability)
 - Execution planning (roadmap, rollout)
 
 **Difficulty Adjustments**:
+
 - **Beginner**: Guides through metrics step-by-step, provides examples
 - **Intermediate**: Expects framework knowledge (AARRR, RICE)
 - **Advanced**: Senior PM thinking, challenges metrics, expects unit economics
 
 #### 4. **Strategy** (Business Thinking)
+
 Assesses business acumen, market understanding, competitive analysis, long-term vision.
 
 **Key Areas**:
+
 - Market sizing (TAM, SAM, SOM)
 - Competitive landscape and moats
 - Business model evaluation
 - 3-5 year vision
 
 **Difficulty Adjustments**:
+
 - **Beginner**: Guides through frameworks (SWOT, Porter's 5 Forces)
 - **Intermediate**: Expects basic strategy frameworks
 - **Advanced**: Executive-level thinking, challenges assumptions with data
@@ -388,17 +438,20 @@ Assesses business acumen, market understanding, competitive analysis, long-term 
 ### Feedback Modes
 
 #### end_only (default)
+
 - No feedback during interview
 - Brief 2-3 sentence summary at end if asked
 - Saves detailed feedback for post-interview
 
 #### real_time
+
 - Provides brief feedback after each response
 - 1-2 sentences, concise
 - Balances positive and constructive
 - Example: "Good use of STAR method. Try to include more specific metrics."
 
 #### silent
+
 - Zero feedback during interview
 - Pure evaluation mode
 - All feedback in post-interview report
@@ -479,18 +532,21 @@ INFO:__main__:Voice agent started successfully - product_sense interview with in
 ## 📊 Performance Considerations
 
 ### Latency Optimization
+
 - **Target**: <1.2s end-to-end per turn
 - **Deepgram Nova-3**: ~200ms STT latency
 - **GPT-4.1-mini**: ~400-600ms LLM response time
 - **Cartesia Sonic 3**: ~300ms TTS synthesis
 
 ### Cost Per Session (20 minutes)
+
 - **Deepgram ASR**: ~$0.09
 - **GPT-4.1-mini**: ~$0.05
 - **Cartesia TTS**: ~$0.10
 - **Total**: ~$0.24/session
 
 ### Scaling
+
 - Each agent instance handles 1 concurrent interview
 - Deploy multiple workers for horizontal scaling
 - LiveKit Cloud handles WebRTC infrastructure
@@ -500,11 +556,13 @@ INFO:__main__:Voice agent started successfully - product_sense interview with in
 ## 🐛 Troubleshooting
 
 ### "Agent not connecting to LiveKit"
+
 - Verify `LIVEKIT_URL` format: `wss://your-project.livekit.cloud` (not `https://`)
 - Check API key/secret in `.env`
 - Ensure LiveKit project is active (check dashboard)
 
 ### "SSL Certificate Error" (macOS)
+
 ```bash
 # Install Python SSL certificates
 cd /Applications/Python\ 3.12/
@@ -512,6 +570,7 @@ cd /Applications/Python\ 3.12/
 ```
 
 ### "Module not found" errors
+
 ```bash
 # Reinstall dependencies
 pip install --upgrade pip
@@ -519,18 +578,22 @@ pip install -r requirements.txt
 ```
 
 ### "Agent joins but doesn't speak"
+
 - Check `OPENAI_API_KEY` and `CARTESIA_API_KEY` (if using direct API)
 - Verify model names: `deepgram/nova-3`, `openai/gpt-4.1-mini`, `cartesia/sonic-3:VOICE_ID`
 - Check agent logs for API errors
 
 ### "Silero VAD not loading"
+
 ```bash
 # Install missing plugin
 pip install livekit-plugins-silero
 ```
 
 ### "Prewarm function changes not taking effect"
+
 Restart agent manually (auto-reload doesn't catch prewarm changes):
+
 ```bash
 # Kill and restart
 python agent.py dev
@@ -541,16 +604,19 @@ python agent.py dev
 ## 📚 Resources
 
 ### LiveKit Documentation
+
 - [LiveKit Agents GitHub](https://github.com/livekit/agents) - Source code and examples
 - [LiveKit Agents Docs](https://docs.livekit.io/agents) - Official documentation
 - [LiveKit Dashboard](https://cloud.livekit.io) - Manage projects and monitor rooms
 
 ### Voice Provider Docs
+
 - [Deepgram Nova-3](https://developers.deepgram.com/docs/nova-3) - ASR documentation
 - [Cartesia Sonic 3](https://docs.cartesia.ai) - TTS and voice models
 - [OpenAI GPT-4.1-mini](https://platform.openai.com/docs/models/gpt-4-1-mini) - LLM documentation
 
 ### Related Files
+
 - [Root README](../README.md) - Full project setup and architecture
 - [CLAUDE.md](../.claude/CLAUDE.md) - Living operational document
 - [PRD.md](../.claude/PRD.md) - Product requirements
@@ -560,6 +626,7 @@ python agent.py dev
 ## 🤝 Contributing
 
 This is a solo project. For architectural decisions and conventions, see:
+
 - [`.claude/CLAUDE.md`](../.claude/CLAUDE.md) - Architecture decisions (ADRs)
 - [Code style guide](../.claude/CLAUDE.md#code-style--conventions)
 

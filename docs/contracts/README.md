@@ -5,7 +5,7 @@ This directory is for stable behavior and payload contracts that should survive 
 Good candidates:
 
 - interview session lifecycle;
-- LiveKit room metadata;
+- [LiveKit room metadata](./livekit-room-metadata.md);
 - transcript events;
 - feedback status and response shapes;
 - question-bank records;

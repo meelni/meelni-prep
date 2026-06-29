@@ -52,11 +52,12 @@ cd demo
 ./deploy.sh
 ```
 
-**Agent ID**: `CA_Wp8bi3bRroE2`
+**Dispatch name**: `LIVEKIT_DEMO_AGENT_NAME`
 
 ## Dependencies
 
 Uses shared modules from `../shared/`:
+
 - (Demo agent is self-contained, no shared dependencies currently)
 
 ## How It Works
@@ -74,6 +75,7 @@ Uses shared modules from `../shared/`:
 ## Customization
 
 To change demo behavior:
+
 - **Question selection**: Modify `build_demo_instructions()` in `agent.py`
 - **Time limits**: Adjust `WARNING_TIME` and `END_TIME` in `monitor_session_time()`
 - **Personality**: Edit base instructions in `build_demo_instructions()`
@@ -82,16 +84,19 @@ To change demo behavior:
 ## Troubleshooting
 
 **Agent doesn't join room**:
+
 - Check agent is deployed and active: `lk agent status`
-- Verify agent_name matches in WorkerOptions and frontend
+- Verify `LIVEKIT_DEMO_AGENT_NAME` matches the deployed agent dispatch name
 - Check LiveKit Cloud dashboard for agent logs
 
 **No audio from agent**:
+
 - Verify voice ID is valid for ElevenLabs
 - Check runtime logs: `lk agent logs`
 - Ensure greeting is being sent in entrypoint
 
 **Session cuts off early**:
+
 - Check time monitoring logic in `monitor_session_time()`
 - Verify timer starts correctly when `demo_agent.start_time` is set
 

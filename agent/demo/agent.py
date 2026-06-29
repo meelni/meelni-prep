@@ -6,6 +6,7 @@ Quick 5-minute product demo for landing page visitors
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -29,6 +30,14 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def get_required_env(name: str) -> str:
+    """Read required deployment config without embedding account-specific IDs."""
+    value = os.getenv(name)
+    if not value or not value.strip():
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value.strip()
 
 
 def build_demo_instructions(question: dict = None) -> str:
@@ -351,10 +360,14 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            prewarm_fnc=prewarm,
-            agent_name="CA_t3sKQEihMQ7x",  # Required for explicit dispatch
-        ),
-    )
+    is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
+    agent_name = get_required_env("LIVEKIT_DEMO_AGENT_NAME") if is_cloud else None
+
+    options = {
+        "entrypoint_fnc": entrypoint,
+        "prewarm_fnc": prewarm,
+    }
+    if agent_name:
+        options["agent_name"] = agent_name
+
+    cli.run_app(WorkerOptions(**options))

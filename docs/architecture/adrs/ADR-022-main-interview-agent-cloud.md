@@ -17,8 +17,6 @@
 - **Consequences**:
   - Both agents share LiveKit Cloud infrastructure
   - Agent dispatch is explicit via API (not automatic room joining)
-  - Local development still available with `python agent.py dev`
-  - Future migration to self-hosted possible if needed
-  - Agent now has `agent_name="CA_yawKG67rCMG4"` for explicit dispatch consistency
-
-<<<<<<< HEAD
+- Local development still available with `python agent.py dev`
+- Future migration to self-hosted possible if needed
+- Agent now has `agent_name="CA_yawKG67rCMG4"` for explicit dispatch consistency

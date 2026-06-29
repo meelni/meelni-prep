@@ -1,11 +1,9 @@
 import {
   buildInterviewRoomMetadata,
+  normalizeInterviewRuntimeConfig,
   type InterviewRuntimeConfig,
 } from "@/lib/internal/agent";
-import {
-  isValidRoundType,
-  type RoundType,
-} from "@/lib/internal/core";
+import { isValidRoundType, type RoundType } from "@/lib/internal/core";
 import {
   buildInterviewRoomName,
   createLiveKitInterviewProvider,
@@ -28,8 +26,6 @@ import {
   type ReserveCreditResult,
 } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
-
-export const INTERVIEW_AGENT_ID = "CA_yawKG67rCMG4";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   behavioral: ["Behavioral"],
@@ -60,6 +56,7 @@ export interface StartInterviewSessionInput {
   user: StartInterviewSessionUser;
   body: StartInterviewSessionBody;
   env: LiveKitEnvironment;
+  interviewAgentName: string;
 }
 
 export interface StartInterviewSessionDeps {
@@ -125,11 +122,14 @@ export async function startInterviewSessionWorkflow(
   }
 
   const { roundType, mode, role, persona, config, questionId } = parsed;
+  const runtimeConfig = normalizeInterviewRuntimeConfig(
+    config as Partial<InterviewRuntimeConfig>
+  );
 
   const question = await selectQuestion({
     roundType,
     questionId,
-    recentDays: getRecentDays(config),
+    recentDays: getRecentDays(runtimeConfig),
     deps,
   });
 
@@ -165,7 +165,7 @@ export async function startInterviewSessionWorkflow(
       mode,
       persona,
       livekitRoomName: roomName,
-      config,
+      config: runtimeConfig,
     });
 
     if (question.value) {
@@ -180,7 +180,7 @@ export async function startInterviewSessionWorkflow(
     session_id: session.id,
     round_type: roundType,
     mode,
-    config: config as InterviewRuntimeConfig,
+    config: runtimeConfig,
     question: question.value
       ? {
           id: question.value.id,
@@ -193,7 +193,7 @@ export async function startInterviewSessionWorkflow(
   });
 
   const livekitResult = await deps.livekitProvider.startInterviewRoom({
-    agentId: INTERVIEW_AGENT_ID,
+    agentName: input.interviewAgentName,
     identity: input.user.id,
     participantName: input.user.email || input.user.id,
     roomName,
@@ -309,17 +309,15 @@ function parseStartInterviewBody(
   };
 }
 
-async function reserveInterviewCredit(
-  {
-    userId,
-    reservationKey,
-    deps,
-  }: {
-    userId: string;
-    reservationKey: string;
-    deps: StartInterviewSessionDeps;
-  }
-): Promise<{ ok: true } | StartInterviewSessionErrorResult> {
+async function reserveInterviewCredit({
+  userId,
+  reservationKey,
+  deps,
+}: {
+  userId: string;
+  reservationKey: string;
+  deps: StartInterviewSessionDeps;
+}): Promise<{ ok: true } | StartInterviewSessionErrorResult> {
   try {
     await deps.reserveCredit({ userId, reservationKey });
     return { ok: true };
