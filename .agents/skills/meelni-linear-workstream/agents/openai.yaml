@@ -1,0 +1,4 @@
+interface:
+  display_name: "Meelni Linear Workstream"
+  short_description: "Track Meelni agent work streams in Linear."
+  default_prompt: "Set up and maintain Linear tracking for this Meelni work stream."
