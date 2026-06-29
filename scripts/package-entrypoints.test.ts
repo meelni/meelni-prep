@@ -8,7 +8,8 @@ import {
 import {
   buildFullConfig,
   calculateOverallScore,
-  canAccessInterviewType,
+  computeCreditEntitlements,
+  getBillingCatalogItem,
 } from "@meelni/core";
 import {
   buildInterviewRoomName,
@@ -25,7 +26,17 @@ test("workspace package entrypoints expose named contracts", () => {
       .duration,
     45
   );
-  assert.equal(canAccessInterviewType("free", "product_sense"), true);
+  const trial = getBillingCatalogItem("trial");
+  assert.equal(trial.includedCredits, 2);
+
+  const entitlements = computeCreditEntitlements({
+    activeOffer: "trial",
+    billingStatus: "trialing",
+    remainingCredits: 1,
+    nextCreditExpiresAt: null,
+    trialAvailable: false,
+  });
+  assert.equal(entitlements.canStartInterview, true);
   assert.equal(
     calculateOverallScore({
       clarity: 8,

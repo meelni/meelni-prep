@@ -5,15 +5,15 @@ import { createProductSenseInterviewFixture } from "@meelni/test-fixtures";
 
 import {
   ALL_INTERVIEW_TYPES,
+  BILLING_CATALOG,
+  BILLING_CATALOG_ORDER,
   buildFullConfig,
   calculateOverallScore,
-  canAccessInterviewType,
   clampScore,
-  getAllowedInterviewTypes,
+  computeCreditEntitlements,
+  type CreditEntitlementState,
+  getBillingCatalogItem,
   getDefaultDuration,
-  getLockedInterviewTypes,
-  getRequiredTier,
-  getRequiredTierBadge,
   isValidRoundType,
   validateScores,
 } from "./index";
@@ -36,7 +36,113 @@ test("buildFullConfig applies system defaults and smart duration", () => {
   );
 });
 
-test("interview type helpers preserve current PM interview access model", () => {
+test("billing catalog exposes accepted credit products", () => {
+  assert.deepEqual(BILLING_CATALOG_ORDER, [
+    "trial",
+    "interview_pass",
+    "starter",
+    "pro",
+    "admin_grant",
+  ]);
+
+  assert.equal(BILLING_CATALOG.trial.priceInCents, 0);
+  assert.equal(BILLING_CATALOG.trial.includedCredits, 2);
+  assert.equal(BILLING_CATALOG.trial.expiresAfterDays, 7);
+  assert.equal(BILLING_CATALOG.trial.rolloverCapCredits, 0);
+
+  assert.equal(BILLING_CATALOG.interview_pass.priceInCents, 900);
+  assert.equal(BILLING_CATALOG.interview_pass.includedCredits, 1);
+  assert.equal(BILLING_CATALOG.interview_pass.expiresAfterDays, 30);
+
+  assert.equal(BILLING_CATALOG.starter.priceInCents, 1900);
+  assert.equal(BILLING_CATALOG.starter.includedCredits, 4);
+  assert.equal(BILLING_CATALOG.starter.rolloverCapCredits, 4);
+  assert.equal(BILLING_CATALOG.starter.rolloverExpiresAfterDays, 60);
+
+  assert.equal(BILLING_CATALOG.pro.priceInCents, 4900);
+  assert.equal(BILLING_CATALOG.pro.includedCredits, 12);
+  assert.equal(BILLING_CATALOG.pro.rolloverCapCredits, 12);
+  assert.equal(BILLING_CATALOG.pro.rolloverExpiresAfterDays, 60);
+
+  assert.equal(getBillingCatalogItem("pro").displayName, "Pro");
+});
+
+test("credit entitlements unlock all PM rounds while credits remain", () => {
+  const trialState: CreditEntitlementState = {
+    activeOffer: "trial",
+    billingStatus: "trialing",
+    remainingCredits: 2,
+    nextCreditExpiresAt: "2026-07-06T00:00:00.000Z",
+    trialAvailable: false,
+  };
+
+  const entitlements = computeCreditEntitlements(trialState);
+
+  assert.equal(entitlements.canStartInterview, true);
+  assert.equal(entitlements.remainingCredits, 2);
+  assert.deepEqual(entitlements.allowedRoundTypes, ALL_INTERVIEW_TYPES);
+  assert.deepEqual(entitlements.lockedRoundTypes, []);
+  assert.equal(entitlements.creditExpiresAt, "2026-07-06T00:00:00.000Z");
+  assert.equal(entitlements.activeOffer, "trial");
+  assert.equal(entitlements.canBuyPass, true);
+  assert.equal(entitlements.canSubscribe, true);
+});
+
+test("credit entitlements block interview start when credits are exhausted", () => {
+  const exhaustedState: CreditEntitlementState = {
+    activeOffer: "starter",
+    billingStatus: "active",
+    remainingCredits: 0,
+    nextCreditExpiresAt: null,
+    trialAvailable: false,
+  };
+
+  const entitlements = computeCreditEntitlements(exhaustedState);
+
+  assert.equal(entitlements.canStartInterview, false);
+  assert.equal(entitlements.remainingCredits, 0);
+  assert.deepEqual(entitlements.allowedRoundTypes, []);
+  assert.deepEqual(entitlements.lockedRoundTypes, ALL_INTERVIEW_TYPES);
+  assert.equal(entitlements.noCreditReason, "no_credits_remaining");
+  assert.equal(entitlements.canBuyPass, true);
+  assert.equal(entitlements.canSubscribe, true);
+});
+
+test("credit entitlements expose trial CTA for users without active billing", () => {
+  const expiredState: CreditEntitlementState = {
+    activeOffer: null,
+    billingStatus: "none",
+    remainingCredits: 0,
+    nextCreditExpiresAt: null,
+    trialAvailable: true,
+  };
+
+  const entitlements = computeCreditEntitlements(expiredState);
+
+  assert.equal(entitlements.canStartInterview, false);
+  assert.equal(entitlements.trialAvailable, true);
+  assert.equal(entitlements.canBuyPass, true);
+  assert.equal(entitlements.canSubscribe, true);
+});
+
+test("admin credit state can start interviews when credits are present", () => {
+  const adminState: CreditEntitlementState = {
+    activeOffer: "admin_grant",
+    billingStatus: "admin",
+    remainingCredits: 5,
+    nextCreditExpiresAt: null,
+    trialAvailable: false,
+  };
+
+  const entitlements = computeCreditEntitlements(adminState);
+
+  assert.equal(entitlements.canStartInterview, true);
+  assert.deepEqual(entitlements.allowedRoundTypes, ALL_INTERVIEW_TYPES);
+  assert.equal(entitlements.canBuyPass, false);
+  assert.equal(entitlements.canSubscribe, false);
+});
+
+test("interview type helpers preserve PM round contracts", () => {
   assert.deepEqual(ALL_INTERVIEW_TYPES, [
     "product_sense",
     "behavioral",
@@ -46,16 +152,6 @@ test("interview type helpers preserve current PM interview access model", () => 
   assert.equal(isValidRoundType("product_sense"), true);
   assert.equal(isValidRoundType("sales"), false);
   assert.equal(getDefaultDuration("behavioral"), 30);
-  assert.equal(canAccessInterviewType("free", "product_sense"), true);
-  assert.equal(canAccessInterviewType("free", "execution"), false);
-  assert.deepEqual(getAllowedInterviewTypes("free"), ["product_sense"]);
-  assert.deepEqual(getLockedInterviewTypes("free"), [
-    "behavioral",
-    "execution",
-    "strategy",
-  ]);
-  assert.equal(getRequiredTier("strategy"), "pro");
-  assert.equal(getRequiredTierBadge("behavioral"), "Pro");
 });
 
 test("evaluation score helpers stay PM-rubric compatible", () => {

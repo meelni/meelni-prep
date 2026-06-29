@@ -9,7 +9,9 @@ Use this skill before meaningful Meelni work begins, then keep using it as progr
 
 ## Canonical Shape
 
-- Linear project: `meelni`.
+- Linear team: `Savi`.
+- Linear project: `Meelni`.
+- Project URL: `https://linear.app/saviiii/project/meelni-aae0fd4ee0f6`.
 - Project purpose: long-running container for Meelni product and engineering work.
 - Parent issue: one slice, epic, or outcome-oriented work stream.
 - Child issue: one PR-sized deliverable or clearly separable task.
@@ -21,12 +23,12 @@ Use this skill before meaningful Meelni work begins, then keep using it as progr
 
 1. Read `AGENTS.md`, `docs/templates/AGENT_TASK_INTAKE.md`, and the relevant Meelni skill for the slice.
 2. Use the Linear connector to resolve the workspace:
-   - list teams;
-   - list projects with query `meelni`;
+   - use team `Savi` and project `Meelni` as the canonical workspace;
+   - if discovery tools are available, confirm the `Meelni` project before writing;
    - list project issues that match the user request;
    - list team statuses and labels before choosing state or labels.
 3. If Linear needs reauthentication, stop Linear writes, tell the user, and continue only with local planning artifacts that do not pretend Linear was updated.
-4. If the `meelni` project does not exist, create it with the most relevant product/engineering team and this summary:
+4. If the `Meelni` project does not exist, create it in team `Savi` with this summary:
    `Shared tracking for Meelni product, engineering, design, and agent work streams.`
 5. Search for an existing parent slice issue. Reuse it when the intent matches. Create a new parent issue only when no suitable issue exists.
 6. Create or update child issues before editing code when the requested work is meaningful, cross-layer, or likely to produce a PR.
