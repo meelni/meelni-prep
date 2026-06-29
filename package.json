@@ -36,6 +36,7 @@
     "test:local": "node --test scripts/*.test.mjs",
     "test:fixtures": "tsx --test packages/test-fixtures/src/*.test.ts",
     "test:workflows": "tsx --test lib/workflows/*.test.ts",
+    "test:billing": "tsx --test lib/billing/*.test.ts",
     "test:packages": "tsx --test scripts/package-entrypoints.test.ts",
     "auth:doctor": "node scripts/auth-doctor.mjs",
     "auth:doctor:db": "node scripts/auth-doctor.mjs --db",
