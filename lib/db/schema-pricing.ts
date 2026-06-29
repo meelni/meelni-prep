@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, boolean, index, unique, check } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, integer, boolean, index, unique, check, jsonb } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 import { appUser } from "./schema";
@@ -126,6 +126,97 @@ export const usageRecord = pgTable("usage_record", {
   ),
 }));
 
+// ==================== Credit Ledger ====================
+
+export const creditGrant = pgTable("credit_grant", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+  catalogId: text("catalog_id").notNull(),
+  source: text("source").notNull(),
+  sourceId: text("source_id"),
+  idempotencyKey: text("idempotency_key").unique().notNull(),
+  originalCredits: integer("original_credits").notNull(),
+  remainingCredits: integer("remaining_credits").notNull(),
+  reservedCredits: integer("reserved_credits").default(0).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  rolloverEligible: boolean("rollover_eligible").default(false).notNull(),
+  rolloverSourceGrantId: uuid("rollover_source_grant_id"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index("credit_grant_user_id_idx").on(table.userId),
+  userExpiresIdx: index("credit_grant_user_expires_idx").on(table.userId, table.expiresAt),
+  catalogIdx: index("credit_grant_catalog_idx").on(table.catalogId),
+  sourceIdx: index("credit_grant_source_idx").on(table.source, table.sourceId),
+  sourceCheck: check(
+    "credit_grant_source_check",
+    sql`${table.source} IN ('trial', 'checkout', 'subscription_renewal', 'rollover', 'admin', 'refund', 'migration')`
+  ),
+  balanceCheck: check(
+    "credit_grant_balance_check",
+    sql`${table.originalCredits} >= 0 AND ${table.remainingCredits} >= 0 AND ${table.reservedCredits} >= 0 AND (${table.remainingCredits} + ${table.reservedCredits}) <= ${table.originalCredits}`
+  ),
+}));
+
+export const creditReservation = pgTable("credit_reservation", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+  reservationKey: text("reservation_key").unique().notNull(),
+  status: text("status").notNull().default("active"),
+  credits: integer("credits").default(1).notNull(),
+  sessionId: uuid("session_id"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index("credit_reservation_user_id_idx").on(table.userId),
+  statusExpiresIdx: index("credit_reservation_status_expires_idx").on(table.status, table.expiresAt),
+  sessionIdx: index("credit_reservation_session_idx").on(table.sessionId),
+  statusCheck: check(
+    "credit_reservation_status_check",
+    sql`${table.status} IN ('active', 'consumed', 'released', 'refunded', 'expired')`
+  ),
+  creditsCheck: check("credit_reservation_credits_check", sql`${table.credits} > 0`),
+}));
+
+export const creditReservationGrant = pgTable("credit_reservation_grant", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  reservationId: uuid("reservation_id").references(() => creditReservation.id, { onDelete: "cascade" }).notNull(),
+  grantId: uuid("grant_id").references(() => creditGrant.id, { onDelete: "cascade" }).notNull(),
+  credits: integer("credits").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  reservationGrantUnique: unique("credit_reservation_grant_uniq").on(table.reservationId, table.grantId),
+  grantIdx: index("credit_reservation_grant_grant_idx").on(table.grantId),
+  creditsCheck: check("credit_reservation_grant_credits_check", sql`${table.credits} > 0`),
+}));
+
+export const creditTransaction = pgTable("credit_transaction", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+  grantId: uuid("grant_id").references(() => creditGrant.id, { onDelete: "set null" }),
+  reservationId: uuid("reservation_id").references(() => creditReservation.id, { onDelete: "set null" }),
+  type: text("type").notNull(),
+  credits: integer("credits").notNull(),
+  idempotencyKey: text("idempotency_key").unique().notNull(),
+  sourceId: text("source_id"),
+  balanceAfter: integer("balance_after"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index("credit_transaction_user_id_idx").on(table.userId),
+  grantIdx: index("credit_transaction_grant_idx").on(table.grantId),
+  reservationIdx: index("credit_transaction_reservation_idx").on(table.reservationId),
+  typeIdx: index("credit_transaction_type_idx").on(table.type),
+  typeCheck: check(
+    "credit_transaction_type_check",
+    sql`${table.type} IN ('grant', 'reserve', 'consume', 'release', 'refund', 'expire', 'adjustment', 'rollover')`
+  ),
+  creditsCheck: check("credit_transaction_credits_check", sql`${table.credits} > 0`),
+}));
+
 // ==================== Payment History ====================
 
 /**
@@ -237,6 +328,50 @@ export const usageRecordRelations = relations(usageRecord, ({ one }) => ({
   user: one(appUser, {
     fields: [usageRecord.userId],
     references: [appUser.id],
+  }),
+}));
+
+export const creditGrantRelations = relations(creditGrant, ({ one, many }) => ({
+  user: one(appUser, {
+    fields: [creditGrant.userId],
+    references: [appUser.id],
+  }),
+  transactions: many(creditTransaction),
+  reservationGrants: many(creditReservationGrant),
+}));
+
+export const creditReservationRelations = relations(creditReservation, ({ one, many }) => ({
+  user: one(appUser, {
+    fields: [creditReservation.userId],
+    references: [appUser.id],
+  }),
+  allocations: many(creditReservationGrant),
+  transactions: many(creditTransaction),
+}));
+
+export const creditReservationGrantRelations = relations(creditReservationGrant, ({ one }) => ({
+  reservation: one(creditReservation, {
+    fields: [creditReservationGrant.reservationId],
+    references: [creditReservation.id],
+  }),
+  grant: one(creditGrant, {
+    fields: [creditReservationGrant.grantId],
+    references: [creditGrant.id],
+  }),
+}));
+
+export const creditTransactionRelations = relations(creditTransaction, ({ one }) => ({
+  user: one(appUser, {
+    fields: [creditTransaction.userId],
+    references: [appUser.id],
+  }),
+  grant: one(creditGrant, {
+    fields: [creditTransaction.grantId],
+    references: [creditGrant.id],
+  }),
+  reservation: one(creditReservation, {
+    fields: [creditTransaction.reservationId],
+    references: [creditReservation.id],
   }),
 }));
 
