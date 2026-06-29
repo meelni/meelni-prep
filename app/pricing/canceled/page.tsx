@@ -14,7 +14,7 @@ export default function CheckoutCanceled() {
         tone="muted"
         mark={<XCircle className="h-8 w-8" />}
         title="Checkout Canceled"
-        description="No worries! You can try again anytime you're ready."
+        description="No credits were added and no payment method was charged."
         action={
           <div className="flex w-full flex-col gap-3">
             <Button asChild size="lg" className="w-full">

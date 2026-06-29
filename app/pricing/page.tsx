@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { AlertCircle, ArrowLeft, Check } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Loader2 } from "lucide-react";
+import { useState } from "react";
 import {
   MarketingCtaCard,
   MarketingEyebrow,
@@ -12,7 +13,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Header } from "@/components/sections/header";
 import { AppSurface, StatusPill } from "@/components/ui/app-surface";
-import { siteConfig } from "@/lib/config";
+import {
+  getPublicPricingPlans,
+  type PublicPricingPlan,
+} from "@/lib/billing/catalog-presentation";
+import type { StripeCheckoutCatalogId } from "@/lib/billing/stripe-catalog";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { useFeatureFlag } from "@/lib/feature-flags";
 
@@ -24,6 +29,42 @@ const fadeInUp = {
 
 export default function PricingPage() {
   const reactivationEnabled = useFeatureFlag(FEATURE_GATES.meelniReactivationAccess);
+  const [loadingCatalogId, setLoadingCatalogId] = useState<string | null>(null);
+  const plans = getPublicPricingPlans();
+
+  async function handlePlanClick(plan: PublicPricingPlan) {
+    if (!plan.canPurchase) {
+      window.location.href = "/setup";
+      return;
+    }
+
+    setLoadingCatalogId(plan.catalogId);
+
+    try {
+      const response = await fetch("/api/checkout/create-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          catalogId: plan.catalogId as StripeCheckoutCatalogId,
+        }),
+      });
+
+      if (response.status === 401) {
+        window.location.href = "/auth/signup?redirectTo=/pricing";
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Unable to start checkout");
+      }
+
+      const data = await response.json();
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("Checkout start failed:", error);
+      setLoadingCatalogId(null);
+    }
+  }
 
   return (
     <MarketingPage>
@@ -44,7 +85,7 @@ export default function PricingPage() {
               title="Pricing"
               description={
                 reactivationEnabled
-                  ? "Choose a plan for mock interviews, question practice, and progress tracking."
+                  ? "Choose credits for full PM mock interviews. Every credit unlocks any round type."
                   : "Meelni is no longer accepting new subscriptions, but the public demo remains available from the homepage."
               }
             />
@@ -54,10 +95,10 @@ export default function PricingPage() {
 
       {reactivationEnabled ? (
         <section className="py-20">
-          <div className="container mx-auto grid max-w-5xl gap-4 px-4 md:grid-cols-2">
-            {siteConfig.pricing.map((plan, index) => (
+          <div className="container mx-auto grid max-w-6xl gap-4 px-4 md:grid-cols-2 xl:grid-cols-4">
+            {plans.map((plan, index) => (
               <motion.div
-                key={plan.name}
+                key={plan.catalogId}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.08 }}
@@ -78,16 +119,23 @@ export default function PricingPage() {
                   </p>
                   <div className="mt-6 flex items-end gap-1">
                     <span className="font-display text-4xl font-light">
-                      {plan.price.monthly}
+                      {plan.priceLabel}
                     </span>
                     <span className="pb-1 text-sm text-muted-foreground">
-                      /{plan.frequency.monthly}
+                      /{plan.frequencyLabel}
                     </span>
                   </div>
-                  <div className="mt-4 text-sm font-medium">{plan.usage}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {plan.usageDetail}
+                  <div className="mt-4 text-sm font-medium">
+                    {plan.creditLabel}
                   </div>
+                  <div className="text-xs text-muted-foreground">
+                    {plan.expirationLabel}
+                  </div>
+                  {plan.rolloverLabel && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {plan.rolloverLabel}
+                    </div>
+                  )}
                   <ul className="mt-6 flex-1 space-y-3 text-sm">
                     {plan.features.map((feature) => (
                       <li key={feature} className="flex gap-2">
@@ -96,8 +144,16 @@ export default function PricingPage() {
                       </li>
                     ))}
                   </ul>
-                  <Button asChild className="mt-6 w-full">
-                    <Link href="/dashboard">{plan.cta}</Link>
+                  <Button
+                    className="mt-6 w-full"
+                    onClick={() => void handlePlanClick(plan)}
+                    disabled={loadingCatalogId === plan.catalogId}
+                    variant={plan.canPurchase ? "default" : "outline"}
+                  >
+                    {loadingCatalogId === plan.catalogId && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    {plan.cta}
                   </Button>
                 </AppSurface>
               </motion.div>
