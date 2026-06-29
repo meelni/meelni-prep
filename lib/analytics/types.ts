@@ -50,6 +50,15 @@ export type AnalyticsEvent =
   | "chart_interacted"
   | "competency_radar_viewed"
   | "score_trend_analyzed"
+  // Billing Events
+  | "billing_credit_granted"
+  | "billing_credit_reserved"
+  | "billing_credit_consumed"
+  | "billing_credit_released"
+  | "billing_credit_refunded"
+  | "billing_credit_expired"
+  | "billing_credit_rollover_created"
+  | "billing_no_credits"
   // Performance Events
   | "page_performance"
   | "livekit_connection_established"
@@ -239,6 +248,50 @@ interface DashboardProperties {
 }
 
 /**
+ * Billing Event Properties
+ */
+interface BillingProperties {
+  billing_credit_granted: BillingCreditProperties;
+  billing_credit_reserved: BillingCreditProperties;
+  billing_credit_consumed: BillingCreditProperties;
+  billing_credit_released: BillingCreditProperties;
+  billing_credit_refunded: BillingCreditProperties;
+  billing_credit_expired: BillingCreditProperties;
+  billing_credit_rollover_created: BillingCreditProperties;
+  billing_no_credits: BillingCreditProperties;
+}
+
+interface BillingCreditProperties {
+  catalog_id?: "trial" | "interview_pass" | "starter" | "pro" | "admin_grant";
+  credit_source?:
+    | "trial"
+    | "checkout"
+    | "subscription_renewal"
+    | "rollover"
+    | "admin"
+    | "refund"
+    | "migration";
+  transaction_type?:
+    | "grant"
+    | "reserve"
+    | "consume"
+    | "release"
+    | "refund"
+    | "expire"
+    | "adjustment"
+    | "rollover";
+  credits?: number;
+  balance_after?: number | null;
+  idempotency_key?: string;
+  source_id?: string | null;
+  session_id?: string | null;
+  grant_id?: string | null;
+  reservation_id?: string | null;
+  reason?: string;
+  duplicate?: boolean;
+}
+
+/**
  * Performance Event Properties
  */
 interface PerformanceProperties {
@@ -273,6 +326,7 @@ export type EventProperties = LandingPageProperties &
   SetupProperties &
   InterviewProperties &
   DashboardProperties &
+  BillingProperties &
   PerformanceProperties;
 
 // =============================================================================
