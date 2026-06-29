@@ -93,6 +93,7 @@ export interface CreditLedgerStore {
     idempotencyKey: string
   ): Promise<LedgerCreditTransaction | null>;
   listSpendableGrants(userId: string, now: Date): Promise<LedgerCreditGrant[]>;
+  listUserGrants(userId: string): Promise<LedgerCreditGrant[]>;
   updateGrantBalances(
     grantId: string,
     balances: Pick<LedgerCreditGrant, "remainingCredits" | "reservedCredits">
@@ -114,4 +115,406 @@ export interface CreditLedgerStore {
   createTransaction(
     input: Omit<LedgerCreditTransaction, "id" | "createdAt">
   ): Promise<LedgerCreditTransaction>;
+}
+
+export interface CreditBalance {
+  availableCredits: number;
+  reservedCredits: number;
+  expiringCredits: number;
+  nextCreditExpiresAt: Date | null;
+}
+
+export interface CreateCreditLedgerServiceInput {
+  store: CreditLedgerStore;
+  now?: () => Date;
+}
+
+export interface GrantCreditsInput {
+  userId: string;
+  catalogId: BillingCatalogId;
+  source: CreditGrantSource;
+  idempotencyKey: string;
+  sourceId?: string | null;
+  includedCredits?: number;
+  expiresAt?: Date | null;
+  rolloverEligible?: boolean;
+  rolloverSourceGrantId?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface GrantCreditsResult {
+  grant: LedgerCreditGrant;
+}
+
+export interface ExpireCreditsResult {
+  expiredCredits: number;
+}
+
+export function createCreditLedgerService({
+  store,
+  now = () => new Date(),
+}: CreateCreditLedgerServiceInput) {
+  return {
+    async grantCredits(input: GrantCreditsInput): Promise<GrantCreditsResult> {
+      const existing = await store.findGrantByIdempotencyKey(
+        input.idempotencyKey
+      );
+
+      if (existing) {
+        return { grant: existing };
+      }
+
+      const catalogItem = BILLING_CATALOG[input.catalogId];
+      const issuedAt = now();
+      const includedCredits =
+        input.includedCredits ?? catalogItem.includedCredits;
+      const expiresAt =
+        input.expiresAt === undefined
+          ? addDaysOrNull(issuedAt, catalogItem.expiresAfterDays)
+          : input.expiresAt;
+      const grant = await store.createGrant({
+        userId: input.userId,
+        catalogId: input.catalogId,
+        source: input.source,
+        sourceId: input.sourceId ?? null,
+        idempotencyKey: input.idempotencyKey,
+        originalCredits: includedCredits,
+        remainingCredits: includedCredits,
+        reservedCredits: 0,
+        expiresAt,
+        rolloverEligible:
+          input.rolloverEligible ??
+          (catalogItem.kind === "subscription" && includedCredits > 0),
+        rolloverSourceGrantId: input.rolloverSourceGrantId ?? null,
+        metadata: input.metadata ?? null,
+      });
+
+      await store.createTransaction({
+        userId: input.userId,
+        grantId: grant.id,
+        reservationId: null,
+        type: "grant",
+        credits: includedCredits,
+        idempotencyKey: `${input.idempotencyKey}:grant`,
+        sourceId: input.sourceId ?? null,
+        balanceAfter: grant.remainingCredits,
+        metadata: input.metadata ?? null,
+      });
+
+      return { grant };
+    },
+
+    async getCreditBalance(userId: string): Promise<CreditBalance> {
+      const currentTime = now();
+      const activeGrants = (await store.listUserGrants(userId)).filter((grant) =>
+        isGrantActive(grant, currentTime)
+      );
+      const availableCredits = sumBy(
+        activeGrants,
+        (grant) => grant.remainingCredits
+      );
+      const reservedCredits = sumBy(
+        activeGrants,
+        (grant) => grant.reservedCredits
+      );
+      const nextCreditExpiresAt = getNextExpiration(activeGrants);
+      const expiringCredits = nextCreditExpiresAt
+        ? sumBy(
+            activeGrants.filter(
+              (grant) => grant.expiresAt?.getTime() === nextCreditExpiresAt.getTime()
+            ),
+            (grant) => grant.remainingCredits
+          )
+        : 0;
+
+      return {
+        availableCredits,
+        reservedCredits,
+        expiringCredits,
+        nextCreditExpiresAt,
+      };
+    },
+
+    async expireCredits(userId: string): Promise<ExpireCreditsResult> {
+      const currentTime = now();
+      let expiredCredits = 0;
+
+      for (const grant of await store.listUserGrants(userId)) {
+        if (!grant.expiresAt || grant.expiresAt > currentTime) {
+          continue;
+        }
+
+        if (grant.remainingCredits <= 0) {
+          continue;
+        }
+
+        expiredCredits += grant.remainingCredits;
+        const updatedGrant = await store.updateGrantBalances(grant.id, {
+          remainingCredits: 0,
+          reservedCredits: grant.reservedCredits,
+        });
+        await store.createTransaction({
+          userId,
+          grantId: grant.id,
+          reservationId: null,
+          type: "expire",
+          credits: grant.remainingCredits,
+          idempotencyKey: `expire:${grant.id}:${currentTime.toISOString()}`,
+          sourceId: null,
+          balanceAfter: updatedGrant.remainingCredits,
+          metadata: null,
+        });
+      }
+
+      return { expiredCredits };
+    },
+  };
+}
+
+export function createMemoryCreditLedgerStore(): CreditLedgerStore {
+  let nextId = 1;
+  const grants: LedgerCreditGrant[] = [];
+  const reservations: LedgerCreditReservation[] = [];
+  const allocations: LedgerReservationAllocation[] = [];
+  const transactions: LedgerCreditTransaction[] = [];
+
+  function id(prefix: string) {
+    return `${prefix}-${nextId++}`;
+  }
+
+  return {
+    async createGrant(input) {
+      const existing = grants.find(
+        (grant) => grant.idempotencyKey === input.idempotencyKey
+      );
+      if (existing) {
+        return cloneGrant(existing);
+      }
+
+      const timestamp = new Date();
+      const grant: LedgerCreditGrant = {
+        ...input,
+        id: id("grant"),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      grants.push(grant);
+      return cloneGrant(grant);
+    },
+
+    async findGrantByIdempotencyKey(idempotencyKey) {
+      const grant = grants.find(
+        (candidate) => candidate.idempotencyKey === idempotencyKey
+      );
+      return grant ? cloneGrant(grant) : null;
+    },
+
+    async findTransactionByIdempotencyKey(idempotencyKey) {
+      const transaction = transactions.find(
+        (candidate) => candidate.idempotencyKey === idempotencyKey
+      );
+      return transaction ? cloneTransaction(transaction) : null;
+    },
+
+    async listSpendableGrants(userId, currentTime) {
+      return grants
+        .filter(
+          (grant) =>
+            grant.userId === userId &&
+            isGrantActive(grant, currentTime) &&
+            grant.remainingCredits > 0
+        )
+        .sort(compareGrantSpendOrder)
+        .map(cloneGrant);
+    },
+
+    async listUserGrants(userId) {
+      return grants
+        .filter((grant) => grant.userId === userId)
+        .map(cloneGrant);
+    },
+
+    async updateGrantBalances(grantId, balances) {
+      const grant = grants.find((candidate) => candidate.id === grantId);
+      if (!grant) {
+        throw new Error(`Credit grant ${grantId} was not found`);
+      }
+
+      grant.remainingCredits = balances.remainingCredits;
+      grant.reservedCredits = balances.reservedCredits;
+      grant.updatedAt = new Date();
+
+      return cloneGrant(grant);
+    },
+
+    async createReservation(input) {
+      const existing = reservations.find(
+        (reservation) => reservation.reservationKey === input.reservationKey
+      );
+      if (existing) {
+        return cloneReservation(existing);
+      }
+
+      const timestamp = new Date();
+      const reservation: LedgerCreditReservation = {
+        ...input,
+        id: id("reservation"),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      reservations.push(reservation);
+      return cloneReservation(reservation);
+    },
+
+    async findReservationByKey(reservationKey) {
+      const reservation = reservations.find(
+        (candidate) => candidate.reservationKey === reservationKey
+      );
+      return reservation ? cloneReservation(reservation) : null;
+    },
+
+    async updateReservationStatus(reservationId, status) {
+      const reservation = reservations.find(
+        (candidate) => candidate.id === reservationId
+      );
+      if (!reservation) {
+        throw new Error(`Credit reservation ${reservationId} was not found`);
+      }
+
+      reservation.status = status;
+      reservation.updatedAt = new Date();
+
+      return cloneReservation(reservation);
+    },
+
+    async createAllocation(input) {
+      const allocation: LedgerReservationAllocation = {
+        ...input,
+        id: id("allocation"),
+        createdAt: new Date(),
+      };
+      allocations.push(allocation);
+      return cloneAllocation(allocation);
+    },
+
+    async listAllocations(reservationId) {
+      return allocations
+        .filter((allocation) => allocation.reservationId === reservationId)
+        .map(cloneAllocation);
+    },
+
+    async createTransaction(input) {
+      const existing = transactions.find(
+        (transaction) => transaction.idempotencyKey === input.idempotencyKey
+      );
+      if (existing) {
+        return cloneTransaction(existing);
+      }
+
+      const transaction: LedgerCreditTransaction = {
+        ...input,
+        id: id("transaction"),
+        createdAt: new Date(),
+      };
+      transactions.push(transaction);
+      return cloneTransaction(transaction);
+    },
+  };
+}
+
+function addDaysOrNull(date: Date, days: number | null): Date | null {
+  if (days === null) {
+    return null;
+  }
+
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function isGrantActive(grant: LedgerCreditGrant, currentTime: Date): boolean {
+  return grant.expiresAt === null || grant.expiresAt > currentTime;
+}
+
+function getNextExpiration(grants: LedgerCreditGrant[]): Date | null {
+  const expirations = grants
+    .filter((grant) => grant.remainingCredits > 0 && grant.expiresAt)
+    .map((grant) => grant.expiresAt as Date)
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  return expirations[0] ?? null;
+}
+
+function compareGrantSpendOrder(
+  left: LedgerCreditGrant,
+  right: LedgerCreditGrant
+): number {
+  if (left.expiresAt && right.expiresAt) {
+    return left.expiresAt.getTime() - right.expiresAt.getTime();
+  }
+
+  if (left.expiresAt) {
+    return -1;
+  }
+
+  if (right.expiresAt) {
+    return 1;
+  }
+
+  return left.createdAt.getTime() - right.createdAt.getTime();
+}
+
+function sumBy<T>(items: T[], read: (item: T) => number): number {
+  return items.reduce((total, item) => total + read(item), 0);
+}
+
+function cloneGrant(grant: LedgerCreditGrant): LedgerCreditGrant {
+  return {
+    ...grant,
+    expiresAt: cloneDateOrNull(grant.expiresAt),
+    createdAt: new Date(grant.createdAt),
+    updatedAt: new Date(grant.updatedAt),
+    metadata: cloneMetadata(grant.metadata),
+  };
+}
+
+function cloneReservation(
+  reservation: LedgerCreditReservation
+): LedgerCreditReservation {
+  return {
+    ...reservation,
+    expiresAt: new Date(reservation.expiresAt),
+    createdAt: new Date(reservation.createdAt),
+    updatedAt: new Date(reservation.updatedAt),
+    metadata: cloneMetadata(reservation.metadata),
+  };
+}
+
+function cloneAllocation(
+  allocation: LedgerReservationAllocation
+): LedgerReservationAllocation {
+  return {
+    ...allocation,
+    createdAt: new Date(allocation.createdAt),
+  };
+}
+
+function cloneTransaction(
+  transaction: LedgerCreditTransaction
+): LedgerCreditTransaction {
+  return {
+    ...transaction,
+    createdAt: new Date(transaction.createdAt),
+    metadata: cloneMetadata(transaction.metadata),
+  };
+}
+
+function cloneDateOrNull(date: Date | null): Date | null {
+  return date ? new Date(date) : null;
+}
+
+function cloneMetadata(
+  metadata: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  return metadata ? { ...metadata } : null;
 }
