@@ -52,6 +52,10 @@ export function trackBillingNoCredits(input: BillingCreditEventInput) {
 }
 
 function trackBillingEvent(event: string, input: BillingCreditEventInput) {
+  if (!process.env.POSTHOG_SERVER_KEY && !process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+    return;
+  }
+
   trackServerEvent(
     event,
     {
