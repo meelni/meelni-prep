@@ -3,12 +3,8 @@ import {
   type InterviewRuntimeConfig,
 } from "@/lib/internal/agent";
 import {
-  canAccessInterviewType,
-  getAllowedInterviewTypes,
-  INTERVIEW_TYPE_LABELS,
   isValidRoundType,
   type RoundType,
-  type SubscriptionTier,
 } from "@/lib/internal/core";
 import {
   buildInterviewRoomName,
@@ -25,8 +21,13 @@ import {
   recordQuestionUsage,
 } from "@/lib/db/questions";
 import { upsertUser } from "@/lib/db/users";
-import { incrementUsage } from "@/lib/services/usage-service";
-import { getUserTier } from "@/lib/services/permissions-service.server";
+import {
+  createCreditLedgerService,
+  type CompleteReservationInput,
+  type ReserveCreditInput,
+  type ReserveCreditResult,
+} from "@/lib/billing/credits";
+import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 
 export const INTERVIEW_AGENT_ID = "CA_yawKG67rCMG4";
 
@@ -74,13 +75,9 @@ export interface StartInterviewSessionDeps {
     days: number,
     questionTypes: string[]
   ): Promise<QuestionBankRecord | null>;
-  getUserTier(userId: string): Promise<SubscriptionTier>;
-  incrementUsage(userId: string): Promise<{
-    success: boolean;
-    reason?: string;
-    currentUsage?: number;
-    limit?: number;
-  }>;
+  reserveCredit(input: ReserveCreditInput): Promise<ReserveCreditResult>;
+  consumeReservation(input: CompleteReservationInput): Promise<unknown>;
+  releaseReservation(input: CompleteReservationInput): Promise<unknown>;
   livekitProvider: LiveKitInterviewProvider;
   recordQuestionUsage(sessionId: string, questionId: string): Promise<void>;
   upsertUser(input: {
@@ -129,16 +126,6 @@ export async function startInterviewSessionWorkflow(
 
   const { roundType, mode, role, persona, config, questionId } = parsed;
 
-  const access = await checkInterviewTypeAccess(input.user.id, roundType, deps);
-  if (!access.ok) {
-    return access;
-  }
-
-  const quota = await incrementInterviewUsage(input.user.id, deps);
-  if (!quota.ok) {
-    return quota;
-  }
-
   const question = await selectQuestion({
     roundType,
     questionId,
@@ -157,18 +144,36 @@ export async function startInterviewSessionWorkflow(
   });
 
   const roomName = deps.buildRoomName();
-  const session = await deps.createSession({
+  const reservationKey = `interview-start:${input.user.id}:${roomName}`;
+  const reservation = await reserveInterviewCredit({
     userId: input.user.id,
-    role,
-    roundType,
-    mode,
-    persona,
-    livekitRoomName: roomName,
-    config,
+    reservationKey,
+    deps,
   });
 
-  if (question.value) {
-    await deps.recordQuestionUsage(session.id, question.value.id);
+  if (!reservation.ok) {
+    return reservation;
+  }
+
+  let session: Awaited<ReturnType<StartInterviewSessionDeps["createSession"]>>;
+
+  try {
+    session = await deps.createSession({
+      userId: input.user.id,
+      role,
+      roundType,
+      mode,
+      persona,
+      livekitRoomName: roomName,
+      config,
+    });
+
+    if (question.value) {
+      await deps.recordQuestionUsage(session.id, question.value.id);
+    }
+  } catch (error) {
+    await releaseInterviewCredit(reservationKey, deps);
+    throw error;
   }
 
   const roomMetadata = buildInterviewRoomMetadata({
@@ -198,10 +203,29 @@ export async function startInterviewSessionWorkflow(
 
   if (!livekitResult.ok) {
     console.error("LiveKit interview start error:", livekitResult.error);
+    await releaseInterviewCredit(reservationKey, deps);
     return {
       ok: false,
       status: livekitResult.error.retryable ? 503 : 500,
       body: { error: "Failed to start voice interview" },
+    };
+  }
+
+  try {
+    await deps.consumeReservation({
+      reservationKey,
+      idempotencyKey: `consume:${reservationKey}`,
+    });
+  } catch (error) {
+    console.error("Credit consume error:", getErrorMessage(error));
+    return {
+      ok: false,
+      status: 503,
+      body: {
+        error: "service_unavailable",
+        message:
+          "Unable to confirm interview credit usage. Please try again in a moment.",
+      },
     };
   }
 
@@ -225,14 +249,19 @@ export async function startInterviewSessionWorkflow(
 }
 
 export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
+  const creditLedger = createCreditLedgerService({
+    store: createDrizzleCreditLedgerStore(),
+  });
+
   return {
     buildRoomName: buildInterviewRoomName,
     createSession,
     getQuestionById,
     getRandomQuestion,
     getRandomRecentQuestion,
-    getUserTier,
-    incrementUsage,
+    reserveCredit: creditLedger.reserveCredit,
+    consumeReservation: creditLedger.consumeReservation,
+    releaseReservation: creditLedger.releaseReservation,
     livekitProvider: createLiveKitInterviewProvider(),
     recordQuestionUsage,
     upsertUser,
@@ -280,77 +309,57 @@ function parseStartInterviewBody(
   };
 }
 
-async function checkInterviewTypeAccess(
-  userId: string,
-  roundType: RoundType,
-  deps: StartInterviewSessionDeps
+async function reserveInterviewCredit(
+  {
+    userId,
+    reservationKey,
+    deps,
+  }: {
+    userId: string;
+    reservationKey: string;
+    deps: StartInterviewSessionDeps;
+  }
 ): Promise<{ ok: true } | StartInterviewSessionErrorResult> {
   try {
-    const userTier = await deps.getUserTier(userId);
-
-    if (canAccessInterviewType(userTier, roundType)) {
-      return { ok: true };
+    await deps.reserveCredit({ userId, reservationKey });
+    return { ok: true };
+  } catch (error) {
+    if (isInsufficientCreditsError(error)) {
+      return {
+        ok: false,
+        status: 402,
+        body: {
+          error: "no_credits_remaining",
+          message: "You need an interview credit to start a full interview.",
+          upgradeUrl: "/pricing",
+        },
+      };
     }
 
-    return {
-      ok: false,
-      status: 403,
-      body: {
-        error: "interview_type_locked",
-        message: `${INTERVIEW_TYPE_LABELS[roundType]} interviews require a Pro subscription. Upgrade to unlock all 4 interview types.`,
-        currentTier: userTier,
-        requestedType: roundType,
-        allowedTypes: getAllowedInterviewTypes(userTier),
-        upgradeUrl: "/pricing",
-      },
-    };
-  } catch (error) {
-    console.error("Permissions check error:", getErrorMessage(error));
+    console.error("Credit reservation error:", getErrorMessage(error));
     return {
       ok: false,
       status: 503,
       body: {
         error: "service_unavailable",
         message:
-          "Unable to verify interview type access. Please try again in a moment.",
+          "Unable to verify interview credits. Please try again in a moment.",
       },
     };
   }
 }
 
-async function incrementInterviewUsage(
-  userId: string,
+async function releaseInterviewCredit(
+  reservationKey: string,
   deps: StartInterviewSessionDeps
-): Promise<{ ok: true } | StartInterviewSessionErrorResult> {
+) {
   try {
-    const incrementResult = await deps.incrementUsage(userId);
-
-    if (incrementResult.success) {
-      return { ok: true };
-    }
-
-    return {
-      ok: false,
-      status: 403,
-      body: {
-        error: "quota_exceeded",
-        message: incrementResult.reason || "Monthly interview quota exceeded",
-        currentUsage: incrementResult.currentUsage || 0,
-        limit: incrementResult.limit || 0,
-        upgradeUrl: "/pricing",
-      },
-    };
+    await deps.releaseReservation({
+      reservationKey,
+      idempotencyKey: `release:${reservationKey}`,
+    });
   } catch (error) {
-    console.error("Quota check error:", getErrorMessage(error));
-    return {
-      ok: false,
-      status: 503,
-      body: {
-        error: "service_unavailable",
-        message:
-          "Unable to verify interview quota. Please try again in a moment.",
-      },
-    };
+    console.error("Credit release error:", getErrorMessage(error));
   }
 }
 
@@ -439,6 +448,10 @@ function logQuestion(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isInsufficientCreditsError(error: unknown): boolean {
+  return error instanceof Error && error.message === "insufficient_credits";
 }
 
 function getErrorMessage(error: unknown): string {
