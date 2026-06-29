@@ -10,10 +10,18 @@ import {
   paymentHistory,
   stripeEventLog,
   stripeCustomerMapping,
+  creditGrant,
+  creditReservation,
+  creditReservationGrant,
+  creditTransaction,
   subscriptionRelations as pricingSubscriptionRelations,
   usageRecordRelations as pricingUsageRecordRelations,
   paymentHistoryRelations as pricingPaymentHistoryRelations,
   stripeCustomerMappingRelations as pricingStripeCustomerMappingRelations,
+  creditGrantRelations as pricingCreditGrantRelations,
+  creditReservationRelations as pricingCreditReservationRelations,
+  creditReservationGrantRelations as pricingCreditReservationGrantRelations,
+  creditTransactionRelations as pricingCreditTransactionRelations,
 } from "./schema-pricing";
 
 // Re-export pricing tables
@@ -23,6 +31,10 @@ export {
   paymentHistory,
   stripeEventLog,
   stripeCustomerMapping,
+  creditGrant,
+  creditReservation,
+  creditReservationGrant,
+  creditTransaction,
 };
 
 // Users
@@ -380,6 +392,9 @@ export const appUserRelations = relations(appUser, ({ many, one }) => ({
   }),
   usageRecords: many(usageRecord),
   paymentHistory: many(paymentHistory),
+  creditGrants: many(creditGrant),
+  creditReservations: many(creditReservation),
+  creditTransactions: many(creditTransaction),
   // MOTI-002: Achievements
   achievements: many(userAchievement),
 }));
@@ -435,4 +450,8 @@ export {
   pricingUsageRecordRelations as usageRecordRelations,
   pricingPaymentHistoryRelations as paymentHistoryRelations,
   pricingStripeCustomerMappingRelations as stripeCustomerMappingRelations,
+  pricingCreditGrantRelations as creditGrantRelations,
+  pricingCreditReservationRelations as creditReservationRelations,
+  pricingCreditReservationGrantRelations as creditReservationGrantRelations,
+  pricingCreditTransactionRelations as creditTransactionRelations,
 };
