@@ -17,8 +17,6 @@ import {
 } from "@/components/dashboard/dashboard-surface";
 import {
   Lock,
-  Crown,
-  CheckCircle2,
   Sparkles,
   MessageSquare,
   TrendingUp,
@@ -26,6 +24,7 @@ import {
 } from "lucide-react";
 import { INTERVIEW_TYPE_LABELS, type RoundType } from "@meelni/core";
 import { track, AnalyticsEvents } from "@/lib/analytics";
+import { getPublicPricingPlans } from "@/lib/billing/catalog-presentation";
 
 interface TierUpgradeModalProps {
   isOpen: boolean;
@@ -43,6 +42,7 @@ export function TierUpgradeModal({
   message,
 }: TierUpgradeModalProps) {
   const router = useRouter();
+  const purchasePlans = getPublicPricingPlans().filter((plan) => plan.canPurchase);
 
   // Track when modal is viewed
   useEffect(() => {
@@ -80,27 +80,26 @@ export function TierUpgradeModal({
 
   const requestedTypeLabel = INTERVIEW_TYPE_LABELS[requestedType];
 
-  const proFeatures = [
+  const creditFeatures = [
     {
       icon: Sparkles,
       title: "All 4 Interview Types",
-      description: "Product Sense, Behavioral, Execution, and Strategy",
+      description: "Every credit works across the full PM round set",
     },
     {
       icon: MessageSquare,
-      title: "Unlimited Interviews",
-      description: "Practice as much as you want with no monthly limits",
+      title: "Full Interview Sessions",
+      description: "One credit starts one complete AI mock interview",
     },
     {
       icon: TrendingUp,
-      title: "2,879 Curated Questions",
-      description:
-        "Access our complete database of real PM interview questions",
+      title: "Monthly Credit Plans",
+      description: "Starter and Pro include rollover for unused credits",
     },
     {
       icon: Zap,
-      title: "Advanced Feedback",
-      description: "Detailed framework rubrics and improvement drills",
+      title: "One-Time Pass",
+      description: "Buy a single interview credit without a subscription",
     },
   ];
 
@@ -114,10 +113,10 @@ export function TierUpgradeModal({
             </div>
             <div>
               <DialogTitle className="font-display text-2xl font-light">
-                Unlock {requestedTypeLabel} Interviews
+                Use Credits for {requestedTypeLabel}
               </DialogTitle>
               <DialogDescription className="text-muted-foreground mt-1">
-                {message}
+                {message || "You need 1 credit to start a full interview."}
               </DialogDescription>
             </div>
           </div>
@@ -145,14 +144,14 @@ export function TierUpgradeModal({
           {/* Pro Features */}
           <div>
             <div className="mb-4 flex items-center gap-2">
-              <Crown className="text-primary h-5 w-5" />
+              <Sparkles className="text-primary h-5 w-5" />
               <h3 className="font-display text-foreground text-lg font-light">
-                Upgrade to Pro for Full Access
+                Choose a Credit Option
               </h3>
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {proFeatures.map((feature, index) => (
+              {creditFeatures.map((feature, index) => (
                 <div
                   key={index}
                   className="border-border bg-card/50 hover:bg-card flex items-start gap-3 rounded-lg border p-3 transition-colors"
@@ -174,19 +173,28 @@ export function TierUpgradeModal({
           </div>
 
           {/* Pricing Highlight */}
-          <DashboardActionCard
-            variant="accent"
-            eyebrow="Pro Plan"
-            icon={<Crown className="h-5 w-5" />}
-            title="Full access for $29/month"
-            description="Or save 31% with annual billing."
-            action={<CheckCircle2 className="text-primary h-8 w-8" />}
-          >
-            <div className="flex items-baseline gap-2">
-              <span className="text-foreground text-3xl font-bold">$29</span>
-              <span className="text-muted-foreground">/month</span>
-            </div>
-          </DashboardActionCard>
+          <div className="grid gap-3 md:grid-cols-3">
+            {purchasePlans.map((plan) => (
+              <DashboardActionCard
+                key={plan.catalogId}
+                variant={plan.popular ? "accent" : "default"}
+                eyebrow={plan.name}
+                icon={<Sparkles className="h-5 w-5" />}
+                title={plan.creditLabel}
+                description={plan.rolloverLabel ?? plan.expirationLabel}
+                action={<Sparkles className="text-primary h-6 w-6" />}
+              >
+                <div className="flex items-baseline gap-1">
+                  <span className="text-foreground text-2xl font-bold">
+                    {plan.priceLabel}
+                  </span>
+                  <span className="text-muted-foreground text-sm">
+                    /{plan.frequencyLabel}
+                  </span>
+                </div>
+              </DashboardActionCard>
+            ))}
+          </div>
         </div>
 
         <DialogFooter className="flex-col gap-3 sm:flex-row">
@@ -201,7 +209,7 @@ export function TierUpgradeModal({
             onClick={handleViewPlans}
             className="bg-primary text-primary-foreground hover:bg-primary/90 order-1 w-full sm:order-2 sm:w-auto"
           >
-            <Crown className="mr-2 h-4 w-4" />
+            <Sparkles className="mr-2 h-4 w-4" />
             View Plans
           </Button>
         </DialogFooter>
