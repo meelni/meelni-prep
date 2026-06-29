@@ -133,3 +133,45 @@ test("release and refund restore credits exactly once", async () => {
   });
   assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 1);
 });
+
+test("rolloverSubscriptionCredits respects plan cap and 60 day expiration", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-06-29T00:00:00.000Z"),
+  });
+
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "pro",
+    source: "subscription_renewal",
+    idempotencyKey: "renewal:1",
+    includedCredits: 12,
+  });
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "pro",
+    source: "subscription_renewal",
+    idempotencyKey: "renewal:2",
+    includedCredits: 12,
+  });
+
+  const rollover = await ledger.rolloverSubscriptionCredits({
+    userId: "user-1",
+    catalogId: "pro",
+    idempotencyKey: "rollover:2026-07",
+  });
+
+  assert.equal(rollover.rolledCredits, 12);
+  assert.equal(
+    rollover.grant?.expiresAt?.toISOString(),
+    "2026-08-28T00:00:00.000Z"
+  );
+
+  const duplicate = await ledger.rolloverSubscriptionCredits({
+    userId: "user-1",
+    catalogId: "pro",
+    idempotencyKey: "rollover:2026-07",
+  });
+  assert.equal(duplicate.grant?.id, rollover.grant?.id);
+});

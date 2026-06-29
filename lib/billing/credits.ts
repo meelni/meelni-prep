@@ -173,6 +173,19 @@ export interface CompleteReservationResult {
   reservation: LedgerCreditReservation;
 }
 
+export interface RolloverSubscriptionCreditsInput {
+  userId: string;
+  catalogId: BillingCatalogId;
+  idempotencyKey: string;
+  sourceId?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface RolloverSubscriptionCreditsResult {
+  rolledCredits: number;
+  grant: LedgerCreditGrant | null;
+}
+
 export function createCreditLedgerService({
   store,
   now = () => new Date(),
@@ -410,6 +423,109 @@ export function createCreditLedgerService({
           reservedCredits: grant.reservedCredits,
         }),
       });
+    },
+
+    async rolloverSubscriptionCredits(
+      input: RolloverSubscriptionCreditsInput
+    ): Promise<RolloverSubscriptionCreditsResult> {
+      const existing = await store.findGrantByIdempotencyKey(
+        input.idempotencyKey
+      );
+      if (existing) {
+        return {
+          rolledCredits: existing.originalCredits,
+          grant: existing,
+        };
+      }
+
+      const catalogItem = BILLING_CATALOG[input.catalogId];
+      const rolloverCapCredits = catalogItem.rolloverCapCredits;
+      const rolloverExpiresAfterDays = catalogItem.rolloverExpiresAfterDays;
+
+      if (rolloverCapCredits <= 0 || rolloverExpiresAfterDays === null) {
+        return { rolledCredits: 0, grant: null };
+      }
+
+      const currentTime = now();
+      const sourceGrants = (await store.listUserGrants(input.userId))
+        .filter(
+          (grant) =>
+            grant.catalogId === input.catalogId &&
+            grant.rolloverEligible &&
+            isGrantActive(grant, currentTime) &&
+            grant.remainingCredits > 0
+        )
+        .sort(compareGrantSpendOrder);
+      let remainingToRoll = Math.min(
+        rolloverCapCredits,
+        sumBy(sourceGrants, (grant) => grant.remainingCredits)
+      );
+
+      if (remainingToRoll === 0) {
+        return { rolledCredits: 0, grant: null };
+      }
+
+      const rolledCredits = remainingToRoll;
+      const rolloverGrant = await store.createGrant({
+        userId: input.userId,
+        catalogId: input.catalogId,
+        source: "rollover",
+        sourceId: input.sourceId ?? null,
+        idempotencyKey: input.idempotencyKey,
+        originalCredits: rolledCredits,
+        remainingCredits: rolledCredits,
+        reservedCredits: 0,
+        expiresAt: addDaysOrNull(currentTime, rolloverExpiresAfterDays),
+        rolloverEligible: false,
+        rolloverSourceGrantId: sourceGrants[0]?.id ?? null,
+        metadata: input.metadata ?? null,
+      });
+
+      for (const sourceGrant of sourceGrants) {
+        if (remainingToRoll === 0) {
+          break;
+        }
+
+        const creditsFromGrant = Math.min(
+          sourceGrant.remainingCredits,
+          remainingToRoll
+        );
+        const updatedGrant = await store.updateGrantBalances(sourceGrant.id, {
+          remainingCredits: sourceGrant.remainingCredits - creditsFromGrant,
+          reservedCredits: sourceGrant.reservedCredits,
+        });
+        await store.createTransaction({
+          userId: input.userId,
+          grantId: sourceGrant.id,
+          reservationId: null,
+          type: "rollover",
+          credits: creditsFromGrant,
+          idempotencyKey: `${input.idempotencyKey}:source:${sourceGrant.id}`,
+          sourceId: input.sourceId ?? null,
+          balanceAfter: updatedGrant.remainingCredits,
+          metadata: {
+            rolloverGrantId: rolloverGrant.id,
+          },
+        });
+        remainingToRoll -= creditsFromGrant;
+      }
+
+      await store.createTransaction({
+        userId: input.userId,
+        grantId: rolloverGrant.id,
+        reservationId: null,
+        type: "rollover",
+        credits: rolledCredits,
+        idempotencyKey: `${input.idempotencyKey}:grant`,
+        sourceId: input.sourceId ?? null,
+        balanceAfter: rolloverGrant.remainingCredits,
+        metadata: input.metadata ?? null,
+      });
+
+      return {
+        rolledCredits,
+        grant: rolloverGrant,
+      };
     },
   };
 }
