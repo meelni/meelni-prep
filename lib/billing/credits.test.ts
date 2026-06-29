@@ -5,6 +5,16 @@ import {
   createCreditLedgerService,
   createMemoryCreditLedgerStore,
 } from "./credits";
+import { createDrizzleCreditLedgerStore } from "./credit-ledger-store";
+
+test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", () => {
+  const store = createDrizzleCreditLedgerStore();
+
+  assert.equal(typeof store.createGrant, "function");
+  assert.equal(typeof store.reserveCredit, "undefined");
+  assert.equal(typeof store.createReservation, "function");
+  assert.equal(typeof store.createTransaction, "function");
+});
 
 test("grantCredits is idempotent and balance ignores expired grants", async () => {
   const store = createMemoryCreditLedgerStore();
