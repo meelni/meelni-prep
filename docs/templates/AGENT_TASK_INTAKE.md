@@ -14,6 +14,13 @@ Use this template before meaningful agent-authored product or engineering change
 - Secondary slices:
 - Relevant skill(s):
 
+## Linear Tracking
+
+- Project:
+- Parent slice issue:
+- Child deliverable issue:
+- Current Linear state:
+
 ## Scope
 
 - In scope:
