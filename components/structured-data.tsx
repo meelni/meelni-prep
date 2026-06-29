@@ -1,4 +1,5 @@
 import Script from "next/script";
+import { getStructuredDataOffers } from "@/lib/billing/catalog-presentation";
 
 /**
  * Structured Data (JSON-LD) for SEO
@@ -35,10 +36,10 @@ export function StructuredData() {
       },
       {
         "@type": "Question",
-        name: "Is Meelni free to use?",
+        name: "How does Meelni pricing work?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Yes! Meelni offers 3 free AI mock interviews per month with access to Product Sense questions. For unlimited interviews and all 4 interview types, you can upgrade to Pro for $29/month or $249/year with a 7-day free trial.",
+          text: "Meelni uses interview credits. The trial includes 2 credits for 7 days, Interview Pass includes 1 credit for $9, Starter includes 4 monthly credits for $19/month, and Pro includes 12 monthly credits for $49/month. One credit unlocks one full PM mock interview across any supported round type.",
         },
       },
       {
@@ -98,33 +99,7 @@ export function StructuredData() {
     name: "Meelni",
     applicationCategory: "EducationalApplication",
     operatingSystem: "Web Browser",
-    offers: [
-      {
-        "@type": "Offer",
-        name: "Free Plan",
-        price: "0",
-        priceCurrency: "USD",
-        description: "3 AI mock interviews per month with Product Sense questions",
-      },
-      {
-        "@type": "Offer",
-        name: "Pro Plan (Monthly)",
-        price: "29",
-        priceCurrency: "USD",
-        description:
-          "Unlimited AI mock interviews with all 4 interview types and 2,879+ questions",
-        priceValidUntil: "2025-12-31",
-      },
-      {
-        "@type": "Offer",
-        name: "Pro Plan (Yearly)",
-        price: "249",
-        priceCurrency: "USD",
-        description:
-          "Unlimited AI mock interviews with all 4 interview types and 2,879+ questions (yearly)",
-        priceValidUntil: "2025-12-31",
-      },
-    ],
+    offers: getStructuredDataOffers(),
     aggregateRating: {
       "@type": "AggregateRating",
       ratingValue: "4.8",

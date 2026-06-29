@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { Section } from "@/components/section";
 import { motion } from "framer-motion";
-import { AlertCircle, Check } from "lucide-react";
+import { AlertCircle, Check, Loader2 } from "lucide-react";
+import { useState } from "react";
 import {
   AppSurface,
   AppSurfaceDescription,
@@ -11,12 +11,52 @@ import {
   StatusPill,
 } from "@/components/ui/app-surface";
 import { Button } from "@/components/ui/button";
-import { siteConfig } from "@/lib/config";
+import {
+  getPublicPricingPlans,
+  type PublicPricingPlan,
+} from "@/lib/billing/catalog-presentation";
+import type { StripeCheckoutCatalogId } from "@/lib/billing/stripe-catalog";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { useFeatureFlag } from "@/lib/feature-flags";
 
 export function Pricing() {
   const reactivationEnabled = useFeatureFlag(FEATURE_GATES.meelniReactivationAccess);
+  const [loadingCatalogId, setLoadingCatalogId] = useState<string | null>(null);
+  const plans = getPublicPricingPlans();
+
+  async function handlePlanClick(plan: PublicPricingPlan) {
+    if (!plan.canPurchase) {
+      window.location.href = "/setup";
+      return;
+    }
+
+    setLoadingCatalogId(plan.catalogId);
+
+    try {
+      const response = await fetch("/api/checkout/create-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          catalogId: plan.catalogId as StripeCheckoutCatalogId,
+        }),
+      });
+
+      if (response.status === 401) {
+        window.location.href = "/auth/signup?redirectTo=/pricing";
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Unable to start checkout");
+      }
+
+      const data = await response.json();
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("Checkout start failed:", error);
+      setLoadingCatalogId(null);
+    }
+  }
 
   return (
     <Section id="pricing">
@@ -36,10 +76,10 @@ export function Pricing() {
           </div>
 
           {reactivationEnabled ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {siteConfig.pricing.map((plan, index) => (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {plans.map((plan, index) => (
                 <motion.div
-                  key={plan.name}
+                  key={plan.catalogId}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
@@ -63,16 +103,23 @@ export function Pricing() {
                     </AppSurfaceDescription>
                     <div className="mt-6 flex items-end gap-1">
                       <span className="font-display text-4xl font-light">
-                        {plan.price.monthly}
+                        {plan.priceLabel}
                       </span>
                       <span className="pb-1 text-sm text-muted-foreground">
-                        /{plan.frequency.monthly}
+                        /{plan.frequencyLabel}
                       </span>
                     </div>
-                    <div className="mt-4 text-sm font-medium">{plan.usage}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {plan.usageDetail}
+                    <div className="mt-4 text-sm font-medium">
+                      {plan.creditLabel}
                     </div>
+                    <div className="text-xs text-muted-foreground">
+                      {plan.expirationLabel}
+                    </div>
+                    {plan.rolloverLabel && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {plan.rolloverLabel}
+                      </div>
+                    )}
                     <ul className="mt-6 flex-1 space-y-3 text-sm">
                       {plan.features.map((feature) => (
                         <li key={feature} className="flex gap-2">
@@ -81,8 +128,16 @@ export function Pricing() {
                         </li>
                       ))}
                     </ul>
-                    <Button asChild className="mt-6 w-full">
-                      <Link href="/dashboard">{plan.cta}</Link>
+                    <Button
+                      className="mt-6 w-full"
+                      onClick={() => void handlePlanClick(plan)}
+                      disabled={loadingCatalogId === plan.catalogId}
+                      variant={plan.canPurchase ? "default" : "outline"}
+                    >
+                      {loadingCatalogId === plan.catalogId && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      {plan.cta}
                     </Button>
                   </AppSurface>
                 </motion.div>

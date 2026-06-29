@@ -9,13 +9,10 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import {
   buildFullConfig,
-  getAllowedInterviewTypes,
-  getLockedInterviewTypes,
   INTERVIEW_TYPE_LABELS,
   type DifficultyLevel,
   type MinimalInterviewConfig,
   type RoundType,
-  type SubscriptionTier,
 } from "@meelni/core";
 import { validateSessionStart } from "@/lib/validation/setup-schema";
 import { RoundSelector } from "./components/round-selector";
@@ -53,11 +50,13 @@ export function SetupContent() {
     type: string;
   } | null>(null);
 
-  // Subscription/tier state
-  // Initialize with free tier defaults to prevent flash of unlocked content
-  const [userTier, setUserTier] = useState<SubscriptionTier>("free");
-  const [lockedTypes, setLockedTypes] = useState<RoundType[]>(getLockedInterviewTypes("free"));
-  const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
+  // Credit state is informational; session start remains the source of truth.
+  const [creditBalance, setCreditBalance] = useState<{
+    availableCredits: number;
+    reservedCredits: number;
+    nextCreditExpiresAt: string | null;
+  } | null>(null);
+  const [isLoadingCredits, setIsLoadingCredits] = useState(true);
 
   // Quota exceeded modal state
   const [showQuotaModal, setShowQuotaModal] = useState(false);
@@ -137,34 +136,31 @@ export function SetupContent() {
     fetchQuestion();
   }, [searchParams]);
 
-  // Fetch user subscription on mount
+  // Fetch user credit balance on mount
   useEffect(() => {
-    async function fetchSubscription() {
+    async function fetchCredits() {
       if (!user) return;
 
       try {
-        const response = await fetch("/api/billing/subscription");
+        const response = await fetch("/api/billing/credits");
         if (!response.ok) {
-          console.error("Failed to fetch subscription");
-          // Default to free tier on error
-          setUserTier("free");
-          setLockedTypes(getLockedInterviewTypes("free"));
-          setIsLoadingSubscription(false);
+          console.error("Failed to fetch credits");
+          setIsLoadingCredits(false);
           return;
         }
 
         const data = await response.json();
-        const tier = (data.tier || "free") as SubscriptionTier;
+        setCreditBalance({
+          availableCredits: data.availableCredits ?? 0,
+          reservedCredits: data.reservedCredits ?? 0,
+          nextCreditExpiresAt: data.nextCreditExpiresAt ?? null,
+        });
+        setIsLoadingCredits(false);
 
-        setUserTier(tier);
-        setLockedTypes(getLockedInterviewTypes(tier));
-        setIsLoadingSubscription(false);
-
-        // Track setup page view with tier context
+        // Track setup page view with credit context
         track(AnalyticsEvents.SETUP_PAGE_VIEWED, {
-          userTier: tier,
-          allowedTypesCount: getAllowedInterviewTypes(tier).length,
-          lockedTypesCount: getLockedInterviewTypes(tier).length,
+          availableCredits: data.availableCredits ?? 0,
+          reservedCredits: data.reservedCredits ?? 0,
         });
 
         // Track setup started
@@ -174,32 +170,13 @@ export function SetupContent() {
           user_authenticated: true,
         });
       } catch (error) {
-        console.error("Error fetching subscription:", error);
-        // Default to free tier on error
-        setUserTier("free");
-        setLockedTypes(getLockedInterviewTypes("free"));
-        setIsLoadingSubscription(false);
+        console.error("Error fetching credits:", error);
+        setIsLoadingCredits(false);
       }
     }
 
-    fetchSubscription();
+    fetchCredits();
   }, [user]);
-
-  const handleLockedTypeClick = (requestedType: RoundType) => {
-    // Track which locked interview type was clicked
-    track(AnalyticsEvents.LOCKED_TYPE_CLICKED, {
-      interviewType: requestedType,
-      interviewTypeLabel: INTERVIEW_TYPE_LABELS[requestedType],
-      currentTier: userTier,
-    });
-
-    setTierUpgradeInfo({
-      requestedType,
-      currentTier: userTier,
-      message: `${INTERVIEW_TYPE_LABELS[requestedType]} interviews require a Pro subscription. Upgrade to unlock all 4 interview types.`,
-    });
-    setShowTierUpgradeModal(true);
-  };
 
   const handleStartInterview = async () => {
     if (!roundType || !difficulty) {
@@ -278,19 +255,25 @@ export function SetupContent() {
           setTierUpgradeInfo({
             requestedType: roundType,
             currentTier: errorData.currentTier || "free",
-            message: errorData.message || "This interview type requires a Pro subscription",
+            message:
+              errorData.message ||
+              "This interview type requires an interview credit.",
           });
           setShowTierUpgradeModal(true);
           setIsCreatingSession(false);
           return;
         }
 
-        // Handle quota exceeded error
-        if (response.status === 403 && errorData.error === "quota_exceeded") {
+        // Handle no-credit errors from the credit ledger.
+        if (
+          (response.status === 402 &&
+            errorData.error === "no_credits_remaining") ||
+          (response.status === 403 && errorData.error === "quota_exceeded")
+        ) {
           setQuotaInfo({
-            currentUsage: errorData.currentUsage || 0,
-            limit: errorData.limit || 0,
-            resetDate: null, // Will fetch from subscription endpoint if needed
+            currentUsage: creditBalance?.availableCredits ?? 0,
+            limit: 1,
+            resetDate: creditBalance?.nextCreditExpiresAt ?? null,
           });
           setShowQuotaModal(true);
           setIsCreatingSession(false);
@@ -445,7 +428,7 @@ export function SetupContent() {
                     Select the type of interview you want to practice
                   </p>
                 </div>
-                {isLoadingSubscription ? (
+                {isLoadingCredits ? (
                   <div className="grid gap-3 md:grid-cols-2">
                     {[1, 2, 3, 4].map((i) => (
                       <div
@@ -455,18 +438,28 @@ export function SetupContent() {
                     ))}
                   </div>
                 ) : (
-                  <RoundSelector
-                    selected={roundType}
-                    onSelect={(type) => {
-                      // Save first selection as default for comparison later
-                      if (defaultRoundType.current === null) {
-                        defaultRoundType.current = type;
-                      }
-                      setRoundType(type);
-                    }}
-                    lockedTypes={lockedTypes}
-                    onLockedClick={handleLockedTypeClick}
-                  />
+                  <div className="space-y-3">
+                    {creditBalance && (
+                      <p className="text-sm text-muted-foreground">
+                        {creditBalance.availableCredits} interview{" "}
+                        {creditBalance.availableCredits === 1
+                          ? "credit"
+                          : "credits"}{" "}
+                        available. Each full interview uses 1 credit.
+                      </p>
+                    )}
+                    <RoundSelector
+                      selected={roundType}
+                      onSelect={(type) => {
+                        // Save first selection as default for comparison later
+                        if (defaultRoundType.current === null) {
+                          defaultRoundType.current = type;
+                        }
+                        setRoundType(type);
+                      }}
+                      lockedTypes={[]}
+                    />
+                  </div>
                 )}
               </motion.div>
             )}
