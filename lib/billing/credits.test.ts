@@ -44,3 +44,92 @@ test("grantCredits is idempotent and balance ignores expired grants", async () =
   assert.equal((await later.expireCredits("user-1")).expiredCredits, 2);
   assert.equal((await later.getCreditBalance("user-1")).availableCredits, 0);
 });
+
+test("reserveCredit is idempotent and consumes oldest expiring grants first", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-06-29T00:00:00.000Z"),
+  });
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "trial",
+    source: "trial",
+    idempotencyKey: "trial:user-1",
+  });
+
+  const first = await ledger.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:1",
+    sessionId: "session-1",
+  });
+  const second = await ledger.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:1",
+    sessionId: "session-1",
+  });
+
+  assert.equal(first.reservation.id, second.reservation.id);
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 1);
+  assert.equal((await ledger.getCreditBalance("user-1")).reservedCredits, 1);
+
+  await ledger.consumeReservation({
+    reservationKey: "session:1",
+    idempotencyKey: "consume:session:1",
+  });
+  await ledger.consumeReservation({
+    reservationKey: "session:1",
+    idempotencyKey: "consume:session:1",
+  });
+
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 1);
+  assert.equal((await ledger.getCreditBalance("user-1")).reservedCredits, 0);
+});
+
+test("release and refund restore credits exactly once", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-06-29T00:00:00.000Z"),
+  });
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: "checkout:pi_1",
+  });
+
+  await ledger.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:release",
+    sessionId: "session-release",
+  });
+  await ledger.releaseReservation({
+    reservationKey: "session:release",
+    idempotencyKey: "release:session:release",
+  });
+  await ledger.releaseReservation({
+    reservationKey: "session:release",
+    idempotencyKey: "release:session:release",
+  });
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 1);
+
+  await ledger.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:refund",
+    sessionId: "session-refund",
+  });
+  await ledger.consumeReservation({
+    reservationKey: "session:refund",
+    idempotencyKey: "consume:session:refund",
+  });
+  await ledger.refundReservation({
+    reservationKey: "session:refund",
+    idempotencyKey: "refund:session:refund",
+  });
+  await ledger.refundReservation({
+    reservationKey: "session:refund",
+    idempotencyKey: "refund:session:refund",
+  });
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 1);
+});

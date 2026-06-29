@@ -150,6 +150,29 @@ export interface ExpireCreditsResult {
   expiredCredits: number;
 }
 
+export interface ReserveCreditInput {
+  userId: string;
+  reservationKey: string;
+  sessionId?: string | null;
+  credits?: number;
+  expiresAt?: Date;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface ReserveCreditResult {
+  reservation: LedgerCreditReservation;
+  allocations: LedgerReservationAllocation[];
+}
+
+export interface CompleteReservationInput {
+  reservationKey: string;
+  idempotencyKey: string;
+}
+
+export interface CompleteReservationResult {
+  reservation: LedgerCreditReservation;
+}
+
 export function createCreditLedgerService({
   store,
   now = () => new Date(),
@@ -267,6 +290,126 @@ export function createCreditLedgerService({
       }
 
       return { expiredCredits };
+    },
+
+    async reserveCredit(input: ReserveCreditInput): Promise<ReserveCreditResult> {
+      const existing = await store.findReservationByKey(input.reservationKey);
+      if (existing) {
+        return {
+          reservation: existing,
+          allocations: await store.listAllocations(existing.id),
+        };
+      }
+
+      const requestedCredits = input.credits ?? 1;
+      const spendableGrants = await store.listSpendableGrants(
+        input.userId,
+        now()
+      );
+      const availableCredits = sumBy(
+        spendableGrants,
+        (grant) => grant.remainingCredits
+      );
+
+      if (availableCredits < requestedCredits) {
+        throw new Error("insufficient_credits");
+      }
+
+      const reservation = await store.createReservation({
+        userId: input.userId,
+        reservationKey: input.reservationKey,
+        status: "active",
+        credits: requestedCredits,
+        sessionId: input.sessionId ?? null,
+        expiresAt: input.expiresAt ?? addMinutes(now(), 30),
+        metadata: input.metadata ?? null,
+      });
+      const allocations: LedgerReservationAllocation[] = [];
+      let remainingToReserve = requestedCredits;
+
+      for (const grant of spendableGrants) {
+        if (remainingToReserve === 0) {
+          break;
+        }
+
+        const reservedFromGrant = Math.min(
+          grant.remainingCredits,
+          remainingToReserve
+        );
+        const updatedGrant = await store.updateGrantBalances(grant.id, {
+          remainingCredits: grant.remainingCredits - reservedFromGrant,
+          reservedCredits: grant.reservedCredits + reservedFromGrant,
+        });
+        allocations.push(
+          await store.createAllocation({
+            reservationId: reservation.id,
+            grantId: grant.id,
+            credits: reservedFromGrant,
+          })
+        );
+        await store.createTransaction({
+          userId: input.userId,
+          grantId: grant.id,
+          reservationId: reservation.id,
+          type: "reserve",
+          credits: reservedFromGrant,
+          idempotencyKey: `reserve:${input.reservationKey}:${grant.id}`,
+          sourceId: input.sessionId ?? null,
+          balanceAfter: updatedGrant.remainingCredits,
+          metadata: input.metadata ?? null,
+        });
+        remainingToReserve -= reservedFromGrant;
+      }
+
+      return { reservation, allocations };
+    },
+
+    async consumeReservation(
+      input: CompleteReservationInput
+    ): Promise<CompleteReservationResult> {
+      return completeReservation({
+        store,
+        reservationKey: input.reservationKey,
+        idempotencyKey: input.idempotencyKey,
+        nextStatus: "consumed",
+        transactionType: "consume",
+        applyAllocation: ({ grant, credits }) => ({
+          remainingCredits: grant.remainingCredits,
+          reservedCredits: grant.reservedCredits - credits,
+        }),
+      });
+    },
+
+    async releaseReservation(
+      input: CompleteReservationInput
+    ): Promise<CompleteReservationResult> {
+      return completeReservation({
+        store,
+        reservationKey: input.reservationKey,
+        idempotencyKey: input.idempotencyKey,
+        nextStatus: "released",
+        transactionType: "release",
+        applyAllocation: ({ grant, credits }) => ({
+          remainingCredits: grant.remainingCredits + credits,
+          reservedCredits: grant.reservedCredits - credits,
+        }),
+      });
+    },
+
+    async refundReservation(
+      input: CompleteReservationInput
+    ): Promise<CompleteReservationResult> {
+      return completeReservation({
+        store,
+        reservationKey: input.reservationKey,
+        idempotencyKey: input.idempotencyKey,
+        nextStatus: "refunded",
+        transactionType: "refund",
+        applyAllocation: ({ grant, credits }) => ({
+          remainingCredits: grant.remainingCredits + credits,
+          reservedCredits: grant.reservedCredits,
+        }),
+      });
     },
   };
 }
@@ -430,6 +573,101 @@ function addDaysOrNull(date: Date, days: number | null): Date | null {
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + days);
   return next;
+}
+
+function addMinutes(date: Date, minutes: number): Date {
+  return new Date(date.getTime() + minutes * 60 * 1000);
+}
+
+async function completeReservation({
+  store,
+  reservationKey,
+  idempotencyKey,
+  nextStatus,
+  transactionType,
+  applyAllocation,
+}: {
+  store: CreditLedgerStore;
+  reservationKey: string;
+  idempotencyKey: string;
+  nextStatus: CreditReservationStatus;
+  transactionType: CreditTransactionType;
+  applyAllocation(input: {
+    grant: LedgerCreditGrant;
+    credits: number;
+  }): Pick<LedgerCreditGrant, "remainingCredits" | "reservedCredits">;
+}): Promise<CompleteReservationResult> {
+  const existingTransaction = await store.findTransactionByIdempotencyKey(
+    idempotencyKey
+  );
+  const reservation = await store.findReservationByKey(reservationKey);
+
+  if (!reservation) {
+    throw new Error(`Credit reservation ${reservationKey} was not found`);
+  }
+
+  if (existingTransaction || reservation.status === nextStatus) {
+    return { reservation };
+  }
+
+  if (!canTransitionReservation(reservation.status, nextStatus)) {
+    throw new Error(
+      `Cannot move credit reservation ${reservationKey} from ${reservation.status} to ${nextStatus}`
+    );
+  }
+
+  const allocations = await store.listAllocations(reservation.id);
+  const userGrants = await store.listUserGrants(reservation.userId);
+
+  for (const allocation of allocations) {
+    const grant = userGrants.find((candidate) => candidate.id === allocation.grantId);
+    if (!grant) {
+      throw new Error(`Credit grant ${allocation.grantId} was not found`);
+    }
+
+    await store.updateGrantBalances(
+      allocation.grantId,
+      applyAllocation({ grant, credits: allocation.credits })
+    );
+  }
+
+  const updatedReservation = await store.updateReservationStatus(
+    reservation.id,
+    nextStatus
+  );
+  await store.createTransaction({
+    userId: reservation.userId,
+    grantId: null,
+    reservationId: reservation.id,
+    type: transactionType,
+    credits: reservation.credits,
+    idempotencyKey,
+    sourceId: reservation.sessionId,
+    balanceAfter: null,
+    metadata: {
+      allocations: allocations.map((allocation) => ({
+        grantId: allocation.grantId,
+        credits: allocation.credits,
+      })),
+    },
+  });
+
+  return { reservation: updatedReservation };
+}
+
+function canTransitionReservation(
+  currentStatus: CreditReservationStatus,
+  nextStatus: CreditReservationStatus
+): boolean {
+  if (currentStatus === "active") {
+    return nextStatus === "consumed" || nextStatus === "released";
+  }
+
+  if (currentStatus === "consumed") {
+    return nextStatus === "refunded";
+  }
+
+  return false;
 }
 
 function isGrantActive(grant: LedgerCreditGrant, currentTime: Date): boolean {
