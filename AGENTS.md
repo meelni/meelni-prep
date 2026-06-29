@@ -9,6 +9,7 @@ Canonical instructions for Codex, Claude, and other coding agents working in thi
 - Keep changes scoped to PM interview prep unless the user explicitly asks to broaden the product.
 - Do not commit secrets, real customer data, recordings, transcripts, API keys, database URLs, or provider credentials.
 - Preserve the current root Next.js app until the staged `apps/web` migration is ready.
+- Local secrets live in gitignored `.env.local` files. Do not ask the user to paste API keys into chat. If env vars are missing, run `npm run env:pull` to refresh Preview envs into `.env.local`, or `npm run env:pull:production` for `.env.production.local`; Vercel sensitive values may pull as empty quoted strings, so server-only secrets may still need to be restored from the original provider dashboard or rotated.
 
 ## Product
 

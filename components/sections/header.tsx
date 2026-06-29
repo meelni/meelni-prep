@@ -1,11 +1,17 @@
 "use client";
 
-import { Icons } from "@/components/icons";
-import { siteConfig } from "@/lib/config";
-import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { motion } from "framer-motion";
+import { Icons } from "@/components/icons";
+import { MobileDrawer } from "@/components/mobile-drawer";
+import { FeatureFlagDevMenu } from "@/components/feature-flags/feature-flag-dev-menu";
+import { buttonVariants } from "@/components/ui/button";
+import { useAuth } from "@/app/providers/auth-provider";
+import { siteConfig } from "@/lib/config";
+import { FEATURE_GATES } from "@/lib/feature-flags/gates";
+import { useFeatureFlag } from "@/lib/feature-flags";
+import { cn } from "@/lib/utils";
 
 const navLinks = [
   { name: "Features", href: "#features" },
@@ -18,6 +24,8 @@ const navLinks = [
 export function Header() {
   const [activeSection, setActiveSection] = useState("");
   const [isScrolled, setIsScrolled] = useState(false);
+  const reactivationEnabled = useFeatureFlag(FEATURE_GATES.meelniReactivationAccess);
+  const { user } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -63,22 +71,25 @@ export function Header() {
     >
       <div className="container max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-full">
-          {/* Logo */}
-          <Link
-            href="/"
-            className="relative flex items-center gap-3 group"
-          >
-            <motion.div
-              initial={{ rotate: -180, opacity: 0 }}
-              animate={{ rotate: 0, opacity: 1 }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          <div className="flex min-w-0 items-center gap-2">
+            {/* Logo */}
+            <Link
+              href="/"
+              className="relative flex items-center gap-3 group"
             >
-              <Icons.logo className="w-7 h-7 text-primary transition-transform duration-300 group-hover:scale-110" />
-            </motion.div>
-            <span className="font-sans text-xl font-semibold text-foreground">
-              {siteConfig.name}
-            </span>
-          </Link>
+              <motion.div
+                initial={{ rotate: -180, opacity: 0 }}
+                animate={{ rotate: 0, opacity: 1 }}
+                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <Icons.logo className="w-7 h-7 text-primary transition-transform duration-300 group-hover:scale-110" />
+              </motion.div>
+              <span className="font-sans text-xl font-semibold text-foreground">
+                {siteConfig.name}
+              </span>
+            </Link>
+            <FeatureFlagDevMenu gateEnabled={reactivationEnabled} />
+          </div>
 
           {/* Desktop Navigation */}
           <nav className="hidden lg:flex items-center gap-8">
@@ -126,9 +137,48 @@ export function Header() {
             })}
           </nav>
 
-          {/* Auth buttons hidden - service discontinued */}
+          {reactivationEnabled && (
+            <div className="hidden items-center gap-2 lg:flex">
+              {user ? (
+                <Link
+                  href="/dashboard"
+                  className={cn(
+                    buttonVariants({ variant: "default", size: "sm" }),
+                    "rounded-full px-4"
+                  )}
+                >
+                  Dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/auth/signin"
+                    className={cn(
+                      buttonVariants({ variant: "ghost", size: "sm" }),
+                      "rounded-full px-4"
+                    )}
+                  >
+                    Log In
+                  </Link>
+                  <Link
+                    href="/dashboard"
+                    className={cn(
+                      buttonVariants({ variant: "default", size: "sm" }),
+                      "rounded-full px-4 text-primary-foreground"
+                    )}
+                  >
+                    {siteConfig.cta}
+                  </Link>
+                </>
+              )}
+            </div>
+          )}
 
-          {/* Mobile menu hidden - service discontinued */}
+          {reactivationEnabled && (
+            <div className="flex items-center lg:hidden">
+              <MobileDrawer />
+            </div>
+          )}
         </div>
       </div>
 
