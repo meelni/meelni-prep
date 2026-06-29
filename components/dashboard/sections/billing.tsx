@@ -68,7 +68,9 @@ interface Payment {
 
 export function BillingSection() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
-  const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(null);
+  const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(
+    null
+  );
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadingSubscription, setLoadingSubscription] = useState(true);
   const [loadingCredits, setLoadingCredits] = useState(true);
@@ -264,12 +266,16 @@ export function BillingSection() {
     }
   }
 
-  function getPlanForTier(tier: Subscription["tier"]): PublicPricingPlan | null {
+  function getPlanForTier(
+    tier: Subscription["tier"]
+  ): PublicPricingPlan | null {
     if (tier === "free") {
       return null;
     }
 
-    return getPublicPricingPlans().find((plan) => plan.catalogId === tier) ?? null;
+    return (
+      getPublicPricingPlans().find((plan) => plan.catalogId === tier) ?? null
+    );
   }
 
   // Loading state
@@ -484,7 +490,7 @@ export function BillingSection() {
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border border-border bg-card/50 p-3">
+                  <div className="border-border bg-card/50 rounded-lg border p-3">
                     <div className="text-muted-foreground text-xs">
                       Reserved
                     </div>
@@ -492,7 +498,7 @@ export function BillingSection() {
                       {creditBalance.reservedCredits}
                     </div>
                   </div>
-                  <div className="rounded-lg border border-border bg-card/50 p-3">
+                  <div className="border-border bg-card/50 rounded-lg border p-3">
                     <div className="text-muted-foreground text-xs">
                       Expiring next
                     </div>
@@ -516,7 +522,7 @@ export function BillingSection() {
                   {creditBalance.grants.map((grant) => (
                     <div
                       key={grant.id}
-                      className="rounded-lg border border-border bg-card/40 p-3"
+                      className="border-border bg-card/40 rounded-lg border p-3"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -652,14 +658,14 @@ export function BillingSection() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-overlay/50 backdrop-blur-sm"
+            className="bg-overlay/50 absolute inset-0 backdrop-blur-sm"
             onClick={() => setShowCancelModal(false)}
           />
 
           {/* Modal */}
           <div className="border-border bg-card relative mx-4 w-full max-w-md space-y-6 rounded-xl border p-6 shadow-xl">
             <div className="space-y-2">
-              <h3 className="font-display text-foreground text-xl font-light">
+              <h3 className="text-dashboard-foreground text-lg leading-6 font-semibold">
                 Cancel Subscription
               </h3>
               <p className="text-muted-foreground text-sm">
