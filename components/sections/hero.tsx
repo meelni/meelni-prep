@@ -15,41 +15,12 @@ const ease = [0.16, 1, 0.3, 1] as const;
 function HeroTitles() {
   return (
     <div className="flex w-full max-w-3xl flex-col pt-8">
-      <motion.h1
-        className="text-display-hero text-foreground text-left tracking-tight"
-        initial={{ filter: "blur(10px)", opacity: 0, y: 50 }}
-        animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
-        transition={{
-          duration: 1,
-          ease,
-          staggerChildren: 0.2,
-        }}
-      >
-        <motion.span
-          className="from-foreground via-foreground/90 to-foreground/80 inline-block bg-gradient-to-r bg-clip-text text-balance text-transparent"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{
-            duration: 0.8,
-            delay: 0.5,
-            ease,
-          }}
-        >
-          {siteConfig.hero.title}
-        </motion.span>
-      </motion.h1>
-      <motion.p
-        className="text-body text-muted-foreground mt-4 max-w-xl text-left text-balance"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{
-          delay: 0.6,
-          duration: 0.8,
-          ease,
-        }}
-      >
+      <h1 className="text-display-hero text-foreground text-left text-balance">
+        {siteConfig.hero.title}
+      </h1>
+      <p className="text-body text-muted-foreground mt-4 max-w-xl text-left text-balance">
         {siteConfig.hero.description}
-      </motion.p>
+      </p>
     </div>
   );
 }

@@ -14,7 +14,7 @@ import { useFeatureFlag } from "@/lib/feature-flags";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { name: "Features", href: "#features" },
+  { name: "Features", href: "/#features" },
   { name: "Questions", href: "/explore" },
   { name: "Companies", href: "/companies" },
   { name: "Pricing", href: "/pricing" },
@@ -23,15 +23,13 @@ const navLinks = [
 
 export function Header() {
   const [activeSection, setActiveSection] = useState("");
-  const [isScrolled, setIsScrolled] = useState(false);
-  const reactivationEnabled = useFeatureFlag(FEATURE_GATES.meelniReactivationAccess);
+  const reactivationEnabled = useFeatureFlag(
+    FEATURE_GATES.meelniReactivationAccess
+  );
   const { user } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-
-      // Determine active section
       const sections = ["features", "blog"];
       const current = sections.find((section) => {
         const element = document.getElementById(section);
@@ -48,7 +46,10 @@ export function Header() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const handleSmoothScroll = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+  const handleSmoothScroll = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    href: string
+  ) => {
     e.preventDefault();
     const target = document.querySelector(href);
     if (target) {
@@ -58,33 +59,25 @@ export function Header() {
 
   return (
     <motion.header
-      className={cn(
-        "sticky top-0 z-50 w-full transition-all duration-300",
-        isScrolled
-          ? "h-14 bg-background/95 backdrop-blur-xl border-b border-border/60"
-          : "h-16 bg-background/80 backdrop-blur-lg"
-      )}
+      className="border-border/70 bg-background/95 sticky top-0 z-50 h-[72px] w-full border-b backdrop-blur-xl"
       initial={{ y: -100 }}
       animate={{ y: 0 }}
       exit={{ y: -100, opacity: 0 }}
       transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div className="container max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-full">
+      <div className="mx-auto h-full max-w-[1216px] px-6">
+        <div className="flex h-full items-center justify-between">
           <div className="flex min-w-0 items-center gap-2">
             {/* Logo */}
-            <Link
-              href="/"
-              className="relative flex items-center gap-3 group"
-            >
+            <Link href="/" className="group relative flex items-center gap-3">
               <motion.div
                 initial={{ rotate: -180, opacity: 0 }}
                 animate={{ rotate: 0, opacity: 1 }}
                 transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
               >
-                <Icons.logo className="w-7 h-7 text-primary transition-transform duration-300 group-hover:scale-110" />
+                <Icons.logo className="text-primary h-7 w-7 transition-transform duration-300 group-hover:scale-105" />
               </motion.div>
-              <span className="font-sans text-xl font-semibold text-foreground">
+              <span className="text-foreground font-sans text-xl font-semibold">
                 {siteConfig.name}
               </span>
             </Link>
@@ -92,7 +85,7 @@ export function Header() {
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center gap-8">
+          <nav className="hidden items-center gap-8 lg:flex">
             {navLinks.map((link, index) => {
               const isActive = activeSection === link.href.slice(1);
               const isExternalRoute = link.href.startsWith("/");
@@ -106,25 +99,25 @@ export function Header() {
                   {isExternalRoute ? (
                     <Link
                       href={link.href}
-                      className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 group"
+                      className="group text-muted-foreground hover:text-foreground relative text-sm font-medium transition-colors duration-200"
                     >
                       {link.name}
 
                       {/* Underline animation */}
-                      <span className="absolute -bottom-1 left-1/2 h-0.5 bg-primary transition-all duration-300 ease-out w-0 -translate-x-1/2 group-hover:w-full" />
+                      <span className="bg-primary absolute -bottom-1 left-1/2 h-0.5 w-0 -translate-x-1/2 transition-all duration-300 ease-out group-hover:w-full" />
                     </Link>
                   ) : (
                     <a
                       href={link.href}
                       onClick={(e) => handleSmoothScroll(e, link.href)}
-                      className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-200 group"
+                      className="group text-muted-foreground hover:text-foreground relative text-sm font-medium transition-colors duration-200"
                     >
                       {link.name}
 
                       {/* Underline animation */}
                       <span
                         className={cn(
-                          "absolute -bottom-1 left-1/2 h-0.5 bg-primary transition-all duration-300 ease-out",
+                          "bg-primary absolute -bottom-1 left-1/2 h-0.5 transition-all duration-300 ease-out",
                           isActive
                             ? "w-full -translate-x-1/2"
                             : "w-0 -translate-x-1/2 group-hover:w-full"
@@ -164,7 +157,7 @@ export function Header() {
                     href="/dashboard"
                     className={cn(
                       buttonVariants({ variant: "default", size: "sm" }),
-                      "rounded-full px-4 text-primary-foreground"
+                      "text-primary-foreground rounded-full px-4"
                     )}
                   >
                     {siteConfig.cta}
@@ -182,8 +175,7 @@ export function Header() {
         </div>
       </div>
 
-      {/* Subtle gradient border */}
-      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-border/50 to-transparent" />
+      <div className="bg-border/60 absolute right-0 bottom-0 left-0 h-px" />
     </motion.header>
   );
 }

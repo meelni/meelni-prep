@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import {
   MarketingCard,
-  MarketingCtaCard,
   MarketingEyebrow,
   MarketingHero,
   MarketingMetaRow,
@@ -14,7 +13,8 @@ import { Button } from "@/components/ui/button";
 
 export const metadata = {
   title: "Blog | Meelni",
-  description: "Frameworks, strategies, and insights from our PM coaching practice",
+  description:
+    "Frameworks, strategies, and insights from our PM coaching practice",
 };
 
 // Structured Data for SEO
@@ -44,7 +44,8 @@ function BlogStructuredData() {
     "@context": "https://schema.org",
     "@type": "Blog",
     name: "Meelni Blog",
-    description: "Frameworks, strategies, and insights from our PM coaching practice",
+    description:
+      "Frameworks, strategies, and insights from our PM coaching practice",
     url: `${baseUrl}/blog`,
     inLanguage: "en-US",
     publisher: {
@@ -109,19 +110,19 @@ export default function BlogIndex() {
       <Header />
 
       {/* Breadcrumb Navigation */}
-      <nav aria-label="Breadcrumb" className="max-w-6xl mx-auto px-6 pt-8">
-        <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+      <nav aria-label="Breadcrumb" className="mx-auto max-w-6xl px-6 pt-8">
+        <ol className="text-muted-foreground flex items-center gap-2 text-sm">
           <li>
             <Link
               href="/"
-              className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+              className="hover:text-foreground flex items-center gap-1.5 transition-colors"
             >
-              <Home className="w-4 h-4" />
+              <Home className="h-4 w-4" />
               <span>Home</span>
             </Link>
           </li>
           <li aria-hidden="true">
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="h-4 w-4" />
           </li>
           <li aria-current="page">
             <span className="text-foreground font-medium">Blog</span>
@@ -130,7 +131,7 @@ export default function BlogIndex() {
       </nav>
 
       {/* Page Header */}
-      <div className="max-w-6xl mx-auto px-6 py-12">
+      <div className="mx-auto max-w-6xl px-6 pb-12">
         <MarketingHero
           eyebrow={<MarketingEyebrow mark="M">Meelni Blog</MarketingEyebrow>}
           title="Interview Insights"
@@ -138,21 +139,21 @@ export default function BlogIndex() {
         />
 
         {/* Blog Posts Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
           {blogPosts.map((post) => (
             <MarketingCard key={post.id}>
               <div className="p-6 pb-4">
-                <MarketingEyebrow className="px-3 py-1.5 text-xs uppercase tracking-wide">
+                <MarketingEyebrow className="min-h-8 px-3 py-1.5 text-xs">
                   {post.category}
                 </MarketingEyebrow>
               </div>
 
               <div className="flex flex-1 flex-col gap-4 px-6 pb-6">
                 <div className="space-y-4">
-                  <h2 className="font-display min-h-14 text-xl font-bold leading-tight text-foreground transition-colors duration-200 group-hover:text-primary">
+                  <h2 className="font-display text-foreground group-hover:text-primary min-h-14 text-xl leading-tight font-bold transition-colors duration-200">
                     {post.title}
                   </h2>
-                  <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">
+                  <p className="text-muted-foreground line-clamp-3 text-sm leading-relaxed">
                     {post.excerpt}
                   </p>
                 </div>
@@ -175,21 +176,6 @@ export default function BlogIndex() {
             </MarketingCard>
           ))}
         </div>
-
-        <MarketingCtaCard
-          className="mt-20"
-          mark="M"
-          title="Practice the frameworks you are reading"
-          description="Turn interview advice into sharper answers with focused mock interviews and feedback."
-          action={
-            <Button asChild size="lg" variant="glow">
-              <Link href="/setup">
-                Start mock interview
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          }
-        />
       </div>
     </MarketingPage>
   );

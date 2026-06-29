@@ -14,18 +14,11 @@ function MarketingPage({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
-      className={cn(
-        "min-h-screen bg-gradient-to-b from-background via-muted/5 to-background",
-        className
-      )}
-      {...props}
-    />
+    <div className={cn("bg-background min-h-screen", className)} {...props} />
   );
 }
 
-interface MarketingEyebrowProps
-  extends React.HTMLAttributes<HTMLDivElement> {
+interface MarketingEyebrowProps extends React.HTMLAttributes<HTMLDivElement> {
   icon?: LucideIcon;
   mark?: React.ReactNode;
 }
@@ -40,13 +33,13 @@ function MarketingEyebrow({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary",
+        "border-primary/20 bg-primary/5 text-primary inline-flex min-h-10 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold",
         className
       )}
       {...props}
     >
       {(Icon || mark) && (
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+        <span className="bg-primary/10 text-primary flex h-6 w-6 items-center justify-center rounded-full">
           {Icon ? <Icon className="h-3.5 w-3.5" /> : mark}
         </span>
       )}
@@ -70,12 +63,13 @@ function MarketingHero({
   ...props
 }: MarketingHeroProps) {
   return (
-    <div className={cn("mb-20 space-y-6 text-center", className)} {...props}>
+    <div
+      className={cn("mb-20 space-y-4 pt-12 text-center", className)}
+      {...props}
+    >
       {eyebrow}
-      <h1 className="font-display text-5xl font-bold leading-tight tracking-tight text-foreground sm:text-6xl">
-        {title}
-      </h1>
-      <p className="mx-auto max-w-2xl text-lg leading-relaxed text-muted-foreground">
+      <h1 className="text-display-xl text-foreground">{title}</h1>
+      <p className="text-muted-foreground mx-auto max-w-2xl text-lg leading-7">
         {description}
       </p>
     </div>
@@ -99,7 +93,7 @@ function MarketingArticleHeader({
   return (
     <header className={cn("space-y-8", className)} {...props}>
       <div>{eyebrow}</div>
-      <h1 className="font-display text-4xl font-bold leading-tight tracking-tight text-foreground sm:text-5xl">
+      <h1 className="font-display text-foreground text-4xl leading-tight font-bold tracking-tight sm:text-5xl">
         {title}
       </h1>
       {meta}
@@ -114,7 +108,7 @@ function MarketingProse({
   return (
     <div
       className={cn(
-        "prose prose-lg max-w-none text-foreground prose-headings:font-display prose-headings:text-foreground prose-a:font-medium prose-a:text-primary prose-strong:text-foreground",
+        "prose prose-lg text-foreground prose-headings:font-display prose-headings:text-foreground prose-a:font-medium prose-a:text-primary prose-strong:text-foreground max-w-none",
         className
       )}
       {...props}
@@ -130,7 +124,7 @@ function MarketingCard({
     <article
       className={cn(
         appSurfaceVariants({ size: "none" }),
-        "group flex h-full flex-col overflow-hidden bg-card/70 transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10",
+        "group bg-card hover:border-primary/30 flex h-full flex-col overflow-hidden transition-colors duration-200",
         className
       )}
       {...props}
@@ -138,8 +132,7 @@ function MarketingCard({
   );
 }
 
-interface MarketingMetaRowProps
-  extends React.HTMLAttributes<HTMLDivElement> {
+interface MarketingMetaRowProps extends React.HTMLAttributes<HTMLDivElement> {
   items: Array<{
     icon: LucideIcon;
     label: React.ReactNode;
@@ -155,7 +148,7 @@ function MarketingMetaRow({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-4 border-t border-border/50 pt-4 text-xs text-muted-foreground",
+        "border-border/50 text-muted-foreground flex flex-wrap items-center gap-4 border-t pt-4 text-xs",
         className
       )}
       {...props}
