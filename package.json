@@ -28,6 +28,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:check": "drizzle-kit check",
+    "stripe:setup-catalog": "node scripts/setup-stripe-credit-catalog.mjs",
     "sync:questions": "tsx scripts/sync-questions-from-sheet.ts",
     "test:agent": "tsx --test packages/agent/src/*.test.ts",
     "test:core": "tsx --test packages/core/src/*.test.ts",

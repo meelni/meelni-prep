@@ -60,6 +60,25 @@ test("google sheets contract exposes supported credential alternatives", () => {
   ]);
 });
 
+test("stripe env contract matches the credit billing catalog", () => {
+  assert.deepEqual(listProviderEnvVars("stripe"), [
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_INTERVIEW_PASS_PRICE_ID",
+    "STRIPE_STARTER_MONTHLY_PRICE_ID",
+    "STRIPE_PRO_MONTHLY_PRICE_ID",
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+  ]);
+
+  assert.deepEqual(findMissingRequiredEnv("stripe", {}), [
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_INTERVIEW_PASS_PRICE_ID",
+    "STRIPE_STARTER_MONTHLY_PRICE_ID",
+    "STRIPE_PRO_MONTHLY_PRICE_ID",
+  ]);
+});
+
 test("provider results normalize success and retryable failures", () => {
   const success = providerSuccess("stripe", { checkoutSessionId: "cs_test_1" });
 

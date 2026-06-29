@@ -52,10 +52,12 @@ export const PROVIDER_ENV_CONTRACTS: Record<IntegrationProvider, ProviderEnvCont
     required: [
       env("STRIPE_SECRET_KEY", "Server-side Stripe API key.", "server"),
       env("STRIPE_WEBHOOK_SECRET", "Stripe webhook signature secret.", "server"),
+      env("STRIPE_INTERVIEW_PASS_PRICE_ID", "Stripe price ID for the one-time Interview Pass.", "server"),
+      env("STRIPE_STARTER_MONTHLY_PRICE_ID", "Stripe monthly price ID for the Starter plan.", "server"),
+      env("STRIPE_PRO_MONTHLY_PRICE_ID", "Stripe monthly price ID for the Pro plan.", "server"),
     ],
     optional: [
       env("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "Browser publishable Stripe key.", "client", false),
-      env("STRIPE_PRO_PRICE_ID", "Stripe price id for the Pro plan.", "server", false),
     ],
   },
   posthog: {
