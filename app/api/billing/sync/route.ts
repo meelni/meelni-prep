@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { subscription, stripeCustomerMapping, usageRecord } from "@/lib/db/schema";
+import { subscription, stripeCustomerMapping } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
+import {
+  STRIPE_API_VERSION,
+  getStripeCatalogIdForPrice,
+} from "@/lib/billing/stripe-catalog";
 
 const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-10-29.clover" })
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
+    })
   : null;
 
 /**
@@ -109,20 +115,10 @@ export async function POST(req: NextRequest) {
         currentPeriodEnd: periodEnd,
       });
 
-      // Initialize usage record for free tier
-      await db.insert(usageRecord).values({
-        userId,
-        periodStart: now,
-        periodEnd: periodEnd,
-        interviewsUsed: 0,
-        interviewsLimit: 3, // Free tier limit
-        tierSnapshot: "free",
-      }).onConflictDoNothing();
-
       return NextResponse.json({
         synced: true,
         subscription: { tier: "free", status: "active" },
-        message: "Free tier subscription initialized",
+        message: "No paid subscription initialized",
       });
     }
 
@@ -219,13 +215,34 @@ async function syncSubscriptionFromStripe(
 ): Promise<{ tier: string; status: string }> {
   const firstItem = stripeSubscription.items.data[0];
   const priceId = firstItem?.price?.id;
-
-  // Determine tier from price ID
-  const tier = getTierFromPriceId(priceId);
   const status = mapStripeStatus(stripeSubscription.status);
 
+  const existing = await db
+    .select()
+    .from(subscription)
+    .where(eq(subscription.userId, userId))
+    .limit(1);
+
+  let tier: string | null = null;
+  try {
+    tier = getStripeCatalogIdForPrice(priceId);
+  } catch (error) {
+    console.warn("Skipping Stripe tier sync for unknown price", {
+      userId,
+      stripeSubscriptionId: stripeSubscription.id,
+      priceId,
+      error: getErrorMessage(error),
+    });
+  }
+
+  if (!tier && existing.length === 0) {
+    throw new Error(
+      `Cannot sync subscription ${stripeSubscription.id} without a known catalog price`
+    );
+  }
+
   const updateData = {
-    tier,
+    tier: tier ?? existing[0].tier,
     status,
     stripeSubscriptionId: stripeSubscription.id,
     stripeCustomerId: stripeSubscription.customer as string,
@@ -247,13 +264,6 @@ async function syncSubscriptionFromStripe(
     updatedAt: new Date(),
   };
 
-  // Update database
-  const existing = await db
-    .select()
-    .from(subscription)
-    .where(eq(subscription.userId, userId))
-    .limit(1);
-
   if (existing.length > 0) {
     await db
       .update(subscription)
@@ -266,41 +276,7 @@ async function syncSubscriptionFromStripe(
     });
   }
 
-  // Update usage record limit based on tier
-  if (updateData.currentPeriodStart && updateData.currentPeriodEnd) {
-    const limit = tier === "free" ? 3 : -1; // -1 = unlimited
-
-    await db
-      .insert(usageRecord)
-      .values({
-        userId,
-        periodStart: updateData.currentPeriodStart,
-        periodEnd: updateData.currentPeriodEnd,
-        interviewsUsed: 0,
-        interviewsLimit: limit,
-        tierSnapshot: tier,
-      })
-      .onConflictDoNothing();
-  }
-
-  return { tier, status };
-}
-
-/**
- * Get tier from Stripe price ID
- */
-function getTierFromPriceId(priceId: string | undefined): string {
-  if (!priceId) return "free";
-
-  const proMonthly = process.env.STRIPE_PRO_MONTHLY_PRICE_ID;
-  const proAnnual = process.env.STRIPE_PRO_ANNUAL_PRICE_ID;
-
-  if (priceId === proMonthly || priceId === proAnnual) {
-    return "pro";
-  }
-
-  // Default to pro for any paid subscription (fallback)
-  return "pro";
+  return { tier: updateData.tier, status };
 }
 
 /**
@@ -324,4 +300,8 @@ function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): string {
     default:
       return "active";
   }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
