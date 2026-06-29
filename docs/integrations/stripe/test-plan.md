@@ -26,6 +26,13 @@ STRIPE_STARTER_MONTHLY_PRICE_ID=price_...
 STRIPE_PRO_MONTHLY_PRICE_ID=price_...
 ```
 
+Create or reuse test-mode Stripe products and prices:
+
+```bash
+npm run stripe:setup-catalog -- --dry-run
+STRIPE_SECRET_KEY=sk_test_... npm run stripe:setup-catalog
+```
+
 4. Local webhook forwarding is running:
 
 ```bash

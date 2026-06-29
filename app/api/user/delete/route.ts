@@ -13,9 +13,12 @@ import {
 } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
+import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
 
 const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-10-29.clover" })
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
+    })
   : null;
 
 /**

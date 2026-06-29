@@ -1,192 +1,138 @@
-# Stripe Live Mode Migration Checklist
+# Stripe Live Mode Checklist
 
-**Date**: 2025-01-18
-**Status**: In Progress
+Updated: 2026-06-29
+Status: Credit billing setup required
 
----
+Use this checklist when moving Meelni's credit-based billing catalog from test mode to live mode. Do not commit real Stripe API keys, webhook signing secrets, or live price IDs to this repository.
 
-## ✅ Completed Steps
+## Required Stripe Catalog
 
-### 1. Stripe Dashboard Configuration
-- [x] Created "Meelni Pro" product in live mode
-- [x] Created monthly price ($29/month): `price_1SV4xXCdoT5hfbsF9dYbpWGD`
-- [x] Created annual price ($249/year): `price_1SV4yICdoT5hfbsFD6F9fIAa`
-- [x] Created webhook endpoint: `https://meelni.com/api/webhooks/stripe`
-- [x] Selected 7 required webhook events
-- [x] Copied webhook signing secret: `[REDACTED_STRIPE_WEBHOOK_SECRET]`
+Create or confirm these live-mode products and prices in the Stripe Dashboard.
 
-### 2. Environment Variables
-- [x] Updated `.env.local` with live keys
-- [x] Updated `.env.example` documentation
-- [x] Committed `.env.example` changes to git
+| Catalog ID | Product | Price | Mode | App env var |
+| --- | --- | ---: | --- | --- |
+| `interview_pass` | Meelni Interview Pass | $9 one-time | Checkout `payment` | `STRIPE_INTERVIEW_PASS_PRICE_ID` |
+| `starter` | Meelni Starter | $19/month | Checkout `subscription` | `STRIPE_STARTER_MONTHLY_PRICE_ID` |
+| `pro` | Meelni Pro | $49/month | Checkout `subscription` | `STRIPE_PRO_MONTHLY_PRICE_ID` |
 
-### 3. Code Fixes
-- [x] Added test/live mode detection in `/api/billing/portal`
-- [x] Added test/live mode detection in `/api/customer-portal`
-- [x] Added graceful error handling for mode mismatch
-- [x] Verified no hardcoded test values in codebase
+Recommended Stripe metadata:
 
----
-
-## 🔄 Next Steps
-
-### 4. Vercel Environment Variables
-- [ ] Go to Vercel dashboard → Project Settings → Environment Variables
-- [ ] Add for **Production** environment:
-  ```
-  STRIPE_SECRET_KEY=[REDACTED_STRIPE_LIVE_KEY]
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_51SSreECdoT5hfbsFYo75ci42SJ4tFivSb803PiphuNTfQAu12NsEfoSQbeuCENyd3cRZ98ySm0R0VQCANAQ77kHE00tQ0kaB37
-  STRIPE_WEBHOOK_SECRET=[REDACTED_STRIPE_WEBHOOK_SECRET]
-  STRIPE_PRO_MONTHLY_PRICE_ID=price_1SV4xXCdoT5hfbsF9dYbpWGD
-  STRIPE_PRO_ANNUAL_PRICE_ID=price_1SV4yICdoT5hfbsFD6F9fIAa
-  ```
-
-### 5. Clean Up Test Data (Optional)
-- [ ] Review test subscriptions: Run `scripts/clean-test-stripe-data.sql` (SELECT query)
-- [ ] Backup database before deletion
-- [ ] Delete test subscriptions (uncomment DELETE queries in script)
-- [ ] Verify cleanup completed
-
-### 6. Deploy to Production
-- [ ] Merge `fix-stripe-customer-mismatch` branch to main
-- [ ] Push to GitHub
-- [ ] Verify Vercel deployment succeeds
-- [ ] Check deployment logs for errors
-
-### 7. Testing in Production
-- [ ] **Checkout Flow**:
-  - [ ] Go to https://meelni.com/pricing
-  - [ ] Click "Start 7-Day Trial" for Pro plan
-  - [ ] Complete checkout (use real card or test card in live mode)
-  - [ ] Verify redirect to success page
-  - [ ] Check subscription appears in dashboard
-
-- [ ] **Webhook Events**:
-  - [ ] Go to Stripe Dashboard → Webhooks
-  - [ ] Verify `customer.subscription.created` event received
-  - [ ] Check webhook response is 200 OK
-  - [ ] Verify subscription record created in database
-
-- [ ] **Customer Portal**:
-  - [ ] Go to dashboard → Billing section
-  - [ ] Click "Manage Subscription"
-  - [ ] Verify portal opens successfully
-  - [ ] Test updating payment method
-  - [ ] Test canceling subscription
-
-- [ ] **Trial Expiration**:
-  - [ ] Wait 7 days OR manually trigger `customer.subscription.trial_will_end` in Stripe
-  - [ ] Verify webhook processed correctly
-  - [ ] Check user receives trial ending notification (if implemented)
-
-### 8. Monitoring
-- [ ] Monitor Stripe webhook logs for failed events
-- [ ] Check application logs for Stripe errors
-- [ ] Set up alerts for failed payments
-- [ ] Monitor subscription churn rate
-
----
-
-## 🐛 Known Issues & Fixes
-
-### Issue 1: "No such customer" Error
-**Symptom**: Error when clicking "Manage Subscription" - `Error: No such customer: 'cus_TRWQAvzRQmsufn'`
-
-**Root Cause**: Database contains test mode customer IDs (`cus_*` from test mode), but app is now using live mode keys.
-
-**Fix Applied**: ✅
-- Added customer validation in `/api/billing/portal/route.ts`
-- Added customer validation in `/api/customer-portal/route.ts`
-- Returns helpful error: "Your subscription was created in test mode. Please create a new subscription to access the customer portal."
-
-**User Action**: Users with test subscriptions must create new subscriptions in live mode.
-
----
-
-## 📊 Testing Scenarios
-
-### Scenario 1: New User Upgrade (Happy Path)
-1. User signs up (free tier)
-2. Clicks "Upgrade to Pro"
-3. Completes checkout with trial
-4. Subscription created in live mode
-5. Can access customer portal ✅
-
-### Scenario 2: Existing Test User (Mode Mismatch)
-1. User has test mode subscription in DB
-2. Clicks "Manage Subscription"
-3. Receives clear error message: "Your subscription was created in test mode..."
-4. Must create new subscription in live mode
-5. Old test subscription can be cleaned up via SQL script
-
-### Scenario 3: Failed Payment
-1. User's trial expires
-2. Payment fails (card declined)
-3. Webhook `invoice.payment_failed` fires
-4. Subscription enters grace period
-5. User can update payment method in portal
-
----
-
-## 🔍 Debugging Commands
-
-### Check Stripe Mode
-```bash
-# Check which mode your keys are for
-echo $STRIPE_SECRET_KEY | grep -o "^sk_[^_]*"
-# Output: sk_live (production) or sk_test (development)
+```text
+catalog_id=<catalog_id>
+app=meelni
+environment=live
 ```
 
-### View Stripe Logs
+Trial access is local product state: 2 credits for 7 days. Do not configure a separate Stripe subscription trial for Starter or Pro unless product strategy changes.
+
+You can create or reuse the catalog with:
+
 ```bash
-# In Stripe Dashboard
-# Go to: Developers → Logs → select date range
+npm run stripe:setup-catalog -- --dry-run
+STRIPE_SECRET_KEY=sk_live_... npm run stripe:setup-catalog -- --confirm-live
 ```
 
-### Test Webhook Locally
-```bash
-# Forward webhooks to localhost (requires Stripe CLI)
-stripe listen --forward-to localhost:3000/api/webhooks/stripe
+For local or preview test mode, omit `--confirm-live` and use an `sk_test_...` key.
 
-# Trigger test event
-stripe trigger customer.subscription.created
+## Environment Variables
+
+Configure these in Vercel for Production:
+
+```bash
+STRIPE_SECRET_KEY=sk_live_...
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_INTERVIEW_PASS_PRICE_ID=price_...
+STRIPE_STARTER_MONTHLY_PRICE_ID=price_...
+STRIPE_PRO_MONTHLY_PRICE_ID=price_...
+NEXT_PUBLIC_APP_URL=https://meelni.com
 ```
 
----
+Configure test-mode equivalents in local and preview environments.
 
-## 📞 Rollback Plan
+## Webhook Endpoint
 
-If issues occur after deploying to live mode:
+Production endpoint:
 
-1. **Immediate Rollback** (< 5 minutes):
-   ```bash
-   # In Vercel dashboard, rollback to previous deployment
-   # Settings → Deployments → Previous deployment → Promote to Production
-   ```
+```text
+https://meelni.com/api/webhooks/stripe
+```
 
-2. **Switch Back to Test Mode** (if needed):
-   - Update Vercel env vars to use `sk_test_*` and `pk_test_*` keys
-   - Redeploy
-   - Note: Live customers won't work in test mode!
+Subscribe the endpoint to:
 
-3. **Database Restore** (if test data deleted):
-   - Restore from Supabase backup (if available)
-   - Or accept loss of test data (recommended - it's just test data)
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.payment_succeeded`
+- `invoice.payment_failed`
+- `charge.refunded`
 
----
+Optional future event:
 
-## ✅ Sign-off
+- `customer.subscription.trial_will_end`
 
-- [ ] Developer verified all checklist items
-- [ ] Tested in production with real card (then refunded)
-- [ ] Monitoring in place for failed webhooks
-- [ ] Team notified of live mode switch
-- [ ] Documentation updated
+After creating the endpoint, copy its signing secret into `STRIPE_WEBHOOK_SECRET` in the matching Vercel environment.
 
-**Switched to Live Mode**: ______________________ (Date)
+## Customer Portal
 
-**Verified By**: ______________________ (Name)
+Configure the Stripe Customer Portal so users can:
 
----
+- Update payment methods.
+- Cancel Starter and Pro subscriptions.
+- Switch between Starter and Pro if you want self-serve plan changes at launch.
+- View invoices and receipts.
 
-**Last Updated**: 2025-01-18
+Do not expose Interview Pass as a subscription option in the portal; it is a one-time Checkout purchase.
+
+## Pre-Launch Verification
+
+Run local checks:
+
+```bash
+npm run test:billing
+npm run test:workflows
+npm run test:core
+npm run test:packages
+npm run typecheck
+```
+
+Complete the operational runbook:
+
+```text
+docs/operations/credit-billing-launch.md
+docs/integrations/stripe/test-plan.md
+```
+
+Manual Stripe checks:
+
+- Interview Pass Checkout grants exactly one credit.
+- Starter Checkout creates an active subscription and grants 4 credits.
+- Pro Checkout creates an active subscription and grants 12 credits.
+- Replayed `checkout.session.completed` and `invoice.payment_succeeded` events do not duplicate credits.
+- Failed invoice payment marks the subscription `past_due` and does not grant credits.
+- Customer Portal opens for paid subscribers.
+- Unknown price IDs do not silently map to Pro.
+
+## Production Cutover
+
+Before enabling credit enforcement in production:
+
+- Snapshot existing `subscription`, `credit_grant`, and `usage_record` state.
+- Classify any legacy `free`, `premium`, old `$29 Pro`, or unknown paid users.
+- Decide whether each legacy paid user should be grandfathered, migrated, refunded, or asked to repurchase.
+- Verify live price IDs point to the new credit catalog, not the old unlimited Pro product.
+- Confirm webhook delivery returns 2xx responses in the Stripe Dashboard.
+
+## Secret Hygiene
+
+If a real API key or webhook signing secret is ever committed, rotate it immediately in the Stripe Dashboard and update Vercel. Treat live secret keys and webhook secrets as compromised after commit, even if the repository is private.
+
+## Rollback
+
+If production billing fails:
+
+1. Disable or hide purchase entry points in the app.
+2. Roll back the Vercel deployment.
+3. Pause or disable the Stripe webhook endpoint if it is writing bad state.
+4. Reconcile `stripe_event_log`, `subscription`, and `credit_grant` before re-enabling checkout.

@@ -71,31 +71,24 @@ echo -e "${BLUE}🔵 Test 1: Checkout Session Creation${NC}"
 echo "-------------------------------------"
 
 test_api \
-    "Pro Monthly session" \
+    "Interview Pass session" \
     "POST" \
     "/api/checkout/create-session" \
-    '{"tier":"pro","billingPeriod":"monthly"}' \
+    '{"catalogId":"interview_pass"}' \
     '.url'
 
 test_api \
-    "Pro Annual session" \
+    "Starter session" \
     "POST" \
     "/api/checkout/create-session" \
-    '{"tier":"pro","billingPeriod":"annual"}' \
+    '{"catalogId":"starter"}' \
     '.url'
 
 test_api \
-    "Premium Monthly session" \
+    "Pro session" \
     "POST" \
     "/api/checkout/create-session" \
-    '{"tier":"premium","billingPeriod":"monthly"}' \
-    '.url'
-
-test_api \
-    "Premium Annual session" \
-    "POST" \
-    "/api/checkout/create-session" \
-    '{"tier":"premium","billingPeriod":"annual"}' \
+    '{"catalogId":"pro"}' \
     '.url'
 
 echo ""
@@ -105,24 +98,24 @@ echo -e "${BLUE}🔵 Test 2: Input Validation${NC}"
 echo "---------------------------"
 
 test_api \
-    "Invalid tier rejected" \
+    "Invalid catalog ID rejected" \
     "POST" \
     "/api/checkout/create-session" \
-    '{"tier":"invalid","billingPeriod":"monthly"}' \
+    '{"catalogId":"invalid"}' \
     '.error'
 
 test_api \
-    "Invalid billing period rejected" \
+    "Legacy tier payload rejected" \
     "POST" \
     "/api/checkout/create-session" \
-    '{"tier":"pro","billingPeriod":"invalid"}' \
+    '{"tier":"pro","billingPeriod":"monthly"}' \
     '.error'
 
 test_api \
-    "Missing tier rejected" \
+    "Missing catalog ID rejected" \
     "POST" \
     "/api/checkout/create-session" \
-    '{"billingPeriod":"monthly"}' \
+    '{}' \
     '.error'
 
 echo ""
@@ -189,10 +182,9 @@ check_env() {
 
 check_env "STRIPE_SECRET_KEY"
 check_env "STRIPE_WEBHOOK_SECRET"
+check_env "STRIPE_INTERVIEW_PASS_PRICE_ID"
+check_env "STRIPE_STARTER_MONTHLY_PRICE_ID"
 check_env "STRIPE_PRO_MONTHLY_PRICE_ID"
-check_env "STRIPE_PRO_ANNUAL_PRICE_ID"
-check_env "STRIPE_PREMIUM_MONTHLY_PRICE_ID"
-check_env "STRIPE_PREMIUM_ANNUAL_PRICE_ID"
 
 echo ""
 
