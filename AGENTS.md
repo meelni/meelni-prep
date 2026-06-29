@@ -64,6 +64,7 @@ packages/
 - Use `meelni-feedback-evaluation` for scoring, rubrics, feedback generation, insights, drills, and transcript evaluation.
 - Use `meelni-question-bank-seo` for explore pages, company pages, question pages, structured data, Google Sheets sync, and conversion from content to practice.
 - Use `meelni-product-strategy` when explicitly asked for product direction, positioning, relaunch strategy, pricing, or growth.
+- Use `meelni-linear-workstream` before starting, updating, handing off, or closing meaningful Linear-tracked Meelni work streams.
 - Use `meelni-vertical-slice-playbooks` when building or reviewing cross-layer feature work by slice, including interview/session, feedback/evaluation, billing/trials, question-bank SEO, or agent tooling changes.
 - Use `meelni-engineering-memory` when decisions, docs, contracts, operations notes, or OpenSpec artifacts need to be created or updated.
 - Use `meelni-pr-prep` before opening or finalizing a meaningful PR.
