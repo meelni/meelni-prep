@@ -1,657 +1,286 @@
-# Stripe Payment Flow Test Plan
+# Stripe Credit Billing Test Plan
 
-**Status**: Test Mode
-**Created**: 2025-11-17
-**Stripe Docs**: https://docs.stripe.com/testing
-
----
+**Status**: Test mode
+**Updated**: 2026-06-29
+**Stripe docs**: https://docs.stripe.com/testing
 
 ## Overview
 
-This document provides a comprehensive test plan for verifying the Stripe payment integration in Meelni. All tests use Stripe test mode with test card numbers.
+This plan verifies Meelni's credit-based Stripe integration:
+
+- Interview Pass: $9 one-time Checkout payment, 1 credit, expires after 30 days.
+- Starter: $19/month subscription, 4 credits per paid invoice, rollover cap 4, rollover expires after 60 days.
+- Pro: $49/month subscription, 12 credits per paid invoice, rollover cap 12, rollover expires after 60 days.
+
+The free full-interview experience is deprecated. Trial access is local product state: 2 credits for 7 days. Stripe Checkout should not create a separate subscription trial for Starter or Pro.
 
 ## Prerequisites
 
-1. **Stripe Dashboard**: Access to Stripe test mode dashboard
-2. **Webhook CLI**: Install Stripe CLI for local webhook testing
-3. **Environment**: Verify `.env.local` has test API keys (starts with `pk_test_` and `sk_test_`)
-4. **Database**: Clean test database or ability to reset subscription data
-
-## Test Card Numbers
-
-### Success Scenarios
-
-| Card Number | Description | Use Case |
-|------------|-------------|----------|
-| `4242 4242 4242 4242` | Visa (Success) | Standard successful payment |
-| `5555 5555 5555 4444` | Mastercard (Success) | Alternative successful payment |
-| `3782 822463 10005` | American Express | AMEX successful payment |
-| `6011 1111 1111 1117` | Discover | Discover successful payment |
-
-**Card Details for All Success Cards**:
-- **Expiry**: Any future date (e.g., 12/34)
-- **CVC**: Any 3 digits (e.g., 123)
-- **ZIP**: Any 5 digits (e.g., 12345)
-
-### Decline Scenarios
-
-| Card Number | Error Code | Description |
-|------------|------------|-------------|
-| `4000 0000 0000 0002` | card_declined | Generic decline |
-| `4000 0000 0000 9995` | insufficient_funds | Insufficient funds |
-| `4000 0000 0000 9987` | lost_card | Card reported lost |
-| `4000 0000 0000 9979` | stolen_card | Card reported stolen |
-| `4000 0000 0000 0069` | expired_card | Expired card |
-| `4000 0000 0000 0127` | incorrect_cvc | Incorrect CVC |
-| `4000 0000 0000 0119` | processing_error | Generic processing error |
-
-### Special Scenarios
-
-| Card Number | Behavior | Use Case |
-|------------|----------|----------|
-| `4000 0025 0000 3155` | 3D Secure (Required) | Tests SCA authentication |
-| `4000 0000 0000 3220` | 3D Secure (Optional) | Optional SCA |
-| `4000 0082 6000 0000` | Charge succeeds, dispute later | Fraud simulation |
-| `4000 0000 0000 0341` | Charge succeeds, attach fails | Setup intent failure |
-
----
-
-## Test Scenarios
-
-### 1. Pro Monthly Subscription (Happy Path)
-
-**Goal**: Verify successful Pro monthly subscription with 7-day trial
-
-**Steps**:
-1. Navigate to `/pricing`
-2. Select "Monthly" billing period
-3. Click "Start 7-Day Free Trial" on Pro tier
-4. Enter test email: `test+pro_monthly@meelni.com`
-5. Enter card: `4242 4242 4242 4242`
-6. Complete checkout
-
-**Expected Results**:
-- ✅ Redirected to `/pricing/success`
-- ✅ Success message: "Welcome to Meelni Pro!"
-- ✅ Database: `subscription.tier = 'pro'`
-- ✅ Database: `subscription.status = 'trialing'`
-- ✅ Database: `subscription.billingCycle = 'monthly'`
-- ✅ Database: `subscription.trialEnd` set to 7 days from now
-- ✅ Database: `subscription.proTrialUsed = true`
-- ✅ Stripe Dashboard: Subscription created with 7-day trial
-- ✅ Webhook received: `customer.subscription.created`
-- ✅ `stripe_event_log` records event as "processed"
-
-**Verification Queries**:
-```sql
-SELECT tier, status, billing_cycle, trial_end, pro_trial_used, stripe_subscription_id
-FROM subscription
-WHERE user_id = (SELECT id FROM app_user WHERE email = 'test+pro_monthly@meelni.com');
-
-SELECT * FROM stripe_event_log
-WHERE event_type = 'customer.subscription.created'
-ORDER BY created_at DESC LIMIT 1;
-```
-
----
-
-### 2. Premium Annual Subscription (Happy Path)
-
-**Goal**: Verify successful Premium annual subscription with 14-day trial
-
-**Steps**:
-1. Navigate to `/pricing`
-2. Toggle to "Annual" billing period
-3. Click "Start 14-Day Free Trial" on Premium tier
-4. Enter test email: `test+premium_annual@meelni.com`
-5. Enter card: `5555 5555 5555 4444` (Mastercard)
-6. Complete checkout
-
-**Expected Results**:
-- ✅ Redirected to `/pricing/success`
-- ✅ Database: `subscription.tier = 'premium'`
-- ✅ Database: `subscription.status = 'trialing'`
-- ✅ Database: `subscription.billingCycle = 'annual'`
-- ✅ Database: `subscription.trialEnd` set to 14 days from now
-- ✅ Database: `subscription.premiumTrialUsed = true`
-- ✅ Stripe Dashboard: Annual subscription with 14-day trial
-- ✅ Webhook: `customer.subscription.created` processed
-
----
-
-### 3. Card Declined (Generic)
-
-**Goal**: Test payment failure with generic decline
-
-**Steps**:
-1. Navigate to `/pricing`
-2. Select Pro Monthly
-3. Enter card: `4000 0000 0000 0002`
-4. Complete checkout
-
-**Expected Results**:
-- ❌ Stripe shows error: "Your card was declined."
-- ❌ User remains on Stripe Checkout page
-- ❌ No redirect to `/pricing/success`
-- ❌ No subscription created in database
-- ❌ No webhook events processed
-
----
-
-### 4. Insufficient Funds
-
-**Goal**: Test payment failure due to insufficient funds
-
-**Steps**:
-1. Select Pro Annual
-2. Enter card: `4000 0000 0000 9995`
-3. Complete checkout
-
-**Expected Results**:
-- ❌ Error: "Your card has insufficient funds."
-- ❌ No subscription created
-- ❌ User can retry with different card
-
----
-
-### 5. 3D Secure Authentication (SCA)
-
-**Goal**: Verify Strong Customer Authentication flow
-
-**Steps**:
-1. Select Premium Monthly
-2. Enter card: `4000 0025 0000 3155`
-3. Complete checkout
-4. Complete 3D Secure challenge (test mode auto-succeeds)
-
-**Expected Results**:
-- ✅ 3D Secure modal appears
-- ✅ After completing, payment succeeds
-- ✅ Subscription created with `status = 'trialing'`
-- ✅ Webhook processed successfully
-
----
-
-### 6. User Cancels Checkout
-
-**Goal**: Test cancellation during checkout
-
-**Steps**:
-1. Start Pro Monthly checkout
-2. Click browser back button or close tab
-3. Or click "Back" link in Stripe Checkout
-
-**Expected Results**:
-- ✅ Redirected to `/pricing/canceled`
-- ✅ Message: "Checkout Canceled"
-- ✅ No subscription created
-- ✅ No database changes
-- ✅ User can click "Back to Pricing" to retry
-
----
-
-### 7. Webhook Idempotency
-
-**Goal**: Verify duplicate webhooks don't create duplicate records
-
-**Steps**:
-1. Complete successful Pro Monthly subscription
-2. In Stripe Dashboard → Webhooks, find the `customer.subscription.created` event
-3. Click "Resend webhook" 3 times
-4. Check database
-
-**Expected Results**:
-- ✅ Only 1 subscription record exists
-- ✅ `stripe_event_log` shows 1 event with `status = 'processed'`
-- ✅ Console logs: "Event {id} already processed, skipping"
-- ✅ No duplicate payment records
-
-**Verification**:
-```sql
-SELECT COUNT(*) FROM subscription WHERE user_id = '...'; -- Should be 1
-
-SELECT stripe_event_id, status, attempts, processed_at
-FROM stripe_event_log
-WHERE stripe_event_id = 'evt_xxx'; -- Should show 1 row, status = 'processed'
-```
-
----
-
-### 8. Failed Payment (Past Due)
-
-**Goal**: Test subscription status when payment fails after trial
-
-**Steps**:
-1. Create Pro Monthly subscription
-2. Wait for trial to end OR manually trigger `invoice.payment_failed` webhook
-3. Use Stripe CLI:
-   ```bash
-   stripe trigger invoice.payment_failed
-   ```
-
-**Expected Results**:
-- ✅ Database: `subscription.status = 'past_due'`
-- ✅ Database: `subscription.gracePeriodEnd` set to 7 days from now
-- ✅ `payment_history` record created with `status = 'failed'`
-- ✅ Webhook: `invoice.payment_failed` processed
-- ✅ User retains access during 7-day grace period
-
-**Verification**:
-```sql
-SELECT status, grace_period_end FROM subscription WHERE user_id = '...';
-
-SELECT status, failure_reason FROM payment_history
-WHERE user_id = '...'
-ORDER BY created_at DESC LIMIT 1;
-```
-
----
-
-### 9. Payment Recovery After Failure
-
-**Goal**: Test status update when failed payment succeeds
-
-**Steps**:
-1. Have subscription in `past_due` state (from Test #8)
-2. Trigger successful payment webhook:
-   ```bash
-   stripe trigger invoice.payment_succeeded
-   ```
-
-**Expected Results**:
-- ✅ Database: `subscription.status = 'active'`
-- ✅ Database: `subscription.gracePeriodEnd = NULL`
-- ✅ `payment_history` record with `status = 'succeeded'`
-- ✅ Webhook processed
-
----
-
-### 10. Subscription Cancellation
-
-**Goal**: Test subscription cancellation flow
-
-**Steps**:
-1. Create active Pro subscription
-2. Navigate to Stripe Customer Portal (future feature) OR
-3. Manually trigger webhook:
-   ```bash
-   stripe trigger customer.subscription.deleted
-   ```
-
-**Expected Results**:
-- ✅ Database: `subscription.status = 'canceled'`
-- ✅ Database: `subscription.canceledAt` set to current timestamp
-- ✅ Webhook: `customer.subscription.deleted` processed
-- ✅ User retains access until `currentPeriodEnd`
-
----
-
-### 11. Optimistic Locking (Race Condition)
-
-**Goal**: Verify concurrent webhook handling doesn't corrupt data
-
-**Steps**:
-1. Create subscription
-2. Send 2 simultaneous `customer.subscription.updated` webhooks with different data
-3. Use Stripe CLI or webhook testing tool
-
-**Expected Results**:
-- ✅ Only one update succeeds
-- ✅ Second update fails with "Optimistic lock failure" error
-- ✅ `subscription.version` increments by 1 (not 2)
-- ✅ Database remains consistent
-
-**Verification**:
-```sql
-SELECT version, updated_at FROM subscription WHERE user_id = '...';
--- Version should be 2, not 3
-```
-
----
-
-### 12. Trial Tracking Per Tier
-
-**Goal**: Verify users can't reuse trials for same tier
-
-**Steps**:
-1. Create Pro trial subscription
-2. Cancel subscription
-3. Try to create another Pro trial
-
-**Expected Results**:
-- ✅ Database: `subscription.proTrialUsed = true` (remains true)
-- ✅ Second Pro subscription should NOT have trial
-- ✅ User CAN still use Premium trial (different tier)
-
-**Verification**:
-```sql
-SELECT pro_trial_used, premium_trial_used FROM subscription WHERE user_id = '...';
--- pro_trial_used = true, premium_trial_used = false
-```
-
----
-
-### 13. Stripe Customer Mapping Fallback
-
-**Goal**: Verify userId recovery when metadata is lost
-
-**Steps**:
-1. Create subscription
-2. Manually delete `metadata.userId` from Stripe Customer in Dashboard
-3. Trigger webhook: `customer.subscription.updated`
-
-**Expected Results**:
-- ✅ Webhook handler checks `stripe_customer_mapping` table
-- ✅ userId successfully retrieved from mapping
-- ✅ Subscription updated correctly
-- ✅ No errors in logs
-
-**Verification**:
-```sql
-SELECT stripe_customer_id, user_id FROM stripe_customer_mapping
-WHERE stripe_customer_id = 'cus_xxx';
-```
-
----
-
-### 14. Refund Processing
-
-**Goal**: Test refund handling
-
-**Steps**:
-1. Create paid subscription (skip trial or complete it)
-2. Trigger refund webhook:
-   ```bash
-   stripe trigger charge.refunded
-   ```
-
-**Expected Results**:
-- ✅ `payment_history` record updated to `status = 'refunded'`
-- ✅ Webhook: `charge.refunded` processed
-- ✅ Subscription status unchanged (refund ≠ cancellation)
-
----
-
-### 15. Usage Record Initialization
-
-**Goal**: Verify usage records created for new billing periods
-
-**Steps**:
-1. Create Pro subscription
-2. Webhook: `customer.subscription.created` fires
-3. Check database
-
-**Expected Results**:
-- ✅ `usage_record` created with:
-  - `userId` = user ID
-  - `periodStart` = subscription start
-  - `periodEnd` = subscription end
-  - `interviewsUsed = 0`
-  - `interviewsLimit = -1` (unlimited for Pro)
-  - `tierSnapshot = 'pro'`
-
-**Verification**:
-```sql
-SELECT * FROM usage_record WHERE user_id = '...' ORDER BY created_at DESC LIMIT 1;
-```
-
----
-
-### 16. Promotion Code Application
-
-**Goal**: Test Stripe promotion codes
-
-**Steps**:
-1. Create promotion code in Stripe Dashboard (e.g., `SAVE50` for 50% off)
-2. Start Pro Monthly checkout
-3. Click "Add promotion code" in Stripe Checkout
-4. Enter `SAVE50`
-5. Complete checkout
-
-**Expected Results**:
-- ✅ Discount applied in checkout UI
-- ✅ Subscription created with reduced price
-- ✅ Stripe invoice shows discount
-- ✅ Webhook processed normally
-
----
-
-### 17. Expired Card
-
-**Goal**: Test expired card handling
-
-**Steps**:
-1. Select Pro Monthly
-2. Enter card: `4000 0000 0000 0069`
-3. Enter expiry: `12/20` (past date)
-4. Complete checkout
-
-**Expected Results**:
-- ❌ Error: "Your card has expired."
-- ❌ No subscription created
-
----
-
-### 18. Incorrect CVC
-
-**Goal**: Test CVC validation
-
-**Steps**:
-1. Select Premium Annual
-2. Enter card: `4000 0000 0000 0127`
-3. Enter CVC: `123` (will fail)
-4. Complete checkout
-
-**Expected Results**:
-- ❌ Error: "Your card's security code is incorrect."
-- ❌ No subscription created
-
----
-
-## Webhook Testing (Local Development)
-
-### Setup Stripe CLI
+1. Stripe test keys are configured with `pk_test_` and `sk_test_`.
+2. Webhook secret is configured in `STRIPE_WEBHOOK_SECRET`.
+3. Stripe price env vars are configured:
 
 ```bash
-# Install Stripe CLI
-brew install stripe/stripe-cli/stripe
+STRIPE_INTERVIEW_PASS_PRICE_ID=price_...
+STRIPE_STARTER_MONTHLY_PRICE_ID=price_...
+STRIPE_PRO_MONTHLY_PRICE_ID=price_...
+```
 
-# Login
-stripe login
+4. Local webhook forwarding is running:
 
-# Forward webhooks to local server
+```bash
 stripe listen --forward-to http://localhost:3000/api/webhooks/stripe
 ```
 
-### Trigger Test Webhooks
+## Test Cards
+
+| Card number | Result |
+| --- | --- |
+| `4242 4242 4242 4242` | Successful Visa payment |
+| `5555 5555 5555 4444` | Successful Mastercard payment |
+| `3782 822463 10005` | Successful Amex payment |
+| `4000 0000 0000 0002` | Generic decline |
+| `4000 0000 0000 9995` | Insufficient funds |
+| `4000 0025 0000 3155` | 3D Secure required |
+
+Use any future expiry, any CVC, and any ZIP in test mode.
+
+## Scenario 1: Interview Pass Purchase
+
+**Goal**: Verify one-time Checkout grants exactly one credit.
+
+Steps:
+
+1. Start Checkout with `catalogId = "interview_pass"`.
+2. Complete payment with `4242 4242 4242 4242`.
+3. Confirm redirect to `/pricing/success`.
+4. Confirm `checkout.session.completed` processed.
+
+Expected:
+
+- Checkout Session mode is `payment`.
+- Checkout metadata includes `userId` and `catalogId = "interview_pass"`.
+- One `credit_grant` row exists with `catalog_id = 'interview_pass'`.
+- Grant has `original_credits = 1`, `remaining_credits = 1`, source `checkout`, and an expiration about 30 days after purchase.
+- Replaying the same event does not create another grant.
+
+Verification:
+
+```sql
+SELECT catalog_id, source, source_id, original_credits, remaining_credits, expires_at, idempotency_key
+FROM credit_grant
+WHERE user_id = '...'
+ORDER BY created_at DESC
+LIMIT 5;
+```
+
+## Scenario 2: Starter Subscription Purchase
+
+**Goal**: Verify Starter subscription status and monthly credit grant.
+
+Steps:
+
+1. Start Checkout with `catalogId = "starter"`.
+2. Complete payment with `4242 4242 4242 4242`.
+3. Confirm `customer.subscription.created` or `customer.subscription.updated` processed.
+4. Confirm `invoice.payment_succeeded` processed.
+
+Expected:
+
+- Checkout Session mode is `subscription`.
+- `subscription.tier = 'starter'`.
+- `subscription.status` is `active` or another mapped Stripe status.
+- One subscription renewal grant exists with `catalog_id = 'starter'`, `original_credits = 4`, source `subscription_renewal`.
+- Any eligible unused Starter credits are rolled over up to 4 credits with source `rollover`.
+
+Verification:
+
+```sql
+SELECT tier, status, billing_cycle, stripe_price_id, stripe_subscription_id
+FROM subscription
+WHERE user_id = '...';
+
+SELECT catalog_id, source, original_credits, remaining_credits, expires_at, idempotency_key
+FROM credit_grant
+WHERE user_id = '...'
+ORDER BY created_at DESC;
+```
+
+## Scenario 3: Pro Subscription Purchase
+
+**Goal**: Verify Pro is no longer unlimited and grants 12 monthly credits.
+
+Steps:
+
+1. Start Checkout with `catalogId = "pro"`.
+2. Complete payment with `5555 5555 5555 4444`.
+3. Confirm subscription and invoice webhooks process.
+
+Expected:
+
+- `subscription.tier = 'pro'`.
+- One subscription renewal grant exists with `catalog_id = 'pro'`, `original_credits = 12`, source `subscription_renewal`.
+- Any eligible unused Pro credits are rolled over up to 12 credits with source `rollover`.
+- No `usage_record` row is created as the access source for this billing period.
+
+## Scenario 4: Card Decline
+
+**Goal**: Verify failed Checkout does not grant credits.
+
+Steps:
+
+1. Start Starter or Pro Checkout.
+2. Pay with `4000 0000 0000 0002`.
+
+Expected:
+
+- Stripe displays a card declined error.
+- User does not reach `/pricing/success`.
+- No new `subscription` row is activated from this attempt.
+- No new `credit_grant` row is created.
+
+## Scenario 5: 3D Secure
+
+**Goal**: Verify Checkout handles SCA and still grants credits after successful completion.
+
+Steps:
+
+1. Start Pro Checkout.
+2. Pay with `4000 0025 0000 3155`.
+3. Complete the 3D Secure challenge.
+
+Expected:
+
+- Stripe displays the challenge.
+- Checkout succeeds after the challenge.
+- Subscription and invoice webhooks process normally.
+- Pro credit grant appears once.
+
+## Scenario 6: Webhook Idempotency
+
+**Goal**: Verify duplicate Stripe events do not duplicate billing state or credits.
+
+Steps:
+
+1. Complete an Interview Pass purchase.
+2. Find the `checkout.session.completed` event ID.
+3. Replay it:
 
 ```bash
-# Subscription created
-stripe trigger customer.subscription.created
-
-# Payment succeeded
-stripe trigger invoice.payment_succeeded
-
-# Payment failed
-stripe trigger invoice.payment_failed
-
-# Trial ending soon (3 days before)
-stripe trigger customer.subscription.trial_will_end
-
-# Subscription deleted
-stripe trigger customer.subscription.deleted
-
-# Refund processed
-stripe trigger charge.refunded
+stripe events resend <evt_id> --webhook-endpoint=<endpoint_id>
 ```
 
----
+Expected:
 
-## Database Verification Queries
+- `stripe_event_log` has one processed row for the event ID.
+- `credit_grant` still has one row for the purchase idempotency key.
 
-### Check Subscription State
+Verification:
+
 ```sql
-SELECT
-  u.email,
-  s.tier,
-  s.status,
-  s.billing_cycle,
-  s.trial_end,
-  s.current_period_start,
-  s.current_period_end,
-  s.stripe_subscription_id,
-  s.pro_trial_used,
-  s.premium_trial_used,
-  s.version
-FROM subscription s
-JOIN app_user u ON s.user_id = u.id
-WHERE u.email LIKE 'test+%'
-ORDER BY s.created_at DESC;
-```
-
-### Check Payment History
-```sql
-SELECT
-  u.email,
-  ph.amount_in_cents,
-  ph.currency,
-  ph.status,
-  ph.tier,
-  ph.failure_reason,
-  ph.created_at
-FROM payment_history ph
-JOIN app_user u ON ph.user_id = u.id
-ORDER BY ph.created_at DESC
-LIMIT 10;
-```
-
-### Check Webhook Events
-```sql
-SELECT
-  stripe_event_id,
-  event_type,
-  status,
-  attempts,
-  last_error,
-  processed_at,
-  created_at
+SELECT stripe_event_id, event_type, status, attempts, processed_at
 FROM stripe_event_log
-ORDER BY created_at DESC
-LIMIT 20;
+WHERE stripe_event_id = 'evt_...';
+
+SELECT idempotency_key, COUNT(*)
+FROM credit_grant
+WHERE idempotency_key LIKE 'stripe:checkout:%'
+GROUP BY idempotency_key
+HAVING COUNT(*) > 1;
 ```
 
-### Check Usage Records
+The second query should return zero rows.
+
+## Scenario 7: Subscription Renewal
+
+**Goal**: Verify renewal invoices roll over eligible credits before granting new credits.
+
+Steps:
+
+1. Create an active Starter or Pro subscription.
+2. Leave some subscription-granted credits unused.
+3. Trigger or replay `invoice.payment_succeeded` for the next invoice.
+
+Expected:
+
+- Rollover grant is created first when there are eligible remaining credits.
+- New renewal grant is created with the plan's included credits.
+- Rollover does not exceed the plan cap.
+- Replaying the invoice event does not duplicate either grant.
+
+Verification:
+
 ```sql
-SELECT
-  u.email,
-  ur.tier_snapshot,
-  ur.interviews_used,
-  ur.interviews_limit,
-  ur.period_start,
-  ur.period_end
-FROM usage_record ur
-JOIN app_user u ON ur.user_id = u.id
-ORDER BY ur.created_at DESC
-LIMIT 10;
+SELECT catalog_id, source, original_credits, remaining_credits, rollover_source_grant_id, expires_at
+FROM credit_grant
+WHERE user_id = '...'
+ORDER BY created_at DESC;
 ```
 
----
+## Scenario 8: Failed Renewal Payment
 
-## Edge Cases
+**Goal**: Verify dunning state without granting credits.
 
-### 1. Multiple Rapid Clicks on Checkout Button
+Steps:
 
-**Test**: Click "Start Trial" button 5 times rapidly
+1. Trigger `invoice.payment_failed` for an active subscription.
 
-**Expected**: Only 1 checkout session created, subsequent clicks show loading state
+```bash
+stripe trigger invoice.payment_failed
+```
 
----
+Expected:
 
-### 2. Browser Back During Checkout
+- `payment_history.status = 'failed'`.
+- `subscription.status = 'past_due'`.
+- `subscription.grace_period_end` is about 7 days in the future.
+- No new `credit_grant` row is created.
 
-**Test**: Click browser back button mid-checkout
+## Scenario 9: Customer Mapping Fallback
 
-**Expected**: Redirected to `/pricing/canceled`, no subscription created
+**Goal**: Verify webhooks can recover `userId` when Stripe metadata is missing.
 
----
+Steps:
 
-### 3. Checkout Session Expired
+1. Complete Starter or Pro checkout.
+2. Remove `metadata.userId` from the Stripe customer or subscription in test mode.
+3. Trigger `customer.subscription.updated` or replay a subscription event.
 
-**Test**: Get checkout URL, wait 24 hours, try to access
+Expected:
 
-**Expected**: Stripe shows "Session expired" error, no charge
+- Webhook resolves the user through `stripe_customer_mapping`.
+- Subscription update processes successfully.
 
----
+Verification:
 
-### 4. Webhook Arrives Before User Redirects
+```sql
+SELECT stripe_customer_id, stripe_subscription_id, user_id
+FROM stripe_customer_mapping
+WHERE stripe_customer_id = 'cus_...';
+```
 
-**Test**: Complete checkout with slow network, webhook arrives first
+## Scenario 10: Billing Sync
 
-**Expected**: Database updated, user sees correct state on `/pricing/success`
+**Goal**: Verify `/api/billing/sync` uses catalog price IDs and never defaults unknown prices to Pro.
 
----
+Steps:
 
-### 5. Duplicate Email (Existing Customer)
+1. Create a Starter or Pro subscription in Stripe.
+2. Call `/api/billing/sync` as that user.
+3. Temporarily test an unknown price in a disposable Stripe subscription.
 
-**Test**: Create subscription with `test@example.com`, try again with same email
+Expected:
 
-**Expected**: Stripe uses existing customer, updates subscription
-
----
+- Known Starter and Pro prices sync to `starter` and `pro`.
+- Unknown prices are logged and preserve existing local tier if one exists.
+- Unknown prices do not silently become `pro`.
 
 ## Production Checklist
 
-Before deploying to production:
-
-- [ ] Replace test API keys with live keys in `.env.production`
-- [ ] Configure live webhook endpoint in Stripe Dashboard
-- [ ] Verify webhook signing secret is correct
-- [ ] Test at least one successful payment with real card (then refund)
-- [ ] Verify SSL certificate valid for webhook endpoint
-- [ ] Set up Stripe webhook monitoring/alerts
-- [ ] Configure Stripe email notifications for customers
-- [ ] Test Customer Portal for subscription management
-- [ ] Verify tax calculations if applicable
-- [ ] Set up fraud prevention (Stripe Radar)
-
----
-
-## Known Issues & Fixes
-
-### Issue: Webhook Not Received Locally
-
-**Fix**: Ensure Stripe CLI is running:
-```bash
-stripe listen --forward-to http://localhost:3000/api/webhooks/stripe
-```
-
-### Issue: "Invalid signature" Error
-
-**Fix**: Verify `STRIPE_WEBHOOK_SECRET` in `.env.local` matches CLI output
-
-### Issue: Database Shows Old Subscription
-
-**Fix**: Check `stripe_event_log` for failed events, retry them
-
----
-
-## Test Execution Log
-
-| Test # | Scenario | Status | Date | Notes |
-|--------|----------|--------|------|-------|
-| 1 | Pro Monthly Happy Path | ⏳ Pending | | |
-| 2 | Premium Annual Happy Path | ⏳ Pending | | |
-| 3 | Card Declined | ⏳ Pending | | |
-| 4 | Insufficient Funds | ⏳ Pending | | |
-| 5 | 3D Secure | ⏳ Pending | | |
-| 6 | Checkout Cancel | ⏳ Pending | | |
-| 7 | Webhook Idempotency | ⏳ Pending | | |
-| 8 | Failed Payment | ⏳ Pending | | |
-| 9 | Payment Recovery | ⏳ Pending | | |
-| 10 | Subscription Cancel | ⏳ Pending | | |
-
----
-
-## Contact
-
-**Questions?** Ask in #stripe-testing channel or contact your lead engineer.
+- [ ] Live `STRIPE_*_PRICE_ID` values are configured for Interview Pass, Starter monthly, and Pro monthly.
+- [ ] Live webhook endpoint is configured for Checkout, subscription, invoice, and refund events.
+- [ ] Webhook signing secret is correct.
+- [ ] Customer Portal is configured for Starter and Pro subscription management.
+- [ ] A real low-value payment has been tested and refunded.
+- [ ] Stripe webhook failures are monitored through `stripe_event_log`.
+- [ ] Product analytics distinguish trial grants, checkout grants, subscription renewals, and rollover grants.
