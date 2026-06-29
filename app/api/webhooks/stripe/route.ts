@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
-import { stripeEventLog, subscription, paymentHistory, usageRecord, stripeCustomerMapping } from "@/lib/db/schema";
+import { stripeEventLog, subscription, paymentHistory, stripeCustomerMapping } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-
-// Phase 0.5C: Price ID mapping from environment (P1 fix #9)
-const STRIPE_PRICE_IDS = {
-  pro_monthly: process.env.STRIPE_PRO_MONTHLY_PRICE_ID,
-  pro_annual: process.env.STRIPE_PRO_ANNUAL_PRICE_ID,
-  premium_monthly: process.env.STRIPE_PREMIUM_MONTHLY_PRICE_ID,
-  premium_annual: process.env.STRIPE_PREMIUM_ANNUAL_PRICE_ID,
-};
+import { createCreditLedgerService } from "@/lib/billing/credits";
+import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
+import {
+  STRIPE_API_VERSION,
+  getStripeCatalogIdForPrice,
+  isStripeCheckoutCatalogId,
+} from "@/lib/billing/stripe-catalog";
 
 /**
  * Stripe Webhook Handler with Idempotency
@@ -89,6 +88,10 @@ export async function POST(req: NextRequest) {
     // Process event based on type
     try {
       switch (event.type) {
+        case "checkout.session.completed":
+          await handleCheckoutCompleted(event);
+          break;
+
         case "customer.subscription.created":
         case "customer.subscription.updated":
           await handleSubscriptionUpdate(event);
@@ -157,7 +160,7 @@ function getStripe() {
   }
 
   return new Stripe(stripeSecretKey, {
-    apiVersion: "2025-10-29.clover",
+    apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
   });
 }
 
@@ -230,7 +233,9 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     return;
   }
 
-  const tier = getTierFromPrice(stripeSubscription.items.data[0]?.price.id);
+  const catalogId = getStripeCatalogIdForPrice(
+    stripeSubscription.items.data[0]?.price.id
+  );
 
   // Phase 0.5C: Set trial tracking flags (P0 fix #4)
   let trialUpdates = {};
@@ -238,10 +243,8 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     stripeSubscription.status === "trialing" ||
     (stripeSubscription.trial_end && new Date(stripeSubscription.trial_end * 1000) < new Date())
   ) {
-    if (tier === "pro") {
+    if (catalogId === "pro") {
       trialUpdates = { proTrialUsed: true };
-    } else if (tier === "premium") {
-      trialUpdates = { premiumTrialUsed: true };
     }
   }
 
@@ -250,7 +253,7 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 
   const subscriptionData = {
     userId,
-    tier,
+    tier: catalogId,
     status: mapStripeStatus(stripeSubscription.status),
     billingCycle: firstItem?.price.recurring?.interval === "month"
       ? "monthly" as const
@@ -319,16 +322,45 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
         },
       });
 
-    // Initialize usage record for new billing period if needed
-    if (subscriptionData.currentPeriodStart && subscriptionData.currentPeriodEnd) {
-      await initializeUsageRecordInTransaction(
-        tx,
-        userId,
-        subscriptionData.currentPeriodStart,
-        subscriptionData.currentPeriodEnd,
-        subscriptionData.tier
-      );
-    }
+  });
+}
+
+/**
+ * Handle checkout.session.completed events for one-time credit products.
+ */
+async function handleCheckoutCompleted(event: Stripe.Event) {
+  const session = event.data.object as Stripe.Checkout.Session;
+  const userId = session.metadata?.userId;
+  const catalogId = session.metadata?.catalogId;
+
+  if (!userId || !catalogId || !isStripeCheckoutCatalogId(catalogId)) {
+    console.warn("Missing Checkout metadata for credit grant", {
+      sessionId: session.id,
+    });
+    return;
+  }
+
+  const customerId = getStripeCustomerId(session.customer);
+  if (customerId) {
+    await upsertStripeCustomerMapping({
+      stripeCustomerId: customerId,
+      userId,
+    });
+  }
+
+  if (catalogId !== "interview_pass") {
+    return;
+  }
+
+  const ledger = createCreditLedgerService({
+    store: createDrizzleCreditLedgerStore(),
+  });
+  await ledger.grantCredits({
+    userId,
+    catalogId,
+    source: "checkout",
+    sourceId: session.id,
+    idempotencyKey: `stripe:checkout:${session.id}:interview_pass`,
   });
 }
 
@@ -361,12 +393,35 @@ async function handleSubscriptionDeleted(event: Stripe.Event) {
  */
 async function handlePaymentSucceeded(event: Stripe.Event) {
   const invoice = event.data.object as Stripe.Invoice;
-  // In API 2025-10-29.clover, use invoice.metadata directly
-  const userId = invoice.metadata?.userId as string | undefined;
+  const customerId = getStripeCustomerId(invoice.customer);
+  const userId = customerId
+    ? await getUserIdFromStripe(customerId, invoice.metadata?.userId)
+    : invoice.metadata?.userId;
 
   if (!userId) {
     console.warn("Missing userId in invoice metadata");
     return;
+  }
+
+  const catalogId = getStripeCatalogIdForPrice(getInvoicePriceId(invoice));
+
+  if (catalogId === "starter" || catalogId === "pro") {
+    const ledger = createCreditLedgerService({
+      store: createDrizzleCreditLedgerStore(),
+    });
+    await ledger.rolloverSubscriptionCredits({
+      userId,
+      catalogId,
+      idempotencyKey: `stripe:rollover:${invoice.id}:${catalogId}`,
+      sourceId: invoice.id,
+    });
+    await ledger.grantCredits({
+      userId,
+      catalogId,
+      source: "subscription_renewal",
+      sourceId: invoice.id,
+      idempotencyKey: `stripe:invoice:${invoice.id}:${catalogId}`,
+    });
   }
 
   // In API 2025-10-29.clover, payment_intent moved to payments array
@@ -382,7 +437,7 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
       amountInCents: invoice.amount_paid,
       currency: invoice.currency,
       status: "succeeded",
-      tier: invoice.lines.data[0]?.description || null,
+      tier: catalogId,
       periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
       periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : null,
       receiptUrl: invoice.hosted_invoice_url,
@@ -407,8 +462,10 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
  */
 async function handlePaymentFailed(event: Stripe.Event) {
   const invoice = event.data.object as Stripe.Invoice;
-  // In API 2025-10-29.clover, use invoice.metadata directly
-  const userId = invoice.metadata?.userId as string | undefined;
+  const customerId = getStripeCustomerId(invoice.customer);
+  const userId = customerId
+    ? await getUserIdFromStripe(customerId, invoice.metadata?.userId)
+    : invoice.metadata?.userId;
 
   if (!userId) {
     console.warn("Missing userId in invoice metadata");
@@ -429,7 +486,7 @@ async function handlePaymentFailed(event: Stripe.Event) {
       amountInCents: invoice.amount_due,
       currency: invoice.currency,
       status: "failed",
-      tier: invoice.lines.data[0]?.description || null,
+      tier: getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
       periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
       periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : null,
       failureReason: invoice.last_finalization_error?.message || "Payment failed",
@@ -491,78 +548,6 @@ async function handleRefund(event: Stripe.Event) {
 }
 
 /**
- * Initialize usage record for new billing period
- */
-async function initializeUsageRecord(
-  userId: string,
-  periodStart: Date,
-  periodEnd: Date,
-  tier: string
-) {
-  const limit = tier === "free" ? 3 : -1; // -1 = unlimited
-
-  // Check if usage record already exists
-  const existing = await db
-    .select()
-    .from(usageRecord)
-    .where(
-      and(
-        eq(usageRecord.userId, userId),
-        eq(usageRecord.periodStart, periodStart)
-      )
-    )
-    .limit(1);
-
-  if (existing.length === 0) {
-    await db.insert(usageRecord).values({
-      userId,
-      periodStart,
-      periodEnd,
-      interviewsUsed: 0,
-      interviewsLimit: limit,
-      tierSnapshot: tier,
-    });
-  }
-}
-
-/**
- * Transaction-aware version of initializeUsageRecord
- * Used within db.transaction() to maintain atomicity
- */
-async function initializeUsageRecordInTransaction(
-  tx: Pick<typeof db, "insert" | "select">,
-  userId: string,
-  periodStart: Date,
-  periodEnd: Date,
-  tier: string
-) {
-  const limit = tier === "free" ? 3 : -1; // -1 = unlimited
-
-  // Check if usage record already exists
-  const existing = await tx
-    .select()
-    .from(usageRecord)
-    .where(
-      and(
-        eq(usageRecord.userId, userId),
-        eq(usageRecord.periodStart, periodStart)
-      )
-    )
-    .limit(1);
-
-  if (existing.length === 0) {
-    await tx.insert(usageRecord).values({
-      userId,
-      periodStart,
-      periodEnd,
-      interviewsUsed: 0,
-      interviewsLimit: limit,
-      tierSnapshot: tier,
-    });
-  }
-}
-
-/**
  * Map Stripe subscription status to our internal status
  */
 function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): string {
@@ -583,30 +568,43 @@ function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): string {
 }
 
 /**
- * Get tier from Stripe price ID
- *
- * Phase 0.5C: Use environment variable mapping (P1 fix #9)
  */
-function getTierFromPrice(priceId: string | undefined): string {
-  if (!priceId) return "free";
-
-  // Check against environment variable price IDs
-  const priceIdValues = Object.values(STRIPE_PRICE_IDS).filter(Boolean);
-
-  if (priceIdValues.includes(priceId)) {
-    if (
-      priceId === STRIPE_PRICE_IDS.pro_monthly ||
-      priceId === STRIPE_PRICE_IDS.pro_annual
-    ) {
-      return "pro";
-    }
-    if (
-      priceId === STRIPE_PRICE_IDS.premium_monthly ||
-      priceId === STRIPE_PRICE_IDS.premium_annual
-    ) {
-      return "premium";
-    }
+function getStripeCustomerId(
+  customer: string | Stripe.Customer | Stripe.DeletedCustomer | null
+): string | null {
+  if (!customer) {
+    return null;
   }
 
-  throw new Error(`Unknown Stripe price ID: ${priceId}`);
+  return typeof customer === "string" ? customer : customer.id;
+}
+
+function getInvoicePriceId(invoice: Stripe.Invoice): string | undefined {
+  return invoice.lines.data[0]?.pricing?.price_details?.price;
+}
+
+async function upsertStripeCustomerMapping({
+  stripeCustomerId,
+  stripeSubscriptionId,
+  userId,
+}: {
+  stripeCustomerId: string;
+  stripeSubscriptionId?: string | null;
+  userId: string;
+}) {
+  await db
+    .insert(stripeCustomerMapping)
+    .values({
+      stripeCustomerId,
+      stripeSubscriptionId: stripeSubscriptionId ?? null,
+      userId,
+    })
+    .onConflictDoUpdate({
+      target: stripeCustomerMapping.stripeCustomerId,
+      set: {
+        stripeSubscriptionId: stripeSubscriptionId ?? null,
+        userId,
+        updatedAt: new Date(),
+      },
+    });
 }

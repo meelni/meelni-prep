@@ -30,7 +30,7 @@ export const subscription = pgTable("subscription", {
   userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull().unique(),
 
   // Tier and status
-  tier: text("tier").notNull().default("free"), // 'free', 'pro'
+  tier: text("tier").notNull().default("free"), // 'free', 'starter', 'pro'
   status: text("status").notNull().default("active"), // 'active', 'canceled', 'past_due', 'paused', 'trialing'
   billingCycle: text("billing_cycle"), // 'monthly', 'annual', null for free
 
@@ -67,7 +67,7 @@ export const subscription = pgTable("subscription", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   // Check constraints
-  tierCheck: check("subscription_tier_check", sql`${table.tier} IN ('free', 'pro')`),
+  tierCheck: check("subscription_tier_check", sql`${table.tier} IN ('free', 'starter', 'pro')`),
   statusCheck: check("subscription_status_check", sql`${table.status} IN ('active', 'canceled', 'past_due', 'paused', 'trialing')`),
   billingCycleCheck: check("subscription_billing_cycle_check", sql`${table.billingCycle} IS NULL OR ${table.billingCycle} IN ('monthly', 'annual')`),
 
