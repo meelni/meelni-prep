@@ -20,6 +20,9 @@ export interface DashboardUser {
   };
 }
 
+export const DASHBOARD_CONTENT_PANEL_CLASS_NAME =
+  "border-dashboard-panel-border bg-dashboard-panel min-h-full overflow-hidden rounded-[10px] border";
+
 export function DashboardLayout({
   children,
   activeSection,
@@ -44,7 +47,7 @@ export function DashboardLayout({
   }, [sidebarCollapsed]);
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="bg-dashboard-canvas text-dashboard-foreground flex h-screen [--accent:#24242a] [--border:var(--dashboard-panel-border)] [--card:var(--dashboard-panel)] [--foreground:var(--dashboard-foreground)] [--muted-foreground:var(--dashboard-muted)] [--muted:#2a2a31] [--secondary:#24242a]">
       {/* Sidebar */}
       <Sidebar
         key={`sidebar-${activeSection}`}
@@ -61,15 +64,16 @@ export function DashboardLayout({
       {/* Mobile Overlay */}
       {!sidebarCollapsed && (
         <div
-          className="fixed inset-0 bg-overlay/50 z-40 md:hidden"
+          className="bg-overlay/50 fixed inset-0 z-40 md:hidden"
           onClick={() => setSidebarCollapsed(true)}
         />
       )}
 
-      {/* Main Content - NO TOOLBAR */}
-      <div className="flex-1 overflow-auto">
-        {children}
-      </div>
+      <main className="bg-dashboard-canvas min-w-0 flex-1 overflow-auto p-3">
+        <section className={DASHBOARD_CONTENT_PANEL_CLASS_NAME}>
+          {children}
+        </section>
+      </main>
     </div>
   );
 }

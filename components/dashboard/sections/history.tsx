@@ -36,15 +36,6 @@ export const HistorySection = memo(function HistorySection({
 
   return (
     <div className="space-y-6 p-6">
-      <div className="space-y-2">
-        <h2 className="font-display text-foreground text-2xl font-light">
-          Interview History
-        </h2>
-        <p className="text-muted-foreground font-sans">
-          View all your past mock interviews and track your progress over time.
-        </p>
-      </div>
-
       {loadingSessions ? (
         <DashboardSkeletonCard className="flex min-h-48 items-center justify-center">
           <div className="border-primary mx-auto h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />

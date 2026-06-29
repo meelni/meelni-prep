@@ -23,7 +23,7 @@ const outfit = Outfit({
 
 const publicSans = Public_Sans({
   subsets: ["latin"],
-  weight: ["400", "600"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-public-sans",
   display: "swap",
 });
@@ -41,8 +41,10 @@ const commitMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Meelni - AI Mock Interview Coach for Product Managers | Practice PM Interviews",
-  description: "Master your PM interview with Meelni's AI interview coach. Practice real Product Sense, Behavioral, Execution & Strategy questions with natural voice conversations. Get instant feedback on 2,879+ curated questions. Free 3 interviews/month.",
+  title:
+    "Meelni - AI Mock Interview Coach for Product Managers | Practice PM Interviews",
+  description:
+    "Master your PM interview with Meelni's AI interview coach. Practice real Product Sense, Behavioral, Execution & Strategy questions with natural voice conversations. Get instant feedback on 2,879+ curated questions. Free 3 interviews/month.",
   keywords: [
     "AI interview coach",
     "mock interview AI",
@@ -63,13 +65,16 @@ export const metadata: Metadata = {
   authors: [{ name: "Meelni" }],
   creator: "Meelni",
   publisher: "Meelni",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com"),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com"
+  ),
   alternates: {
     canonical: "/",
   },
   openGraph: {
     title: "Meelni - AI Mock Interview Coach for Product Managers",
-    description: "Practice PM interviews with AI voice coaching. 2,879+ questions across Product Sense, Behavioral, Execution & Strategy. Get real-time feedback and ace your next interview.",
+    description:
+      "Practice PM interviews with AI voice coaching. 2,879+ questions across Product Sense, Behavioral, Execution & Strategy. Get real-time feedback and ace your next interview.",
     type: "website",
     siteName: "Meelni",
     url: "/",
@@ -78,7 +83,8 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Meelni - AI Mock Interview Coach for Product Managers",
-    description: "Practice PM interviews with AI voice coaching. 2,879+ questions. Real-time feedback. Master Product Sense, Behavioral, Execution & Strategy interviews.",
+    description:
+      "Practice PM interviews with AI voice coaching. 2,879+ questions. Real-time feedback. Master Product Sense, Behavioral, Execution & Strategy interviews.",
     creator: "@trymeelni",
     site: "@trymeelni",
   },
