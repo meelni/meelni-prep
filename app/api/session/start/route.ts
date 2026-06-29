@@ -30,9 +30,9 @@
  * @response.config {Object} - Session configuration used
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
- * @throws {403} Forbidden - Interview type locked (requires upgrade) or monthly quota exceeded (Free tier: 3/month)
+ * @throws {402} Payment Required - No interview credits remaining
  * @throws {400} Bad Request - Missing roundType or invalid roundType value
- * @throws {503} Service Unavailable - Unable to verify permissions or quota (service down)
+ * @throws {503} Service Unavailable - Unable to verify credits or start LiveKit room
  * @throws {500} Internal Server Error - Database error, LiveKit configuration error, or agent dispatch failure
  *
  * @example
@@ -78,29 +78,17 @@
  *   "error": "Unauthorized"
  * }
  *
- * // Error Response (403 Forbidden - Interview Type Locked)
+ * // Error Response (402 Payment Required - No Credits)
  * {
- *   "error": "interview_type_locked",
- *   "message": "Execution interviews require a Pro subscription. Upgrade to unlock all 4 interview types.",
- *   "currentTier": "free",
- *   "requestedType": "execution",
- *   "allowedTypes": ["product_sense"],
- *   "upgradeUrl": "/pricing"
- * }
- *
- * // Error Response (403 Forbidden - Quota Exceeded)
- * {
- *   "error": "quota_exceeded",
- *   "message": "Monthly interview quota exceeded",
- *   "currentUsage": 3,
- *   "limit": 3,
+ *   "error": "no_credits_remaining",
+ *   "message": "You need an interview credit to start a full interview.",
  *   "upgradeUrl": "/pricing"
  * }
  *
  * // Error Response (503 Service Unavailable)
  * {
  *   "error": "service_unavailable",
- *   "message": "Unable to verify interview quota. Please try again in a moment."
+ *   "message": "Unable to verify interview credits. Please try again in a moment."
  * }
  */
 

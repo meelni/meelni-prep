@@ -7,8 +7,8 @@
  *
  * @route POST /api/livekit/token
  * @access Public (authentication optional)
- * @note Authenticated users: quota enforcement applied
- * @note Anonymous users: no quota enforcement (demo mode)
+ * @note Full authenticated interview credit enforcement happens in /api/session/start.
+ * @note This endpoint only issues LiveKit tokens for existing/demo rooms.
  *
  * @request {Object} body - Request payload
  * @request.roomName {string} Required - LiveKit room name to join
@@ -20,7 +20,6 @@
  * @response.url {string} - LiveKit server WebSocket URL
  *
  * @throws {400} Bad Request - Missing roomName or participantName
- * @throws {403} Forbidden - Monthly interview quota exceeded (authenticated users only)
  * @throws {500} Internal Server Error - LiveKit credentials not configured or token generation failed
  *
  * @example
@@ -53,15 +52,6 @@
  *   "error": "Missing roomName or participantName"
  * }
  *
- * // Error Response (403 Forbidden - Quota Exceeded)
- * {
- *   "error": "quota_exceeded",
- *   "message": "Monthly interview quota exceeded",
- *   "currentUsage": 3,
- *   "limit": 3,
- *   "upgradeUrl": "/pricing"
- * }
- *
  * // Error Response (500 Internal Server Error)
  * {
  *   "error": "LiveKit credentials not configured"
@@ -70,8 +60,6 @@
 
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { incrementUsage } from "@/lib/services/usage-service";
 
 export async function POST(req: NextRequest) {
   try {
@@ -84,42 +72,6 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-
-    // Check authentication and quota (only for authenticated users)
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (user) {
-      // Authenticated user - atomically check and increment quota
-      try {
-        const incrementResult = await incrementUsage(user.id);
-
-        if (!incrementResult.success) {
-          // Quota exceeded - return 403 with upgrade information
-          return NextResponse.json(
-            {
-              error: "quota_exceeded",
-              message: incrementResult.reason || "Monthly interview quota exceeded",
-              currentUsage: incrementResult.currentUsage || 0,
-              limit: incrementResult.limit || 0,
-              upgradeUrl: "/pricing",
-            },
-            { status: 403 }
-          );
-        }
-      } catch (error) {
-        console.error("Quota check error:", getErrorMessage(error));
-        // Fail closed: return 503 Service Unavailable if quota service is down
-        return NextResponse.json(
-          {
-            error: "service_unavailable",
-            message: "Unable to verify interview quota. Please try again in a moment.",
-          },
-          { status: 503 }
-        );
-      }
-    }
-    // else: Anonymous user (demo mode) - skip quota check
 
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
