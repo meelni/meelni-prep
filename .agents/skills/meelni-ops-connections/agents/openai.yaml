@@ -1,0 +1,4 @@
+interface:
+  display_name: "Meelni Ops Connections"
+  short_description: "Connect Meelni ops tools safely"
+  default_prompt: "Use $meelni-ops-connections to reconnect Meelni operational tools and verify the right accounts before changing external systems."
