@@ -60,6 +60,7 @@
 
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 
 export async function POST(req: NextRequest) {
   try {
@@ -73,11 +74,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.LIVEKIT_API_KEY;
-    const apiSecret = process.env.LIVEKIT_API_SECRET;
-    const livekit_url = process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL;
-
-    if (!apiKey || !apiSecret || !livekit_url) {
+    const livekitEnv = getLiveKitEnvironment(process.env);
+    if (!livekitEnv.ok) {
       return NextResponse.json(
         { error: "LiveKit credentials not configured" },
         { status: 500 }
@@ -90,20 +88,39 @@ export async function POST(req: NextRequest) {
       const metadataStr = JSON.stringify(metadata);
       if (metadataStr.length > 10000) {
         // 10KB limit
-        return NextResponse.json({ error: "Metadata too large (max 10KB)" }, { status: 400 });
-      }
-
-      // Validate metadata keys (allowlist approach)
-      const allowedKeys = ["sessionId", "roundType", "config", "question", "difficulty", "mode"];
-      const hasInvalidKeys = Object.keys(metadata).some((key) => !allowedKeys.includes(key));
-      if (hasInvalidKeys) {
         return NextResponse.json(
-          { error: "Invalid metadata keys. Allowed: sessionId, roundType, config, question, difficulty, mode" },
+          { error: "Metadata too large (max 10KB)" },
           { status: 400 }
         );
       }
 
-      const roomClient = new RoomServiceClient(livekit_url, apiKey, apiSecret);
+      // Validate metadata keys (allowlist approach)
+      const allowedKeys = [
+        "sessionId",
+        "roundType",
+        "config",
+        "question",
+        "difficulty",
+        "mode",
+      ];
+      const hasInvalidKeys = Object.keys(metadata).some(
+        (key) => !allowedKeys.includes(key)
+      );
+      if (hasInvalidKeys) {
+        return NextResponse.json(
+          {
+            error:
+              "Invalid metadata keys. Allowed: sessionId, roundType, config, question, difficulty, mode",
+          },
+          { status: 400 }
+        );
+      }
+
+      const roomClient = new RoomServiceClient(
+        livekitEnv.data.url,
+        livekitEnv.data.apiKey,
+        livekitEnv.data.apiSecret
+      );
 
       try {
         await roomClient.createRoom({
@@ -124,23 +141,26 @@ export async function POST(req: NextRequest) {
     }
 
     // Generate participant token
-    const at = new AccessToken(apiKey, apiSecret, {
-      identity: participantName,
-    });
+    const at = new AccessToken(
+      livekitEnv.data.apiKey,
+      livekitEnv.data.apiSecret,
+      {
+        identity: participantName,
+      }
+    );
 
     at.addGrant({
       room: roomName,
       roomJoin: true,
       canPublish: true,
       canSubscribe: true,
-      agent: true,  // Enable agent capabilities for this participant
     });
 
     const token = await at.toJwt();
 
     return NextResponse.json({
       token,
-      url: livekit_url,
+      url: livekitEnv.data.url,
     });
   } catch (error) {
     console.error("Error generating LiveKit token:", error);

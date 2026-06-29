@@ -7,6 +7,7 @@ import {
   buildInterviewRoomName,
   createLiveKitInterviewProvider,
   findMissingRequiredEnv,
+  getLiveKitAgentName,
   getLiveKitEnvironment,
   getProviderEnvContract,
   INTEGRATION_PROVIDERS,
@@ -35,6 +36,8 @@ test("livekit env contract captures server keys and websocket URL alternatives",
   assert.deepEqual(listProviderEnvVars("livekit"), [
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
+    "LIVEKIT_INTERVIEW_AGENT_NAME",
+    "LIVEKIT_DEMO_AGENT_NAME",
     "NEXT_PUBLIC_LIVEKIT_URL",
     "LIVEKIT_URL",
   ]);
@@ -120,6 +123,27 @@ test("getLiveKitEnvironment accepts public or server websocket URL", () => {
       apiSecret: "secret",
       url: "wss://server.livekit.cloud",
     });
+  }
+});
+
+test("getLiveKitAgentName reads per-account dispatch names", () => {
+  const result = getLiveKitAgentName("interview", {
+    LIVEKIT_INTERVIEW_AGENT_NAME: "interview-agent-prod",
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.data, "interview-agent-prod");
+  }
+});
+
+test("getLiveKitAgentName reports missing dispatch names", () => {
+  const result = getLiveKitAgentName("demo", {});
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_agent_name_missing");
+    assert.equal(result.error.retryable, false);
   }
 });
 

@@ -55,6 +55,26 @@ test("parseInterviewRoomMetadata keeps question and config defaults", () => {
   assert.equal(metadata.config.stt_model, "deepgram/nova-3");
 });
 
+test("runtime config rejects arbitrary provider model overrides", () => {
+  const metadata = parseInterviewRoomMetadata(
+    JSON.stringify({
+      round_type: "product_sense",
+      config: {
+        stt_model: "unknown/stt",
+        llm_model: "openai/very-expensive-model",
+        tts_model: "custom/tts:voice",
+      },
+    })
+  );
+
+  assert.equal(metadata.config.stt_model, "deepgram/nova-3");
+  assert.equal(metadata.config.llm_model, "openai/gpt-4.1-mini");
+  assert.equal(
+    metadata.config.tts_model,
+    "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
+  );
+});
+
 test("transcript event parsing normalizes timestamps and speakers", () => {
   const liveKitFixture = createLiveKitStartFixture();
   const event = createTranscriptEvent(liveKitFixture.transcriptEvent);

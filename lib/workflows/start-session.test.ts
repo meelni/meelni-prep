@@ -86,6 +86,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
         questionId: productFixture.question.questionId,
       },
       env: liveKitFixture.input.env,
+      interviewAgentName: liveKitFixture.input.agentName,
     },
     deps
   );
@@ -97,7 +98,10 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
       roomName: liveKitFixture.input.roomName,
       token: liveKitFixture.expectedStartedRoom.token,
       url: liveKitFixture.expectedStartedRoom.url,
-      config: productFixture.roomMetadata.config,
+      config: {
+        ...productFixture.roomMetadata.config,
+        persona: null,
+      },
       question: {
         id: productFixture.question.questionId,
         text: productFixture.question.questionText,
@@ -120,6 +124,7 @@ test("startInterviewSessionWorkflow allows all PM round types when a credit is a
       user,
       body: { roundType: "execution" },
       env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
     },
     createDeps({
       createSession: async (input) => {
@@ -142,6 +147,7 @@ test("startInterviewSessionWorkflow returns no-credit response before session wo
       user,
       body: { roundType: "product_sense" },
       env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
     },
     createDeps({
       createSession: async (input) => {
@@ -187,6 +193,7 @@ test("startInterviewSessionWorkflow maps retryable LiveKit failures to service u
       user,
       body: { roundType: "product_sense" },
       env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
     },
     createDeps({
       livekitProvider: {

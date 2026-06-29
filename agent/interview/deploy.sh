@@ -3,11 +3,12 @@
 set -e
 
 echo "🚀 Deploying Main Interview Agent to LiveKit Cloud..."
+echo "Using LiveKit interview agent name: ${LIVEKIT_INTERVIEW_AGENT_NAME:-not set}"
 
 # Deploy from parent directory (agent/) with interview-specific Dockerfile
 # This allows the Dockerfile to access both shared/ and interview/ directories
 cd "$(dirname "$0")/.."  # Go to agent/ directory
-lk agent deploy --dockerfile interview/Dockerfile .
+lk --config interview/livekit.toml agent deploy .
 
 echo "✅ Main Interview Agent deployed successfully!"
-echo "Agent ID: CA_yawKG67rCMG4"
+echo "Agent name: ${LIVEKIT_INTERVIEW_AGENT_NAME:-set in LiveKit Cloud secrets}"

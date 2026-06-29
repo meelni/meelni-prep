@@ -18,9 +18,9 @@ This is the main interview agent that powers full mock interview sessions. It su
 
 ## Configuration
 
-- **STT Model**: Deepgram Nova-3 (configurable via room metadata)
-- **LLM Model**: GPT-4.1-mini (default, configurable)
-- **TTS Model**: ElevenLabs Eleven Turbo v2.5 (default voice ID: cgSgspJ2msm6clMCkdW9)
+- **STT Model**: Deepgram Nova-3 (operator-controlled)
+- **LLM Model**: GPT-4.1-mini (operator-controlled)
+- **TTS Model**: Cartesia Sonic 3 / legacy ElevenLabs voice defaults (operator-controlled)
 - **VAD**: Silero VAD with custom thresholds:
   - `min_speech_duration`: 0.2s
   - `min_silence_duration`: 0.6s
@@ -59,11 +59,12 @@ cd interview
 ./deploy.sh
 ```
 
-**Agent ID**: `CA_yawKG67rCMG4`
+**Dispatch name**: `LIVEKIT_INTERVIEW_AGENT_NAME`
 
 ## Dependencies
 
 Uses shared modules from `../shared/`:
+
 - `shared.config` - Configuration parsing (`parse_room_metadata`)
 - `shared.utils.prompt_builder` - Dynamic prompt generation (`build_agent_prompt`)
 
@@ -72,7 +73,7 @@ Uses shared modules from `../shared/`:
 1. User completes setup flow (`/setup`) and navigates to `/interview`
 2. Frontend generates room with metadata containing:
    - `round_type`: interview type (e.g., "product_sense")
-   - `config`: settings (difficulty, mode, duration, models, voice)
+   - `config`: settings (difficulty, mode, duration, voice)
    - `question`: optional question from question bank
    - `session_id`: Supabase session ID for transcript saving
 3. Agent receives `JobContext` with room metadata
@@ -118,7 +119,9 @@ Uses shared modules from `../shared/`:
 ## Customization
 
 ### Change Interview Prompts
+
 Edit prompts in `../shared/prompts.py`:
+
 - `BASE_INTERVIEWER_SYSTEM` - Core interviewer behavior
 - `PRODUCT_SENSE_PROMPT` - Product Sense framework
 - `EXECUTION_PROMPT` - Execution framework
@@ -126,7 +129,9 @@ Edit prompts in `../shared/prompts.py`:
 - `STRATEGY_PROMPT` - Strategy framework
 
 ### Adjust VAD Sensitivity
+
 Modify VAD parameters in `prewarm()` function in `agent.py`:
+
 ```python
 proc.userdata["vad"] = silero.VAD.load(
     min_speech_duration=0.2,      # Shorter = more sensitive
@@ -136,7 +141,9 @@ proc.userdata["vad"] = silero.VAD.load(
 ```
 
 ### Change Default Models
+
 Update defaults in `entrypoint()` function in `agent.py`:
+
 ```python
 stt_model = config.get("stt_model", "deepgram/nova-3")
 llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
@@ -146,6 +153,7 @@ tts_model = config.get("tts_model", "elevenlabs/eleven_turbo_v2_5:...")
 ## Event Handlers
 
 The agent registers event handlers for:
+
 - `UserInputTranscribedEvent` - Saves user's speech to transcript
 - `SpeechCreatedEvent` - Saves agent's responses to transcript
 
@@ -154,26 +162,31 @@ These handlers use the Supabase client to insert records into the `transcript_tu
 ## Troubleshooting
 
 **Agent doesn't join room**:
+
 - Check agent is deployed and active: `lk agent status`
 - Verify agent_name matches in WorkerOptions
 - Check metadata is properly formatted JSON
 
 **Import errors**:
+
 - Verify shared modules are copied in Dockerfile
 - Check sys.path manipulation in agent.py
 - Ensure `../shared/` directory structure is correct
 
 **Transcript not saving**:
+
 - Check Supabase connection in event handlers
 - Verify `session_id` is in room metadata
 - Check database permissions and schema
 
 **Voice cuts off user**:
+
 - Increase `min_silence_duration` in VAD config
 - Adjust `activation_threshold` (higher = less sensitive)
 - Check turn detection model settings
 
 **Poor question quality**:
+
 - Verify question bank integration in prompt builder
 - Check question filtering logic (recency, difficulty)
 - Ensure metadata includes valid question object

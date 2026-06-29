@@ -5,6 +5,7 @@ Handles real-time voice interviews with LiveKit inference platform
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
@@ -34,6 +35,14 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def get_required_env(name: str) -> str:
+    """Read required deployment config without embedding account-specific IDs."""
+    value = os.getenv(name)
+    if not value or not value.strip():
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value.strip()
 
 
 class InterviewAgent(Agent):
@@ -232,16 +241,16 @@ async def entrypoint(ctx: JobContext):
 
 if __name__ == "__main__":
     # Detect if running on LiveKit Cloud (Cloud provides LIVEKIT_URL automatically)
-    import os
     is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
 
     # Cloud doesn't support num_idle_processes or load_threshold
     if is_cloud:
+        agent_name = get_required_env("LIVEKIT_INTERVIEW_AGENT_NAME")
         cli.run_app(
             WorkerOptions(
                 entrypoint_fnc=entrypoint,
                 prewarm_fnc=prewarm,
-                agent_name="CA_yawKG67rCMG4",  # Required for explicit dispatch
+                agent_name=agent_name,
             ),
         )
     else:

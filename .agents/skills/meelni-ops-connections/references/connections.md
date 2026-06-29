@@ -56,6 +56,39 @@ Guidelines:
 - Production must use live Stripe keys and live price IDs.
 - After env changes, redeploy the affected environment before assuming runtime behavior changed.
 
+## LiveKit
+
+Canonical target:
+- Project alias: `meelni`
+- Project ID: `p_419fgt1pbkp`
+- WebSocket URL: `wss://meelni-ek4vaisp.livekit.cloud`
+- Region observed for Cloud agents: `us-east`
+- Interview Cloud agent: `CA_yawKG67rCMG4`
+- Demo Cloud agent: `CA_t3sKQEihMQ7x`
+
+Auth:
+```bash
+lk cloud auth
+lk project set-default meelni
+```
+
+Verify:
+```bash
+lk project list
+lk agent status --id CA_yawKG67rCMG4 --project meelni
+lk agent status --id CA_t3sKQEihMQ7x --project meelni
+```
+
+Env and secrets:
+- Web app envs: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL`, `LIVEKIT_URL`, `LIVEKIT_INTERVIEW_AGENT_NAME`, `LIVEKIT_DEMO_AGENT_NAME`
+- Cloud agent secrets: `LIVEKIT_INTERVIEW_AGENT_NAME` for the interview agent and `LIVEKIT_DEMO_AGENT_NAME` for the demo agent, plus model/provider secrets such as `OPENAI_API_KEY`
+- Values live in Vercel envs and local gitignored `.env.local` files. Do not document raw API keys or secrets.
+
+Operational notes:
+- Vercel sensitive values can pull into `.env.local` as blank strings. `npm run env:pull` preserves existing nonblank local LiveKit values when Vercel returns blanks.
+- If Vercel env values are questionable, use the authenticated `meelni` LiveKit CLI project as the source of truth and overwrite Vercel Development, Preview, and Production envs.
+- After changing Vercel envs, redeploy affected Vercel environments. After changing agent code/secrets, redeploy the corresponding LiveKit Cloud agent.
+
 ## Stripe
 
 Canonical target:
