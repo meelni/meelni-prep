@@ -66,7 +66,8 @@ function CompaniesStructuredData() {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     name: "Company Interview Guides | Meelni",
-    description: "Master your PM interviews with detailed guides for top tech companies. Learn the interview process, practice real questions, and land your dream role.",
+    description:
+      "Master your PM interviews with detailed guides for top tech companies. Learn the interview process, practice real questions, and land your dream role.",
     url: `${baseUrl}/companies`,
     inLanguage: "en-US",
     isPartOf: {
@@ -109,19 +110,19 @@ export default function CompaniesPage() {
       <Header />
 
       {/* Breadcrumb Navigation */}
-      <nav aria-label="Breadcrumb" className="max-w-6xl mx-auto px-6 pt-8">
-        <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+      <nav aria-label="Breadcrumb" className="mx-auto max-w-6xl px-6 pt-8">
+        <ol className="text-muted-foreground flex items-center gap-2 text-sm">
           <li>
             <Link
               href="/"
-              className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+              className="hover:text-foreground flex items-center gap-1.5 transition-colors"
             >
-              <Home className="w-4 h-4" />
+              <Home className="h-4 w-4" />
               <span>Home</span>
             </Link>
           </li>
           <li aria-hidden="true">
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="h-4 w-4" />
           </li>
           <li aria-current="page">
             <span className="text-foreground font-medium">Company Guides</span>
@@ -130,31 +131,33 @@ export default function CompaniesPage() {
       </nav>
 
       {/* Page Header */}
-      <div className="max-w-6xl mx-auto px-6 py-12">
+      <div className="mx-auto max-w-6xl px-6 pb-12">
         <MarketingHero
           eyebrow={
-            <MarketingEyebrow icon={Building2}>Interview Guides</MarketingEyebrow>
+            <MarketingEyebrow icon={Building2}>
+              Interview Guides
+            </MarketingEyebrow>
           }
           title="Company Guides"
           description="Master your PM interviews with detailed guides for top tech companies. Learn the process, practice real questions, and land your dream role."
         />
 
         {/* Company Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
           {companies.map((company) => (
             <MarketingCard key={company.slug}>
               <div className="p-6 pb-4">
-                <MarketingEyebrow className="px-3 py-1.5 text-xs uppercase tracking-wide">
+                <MarketingEyebrow className="min-h-8 px-3 py-1.5 text-xs">
                   {company.industry.split(" / ")[0]}
                 </MarketingEyebrow>
               </div>
 
               <div className="flex flex-1 flex-col gap-4 px-6 pb-6">
                 <div className="space-y-4">
-                  <h2 className="font-display text-2xl font-bold leading-tight text-foreground transition-colors duration-200 group-hover:text-primary">
+                  <h2 className="font-display text-foreground group-hover:text-primary text-2xl leading-tight font-bold transition-colors duration-200">
                     {company.name}
                   </h2>
-                  <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">
+                  <p className="text-muted-foreground line-clamp-3 text-sm leading-relaxed">
                     {company.description}
                   </p>
                 </div>
@@ -163,16 +166,22 @@ export default function CompaniesPage() {
                   <MarketingMetaRow
                     items={[
                       { icon: Clock, label: company.interviewDuration },
-                      { icon: Users, label: `${company.interviewRounds} rounds` },
+                      {
+                        icon: Users,
+                        label: `${company.interviewRounds} rounds`,
+                      },
                     ]}
                   />
 
                   <div className="flex items-center justify-between gap-3">
-                    <span className="rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                    <span className="border-border bg-muted/60 text-muted-foreground rounded-full border px-2.5 py-1 text-xs font-medium">
                       {company.difficulty}
                     </span>
                     <Button asChild variant="link" className="h-auto p-0">
-                      <Link href={`/companies/${company.slug}`} className="gap-1">
+                      <Link
+                        href={`/companies/${company.slug}`}
+                        className="gap-1"
+                      >
                         View guide
                         <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
                       </Link>

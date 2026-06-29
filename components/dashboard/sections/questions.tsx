@@ -357,7 +357,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
     return (
       <DashboardSkeletonCard
         variant="chart"
-        className="m-6 min-h-dashboard-loading"
+        className="min-h-dashboard-loading m-6"
       >
         <DashboardLoadingState
           className="min-h-0"
@@ -369,16 +369,6 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <h2 className="font-display text-foreground text-2xl font-light">
-          Question Bank
-        </h2>
-        <p className="text-muted-foreground font-sans">
-          Browse and practice with real interview questions from top companies.
-        </p>
-      </div>
-
       {/* View Tabs */}
       <div className="flex items-center gap-4">
         <div className="bg-muted/30 flex items-center gap-2 rounded-lg p-1">
@@ -528,7 +518,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
                 <div className="from-card pointer-events-none absolute right-0 bottom-0 left-0 z-10 h-12 bg-gradient-to-t to-transparent" />
 
                 <Table className="border-separate border-spacing-0">
-                  <TableHeader className="from-card via-card/98 to-card/95 border-border/60 sticky top-0 z-20 border-b bg-gradient-to-b shadow-sm shadow-border/40 backdrop-blur-md">
+                  <TableHeader className="from-card via-card/98 to-card/95 border-border/60 shadow-border/40 sticky top-0 z-20 border-b bg-gradient-to-b shadow-sm backdrop-blur-md">
                     <TableRow className="hover:bg-transparent">
                       {/* Checkbox column */}
                       <TableHead className="h-11 w-12 px-4">
@@ -562,7 +552,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
                             "hover:bg-primary/[0.02] transition-all duration-200",
                             "border-border/40 border-b last:border-0",
                             isSelected &&
-                              "bg-primary/[0.04] border-l-primary border-l-2 ring-1 ring-inset ring-primary/10"
+                              "bg-primary/[0.04] border-l-primary ring-primary/10 border-l-2 ring-1 ring-inset"
                           )}
                           style={{
                             opacity: index < 20 ? 0 : 1,
@@ -697,7 +687,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
                         placeholder="Search questions..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="min-h-11 bg-card pl-10"
+                        className="bg-card min-h-11 pl-10"
                         aria-label="Search questions"
                       />
                     </div>

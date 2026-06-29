@@ -46,6 +46,12 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-dashboard-canvas: var(--dashboard-canvas);
+  --color-dashboard-sidebar: var(--dashboard-sidebar);
+  --color-dashboard-panel: var(--dashboard-panel);
+  --color-dashboard-panel-border: var(--dashboard-panel-border);
+  --color-dashboard-foreground: var(--dashboard-foreground);
+  --color-dashboard-muted: var(--dashboard-muted);
   --container-max-width: 1000px;
   --container-padding: 1rem;
   --container-center: true;
@@ -196,36 +202,35 @@
 }
 
 :root {
-  --header-height: 3.5rem;
+  --header-height: 4.5rem;
   --radius: 0.625rem;
 
-  /* Light theme - clean and bright */
-  --background: oklch(0.99 0.002 264);
-  --foreground: oklch(0.15 0.005 264);
-  --card: oklch(0.98 0.003 264);
-  --card-foreground: oklch(0.15 0.005 264);
-  --surface: oklch(0.96 0.006 264);
+  /* Light theme - plain Figma marketing canvas */
+  --background: #ffffff;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --surface: #f9fafb;
   --overlay: oklch(0.12 0.01 264);
-  --popover: oklch(0.98 0.003 264);
-  --popover-foreground: oklch(0.15 0.005 264);
-  /* Purple-blue primary for light backgrounds */
-  --primary: oklch(0.55 0.22 285);
-  --primary-foreground: oklch(0.98 0.004 264);
-  --secondary: oklch(0.92 0.01 264);
-  --secondary-foreground: oklch(0.15 0.005 264);
-  --muted: oklch(0.94 0.01 264);
-  --muted-foreground: oklch(0.45 0.015 264);
-  --accent: oklch(0.95 0.01 264);
-  --accent-foreground: oklch(0.15 0.005 264);
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #6c50e9;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --accent: #f3f4f6;
+  --accent-foreground: #111827;
   --destructive: oklch(0.55 0.22 15);
   --destructive-foreground: oklch(0.98 0.004 264);
   --success: oklch(0.56 0.16 145);
   --warning: oklch(0.64 0.17 65);
   --info: oklch(0.55 0.18 240);
   /* Subtle borders for light theme */
-  --border: oklch(0.88 0.01 264);
-  --input: oklch(0.88 0.01 264);
-  --ring: oklch(0.55 0.22 285);
+  --border: #e5e7eb;
+  --input: #d1d5db;
+  --ring: #6c50e9;
   --radius: 0.5rem;
   /* Chart colors - vivid for light backgrounds */
   --chart-1: oklch(0.55 0.2 241);
@@ -248,14 +253,20 @@
   --color-4: oklch(0.6 0.25 195);
   --color-5: oklch(0.6 0.25 130);
 
-  --sidebar: oklch(0.98 0.003 264);
-  --sidebar-foreground: oklch(0.15 0.005 264);
-  --sidebar-primary: oklch(0.55 0.22 285);
-  --sidebar-primary-foreground: oklch(0.98 0.004 264);
-  --sidebar-accent: oklch(0.92 0.01 264);
-  --sidebar-accent-foreground: oklch(0.15 0.005 264);
-  --sidebar-border: oklch(0.88 0.01 264);
-  --sidebar-ring: oklch(0.55 0.22 285);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #111827;
+  --sidebar-primary: #6c50e9;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f3f4f6;
+  --sidebar-accent-foreground: #111827;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #6c50e9;
+  --dashboard-canvas: #141417;
+  --dashboard-sidebar: #141417;
+  --dashboard-panel: #1c1c21;
+  --dashboard-panel-border: rgb(255 255 255 / 0.08);
+  --dashboard-foreground: #f2f2f7;
+  --dashboard-muted: #8c8c9e;
 }
 
 .dark {
@@ -309,6 +320,12 @@
   --sidebar-accent-foreground: oklch(0.95 0.005 264);
   --sidebar-border: oklch(0.28 0.015 264);
   --sidebar-ring: oklch(0.7 0.22 285);
+  --dashboard-canvas: #141417;
+  --dashboard-sidebar: #141417;
+  --dashboard-panel: #1c1c21;
+  --dashboard-panel-border: rgb(255 255 255 / 0.08);
+  --dashboard-foreground: #f2f2f7;
+  --dashboard-muted: #8c8c9e;
 }
 
 @layer base {
@@ -480,8 +497,8 @@
   .text-display-xl {
     font-family: var(--font-display);
     font-weight: 300;
-    font-size: 48px;
-    line-height: 48px;
+    font-size: 60px;
+    line-height: 72px;
   }
 
   .text-display-lg {

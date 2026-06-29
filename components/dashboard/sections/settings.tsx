@@ -168,16 +168,6 @@ export const SettingsSection = memo(function SettingsSection() {
 
   return (
     <div className="max-w-5xl space-y-6 p-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <h2 className="font-display text-foreground text-2xl font-light">
-          Settings
-        </h2>
-        <p className="text-muted-foreground font-sans">
-          Manage your account preferences and application settings.
-        </p>
-      </div>
-
       {/* Save Button - Sticky at top */}
       <div className="flex items-center gap-3">
         <Button
@@ -241,7 +231,7 @@ export const SettingsSection = memo(function SettingsSection() {
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <CreditCard className="text-primary h-5 w-5" />
-          <h3 className="font-display text-foreground text-xl font-light">
+          <h3 className="text-dashboard-foreground text-lg leading-6 font-semibold">
             Billing & Subscription
           </h3>
         </div>

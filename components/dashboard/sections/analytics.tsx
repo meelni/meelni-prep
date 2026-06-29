@@ -91,7 +91,7 @@ function EmptyState({ sessionsCompleted }: { sessionsCompleted: number }) {
       variants={fadeInUp}
       initial="initial"
       animate="animate"
-      className="p-6 space-y-6"
+      className="space-y-6 p-6"
     >
       <DashboardStateCard
         icon={<Sparkles className="h-8 w-8" />}
@@ -110,30 +110,28 @@ function EmptyState({ sessionsCompleted }: { sessionsCompleted: number }) {
             <div
               key={i}
               className={`h-3 w-3 rounded-full ${
-                i <= sessionsCompleted
-                  ? "bg-primary"
-                  : "bg-muted-foreground/20"
+                i <= sessionsCompleted ? "bg-primary" : "bg-muted-foreground/20"
               }`}
             />
           ))}
         </div>
 
         <div className="mx-auto grid max-w-2xl grid-cols-1 gap-4 pt-6 md:grid-cols-3">
-          <div className="rounded-lg border border-border bg-card p-4">
-            <Target className="mx-auto mb-2 h-6 w-6 text-primary" />
-            <div className="text-sm text-muted-foreground">
+          <div className="border-border bg-card rounded-lg border p-4">
+            <Target className="text-primary mx-auto mb-2 h-6 w-6" />
+            <div className="text-muted-foreground text-sm">
               Performance trends
             </div>
           </div>
-          <div className="rounded-lg border border-border bg-card p-4">
-            <Award className="mx-auto mb-2 h-6 w-6 text-primary" />
-            <div className="text-sm text-muted-foreground">
+          <div className="border-border bg-card rounded-lg border p-4">
+            <Award className="text-primary mx-auto mb-2 h-6 w-6" />
+            <div className="text-muted-foreground text-sm">
               Competency breakdown
             </div>
           </div>
-          <div className="rounded-lg border border-border bg-card p-4">
-            <TrendingUp className="mx-auto mb-2 h-6 w-6 text-primary" />
-            <div className="text-sm text-muted-foreground">
+          <div className="border-border bg-card rounded-lg border p-4">
+            <TrendingUp className="text-primary mx-auto mb-2 h-6 w-6" />
+            <div className="text-muted-foreground text-sm">
               Improvement insights
             </div>
           </div>
@@ -148,25 +146,25 @@ function EmptyState({ sessionsCompleted }: { sessionsCompleted: number }) {
  */
 function LoadingState() {
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       {/* Stats Cards Skeleton */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (
           <DashboardSkeletonCard key={i} />
         ))}
       </div>
 
       {/* Charts Skeleton */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <DashboardSkeletonCard variant="chart" />
         <DashboardSkeletonCard variant="chart" />
       </div>
 
       {/* Loading indicator */}
       <div className="flex items-center justify-center py-8">
-        <div className="text-center space-y-3">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
-          <p className="text-sm text-muted-foreground">Loading analytics...</p>
+        <div className="space-y-3 text-center">
+          <Loader2 className="text-primary mx-auto h-8 w-8 animate-spin" />
+          <p className="text-muted-foreground text-sm">Loading analytics...</p>
         </div>
       </div>
     </div>
@@ -223,7 +221,7 @@ function StatCard({
         indicator={
           ChangeIcon && change !== undefined ? (
             <div className={`flex items-center gap-1 text-xs ${changeColor}`}>
-              <ChangeIcon className="w-3 h-3" />
+              <ChangeIcon className="h-3 w-3" />
               {Math.abs(change)}%
             </div>
           ) : null
@@ -264,14 +262,22 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
 
         // Transform sessions to include feedback (filter out sessions without feedback)
         // Convert date strings to Date objects for aggregation functions
-        const sessionsWithFeedback = (sessionsData.sessions as Array<SessionWithFeedback & {
-          startedAt: string | Date | null;
-          endedAt: string | Date | null;
-        }>)
-          .filter((s): s is SessionWithFeedback & {
-            startedAt: string | Date;
-            endedAt: string | Date | null;
-          } => s.feedback !== null && s.startedAt !== null)
+        const sessionsWithFeedback = (
+          sessionsData.sessions as Array<
+            SessionWithFeedback & {
+              startedAt: string | Date | null;
+              endedAt: string | Date | null;
+            }
+          >
+        )
+          .filter(
+            (
+              s
+            ): s is SessionWithFeedback & {
+              startedAt: string | Date;
+              endedAt: string | Date | null;
+            } => s.feedback !== null && s.startedAt !== null
+          )
           .map((s) => ({
             ...s,
             startedAt: new Date(s.startedAt),
@@ -326,20 +332,12 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
       variants={staggerContainer}
       initial="initial"
       animate="animate"
-      className="p-6 space-y-6"
+      className="space-y-6 p-6"
     >
-      {/* Header */}
-      <div className="space-y-2">
-        <h2 className="text-2xl font-display font-light text-foreground">Analytics</h2>
-        <p className="text-muted-foreground font-sans">
-          Deep dive into your performance metrics and identify areas for improvement.
-        </p>
-      </div>
-
       {/* Stats Cards */}
       <motion.div
         variants={staggerContainer}
-        className="grid grid-cols-1 md:grid-cols-3 gap-4"
+        className="grid grid-cols-1 gap-4 md:grid-cols-3"
       >
         <StatCard
           icon={Target}
@@ -368,7 +366,7 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
       </motion.div>
 
       {/* Charts Grid - 2 Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Performance Trend - Uses ClippedAreaChart */}
         <motion.div variants={fadeInUp}>
           <PerformanceTrend
@@ -404,7 +402,7 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
       </motion.div>
 
       {/* Additional Charts Grid - 2 Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Time Investment - Uses GradientBarChart */}
         <motion.div variants={fadeInUp}>
           <TimeInvestment data={timeInvestmentData} groupBy="week" />
