@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { subscription } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
+import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
 
 /**
  * POST /api/billing/portal
@@ -131,6 +132,6 @@ function getStripe() {
   }
 
   return new Stripe(stripeSecretKey, {
-    apiVersion: "2025-10-29.clover",
+    apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
   });
 }
