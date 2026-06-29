@@ -94,7 +94,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getLiveKitEnvironment } from "@/lib/internal/integrations";
+import {
+  getLiveKitAgentName,
+  getLiveKitEnvironment,
+} from "@/lib/internal/integrations";
 import { startInterviewSessionWorkflow } from "@/lib/workflows/start-session";
 
 export async function POST(req: NextRequest) {
@@ -125,6 +128,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const interviewAgentName = getLiveKitAgentName("interview", process.env);
+    if (!interviewAgentName.ok) {
+      console.error(
+        "Missing LiveKit interview agent name:",
+        interviewAgentName.error.message
+      );
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     const result = await startInterviewSessionWorkflow({
       user: {
         id: user.id,
@@ -133,6 +148,7 @@ export async function POST(req: NextRequest) {
       },
       body,
       env: livekitEnv.data,
+      interviewAgentName: interviewAgentName.data,
     });
 
     if (!result.ok) {

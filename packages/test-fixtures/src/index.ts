@@ -166,7 +166,7 @@ const productSenseInterviewFixture: ProductSenseInterviewFixture = {
 
 const liveKitStartFixture: LiveKitStartFixture = {
   input: {
-    agentId: "agent-product-sense-fixture",
+    agentName: "agent-product-sense-fixture",
     identity: "fixture-user-1",
     participantName: "savi@example.com",
     roomName: "interview-1782600000000-i00000",

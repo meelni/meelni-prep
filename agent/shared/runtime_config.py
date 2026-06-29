@@ -17,6 +17,15 @@ DEFAULT_INTERVIEW_RUNTIME_CONFIG: Dict[str, Any] = {
     "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
 }
 
+ALLOWED_RUNTIME_MODELS = {
+    "stt_model": {DEFAULT_INTERVIEW_RUNTIME_CONFIG["stt_model"]},
+    "llm_model": {DEFAULT_INTERVIEW_RUNTIME_CONFIG["llm_model"]},
+    "tts_model": {
+        DEFAULT_INTERVIEW_RUNTIME_CONFIG["tts_model"],
+        "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
+    },
+}
+
 
 def normalize_runtime_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
     """Apply stable defaults while preserving extra runtime fields."""
@@ -26,6 +35,10 @@ def normalize_runtime_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
 
     for key in ("difficulty", "voice", "feedback_mode", "stt_model", "llm_model", "tts_model"):
         if not isinstance(normalized.get(key), str) or not normalized[key].strip():
+            normalized[key] = DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
+
+    for key, allowed_values in ALLOWED_RUNTIME_MODELS.items():
+        if normalized[key] not in allowed_values:
             normalized[key] = DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
 
     for key in ("speed", "volume", "duration"):
