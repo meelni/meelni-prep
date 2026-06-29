@@ -12,6 +12,7 @@ Use this skill before opening or finalizing a meaningful PR.
 - `AGENTS.md`
 - `docs/operations/tooling.md`
 - `docs/decisions/current.md`
+- `.agents/skills/meelni-linear-workstream/SKILL.md`
 - Relevant docs, contracts, specs, and skills touched by the change.
 
 ## Checklist
@@ -24,8 +25,9 @@ Use this skill before opening or finalizing a meaningful PR.
    - `npm run lint` for web changes;
    - relevant Python agent tests for `agent/` changes.
 4. Check whether docs, decisions, contracts, OpenSpec, or skills need updates.
-5. Check that no secrets, customer data, recordings, or real transcripts are committed.
-6. Produce a concise PR summary with validation evidence and remaining risk.
+5. Confirm the related Linear issue has verification evidence, PR link or pending PR note, and remaining follow-up work.
+6. Check that no secrets, customer data, recordings, or real transcripts are committed.
+7. Produce a concise PR summary with validation evidence and remaining risk.
 
 ## Output
 
@@ -44,3 +46,5 @@ Use:
 ## Risks
 - ...
 ```
+
+Include the Linear issue identifier when one exists.
