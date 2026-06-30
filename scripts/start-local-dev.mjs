@@ -10,7 +10,7 @@ import {
 } from "./local-dev-config.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const host = process.env.HOST ?? "127.0.0.1";
+const host = process.env.HOST ?? "localhost";
 const port = process.env.CONDUCTOR_PORT ?? process.env.PORT ?? "3000";
 const npmCachePath = resolve(repoRoot, ".context/npm-cache");
 const nextBin = resolve(
