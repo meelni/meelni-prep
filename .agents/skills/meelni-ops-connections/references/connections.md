@@ -89,6 +89,37 @@ Operational notes:
 - If Vercel env values are questionable, use the authenticated `meelni` LiveKit CLI project as the source of truth and overwrite Vercel Development, Preview, and Production envs.
 - After changing Vercel envs, redeploy affected Vercel environments. After changing agent code/secrets, redeploy the corresponding LiveKit Cloud agent.
 
+## Google Sheets
+
+Canonical target:
+- Question bank sheet ID: `1rz10oEeLx-eGnilahKczYPhGfCUzIEKL-xRnjoQ-SX4`
+- Primary sync source: `GOOGLE_SHEET_CSV_URL` using the published `gviz` CSV endpoint for `gid=0`
+- API fallback tab name: `Form Responses 1`
+- Question table: `interview_question`
+
+Verify:
+```bash
+npm run test:sheets
+npm run sync:questions -- --dry-run
+```
+
+Production/local checks:
+```bash
+MEELNI_ENV_FILE=.env.production.local npm run sync:questions -- --dry-run
+```
+
+Env and secrets:
+- Primary envs: `GOOGLE_SHEET_CSV_URL`, `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_NAME`
+- Optional private/API fallback envs: `GOOGLE_SHEETS_API_KEY`, `GOOGLE_SHEETS_CREDENTIALS_BASE64`, `GOOGLE_SHEETS_CREDENTIALS`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
+- `GOOGLE_SHEET_CSV_URL`, `GOOGLE_SHEET_ID`, and `GOOGLE_SHEET_NAME` are not secrets, but still live in Vercel envs and gitignored local env files.
+
+Operational notes:
+- The Google Sheet is currently readable through the published `gviz` CSV endpoint even when the normal export endpoint returns unauthorized.
+- `npm run sync:questions` loads `.env.local` by default. Set `MEELNI_ENV_FILE=.env.production.local` to test or run against the production local env file intentionally.
+- Vercel sensitive Google values can pull as blank strings. `npm run env:pull` preserves existing nonblank local Google Sheets values when Vercel returns blanks.
+- The sync script handles quoted multiline CSV cells and batches database writes. It compares by normalized question text, so rerunning after a partial sync is safe.
+- On 2026-06-29, the shared question database was repopulated from the sheet with 3,472 active questions.
+
 ## Stripe
 
 Canonical target:
