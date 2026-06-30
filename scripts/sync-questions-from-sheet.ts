@@ -20,12 +20,16 @@
 // Load environment variables from .env.local
 import { config } from 'dotenv';
 import { resolve } from 'path';
-config({ path: resolve(process.cwd(), '.env.local') });
+const envFile = process.env.MEELNI_ENV_FILE || '.env.local';
+config({ path: resolve(process.cwd(), envFile) });
 
-import { db } from "@/lib/db";
 import { interviewQuestion } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
-import { fetchSheetAsCSV, fetchSheetViaAPI, validateSheetRow, type SheetRow } from "@/lib/google-sheets-client";
+import { inArray } from "drizzle-orm";
+import { fetchSheetAsCSV, validateSheetRow } from "@/lib/google-sheets-client";
+import {
+  fetchSheetViaAPI,
+  type SheetRow,
+} from "@/lib/google-sheets-api";
 
 // Question type mapping from Google Sheet to database
 // Maps various input formats to canonical database types
@@ -326,6 +330,99 @@ const VALID_QUESTION_TYPES = new Set([
   "Product Strategy",
 ]);
 
+function mapQuestionType(rawQuestionType: string): string | null {
+  const trimmed = rawQuestionType.trim();
+  const mapped = QUESTION_TYPE_MAPPING[trimmed];
+  if (mapped) {
+    return mapped;
+  }
+
+  const normalized = trimmed.toLowerCase();
+
+  if (
+    normalized.includes("behavior") ||
+    normalized.includes("behaviour") ||
+    normalized.includes("leadership") ||
+    normalized.includes("googleyness") ||
+    normalized.includes("collaboration") ||
+    normalized.includes("stakeholder") ||
+    normalized.includes("culture fit")
+  ) {
+    return "Behavioral";
+  }
+
+  if (
+    normalized.includes("a/b") ||
+    normalized.includes("ab test") ||
+    normalized.includes("experiment")
+  ) {
+    return "A/B Testing";
+  }
+
+  if (
+    normalized.includes("pricing") ||
+    normalized.includes("monetiz")
+  ) {
+    return "Pricing";
+  }
+
+  if (
+    normalized.includes("estimat") ||
+    normalized.includes("guesstimate") ||
+    normalized.includes("market sizing")
+  ) {
+    return "Estimation";
+  }
+
+  if (
+    normalized.includes("execution") ||
+    normalized.includes("analyt") ||
+    normalized.includes("metric") ||
+    normalized.includes("priorit") ||
+    normalized.includes("rca") ||
+    normalized.includes("root cause") ||
+    normalized.includes("success metric") ||
+    normalized.includes("tradeoff") ||
+    normalized.includes("trade-off") ||
+    normalized.includes("craft")
+  ) {
+    return "Execution";
+  }
+
+  if (
+    normalized.includes("strategy") ||
+    normalized.includes("strategic") ||
+    normalized.includes("vision") ||
+    normalized.includes("growth") ||
+    normalized.includes("go to market") ||
+    normalized.includes("gtm") ||
+    normalized.includes("roadmap") ||
+    normalized.includes("business case")
+  ) {
+    return "Product Strategy";
+  }
+
+  if (
+    normalized.includes("design") ||
+    normalized.includes("technical") ||
+    normalized.includes("system")
+  ) {
+    return "Product design/strategy";
+  }
+
+  if (
+    normalized.includes("product") ||
+    normalized.includes("insight") ||
+    normalized.includes("sense") ||
+    normalized.includes("problem space") ||
+    normalized.includes("customer pain")
+  ) {
+    return "Product Sense";
+  }
+
+  return null;
+}
+
 interface SyncStats {
   newQuestions: number;
   updatedQuestions: number;
@@ -395,7 +492,7 @@ async function syncQuestions(options: SyncOptions): Promise<SyncResult> {
 
     for (let i = 0; i < sheetRows.length; i++) {
       const row = sheetRows[i];
-      const result = await processSheetRow(row, options);
+      const result = await processSheetRow(row);
 
       if (result.valid) {
         validQuestions.push(result.question!);
@@ -442,6 +539,9 @@ async function syncQuestions(options: SyncOptions): Promise<SyncResult> {
     const questionsToDeactivate = existingQuestions.filter(
       q => q.isActive && !sheetQuestionTexts.has(normalizeText(q.questionText))
     );
+
+    stats.newQuestions = newQuestions.length;
+    stats.deactivatedQuestions = questionsToDeactivate.length;
 
     // Step 5: Apply changes (or preview if dry run)
     if (options.dryRun) {
@@ -497,14 +597,19 @@ interface ProcessedQuestion {
  */
 async function fetchSheetData(): Promise<SheetRow[]> {
   const csvUrl = process.env.GOOGLE_SHEET_CSV_URL;
-  const apiKey = process.env.GOOGLE_SHEETS_API_KEY;
   const sheetId = process.env.GOOGLE_SHEET_ID;
   const sheetName = process.env.GOOGLE_SHEET_NAME || 'Sheet1';
+  const hasGoogleSheetsCredentials =
+    process.env.GOOGLE_SHEETS_API_KEY ||
+    process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64 ||
+    process.env.GOOGLE_SHEETS_CREDENTIALS ||
+    (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
+      process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY);
 
   if (csvUrl) {
     console.log("📡 Using Method A: Fetching from CSV URL");
     return await fetchSheetAsCSV(csvUrl);
-  } else if (apiKey && sheetId) {
+  } else if (sheetId && hasGoogleSheetsCredentials) {
     console.log("📡 Using Method B: Fetching via Google Sheets API");
     return await fetchSheetViaAPI(sheetId, sheetName);
   } else {
@@ -512,7 +617,7 @@ async function fetchSheetData(): Promise<SheetRow[]> {
       "Missing environment variables. Set either:\n" +
       "  - GOOGLE_SHEET_CSV_URL (Method A - recommended)\n" +
       "  or\n" +
-      "  - GOOGLE_SHEETS_API_KEY + GOOGLE_SHEET_ID (Method B)"
+      "  - GOOGLE_SHEET_ID with GOOGLE_SHEETS_API_KEY, GOOGLE_SHEETS_CREDENTIALS_BASE64, or GOOGLE_SHEETS_CREDENTIALS (Method B)"
     );
   }
 }
@@ -521,8 +626,7 @@ async function fetchSheetData(): Promise<SheetRow[]> {
  * Process a single sheet row into a database-ready question
  */
 function processSheetRow(
-  row: SheetRow,
-  options: SyncOptions
+  row: SheetRow
 ): { valid: boolean; question?: ProcessedQuestion; reason?: string } {
   // Validate required fields
   const validation = validateSheetRow(row);
@@ -531,7 +635,7 @@ function processSheetRow(
   }
 
   // Map question type
-  const mappedType = QUESTION_TYPE_MAPPING[row.questionType.trim()];
+  const mappedType = mapQuestionType(row.questionType);
   if (!mappedType) {
     return {
       valid: false,
@@ -566,7 +670,7 @@ function processSheetRow(
       if (!isNaN(parsed.getTime())) {
         askedAt = parsed;
       }
-    } catch (e) {
+    } catch {
       // Invalid date format, keep as null
     }
   }
@@ -586,6 +690,8 @@ function processSheetRow(
  * Get all existing questions from database
  */
 async function getExistingQuestions() {
+  const { db } = await import("@/lib/db");
+
   return await db
     .select({
       id: interviewQuestion.id,
@@ -649,28 +755,32 @@ async function applyChanges(
   options: SyncOptions,
   errorMessages: string[] = []
 ) {
+  const { db } = await import("@/lib/db");
+  stats.newQuestions = 0;
+  stats.deactivatedQuestions = 0;
+
   // Insert new questions
   if (newQuestions.length > 0) {
     console.log(`➕ Adding ${newQuestions.length} new questions...`);
 
-    for (const question of newQuestions) {
+    for (const chunk of chunkArray(newQuestions, 500)) {
       try {
-        await db.insert(interviewQuestion).values({
+        await db.insert(interviewQuestion).values(chunk.map((question) => ({
           company: question.company,
           questionText: question.questionText,
           questionType: question.questionType,
           askedAt: question.askedAt,
           isActive: true,
-        });
+        })));
 
-        stats.newQuestions++;
+        stats.newQuestions += chunk.length;
 
         if (options.verbose) {
-          console.log(`   ✓ Added: [${question.questionType}] ${question.questionText.substring(0, 60)}...`);
+          console.log(`   ✓ Added ${chunk.length} questions`);
         }
       } catch (error) {
-        stats.errors++;
-        const errorMsg = `Error adding question: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        stats.errors += chunk.length;
+        const errorMsg = `Error adding question batch: ${error instanceof Error ? error.message : 'Unknown error'}`;
         errorMessages.push(errorMsg);
         console.error(`   ✗ ${errorMsg}`);
       }
@@ -681,21 +791,21 @@ async function applyChanges(
   if (questionsToDeactivate.length > 0) {
     console.log(`\n🔒 Deactivating ${questionsToDeactivate.length} questions...`);
 
-    for (const question of questionsToDeactivate) {
+    for (const chunk of chunkArray(questionsToDeactivate, 500)) {
       try {
         await db
           .update(interviewQuestion)
           .set({ isActive: false })
-          .where(eq(interviewQuestion.id, question.id));
+          .where(inArray(interviewQuestion.id, chunk.map((question) => question.id)));
 
-        stats.deactivatedQuestions++;
+        stats.deactivatedQuestions += chunk.length;
 
         if (options.verbose) {
-          console.log(`   ✓ Deactivated: ${question.questionText.substring(0, 60)}...`);
+          console.log(`   ✓ Deactivated ${chunk.length} questions`);
         }
       } catch (error) {
-        stats.errors++;
-        const errorMsg = `Error deactivating question: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        stats.errors += chunk.length;
+        const errorMsg = `Error deactivating question batch: ${error instanceof Error ? error.message : 'Unknown error'}`;
         errorMessages.push(errorMsg);
         console.error(`   ✗ ${errorMsg}`);
       }
@@ -705,6 +815,14 @@ async function applyChanges(
   if (newQuestions.length === 0 && questionsToDeactivate.length === 0) {
     console.log("✨ No changes needed - database is already in sync with sheet");
   }
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
 }
 
 /**

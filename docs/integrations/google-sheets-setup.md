@@ -1,16 +1,32 @@
-# Google Sheets API Setup - Your Next Steps
+# Google Sheets Question Bank Setup
 
-## What You Need To Do
+## Current Production Path
 
-You've already:
-- ✅ Enabled Google Sheets API in Google Cloud Console
+The question bank sync currently uses the published Google Sheets CSV endpoint as the primary source. This avoids depending on a Google Cloud API key or service account for the normal question-bank refresh.
 
-Now you need to:
-1. Create a service account
-2. Download credentials
-3. Share the Google Sheet with the service account
-4. Add credentials to your project
-5. Test the connection
+```bash
+GOOGLE_SHEET_CSV_URL=https://docs.google.com/spreadsheets/d/1rz10oEeLx-eGnilahKczYPhGfCUzIEKL-xRnjoQ-SX4/gviz/tq?tqx=out:csv&gid=0
+GOOGLE_SHEET_ID=1rz10oEeLx-eGnilahKczYPhGfCUzIEKL-xRnjoQ-SX4
+GOOGLE_SHEET_NAME=Form Responses 1
+```
+
+Run:
+
+```bash
+npm run test:sheets
+npm run sync:questions -- --dry-run
+npm run sync:questions
+```
+
+For the production local env file:
+
+```bash
+MEELNI_ENV_FILE=.env.production.local npm run sync:questions -- --dry-run
+```
+
+If the published CSV endpoint stops working or the sheet must become private, use the service-account fallback below.
+
+## Service Account Fallback
 
 ---
 
@@ -130,7 +146,7 @@ The JSON file looks like this:
    ```bash
    # Google Sheets Configuration
    GOOGLE_SHEET_ID=1rz10oEeLx-eGnilahKczYPhGfCUzIEKL-xRnjoQ-SX4
-   GOOGLE_SHEET_NAME=Sheet1  # Replace with your actual tab name from Step 3
+   GOOGLE_SHEET_NAME=Form Responses 1
    GOOGLE_SHEETS_CREDENTIALS_BASE64=<paste the long base64 string here>
    ```
 
@@ -145,7 +161,7 @@ If base64 doesn't work, you can paste the JSON directly:
 3. **In `.env.local`**, add:
    ```bash
    GOOGLE_SHEET_ID=1rz10oEeLx-eGnilahKczYPhGfCUzIEKL-xRnjoQ-SX4
-   GOOGLE_SHEET_NAME=Sheet1
+   GOOGLE_SHEET_NAME=Form Responses 1
    GOOGLE_SHEETS_CREDENTIALS='{"type":"service_account","project_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n",...}'
    ```
 
