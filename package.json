@@ -14,6 +14,7 @@
     "dev:local": "node scripts/start-local-dev.mjs",
     "dev": "next dev",
     "dev:web": "next dev",
+    "dev:inngest": "npx --yes inngest-cli@latest dev --sdk-url http://127.0.0.1:3000/api/inngest",
     "dev:agent": "cd agent && source venv/bin/activate && python agent.py dev",
     "build": "next build",
     "start": "next start",
