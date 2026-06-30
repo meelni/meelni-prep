@@ -4,6 +4,7 @@
  */
 
 import { Inngest } from "inngest";
+import { getInngestClientOptions } from "./config";
 
 /**
  * Inngest client for Meelni application
@@ -13,7 +14,4 @@ import { Inngest } from "inngest";
  * - Insights aggregation (calculating user analytics)
  * - Data backfill tasks
  */
-export const inngest = new Inngest({
-  id: "meelni",
-  name: "Meelni Interview Coach",
-});
+export const inngest = new Inngest(getInngestClientOptions());
