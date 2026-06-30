@@ -3,9 +3,16 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  buildInngestDevArgs,
+  deriveInngestPorts,
+  serviceIsSkipped,
+} from "./local-dev-config.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const host = process.env.HOST ?? "127.0.0.1";
 const port = process.env.CONDUCTOR_PORT ?? process.env.PORT ?? "3000";
+const npmCachePath = resolve(repoRoot, ".context/npm-cache");
 const nextBin = resolve(
   repoRoot,
   "node_modules",
@@ -19,7 +26,7 @@ if (!existsSync(nextBin)) {
     cwd: repoRoot,
     env: process.env,
     shell: process.platform === "win32",
-    stdio: "inherit"
+    stdio: "inherit",
   });
 
   if (setup.status !== 0) {
@@ -29,30 +36,66 @@ if (!existsSync(nextBin)) {
 
 const children = [];
 
-const web = spawn("npm", ["run", "dev", "--", "--hostname", host, "--port", port], {
-  cwd: repoRoot,
-  env: process.env,
-  shell: process.platform === "win32",
-  stdio: "inherit"
-});
+const web = spawn(
+  "npm",
+  ["run", "dev", "--", "--hostname", host, "--port", port],
+  {
+    cwd: repoRoot,
+    env: localEnv(),
+    shell: process.platform === "win32",
+    stdio: "inherit",
+  }
+);
 children.push(web);
+
+if (!serviceIsSkipped(process.env.MEELNI_SKIP_INNGEST)) {
+  const inngestArgs = buildInngestDevArgs({
+    host,
+    inngestPort: process.env.INNGEST_PORT,
+    webPort: port,
+  });
+  const inngestPorts = deriveInngestPorts({
+    explicitPort: process.env.INNGEST_PORT,
+    webPort: port,
+  });
+
+  console.log(
+    `Starting Inngest Dev Server on http://127.0.0.1:${inngestPorts.port} for http://${host}:${port}/api/inngest.`
+  );
+
+  const inngest = spawn("npx", inngestArgs, {
+    cwd: repoRoot,
+    env: localEnv(),
+    shell: process.platform === "win32",
+    stdio: "inherit",
+  });
+  children.push(inngest);
+} else {
+  console.log(
+    "Skipping Inngest Dev Server because MEELNI_SKIP_INNGEST is set."
+  );
+}
 
 const agentPython = resolve(repoRoot, "agent/venv/bin/python");
 const interviewAgent = resolve(repoRoot, "agent/interview/agent.py");
 
-if (existsSync(agentPython) && existsSync(interviewAgent)) {
+if (serviceIsSkipped(process.env.MEELNI_SKIP_AGENT)) {
+  console.log("Skipping Python agent because MEELNI_SKIP_AGENT is set.");
+} else if (existsSync(agentPython) && existsSync(interviewAgent)) {
   const agent = spawn(agentPython, [interviewAgent, "dev"], {
     cwd: resolve(repoRoot, "agent/interview"),
     env: {
-      ...process.env,
-      LOCAL_DEV: process.env.LOCAL_DEV ?? "1"
+      ...localEnv(),
+      LOCAL_DEV: process.env.LOCAL_DEV ?? "1",
     },
     shell: process.platform === "win32",
-    stdio: "inherit"
+    stdio: "inherit",
   });
   children.push(agent);
 } else {
-  console.log("Python agent is not ready. Run `npm run setup:local` to create agent/venv.");
+  console.log(
+    "Python agent is not ready. Run `npm run setup:local` to create agent/venv."
+  );
 }
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
@@ -86,4 +129,12 @@ for (const child of children) {
 
     process.exit(code ?? 0);
   });
+}
+
+function localEnv() {
+  return {
+    ...process.env,
+    NPM_CONFIG_CACHE: process.env.NPM_CONFIG_CACHE ?? npmCachePath,
+    npm_config_cache: process.env.npm_config_cache ?? npmCachePath,
+  };
 }

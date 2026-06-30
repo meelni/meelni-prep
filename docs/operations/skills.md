@@ -20,6 +20,7 @@ Edit `.agents/skills/*` first. Do not hand-edit symlinked copies.
 - `meelni-codebase-architecture`: package migration, module boundaries, adapter shape, and agent-friendly refactors.
 - `meelni-livekit-interview-runtime`: LiveKit interview sessions, room metadata, transcripts, turn-taking, runtime config, and agent prompts.
 - `meelni-feedback-evaluation`: scoring, rubrics, feedback generation, drills, insights, and evaluation reliability.
+- `meelni-ui-design-system`: UI components, pages, surfaces, styling, motion, responsive states, prototypes, design tokens, and visual guardrails.
 - `meelni-question-bank-seo`: explore pages, company pages, structured data, Google Sheets sync, and conversion from content to practice.
 - `meelni-product-strategy`: Product Compass, PM-focused product direction, relaunch strategy, pricing, trials, positioning, growth loops, AI/agent learning expansion, and enterprise path. Its stable workflow lives in `SKILL.md`; product truth and lenses live in `references/`.
 - `meelni-linear-workstream`: Linear project, slice issue, child issue, progress comment, handoff, and closure workflow for Meelni agent/human work streams.
