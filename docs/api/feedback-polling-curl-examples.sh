@@ -8,7 +8,7 @@
 # Prerequisites:
 # 1. Set SESSION_ID environment variable
 # 2. Set AUTH_TOKEN environment variable (Supabase JWT)
-# 3. Start Next.js dev server: npm run dev
+# 3. Start local runtime: npm run dev:local
 #
 # Usage:
 #   export SESSION_ID="550e8400-e29b-41d4-a716-446655440000"

@@ -4,17 +4,15 @@ Quick way to test the feedback generation flow without doing a real 8-minute int
 
 ## Prerequisites
 
-1. **Inngest Dev Server must be running**
+1. **Local runtime must be running**
+
    ```bash
-   npx inngest-cli@latest dev
+   npm run dev:local
    ```
 
-2. **Next.js dev server must be running**
-   ```bash
-   npm run dev
-   ```
+   This starts both Next.js and the Inngest Dev Server.
 
-3. **You must have at least one user in the database** (sign up first if needed)
+2. **You must have at least one user in the database** (sign up first if needed)
 
 ## Usage
 
@@ -34,6 +32,7 @@ npm run test:feedback
 ## What to Watch For
 
 ### In Inngest Dev Server Terminal:
+
 ```
 ✓ [feedback-generate] Received event feedback/generate.requested
   → Step: validate-session
@@ -51,11 +50,13 @@ npm run test:feedback
 ```
 
 ### In Your Browser:
+
 - Visit: http://localhost:8288 (Inngest UI)
 - See the function execution in real-time
 - View step-by-step progress
 
 ### Check Results:
+
 The script will output a session ID. Use it to check feedback:
 
 ```bash
@@ -103,24 +104,30 @@ Session ID: bb75d304-7e56-450b-9b4e-93c2222c073e
 ## Troubleshooting
 
 ### "No users found in database"
+
 - Sign up at http://localhost:3000/auth/signup first
 
 ### "Connection timeout"
+
 - Check DATABASE_URL in .env.local
 - Ensure Supabase database is accessible
 
 ### Event sent but nothing happens
+
 - Is Inngest Dev Server running? Check http://localhost:8288
+- If you are debugging Inngest alone, run `npm run dev:inngest`
 - Check Next.js terminal for errors
 - Verify functions are registered at http://localhost:3000/api/inngest
 
 ### GPT-4 evaluation fails
+
 - Check OPENAI_API_KEY in .env.local
 - Verify API key has credits
 
 ## The Fake Transcript
 
 The script uses a realistic product sense interview about improving Google Maps for tourists. It includes:
+
 - Clarifying questions
 - Pain point identification
 - Prioritization with reasoning

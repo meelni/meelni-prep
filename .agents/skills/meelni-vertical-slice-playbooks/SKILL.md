@@ -5,7 +5,7 @@ description: Use when building, modifying, scoping, or reviewing a Meelni featur
 
 # Meelni Vertical Slice Playbooks
 
-Use this skill to move quickly without scattering changes. A vertical slice should have one clear user or operator outcome, one workflow owner, targeted tests, and only the docs needed to preserve decisions.
+Use this skill to move quickly without scattering changes. A vertical slice should have one clear user or operator outcome, one workflow owner, targeted tests, and only the docs needed to preserve decisions. Do not treat a slice as "touch every layer"; touch only the layers needed for the outcome.
 
 ## Start
 
@@ -15,6 +15,57 @@ Use this skill to move quickly without scattering changes. A vertical slice shou
 - Keep app routes thin: authenticate, parse input, call a workflow, map response.
 - Prefer package exports from `@meelni/core`, `@meelni/agent`, and `@meelni/integrations` for durable contracts.
 - Run `npm run verify:agent` before opening or merging meaningful changes.
+
+## Slice Gate
+
+Before editing, state:
+
+- user/operator outcome;
+- primary workflow owner;
+- layers in scope and out of scope;
+- provider dependencies;
+- data or contract changes;
+- expected validation;
+- rollout or rollback risk.
+
+If the answer is "many unrelated outcomes," split the work. If the answer is "only cleanup," use `meelni-codebase-architecture` instead.
+
+## Implementation Gates
+
+### Product And UX
+
+- The first changed surface should help the target user complete the actual workflow.
+- Use `meelni-ui-design-system` for UI components, pages, styling, motion, responsive states, prototypes, and visual guardrail work.
+- Include empty, loading, error, permission, and recovery states when user-facing.
+- Preserve PM interview prep focus; do not generalize to broad coaching or every profession.
+- Do not expose model/provider tuning as a user control unless accepted by product strategy.
+
+### Backend And Data
+
+- Auth, ownership, entitlement, and rate/usage checks happen before sensitive reads or writes.
+- External payloads normalize before core workflows.
+- Background jobs, webhooks, and retries are idempotent or safely resumable.
+- Data shape changes include compatibility and migration/rollback notes.
+
+### Architecture
+
+- Keep entrypoints thin and behavior in workflows or packages.
+- Use package public entrypoints; avoid deep imports.
+- Move stable contracts before moving pages/routes.
+- Add abstractions only when they remove current duplication or clarify a real migration boundary.
+
+### Tests And Verification
+
+- Prefer behavior tests at the workflow seam.
+- Add fixtures for real interview, transcript, feedback, billing, or LiveKit failures.
+- Run targeted commands while iterating, then broader validation before PR prep.
+- Record known unrelated failures with exact files/tests.
+
+### Docs And Tracking
+
+- Update docs only when durable behavior, setup, contracts, provider operations, or decisions changed.
+- Use `meelni-engineering-memory` for decisions/contracts/operations notes.
+- Use `meelni-linear-workstream` for meaningful Linear-tracked work; keep verification evidence there when possible.
 
 ## Slice: Interview Session
 
@@ -111,6 +162,7 @@ Read:
 
 - `.agents/skills/`
 - `AGENTS.md`
+- `DESIGN.md`
 - `docs/operations/skills.md`
 - `docs/operations/tooling.md`
 - `scripts/doctor-local.mjs`

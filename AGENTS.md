@@ -10,6 +10,7 @@ Canonical instructions for Codex, Claude, and other coding agents working in thi
 - Do not commit secrets, real customer data, recordings, transcripts, API keys, database URLs, or provider credentials.
 - Preserve the current root Next.js app until the staged `apps/web` migration is ready.
 - Local secrets live in gitignored `.env.local` files. Do not ask the user to paste API keys into chat. If env vars are missing, run `npm run env:pull` to refresh Preview envs into `.env.local`, or `npm run env:pull:production` for `.env.production.local`; Vercel sensitive values may pull as empty quoted strings, so server-only secrets may still need to be restored from the original provider dashboard or rotated.
+- For fresh local worktrees, run `npm run setup:local` before runtime work. Use `npm run dev:local` as the single local runtime command; it starts Next.js, local Inngest, and the Python LiveKit agent when configured. Agent platforms that honor `conductor.json` should use its `setup` and `run` scripts automatically.
 
 ## Product
 
@@ -62,6 +63,7 @@ packages/
 - Use `meelni-codebase-architecture` for module boundaries, package migration, adapter shape, and agent-friendly refactors.
 - Use `meelni-livekit-interview-runtime` for LiveKit, voice interviews, turn-taking, transcript events, room metadata, and runtime config.
 - Use `meelni-feedback-evaluation` for scoring, rubrics, feedback generation, insights, drills, and transcript evaluation.
+- Use `meelni-ui-design-system` for UI components, pages, surfaces, styling, motion, responsive states, design tokens, prototypes, and visual guardrails.
 - Use `meelni-question-bank-seo` for explore pages, company pages, question pages, structured data, Google Sheets sync, and conversion from content to practice.
 - Use `meelni-product-strategy` when explicitly asked for product direction, positioning, relaunch strategy, pricing, or growth.
 - Use `meelni-linear-workstream` before starting, updating, handing off, or closing meaningful Linear-tracked Meelni work streams.

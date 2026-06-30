@@ -13,12 +13,12 @@ mkdirSync(npmCachePath, { recursive: true });
 run("npm", ["install"], {
   ...process.env,
   NPM_CONFIG_CACHE: npmCachePath,
-  npm_config_cache: npmCachePath
+  npm_config_cache: npmCachePath,
 });
 
 const envResult = await ensureEnvFile({
   targetPath: resolve(repoRoot, ".env.local"),
-  examplePath: resolve(repoRoot, ".env.example")
+  examplePath: resolve(repoRoot, ".env.example"),
 });
 
 console.log(`Root env: ${envResult.status}`);
@@ -29,7 +29,7 @@ const agentEnvLink = resolve(repoRoot, "agent/.env");
 if (existsSync(agentEnvTarget)) {
   const linkResult = await ensureSymlink({
     linkPath: agentEnvLink,
-    targetPath: agentEnvTarget
+    targetPath: agentEnvTarget,
   });
   console.log(`Agent env: ${linkResult.status}`);
 }
@@ -37,7 +37,9 @@ if (existsSync(agentEnvTarget)) {
 setupPythonAgent();
 
 console.log("Local setup complete.");
-console.log("Run `npm run dev:local` to start the web app and agent.");
+console.log(
+  "Run `npm run dev:local` to start the web app, Inngest, and agent."
+);
 
 function setupPythonAgent() {
   const agentDir = resolve(repoRoot, "agent");
@@ -55,8 +57,18 @@ function setupPythonAgent() {
 
   const pythonBin = resolve(venvDir, "bin/python");
 
-  run(pythonBin, ["-m", "pip", "install", "--upgrade", "pip"], process.env, agentDir);
-  run(pythonBin, ["-m", "pip", "install", "-r", "requirements.txt"], process.env, agentDir);
+  run(
+    pythonBin,
+    ["-m", "pip", "install", "--upgrade", "pip"],
+    process.env,
+    agentDir
+  );
+  run(
+    pythonBin,
+    ["-m", "pip", "install", "-r", "requirements.txt"],
+    process.env,
+    agentDir
+  );
 }
 
 function run(command, args, env = process.env, cwd = repoRoot) {
@@ -64,7 +76,7 @@ function run(command, args, env = process.env, cwd = repoRoot) {
     cwd,
     env,
     shell: process.platform === "win32",
-    stdio: "inherit"
+    stdio: "inherit",
   });
 
   if (result.status !== 0) {
