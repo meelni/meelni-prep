@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
+import { getFeedbackEvaluationModel } from "./model-config";
 
 export interface EvaluationResult {
   scores: {
@@ -32,7 +33,7 @@ export async function generateFeedback(
     const userPrompt = getEvaluationPrompt(roundType, transcript);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview", // or "gpt-4-1106-preview"
+      model: getFeedbackEvaluationModel(),
       messages: [
         { role: "system", content: EVALUATION_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
@@ -74,7 +75,7 @@ export async function generateFeedback(
     };
   } catch (error) {
     console.error("Error generating feedback:", error);
-    throw new Error("Failed to generate feedback");
+    throw new Error("Failed to generate feedback", { cause: error });
   }
 }
 

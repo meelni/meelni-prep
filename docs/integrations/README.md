@@ -155,9 +155,11 @@ DEEPGRAM_API_KEY
 **Google Sheets**
 
 ```
-GOOGLE_SHEETS_PRIVATE_KEY
-GOOGLE_SERVICE_ACCOUNT_EMAIL
+GOOGLE_SHEET_CSV_URL
 GOOGLE_SHEET_ID
+GOOGLE_SHEET_NAME
+GOOGLE_SHEETS_API_KEY                  # optional API fallback
+GOOGLE_SHEETS_CREDENTIALS_BASE64       # optional service-account fallback
 ```
 
 ## Cost Breakdown

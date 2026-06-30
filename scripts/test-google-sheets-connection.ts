@@ -10,9 +10,11 @@ import { resolve } from 'path';
 config({ path: resolve(process.cwd(), '.env.local') });
 
 import { testGoogleSheetsConnection, fetchSheetViaAPI } from '@/lib/google-sheets-api';
+import { fetchSheetAsCSV } from '@/lib/google-sheets-client';
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID || '1rz10oEeLx-eGnilahKczYPhGfCUzIEKL-xRnjoQ-SX4';
 const SHEET_NAME = process.env.GOOGLE_SHEET_NAME || 'Sheet1';
+const CSV_URL = process.env.GOOGLE_SHEET_CSV_URL;
 
 async function testConnection() {
   console.log('🔍 Testing Google Sheets API Connection...\n');
@@ -20,11 +22,14 @@ async function testConnection() {
   console.log('Configuration:');
   console.log(`  Sheet ID: ${SHEET_ID}`);
   console.log(`  Sheet Name: ${SHEET_NAME}`);
-  console.log(`  Range: ${SHEET_NAME}!A1:Z1000\n`);
+  console.log(`  Range: ${SHEET_NAME}!A1:Z1000`);
+  console.log(`  CSV URL: ${CSV_URL ? 'set' : 'not set'}\n`);
 
   // Check environment variables
   console.log('📋 Environment Variables:');
-  if (process.env.GOOGLE_SHEETS_API_KEY) {
+  if (CSV_URL) {
+    console.log('  ✅ GOOGLE_SHEET_CSV_URL is set');
+  } else if (process.env.GOOGLE_SHEETS_API_KEY) {
     console.log('  ✅ GOOGLE_SHEETS_API_KEY is set');
   } else if (process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64) {
     console.log('  ✅ GOOGLE_SHEETS_CREDENTIALS_BASE64 is set');
@@ -36,6 +41,7 @@ async function testConnection() {
   } else {
     console.log('  ❌ No Google Sheets credentials found!');
     console.log('\n⚠️  Please set one of:');
+    console.log('     - GOOGLE_SHEET_CSV_URL (published CSV URL)');
     console.log('     - GOOGLE_SHEETS_API_KEY (simple, for public sheets)');
     console.log('     - GOOGLE_SHEETS_CREDENTIALS_BASE64 (service account)');
     console.log('     - GOOGLE_SHEETS_CREDENTIALS (JSON string)\n');
@@ -58,26 +64,31 @@ async function testConnection() {
   console.log('\n🔌 Testing connection...\n');
 
   try {
-    // Test connection
+    if (CSV_URL) {
+      const rows = await fetchSheetAsCSV(CSV_URL);
+      console.log('✅ Connection successful!\n');
+      console.log(`📊 Found ${rows.length} rows in sheet\n`);
+
+      printPreview(rows);
+
+      console.log('\n✨ Success! Your Google Sheets CSV source is working correctly.');
+      console.log('\nNext steps:');
+      console.log('1. Run sync with dry-run: npm run sync:questions -- --dry-run');
+      console.log('2. Run live sync: npm run sync:questions');
+      console.log('3. Add credentials/source URL to Vercel for production\n');
+      return;
+    }
+
     const result = await testGoogleSheetsConnection(SHEET_ID, SHEET_NAME);
 
     if (result.success) {
       console.log('✅ Connection successful!\n');
       console.log(`📊 Found ${result.rowCount} rows in sheet\n`);
 
-      // Fetch first few rows to preview
       console.log('📋 Fetching preview...\n');
       const rows = await fetchSheetViaAPI(SHEET_ID, SHEET_NAME);
 
-      if (rows.length > 0) {
-        console.log('First 3 questions:');
-        rows.slice(0, 3).forEach((row, i) => {
-          console.log(`\n${i + 1}. ${row.questionText}`);
-          console.log(`   Company: ${row.company || '(none)'}`);
-          console.log(`   Type: ${row.questionType}`);
-          console.log(`   Timestamp: ${row.timestamp || '(none)'}`);
-        });
-      }
+      printPreview(rows);
 
       console.log('\n✨ Success! Your credentials are working correctly.');
       console.log('\nNext steps:');
@@ -104,3 +115,24 @@ async function testConnection() {
 }
 
 testConnection();
+
+function printPreview(
+  rows: Array<{
+    questionText: string;
+    company: string;
+    questionType: string;
+    timestamp: string;
+  }>
+) {
+  if (rows.length === 0) {
+    return;
+  }
+
+  console.log('First 3 questions:');
+  rows.slice(0, 3).forEach((row, i) => {
+    console.log(`\n${i + 1}. ${row.questionText}`);
+    console.log(`   Company: ${row.company || '(none)'}`);
+    console.log(`   Type: ${row.questionType}`);
+    console.log(`   Timestamp: ${row.timestamp || '(none)'}`);
+  });
+}

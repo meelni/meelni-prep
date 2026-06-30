@@ -39,6 +39,17 @@ for (const key of [
   "LIVEKIT_URL",
   "LIVEKIT_INTERVIEW_AGENT_NAME",
   "LIVEKIT_DEMO_AGENT_NAME",
+  "GOOGLE_SHEET_CSV_URL",
+  "GOOGLE_SHEETS_API_KEY",
+  "GOOGLE_SHEETS_CREDENTIALS_BASE64",
+  "GOOGLE_SHEETS_CREDENTIALS",
+  "GOOGLE_SERVICE_ACCOUNT_EMAIL",
+  "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
+  "GOOGLE_SHEET_ID",
+  "GOOGLE_SHEET_NAME",
+  "INNGEST_EVENT_KEY",
+  "INNGEST_SIGNING_KEY",
+  "OPENAI_API_KEY",
 ]) {
   const pulled = readEnvValue(env, key);
   const previous = previousEnv[key];
@@ -92,7 +103,10 @@ function readPublicDefaults() {
         }
 
         const key = line.slice(0, index);
-        const value = line.slice(index + 1).split("  # ")[0].trim();
+        const value = line
+          .slice(index + 1)
+          .split("  # ")[0]
+          .trim();
         return keys.has(key) && value ? [key, value] : null;
       })
       .filter(Boolean)
@@ -121,7 +135,9 @@ async function readPublicSupabaseConfig(base) {
   )?.[0];
 
   if (!supabaseUrl || !anonKey) {
-    throw new Error("Could not recover public Supabase config from deployed app.");
+    throw new Error(
+      "Could not recover public Supabase config from deployed app."
+    );
   }
 
   return {

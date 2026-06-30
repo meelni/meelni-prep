@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Script to fix stuck feedback records (status='pending')
+ * Script to requeue stuck feedback records (status='pending' or 'failed')
  * Run with: npx tsx scripts/fix-stuck-feedback.ts <sessionId>
  */
 
@@ -44,7 +44,7 @@ async function main() {
 
   // NOW dynamically import modules that need env vars
   const { db } = await import("../lib/db/index.js");
-  const { feedback } = await import("../lib/db/schema.js");
+  const { feedback, interviewSession } = await import("../lib/db/schema.js");
   const { eq } = await import("drizzle-orm");
   const { inngest } = await import("../lib/inngest/client.js");
 
@@ -62,7 +62,29 @@ async function main() {
 
   console.log(`Current status: ${feedbackRecord.status}`);
 
-  if (feedbackRecord.status === "pending") {
+  if (
+    feedbackRecord.status === "pending" ||
+    feedbackRecord.status === "failed"
+  ) {
+    const session = await db.query.interviewSession.findFirst({
+      where: eq(interviewSession.id, sessionId),
+    });
+
+    if (!session) {
+      console.error(`No interview session found for ${sessionId}`);
+      process.exit(1);
+    }
+
+    await db
+      .update(feedback)
+      .set({
+        status: "pending",
+        statusReason: null,
+        processingStartedAt: null,
+        processingDurationMs: null,
+      })
+      .where(eq(feedback.id, feedbackRecord.id));
+
     console.log("Retrying Inngest event...");
 
     // Manually send the Inngest event again
@@ -70,14 +92,16 @@ async function main() {
       name: "feedback/generate.requested",
       data: {
         sessionId: sessionId,
-        userId: "user-id", // Will be fetched from session by worker
+        userId: session.userId,
         tier: "full",
       },
     });
 
     console.log("✓ Inngest event sent successfully");
   } else {
-    console.log(`Feedback status is ${feedbackRecord.status}, no action needed`);
+    console.log(
+      `Feedback status is ${feedbackRecord.status}, no action needed`
+    );
   }
 
   console.log("Done");
