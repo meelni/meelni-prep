@@ -108,7 +108,7 @@ export async function fetchSheetViaAPI(
  * Handles quoted fields with commas correctly
  */
 function parseCSV(csvText: string): SheetRow[] {
-  const lines = csvText.split('\n').filter(line => line.trim().length > 0);
+  const lines = parseCSVRecords(csvText).filter(line => line.trim().length > 0);
 
   if (lines.length === 0) {
     throw new Error('CSV is empty');
@@ -145,6 +145,50 @@ function parseCSV(csvText: string): SheetRow[] {
   }
 
   return rows;
+}
+
+/**
+ * Split CSV into logical records while preserving quoted newlines.
+ */
+function parseCSVRecords(csvText: string): string[] {
+  const records: string[] = [];
+  let currentRecord = '';
+  let insideQuotes = false;
+
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i];
+    const nextChar = csvText[i + 1];
+
+    if (char === '"') {
+      currentRecord += char;
+      if (insideQuotes && nextChar === '"') {
+        currentRecord += nextChar;
+        i++;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !insideQuotes) {
+      if (currentRecord.trim().length > 0) {
+        records.push(currentRecord);
+      }
+      currentRecord = '';
+      if (char === '\r' && nextChar === '\n') {
+        i++;
+      }
+      continue;
+    }
+
+    currentRecord += char;
+  }
+
+  if (currentRecord.trim().length > 0) {
+    records.push(currentRecord);
+  }
+
+  return records;
 }
 
 /**

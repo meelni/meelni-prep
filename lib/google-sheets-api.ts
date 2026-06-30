@@ -7,17 +7,10 @@
  * - OAuth 2.0 (for private sheets using your Google account)
  */
 
-import { google } from 'googleapis';
+import { google } from "googleapis";
+import type { SheetRow } from "./google-sheets-client";
 
-export interface SheetRow {
-  timestamp: string;
-  company: string;
-  questionText: string;
-  questionType: string;
-  interviewType: string;
-  comments: string;
-  notes: string;
-}
+export type { SheetRow } from "./google-sheets-client";
 
 /**
  * Get Google Sheets API client with appropriate auth method
@@ -25,9 +18,9 @@ export interface SheetRow {
 function getGoogleSheetsClient() {
   // Method 1: Simple API Key (easiest, for public/link-shareable sheets)
   if (process.env.GOOGLE_SHEETS_API_KEY) {
-    console.log('🔑 Using API Key authentication');
+    console.log("🔑 Using API Key authentication");
     return google.sheets({
-      version: 'v4',
+      version: "v4",
       auth: process.env.GOOGLE_SHEETS_API_KEY,
     });
   }
@@ -37,16 +30,16 @@ function getGoogleSheetsClient() {
 
   // Try Base64 encoded credentials (easier for Vercel)
   if (process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64) {
-    console.log('🔐 Using Service Account (base64) authentication');
+    console.log("🔐 Using Service Account (base64) authentication");
     const decoded = Buffer.from(
       process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64,
-      'base64'
-    ).toString('utf-8');
+      "base64"
+    ).toString("utf-8");
     credentials = JSON.parse(decoded);
   }
   // Try Direct JSON string
   else if (process.env.GOOGLE_SHEETS_CREDENTIALS) {
-    console.log('🔐 Using Service Account (JSON) authentication');
+    console.log("🔐 Using Service Account (JSON) authentication");
     credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
   }
   // Try Individual fields (legacy)
@@ -54,31 +47,31 @@ function getGoogleSheetsClient() {
     process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
     process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
   ) {
-    console.log('🔐 Using Service Account (email+key) authentication');
+    console.log("🔐 Using Service Account (email+key) authentication");
     credentials = {
       client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(
         /\\n/g,
-        '\n'
+        "\n"
       ),
     };
   } else {
     throw new Error(
-      'Google Sheets credentials not found. Set one of:\n' +
-      '  - GOOGLE_SHEETS_API_KEY (simple, for public sheets)\n' +
-      '  - GOOGLE_SHEETS_CREDENTIALS_BASE64 (service account)\n' +
-      '  - GOOGLE_SHEETS_CREDENTIALS (service account JSON)'
+      "Google Sheets credentials not found. Set one of:\n" +
+        "  - GOOGLE_SHEETS_API_KEY (simple, for public sheets)\n" +
+        "  - GOOGLE_SHEETS_CREDENTIALS_BASE64 (service account)\n" +
+        "  - GOOGLE_SHEETS_CREDENTIALS (service account JSON)"
     );
   }
 
   // Create auth client for service account
   const auth = new google.auth.GoogleAuth({
     credentials,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
   });
 
   // Return sheets API client
-  return google.sheets({ version: 'v4', auth });
+  return google.sheets({ version: "v4", auth });
 }
 
 /**
@@ -90,7 +83,7 @@ function getGoogleSheetsClient() {
  */
 export async function fetchSheetViaAPI(
   spreadsheetId: string,
-  range: string = 'Sheet1'
+  range: string = "Sheet1"
 ): Promise<SheetRow[]> {
   try {
     console.log(`📥 Fetching from Google Sheets API...`);
@@ -108,7 +101,7 @@ export async function fetchSheetViaAPI(
     const rows = response.data.values;
 
     if (!rows || rows.length === 0) {
-      console.log('⚠️  No data found in sheet');
+      console.log("⚠️  No data found in sheet");
       return [];
     }
 
@@ -117,23 +110,23 @@ export async function fetchSheetViaAPI(
     // Parse rows
     return parseSheetValues(rows);
   } catch (error) {
-    console.error('❌ Error fetching from Google Sheets API:', error);
+    console.error("❌ Error fetching from Google Sheets API:", error);
 
     if (error instanceof Error) {
       // Provide helpful error messages
-      if (error.message.includes('permission')) {
+      if (error.message.includes("permission")) {
         throw new Error(
-          'Permission denied. Make sure the service account email has Viewer access to the sheet.'
+          "Permission denied. Make sure the service account email has Viewer access to the sheet."
         );
       }
-      if (error.message.includes('Unable to parse range')) {
+      if (error.message.includes("Unable to parse range")) {
         throw new Error(
           `Invalid range "${range}". Check that the sheet name is correct.`
         );
       }
-      if (error.message.includes('credentials')) {
+      if (error.message.includes("credentials")) {
         throw new Error(
-          'Invalid credentials. Check GOOGLE_SHEETS_CREDENTIALS_BASE64 environment variable.'
+          "Invalid credentials. Check GOOGLE_SHEETS_CREDENTIALS_BASE64 environment variable."
         );
       }
     }
@@ -152,19 +145,19 @@ function parseSheetValues(values: unknown[][]): SheetRow[] {
   const headers = values[0].map((h) => String(h).toLowerCase().trim());
 
   // Find column indexes
-  const timestampIdx = headers.findIndex((h) =>
-    h.includes('timestamp') || h.includes('time') || h.includes('date')
+  const timestampIdx = headers.findIndex(
+    (h) => h.includes("timestamp") || h.includes("time") || h.includes("date")
   );
-  const companyIdx = headers.findIndex((h) => h.includes('company'));
-  const questionIdx = headers.findIndex((h) => h.includes('question'));
-  const typeIdx = headers.findIndex((h) =>
-    h.includes('question type') || h.includes('type')
+  const companyIdx = headers.findIndex((h) => h.includes("company"));
+  const questionIdx = headers.findIndex((h) => h.includes("question"));
+  const typeIdx = headers.findIndex(
+    (h) => h.includes("question type") || h.includes("type")
   );
   const interviewTypeIdx = headers.findIndex((h) =>
-    h.includes('interview type')
+    h.includes("interview type")
   );
 
-  console.log('📋 Column mapping:', {
+  console.log("📋 Column mapping:", {
     timestamp: timestampIdx,
     company: companyIdx,
     question: questionIdx,
@@ -184,8 +177,9 @@ function parseSheetValues(values: unknown[][]): SheetRow[] {
     }
 
     // Extract values
-    const questionText = questionIdx >= 0 ? String(row[questionIdx] || '').trim() : '';
-    const questionType = typeIdx >= 0 ? String(row[typeIdx] || '').trim() : '';
+    const questionText =
+      questionIdx >= 0 ? String(row[questionIdx] || "").trim() : "";
+    const questionType = typeIdx >= 0 ? String(row[typeIdx] || "").trim() : "";
 
     // Skip rows without question text
     if (!questionText) {
@@ -193,13 +187,14 @@ function parseSheetValues(values: unknown[][]): SheetRow[] {
     }
 
     rows.push({
-      timestamp: timestampIdx >= 0 ? String(row[timestampIdx] || '') : '',
-      company: companyIdx >= 0 ? String(row[companyIdx] || '').trim() : '',
+      timestamp: timestampIdx >= 0 ? String(row[timestampIdx] || "") : "",
+      company: companyIdx >= 0 ? String(row[companyIdx] || "").trim() : "",
       questionText,
       questionType,
-      interviewType: interviewTypeIdx >= 0 ? String(row[interviewTypeIdx] || '').trim() : '',
-      comments: '', // Not needed for sync
-      notes: '', // Not needed for sync
+      interviewType:
+        interviewTypeIdx >= 0 ? String(row[interviewTypeIdx] || "").trim() : "",
+      comments: "", // Not needed for sync
+      notes: "", // Not needed for sync
     });
   }
 
@@ -214,7 +209,7 @@ function parseSheetValues(values: unknown[][]): SheetRow[] {
  */
 export async function testGoogleSheetsConnection(
   spreadsheetId: string,
-  range: string = 'Sheet1'
+  range: string = "Sheet1"
 ): Promise<{ success: boolean; error?: string; rowCount?: number }> {
   try {
     const rows = await fetchSheetViaAPI(spreadsheetId, range);
@@ -225,7 +220,7 @@ export async function testGoogleSheetsConnection(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : "Unknown error",
     };
   }
 }

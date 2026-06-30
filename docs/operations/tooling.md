@@ -36,6 +36,22 @@ npm run dev:local
 
 The local script starts the Next.js dev server and attempts to start the Python LiveKit agent if `agent/venv` exists.
 
+## Local Credit Bypass
+
+`NODE_ENV=development` bypasses the interview credit ledger on local runs, even when `.env.local` includes Vercel metadata from `npm run env:pull`. `/api/billing/credits` returns a non-persistent dev balance, and `/api/session/start` reserves and consumes credits in memory.
+
+Set `MEELNI_DISABLE_LOCAL_CREDIT_BYPASS=1` in `.env.local` to test the real credit ledger locally.
+
+## Local Inngest Feedback
+
+Run the Inngest dev server while testing post-interview feedback:
+
+```bash
+npx inngest-cli@latest dev
+```
+
+The app explicitly uses Inngest dev mode outside `NODE_ENV=production`, so copied Vercel metadata in `.env.local` does not require `INNGEST_EVENT_KEY` for local event sends. Feedback evaluation still requires a nonblank `OPENAI_API_KEY` in `.env.local`.
+
 ## Validation
 
 Use targeted validation while the monorepo migration is in progress:
