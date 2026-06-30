@@ -5,7 +5,7 @@ description: Use when preparing, reviewing, opening, updating, or finalizing a m
 
 # Meelni PR Prep
 
-Use this skill before opening, updating, or finalizing a meaningful Meelni PR. Treat PR prep as a staff-level engineering closeout: prove the branch is scoped, understandable, tested, operationally safe, and honest about remaining risk.
+Use this skill before opening, updating, or finalizing a meaningful Meelni PR. Treat PR prep as a staff-level engineering closeout: prove the branch is scoped, understandable, tested, operationally safe, published to GitHub, and honest about remaining risk.
 
 ## Read First
 
@@ -21,9 +21,12 @@ Do not rubber-stamp. A good PR prep answer says exactly what changed, why it is 
 
 Do not broaden the product beyond PM interview prep. Preserve the root Next.js app until the staged `apps/web` migration is ready.
 
+PR prep should end with a GitHub PR created or updated unless the user explicitly asked for review only, there are no publishable changes, or a hard blocker exists such as missing GitHub auth, no accessible remote, or unclear mixed worktree scope. Default to a draft PR when validation fails, risk remains, or the user did not explicitly ask for ready-for-review.
+
 ## Phase 1: Diff Orientation
 
 1. Inspect branch state:
+   - `git status -sb`
    - `git status --short`
    - `git diff --stat`
    - `git diff --name-only`
@@ -158,6 +161,51 @@ Draft or verify a PR body that a reviewer can act on quickly:
 
 Add reviewer notes for risky areas: auth/permissions, data migrations, billing, LiveKit runtime, feedback scoring, provider envs, or visual regressions.
 
+## Phase 6: Publish Or Update The PR
+
+Run this phase after validation and PR body prep unless the user explicitly asked not to publish.
+
+### GitHub Prerequisites
+
+- Check `gh --version`; if missing, stop and tell the user GitHub CLI is required.
+- Check `gh auth status`; if unauthenticated, stop and ask the user to run `gh auth login`.
+- Check repository and base branch with `gh repo view --json nameWithOwner,defaultBranchRef`.
+- If there is no accessible GitHub remote, stop instead of inventing a destination.
+
+### Branch Handling
+
+- Detached HEAD or no branch name: create `codex/<short-description>` from the current commit before staging or committing.
+- On `main`, `master`, or the remote default branch: create `codex/<short-description>`.
+- On an existing non-default branch: keep using it.
+- If the branch name conflicts remotely, choose a more specific `codex/<short-description>-<date-or-suffix>` branch.
+- If the branch already tracks a remote, push to that upstream. If not, push with `git push -u origin <branch>`.
+
+### Staging And Commit Handling
+
+- Stage only the intended PR scope. Use explicit file paths when the worktree is mixed.
+- If unrelated changes are present and cannot be separated confidently, ask the user before staging.
+- If there are intended uncommitted changes, commit them with a terse, descriptive message.
+- If there are no uncommitted changes but the branch has local commits ahead of upstream, push those commits.
+- If there are no changes and no local commits to publish, stop and say there is no PR-ready diff.
+
+### PR Handling
+
+- Check for an existing open PR from the current branch with `gh pr view` or `gh pr list --head <branch>`.
+- If an open PR exists, update its body when the prepared PR body materially changed; do not create a duplicate PR.
+- If no open PR exists, create one against the repo default branch unless the user specified a base branch.
+- Use a draft PR by default. Create a ready PR only when the user explicitly requested it and validation is clean enough to support that.
+- Include validation failures honestly in the PR body. Known unrelated failures must include exact command names and failing files/tests.
+- After PR creation or update, report the PR URL, branch, commit, base branch, draft/readiness state, and validation status.
+
+### Publish Blockers
+
+Stop before publishing and explain the smallest unblock when:
+
+- GitHub auth, remote access, or required CLI tooling is unavailable.
+- The worktree has mixed or unrelated changes that cannot be staged safely.
+- Validation uncovered a high-risk bug in the PR's own changes that should be fixed before reviewers see it.
+- The user requested no commit, no push, or no PR.
+
 ## Final Output
 
 Use:
@@ -174,15 +222,25 @@ Use:
 
 ## Risks
 - ...
+
+## PR
+- URL:
+- Branch:
+- Commit:
+- Base:
+- Draft/ready:
 ```
 
-Include the Linear issue identifier when one exists. If there is no issue, state that plainly.
+Include the Linear issue identifier when one exists. If there is no issue, state that plainly. If publishing was blocked, replace the PR URL with the blocker and the exact next action.
 
 ## Common Mistakes
 
 - Calling a branch "PR-ready" when validation failed without explaining ownership of the failure.
+- Stopping after drafting a PR body instead of creating or updating the GitHub PR.
 - Listing commands without results.
 - Forgetting untracked files, generated files, or stale docs.
+- Creating a duplicate PR when the current branch already has one open.
+- Committing from detached HEAD or the default branch instead of creating a named `codex/` branch.
 - Treating UI changes as only TypeScript changes; visual behavior still needs design/UX review.
 - Treating backend changes as only unit-test work; auth, idempotency, retry behavior, and observability matter.
 - Moving fast past Linear, docs, or decision updates and leaving future agents to rediscover the same context.
