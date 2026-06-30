@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const host = process.env.HOST ?? "127.0.0.1";
+const host = process.env.HOST ?? "localhost";
 const port = process.env.CONDUCTOR_PORT ?? process.env.PORT ?? "3000";
 const nextBin = resolve(
   repoRoot,
