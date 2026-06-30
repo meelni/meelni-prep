@@ -37,6 +37,22 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def configure_livekit_worker_env() -> None:
+    """Allow local agents to reuse the browser LiveKit URL from root env files."""
+    livekit_url = os.getenv("LIVEKIT_URL")
+    public_livekit_url = os.getenv("NEXT_PUBLIC_LIVEKIT_URL")
+
+    if (
+        (not livekit_url or not livekit_url.strip())
+        and public_livekit_url
+        and public_livekit_url.strip()
+    ):
+        os.environ["LIVEKIT_URL"] = public_livekit_url.strip()
+
+
+configure_livekit_worker_env()
+
+
 def get_required_env(name: str) -> str:
     """Read required deployment config without embedding account-specific IDs."""
     value = os.getenv(name)
