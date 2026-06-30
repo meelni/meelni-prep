@@ -6,9 +6,13 @@
 import { inngest } from "../client";
 import { db } from "@/lib/db";
 import { feedback, interviewSession, transcriptTurn } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { validateSessionCompleteness, SessionTier } from "@/lib/evaluation/session-validator";
+import { eq, desc } from "drizzle-orm";
+import {
+  validateSessionCompleteness,
+  SessionTier,
+} from "@/lib/evaluation/session-validator";
 import { generateFeedback as generateFeedbackWithGPT4 } from "@/lib/evaluation/scorer";
+import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 
 /**
  * Feedback generation event payload
@@ -39,7 +43,9 @@ async function fetchSessionData(sessionId: string) {
 /**
  * Fetch and format session transcript
  */
-async function fetchSessionTranscript(sessionId: string): Promise<{ speaker: string; text: string }[]> {
+async function fetchSessionTranscript(
+  sessionId: string
+): Promise<{ speaker: string; text: string }[]> {
   const turns = await db.query.transcriptTurn.findMany({
     where: eq(transcriptTurn.sessionId, sessionId),
     orderBy: [desc(transcriptTurn.startedAt)],
@@ -177,9 +183,22 @@ export const generateFeedback = inngest.createFunction(
     });
 
     // Step 5: Evaluate with GPT-4
-    const evaluation = await step.run(
-      "evaluate-session",
-      async () => {
+    let evaluation: {
+      overall_score: number;
+      structure_score: number;
+      clarity_score: number;
+      insight_score: number;
+      communication_score: number;
+      leadership_score: number;
+      strengths: string[];
+      improvements: string[];
+      drills: string[];
+      summary: string;
+      processingDurationMs: number;
+    };
+
+    try {
+      evaluation = await step.run("evaluate-session", async () => {
         const startTime = Date.now();
 
         // Call the real GPT-4 evaluation service
@@ -203,8 +222,20 @@ export const generateFeedback = inngest.createFunction(
           summary: result.summary,
           processingDurationMs: processingDuration,
         };
-      }
-    );
+      });
+    } catch (error) {
+      await step.run("mark-failed-evaluation", async () => {
+        await db
+          .update(feedback)
+          .set({
+            status: "failed",
+            statusReason: getEvaluationFailureReason(error),
+          })
+          .where(eq(feedback.sessionId, sessionId));
+      });
+
+      throw error;
+    }
 
     // Step 6: Save feedback
     await step.run("save-feedback", async () => {

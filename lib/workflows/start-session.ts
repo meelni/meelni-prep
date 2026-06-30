@@ -26,6 +26,10 @@ import {
   type ReserveCreditResult,
 } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
+import {
+  createLocalDevCreditLedgerService,
+  isLocalDevCreditBypassEnabled,
+} from "@/lib/billing/local-dev-bypass";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   behavioral: ["Behavioral"],
@@ -249,9 +253,11 @@ export async function startInterviewSessionWorkflow(
 }
 
 export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
-  const creditLedger = createCreditLedgerService({
-    store: createDrizzleCreditLedgerStore(),
-  });
+  const creditLedger = isLocalDevCreditBypassEnabled()
+    ? createLocalDevCreditLedgerService()
+    : createCreditLedgerService({
+        store: createDrizzleCreditLedgerStore(),
+      });
 
   return {
     buildRoomName: buildInterviewRoomName,

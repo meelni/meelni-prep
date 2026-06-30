@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
+import {
+  getLocalDevCreditBalanceResponse,
+  isLocalDevCreditBypassEnabled,
+} from "@/lib/billing/local-dev-bypass";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -14,6 +18,10 @@ export async function GET() {
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (isLocalDevCreditBypassEnabled()) {
+      return NextResponse.json(getLocalDevCreditBalanceResponse());
     }
 
     const store = createDrizzleCreditLedgerStore();
