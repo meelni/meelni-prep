@@ -132,17 +132,21 @@ async function readPublicSupabaseConfig(base) {
 
 function upsert(env, key, value) {
   const line = `${key}=${value}`;
-  const pattern = new RegExp(`^${key}=.*$`, "m");
+  const pattern = new RegExp(`^${escapeRegExp(key)}=.*$`, "m");
   return pattern.test(env) ? env.replace(pattern, line) : `${line}\n${env}`;
 }
 
 function readEnvValue(env, key) {
-  const match = env.match(new RegExp(`^${key}=(.*)$`, "m"));
+  const match = env.match(new RegExp(`^${escapeRegExp(key)}=(.*)$`, "m"));
   return match ? normalizeEnvValue(match[1]) : undefined;
 }
 
 function normalizeEnvValue(value) {
-  return value.trim().replace(/^['"]|['"]$/g, "");
+  return value.trim().replace(/^(['"])(.*)\1$/, "$2");
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isBlank(value) {

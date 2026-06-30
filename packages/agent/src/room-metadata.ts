@@ -61,7 +61,7 @@ export function buildInterviewRoomMetadata(
 ): InterviewRoomMetadata {
   return {
     ...metadata,
-    config: normalizeInterviewRuntimeConfig(metadata.config),
+    config: metadata.config,
     question: metadata.question ? normalizeQuestion(metadata.question) : null,
   };
 }
