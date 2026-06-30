@@ -54,10 +54,16 @@ check("Root env", () => {
     "LIVEKIT_API_SECRET",
     "OPENAI_API_KEY"
   ]);
+  const values = readEnvFile(envPath);
+  const missing = [...status.missing];
 
-  return status.ok
+  if (!values.get("NEXT_PUBLIC_LIVEKIT_URL") && !values.get("LIVEKIT_URL")) {
+    missing.push("NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL");
+  }
+
+  return missing.length === 0
     ? pass(".env.local contains required runtime keys.")
-    : warn(`.env.local is missing: ${status.missing.join(", ")}.`);
+    : warn(`.env.local is missing: ${missing.join(", ")}.`);
 });
 
 check("Python", () => {
