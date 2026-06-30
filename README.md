@@ -9,12 +9,14 @@ Meelni is an AI-powered interview practice platform that helps users prepare for
 Meelni consists of three interconnected systems:
 
 ### 1. **Frontend** (Next.js 14+ App Router)
+
 - Modern UI with Tailwind CSS, shadcn/ui, and Framer Motion animations
 - Interview setup and configuration flow
 - Real-time audio/video UI powered by LiveKit React components
 - Server-side rendering with TypeScript
 
 ### 2. **Backend Agent** (Python + LiveKit Agents)
+
 - Python worker that joins LiveKit rooms as a programmable participant
 - Real-time voice pipeline:
   - **STT**: Deepgram Nova-3 for speech recognition
@@ -24,12 +26,14 @@ Meelni consists of three interconnected systems:
 - See [`agent/README.md`](./agent/README.md) for detailed agent documentation
 
 ### 3. **Data Layer** (Supabase + Drizzle ORM)
+
 - PostgreSQL database hosted on Supabase
 - Type-safe ORM with Drizzle
 - Schema includes: users, interview sessions, transcripts, and feedback
 - Supabase Auth for authentication (planned)
 
 **How It Works:**
+
 ```
 User → Next.js UI → LiveKit Room → Python Agent
                          ↓
@@ -44,56 +48,44 @@ User → Next.js UI → LiveKit Room → Python Agent
 ## ⚡ Quick Start (10 Minutes)
 
 ### Prerequisites
+
 - Node.js 18+ and npm
 - Python 3.10+
 - Supabase account (database)
 - LiveKit Cloud account
 - API keys: OpenAI, Deepgram, Cartesia
 
-### Option A: Automated Setup (Conductor)
-If you're using Conductor, the automation scripts handle everything:
+### Option A: Automated Setup (Coding Agents)
+
+Agent platforms that honor `conductor.json` run the maintained setup and run commands automatically:
 
 ```bash
-# Setup runs automatically on workspace creation
-# Just click the Run button to start both servers!
+npm run setup:local
+npm run dev:local
 ```
+
+`dev:local` starts Next.js, the local Inngest Dev Server, and the Python LiveKit agent when `agent/venv` exists.
 
 ### Option B: Manual Setup
 
-#### 1. Frontend Setup
 ```bash
-# Install dependencies
-npm install
-
-# Set up environment variables
-cp .env.example .env.local
-# Edit .env.local with your credentials (see Environment Variables below)
+# Install dependencies, create .env.local when possible, and set up agent/venv
+npm run setup:local
 
 # Push database schema
 npm run db:push
 
-# Start Next.js dev server
-npm run dev
+# Start local runtime processes
+npm run dev:local
 ```
 
-#### 2. Agent Setup
-```bash
-cd agent
+#### Access the App
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start agent in dev mode
-python agent.py dev
-```
-
-#### 3. Access the App
 - Frontend: http://localhost:3000
-- Agent: Running as LiveKit worker (check terminal logs)
+- Inngest UI: http://localhost:8288
+- Agent: Running as LiveKit worker when configured
+
+For adjacent worktrees, set `CONDUCTOR_PORT` or `PORT`; `dev:local` derives separate Inngest ports automatically.
 
 ---
 
@@ -101,17 +93,17 @@ python agent.py dev
 
 Create `.env.local` in the project root with these variables:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | ✅ | PostgreSQL connection string from Supabase |
-| `LIVEKIT_API_KEY` | ✅ | LiveKit Cloud API key |
-| `LIVEKIT_API_SECRET` | ✅ | LiveKit Cloud API secret |
-| `NEXT_PUBLIC_LIVEKIT_URL` | ✅ | LiveKit WebSocket URL (e.g., `wss://your-project.livekit.cloud`) |
-| `OPENAI_API_KEY` | ✅ | OpenAI API key (for GPT-4.1-mini) |
-| `DEEPGRAM_API_KEY` | ✅ | Deepgram API key (for Nova-3 ASR) |
-| `CARTESIA_API_KEY` | ⚠️ | **Not required** when using LiveKit Inference (only for direct API access) |
-| `NEXT_PUBLIC_SUPABASE_URL` | 🔜 | Supabase project URL (planned for auth) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 🔜 | Supabase anon key (planned for auth) |
+| Variable                        | Required | Description                                                                |
+| ------------------------------- | -------- | -------------------------------------------------------------------------- |
+| `DATABASE_URL`                  | ✅       | PostgreSQL connection string from Supabase                                 |
+| `LIVEKIT_API_KEY`               | ✅       | LiveKit Cloud API key                                                      |
+| `LIVEKIT_API_SECRET`            | ✅       | LiveKit Cloud API secret                                                   |
+| `NEXT_PUBLIC_LIVEKIT_URL`       | ✅       | LiveKit WebSocket URL (e.g., `wss://your-project.livekit.cloud`)           |
+| `OPENAI_API_KEY`                | ✅       | OpenAI API key (for GPT-4.1-mini)                                          |
+| `DEEPGRAM_API_KEY`              | ✅       | Deepgram API key (for Nova-3 ASR)                                          |
+| `CARTESIA_API_KEY`              | ⚠️       | **Not required** when using LiveKit Inference (only for direct API access) |
+| `NEXT_PUBLIC_SUPABASE_URL`      | 🔜       | Supabase project URL (planned for auth)                                    |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 🔜       | Supabase anon key (planned for auth)                                       |
 
 **Note:** The agent reads from the same `.env.local` file via symlink (see Conductor automation docs below).
 
@@ -119,9 +111,13 @@ Create `.env.local` in the project root with these variables:
 
 ## 📦 Available Scripts
 
-### Frontend (Next.js)
+### Local Development
+
 ```bash
-npm run dev          # Start Next.js dev server on http://localhost:3000
+npm run setup:local  # Install dependencies, prepare env files, and create agent/venv
+npm run dev:local    # Start Next.js, Inngest, and the Python agent when available
+npm run doctor       # Check local setup health
+npm run dev          # Start Next.js only on http://localhost:3000
 npm run build        # Production build
 npm start            # Start production server
 npm run lint         # Run ESLint
@@ -133,6 +129,7 @@ npm run analyze      # Analyze bundle size with Next.js
 ```
 
 ### Database (Drizzle ORM)
+
 ```bash
 npm run db:generate  # Generate migration files
 npm run db:migrate   # Apply migrations to database
@@ -142,12 +139,15 @@ npm run db:check     # Validate schema and migrations (safety check)
 ```
 
 ### Targeted Development
+
 ```bash
 npm run dev:web      # Start Next.js only (for frontend-only work)
+npm run dev:inngest  # Start Inngest only against http://127.0.0.1:3000/api/inngest
 npm run dev:agent    # Start Python agent only (for agent-only work)
 ```
 
 ### Agent (Python)
+
 ```bash
 cd agent
 source venv/bin/activate
@@ -160,24 +160,27 @@ python agent.py start  # Production mode
 
 ## 🤖 Conductor Automation
 
-If you're using Conductor, two automation scripts streamline your workflow:
+If you're using Conductor or another agent runner that still calls the shell wrappers, those scripts delegate to the maintained npm commands:
 
 ### `conductor-setup.sh`
-**Runs automatically when creating a workspace.** It:
-1. Verifies npm and python3 are installed
-2. Symlinks `.env` from project root to workspace `.env.local`
-3. Validates required environment variables (DATABASE_URL, LIVEKIT_*, OPENAI_API_KEY)
-4. Installs npm dependencies
-5. Creates Python virtual environment and installs agent dependencies
+
+Delegates to `npm run setup:local`, which:
+
+1. Installs npm dependencies
+2. Creates `.env.local` from `.env.example` when possible
+3. Symlinks `agent/.env` to the root `.env.local`
+4. Creates `agent/venv` and installs Python agent dependencies
 
 **Why?** One-command setup ensures all dependencies are ready before you start coding.
 
 ### `conductor-run.sh`
-**Triggered by the Run button in Conductor.** It:
-1. Starts Next.js dev server on http://localhost:3000
-2. Starts Python LiveKit agent in dev mode (with auto-reload)
-3. Handles graceful shutdown on Ctrl+C (kills both processes)
-4. Shows process IDs and status for debugging
+
+Delegates to `npm run dev:local`, which:
+
+1. Starts Next.js on the selected local web port
+2. Starts the Inngest Dev Server against `/api/inngest`
+3. Starts the Python LiveKit agent when `agent/venv` exists
+4. Handles graceful shutdown for child processes
 
 **Why?** Eliminates context switching—start the entire dual-runtime stack with one click.
 
@@ -218,6 +221,7 @@ If you're using Conductor, two automation scripts streamline your workflow:
 ## 🧪 Testing
 
 **Status:** Not yet implemented. Planned frameworks:
+
 - **Unit tests:** Vitest (for utils, API routes, database operations)
 - **E2E tests:** Playwright (for interview flow, authentication)
 - **Target coverage:** >80% for core logic
@@ -227,6 +231,7 @@ If you're using Conductor, two automation scripts streamline your workflow:
 ## 🚀 Deployment
 
 ### Frontend (Vercel)
+
 ```bash
 # Automatic deployment via GitHub integration
 # Set environment variables in Vercel dashboard
@@ -234,6 +239,7 @@ vercel deploy
 ```
 
 ### Agent (Railway / Render / Fly.io)
+
 ```bash
 # Railway
 railway up
@@ -248,7 +254,9 @@ fly deploy
 ```
 
 ### Database (Supabase)
+
 Already hosted. Run migrations before deploying frontend:
+
 ```bash
 npm run db:migrate
 ```
@@ -272,16 +280,20 @@ npm run db:migrate
 Meelni provides a RESTful API for managing interview sessions, transcripts, and AI-generated feedback.
 
 ### Quick Links
+
 - **API Documentation**: [`docs/API.md`](./docs/API.md) - Complete endpoint reference
 - **OpenAPI Spec**: [`docs/openapi.yaml`](./docs/openapi.yaml) - Machine-readable API specification
 - **TypeScript Types**: [`types/api.ts`](./types/api.ts) - Type definitions for all API schemas
 
 ### Base URL
+
 - **Production**: `https://mockmate.vercel.app`
 - **Development**: `http://localhost:3000`
 
 ### Authentication
+
 All protected endpoints require Supabase Auth JWT tokens:
+
 ```bash
 Authorization: Bearer <your_jwt_token>
 ```
@@ -290,19 +302,19 @@ See [Authentication Guide](./docs/AUTHENTICATION.md) for detailed setup instruct
 
 ### Key Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/session/start` | POST | Start a new interview session |
-| `/api/session/end` | POST | End an interview session |
-| `/api/session/:id` | GET | Get session details |
-| `/api/sessions` | GET | List user sessions |
-| `/api/session/transcript` | POST | Save transcript turns (single or batch) |
-| `/api/session/:id/transcript` | GET | Get session transcript |
-| `/api/feedback/generate` | POST | Generate AI feedback (GPT-4 Turbo) |
-| `/api/feedback/:id` | GET | Get session feedback |
-| `/api/livekit/token` | POST | Generate LiveKit access token |
-| `/api/livekit/demo-token` | POST | Generate demo token (60-second preview) |
-| `/api/cartesia/voices` | GET | List available TTS voices |
+| Endpoint                      | Method | Description                             |
+| ----------------------------- | ------ | --------------------------------------- |
+| `/api/session/start`          | POST   | Start a new interview session           |
+| `/api/session/end`            | POST   | End an interview session                |
+| `/api/session/:id`            | GET    | Get session details                     |
+| `/api/sessions`               | GET    | List user sessions                      |
+| `/api/session/transcript`     | POST   | Save transcript turns (single or batch) |
+| `/api/session/:id/transcript` | GET    | Get session transcript                  |
+| `/api/feedback/generate`      | POST   | Generate AI feedback (GPT-4 Turbo)      |
+| `/api/feedback/:id`           | GET    | Get session feedback                    |
+| `/api/livekit/token`          | POST   | Generate LiveKit access token           |
+| `/api/livekit/demo-token`     | POST   | Generate demo token (60-second preview) |
+| `/api/cartesia/voices`        | GET    | List available TTS voices               |
 
 ### Example: Start Interview Session
 
@@ -333,18 +345,22 @@ curl -X POST http://localhost:3000/api/feedback/generate \
 ### TypeScript Usage
 
 ```typescript
-import type { StartSessionRequest, StartSessionResponse } from '@/types/api';
+import type { StartSessionRequest, StartSessionResponse } from "@/types/api";
 
-async function startInterview(config: StartSessionRequest): Promise<StartSessionResponse> {
-  const { data: { session } } = await supabase.auth.getSession();
+async function startInterview(
+  config: StartSessionRequest
+): Promise<StartSessionResponse> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  const response = await fetch('/api/session/start', {
-    method: 'POST',
+  const response = await fetch("/api/session/start", {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${session?.access_token}`,
-      'Content-Type': 'application/json'
+      Authorization: `Bearer ${session?.access_token}`,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(config)
+    body: JSON.stringify(config),
   });
 
   if (!response.ok) {
@@ -385,7 +401,8 @@ open http://localhost:3000/docs
 ## 🛠️ Development Workflow
 
 ### Typical Development Loop
-1. **Start both servers:** Click Run button (Conductor) or run `npm run dev` + `python agent.py dev`
+
+1. **Start local runtime:** Click Run button in the agent workspace or run `npm run dev:local`
 2. **Edit code:** Changes auto-reload in both Next.js and Python agent
 3. **Check types:** `npm run typecheck` before committing
 4. **Format code:** `npm run format` (Prettier)
@@ -393,6 +410,7 @@ open http://localhost:3000/docs
 6. **Database changes:** Edit `lib/db/schema.ts` → `npm run db:push`
 
 ### Git Workflow
+
 ```bash
 # Create feature branch
 git checkout -b your-branch-name
@@ -414,20 +432,24 @@ git push origin your-branch-name
 ## 🐛 Troubleshooting
 
 ### "Agent not responding"
+
 - Restart the Python agent: `python agent.py dev` (in `agent/` directory)
 - Check LiveKit credentials in `.env.local`
 - Verify agent logs in terminal
 
 ### "Database connection failed"
+
 - Verify `DATABASE_URL` in `.env.local`
 - Test connection: `npm run db:studio`
 - Check Supabase dashboard for database status
 
 ### "LiveKit token generation failed"
+
 - Check `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` in `.env.local`
 - Verify `NEXT_PUBLIC_LIVEKIT_URL` format: `wss://your-project.livekit.cloud`
 
 ### "Python virtual environment issues"
+
 - Recreate venv: `cd agent && rm -rf venv && python3 -m venv venv`
 - Reinstall deps: `source venv/bin/activate && pip install -r requirements.txt`
 
@@ -436,11 +458,13 @@ git push origin your-branch-name
 ## 📖 Learn More
 
 ### Next.js Resources
+
 - [Next.js Documentation](https://nextjs.org/docs) - Next.js features and API
 - [Learn Next.js](https://nextjs.org/learn) - Interactive tutorial
 - [Next.js GitHub](https://github.com/vercel/next.js) - Feedback and contributions
 
 ### LiveKit Resources
+
 - [LiveKit Agents](https://github.com/livekit/agents) - Agent framework source and examples
 - [LiveKit Docs](https://docs.livekit.io) - Core WebRTC infrastructure
 - [LiveKit Dashboard](https://cloud.livekit.io) - Manage projects and API keys

@@ -22,19 +22,37 @@ The doctor checks Node, npm, dependencies, local env files, Python availability,
 
 ## Development
 
-Run the web app only:
-
-```bash
-npm run dev
-```
-
-Run the Conductor-friendly local startup script:
+Run all local runtime processes:
 
 ```bash
 npm run dev:local
 ```
 
-The local script starts the Next.js dev server and attempts to start the Python LiveKit agent if `agent/venv` exists.
+This is the normal coding-agent run target. It starts the Next.js dev server, starts the Inngest Dev Server against `/api/inngest`, and attempts to start the Python LiveKit agent if `agent/venv` exists. If dependencies are missing, it runs `npm run setup:local` first.
+
+Agent platforms that honor `conductor.json` should use:
+
+- setup: `npm run setup:local`
+- run: `npm run dev:local`
+
+Run individual services only when debugging:
+
+```bash
+npm run dev
+npm run dev:inngest
+npm run dev:agent
+```
+
+Useful local overrides:
+
+```bash
+CONDUCTOR_PORT=3001 npm run dev:local
+INNGEST_PORT=9100 npm run dev:local
+MEELNI_SKIP_INNGEST=1 npm run dev:local
+MEELNI_SKIP_AGENT=1 npm run dev:local
+```
+
+When `CONDUCTOR_PORT` or `PORT` changes the web port, `dev:local` derives non-overlapping Inngest ports so adjacent worktrees can run side by side. The default web port `3000` uses Inngest UI port `8288`; web port `3001` uses `8298`; web port `3002` uses `8308`.
 
 ## Local Credit Bypass
 

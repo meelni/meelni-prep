@@ -88,6 +88,13 @@ lk agent status --id CA_yawKG67rCMG4 --project meelni
 lk agent status --id CA_t3sKQEihMQ7x --project meelni
 ```
 
+Docs MCP:
+```bash
+codex mcp add --url https://docs.livekit.io/mcp livekit-docs
+```
+
+Use the LiveKit Docs MCP for current docs search, page rendering, changelog lookup, Python agent examples, public LiveKit code search, and pricing information. If MCP is unavailable in the current session, use official LiveKit docs and record any reusable setup finding here.
+
 Env and secrets:
 
 - Web app envs: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL`, `LIVEKIT_URL`, `LIVEKIT_INTERVIEW_AGENT_NAME`, `LIVEKIT_DEMO_AGENT_NAME`
