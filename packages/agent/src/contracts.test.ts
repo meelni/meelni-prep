@@ -25,6 +25,13 @@ test("buildInterviewRoomMetadata serializes the production room metadata shape",
   assert.equal(metadata.config.difficulty, "intermediate");
 });
 
+test("buildInterviewRoomMetadata keeps normalized runtime config objects intact", () => {
+  const fixture = createProductSenseInterviewFixture();
+  const metadata = buildInterviewRoomMetadata(fixture.roomMetadata);
+
+  assert.equal(metadata.config, fixture.roomMetadata.config);
+});
+
 test("parseInterviewRoomMetadata applies fallback defaults for malformed metadata", () => {
   const metadata = parseInterviewRoomMetadata("not-json");
 
