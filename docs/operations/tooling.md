@@ -8,7 +8,18 @@ Run:
 npm run setup:local
 ```
 
-This installs Node dependencies, creates `.context/npm-cache`, ensures `.env.local` exists from `.env.example` when possible, creates the Python virtual environment under `agent/venv`, and installs agent dependencies.
+This installs Node dependencies, creates `.context/npm-cache`, ensures `.env.local` exists from `.env.example` when possible, creates the Python virtual environment under `agent/venv`, and installs agent dependencies. The Python venv is created with copied binaries instead of symlinked binaries so local Next.js/Turbopack builds do not walk into invalid absolute interpreter symlinks.
+
+When `.env.local` is missing required runtime values or still contains placeholders from `.env.example`, setup attempts to self-heal by using the authenticated Vercel CLI:
+
+```bash
+npx vercel@latest link --yes --project meelni
+npm run env:pull
+```
+
+If the Vercel CLI is not logged in, setup keeps going but prints the recovery command. Set `MEELNI_SKIP_ENV_PULL=1` only when you intentionally want to keep the current local env file unchanged.
+
+If an older `agent/venv` uses symlinked Python binaries, setup recreates it with copied binaries. The venv is generated and gitignored, so this is safe and keeps `npm run build` compatible with a normal local setup.
 
 ## Doctor
 
@@ -19,6 +30,8 @@ npm run doctor
 ```
 
 The doctor checks Node, npm, dependencies, local env files, Python availability, Python agent environment, and Conductor configuration.
+
+The doctor fails when required local runtime envs are missing or contain placeholder values such as `https://xxx.supabase.co`, `wss://your-project.livekit.cloud`, or `sk-proj-xxx`. This is intentional: provider placeholders can otherwise look valid until login, LiveKit, or feedback generation fails at runtime.
 
 ## Development
 
@@ -34,6 +47,8 @@ Agent platforms that honor `conductor.json` should use:
 
 - setup: `npm run setup:local`
 - run: `npm run dev:local`
+
+Codex local environments should use `.codex/environments/environment.toml`. Its setup action runs `npm run setup:local` followed by `npm run doctor`, so fresh worktrees fail early when Vercel auth/env refresh is unavailable.
 
 Run individual services only when debugging:
 

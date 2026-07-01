@@ -28,12 +28,77 @@ export function readEnvFile(path) {
 }
 
 export function requiredEnvStatus(values, requiredKeys) {
-  const missing = requiredKeys.filter((key) => !values.get(key));
+  const missing = requiredKeys.filter((key) => isBlankEnvValue(values.get(key)));
+  const placeholder = requiredKeys.filter((key) => {
+    const value = values.get(key);
+    return !isBlankEnvValue(value) && isPlaceholderEnvValue(value);
+  });
 
   return {
     missing,
-    ok: missing.length === 0
+    placeholder,
+    ok: missing.length === 0 && placeholder.length === 0
   };
+}
+
+export function requiredEnvAlternativesStatus(values, groups) {
+  const missing = [];
+  const placeholder = [];
+
+  for (const group of groups) {
+    const entries = group.keys.map((key) => [key, values.get(key)]);
+    const hasUsableValue = entries.some(([, value]) => isUsableEnvValue(value));
+
+    if (!hasUsableValue) {
+      missing.push(group.label);
+    }
+
+    for (const [key, value] of entries) {
+      if (!isBlankEnvValue(value) && isPlaceholderEnvValue(value)) {
+        placeholder.push(key);
+      }
+    }
+  }
+
+  return {
+    missing,
+    placeholder,
+    ok: missing.length === 0 && placeholder.length === 0
+  };
+}
+
+export function normalizeEnvValue(value) {
+  return String(value ?? "").trim().replace(/^(['"])(.*)\1$/, "$2");
+}
+
+export function isBlankEnvValue(value) {
+  return normalizeEnvValue(value) === "";
+}
+
+export function isBlankOrPlaceholderEnvValue(value) {
+  return isBlankEnvValue(value) || isPlaceholderEnvValue(value);
+}
+
+export function isUsableEnvValue(value) {
+  return !isBlankOrPlaceholderEnvValue(value);
+}
+
+export function isPlaceholderEnvValue(value) {
+  const normalized = normalizeEnvValue(value);
+
+  return [
+    /^postgresql:\/\/\.\.\.$/,
+    /^https:\/\/xxx\.supabase\.co$/,
+    /^eyJxxx\.\.\.$/,
+    /^your[_-]/,
+    /your-project/,
+    /^sk-proj-xxx$/,
+    /^sk_test_xxx$/,
+    /^pk_test_xxx$/,
+    /^whsec_xxx$/,
+    /^price_xxx$/,
+    /^xxx$/,
+  ].some((pattern) => pattern.test(normalized));
 }
 
 export async function ensureEnvFile({ targetPath, examplePath }) {

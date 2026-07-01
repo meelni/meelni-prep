@@ -8,7 +8,10 @@ import test from "node:test";
 import {
   ensureEnvFile,
   ensureSymlink,
+  isPlaceholderEnvValue,
+  isUsableEnvValue,
   parseEnvContent,
+  requiredEnvAlternativesStatus,
   requiredEnvStatus
 } from "./local-env.mjs";
 
@@ -37,6 +40,79 @@ test("requiredEnvStatus reports missing keys", () => {
 
   assert.deepEqual(status.missing, ["LIVEKIT_API_KEY"]);
   assert.equal(status.ok, false);
+});
+
+test("requiredEnvStatus reports placeholder values separately from missing keys", () => {
+  const status = requiredEnvStatus(
+    new Map([
+      ["DATABASE_URL", "postgresql://..."],
+      ["NEXT_PUBLIC_SUPABASE_URL", "https://xxx.supabase.co"],
+      ["NEXT_PUBLIC_SUPABASE_ANON_KEY", "eyJxxx..."],
+      ["NEXT_PUBLIC_LIVEKIT_URL", "wss://your-project.livekit.cloud"],
+      ["OPENAI_API_KEY", "sk-proj-xxx"],
+      ["LIVEKIT_API_KEY", "livekit-key"]
+    ]),
+    [
+      "DATABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "NEXT_PUBLIC_LIVEKIT_URL",
+      "OPENAI_API_KEY",
+      "LIVEKIT_API_KEY"
+    ]
+  );
+
+  assert.deepEqual(status.missing, []);
+  assert.deepEqual(status.placeholder, [
+    "DATABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "NEXT_PUBLIC_LIVEKIT_URL",
+    "OPENAI_API_KEY"
+  ]);
+  assert.equal(status.ok, false);
+});
+
+test("env value helpers reject placeholders but accept real-looking provider values", () => {
+  assert.equal(isPlaceholderEnvValue("your_api_key"), true);
+  assert.equal(isPlaceholderEnvValue("wss://your-project.livekit.cloud"), true);
+  assert.equal(isPlaceholderEnvValue("https://xxx.supabase.co"), true);
+  assert.equal(isPlaceholderEnvValue("sk-proj-xxx"), true);
+  assert.equal(isPlaceholderEnvValue("real-value-ending-with..."), false);
+
+  assert.equal(isUsableEnvValue("wss://meelni-ek4vaisp.livekit.cloud"), true);
+  assert.equal(isUsableEnvValue("https://rarrrwkjuhfyfatcmrkw.supabase.co"), true);
+  assert.equal(isUsableEnvValue("sk-real-looking-value"), true);
+});
+
+test("requiredEnvAlternativesStatus accepts any usable alternative value", () => {
+  const status = requiredEnvAlternativesStatus(
+    new Map([["LIVEKIT_URL", "wss://server.livekit.cloud"]]),
+    [{ label: "NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL", keys: ["NEXT_PUBLIC_LIVEKIT_URL", "LIVEKIT_URL"] }]
+  );
+
+  assert.deepEqual(status.missing, []);
+  assert.deepEqual(status.placeholder, []);
+  assert.equal(status.ok, true);
+});
+
+test("requiredEnvAlternativesStatus reports missing and placeholder alternative groups", () => {
+  const missingStatus = requiredEnvAlternativesStatus(
+    new Map(),
+    [{ label: "NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL", keys: ["NEXT_PUBLIC_LIVEKIT_URL", "LIVEKIT_URL"] }]
+  );
+  const placeholderStatus = requiredEnvAlternativesStatus(
+    new Map([
+      ["NEXT_PUBLIC_LIVEKIT_URL", "wss://your-project.livekit.cloud"],
+      ["LIVEKIT_URL", "wss://server.livekit.cloud"],
+    ]),
+    [{ label: "NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL", keys: ["NEXT_PUBLIC_LIVEKIT_URL", "LIVEKIT_URL"] }]
+  );
+
+  assert.deepEqual(missingStatus.missing, ["NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL"]);
+  assert.deepEqual(placeholderStatus.placeholder, ["NEXT_PUBLIC_LIVEKIT_URL"]);
+  assert.equal(missingStatus.ok, false);
+  assert.equal(placeholderStatus.ok, false);
 });
 
 test("ensureEnvFile creates target from example when target is absent", async () => {

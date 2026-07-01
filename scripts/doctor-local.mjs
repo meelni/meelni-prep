@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { readEnvFile, requiredEnvStatus } from "./local-env.mjs";
+import { readEnvFile, requiredEnvAlternativesStatus, requiredEnvStatus } from "./local-env.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const results = [];
@@ -48,22 +48,37 @@ check("Root env", () => {
     return warn(".env.local is missing. Run `npm run setup:local` and fill in required secrets.");
   }
 
-  const status = requiredEnvStatus(readEnvFile(envPath), [
+  const values = readEnvFile(envPath);
+  const status = requiredEnvStatus(values, [
     "DATABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
     "OPENAI_API_KEY"
   ]);
-  const values = readEnvFile(envPath);
-  const missing = [...status.missing];
+  const liveKitUrlStatus = requiredEnvAlternativesStatus(values, [
+    {
+      label: "NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL",
+      keys: ["NEXT_PUBLIC_LIVEKIT_URL", "LIVEKIT_URL"]
+    }
+  ]);
+  const missing = [...status.missing, ...liveKitUrlStatus.missing];
+  const placeholder = [...status.placeholder, ...liveKitUrlStatus.placeholder];
 
-  if (!values.get("NEXT_PUBLIC_LIVEKIT_URL") && !values.get("LIVEKIT_URL")) {
-    missing.push("NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL");
+  if (missing.length > 0) {
+    return fail(
+      `.env.local is missing required runtime value(s): ${missing.join(", ")}. Run \`npx vercel@latest link --yes --project meelni\`, then \`npm run env:pull\`.`
+    );
   }
 
-  return missing.length === 0
-    ? pass(".env.local contains required runtime keys.")
-    : warn(`.env.local is missing: ${missing.join(", ")}.`);
+  if (placeholder.length > 0) {
+    return fail(
+      `.env.local contains placeholder value(s): ${placeholder.join(", ")}. Run \`npx vercel@latest link --yes --project meelni\`, then \`npm run env:pull\`.`
+    );
+  }
+
+  return pass(".env.local contains required runtime keys without placeholders.");
 });
 
 check("Python", () => {

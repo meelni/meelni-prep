@@ -3,6 +3,8 @@
  * Run this before deployment to ensure all required env vars are set
  */
 
+import { isPlaceholderEnvValue } from "./local-env.mjs";
+
 interface EnvVarConfig {
   name: string;
   required: boolean;
@@ -62,8 +64,8 @@ const envVars: EnvVarConfig[] = [
   // Deepgram (ASR)
   {
     name: "DEEPGRAM_API_KEY",
-    required: true,
-    description: "Deepgram API key for Nova-3",
+    required: false,
+    description: "Deepgram API key for direct Nova-3 access outside LiveKit inference",
   },
 
   // Stripe (Optional - only required if billing enabled)
@@ -151,6 +153,10 @@ function validateEnvironment(): ValidationResult {
       errors.push(
         `❌ Invalid format for ${envVar.name}: Expected pattern ${envVar.pattern.toString()}`
       );
+    }
+
+    if (value && isPlaceholderEnvValue(value)) {
+      errors.push(`❌ Placeholder value for ${envVar.name}: refresh .env.local with npm run env:pull`);
     }
   }
 
