@@ -8,8 +8,11 @@ import {
   deriveInngestPorts,
   serviceIsSkipped,
 } from "./local-dev-config.mjs";
+import { buildLocalDevEnv } from "./start-local-dev-env.mjs";
+import { getChildExitAction } from "./start-local-dev-processes.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const localDevEnv = buildLocalDevEnv({ repoRoot });
 const host = process.env.HOST ?? "localhost";
 const port = process.env.CONDUCTOR_PORT ?? process.env.PORT ?? "3000";
 const npmCachePath = resolve(repoRoot, ".context/npm-cache");
@@ -46,7 +49,7 @@ const web = spawn(
     stdio: "inherit",
   }
 );
-children.push(web);
+children.push({ process: web, role: "web" });
 
 if (!serviceIsSkipped(process.env.MEELNI_SKIP_INNGEST)) {
   const inngestArgs = buildInngestDevArgs({
@@ -69,7 +72,7 @@ if (!serviceIsSkipped(process.env.MEELNI_SKIP_INNGEST)) {
     shell: process.platform === "win32",
     stdio: "inherit",
   });
-  children.push(inngest);
+  children.push({ process: inngest, role: "inngest" });
 } else {
   console.log(
     "Skipping Inngest Dev Server because MEELNI_SKIP_INNGEST is set."
@@ -86,12 +89,12 @@ if (serviceIsSkipped(process.env.MEELNI_SKIP_AGENT)) {
     cwd: resolve(repoRoot, "agent/interview"),
     env: {
       ...localEnv(),
-      LOCAL_DEV: process.env.LOCAL_DEV ?? "1",
+      LOCAL_DEV: localDevEnv.LOCAL_DEV ?? "1",
     },
     shell: process.platform === "win32",
     stdio: "inherit",
   });
-  children.push(agent);
+  children.push({ process: agent, role: "agent" });
 } else {
   console.log(
     "Python agent is not ready. Run `npm run setup:local` to create agent/venv."
@@ -101,7 +104,7 @@ if (serviceIsSkipped(process.env.MEELNI_SKIP_AGENT)) {
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
     for (const child of children) {
-      child.kill(signal);
+      child.process.kill(signal);
     }
   });
 }
@@ -109,8 +112,15 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 let exiting = false;
 
 for (const child of children) {
-  child.on("exit", (code, signal) => {
+  child.process.on("exit", (code, signal) => {
     if (exiting) {
+      return;
+    }
+
+    if (getChildExitAction({ role: child.role }) === "keep-running") {
+      console.log(
+        `Optional ${child.role} process exited; keeping web dev server running.`
+      );
       return;
     }
 
@@ -118,7 +128,7 @@ for (const child of children) {
 
     for (const other of children) {
       if (other !== child) {
-        other.kill("SIGTERM");
+        other.process.kill("SIGTERM");
       }
     }
 
@@ -133,7 +143,7 @@ for (const child of children) {
 
 function localEnv() {
   return {
-    ...process.env,
+    ...localDevEnv,
     NPM_CONFIG_CACHE: process.env.NPM_CONFIG_CACHE ?? npmCachePath,
     npm_config_cache: process.env.npm_config_cache ?? npmCachePath,
   };

@@ -1,10 +1,19 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { resolve } from "node:path";
 
 const target = process.argv[2] ?? ".env.local";
 const environment = process.argv[3] ?? "preview";
 const siteUrl = "https://www.meelni.com";
 const previousEnv = readExistingEnv(target);
+const fallbackEnv =
+  environment === "preview" ? readFallbackEnv("development") : {};
 
 execFileSync(
   "npx",
@@ -32,7 +41,7 @@ for (const [key, value] of Object.entries({
   env = upsert(env, key, value);
 }
 
-for (const key of [
+const preserveableKeys = [
   "LIVEKIT_API_KEY",
   "LIVEKIT_API_SECRET",
   "NEXT_PUBLIC_LIVEKIT_URL",
@@ -50,16 +59,55 @@ for (const key of [
   "INNGEST_EVENT_KEY",
   "INNGEST_SIGNING_KEY",
   "OPENAI_API_KEY",
-]) {
+];
+
+for (const key of preserveableKeys) {
   const pulled = readEnvValue(env, key);
   const previous = previousEnv[key];
-  if (isBlank(pulled) && !isBlank(previous)) {
+  if (isBlankOrPlaceholder(pulled) && isUsableEnvValue(previous)) {
     env = upsert(env, key, previous);
   }
 }
 
+env = mergeFallbackEnv(env, fallbackEnv, preserveableKeys);
+
 writeFileSync(target, env);
 console.log(`Refreshed ${target} and restored public browser config.`);
+
+function readFallbackEnv(fallbackEnvironment) {
+  const tempRoot = resolve(".context/tmp");
+  mkdirSync(tempRoot, { recursive: true });
+  const tempDir = mkdtempSync(resolve(tempRoot, "vercel-env-"));
+  const tempTarget = resolve(tempDir, ".env.local");
+
+  try {
+    console.log(
+      `Checking ${fallbackEnvironment} environment for local fallback values.`
+    );
+    execFileSync(
+      "npx",
+      [
+        "--yes",
+        "vercel@latest",
+        "env",
+        "pull",
+        tempTarget,
+        `--environment=${fallbackEnvironment}`,
+        "--yes",
+      ],
+      { stdio: "inherit" }
+    );
+
+    return readExistingEnv(tempTarget);
+  } catch {
+    console.warn(
+      `Could not pull ${fallbackEnvironment} environment fallback values.`
+    );
+    return {};
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
 
 function readExistingEnv(file) {
   try {
@@ -152,6 +200,21 @@ function upsert(env, key, value) {
   return pattern.test(env) ? env.replace(pattern, line) : `${line}\n${env}`;
 }
 
+function mergeFallbackEnv(env, fallbackEnv, keys) {
+  let merged = env;
+
+  for (const key of keys) {
+    const current = readEnvValue(merged, key);
+    const fallback = fallbackEnv[key];
+
+    if (isBlankOrPlaceholder(current) && isUsableEnvValue(fallback)) {
+      merged = upsert(merged, key, fallback);
+    }
+  }
+
+  return merged;
+}
+
 function readEnvValue(env, key) {
   const match = env.match(new RegExp(`^${escapeRegExp(key)}=(.*)$`, "m"));
   return match ? normalizeEnvValue(match[1]) : undefined;
@@ -167,4 +230,31 @@ function escapeRegExp(value) {
 
 function isBlank(value) {
   return value === undefined || value.trim() === "";
+}
+
+function isBlankOrPlaceholder(value) {
+  return isBlank(value) || isPlaceholderEnvValue(value);
+}
+
+function isUsableEnvValue(value) {
+  return !isBlankOrPlaceholder(value);
+}
+
+function isPlaceholderEnvValue(value) {
+  const normalized = normalizeEnvValue(value);
+
+  return [
+    /^postgresql:\/\/\.\.\.$/,
+    /^https:\/\/xxx\.supabase\.co$/,
+    /^eyJxxx\.\.\.$/,
+    /^your[_-]/,
+    /your-project/,
+    /^sk-proj-xxx$/,
+    /^sk_test_xxx$/,
+    /^pk_test_xxx$/,
+    /^whsec_xxx$/,
+    /^price_xxx$/,
+    /^xxx$/,
+    /\.\.\.$/,
+  ].some((pattern) => pattern.test(normalized));
 }
