@@ -62,8 +62,8 @@ const envVars: EnvVarConfig[] = [
   // Deepgram (ASR)
   {
     name: "DEEPGRAM_API_KEY",
-    required: true,
-    description: "Deepgram API key for Nova-3",
+    required: false,
+    description: "Deepgram API key for direct Nova-3 access outside LiveKit inference",
   },
 
   // Stripe (Optional - only required if billing enabled)
@@ -152,6 +152,10 @@ function validateEnvironment(): ValidationResult {
         `❌ Invalid format for ${envVar.name}: Expected pattern ${envVar.pattern.toString()}`
       );
     }
+
+    if (value && isPlaceholderEnvValue(value)) {
+      errors.push(`❌ Placeholder value for ${envVar.name}: refresh .env.local with npm run env:pull`);
+    }
   }
 
   // Additional security checks
@@ -180,6 +184,25 @@ function validateEnvironment(): ValidationResult {
     errors,
     warnings,
   };
+}
+
+function isPlaceholderEnvValue(value: string): boolean {
+  const normalized = value.trim().replace(/^(['"])(.*)\1$/, "$2");
+
+  return [
+    /^postgresql:\/\/\.\.\.$/,
+    /^https:\/\/xxx\.supabase\.co$/,
+    /^eyJxxx\.\.\.$/,
+    /^your[_-]/,
+    /your-project/,
+    /^sk-proj-xxx$/,
+    /^sk_test_xxx$/,
+    /^pk_test_xxx$/,
+    /^whsec_xxx$/,
+    /^price_xxx$/,
+    /^xxx$/,
+    /\.\.\.$/,
+  ].some((pattern) => pattern.test(normalized));
 }
 
 // Run validation
