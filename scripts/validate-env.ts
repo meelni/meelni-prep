@@ -3,6 +3,8 @@
  * Run this before deployment to ensure all required env vars are set
  */
 
+import { isPlaceholderEnvValue } from "./local-env.mjs";
+
 interface EnvVarConfig {
   name: string;
   required: boolean;
@@ -184,25 +186,6 @@ function validateEnvironment(): ValidationResult {
     errors,
     warnings,
   };
-}
-
-function isPlaceholderEnvValue(value: string): boolean {
-  const normalized = value.trim().replace(/^(['"])(.*)\1$/, "$2");
-
-  return [
-    /^postgresql:\/\/\.\.\.$/,
-    /^https:\/\/xxx\.supabase\.co$/,
-    /^eyJxxx\.\.\.$/,
-    /^your[_-]/,
-    /your-project/,
-    /^sk-proj-xxx$/,
-    /^sk_test_xxx$/,
-    /^pk_test_xxx$/,
-    /^whsec_xxx$/,
-    /^price_xxx$/,
-    /^xxx$/,
-    /\.\.\.$/,
-  ].some((pattern) => pattern.test(normalized));
 }
 
 // Run validation

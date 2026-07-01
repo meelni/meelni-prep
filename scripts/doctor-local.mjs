@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { readEnvFile, requiredEnvStatus } from "./local-env.mjs";
+import { readEnvFile, requiredEnvAlternativesStatus, requiredEnvStatus } from "./local-env.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const results = [];
@@ -54,15 +54,17 @@ check("Root env", () => {
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
-    "NEXT_PUBLIC_LIVEKIT_URL",
     "OPENAI_API_KEY"
   ]);
   const values = readEnvFile(envPath);
-  const missing = [...status.missing];
-
-  if (!values.get("NEXT_PUBLIC_LIVEKIT_URL") && !values.get("LIVEKIT_URL")) {
-    missing.push("NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL");
-  }
+  const liveKitUrlStatus = requiredEnvAlternativesStatus(values, [
+    {
+      label: "NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL",
+      keys: ["NEXT_PUBLIC_LIVEKIT_URL", "LIVEKIT_URL"]
+    }
+  ]);
+  const missing = [...status.missing, ...liveKitUrlStatus.missing];
+  const placeholder = [...status.placeholder, ...liveKitUrlStatus.placeholder];
 
   if (missing.length > 0) {
     return fail(
@@ -70,9 +72,9 @@ check("Root env", () => {
     );
   }
 
-  if (status.placeholder.length > 0) {
+  if (placeholder.length > 0) {
     return fail(
-      `.env.local contains placeholder value(s): ${status.placeholder.join(", ")}. Run \`npx vercel@latest link --yes --project meelni\`, then \`npm run env:pull\`.`
+      `.env.local contains placeholder value(s): ${placeholder.join(", ")}. Run \`npx vercel@latest link --yes --project meelni\`, then \`npm run env:pull\`.`
     );
   }
 

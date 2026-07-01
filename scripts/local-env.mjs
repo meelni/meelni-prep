@@ -41,6 +41,32 @@ export function requiredEnvStatus(values, requiredKeys) {
   };
 }
 
+export function requiredEnvAlternativesStatus(values, groups) {
+  const missing = [];
+  const placeholder = [];
+
+  for (const group of groups) {
+    const entries = group.keys.map((key) => [key, values.get(key)]);
+    const hasUsableValue = entries.some(([, value]) => isUsableEnvValue(value));
+
+    if (!hasUsableValue) {
+      missing.push(group.label);
+    }
+
+    for (const [key, value] of entries) {
+      if (!isBlankEnvValue(value) && isPlaceholderEnvValue(value)) {
+        placeholder.push(key);
+      }
+    }
+  }
+
+  return {
+    missing,
+    placeholder,
+    ok: missing.length === 0 && placeholder.length === 0
+  };
+}
+
 export function normalizeEnvValue(value) {
   return String(value ?? "").trim().replace(/^(['"])(.*)\1$/, "$2");
 }
@@ -72,7 +98,6 @@ export function isPlaceholderEnvValue(value) {
     /^whsec_xxx$/,
     /^price_xxx$/,
     /^xxx$/,
-    /\.\.\.$/,
   ].some((pattern) => pattern.test(normalized));
 }
 
