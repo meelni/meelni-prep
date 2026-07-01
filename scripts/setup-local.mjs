@@ -3,7 +3,13 @@ import { existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ensureEnvFile, ensureSymlink, readEnvFile, requiredEnvStatus } from "./local-env.mjs";
+import {
+  ensureEnvFile,
+  ensureSymlink,
+  readEnvFile,
+  requiredEnvAlternativesStatus,
+  requiredEnvStatus,
+} from "./local-env.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const npmCachePath = resolve(repoRoot, ".context/npm-cache");
@@ -93,25 +99,33 @@ function refreshLocalEnvIfNeeded() {
     return;
   }
 
-  const status = requiredEnvStatus(readEnvFile(envPath), [
+  const values = readEnvFile(envPath);
+  const status = requiredEnvStatus(values, [
     "DATABASE_URL",
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
-    "NEXT_PUBLIC_LIVEKIT_URL",
     "OPENAI_API_KEY",
   ]);
+  const liveKitUrlStatus = requiredEnvAlternativesStatus(values, [
+    {
+      label: "NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL",
+      keys: ["NEXT_PUBLIC_LIVEKIT_URL", "LIVEKIT_URL"],
+    },
+  ]);
+  const missing = [...status.missing, ...liveKitUrlStatus.missing];
+  const placeholder = [...status.placeholder, ...liveKitUrlStatus.placeholder];
 
-  if (status.ok) {
+  if (missing.length === 0 && placeholder.length === 0) {
     return;
   }
 
   console.log(
     "Root env needs refresh before runtime: " +
       [
-        status.missing.length ? `missing ${status.missing.join(", ")}` : "",
-        status.placeholder.length ? `placeholder ${status.placeholder.join(", ")}` : "",
+        missing.length ? `missing ${missing.join(", ")}` : "",
+        placeholder.length ? `placeholder ${placeholder.join(", ")}` : "",
       ]
         .filter(Boolean)
         .join("; ")
