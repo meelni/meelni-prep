@@ -50,6 +50,8 @@ npx vercel@latest env ls
 
 For local Codex worktrees, link the repo with `npx vercel@latest link --yes --project meelni`. The observed `meelnis` account behaves as the current personal scope, so passing `--scope meelnis` can be rejected by the Vercel CLI.
 
+Fresh worktree setup should run `npm run setup:local`; when Vercel CLI auth is available, that setup path links the worktree and runs `npm run env:pull` if required env values are missing or still placeholders.
+
 Safe env operations:
 
 ```bash
@@ -109,6 +111,25 @@ Operational notes:
 - Vercel sensitive values can pull into `.env.local` as blank strings. `npm run env:pull` preserves existing nonblank local LiveKit values when Vercel returns blanks.
 - If Vercel env values are questionable, use the authenticated `meelni` LiveKit CLI project as the source of truth and overwrite Vercel Development, Preview, and Production envs.
 - After changing Vercel envs, redeploy affected Vercel environments. After changing agent code/secrets, redeploy the corresponding LiveKit Cloud agent.
+
+## Supabase
+
+Canonical target:
+
+- Project host: `rarrrwkjuhfyfatcmrkw.supabase.co`
+- Local browser auth redirects through Supabase OAuth and returns to `http://localhost:3000/auth/callback`.
+
+Env and secrets:
+
+- Public browser envs: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- Server-only envs: `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- Values live in Vercel envs and local gitignored `.env.local` files. Do not document raw anon keys, service role keys, database URLs, or tokens.
+
+Operational notes:
+
+- If login redirects to `xxx.supabase.co`, local `.env.local` still has placeholder Supabase values.
+- Use `npm run setup:local` or run `npx vercel@latest link --yes --project meelni` from the worktree, then `npm run env:pull` to refresh local auth envs.
+- Restart `npm run dev:local` after env changes so Next.js serves the updated public Supabase URL.
 
 ## Google Sheets
 

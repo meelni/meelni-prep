@@ -50,8 +50,11 @@ check("Root env", () => {
 
   const status = requiredEnvStatus(readEnvFile(envPath), [
     "DATABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
+    "NEXT_PUBLIC_LIVEKIT_URL",
     "OPENAI_API_KEY"
   ]);
   const values = readEnvFile(envPath);
@@ -61,9 +64,19 @@ check("Root env", () => {
     missing.push("NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL");
   }
 
-  return missing.length === 0
-    ? pass(".env.local contains required runtime keys.")
-    : warn(`.env.local is missing: ${missing.join(", ")}.`);
+  if (missing.length > 0) {
+    return fail(
+      `.env.local is missing required runtime value(s): ${missing.join(", ")}. Run \`npx vercel@latest link --yes --project meelni\`, then \`npm run env:pull\`.`
+    );
+  }
+
+  if (status.placeholder.length > 0) {
+    return fail(
+      `.env.local contains placeholder value(s): ${status.placeholder.join(", ")}. Run \`npx vercel@latest link --yes --project meelni\`, then \`npm run env:pull\`.`
+    );
+  }
+
+  return pass(".env.local contains required runtime keys without placeholders.");
 });
 
 check("Python", () => {
