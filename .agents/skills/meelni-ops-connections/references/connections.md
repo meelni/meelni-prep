@@ -44,8 +44,11 @@ Verify:
 
 ```bash
 npx vercel@latest whoami
+npx vercel@latest link --yes --project meelni
 npx vercel@latest env ls
 ```
+
+For local Codex worktrees, link the repo with `npx vercel@latest link --yes --project meelni`. The observed `meelnis` account behaves as the current personal scope, so passing `--scope meelnis` can be rejected by the Vercel CLI.
 
 Safe env operations:
 
