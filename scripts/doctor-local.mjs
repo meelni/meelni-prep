@@ -48,7 +48,8 @@ check("Root env", () => {
     return warn(".env.local is missing. Run `npm run setup:local` and fill in required secrets.");
   }
 
-  const status = requiredEnvStatus(readEnvFile(envPath), [
+  const values = readEnvFile(envPath);
+  const status = requiredEnvStatus(values, [
     "DATABASE_URL",
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
@@ -56,7 +57,6 @@ check("Root env", () => {
     "LIVEKIT_API_SECRET",
     "OPENAI_API_KEY"
   ]);
-  const values = readEnvFile(envPath);
   const liveKitUrlStatus = requiredEnvAlternativesStatus(values, [
     {
       label: "NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL",
