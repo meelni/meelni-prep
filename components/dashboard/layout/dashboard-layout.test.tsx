@@ -6,6 +6,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   DASHBOARD_CONTENT_PANEL_CLASS_NAME,
   DashboardLayout,
+  getInitialSidebarCollapsed,
+  getSidebarCollapsedForViewport,
 } from "./dashboard-layout";
 
 test("dashboard shell keeps the sidebar on the same canvas color", () => {
@@ -84,4 +86,27 @@ test("dashboard content panel does not add a black frame or shadow around pages"
     /border-dashboard-panel-border/
   );
   assert.doesNotMatch(DASHBOARD_CONTENT_PANEL_CLASS_NAME, /shadow/);
+});
+
+test("dashboard sidebar collapses for mobile but expands again on desktop", () => {
+  assert.equal(
+    getInitialSidebarCollapsed({ isMobile: true, savedCollapsed: false }),
+    true
+  );
+  assert.equal(
+    getInitialSidebarCollapsed({ isMobile: false, savedCollapsed: true }),
+    true
+  );
+  assert.equal(
+    getSidebarCollapsedForViewport({
+      isMobile: true,
+    }),
+    true
+  );
+  assert.equal(
+    getSidebarCollapsedForViewport({
+      isMobile: false,
+    }),
+    false
+  );
 });

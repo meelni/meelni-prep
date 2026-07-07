@@ -11,25 +11,17 @@ import {
   buildDashboardPracticeSummary,
   type DashboardSessionInput,
 } from "@/lib/dashboard/contracts";
+import {
+  buildAnalyticsCompetencies,
+  buildAnalyticsEvidence,
+  type AnalyticsInsightsResponse,
+} from "@/lib/dashboard/analytics-contracts";
 import type { Session } from "@/lib/api/queries";
 
-interface InsightsResponse {
-  overall?: {
-    totalSessions?: number;
-    total_sessions?: number;
-    completedSessions?: number;
-    completed_sessions?: number;
-  };
-  trends?: {
-    improvementTrend?: "improving" | "stable" | "declining";
-    improvement_trend?: "improving" | "stable" | "declining";
-    velocity?: number;
-  };
-  competencies?: Record<string, number>;
-}
-
 export const AnalyticsSection = memo(function AnalyticsSection() {
-  const [insights, setInsights] = useState<InsightsResponse | null>(null);
+  const [insights, setInsights] = useState<AnalyticsInsightsResponse | null>(
+    null
+  );
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +68,14 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
     insights?.trends?.improvementTrend ||
     insights?.trends?.improvement_trend ||
     "stable";
-  const competencies = buildCompetencies(insights, practiceSummary.focusArea.key);
+  const competencies = buildAnalyticsCompetencies(insights);
+  const evidence = buildAnalyticsEvidence({
+    completedSessions,
+    focusAreaLabel: practiceSummary.focusArea.label,
+    focusAreaScore: practiceSummary.focusArea.score,
+    focusAreaDescription: practiceSummary.focusArea.description,
+    readinessDeltaLabel: practiceSummary.readiness.deltaLabel,
+  });
 
   if (loading) {
     return (
@@ -152,7 +151,7 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
               {competencies.map((competency) => (
                 <div
                   key={competency.label}
-                  className="grid grid-cols-[130px_1fr_52px] items-center gap-4"
+                  className="grid grid-cols-[130px_minmax(0,1fr)_88px] items-center gap-4"
                 >
                   <span className="text-sm font-semibold text-dashboard-foreground">
                     {competency.label}
@@ -160,11 +159,18 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
                   <span className="bg-dashboard-muted/15 h-2 overflow-hidden rounded-full">
                     <span
                       className="block h-full rounded-full bg-primary"
-                      style={{ width: `${competency.value * 10}%` }}
+                      style={{
+                        width:
+                          competency.value === null
+                            ? "0%"
+                            : `${competency.value * 10}%`,
+                      }}
                     />
                   </span>
                   <span className="text-right font-mono text-sm font-semibold text-dashboard-foreground">
-                    {competency.value.toFixed(1)}
+                    {competency.value === null
+                      ? "Needs data"
+                      : competency.value.toFixed(1)}
                   </span>
                 </div>
               ))}
@@ -211,15 +217,18 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
               Evidence
             </p>
             <div className="mt-5 space-y-5">
-              <Evidence title="Strong opening">
-                You consistently state users and constraints before solutions.
-              </Evidence>
-              <Evidence title="Weak timing">
-                Metrics usually appear after feature ideas.
-              </Evidence>
-              <Evidence title="Coverage gap">
-                Only one strategy rep appears in the recent set.
-              </Evidence>
+              {evidence.length > 0 ? (
+                evidence.map((item) => (
+                  <Evidence key={item.title} title={item.title}>
+                    {item.description}
+                  </Evidence>
+                ))
+              ) : (
+                <p className="text-sm leading-6 text-dashboard-muted">
+                  Evidence appears once recent scored reps include dimension
+                  feedback.
+                </p>
+              )}
             </div>
           </div>
         </aside>
@@ -264,27 +273,6 @@ function Evidence({
       <p className="mt-1 text-sm leading-6 text-dashboard-muted">{children}</p>
     </div>
   );
-}
-
-function buildCompetencies(
-  insights: InsightsResponse | null,
-  focusKey: string
-) {
-  const source = insights?.competencies || {};
-  const values = [
-    ["Structure", source.structure],
-    ["Clarity", source.clarity],
-    ["Metrics depth", source.insight],
-  ] as const;
-
-  return values.map(([label, rawValue]) => {
-    const fallback = label === "Metrics depth" || focusKey === "insight" ? 5.9 : 7.4;
-    const numericValue = typeof rawValue === "number" ? rawValue : fallback;
-    return {
-      label,
-      value: numericValue > 10 ? numericValue / 10 : numericValue,
-    };
-  });
 }
 
 function getDiagnosis(focusLabel: string) {
