@@ -38,7 +38,43 @@ test("dashboard shell wraps every section in the canonical content panel", () =>
 
   assert.match(html, /rounded-\[10px\]/);
   assert.match(html, /bg-dashboard-panel/);
+  assert.match(html, /h-full/);
+  assert.match(html, /overflow-hidden/);
   assert.match(html, /History content/);
+});
+
+test("dashboard shell keeps scrolling inside the content container", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      DashboardLayout,
+      {
+        activeSection: "overview",
+        user: { email: "savi@example.com" },
+      },
+      React.createElement("div", null, "Scrollable work surface")
+    )
+  );
+
+  assert.match(html, /<main[^>]+overflow-hidden/);
+  assert.match(html, /<section[^>]+overflow-hidden/);
+  assert.doesNotMatch(html, /<main[^>]+overflow-auto/);
+});
+
+test("dashboard shell owns the global new rep action", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      DashboardLayout,
+      {
+        activeSection: "questions",
+        user: { email: "savi@example.com" },
+      },
+      React.createElement("div", null, "Question bank")
+    )
+  );
+
+  assert.match(html, /href="\/setup"/);
+  assert.match(html, />New rep</);
+  assert.doesNotMatch(html, /New Interview/);
 });
 
 test("dashboard content panel does not add a black frame or shadow around pages", () => {
