@@ -21,7 +21,7 @@ export interface DashboardUser {
 }
 
 export const DASHBOARD_CONTENT_PANEL_CLASS_NAME =
-  "border-dashboard-panel-border bg-dashboard-panel min-h-full overflow-hidden rounded-[10px] border";
+  "border-dashboard-panel-border bg-dashboard-panel flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border";
 
 export function DashboardLayout({
   children,
@@ -35,16 +35,35 @@ export function DashboardLayout({
   // Initialize from localStorage to prevent animation on page load
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
+      if (window.matchMedia("(max-width: 767px)").matches) {
+        return true;
+      }
+
       const saved = localStorage.getItem("sidebar-collapsed");
       return saved === "true";
     }
     return false;
   });
 
-  // Persist to localStorage whenever state changes
+  // Persist desktop preference without letting mobile visits overwrite it.
   useEffect(() => {
-    localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+    if (window.matchMedia("(min-width: 768px)").matches) {
+      localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+    }
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const collapseForMobile = (event: MediaQueryListEvent | MediaQueryList) => {
+      if (event.matches) {
+        setSidebarCollapsed(true);
+      }
+    };
+
+    collapseForMobile(media);
+    media.addEventListener("change", collapseForMobile);
+    return () => media.removeEventListener("change", collapseForMobile);
+  }, []);
 
   return (
     <div className="bg-dashboard-canvas text-dashboard-foreground flex h-screen [--accent:#24242a] [--border:var(--dashboard-panel-border)] [--card:var(--dashboard-panel)] [--foreground:var(--dashboard-foreground)] [--muted-foreground:var(--dashboard-muted)] [--muted:#2a2a31] [--secondary:#24242a]">
@@ -69,7 +88,7 @@ export function DashboardLayout({
         />
       )}
 
-      <main className="bg-dashboard-canvas min-w-0 flex-1 overflow-auto p-3">
+      <main className="bg-dashboard-canvas min-w-0 flex-1 overflow-hidden p-3">
         <section className={DASHBOARD_CONTENT_PANEL_CLASS_NAME}>
           {children}
         </section>

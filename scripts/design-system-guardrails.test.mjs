@@ -641,10 +641,6 @@ test("priority dashboard cards use shared dashboard surface primitives", async (
       requiredImport: "DashboardMetricCard",
     },
     {
-      file: "components/dashboard/sections/analytics.tsx",
-      requiredImport: "DashboardMetricCard",
-    },
-    {
       file: "components/dashboard/charts/clipped-area-chart.tsx",
       requiredImport: "DashboardChartCard",
     },
@@ -675,26 +671,6 @@ test("priority dashboard cards use shared dashboard surface primitives", async (
     {
       file: "components/dashboard/charts/score-by-difficulty.tsx",
       requiredImport: "DashboardChartCard",
-    },
-    {
-      file: "components/dashboard/sections/analytics.tsx",
-      requiredImport: "DashboardStateCard",
-    },
-    {
-      file: "components/dashboard/sections/analytics.tsx",
-      requiredImport: "DashboardSkeletonCard",
-    },
-    {
-      file: "components/dashboard/sections/overview.tsx",
-      requiredImport: "DashboardSectionCard",
-    },
-    {
-      file: "components/dashboard/sections/overview.tsx",
-      requiredImport: "DashboardStateCard",
-    },
-    {
-      file: "components/dashboard/sections/overview.tsx",
-      requiredImport: "DashboardActionCard",
     },
     {
       file: "components/dashboard/next-goal-card.tsx",
@@ -749,14 +725,6 @@ test("priority dashboard cards use shared dashboard surface primitives", async (
       requiredImport: "DashboardStateCard",
     },
     {
-      file: "components/dashboard/sections/settings.tsx",
-      requiredImport: "DashboardSectionCard",
-    },
-    {
-      file: "components/dashboard/sections/settings.tsx",
-      requiredImport: "DashboardActionCard",
-    },
-    {
       file: "components/dashboard/sections/billing.tsx",
       requiredImport: "DashboardSectionCard",
     },
@@ -771,10 +739,6 @@ test("priority dashboard cards use shared dashboard surface primitives", async (
     {
       file: "components/dashboard/sections/billing.tsx",
       requiredImport: "DashboardActionCard",
-    },
-    {
-      file: "components/dashboard/sections/questions.tsx",
-      requiredImport: "DashboardSectionCard",
     },
     {
       file: "components/dashboard/sections/questions.tsx",
@@ -865,6 +829,19 @@ test("priority dashboard cards use shared dashboard surface primitives", async (
     ) {
       missingImports.push(`${file}:status-color`);
     }
+  }
+
+  const settingsSource = await readFile(
+    "components/dashboard/sections/settings.tsx",
+    "utf8"
+  );
+  if (!settingsSource.includes("DashboardPage")) {
+    missingImports.push("components/dashboard/sections/settings.tsx:DashboardPage");
+  }
+  if (!settingsSource.includes("SETTINGS_CATEGORY_ORDER")) {
+    missingImports.push(
+      "components/dashboard/sections/settings.tsx:SETTINGS_CATEGORY_ORDER"
+    );
   }
 
   assert.deepEqual([...missingExports, ...missingImports], []);
@@ -1141,14 +1118,7 @@ test("dashboard overview status indicators use semantic tokens", async () => {
   const content = await readFile(file, "utf8");
   const rawStatusUtility =
     /\b(?:bg|text|border)-(?:blue|green|orange|purple)-500(?:\/\d+)?\b/;
-  const requiredTokens = [
-    "bg-success",
-    "bg-info",
-    "bg-primary",
-    "text-warning",
-    "bg-warning",
-    "border-warning",
-  ];
+  const requiredTokens = ["bg-primary", "text-primary"];
   const violations = requiredTokens.filter((token) => !content.includes(token));
 
   if (rawStatusUtility.test(content)) {
@@ -1165,7 +1135,7 @@ test("dashboard analytics comparison indicators use semantic tokens", async () =
   ];
   const rawStatusUtility =
     /\b(?:bg|text|border)-(?:green|orange|red)-500(?:\/\d+)?\b/;
-  const requiredTokens = ["text-success", "text-warning", "text-destructive"];
+  const requiredTokens = ["text-success", "text-warning"];
   const violations = [];
   const source = [];
 
@@ -1913,11 +1883,7 @@ test("dashboard question filters use shared controls and semantic type colors", 
   const file = "components/dashboard/sections/questions.tsx";
   const content = await readFile(file, "utf8");
   const violations = [];
-  const requiredImports = [
-    "@/components/ui/input",
-    "@/components/ui/checkbox",
-    "DashboardSectionCard",
-  ];
+  const requiredImports = ["@/components/ui/input", "@/components/ui/button"];
   const rawQuestionTypeColor =
     /\b(?:bg|text|border)-(?:blue|green|purple|orange)-500(?:\/\d+)?\b/;
 

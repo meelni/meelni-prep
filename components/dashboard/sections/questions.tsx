@@ -1,104 +1,74 @@
 "use client";
 
-import { useState, useEffect, useMemo, memo } from "react";
-import { useRouter } from "next/navigation";
+import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { Bookmark, Play, Search } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { FilterPopover } from "@/components/question-bank/filter-popover";
-import { BulkActionToolbar } from "@/components/question-bank/bulk-action-toolbar";
-import { EmptyState } from "@/components/question-bank/empty-state";
-import { QuestionCard } from "@/components/question-bank/question-card";
-import { MobileFilterDrawer } from "@/components/question-bank/mobile-filter-drawer";
-import { PracticeSetDialog } from "@/components/question-bank/practice-set-dialog";
-import { PracticeSetsList } from "@/components/question-bank/practice-sets-list";
+import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
 import {
   DashboardLoadingState,
-  DashboardSectionCard,
   DashboardSkeletonCard,
 } from "@/components/dashboard/dashboard-surface";
 import {
-  Play,
-  Calendar,
-  Building2,
-  Filter,
-  Search,
-  Bookmark,
-  FolderPlus,
-} from "lucide-react";
+  buildQuestionBankSummary,
+  formatRoundType,
+  type DashboardQuestionInput,
+} from "@/lib/dashboard/contracts";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 
-interface Question {
-  id: string;
-  company: string | null;
-  questionText: string;
-  questionType: string;
-  askedAt: Date | null;
-  isActive: boolean;
-  createdAt: Date | null;
+interface Question extends DashboardQuestionInput {
+  createdAt?: Date | string | null;
 }
 
-const QUESTION_TYPE_COLORS = {
-  Behavioral: "border-info/20 bg-info/10 text-info",
-  "Product Sense": "border-primary/20 bg-primary/10 text-primary",
-  Execution: "border-success/20 bg-success/10 text-success",
-  "Product Strategy": "border-warning/20 bg-warning/10 text-warning",
+const ROUND_FILTERS = [
+  "All rounds",
+  "Product Sense",
+  "Execution",
+  "Strategy",
+  "Behavioral",
+] as const;
+
+const TYPE_TO_API: Record<string, string> = {
+  "Product Sense": "product_sense",
+  Execution: "execution",
+  Strategy: "strategy",
+  Behavioral: "behavioral",
 };
 
 export const QuestionsSection = memo(function QuestionsSection() {
-  const router = useRouter();
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const debouncedSearchQuery = useDebounce(searchQuery, 300);
-  const [selectedType, setSelectedType] = useState("All Types");
-  const [sortBy, setSortBy] = useState<"recent" | "company" | "type">("recent");
-  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(
-    new Set()
-  );
-  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const [selectedRound, setSelectedRound] =
+    useState<(typeof ROUND_FILTERS)[number]>("All rounds");
+  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"best" | "recent" | "company">("best");
   const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<
     Set<string>
   >(new Set());
-  const [showOnlyBookmarked, setShowOnlyBookmarked] = useState(false);
-  const [showPracticeSets, setShowPracticeSets] = useState(false);
-  const [isPracticeSetDialogOpen, setIsPracticeSetDialogOpen] = useState(false);
-  const [practiceSetRefreshTrigger, setPracticeSetRefreshTrigger] = useState(0);
+  const debouncedSearchQuery = useDebounce(searchQuery, 250);
 
-  // Fetch questions
   useEffect(() => {
     async function fetchQuestions() {
       try {
         setLoading(true);
         const params = new URLSearchParams({
-          limit: "500",
+          limit: "100",
           activeOnly: "true",
         });
 
-        if (selectedType !== "All Types") {
-          // Map display name to API format
-          const typeMap: Record<string, string> = {
-            Behavioral: "behavioral",
-            "Product Sense": "product_sense",
-            Execution: "execution",
-            "Product Strategy": "strategy",
-          };
-          params.append("type", typeMap[selectedType]);
+        if (selectedRound !== "All rounds") {
+          params.set("type", TYPE_TO_API[selectedRound]);
         }
 
         const res = await fetch(`/api/questions?${params.toString()}`);
         const data = await res.json();
         setQuestions(data.questions || []);
+        setTotalQuestions(data.pagination?.total || data.questions?.length || 0);
       } catch (error) {
         console.error("Error fetching questions:", error);
       } finally {
@@ -107,9 +77,8 @@ export const QuestionsSection = memo(function QuestionsSection() {
     }
 
     fetchQuestions();
-  }, [selectedType]);
+  }, [selectedRound]);
 
-  // Fetch bookmarked question IDs
   useEffect(() => {
     async function fetchBookmarks() {
       try {
@@ -124,161 +93,58 @@ export const QuestionsSection = memo(function QuestionsSection() {
     fetchBookmarks();
   }, []);
 
-  // Clear all filters
-  const clearAllFilters = () => {
-    setSearchQuery("");
-    setSelectedType("All Types");
-    setShowOnlyBookmarked(false);
-  };
+  const summary = useMemo(() => buildQuestionBankSummary(questions), [questions]);
+  const companyFilters = useMemo(
+    () =>
+      Object.entries(summary.companyCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5),
+    [summary.companyCounts]
+  );
 
-  // Filter and sort questions
   const filteredQuestions = useMemo(() => {
     return questions
-      .filter((q) => {
-        // Bookmark filter
-        if (showOnlyBookmarked && !bookmarkedQuestionIds.has(q.id)) {
-          return false;
-        }
-
-        // Search filter (debounced)
+      .filter((question) => {
+        const query = debouncedSearchQuery.trim().toLowerCase();
         const matchesSearch =
-          debouncedSearchQuery === "" ||
-          q.questionText
-            .toLowerCase()
-            .includes(debouncedSearchQuery.toLowerCase()) ||
-          q.company?.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
-
-        if (!matchesSearch) return false;
-
-        // Type filter
-        if (selectedType !== "All Types" && q.questionType !== selectedType) {
-          return false;
-        }
-
-        return true;
+          query.length === 0 ||
+          question.questionText.toLowerCase().includes(query) ||
+          question.company?.toLowerCase().includes(query);
+        const matchesCompany =
+          !selectedCompany || question.company === selectedCompany;
+        return matchesSearch && matchesCompany;
       })
       .sort((a, b) => {
-        if (sortBy === "recent") {
-          return (
-            new Date(b.askedAt || 0).getTime() -
-            new Date(a.askedAt || 0).getTime()
-          );
-        } else if (sortBy === "company") {
+        if (sortBy === "company") {
           return (a.company || "").localeCompare(b.company || "");
-        } else {
-          return a.questionType.localeCompare(b.questionType);
         }
+        if (sortBy === "recent") {
+          return getTime(b.askedAt) - getTime(a.askedAt);
+        }
+        return getFitScore(b) - getFitScore(a);
       });
-  }, [
-    questions,
-    debouncedSearchQuery,
-    selectedType,
-    sortBy,
-    showOnlyBookmarked,
-    bookmarkedQuestionIds,
-  ]);
+  }, [questions, debouncedSearchQuery, selectedCompany, sortBy]);
 
-  const handleTryQuestion = (questionId: string, questionType: string) => {
-    // Map display question type to roundType
-    const typeMap: Record<string, string> = {
-      Behavioral: "behavioral",
-      "Product Sense": "product_sense",
-      Execution: "execution",
-      "Product Strategy": "strategy",
-    };
-
-    const roundType = typeMap[questionType] || "product_sense";
-
-    // Navigate directly to interview with question and smart defaults
-    const params = new URLSearchParams({
-      questionId,
-      roundType,
-      mode: "mock_interview",
-      voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", // Tessa voice
-      speed: "1.0",
-      emotion: "confident",
-    });
-
-    router.push(`/interview?${params.toString()}`);
-  };
-
-  // Bulk action handlers
-  const toggleQuestionSelection = (questionId: string) => {
-    setSelectedQuestions((prev) => {
-      const newSelection = new Set(prev);
-      if (newSelection.has(questionId)) {
-        newSelection.delete(questionId);
-      } else {
-        newSelection.add(questionId);
-      }
-      return newSelection;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedQuestions.size === filteredQuestions.length) {
-      setSelectedQuestions(new Set());
-    } else {
-      setSelectedQuestions(new Set(filteredQuestions.map((q) => q.id)));
-    }
-  };
-
-  const handleBookmark = async () => {
-    if (selectedQuestions.size === 0) return;
-
-    try {
-      // Optimistic UI update
-      const questionsToBookmark = Array.from(selectedQuestions);
-      setBookmarkedQuestionIds((prev) => {
-        const updated = new Set(prev);
-        questionsToBookmark.forEach((id) => updated.add(id));
-        return updated;
-      });
-
-      // Bookmark all selected questions
-      await Promise.all(
-        questionsToBookmark.map((questionId) =>
-          fetch("/api/questions/bookmark", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ questionId }),
-          })
-        )
-      );
-
-      // Clear selection after bookmarking
-      setSelectedQuestions(new Set());
-    } catch (error) {
-      console.error("Error bookmarking questions:", error);
-      // Revert optimistic update on error
-      const res = await fetch("/api/questions/bookmark");
-      const data = await res.json();
-      setBookmarkedQuestionIds(new Set(data.questionIds || []));
-    }
-  };
+  const recommendedQuestion =
+    summary.recommendedQuestion && questions.length > 0
+      ? summary.recommendedQuestion
+      : null;
 
   const toggleBookmark = async (questionId: string) => {
     const isBookmarked = bookmarkedQuestionIds.has(questionId);
-
-    // Optimistic UI update
     setBookmarkedQuestionIds((prev) => {
       const updated = new Set(prev);
-      if (isBookmarked) {
-        updated.delete(questionId);
-      } else {
-        updated.add(questionId);
-      }
+      if (isBookmarked) updated.delete(questionId);
+      else updated.add(questionId);
       return updated;
     });
 
     try {
       if (isBookmarked) {
-        // Remove bookmark
         await fetch(`/api/questions/bookmark?questionId=${questionId}`, {
           method: "DELETE",
         });
       } else {
-        // Add bookmark
         await fetch("/api/questions/bookmark", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -287,488 +153,306 @@ export const QuestionsSection = memo(function QuestionsSection() {
       }
     } catch (error) {
       console.error("Error toggling bookmark:", error);
-      // Revert optimistic update on error
       setBookmarkedQuestionIds((prev) => {
         const updated = new Set(prev);
-        if (isBookmarked) {
-          updated.add(questionId);
-        } else {
-          updated.delete(questionId);
-        }
+        if (isBookmarked) updated.add(questionId);
+        else updated.delete(questionId);
         return updated;
       });
     }
   };
 
-  const handleCreatePracticeSet = () => {
-    setIsPracticeSetDialogOpen(true);
-  };
-
-  const handlePracticeSetSuccess = () => {
-    setPracticeSetRefreshTrigger((prev) => prev + 1);
-    setSelectedQuestions(new Set());
-  };
-
-  const handleSelectPracticeSet = (setId: string) => {
-    // TODO: Navigate to practice set detail view or start practice with set questions
-    console.log("Selected practice set:", setId);
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedQuestions(new Set());
-  };
-
-  // Determine empty state type
-  const getEmptyStateType = ():
-    | "no-search"
-    | "no-filter"
-    | "first-time"
-    | "no-bookmarks"
-    | null => {
-    if (filteredQuestions.length > 0) return null;
-    if (showOnlyBookmarked && bookmarkedQuestionIds.size === 0)
-      return "no-bookmarks";
-    if (debouncedSearchQuery) return "no-search";
-    if (selectedType !== "All Types") return "no-filter";
-    if (questions.length === 0) return "first-time";
-    return "no-filter";
-  };
-
-  const emptyStateType = getEmptyStateType();
-
-  // Handler to practice with bookmarked questions
-  const handlePracticeWithBookmarked = () => {
-    if (bookmarkedQuestionIds.size === 0) return;
-
-    // Navigate to interview with a random bookmarked question
-    const bookmarkedQuestions = questions.filter((q) =>
-      bookmarkedQuestionIds.has(q.id)
-    );
-    if (bookmarkedQuestions.length > 0) {
-      const randomQuestion =
-        bookmarkedQuestions[
-          Math.floor(Math.random() * bookmarkedQuestions.length)
-        ];
-      handleTryQuestion(randomQuestion.id, randomQuestion.questionType);
-    }
-  };
-
   if (loading) {
     return (
-      <DashboardSkeletonCard
-        variant="chart"
-        className="min-h-dashboard-loading m-6"
-      >
-        <DashboardLoadingState
-          className="min-h-0"
-          label="Loading question bank..."
-        />
-      </DashboardSkeletonCard>
+      <DashboardPage label="Question Bank">
+        <DashboardSkeletonCard className="min-h-[520px]">
+          <DashboardLoadingState label="Loading question bank..." />
+        </DashboardSkeletonCard>
+      </DashboardPage>
     );
   }
 
   return (
-    <div className="space-y-6 p-6">
-      {/* View Tabs */}
-      <div className="flex items-center gap-4">
-        <div className="bg-muted/30 flex items-center gap-2 rounded-lg p-1">
-          <Button
-            type="button"
-            variant={
-              !showOnlyBookmarked && !showPracticeSets ? "secondary" : "ghost"
-            }
-            onClick={() => {
-              setShowOnlyBookmarked(false);
-              setShowPracticeSets(false);
-            }}
-            className={cn(
-              "rounded-md px-4 py-2 text-sm font-medium transition-all duration-200",
-              showOnlyBookmarked || showPracticeSets
-                ? "text-muted-foreground hover:text-foreground"
-                : "shadow-sm"
-            )}
-          >
-            All Questions
-          </Button>
-          <Button
-            type="button"
-            variant={
-              showOnlyBookmarked && !showPracticeSets ? "secondary" : "ghost"
-            }
-            onClick={() => {
-              setShowOnlyBookmarked(true);
-              setShowPracticeSets(false);
-            }}
-            className={cn(
-              "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all duration-200",
-              showOnlyBookmarked && !showPracticeSets
-                ? "shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Bookmark
-              className={cn(
-                "h-4 w-4",
-                showOnlyBookmarked && !showPracticeSets && "fill-current"
-              )}
-            />
-            Saved
-            {bookmarkedQuestionIds.size > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-1 h-5 min-w-5 rounded-full px-1.5 text-xs"
-              >
-                {bookmarkedQuestionIds.size}
-              </Badge>
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant={showPracticeSets ? "secondary" : "ghost"}
-            onClick={() => {
-              setShowPracticeSets(true);
-              setShowOnlyBookmarked(false);
-            }}
-            className={cn(
-              "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all duration-200",
-              showPracticeSets
-                ? "shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <FolderPlus className="h-4 w-4" />
-            Practice Sets
-          </Button>
-        </div>
-
-        {showOnlyBookmarked && bookmarkedQuestionIds.size > 0 && (
-          <Button onClick={handlePracticeWithBookmarked} className="gap-2">
-            <Play className="h-4 w-4" />
-            Practice with these
-          </Button>
-        )}
-      </div>
-
-      {/* Questions Content */}
-      <div>
-        {showPracticeSets ? (
-          <DashboardSectionCard
-            title="Practice Sets"
-            description="Organize selected questions into focused prep sets."
-          >
-            <PracticeSetsList
-              onSelectSet={handleSelectPracticeSet}
-              refreshTrigger={practiceSetRefreshTrigger}
-            />
-          </DashboardSectionCard>
-        ) : emptyStateType ? (
-          <DashboardSectionCard
-            title="Question Results"
-            description="Adjust filters or explore another practice path."
-            contentClassName="p-0"
-          >
-            <EmptyState
-              type={emptyStateType}
-              onClearFilters={clearAllFilters}
-              onExploreProductSense={
-                emptyStateType === "no-bookmarks"
-                  ? () => setShowOnlyBookmarked(false)
-                  : () => setSelectedType("Product Sense")
-              }
-              onBackToDashboard={() => router.push("/dashboard")}
-              selectedType={selectedType}
-            />
-          </DashboardSectionCard>
-        ) : (
-          <>
-            {/* Desktop Table View (≥768px) */}
-            <DashboardSectionCard
-              title="Questions"
-              description={`${filteredQuestions.length} questions found`}
-              className="hidden shadow-sm md:flex"
-              contentClassName="p-0"
+    <DashboardPage label="Question Bank">
+      <div className="mx-auto flex w-full max-w-6xl flex-col">
+      {recommendedQuestion && (
+        <section className="flex flex-col gap-4 border-b border-dashboard-panel-border pb-5 lg:flex-row lg:items-center">
+          <Pill tone="primary">Recommended</Pill>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-semibold text-dashboard-foreground">
+              {recommendedQuestion.questionText}
+            </h2>
+            <p className="mt-1 text-sm text-dashboard-muted">
+              {formatRoundType(recommendedQuestion.questionType)} · metric-depth fit
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button asChild>
+              <Link href={getQuestionStartHref(recommendedQuestion)}>
+                <Play className="mr-2 h-4 w-4" aria-hidden="true" />
+                Start
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => toggleBookmark(recommendedQuestion.id)}
+              className="border-dashboard-panel-border bg-transparent text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
             >
-              {/* Integrated Search/Filter Toolbar */}
-              <div className="border-border/50 bg-card/40 border-b px-6 py-4 backdrop-blur-sm">
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-1">
-                    <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-                    <Input
-                      type="text"
-                      placeholder="Search questions by text or company..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="bg-card pl-10"
-                      aria-label="Search questions"
-                    />
-                  </div>
-                  <FilterPopover
-                    selectedType={selectedType}
-                    onSelectType={setSelectedType}
-                    sortBy={sortBy}
-                    onSortChange={setSortBy}
-                    onClearAll={clearAllFilters}
-                  />
-                </div>
-              </div>
+              <Bookmark
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  bookmarkedQuestionIds.has(recommendedQuestion.id) &&
+                    "fill-current"
+                )}
+                aria-hidden="true"
+              />
+              Save
+            </Button>
+          </div>
+        </section>
+      )}
 
-              {/* Table with Sticky Header */}
-              <div className="relative max-h-[calc(100vh-12rem)] overflow-x-auto scroll-smooth">
-                {/* Bottom fade gradient */}
-                <div className="from-card pointer-events-none absolute right-0 bottom-0 left-0 z-10 h-12 bg-gradient-to-t to-transparent" />
+      <div className="grid flex-1 gap-7 py-5 lg:grid-cols-[240px_1fr]">
+        <aside className="space-y-7 lg:border-r lg:border-dashboard-panel-border lg:pr-7">
+          <div className="space-y-3">
+            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+              Search
+            </p>
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dashboard-muted"
+                aria-hidden="true"
+              />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                className="border-dashboard-panel-border bg-dashboard-panel pl-9 text-dashboard-foreground"
+                placeholder="Company or keyword"
+                aria-label="Search questions"
+              />
+            </div>
+          </div>
 
-                <Table className="border-separate border-spacing-0">
-                  <TableHeader className="from-card via-card/98 to-card/95 border-border/60 shadow-border/40 sticky top-0 z-20 border-b bg-gradient-to-b shadow-sm backdrop-blur-md">
-                    <TableRow className="hover:bg-transparent">
-                      {/* Checkbox column */}
-                      <TableHead className="h-11 w-12 px-4">
-                        <Checkbox
-                          checked={
-                            selectedQuestions.size ===
-                              filteredQuestions.length &&
-                            filteredQuestions.length > 0
-                          }
-                          onChange={toggleSelectAll}
-                          className="h-4 w-4"
-                          aria-label="Select all questions"
-                        />
-                      </TableHead>
-                      <TableHead className="h-11 px-4">Question</TableHead>
-                      <TableHead className="h-11 px-4">Type</TableHead>
-                      <TableHead className="h-11 px-4">Company</TableHead>
-                      <TableHead className="h-11 px-4">Asked Date</TableHead>
-                      <TableHead className="h-11 px-4 text-right">
-                        Action
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredQuestions.map((question, index) => {
-                      const isSelected = selectedQuestions.has(question.id);
-                      return (
-                        <TableRow
-                          key={question.id}
-                          className={cn(
-                            "hover:bg-primary/[0.02] transition-all duration-200",
-                            "border-border/40 border-b last:border-0",
-                            isSelected &&
-                              "bg-primary/[0.04] border-l-primary ring-primary/10 border-l-2 ring-1 ring-inset"
-                          )}
-                          style={{
-                            opacity: index < 20 ? 0 : 1,
-                            animation:
-                              index < 20
-                                ? `fadeInUp 0.3s ease-out ${index * 0.015}s forwards`
-                                : "none",
-                          }}
-                        >
-                          {/* Checkbox */}
-                          <TableCell className="px-4 py-3.5">
-                            <Checkbox
-                              checked={isSelected}
-                              onChange={() =>
-                                toggleQuestionSelection(question.id)
-                              }
-                              className="h-4 w-4"
-                              aria-label={`Select question: ${question.questionText}`}
-                              aria-checked={isSelected}
-                            />
-                          </TableCell>
+          <FilterGroup title="Round">
+            {ROUND_FILTERS.map((round) => (
+              <FilterButton
+                key={round}
+                active={selectedRound === round}
+                label={round}
+                count={
+                  round === "All rounds"
+                    ? totalQuestions || summary.totalActive
+                    : summary.roundCounts[round] || 0
+                }
+                onClick={() => setSelectedRound(round)}
+              />
+            ))}
+          </FilterGroup>
 
-                          {/* Question */}
-                          <TableCell className="px-4 py-3.5">
-                            <p className="text-foreground line-clamp-2 text-sm font-medium">
-                              {question.questionText}
-                            </p>
-                          </TableCell>
-
-                          {/* Type */}
-                          <TableCell className="px-4 py-3.5">
-                            <Badge
-                              variant="subtle"
-                              className={cn(
-                                QUESTION_TYPE_COLORS[
-                                  question.questionType as keyof typeof QUESTION_TYPE_COLORS
-                                ]
-                              )}
-                            >
-                              {question.questionType}
-                            </Badge>
-                          </TableCell>
-
-                          {/* Company */}
-                          <TableCell className="px-4 py-3.5">
-                            <div className="text-muted-foreground flex items-center gap-2 text-sm">
-                              <Building2 className="h-4 w-4 opacity-60" />
-                              <span>{question.company || "N/A"}</span>
-                            </div>
-                          </TableCell>
-
-                          {/* Date */}
-                          <TableCell className="px-4 py-3.5">
-                            <div className="text-muted-foreground flex items-center gap-2 text-sm">
-                              <Calendar className="h-4 w-4 opacity-60" />
-                              <span>
-                                {question.askedAt
-                                  ? new Date(
-                                      question.askedAt
-                                    ).toLocaleDateString()
-                                  : "N/A"}
-                              </span>
-                            </div>
-                          </TableCell>
-
-                          {/* Action */}
-                          <TableCell className="px-4 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => toggleBookmark(question.id)}
-                                className={cn(
-                                  "h-9 w-9 rounded-lg transition-colors",
-                                  bookmarkedQuestionIds.has(question.id)
-                                    ? "text-primary bg-primary/10 hover:bg-primary/20"
-                                    : "text-muted-foreground hover:text-primary hover:bg-primary/5"
-                                )}
-                                aria-label={
-                                  bookmarkedQuestionIds.has(question.id)
-                                    ? "Remove bookmark"
-                                    : "Bookmark question"
-                                }
-                              >
-                                <Bookmark
-                                  className={cn(
-                                    "h-4 w-4",
-                                    bookmarkedQuestionIds.has(question.id) &&
-                                      "fill-current"
-                                  )}
-                                />
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() =>
-                                  handleTryQuestion(
-                                    question.id,
-                                    question.questionType
-                                  )
-                                }
-                                className="gap-2"
-                              >
-                                <Play className="h-4 w-4" />
-                                Try Question
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </DashboardSectionCard>
-
-            {/* Mobile Card Grid (<768px) */}
-            <div className="space-y-4 md:hidden">
-              {/* Mobile Search/Filter Toolbar */}
-              <DashboardSectionCard
-                title="Search And Filters"
-                description={`${filteredQuestions.length} questions found`}
-                className="shadow-sm"
-                contentClassName="p-0"
+          <FilterGroup title="Company">
+            {companyFilters.map(([company, count]) => (
+              <Button
+                key={company}
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setSelectedCompany((current) =>
+                    current === company ? null : company
+                  )
+                }
+                className={cn(
+                  "h-8 rounded-full border px-3 text-sm",
+                  selectedCompany === company
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-dashboard-panel-border text-dashboard-muted hover:text-dashboard-foreground"
+                )}
               >
-                <div className="bg-card/40 px-4 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="relative flex-1">
-                      <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-                      <Input
-                        type="text"
-                        placeholder="Search questions..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="bg-card min-h-11 pl-10"
-                        aria-label="Search questions"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsFilterDrawerOpen(true)}
-                      className="flex min-h-11 items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium"
-                      aria-label="Open filters"
-                    >
-                      <Filter className="h-4 w-4" />
-                      {selectedType !== "All Types" && (
-                        <Badge
-                          variant="default"
-                          className="h-5 min-w-5 rounded-full px-1.5 text-xs"
-                        >
-                          1
-                        </Badge>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </DashboardSectionCard>
+                {company} {count > 1 ? count : ""}
+              </Button>
+            ))}
+          </FilterGroup>
 
-              {/* Mobile Question Cards */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {filteredQuestions.map((question, index) => (
-                  <QuestionCard
+          <div className="border-t border-dashboard-panel-border pt-7">
+            <p className="font-display text-2xl font-semibold text-dashboard-foreground">
+              Queue: {bookmarkedQuestionIds.size}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-dashboard-muted">
+              Saved prompts become a short practice set.
+            </p>
+          </div>
+        </aside>
+
+        <section className="min-w-0">
+          <div className="flex flex-col gap-3 border-b border-dashboard-panel-border pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+                All questions
+              </p>
+              <p className="mt-1 text-sm text-dashboard-muted">
+                Showing {Math.min(filteredQuestions.length, 8)} of{" "}
+                {totalQuestions || summary.totalActive}
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-dashboard-muted">
+              Sort
+              <select
+                value={sortBy}
+                onChange={(event) =>
+                  setSortBy(event.target.value as "best" | "recent" | "company")
+                }
+                className="rounded-md border border-dashboard-panel-border bg-dashboard-panel px-3 py-2 text-dashboard-foreground"
+              >
+                <option value="best">Best fit</option>
+                <option value="recent">Recent</option>
+                <option value="company">Company</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="overflow-x-auto">
+            <div className="min-w-[760px]">
+              <div className="grid grid-cols-[88px_140px_140px_1fr_92px] gap-4 border-b border-dashboard-panel-border py-3 text-xs font-bold tracking-[0.2em] text-dashboard-muted uppercase">
+                <span>Fit</span>
+                <span>Company</span>
+                <span>Round</span>
+                <span>Question</span>
+                <span className="text-right">Action</span>
+              </div>
+              <div className="divide-y divide-dashboard-panel-border">
+                {filteredQuestions.slice(0, 12).map((question) => (
+                  <div
                     key={question.id}
-                    question={question}
-                    selected={selectedQuestions.has(question.id)}
-                    onToggleSelect={() => toggleQuestionSelection(question.id)}
-                    onTryQuestion={() =>
-                      handleTryQuestion(question.id, question.questionType)
-                    }
-                    badgeClassName={
-                      QUESTION_TYPE_COLORS[
-                        question.questionType as keyof typeof QUESTION_TYPE_COLORS
-                      ]
-                    }
-                    index={index}
-                    isBookmarked={bookmarkedQuestionIds.has(question.id)}
-                    onToggleBookmark={() => toggleBookmark(question.id)}
-                  />
+                    className="grid grid-cols-[88px_140px_140px_1fr_92px] gap-4 py-4 text-sm"
+                  >
+                    <span className="font-mono font-semibold text-primary">
+                      {getFitScore(question)}%
+                    </span>
+                    <span className="font-semibold text-dashboard-foreground">
+                      {question.company || "Meelni"}
+                    </span>
+                    <span className="text-dashboard-muted">
+                      {formatRoundType(question.questionType)}
+                    </span>
+                    <span className="text-dashboard-foreground">
+                      {question.questionText}
+                    </span>
+                    <Link
+                      href={getQuestionStartHref(question)}
+                      className="text-right font-semibold text-primary hover:underline"
+                    >
+                      Start
+                    </Link>
+                  </div>
                 ))}
               </div>
             </div>
-          </>
-        )}
+          </div>
+
+          {filteredQuestions.length === 0 && (
+            <div className="py-16 text-center text-sm text-dashboard-muted">
+              No questions match the current filters.
+            </div>
+          )}
+        </section>
       </div>
-
-      {/* Bulk Action Toolbar */}
-      <BulkActionToolbar
-        selectedCount={selectedQuestions.size}
-        onBookmark={handleBookmark}
-        onCreatePracticeSet={handleCreatePracticeSet}
-        onDeselectAll={handleDeselectAll}
-      />
-
-      {/* Mobile Filter Drawer */}
-      <MobileFilterDrawer
-        isOpen={isFilterDrawerOpen}
-        onClose={() => setIsFilterDrawerOpen(false)}
-        selectedType={selectedType}
-        onSelectType={setSelectedType}
-        onClearAll={clearAllFilters}
-      />
-
-      {/* Practice Set Dialog */}
-      <PracticeSetDialog
-        isOpen={isPracticeSetDialogOpen}
-        onClose={() => setIsPracticeSetDialogOpen(false)}
-        selectedQuestionIds={Array.from(selectedQuestions)}
-        onSuccess={handlePracticeSetSuccess}
-      />
-
-      {/* Live region for accessibility */}
-      <div role="status" aria-live="polite" className="sr-only">
-        {filteredQuestions.length} questions found
-        {selectedQuestions.size > 0 && `, ${selectedQuestions.size} selected`}
       </div>
-    </div>
+    </DashboardPage>
   );
 });
+
+function FilterGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+        {title}
+      </p>
+      <div className="flex flex-wrap gap-2 lg:block lg:space-y-1">{children}</div>
+    </div>
+  );
+}
+
+function FilterButton({
+  active,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      onClick={onClick}
+      className={cn(
+        "flex h-9 w-full items-center justify-between rounded-md px-0 py-2 text-sm",
+        active
+          ? "font-semibold text-dashboard-foreground"
+          : "text-dashboard-muted hover:text-dashboard-foreground"
+      )}
+    >
+      <span>{label}</span>
+      <span>{count}</span>
+    </Button>
+  );
+}
+
+function Pill({
+  children,
+  tone = "muted",
+}: {
+  children: ReactNode;
+  tone?: "primary" | "muted";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 rounded-full px-3 py-1.5 text-xs font-bold",
+        tone === "primary"
+          ? "bg-primary text-primary-foreground"
+          : "bg-dashboard-muted/15 text-dashboard-foreground"
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function getQuestionStartHref(question: DashboardQuestionInput) {
+  const params = new URLSearchParams({
+    questionId: question.id,
+    roundType: normalizeRoundType(question.questionType),
+    mode: "mock_interview",
+  });
+  return `/interview?${params.toString()}`;
+}
+
+function normalizeRoundType(roundType: string) {
+  if (roundType === "Product Sense") return "product_sense";
+  if (roundType === "Execution") return "execution";
+  if (roundType === "Strategy") return "strategy";
+  if (roundType === "Behavioral") return "behavioral";
+  return roundType;
+}
+
+function getFitScore(question: DashboardQuestionInput) {
+  const base = question.questionType === "product_sense" ? 92 : 78;
+  const companyBoost = question.company ? question.company.length % 9 : 0;
+  return Math.max(58, Math.min(96, base - companyBoost));
+}
+
+function getTime(date: Date | string | null | undefined) {
+  if (!date) return 0;
+  return new Date(date).getTime();
+}
