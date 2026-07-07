@@ -30,6 +30,11 @@ import {
   type DashboardSettings,
   type SettingsCategoryId,
 } from "@/lib/dashboard/settings-contracts";
+import {
+  requestAccountDeletion,
+  shouldShowSettingsLoading,
+  type SettingsLoadState,
+} from "@/lib/dashboard/settings-actions";
 import { cn } from "@/lib/utils";
 
 interface SubscriptionSummary {
@@ -46,7 +51,7 @@ interface CreditSummary {
   nextCreditExpiresAt?: string | null;
 }
 
-type LoadState = "idle" | "loading" | "ready" | "error";
+type LoadState = SettingsLoadState;
 
 export const SettingsSection = memo(function SettingsSection() {
   const router = useRouter();
@@ -58,7 +63,7 @@ export const SettingsSection = memo(function SettingsSection() {
   const [settings, setSettings] = useState<DashboardSettings>(() =>
     normalizeDashboardSettings(null, fallbackName)
   );
-  const [loadState, setLoadState] = useState<LoadState>("idle");
+  const [loadState, setLoadState] = useState<LoadState>("loading");
   const [saveState, setSaveState] = useState<LoadState>("idle");
   const [billingState, setBillingState] = useState<LoadState>("idle");
   const [subscription, setSubscription] = useState<SubscriptionSummary | null>(
@@ -194,7 +199,7 @@ export const SettingsSection = memo(function SettingsSection() {
     router.push("/");
   };
 
-  if (loadState === "loading") {
+  if (shouldShowSettingsLoading(loadState)) {
     return (
       <DashboardPage label="Settings">
         <DashboardLoadingState
@@ -653,7 +658,11 @@ function DataPrivacyPane({
   onSave,
   saveState,
 }: SettingsPaneProps) {
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const handleDeleteAccount = async () => {
+    setDeleteError(null);
+
     const confirmed = window.confirm(
       "Delete your account and all interview data? This cannot be undone."
     );
@@ -668,16 +677,13 @@ function DataPrivacyPane({
       return;
     }
 
-    const response = await fetch("/api/user/delete", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ confirmation: "DELETE" }),
-    });
+    const result = await requestAccountDeletion();
 
-    if (!response.ok) {
-      throw new Error("Failed to delete account");
+    if (!result.ok) {
+      setDeleteError(
+        result.error ?? "We could not delete the account. Please try again."
+      );
+      return;
     }
 
     window.location.href = "/";
@@ -703,6 +709,14 @@ function DataPrivacyPane({
           onChange({ shareAnonymousData })
         }
       />
+
+      {deleteError && (
+        <InlineNotice
+          title="Deletion failed"
+          description={deleteError}
+          tone="warning"
+        />
+      )}
 
       <SettingsGroup label="Account data">
         <SettingsActionRow

@@ -23,6 +23,24 @@ export interface DashboardUser {
 export const DASHBOARD_CONTENT_PANEL_CLASS_NAME =
   "border-dashboard-panel-border bg-dashboard-panel flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border";
 
+export function getInitialSidebarCollapsed({
+  isMobile,
+  savedCollapsed,
+}: {
+  isMobile: boolean;
+  savedCollapsed: boolean;
+}) {
+  return isMobile || savedCollapsed;
+}
+
+export function getSidebarCollapsedForViewport({
+  isMobile,
+}: {
+  isMobile: boolean;
+}) {
+  return isMobile;
+}
+
 export function DashboardLayout({
   children,
   activeSection,
@@ -35,12 +53,11 @@ export function DashboardLayout({
   // Initialize from localStorage to prevent animation on page load
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
-      if (window.matchMedia("(max-width: 767px)").matches) {
-        return true;
-      }
-
       const saved = localStorage.getItem("sidebar-collapsed");
-      return saved === "true";
+      return getInitialSidebarCollapsed({
+        isMobile: window.matchMedia("(max-width: 767px)").matches,
+        savedCollapsed: saved === "true",
+      });
     }
     return false;
   });
@@ -54,15 +71,17 @@ export function DashboardLayout({
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
-    const collapseForMobile = (event: MediaQueryListEvent | MediaQueryList) => {
-      if (event.matches) {
-        setSidebarCollapsed(true);
-      }
+    const syncSidebarForViewport = (
+      event: MediaQueryListEvent | MediaQueryList
+    ) => {
+      setSidebarCollapsed(
+        getSidebarCollapsedForViewport({ isMobile: event.matches })
+      );
     };
 
-    collapseForMobile(media);
-    media.addEventListener("change", collapseForMobile);
-    return () => media.removeEventListener("change", collapseForMobile);
+    syncSidebarForViewport(media);
+    media.addEventListener("change", syncSidebarForViewport);
+    return () => media.removeEventListener("change", syncSidebarForViewport);
   }, []);
 
   return (
