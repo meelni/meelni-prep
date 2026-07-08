@@ -7,8 +7,9 @@ import CheckeredBackground from "@/components/ui/checkered-background";
 import { DemoModal } from "@/components/demo-modal";
 import { siteConfig } from "@/lib/config";
 import { motion } from "framer-motion";
-import { Mic } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowRight, Mic } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 
 const ease = [0.16, 1, 0.3, 1] as const;
 
@@ -18,7 +19,7 @@ function HeroTitles() {
       <h1 className="text-display-hero text-foreground text-left text-balance">
         {siteConfig.hero.title}
       </h1>
-      <p className="text-body text-muted-foreground mt-4 max-w-xl text-left text-balance">
+      <p className="text-body text-muted-foreground mt-5 max-w-xl text-left text-balance">
         {siteConfig.hero.description}
       </p>
     </div>
@@ -33,21 +34,30 @@ function HeroCTA({ onDemoClick }: HeroCTAProps) {
   return (
     <div className="relative mt-8">
       <motion.div
-        className="flex w-full max-w-2xl flex-col items-start justify-start"
+        className="flex w-full max-w-2xl flex-col items-start justify-start gap-3 sm:flex-row"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.8, duration: 0.8, ease }}
       >
         <Button
+          asChild
+          size="lg"
+          className="h-12 w-full rounded-lg px-5 sm:w-auto"
+        >
+          <Link href="/dashboard">
+            {siteConfig.hero.cta}
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Link>
+        </Button>
+        <Button
           type="button"
           onClick={onDemoClick}
           variant="outline"
-          className="group border-primary/60 bg-primary/10 text-primary hover:border-primary hover:bg-primary/20 relative h-auto w-full overflow-hidden rounded-xl border-2 px-8 py-4 font-semibold backdrop-blur-md transition-all duration-300 sm:w-auto"
+          size="lg"
+          className="group border-primary/40 bg-background/80 text-primary hover:border-primary hover:bg-primary/10 h-12 w-full rounded-lg px-5 font-semibold backdrop-blur-md sm:w-auto"
         >
-          <div className="relative z-10 flex items-center gap-3">
-            <Mic className="text-primary h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
-            <span className="text-primary">Talk to Meelni</span>
-          </div>
+          <Mic className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
+          Try voice demo
         </Button>
       </motion.div>
     </div>
@@ -55,26 +65,13 @@ function HeroCTA({ onDemoClick }: HeroCTAProps) {
 }
 
 export function Hero() {
-  const [isMobile, setIsMobile] = useState(true);
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
-
-  useEffect(() => {
-    const checkMobile = () => {
-      const mobile = window.innerWidth < 1024;
-      setIsMobile(mobile);
-    };
-
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
 
   return (
     <>
       <Section
         id="hero"
-        className="bg-background relative max-w-none overflow-hidden pb-4"
+        className="bg-background relative max-w-none overflow-hidden"
       >
         {/* Checkered background layer - vibrant purple glow */}
         <CheckeredBackground
@@ -99,23 +96,22 @@ export function Hero() {
         {/* Bottom gradient - smooth transition to next section */}
         <div className="from-background absolute right-0 bottom-0 left-0 z-[1] h-24 bg-gradient-to-t to-transparent" />
 
-        <div className="relative z-10 grid w-full grid-cols-1 items-center gap-x-8 px-6 pt-12 pb-4 lg:h-[550px] lg:grid-cols-2 lg:px-24 lg:pt-16 lg:pb-4">
+        <div className="relative z-10 mx-auto grid w-full max-w-[1216px] grid-cols-1 items-center gap-10 px-6 pt-12 pb-10 lg:min-h-[560px] lg:grid-cols-2 lg:px-8 lg:pt-16">
           <div className="flex flex-col items-start justify-center lg:col-span-1">
             <HeroTitles />
             <HeroCTA onDemoClick={() => setIsDemoModalOpen(true)} />
           </div>
-          {!isMobile && (
-            <div className="relative flex h-[500px] items-center justify-center lg:col-span-1">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.8, delay: 0.5 }}
-                className="flex items-center justify-center"
-              >
-                <AnimatedBars barCount={60} />
-              </motion.div>
-            </div>
-          )}
+          <div className="relative hidden h-[420px] items-center justify-center lg:flex">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.8, delay: 0.45, ease }}
+              className="flex items-center justify-center"
+              aria-hidden="true"
+            >
+              <AnimatedBars barCount={60} />
+            </motion.div>
+          </div>
         </div>
       </Section>
 
