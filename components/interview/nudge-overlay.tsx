@@ -24,16 +24,8 @@ export interface Nudge {
   message: string;
 }
 
-export interface FrameworkElement {
-  name: string;
-  covered: boolean;
-}
-
-export type FrameworkCoverage = FrameworkElement[];
-
 interface NudgeOverlayProps {
   nudge: Nudge | null;
-  frameworkCoverage: FrameworkCoverage;
   onDismiss: () => void;
 }
 
