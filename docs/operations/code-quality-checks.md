@@ -15,6 +15,13 @@ to the right owner.
 - `npm run typecheck:tests:all`: stricter backlog command that also includes
   older `__tests__` files.
 
+## Prerequisites
+
+- `quality:security` runs Semgrep through `uvx`, which is provided by the
+  Python `uv` toolchain. Install `uv` before running the aggregate checks:
+  `curl -LsSf https://astral.sh/uv/install.sh | sh`. If `uvx` is missing,
+  `npm run quality:security` exits with an actionable install message.
+
 ## Tool Ownership
 
 - Prettier remains the source of truth for formatting, including Tailwind class
