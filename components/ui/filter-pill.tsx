@@ -37,6 +37,7 @@ const FilterPill = React.forwardRef<HTMLButtonElement, FilterPillProps>(
         className={cn(filterPillVariants({ active, size }), className)}
         ref={ref}
         aria-pressed={active}
+        data-active={active ? "true" : undefined}
         {...props}
       />
     );

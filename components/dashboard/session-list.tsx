@@ -40,7 +40,7 @@ export function SessionList({ sessions, onSessionClick }: SessionListProps) {
         description="Start your first mock interview to see your history and track your progress."
         action={
           <Button asChild>
-            <Link href="/setup">Start First Interview</Link>
+            <Link href="/dashboard/new-rep">Start First Interview</Link>
           </Button>
         }
       />

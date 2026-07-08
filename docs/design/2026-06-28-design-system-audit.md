@@ -345,6 +345,7 @@ Status:
 - Question-bank child filter, drawer, question card, practice-set list, practice-set dialog, and autocomplete controls now use shared button/form/dialog primitives; `components/ui/textarea.tsx` adds the missing shared textarea primitive.
 - Dashboard badge display, dashboard error, and dashboard loading states now use shared button/state/skeleton primitives and semantic status treatments.
 - Added shared `success`, `warning`, and `info` status tokens and migrated dashboard helper badges, recommendations, and chart callouts off raw green/orange/blue/red/purple utility classes.
+- 2026-07-08 update: interview launch CTAs now target `/dashboard/new-rep`; `/setup` remains only as a compatibility redirect.
 - Remaining P1 work: scan remaining dashboard/supporting surfaces for bespoke token usage, then continue into marketing and SEO surfaces.
 
 ### Slice 5 - Feedback
@@ -367,7 +368,9 @@ Status:
 - Main feedback result route loading/error/processing/skipped/completed states now use shared feedback status, score, section, and action-item primitives.
 - Rubric dimension rows now use shared feedback section cards.
 - Dedicated feedback loading route/component states now use shared feedback status-page, section, action-item, and button primitives while preserving polling, progress, and retry behavior.
-- Remaining P1 work: legacy backup files and any lower-traffic feedback states not yet covered by shared primitives.
+- 2026-07-08 update: feedback result, loading/status, and comparison routes now use `FeedbackReviewShell`, so post-interview review is housed in the authenticated product-container system instead of standalone `container mx-auto` shells.
+- 2026-07-08 update: authenticated visual QA covered feedback result, loading, and comparison states at desktop and mobile sizes in `docs/design/screenshots/2026-07-08-authenticated-qa/`.
+- Remaining P1 work: continue lower-traffic feedback states only when new state-specific drift appears.
 
 ### Slice 6 - Marketing And SEO
 

@@ -9,6 +9,39 @@ import {
 } from "@/components/ui/app-surface";
 import { cn } from "@/lib/utils";
 
+interface DashboardSidebarNavItemProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  selected?: boolean;
+}
+
+const DashboardSidebarNavItem = React.forwardRef<
+  HTMLButtonElement,
+  DashboardSidebarNavItemProps
+>(({ className, selected, type = "button", children, ...props }, ref) => (
+  <button
+    ref={ref}
+    type={type}
+    aria-current={selected ? "page" : undefined}
+    className={cn(
+      "border-dashboard-panel-border focus-visible:ring-ring flex h-10 shrink-0 items-center justify-between gap-4 rounded-lg px-3 text-left text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none lg:w-full",
+      selected
+        ? "bg-dashboard-muted/15 text-dashboard-foreground"
+        : "text-dashboard-muted hover:bg-dashboard-muted/10 hover:text-dashboard-foreground border-transparent",
+      className
+    )}
+    {...props}
+  >
+    {children}
+    {selected && (
+      <span
+        className="bg-primary h-1.5 w-1.5 rounded-full"
+        aria-hidden="true"
+      />
+    )}
+  </button>
+));
+DashboardSidebarNavItem.displayName = "DashboardSidebarNavItem";
+
 interface DashboardMetricCardProps extends React.HTMLAttributes<HTMLElement> {
   icon?: LucideIcon;
   label: React.ReactNode;
@@ -349,6 +382,7 @@ function DashboardActionCard({
 }
 
 export {
+  DashboardSidebarNavItem,
   DashboardMetricCard,
   DashboardChartCard,
   DashboardStateCard,

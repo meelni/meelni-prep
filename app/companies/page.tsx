@@ -201,7 +201,7 @@ export default function CompaniesPage() {
           description="Put your knowledge into action with Meelni's AI interview coach. Get real-time feedback and improve faster than solo practice."
           action={
             <Button asChild size="lg" variant="glow">
-              <Link href="/setup">
+              <Link href="/dashboard/new-rep">
                 Start mock interview
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>

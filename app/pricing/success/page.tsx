@@ -77,7 +77,7 @@ function CheckoutSuccessContent() {
             </Button>
 
             <Button asChild size="lg" variant="outline" className="w-full">
-              <Link href="/setup">Start an Interview</Link>
+              <Link href="/dashboard/new-rep">Start an Interview</Link>
             </Button>
           </div>
         }

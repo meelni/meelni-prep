@@ -214,7 +214,7 @@ export function buildDashboardPracticeSummary(
           roundType: "Product Sense",
           difficulty: "Intermediate",
           creditLabel: "1 credit",
-          href: "/setup",
+          href: "/dashboard/new-rep",
         }
       : {
           title: `Sharpen ${formatFocusPhrase(focusArea.label)} before your next ${latestRound.toLowerCase()} loop.`,
@@ -223,7 +223,7 @@ export function buildDashboardPracticeSummary(
           roundType: latestRound,
           difficulty: "Intermediate",
           creditLabel: "1 credit",
-          href: `/setup?interview_type=${encodeURIComponent(roundParam)}`,
+          href: `/dashboard/new-rep?interview_type=${encodeURIComponent(roundParam)}`,
         },
     lastFeedback: latestScored
       ? {
@@ -333,7 +333,7 @@ export function buildHistorySummary(
       scoreLabel: hasScore ? score.toFixed(1) : "Pending",
       statusLabel: hasScore ? "Feedback ready" : "Processing",
       feedbackHref: hasScore ? `/feedback/${session.id}` : null,
-      repeatHref: `/setup?interview_type=${encodeURIComponent(session.roundType || "product_sense")}`,
+      repeatHref: `/dashboard/new-rep?interview_type=${encodeURIComponent(session.roundType || "product_sense")}`,
     };
   });
 
@@ -370,7 +370,7 @@ export function buildHistorySummary(
           ? "Open the latest feedback, then repeat the same weakness with the fix stated earlier."
           : "Open your latest feedback, then repeat the prompt while the lesson is still fresh.",
       feedbackHref: latestReady?.feedbackHref || null,
-      repeatHref: latestReady?.repeatHref || "/setup",
+      repeatHref: latestReady?.repeatHref || "/dashboard/new-rep",
     },
     filters: ["All reps", "Product Sense", "Execution", "Behavioral"],
     rows,

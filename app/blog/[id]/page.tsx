@@ -284,7 +284,7 @@ export default async function BlogPost({ params }: { params: Promise<{ id: strin
           description="Put these frameworks into action with Meelni's AI interview coach. Get real-time feedback and improve faster than solo practice."
           action={
             <Button asChild size="lg" variant="glow">
-              <Link href="/setup">
+              <Link href="/dashboard/new-rep">
                 Start practicing now
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>

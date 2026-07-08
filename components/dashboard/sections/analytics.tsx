@@ -107,7 +107,7 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
           description={`Complete ${Math.max(1, 3 - completedSessions)} more PM interview rep${3 - completedSessions === 1 ? "" : "s"} to unlock a reliable trend and bottleneck diagnosis.`}
           action={
             <Button asChild>
-              <Link href="/setup">Practice</Link>
+              <Link href="/dashboard/new-rep">Practice</Link>
             </Button>
           }
         />

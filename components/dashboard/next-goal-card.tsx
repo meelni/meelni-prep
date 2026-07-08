@@ -111,11 +111,11 @@ export function NextGoalCard({ sessions, userSummary }: NextGoalCardProps) {
   const goal = getNextGoal();
 
   const handleStartInterview = () => {
-    // Navigate to setup with pre-filled interview type
+    // Navigate to the dashboard-contained launcher with pre-filled interview type.
     const params = new URLSearchParams(
       goal.setupParams as Record<string, string>
     );
-    router.push(`/setup?${params.toString()}`);
+    router.push(`/dashboard/new-rep?${params.toString()}`);
   };
 
   return (

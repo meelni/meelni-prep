@@ -272,6 +272,7 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       icon={<Loader2 className="h-8 w-8 animate-spin" />}
       title="Generating Feedback"
       description="Your personalized interview review is being prepared."
+      maxWidth="lg"
       contentClassName="max-w-4xl"
     >
       <motion.div initial="initial" animate="animate" variants={fadeInUp}>

@@ -8,6 +8,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@/components/ui/segmented-control";
 import { useFeatureFlags } from "@/lib/feature-flags";
 import { FEATURE_FLAG_DEFINITIONS } from "@/lib/feature-flags/gates";
 import type { FeatureFlagOverrideMode } from "@/lib/feature-flags/local-overrides";
@@ -68,10 +72,10 @@ export function FeatureFlagDevMenu({ gateEnabled }: FeatureFlagDevMenuProps) {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-0 text-xs">
-        <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <div className="border-border flex items-center justify-between border-b px-3 py-2">
           <div>
-            <div className="font-semibold text-foreground">Feature flags</div>
-            <div className="text-[11px] text-muted-foreground">{status}</div>
+            <div className="text-foreground font-semibold">Feature flags</div>
+            <div className="text-muted-foreground text-[11px]">{status}</div>
           </div>
           <div
             className={cn(
@@ -89,43 +93,39 @@ export function FeatureFlagDevMenu({ gateEnabled }: FeatureFlagDevMenuProps) {
             return (
               <div key={flag.name} className="space-y-2">
                 <div className="min-w-0">
-                  <div className="truncate font-medium text-foreground">
+                  <div className="text-foreground truncate font-medium">
                     {flag.label}
                   </div>
-                  <div className="truncate text-[11px] text-muted-foreground">
+                  <div className="text-muted-foreground truncate text-[11px]">
                     {flag.name}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 overflow-hidden rounded-md border border-border">
-                  {(["statsig", "on", "off"] satisfies FeatureFlagOverrideMode[]).map(
-                    (option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        aria-pressed={mode === option}
-                        className={cn(
-                          "h-7 border-r border-border px-2 text-[11px] font-medium last:border-r-0",
-                          mode === option
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
-                        )}
-                        onClick={() => setLocalOverride(flag.name, option)}
-                      >
-                        {modeLabel(option)}
-                      </button>
-                    )
-                  )}
-                </div>
+                <SegmentedControl columns={3}>
+                  {(
+                    ["statsig", "on", "off"] satisfies FeatureFlagOverrideMode[]
+                  ).map((option) => (
+                    <SegmentedControlItem
+                      key={option}
+                      selected={mode === option}
+                      className="h-7 px-2 text-[11px]"
+                      onClick={() => setLocalOverride(flag.name, option)}
+                    >
+                      {modeLabel(option)}
+                    </SegmentedControlItem>
+                  ))}
+                </SegmentedControl>
               </div>
             );
           })}
 
-          <div className="flex items-center justify-between gap-2 border-t border-border pt-2 text-[11px] text-muted-foreground">
+          <div className="border-border text-muted-foreground flex items-center justify-between gap-2 border-t pt-2 text-[11px]">
             <span className="truncate">API {apiHost ?? "sdk default"}</span>
-            <button
+            <Button
               type="button"
-              className="inline-flex items-center gap-1 text-foreground hover:text-primary"
+              variant="ghost"
+              size="sm"
+              className="text-foreground hover:text-primary h-7 gap-1 px-2 text-[11px]"
               onClick={() => {
                 for (const flag of FEATURE_FLAG_DEFINITIONS) {
                   setLocalOverride(flag.name, "statsig");
@@ -134,7 +134,7 @@ export function FeatureFlagDevMenu({ gateEnabled }: FeatureFlagDevMenuProps) {
             >
               <RotateCcw className="h-3 w-3" />
               Reset
-            </button>
+            </Button>
           </div>
         </div>
       </PopoverContent>
