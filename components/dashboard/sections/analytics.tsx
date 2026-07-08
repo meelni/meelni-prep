@@ -1,289 +1,50 @@
 "use client";
 
-import { useState, useEffect, memo } from "react";
-import { motion } from "framer-motion";
+import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+
+import { Button } from "@/components/ui/button";
+import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
+import { ProgressSignalBars } from "@/components/dashboard/charts/progress-signal-bars";
+import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
 import {
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  Target,
-  Clock,
-  Award,
-  Sparkles,
-  Loader2,
-  type LucideIcon,
-} from "lucide-react";
-import { fadeInUp, staggerContainer } from "@/lib/animations";
+  buildDashboardPracticeSummary,
+  type DashboardSessionInput,
+} from "@/lib/dashboard/contracts";
 import {
-  DashboardMetricCard,
-  DashboardSkeletonCard,
-  DashboardStateCard,
-} from "@/components/dashboard/dashboard-surface";
-import {
-  PerformanceTrend,
-  CompetencyBreakdown,
-  TypeDistribution,
-  TimeInvestment,
-  ScoreByType,
-} from "@/components/dashboard/charts";
-import { ScoreByDifficulty } from "@/components/dashboard/charts/score-by-difficulty";
-import { WeakestAreaCard } from "@/components/dashboard/weakest-area-card";
-import {
-  aggregatePerformanceTrend,
-  aggregateCompetencyScores,
-  aggregateTypeDistribution,
-  aggregateTimeInvestment,
-  aggregateScoreByType,
-  aggregateScoreByDifficulty,
-  calculateRecommendedDifficulty,
-} from "@/lib/analytics/aggregations";
-import type { SessionWithFeedback } from "@/lib/analytics/aggregations";
+  buildAnalyticsCompetencies,
+  buildAnalyticsEvidence,
+  type AnalyticsInsightsResponse,
+} from "@/lib/dashboard/analytics-contracts";
+import type { Session } from "@/lib/api/queries";
 
-/**
- * User insights data structure (from /api/insights)
- */
-interface UserInsights {
-  overall: {
-    total_sessions: number;
-    completed_sessions: number;
-    total_minutes: number;
-    avg_score: number;
-    median_score: number;
-    percentile_25: number;
-    percentile_75: number;
-    percentile_90: number;
-    current_streak: number;
-    longest_streak: number;
-  };
-  byType: {
-    product_sense: { count: number; avg_score: number; last_5_avg: number };
-    analytical: { count: number; avg_score: number; last_5_avg: number };
-    leadership: { count: number; avg_score: number; last_5_avg: number };
-    strategy: { count: number; avg_score: number; last_5_avg: number };
-  };
-  byDifficulty: {
-    junior: { count: number; avg_score: number };
-    intermediate: { count: number; avg_score: number };
-    senior: { count: number; avg_score: number };
-  };
-  trends: {
-    last_5_sessions_avg: number;
-    all_time_avg: number;
-    improvement_trend: "improving" | "stable" | "declining";
-    velocity: number;
-  };
-  competencies: {
-    structure: number;
-    clarity: number;
-    insight: number;
-    communication: number;
-    leadership: number;
-  };
-  lastUpdated?: string;
-}
-
-/**
- * Empty State Component
- */
-function EmptyState({ sessionsCompleted }: { sessionsCompleted: number }) {
-  return (
-    <motion.div
-      variants={fadeInUp}
-      initial="initial"
-      animate="animate"
-      className="space-y-6 p-6"
-    >
-      <DashboardStateCard
-        icon={<Sparkles className="h-8 w-8" />}
-        title="Building Your Analytics"
-        description={
-          <>
-            You've completed {sessionsCompleted}{" "}
-            {sessionsCompleted === 1 ? "session" : "sessions"}. Complete{" "}
-            {3 - sessionsCompleted} more to unlock detailed analytics and
-            performance insights.
-          </>
-        }
-      >
-        <div className="flex items-center justify-center gap-2">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className={`h-3 w-3 rounded-full ${
-                i <= sessionsCompleted ? "bg-primary" : "bg-muted-foreground/20"
-              }`}
-            />
-          ))}
-        </div>
-
-        <div className="mx-auto grid max-w-2xl grid-cols-1 gap-4 pt-6 md:grid-cols-3">
-          <div className="border-border bg-card rounded-lg border p-4">
-            <Target className="text-primary mx-auto mb-2 h-6 w-6" />
-            <div className="text-muted-foreground text-sm">
-              Performance trends
-            </div>
-          </div>
-          <div className="border-border bg-card rounded-lg border p-4">
-            <Award className="text-primary mx-auto mb-2 h-6 w-6" />
-            <div className="text-muted-foreground text-sm">
-              Competency breakdown
-            </div>
-          </div>
-          <div className="border-border bg-card rounded-lg border p-4">
-            <TrendingUp className="text-primary mx-auto mb-2 h-6 w-6" />
-            <div className="text-muted-foreground text-sm">
-              Improvement insights
-            </div>
-          </div>
-        </div>
-      </DashboardStateCard>
-    </motion.div>
-  );
-}
-
-/**
- * Loading State Component (Skeleton UI)
- */
-function LoadingState() {
-  return (
-    <div className="space-y-6 p-6">
-      {/* Stats Cards Skeleton */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[1, 2, 3, 4].map((i) => (
-          <DashboardSkeletonCard key={i} />
-        ))}
-      </div>
-
-      {/* Charts Skeleton */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <DashboardSkeletonCard variant="chart" />
-        <DashboardSkeletonCard variant="chart" />
-      </div>
-
-      {/* Loading indicator */}
-      <div className="flex items-center justify-center py-8">
-        <div className="space-y-3 text-center">
-          <Loader2 className="text-primary mx-auto h-8 w-8 animate-spin" />
-          <p className="text-muted-foreground text-sm">Loading analytics...</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Stats Card Component
- */
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  change,
-  suffix = "",
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: number;
-  change?: number;
-  suffix?: string;
-}) {
-  const changeIcon =
-    change !== undefined
-      ? change > 0
-        ? TrendingUp
-        : change < 0
-          ? TrendingDown
-          : Minus
-      : null;
-
-  const changeColor =
-    change !== undefined
-      ? change > 0
-        ? "text-success"
-        : change < 0
-          ? "text-destructive"
-          : "text-muted-foreground"
-      : "";
-
-  const ChangeIcon = changeIcon;
-
-  return (
-    <motion.div variants={fadeInUp}>
-      <DashboardMetricCard
-        icon={Icon}
-        label={label}
-        value={
-          <>
-            {value}
-            {suffix}
-          </>
-        }
-        indicator={
-          ChangeIcon && change !== undefined ? (
-            <div className={`flex items-center gap-1 text-xs ${changeColor}`}>
-              <ChangeIcon className="h-3 w-3" />
-              {Math.abs(change)}%
-            </div>
-          ) : null
-        }
-        valueClassName="text-2xl"
-      />
-    </motion.div>
-  );
-}
-
-/**
- * Main Analytics Section Component
- */
 export const AnalyticsSection = memo(function AnalyticsSection() {
-  const [insights, setInsights] = useState<UserInsights | null>(null);
-  const [sessions, setSessions] = useState<SessionWithFeedback[]>([]);
+  const [insights, setInsights] = useState<AnalyticsInsightsResponse | null>(
+    null
+  );
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch insights and sessions on mount
   useEffect(() => {
     async function fetchData() {
       try {
-        // Fetch insights
-        const insightsResponse = await fetch("/api/insights");
+        const [insightsResponse, sessionsResponse] = await Promise.all([
+          fetch("/api/insights"),
+          fetch("/api/sessions?limit=30"),
+        ]);
+
         if (!insightsResponse.ok) {
           throw new Error("Failed to fetch insights");
         }
-        const insightsData = await insightsResponse.json();
-        setInsights(insightsData);
-
-        // Fetch sessions with feedback for charts
-        const sessionsResponse = await fetch("/api/sessions?limit=30");
         if (!sessionsResponse.ok) {
           throw new Error("Failed to fetch sessions");
         }
-        const sessionsData = await sessionsResponse.json();
 
-        // Transform sessions to include feedback (filter out sessions without feedback)
-        // Convert date strings to Date objects for aggregation functions
-        const sessionsWithFeedback = (
-          sessionsData.sessions as Array<
-            SessionWithFeedback & {
-              startedAt: string | Date | null;
-              endedAt: string | Date | null;
-            }
-          >
-        )
-          .filter(
-            (
-              s
-            ): s is SessionWithFeedback & {
-              startedAt: string | Date;
-              endedAt: string | Date | null;
-            } => s.feedback !== null && s.startedAt !== null
-          )
-          .map((s) => ({
-            ...s,
-            startedAt: new Date(s.startedAt),
-            endedAt: s.endedAt ? new Date(s.endedAt) : null,
-          }));
-        setSessions(sessionsWithFeedback);
+        const insightsData = await insightsResponse.json();
+        const sessionsData = await sessionsResponse.json();
+        setInsights(insightsData);
+        setSessions(sessionsData.sessions || []);
       } catch (err) {
         console.error("Error fetching analytics data:", err);
         setError(err instanceof Error ? err.message : "Unknown error");
@@ -295,143 +56,228 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
     fetchData();
   }, []);
 
-  // Loading state
-  if (loading) {
-    return <LoadingState />;
-  }
+  const practiceSummary = useMemo(
+    () => buildDashboardPracticeSummary(sessions as DashboardSessionInput[]),
+    [sessions]
+  );
+  const completedSessions =
+    insights?.overall?.completedSessions ??
+    insights?.overall?.completed_sessions ??
+    sessions.filter((session) => session.feedback?.overallScore).length;
+  const trend =
+    insights?.trends?.improvementTrend ||
+    insights?.trends?.improvement_trend ||
+    "stable";
+  const competencies = buildAnalyticsCompetencies(insights);
+  const evidence = buildAnalyticsEvidence({
+    completedSessions,
+    focusAreaLabel: practiceSummary.focusArea.label,
+    focusAreaScore: practiceSummary.focusArea.score,
+    focusAreaDescription: practiceSummary.focusArea.description,
+    readinessDeltaLabel: practiceSummary.readiness.deltaLabel,
+  });
 
-  // Error state
-  if (error || !insights) {
+  if (loading) {
     return (
-      <div className="p-6">
-        <DashboardStateCard
-          title="Failed to load analytics"
-          description="Please try again later."
-          tone="danger"
+      <DashboardPage label="Analytics">
+        <DashboardLoadingState
+          className="min-h-[420px]"
+          label="Loading readiness analytics..."
         />
-      </div>
+      </DashboardPage>
     );
   }
 
-  // Empty state (<3 sessions)
-  if (insights.overall.total_sessions < 3) {
-    return <EmptyState sessionsCompleted={insights.overall.total_sessions} />;
+  if (error) {
+    return (
+      <DashboardPage label="Analytics">
+        <EmptyAnalyticsState
+          title="Failed to load analytics"
+          description="Please try again later."
+        />
+      </DashboardPage>
+    );
   }
 
-  // Prepare chart data using aggregation utilities
-  const performanceTrendData = aggregatePerformanceTrend(sessions);
-  const competencyData = aggregateCompetencyScores(sessions);
-  const typeDistributionData = aggregateTypeDistribution(sessions);
-  const timeInvestmentData = aggregateTimeInvestment(sessions, "week");
-  const scoreByTypeData = aggregateScoreByType(sessions);
-  const scoreByDifficultyData = aggregateScoreByDifficulty(sessions);
-  const recommendedDifficulty = calculateRecommendedDifficulty(sessions);
-
-  return (
-    <motion.div
-      variants={staggerContainer}
-      initial="initial"
-      animate="animate"
-      className="space-y-6 p-6"
-    >
-      {/* Stats Cards */}
-      <motion.div
-        variants={staggerContainer}
-        className="grid grid-cols-1 gap-4 md:grid-cols-3"
-      >
-        <StatCard
-          icon={Target}
-          label="Total Sessions"
-          value={insights.overall.total_sessions}
-        />
-        <StatCard
-          icon={Award}
-          label="Avg Score"
-          value={insights.overall.avg_score}
-          suffix="/10"
-          change={
-            insights.trends.improvement_trend === "improving"
-              ? 5
-              : insights.trends.improvement_trend === "declining"
-                ? -5
-                : 0
+  if (completedSessions < 3) {
+    return (
+      <DashboardPage label="Analytics">
+        <EmptyAnalyticsState
+          title="Readiness needs a few more reps"
+          description={`Complete ${Math.max(1, 3 - completedSessions)} more PM interview rep${3 - completedSessions === 1 ? "" : "s"} to unlock a reliable trend and bottleneck diagnosis.`}
+          action={
+            <Button asChild>
+              <Link href="/setup">Practice</Link>
+            </Button>
           }
         />
-        <StatCard
-          icon={Clock}
-          label="Total Time"
-          value={insights.overall.total_minutes}
-          suffix="m"
-        />
-      </motion.div>
+      </DashboardPage>
+    );
+  }
 
-      {/* Charts Grid - 2 Column Layout */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Performance Trend - Uses ClippedAreaChart */}
-        <motion.div variants={fadeInUp}>
-          <PerformanceTrend
-            data={performanceTrendData}
-            onSessionClick={(sessionId) => {
-              // TODO: Navigate to session detail page
-              console.log("Navigate to session:", sessionId);
-            }}
-          />
-        </motion.div>
+  return (
+    <DashboardPage label="Analytics">
+      <div className="mx-auto flex w-full max-w-6xl flex-col">
+      <section className="grid gap-6 border-b border-dashboard-panel-border pb-6 lg:grid-cols-[150px_1fr_auto] lg:items-center">
+        <div>
+          <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+            Readiness
+          </p>
+          <p className="font-mono text-5xl font-semibold text-dashboard-foreground">
+            {practiceSummary.readiness.score}
+          </p>
+        </div>
+        <div className="max-w-3xl">
+          <h2 className="text-xl font-semibold text-dashboard-foreground">
+            {getDiagnosis(practiceSummary.focusArea.label)}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-dashboard-muted">
+            Your next rep should force user outcome, business outcome,
+            guardrail, and time horizon before solution ideas.
+          </p>
+        </div>
+        <Button asChild>
+          <Link href={practiceSummary.recommendation.href}>Practice</Link>
+        </Button>
+      </section>
 
-        {/* Competency Breakdown - Uses GlowingStrokeRadarChart */}
-        <motion.div variants={fadeInUp}>
-          <CompetencyBreakdown
-            data={competencyData}
-            onCompetencyClick={(competency) => {
-              // TODO: Filter sessions by competency
-              console.log("Filter by competency:", competency);
-            }}
-          />
-        </motion.div>
+      <div className="grid gap-8 py-6 lg:grid-cols-[1fr_330px]">
+        <section className="min-w-0 space-y-8">
+          <div>
+            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+              Competencies
+            </p>
+            <div className="mt-5 space-y-4">
+              {competencies.map((competency) => (
+                <div
+                  key={competency.label}
+                  className="grid grid-cols-[130px_minmax(0,1fr)_88px] items-center gap-4"
+                >
+                  <span className="text-sm font-semibold text-dashboard-foreground">
+                    {competency.label}
+                  </span>
+                  <span className="bg-dashboard-muted/15 h-2 overflow-hidden rounded-full">
+                    <span
+                      className="block h-full rounded-full bg-primary"
+                      style={{
+                        width:
+                          competency.value === null
+                            ? "0%"
+                            : `${competency.value * 10}%`,
+                      }}
+                    />
+                  </span>
+                  <span className="text-right font-mono text-sm font-semibold text-dashboard-foreground">
+                    {competency.value === null
+                      ? "Needs data"
+                      : competency.value.toFixed(1)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-dashboard-panel-border pt-7">
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+                Readiness trend
+              </p>
+              <span className="text-sm font-semibold text-primary">
+                {trend === "improving"
+                  ? "Improving"
+                  : trend === "declining"
+                    ? "Needs attention"
+                    : "Stable"}{" "}
+                {practiceSummary.readiness.deltaLabel}
+              </span>
+            </div>
+            <ProgressSignalBars
+              bars={practiceSummary.progressSignal.bars}
+              className="mt-16 h-32 gap-4"
+              showLabels
+            />
+          </div>
+        </section>
+
+        <aside className="border-dashboard-panel-border border-t pt-7 lg:border-t-0 lg:border-l lg:pl-8 lg:pt-0">
+          <div>
+            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+              Next target
+            </p>
+            <h3 className="mt-4 text-xl font-semibold text-dashboard-foreground">
+              Open with {practiceSummary.focusArea.label.toLowerCase()}
+            </h3>
+            <p className="mt-3 text-sm leading-6 text-dashboard-muted">
+              {practiceSummary.focusArea.description}
+            </p>
+          </div>
+
+          <div className="mt-8">
+            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+              Evidence
+            </p>
+            <div className="mt-5 space-y-5">
+              {evidence.length > 0 ? (
+                evidence.map((item) => (
+                  <Evidence key={item.title} title={item.title}>
+                    {item.description}
+                  </Evidence>
+                ))
+              ) : (
+                <p className="text-sm leading-6 text-dashboard-muted">
+                  Evidence appears once recent scored reps include dimension
+                  feedback.
+                </p>
+              )}
+            </div>
+          </div>
+        </aside>
       </div>
-
-      {/* Interview Type Distribution - Full Width - Uses RoundedPieChart */}
-      <motion.div variants={fadeInUp}>
-        <TypeDistribution
-          data={typeDistributionData}
-          onTypeClick={(type) => {
-            // TODO: Navigate to filtered history
-            console.log("Filter by type:", type);
-          }}
-        />
-      </motion.div>
-
-      {/* Additional Charts Grid - 2 Column Layout */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Time Investment - Uses GradientBarChart */}
-        <motion.div variants={fadeInUp}>
-          <TimeInvestment data={timeInvestmentData} groupBy="week" />
-        </motion.div>
-
-        {/* Score by Type Comparison - Uses DefaultMultipleBarChart */}
-        <motion.div variants={fadeInUp}>
-          <ScoreByType
-            data={scoreByTypeData}
-            onTypeClick={(type) => {
-              // TODO: Navigate to filtered history
-              console.log("Filter by type:", type);
-            }}
-          />
-        </motion.div>
       </div>
-
-      {/* PRAC-003: Score by Difficulty - Full Width */}
-      <motion.div variants={fadeInUp}>
-        <ScoreByDifficulty
-          data={scoreByDifficultyData}
-          recommendedDifficulty={recommendedDifficulty}
-        />
-      </motion.div>
-
-      {/* PRAC-004: Weakest Area Card - Full Width */}
-      <motion.div variants={fadeInUp}>
-        <WeakestAreaCard sessions={sessions} />
-      </motion.div>
-    </motion.div>
+    </DashboardPage>
   );
 });
+
+function EmptyAnalyticsState({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="mx-auto flex min-h-[420px] max-w-xl flex-col items-center justify-center text-center">
+      <h2 className="font-display text-3xl leading-tight font-semibold text-dashboard-foreground">
+        {title}
+      </h2>
+      <p className="mt-4 text-base leading-7 text-dashboard-muted">
+        {description}
+      </p>
+      {action && <div className="mt-6">{action}</div>}
+    </div>
+  );
+}
+
+function Evidence({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <h4 className="text-lg font-semibold text-dashboard-foreground">{title}</h4>
+      <p className="mt-1 text-sm leading-6 text-dashboard-muted">{children}</p>
+    </div>
+  );
+}
+
+function getDiagnosis(focusLabel: string) {
+  if (focusLabel === "Metrics depth") {
+    return "Structure is strong. Metrics depth is still blocking readiness.";
+  }
+  return `${focusLabel} is the current bottleneck before interview readiness.`;
+}

@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   DashboardActionCard,
+  DashboardSectionCard,
 } from "@/components/dashboard/dashboard-surface";
 import {
   AlertCircle,
@@ -85,14 +86,10 @@ export function QuotaExceededModal({
         </DialogHeader>
 
         <div className="space-y-6">
-          <div>
-            <div className="mb-4 flex items-center gap-2">
-              <Sparkles className="text-primary h-5 w-5" />
-              <h3 className="font-display text-foreground text-lg font-light">
-                Purchase Options
-              </h3>
-            </div>
-
+          <DashboardSectionCard
+            title="Purchase options"
+            description="Each credit starts one complete PM interview rep."
+          >
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {upgradeBenefits.map((benefit, index) => (
                 <div
@@ -113,7 +110,7 @@ export function QuotaExceededModal({
                 </div>
               ))}
             </div>
-          </div>
+          </DashboardSectionCard>
 
           <div className="grid gap-3 md:grid-cols-3">
             {purchasePlans.map((plan) => (

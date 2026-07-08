@@ -3,6 +3,8 @@
 import { motion } from "framer-motion";
 import { AlertCircle } from "lucide-react";
 
+import { StatusPill } from "@/components/ui/app-surface";
+
 export function DiscontinuedBanner() {
   return (
     <motion.div
@@ -13,7 +15,10 @@ export function DiscontinuedBanner() {
     >
       <div className="mx-auto flex min-h-[56px] max-w-[1216px] items-center justify-center px-6">
         <div className="flex flex-col items-center justify-center gap-3 text-center sm:flex-row">
-          <AlertCircle className="text-warning h-5 w-5 shrink-0" />
+          <StatusPill tone="warning">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            Discontinued
+          </StatusPill>
           <div className="text-sm leading-6">
             <span className="text-foreground font-semibold">
               Meelni has been discontinued.

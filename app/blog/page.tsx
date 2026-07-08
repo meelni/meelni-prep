@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import {
   MarketingCard,
+  MarketingCtaCard,
   MarketingEyebrow,
   MarketingHero,
   MarketingMetaRow,
@@ -175,6 +176,22 @@ export default function BlogIndex() {
               </div>
             </MarketingCard>
           ))}
+        </div>
+
+        <div className="mt-12">
+          <MarketingCtaCard
+            mark="M"
+            title="Turn the next article into a live rep"
+            description="Pick a PM interview question, practice it out loud, and use Meelni feedback to find the next skill to tighten."
+            action={
+              <Button asChild>
+                <Link href="/explore">
+                  Browse PM questions
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            }
+          />
         </div>
       </div>
     </MarketingPage>
