@@ -1,0 +1,185 @@
+[
+  {
+    "viewport": "desktop",
+    "route": "/dashboard",
+    "status": 200,
+    "finalUrl": "/dashboard",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/desktop-dashboard-overview.png"
+  },
+  {
+    "viewport": "desktop",
+    "route": "/dashboard/questions",
+    "status": 200,
+    "finalUrl": "/dashboard/questions",
+    "overflow": false,
+    "errors": [
+      "Connecting to 'https://statsigapi.net/v1/sdk_exception' violates the following Content Security Policy directive: \"connect-src 'self' https://*.supabase.co https://*.livekit.cloud https://us.i.posthog.com https://us-assets.i.posthog.com wss://*.livekit.cloud\". The action has been blocked.",
+      "Fetch API cannot load https://statsigapi.net/v1/sdk_exception. Refused to connect because it violates the document's Content Security Policy."
+    ],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/desktop-dashboard-questions.png"
+  },
+  {
+    "viewport": "desktop",
+    "route": "/dashboard/history",
+    "status": 200,
+    "finalUrl": "/dashboard/history",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/desktop-dashboard-history.png"
+  },
+  {
+    "viewport": "desktop",
+    "route": "/dashboard/analytics",
+    "status": 200,
+    "finalUrl": "/dashboard/analytics",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/desktop-dashboard-analytics.png"
+  },
+  {
+    "viewport": "desktop",
+    "route": "/dashboard/settings",
+    "status": 200,
+    "finalUrl": "/dashboard/settings",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/desktop-dashboard-settings.png"
+  },
+  {
+    "viewport": "desktop",
+    "route": "/dashboard/new-rep",
+    "status": 200,
+    "finalUrl": "/dashboard/new-rep",
+    "overflow": false,
+    "errors": [
+      "Connecting to 'https://statsigapi.net/v1/sdk_exception' violates the following Content Security Policy directive: \"connect-src 'self' https://*.supabase.co https://*.livekit.cloud https://us.i.posthog.com https://us-assets.i.posthog.com wss://*.livekit.cloud\". The action has been blocked.",
+      "Fetch API cannot load https://statsigapi.net/v1/sdk_exception. Refused to connect because it violates the document's Content Security Policy."
+    ],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/desktop-dashboard-new-rep.png"
+  },
+  {
+    "viewport": "desktop",
+    "route": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91",
+    "status": 200,
+    "finalUrl": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/desktop-feedback-result.png"
+  },
+  {
+    "viewport": "desktop",
+    "route": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91/compare",
+    "status": 200,
+    "finalUrl": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91/compare",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/desktop-feedback-compare.png"
+  },
+  {
+    "viewport": "desktop",
+    "route": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91/loading",
+    "status": 200,
+    "finalUrl": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/desktop-feedback-loading.png"
+  },
+  {
+    "viewport": "mobile",
+    "route": "/dashboard",
+    "status": 200,
+    "finalUrl": "/dashboard",
+    "overflow": false,
+    "errors": [
+      "Connecting to 'https://statsigapi.net/v1/sdk_exception' violates the following Content Security Policy directive: \"connect-src 'self' https://*.supabase.co https://*.livekit.cloud https://us.i.posthog.com https://us-assets.i.posthog.com wss://*.livekit.cloud\". The action has been blocked.",
+      "Fetch API cannot load https://statsigapi.net/v1/sdk_exception. Refused to connect because it violates the document's Content Security Policy."
+    ],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/mobile-dashboard-overview.png"
+  },
+  {
+    "viewport": "mobile",
+    "route": "/dashboard/questions",
+    "status": 200,
+    "finalUrl": "/dashboard/questions",
+    "overflow": false,
+    "errors": [
+      "Connecting to 'https://statsigapi.net/v1/sdk_exception' violates the following Content Security Policy directive: \"connect-src 'self' https://*.supabase.co https://*.livekit.cloud https://us.i.posthog.com https://us-assets.i.posthog.com wss://*.livekit.cloud\". The action has been blocked.",
+      "Fetch API cannot load https://statsigapi.net/v1/sdk_exception. Refused to connect because it violates the document's Content Security Policy."
+    ],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/mobile-dashboard-questions.png"
+  },
+  {
+    "viewport": "mobile",
+    "route": "/dashboard/history",
+    "status": 200,
+    "finalUrl": "/dashboard/history",
+    "overflow": false,
+    "errors": [
+      "Connecting to 'https://statsigapi.net/v1/sdk_exception' violates the following Content Security Policy directive: \"connect-src 'self' https://*.supabase.co https://*.livekit.cloud https://us.i.posthog.com https://us-assets.i.posthog.com wss://*.livekit.cloud\". The action has been blocked.",
+      "Fetch API cannot load https://statsigapi.net/v1/sdk_exception. Refused to connect because it violates the document's Content Security Policy."
+    ],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/mobile-dashboard-history.png"
+  },
+  {
+    "viewport": "mobile",
+    "route": "/dashboard/analytics",
+    "status": 200,
+    "finalUrl": "/dashboard/analytics",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/mobile-dashboard-analytics.png"
+  },
+  {
+    "viewport": "mobile",
+    "route": "/dashboard/settings",
+    "status": 200,
+    "finalUrl": "/dashboard/settings",
+    "overflow": false,
+    "errors": [
+      "Connecting to 'https://statsigapi.net/v1/sdk_exception' violates the following Content Security Policy directive: \"connect-src 'self' https://*.supabase.co https://*.livekit.cloud https://us.i.posthog.com https://us-assets.i.posthog.com wss://*.livekit.cloud\". The action has been blocked.",
+      "Fetch API cannot load https://statsigapi.net/v1/sdk_exception. Refused to connect because it violates the document's Content Security Policy."
+    ],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/mobile-dashboard-settings.png"
+  },
+  {
+    "viewport": "mobile",
+    "route": "/dashboard/new-rep",
+    "status": 200,
+    "finalUrl": "/dashboard/new-rep",
+    "overflow": false,
+    "errors": [
+      "Connecting to 'https://statsigapi.net/v1/sdk_exception' violates the following Content Security Policy directive: \"connect-src 'self' https://*.supabase.co https://*.livekit.cloud https://us.i.posthog.com https://us-assets.i.posthog.com wss://*.livekit.cloud\". The action has been blocked.",
+      "Fetch API cannot load https://statsigapi.net/v1/sdk_exception. Refused to connect because it violates the document's Content Security Policy."
+    ],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/mobile-dashboard-new-rep.png"
+  },
+  {
+    "viewport": "mobile",
+    "route": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91",
+    "status": 200,
+    "finalUrl": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/mobile-feedback-result.png"
+  },
+  {
+    "viewport": "mobile",
+    "route": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91/compare",
+    "status": 200,
+    "finalUrl": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91/compare",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/mobile-feedback-compare.png"
+  },
+  {
+    "viewport": "mobile",
+    "route": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91/loading",
+    "status": 200,
+    "finalUrl": "/feedback/6f98bd9d-53a1-438b-9db3-55a20b420b91",
+    "overflow": false,
+    "errors": [],
+    "screenshot": "/Users/REDACTED/.codex/worktrees/c59d/meelni-prep/docs/design/screenshots/2026-07-08-authenticated-qa/mobile-feedback-loading.png"
+  }
+]

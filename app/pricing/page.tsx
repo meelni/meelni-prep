@@ -34,7 +34,7 @@ export default function PricingPage() {
 
   async function handlePlanClick(plan: PublicPricingPlan) {
     if (!plan.canPurchase) {
-      window.location.href = "/setup";
+      window.location.href = "/dashboard/new-rep";
       return;
     }
 

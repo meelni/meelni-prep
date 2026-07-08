@@ -53,7 +53,7 @@ test("practice summary gives new users a first-rep path", () => {
 
   assert.equal(summary.isNewUser, true);
   assert.equal(summary.readiness.score, 0);
-  assert.equal(summary.recommendation.href, "/setup");
+  assert.equal(summary.recommendation.href, "/dashboard/new-rep");
   assert.match(summary.recommendation.title, /first pm interview rep/i);
 });
 

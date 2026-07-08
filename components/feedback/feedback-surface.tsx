@@ -60,6 +60,85 @@ interface FeedbackStatusPageProps
   tone?: FeedbackTone;
   actions?: React.ReactNode;
   contentClassName?: string;
+  maxWidth?: FeedbackReviewShellProps["maxWidth"];
+}
+
+interface FeedbackReviewShellProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
+  label?: React.ReactNode;
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  action?: React.ReactNode;
+  maxWidth?: "md" | "lg" | "xl";
+  bodyClassName?: string;
+}
+
+const feedbackReviewShellMaxWidthClasses = {
+  md: "max-w-3xl",
+  lg: "max-w-4xl",
+  xl: "max-w-7xl",
+};
+
+function FeedbackReviewShell({
+  className,
+  label = "Interview Feedback",
+  title,
+  description,
+  action,
+  maxWidth = "lg",
+  bodyClassName,
+  children,
+  ...props
+}: FeedbackReviewShellProps) {
+  return (
+    <div
+      className={cn(
+        "bg-dashboard-canvas text-dashboard-foreground flex min-h-screen [--accent:#24242a] [--border:var(--dashboard-panel-border)] [--card:var(--dashboard-panel)] [--foreground:var(--dashboard-foreground)] [--muted-foreground:var(--dashboard-muted)] [--muted:#2a2a31] [--secondary:#24242a]",
+        className
+      )}
+      {...props}
+    >
+      <main className="min-w-0 flex-1 p-3">
+        <section className="border-dashboard-panel-border bg-dashboard-panel flex min-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[10px] border">
+          <header className="border-dashboard-panel-border flex h-10 shrink-0 items-center justify-between gap-4 border-b bg-transparent px-6 sm:px-8">
+            <p className="text-dashboard-muted truncate text-xs font-bold tracking-[0.28em] uppercase">
+              {label}
+            </p>
+            {action && <div className="shrink-0">{action}</div>}
+          </header>
+          <div
+            className={cn(
+              "min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8 sm:py-6",
+              bodyClassName
+            )}
+          >
+            <div
+              className={cn(
+                "mx-auto w-full space-y-8",
+                feedbackReviewShellMaxWidthClasses[maxWidth]
+              )}
+            >
+              {(title || description) && (
+                <div className="space-y-2">
+                  {title && (
+                    <h1 className="font-display text-dashboard-foreground text-3xl font-light tracking-tight sm:text-4xl">
+                      {title}
+                    </h1>
+                  )}
+                  {description && (
+                    <p className="text-dashboard-muted max-w-2xl text-sm leading-6">
+                      {description}
+                    </p>
+                  )}
+                </div>
+              )}
+              {children}
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
 }
 
 function FeedbackStatusPage({
@@ -70,16 +149,19 @@ function FeedbackStatusPage({
   tone = "default",
   actions,
   contentClassName,
+  maxWidth = "md",
   children,
   ...props
 }: FeedbackStatusPageProps) {
   return (
-    <div
+    <FeedbackReviewShell
       className={cn(
-        "from-background via-background min-h-screen bg-gradient-to-br p-4 md:p-8",
+        "from-dashboard-canvas via-dashboard-canvas bg-gradient-to-br",
         statusPageBackgroundClasses[tone],
         className
       )}
+      maxWidth={maxWidth}
+      bodyClassName="flex items-center"
       {...props}
     >
       <div className={cn("mx-auto max-w-3xl space-y-6", contentClassName)}>
@@ -106,7 +188,7 @@ function FeedbackStatusPage({
           </div>
         )}
       </div>
-    </div>
+    </FeedbackReviewShell>
   );
 }
 
@@ -334,6 +416,7 @@ function FeedbackStateCard({
 }
 
 export {
+  FeedbackReviewShell,
   FeedbackSectionCard,
   FeedbackScoreCard,
   FeedbackStateCard,

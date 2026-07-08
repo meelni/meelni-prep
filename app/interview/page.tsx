@@ -49,6 +49,19 @@ interface InterviewSession {
   } | null;
 }
 
+interface PersistedInterviewSession {
+  id: string;
+  livekitRoomName: string | null;
+  startedAt: string;
+  roundType?: string | null;
+  mode?: string | null;
+  config?: (Record<string, unknown> & {
+    roundType?: string | null;
+    mode?: string | null;
+    difficulty?: string | null;
+  }) | null;
+}
+
 function InterviewPageContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
@@ -184,17 +197,20 @@ function InterviewPageContent() {
         throw new Error("Failed to fetch session details");
       }
 
-      const sessionData = await response.json();
-      setSession(sessionData);
+      const { session: sessionData } = (await response.json()) as {
+        session: PersistedInterviewSession;
+      };
+      const normalizedSession = normalizePersistedSession(sessionData);
+      setSession(normalizedSession);
       setSessionStartTime(Date.now());
       setLoading(false);
 
       // Track interview started
       analytics.track("interview_started", {
         session_id: sessionId ?? "",
-        interview_type: sessionData.config?.roundType,
-        mode: sessionData.config?.mode,
-        skill_level: sessionData.config?.difficulty,
+        interview_type: normalizedSession.config.roundType,
+        mode: normalizedSession.config.mode,
+        skill_level: normalizedSession.config.difficulty,
       });
     } catch (err) {
       console.error("Error fetching session:", err);
@@ -651,6 +667,23 @@ function InterviewRoomContent({
       </main>
     </div>
   );
+}
+
+function normalizePersistedSession(
+  session: PersistedInterviewSession
+): InterviewSession {
+  return {
+    id: session.id,
+    livekit_room_name: session.livekitRoomName || "",
+    started_at: session.startedAt,
+    config: {
+      ...(session.config || {}),
+      roundType: session.roundType || session.config?.roundType || undefined,
+      mode: session.mode || session.config?.mode || undefined,
+      difficulty: session.config?.difficulty || undefined,
+    },
+    question: null,
+  };
 }
 
 function isHintMode(value: unknown): value is HintMode {

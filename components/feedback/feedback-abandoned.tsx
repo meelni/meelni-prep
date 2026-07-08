@@ -36,7 +36,7 @@ export function FeedbackAbandoned({ reasons = [] }: FeedbackAbandonedProps) {
       description="No conversation was recorded during this session"
       actions={
         <>
-          <Button size="lg" onClick={() => router.push("/setup")}>
+          <Button size="lg" onClick={() => router.push("/dashboard/new-rep")}>
             Try Again
           </Button>
           <Button
