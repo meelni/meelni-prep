@@ -1,17 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
+import { createDrizzleCreditLedgerStore } from "./credit-ledger-store";
 import {
   createCreditLedgerService,
   createMemoryCreditLedgerStore,
 } from "./credits";
-import { createDrizzleCreditLedgerStore } from "./credit-ledger-store";
 
 test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", () => {
   const store = createDrizzleCreditLedgerStore();
 
   assert.equal(typeof store.createGrant, "function");
-  assert.equal(typeof store.reserveCredit, "undefined");
+  assert.equal("reserveCredit" in store, false);
   assert.equal(typeof store.createReservation, "function");
   assert.equal(typeof store.createTransaction, "function");
 });

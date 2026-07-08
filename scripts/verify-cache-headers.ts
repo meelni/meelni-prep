@@ -9,7 +9,7 @@
  */
 
 import { db } from "../lib/db";
-import { feedback, interviewSession, appUser } from "../lib/db/schema";
+import { interviewSession, appUser } from "../lib/db/schema";
 import { eq } from "drizzle-orm";
 
 interface CacheTestResult {
@@ -125,8 +125,16 @@ async function main() {
       "completed",
       "public, max-age=3600"
     );
-    await verifyCacheHeader(testData.sessionId, "skipped", "public, max-age=300");
-    await verifyCacheHeader(testData.sessionId, "failed", "public, max-age=300");
+    await verifyCacheHeader(
+      testData.sessionId,
+      "skipped",
+      "public, max-age=300"
+    );
+    await verifyCacheHeader(
+      testData.sessionId,
+      "failed",
+      "public, max-age=300"
+    );
 
     // Print summary
     console.log("\n" + "=".repeat(60));
@@ -135,7 +143,9 @@ async function main() {
 
     results.forEach((result) => {
       const icon = result.passed ? "✅" : "❌";
-      console.log(`${icon} ${result.status.padEnd(12)} → ${result.actualCacheControl}`);
+      console.log(
+        `${icon} ${result.status.padEnd(12)} → ${result.actualCacheControl}`
+      );
     });
 
     const allPassed = results.every((r) => r.passed);

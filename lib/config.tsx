@@ -1,18 +1,17 @@
 import { Icons } from "@/components/icons";
 import {
   MicIcon,
-  MessageSquareIcon,
   TrendingUpIcon,
   TargetIcon,
   SparklesIcon,
-  LayoutGridIcon,
 } from "lucide-react";
 
 export const BLUR_FADE_DELAY = 0.15;
 
 export const siteConfig = {
   name: "Meelni",
-  description: "AI-powered mock interview coach for product managers. Practice PM interviews with real-time voice feedback.",
+  description:
+    "AI-powered mock interview coach for product managers. Practice PM interviews with real-time voice feedback.",
   cta: "Start a mock",
   url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   keywords: [

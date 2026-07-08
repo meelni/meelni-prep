@@ -7,8 +7,8 @@ import {
 } from "@meelni/test-fixtures";
 
 import {
-  startInterviewSessionWorkflow,
   type StartInterviewSessionDeps,
+  startInterviewSessionWorkflow,
 } from "./start-session";
 
 type Mutable<T> = {
@@ -45,6 +45,8 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
         questionText: productFixture.question.questionText,
         questionType: productFixture.question.questionType,
         askedAt: productFixture.session.startedAt,
+        isActive: true,
+        createdAt: productFixture.session.startedAt,
       };
     },
     reserveCredit: async (input) => {
@@ -55,10 +57,8 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
         `interview-start:${user.id}:${liveKitFixture.input.roomName}`
       );
       return {
-        reservation: {
-          id: "reservation-1",
-          reservationKey: input.reservationKey,
-        },
+        reservation: createReservation(input.reservationKey),
+        allocations: [],
       };
     },
     consumeReservation: async (input) => {
@@ -136,7 +136,7 @@ test("startInterviewSessionWorkflow carries hint mode through session config", a
     },
     createDeps({
       createSession: async (input) => {
-        assert.equal(input.config.hintMode, "gentle");
+        assert.equal(input.config?.hintMode, "gentle");
         return {
           id: productFixture.session.id,
           config: input.config,
@@ -277,6 +277,8 @@ function createDeps(
     questionText: productFixture.question.questionText,
     questionType: productFixture.question.questionType,
     askedAt: productFixture.session.startedAt,
+    isActive: true,
+    createdAt: productFixture.session.startedAt,
   };
 
   const deps: Mutable<StartInterviewSessionDeps> = {
@@ -288,13 +290,9 @@ function createDeps(
     getQuestionById: async () => question,
     getRandomQuestion: async () => question,
     getRandomRecentQuestion: async () => question,
-    getUserTier: async () => "free",
-    incrementUsage: async () => ({ success: true }),
     reserveCredit: async (input) => ({
-      reservation: {
-        id: "reservation-1",
-        reservationKey: input.reservationKey,
-      },
+      reservation: createReservation(input.reservationKey),
+      allocations: [],
     }),
     consumeReservation: async () => {},
     releaseReservation: async () => {},
@@ -310,4 +308,21 @@ function createDeps(
   };
 
   return { ...deps, ...overrides };
+}
+
+function createReservation(reservationKey: string) {
+  const now = new Date("2026-06-29T00:00:00.000Z");
+
+  return {
+    id: "reservation-1",
+    userId: user.id,
+    reservationKey,
+    status: "active" as const,
+    credits: 1,
+    sessionId: null,
+    expiresAt: new Date("2026-06-29T00:15:00.000Z"),
+    metadata: null,
+    createdAt: now,
+    updatedAt: now,
+  };
 }

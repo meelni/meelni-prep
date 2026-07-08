@@ -93,7 +93,8 @@ test("runtime config normalizes hint mode to safe defaults", () => {
     "coach"
   );
   assert.equal(
-    normalizeInterviewRuntimeConfig({ hintMode: "always-on" }).hintMode,
+    normalizeInterviewRuntimeConfig({ hintMode: "always-on" as never })
+      .hintMode,
     "off"
   );
   assert.equal(normalizeInterviewRuntimeConfig({}).hintMode, "off");

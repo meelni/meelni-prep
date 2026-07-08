@@ -89,7 +89,6 @@ import { isSessionOwnedByUser } from "@/lib/db/sessions";
 import {
   evaluateSession,
   saveEvaluation,
-  evaluationExists,
   getExistingEvaluation,
 } from "@/lib/evaluation/rubric-engine";
 

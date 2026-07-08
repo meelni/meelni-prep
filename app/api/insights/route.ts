@@ -19,7 +19,7 @@
  * ```
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { aggregateUserInsights } from "@/lib/evaluation/insights-aggregator";
 
@@ -32,7 +32,7 @@ export const dynamic = "force-dynamic";
  * Fetches comprehensive user insights including stats, trends, and breakdowns.
  * Returns empty state for users with zero sessions.
  */
-export async function GET(req: NextRequest) {
+export async function GET() {
   const startTime = Date.now();
 
   try {
@@ -44,10 +44,7 @@ export async function GET(req: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // 2. Calculate insights (aggregates from database)
