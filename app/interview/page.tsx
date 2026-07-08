@@ -26,7 +26,6 @@ import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  AppSurface,
   AppSurfaceDescription,
   AppSurfaceHeader,
   AppSurfaceTitle,
@@ -34,6 +33,7 @@ import {
 } from "@/components/ui/app-surface";
 import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { shouldAnalyzeNudges, type HintMode } from "@meelni/core";
 
 interface InterviewSession {
   id: string;
@@ -92,12 +92,20 @@ function InterviewPageContent() {
   const [transcriptSaveErrors, setTranscriptSaveErrors] = useState(0);
   const [transcriptQueue] = useState(() => getTranscriptQueue());
   const [currentNudge, setCurrentNudge] = useState<Nudge | null>(null);
+  const [hintMode, setHintMode] = useState<HintMode>("off");
   const [frameworkCoverage, setFrameworkCoverage] = useState<FrameworkCoverage>(
     []
   );
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const initializedRef = useRef(false);
   const activeSessionId = session?.id ?? sessionId ?? "";
+
+  useEffect(() => {
+    const configuredHintMode = session?.config?.hintMode;
+    if (isHintMode(configuredHintMode)) {
+      setHintMode(configuredHintMode);
+    }
+  }, [session?.config?.hintMode]);
 
   // Invalidate queries when component unmounts (user leaves interview)
   useEffect(() => {
@@ -157,6 +165,7 @@ function InterviewPageContent() {
             voice,
             speed: speed ? parseFloat(speed) : 1.0,
             emotion: emotion || "confident",
+            hintMode,
           },
         }),
       });
@@ -299,7 +308,8 @@ function InterviewPageContent() {
     if (
       turn.speaker === "user" &&
       activeSessionId &&
-      session?.config?.roundType
+      session?.config?.roundType &&
+      shouldAnalyzeNudges(hintMode)
     ) {
       analyzeForNudges(turn);
     }
@@ -317,6 +327,7 @@ function InterviewPageContent() {
         body: JSON.stringify({
           sessionId: activeSessionId,
           interviewType: session!.config.roundType,
+          hintMode,
           currentTurn: {
             speaker: turn.speaker,
             text: turn.text,
@@ -478,8 +489,18 @@ function InterviewPageContent() {
       <InterviewRoomContent
         session={session}
         transcript={transcript}
+        agentState={agentState}
         isMuted={isMuted}
+        hintMode={hintMode}
         transcriptSaveErrors={transcriptSaveErrors}
+        onHintModeChange={(mode) => {
+          setHintMode(mode);
+          analytics.track("hint_mode_changed", {
+            session_id: activeSessionId,
+            hint_mode: mode,
+            interview_type: session.config?.roundType,
+          });
+        }}
         onToggleMute={() => {
           const newMutedState = !isMuted;
           setIsMuted(newMutedState);
@@ -494,7 +515,16 @@ function InterviewPageContent() {
       <NudgeOverlay
         nudge={currentNudge}
         frameworkCoverage={frameworkCoverage}
-        onDismiss={() => setCurrentNudge(null)}
+        onDismiss={() => {
+          if (currentNudge) {
+            analytics.track("hint_dismissed", {
+              session_id: activeSessionId,
+              hint_type: currentNudge.type,
+              hint_mode: hintMode,
+            });
+          }
+          setCurrentNudge(null);
+        }}
       />
       <EndSessionModal
         isOpen={showEndModal}
@@ -509,8 +539,11 @@ function InterviewPageContent() {
 interface InterviewRoomContentProps {
   session: InterviewSession;
   transcript: TranscriptTurn[];
+  agentState: "idle" | "listening" | "thinking" | "speaking";
   isMuted: boolean;
+  hintMode: HintMode;
   transcriptSaveErrors: number;
+  onHintModeChange: (mode: HintMode) => void;
   onToggleMute: () => void;
   onEndSession: () => void;
 }
@@ -518,8 +551,11 @@ interface InterviewRoomContentProps {
 function InterviewRoomContent({
   session,
   transcript,
+  agentState,
   isMuted,
+  hintMode,
   transcriptSaveErrors,
+  onHintModeChange,
   onToggleMute,
   onEndSession,
 }: InterviewRoomContentProps) {
@@ -533,109 +569,91 @@ function InterviewRoomContent({
 
   const estimatedDuration = session.config?.duration || 30;
 
+  const roundLabel = session.config?.roundType
+    ? session.config.roundType
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (letter: string) => letter.toUpperCase())
+    : "PM Interview";
+
   return (
-    <div className="from-background via-background to-muted/20 min-h-screen bg-gradient-to-b">
-      {/* Header */}
-      <header className="bg-background/80 border-border/50 sticky top-0 z-40 w-full border-b backdrop-blur-md">
-        <div className="container mx-auto h-16 max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-full items-center justify-between">
-            <div className="flex items-center gap-4">
-              <ConnectionIndicator />
-              {session.config?.roundType && (
-                <div className="text-muted-foreground hidden items-center gap-2 text-sm md:flex">
-                  <span className="text-primary font-medium">
-                    {session.config.roundType
-                      .replace(/_/g, " ")
-                      .replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                  </span>
-                  {session.config.mode && (
-                    <>
-                      <span>•</span>
-                      <span>
-                        {session.config.mode
-                          .replace(/_/g, " ")
-                          .replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
-              {transcriptSaveErrors > 0 && (
-                <StatusPill tone="warning" className="text-sm">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Saving transcript...</span>
-                  <span className="sm:hidden">{transcriptSaveErrors}</span>
-                </StatusPill>
-              )}
-            </div>
-            <TimerDisplay
-              startedAt={new Date(session.started_at)}
-              estimatedDuration={estimatedDuration}
-            />
+    <div className="bg-background text-foreground min-h-screen">
+      <header className="bg-background/90 border-border sticky top-0 z-40 w-full border-b backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <StatusPill tone="primary" className="shrink-0">
+              {roundLabel}
+            </StatusPill>
+            <ConnectionIndicator />
           </div>
+          <TimerDisplay
+            startedAt={new Date(session.started_at)}
+            estimatedDuration={estimatedDuration}
+          />
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Question Display */}
-        {session.question && (
-          <AppSurface variant="accent" size="lg" className="mb-6 rounded-xl">
-            <div className="mb-3 flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <StatusPill
-                  tone="primary"
-                  className="font-semibold tracking-wider uppercase"
-                >
-                  Interview Question
-                </StatusPill>
-                {session.question.company && (
-                  <StatusPill tone="muted">
-                    {session.question.company}
-                  </StatusPill>
-                )}
-              </div>
+      <main className="mx-auto grid min-h-[calc(100vh-3.5rem)] max-w-7xl grid-cols-1 gap-0 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8">
+        <section className="flex min-h-[620px] flex-col items-center justify-between py-6 lg:min-h-[calc(100vh-6rem)] lg:pr-6">
+          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-8 text-center">
+            <div className="space-y-3">
+              <StatusPill tone={hintMode === "off" ? "muted" : "primary"}>
+                {hintMode === "off" ? "Real interview" : "Gentle hints on"}
+              </StatusPill>
+              <StatusPill tone="muted">
+                {agentState.charAt(0).toUpperCase() + agentState.slice(1)}
+              </StatusPill>
+              <h1 className="font-display text-2xl font-light tracking-tight sm:text-3xl">
+                {session.question?.text || "Your interviewer is ready."}
+              </h1>
+              {session.question?.company && (
+                <p className="text-muted-foreground text-sm">
+                  {session.question.company}
+                </p>
+              )}
             </div>
-            <p className="text-foreground/90 text-base leading-relaxed whitespace-pre-wrap">
-              {session.question.text}
-            </p>
-          </AppSurface>
-        )}
 
-        {/* Grid Layout: AudioVisualizer (with Orb) + Transcript Sidebar */}
-        <div className="grid h-[calc(100vh-12rem)] grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Center: AudioVisualizer (contains Orb + state indicators) + Controls */}
-          <div className="flex flex-col items-center justify-center gap-12 lg:col-span-2">
-            <div className="h-full max-h-[500px] w-full">
+            <div className="h-[280px] w-full max-w-[520px] sm:h-[360px]">
               <AudioVisualizer />
             </div>
+          </div>
+
+          <div className="sticky bottom-4 z-30 mt-6">
             <InterviewControls
               isMuted={isMuted}
+              hintMode={hintMode}
+              onHintModeChange={onHintModeChange}
               onToggleMute={onToggleMute}
               onEndSession={onEndSession}
             />
           </div>
+        </section>
 
-          {/* Right Sidebar: Transcript */}
-          <AppSurface
-            variant="panel"
-            size="none"
-            className="overflow-hidden rounded-xl lg:col-span-1"
-          >
-            <AppSurfaceHeader>
+        <aside className="border-border bg-card flex min-h-[420px] flex-col overflow-hidden rounded-lg border lg:sticky lg:top-[4.5rem] lg:h-[calc(100vh-5.5rem)]">
+          <AppSurfaceHeader className="flex items-start justify-between gap-3">
+            <div>
               <AppSurfaceTitle>Transcript</AppSurfaceTitle>
               <AppSurfaceDescription>
-                Live conversation transcript
+                Conversation turns are saved as the room runs.
               </AppSurfaceDescription>
-            </AppSurfaceHeader>
-            <div className="h-[calc(100%-80px)]">
-              <TranscriptPanel turns={transcript} />
             </div>
-          </AppSurface>
-        </div>
+            {transcriptSaveErrors > 0 && (
+              <StatusPill tone="warning" className="shrink-0">
+                <AlertCircle className="h-3.5 w-3.5" />
+                Saving
+              </StatusPill>
+            )}
+          </AppSurfaceHeader>
+          <div className="min-h-0 flex-1">
+            <TranscriptPanel turns={transcript} />
+          </div>
+        </aside>
       </main>
     </div>
   );
+}
+
+function isHintMode(value: unknown): value is HintMode {
+  return value === "off" || value === "gentle" || value === "coach";
 }
 
 export default function InterviewPage() {

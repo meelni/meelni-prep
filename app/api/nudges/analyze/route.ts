@@ -88,7 +88,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isSessionOwnedByUser } from "@/lib/db/sessions";
 import { createFrameworkTracker } from "@/lib/nudges/framework-tracker";
-import type { TranscriptTurn } from "@/lib/types/nudges";
+import { shouldAnalyzeNudges } from "@meelni/core";
 
 // Rate limiting: Track last request time per session
 const sessionRateLimits = new Map<string, number>();
@@ -130,8 +130,23 @@ function isRateLimited(sessionId: string): { limited: boolean; retryAfter: numbe
 /**
  * Validate interview type
  */
-function isValidInterviewType(type: string): type is "product_sense" | "analytical" | "leadership" | "strategy" {
-  return ["product_sense", "analytical", "leadership", "strategy"].includes(type);
+function isValidInterviewType(
+  type: string
+): type is
+  | "product_sense"
+  | "execution"
+  | "behavioral"
+  | "analytical"
+  | "leadership"
+  | "strategy" {
+  return [
+    "product_sense",
+    "execution",
+    "behavioral",
+    "analytical",
+    "leadership",
+    "strategy",
+  ].includes(type);
 }
 
 export async function POST(req: NextRequest) {
@@ -152,7 +167,8 @@ export async function POST(req: NextRequest) {
 
     // Parse request body
     const body = await req.json();
-    const { sessionId, interviewType, currentTurn, timeElapsed } = body;
+    const { sessionId, interviewType, currentTurn, timeElapsed, hintMode } =
+      body;
 
     // Validate required fields
     if (!sessionId) {
@@ -164,7 +180,10 @@ export async function POST(req: NextRequest) {
 
     if (!interviewType || !isValidInterviewType(interviewType)) {
       return NextResponse.json(
-        { error: "Invalid interviewType. Must be one of: product_sense, analytical, leadership, strategy" },
+        {
+          error:
+            "Invalid interviewType. Must be one of: product_sense, execution, behavioral, analytical, leadership, strategy",
+        },
         { status: 400 }
       );
     }
@@ -190,6 +209,15 @@ export async function POST(req: NextRequest) {
         { error: "Session not found or access denied" },
         { status: 403 }
       );
+    }
+
+    if (!shouldAnalyzeNudges(hintMode)) {
+      return NextResponse.json({
+        shouldNudge: false,
+        nudgeType: null,
+        message: "",
+        frameworkCoverage: [],
+      });
     }
 
     // Check rate limit
@@ -231,7 +259,7 @@ export async function POST(req: NextRequest) {
       nudgeType: nudgeDecision.nudgeType,
       message: nudgeDecision.message,
       frameworkCoverage: coverage.elements.map((el) => ({
-        element: el.name,
+        name: el.name,
         covered: el.detected,
       })),
     });

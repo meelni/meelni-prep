@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   DASHBOARD_CONTENT_PANEL_CLASS_NAME,
+  DASHBOARD_SIDEBAR_SHELL_CLASS_NAME,
   DashboardLayout,
 } from "./dashboard-layout";
 
@@ -39,6 +40,11 @@ test("dashboard shell wraps every section in the canonical content panel", () =>
   assert.match(html, /rounded-\[10px\]/);
   assert.match(html, /bg-dashboard-panel/);
   assert.match(html, /History content/);
+});
+
+test("dashboard shell does not reserve desktop sidebar width on mobile", () => {
+  assert.match(DASHBOARD_SIDEBAR_SHELL_CLASS_NAME, /hidden/);
+  assert.match(DASHBOARD_SIDEBAR_SHELL_CLASS_NAME, /md:block/);
 });
 
 test("dashboard content panel does not add a black frame or shadow around pages", () => {

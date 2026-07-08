@@ -6,6 +6,12 @@ export type InterviewMode = "voice_video" | "text";
 
 export type AgentState = "idle" | "listening" | "thinking" | "speaking";
 
+export type HintMode = "off" | "gentle" | "coach";
+
+export function shouldAnalyzeNudges(hintMode: unknown): boolean {
+  return hintMode === "gentle" || hintMode === "coach";
+}
+
 export interface TranscriptTurn {
   id: string;
   sessionId: string;
@@ -45,6 +51,7 @@ export interface SessionMetadata {
 export interface SessionConfig {
   duration?: number;
   difficulty?: "easy" | "medium" | "hard";
+  hintMode?: HintMode;
   voice?: string;
   speed?: number;
   emotion?: string;

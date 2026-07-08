@@ -5,18 +5,22 @@
 
 import {
   InterviewType,
-  FrameworkElement,
   InterviewFramework,
   FrameworkCoverage,
   NudgeDecision,
   TranscriptTurn,
-  NudgeRule,
 } from "@/lib/types/nudges";
 
 /**
  * Framework definitions with keyword-based detection
  */
-const FRAMEWORKS: Record<InterviewType, InterviewFramework> = {
+type FrameworkDefinitionKey =
+  | "product_sense"
+  | "analytical"
+  | "leadership"
+  | "strategy";
+
+const FRAMEWORKS: Record<FrameworkDefinitionKey, InterviewFramework> = {
   product_sense: {
     type: "product_sense",
     elements: [
@@ -160,7 +164,10 @@ export class FrameworkTracker {
 
   constructor(interviewType: InterviewType, sessionStartTime?: number) {
     this.interviewType = interviewType;
-    this.framework = JSON.parse(JSON.stringify(FRAMEWORKS[interviewType])); // Deep copy
+    this.framework = JSON.parse(
+      JSON.stringify(FRAMEWORKS[getFrameworkDefinitionKey(interviewType)])
+    ); // Deep copy
+    this.framework.type = interviewType;
     this.sessionStartTime = sessionStartTime || Date.now();
     this.lastNudgeTime = this.sessionStartTime;
     this.currentElementStartTime = null;
@@ -250,7 +257,9 @@ export class FrameworkTracker {
       elapsed >= 90 &&
       metricsElement &&
       !metricsElement.detected &&
-      (this.interviewType === "product_sense" || this.interviewType === "analytical")
+      (this.interviewType === "product_sense" ||
+        this.interviewType === "analytical" ||
+        this.interviewType === "execution")
     ) {
       this.lastNudgeTime = Date.now();
       return {
@@ -340,8 +349,10 @@ export class FrameworkTracker {
       case "product_sense":
         return "Let's start by clarifying the question. What assumptions would you want to validate?";
       case "analytical":
+      case "execution":
         return "What's the goal we're trying to achieve here? Let's define that first.";
       case "leadership":
+      case "behavioral":
         return "Can you set the context? What was the situation you were in?";
       case "strategy":
         return "Let's start with the market landscape. What's the opportunity?";
@@ -354,7 +365,10 @@ export class FrameworkTracker {
    * Resets the tracker for a new session
    */
   reset(sessionStartTime?: number): void {
-    this.framework = JSON.parse(JSON.stringify(FRAMEWORKS[this.interviewType]));
+    this.framework = JSON.parse(
+      JSON.stringify(FRAMEWORKS[getFrameworkDefinitionKey(this.interviewType)])
+    );
+    this.framework.type = this.interviewType;
     this.sessionStartTime = sessionStartTime || Date.now();
     this.lastNudgeTime = this.sessionStartTime;
     this.currentElementStartTime = null;
@@ -402,7 +416,7 @@ export function detectFrameworkKeywords(
   text: string,
   interviewType: InterviewType
 ): { element: string; keywords: string[] }[] {
-  const framework = FRAMEWORKS[interviewType];
+  const framework = FRAMEWORKS[getFrameworkDefinitionKey(interviewType)];
   const detections: { element: string; keywords: string[] }[] = [];
   const lowerText = text.toLowerCase();
 
@@ -416,4 +430,18 @@ export function detectFrameworkKeywords(
   }
 
   return detections;
+}
+
+function getFrameworkDefinitionKey(
+  interviewType: InterviewType
+): FrameworkDefinitionKey {
+  if (interviewType === "execution") {
+    return "analytical";
+  }
+
+  if (interviewType === "behavioral") {
+    return "leadership";
+  }
+
+  return interviewType;
 }

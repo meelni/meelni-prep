@@ -31,6 +31,12 @@ export type AnalyticsEvent =
   | "auth_error"
   // Setup Events
   | "setup_started"
+  | "new_rep_launcher_viewed"
+  | "new_rep_recommendation_accepted"
+  | "new_rep_recommendation_changed"
+  | "new_rep_start_attempted"
+  | "new_rep_start_succeeded"
+  | "new_rep_start_failed"
   | "interview_type_selected"
   | "skill_level_selected"
   | "setup_completed"
@@ -40,6 +46,8 @@ export type AnalyticsEvent =
   | "interview_completed"
   | "interview_error"
   | "mic_toggled"
+  | "hint_mode_changed"
+  | "hint_dismissed"
   // Dashboard Events
   | "dashboard_viewed"
   | "ftue_cta_clicked"
@@ -163,6 +171,41 @@ interface SetupProperties {
     time_to_complete_seconds: number;
     selections_changed: number;
   };
+  new_rep_launcher_viewed: {
+    source: "dashboard" | "selected_question";
+    recommended_round_type: string;
+    recommended_difficulty: string;
+    recommendation_source: string;
+  };
+  new_rep_recommendation_accepted: {
+    recommended_round_type: string;
+    recommended_difficulty: string;
+    recommendation_source: string;
+  };
+  new_rep_recommendation_changed: {
+    field: "round_type" | "difficulty";
+    value: string;
+    recommended_round_type?: string;
+    recommended_difficulty?: string;
+  };
+  new_rep_start_attempted: {
+    interview_type: string;
+    skill_level: string;
+    recommendation_source: string;
+    accepted_recommendation: boolean;
+    question_id?: string;
+  };
+  new_rep_start_succeeded: {
+    session_id: string;
+    interview_type: string;
+    skill_level: string;
+    question_id?: string;
+  };
+  new_rep_start_failed: {
+    interview_type: string | null;
+    skill_level: string | null;
+    error: string;
+  };
 }
 
 /**
@@ -196,6 +239,16 @@ interface InterviewProperties {
   mic_toggled: {
     session_id: string;
     new_state: "muted" | "unmuted";
+  };
+  hint_mode_changed: {
+    session_id: string;
+    hint_mode: "off" | "gentle" | "coach";
+    interview_type?: string;
+  };
+  hint_dismissed: {
+    session_id: string;
+    hint_type: string;
+    hint_mode: "off" | "gentle" | "coach";
   };
 }
 
