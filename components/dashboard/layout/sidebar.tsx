@@ -173,7 +173,7 @@ export function Sidebar({
             )}
           >
             <Link
-              href="/setup"
+              href="/dashboard/new-rep"
               aria-label={collapsed ? "Start a new practice rep" : undefined}
               title={collapsed ? "New rep" : undefined}
             >

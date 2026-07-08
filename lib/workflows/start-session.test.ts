@@ -100,6 +100,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
       url: liveKitFixture.expectedStartedRoom.url,
       config: {
         ...productFixture.roomMetadata.config,
+        hintMode: "off",
         persona: null,
       },
       question: {
@@ -116,6 +117,41 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     "recordQuestionUsage",
     "consumeReservation",
   ]);
+});
+
+test("startInterviewSessionWorkflow carries hint mode through session config", async () => {
+  const productFixture = createProductSenseInterviewFixture();
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: {
+        roundType: "product_sense",
+        config: {
+          ...productFixture.roomMetadata.config,
+          hintMode: "gentle",
+        },
+      },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      createSession: async (input) => {
+        assert.equal(input.config.hintMode, "gentle");
+        return {
+          id: productFixture.session.id,
+          config: input.config,
+        };
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      (result.body.config as Record<string, unknown>).hintMode,
+      "gentle"
+    );
+  }
 });
 
 test("startInterviewSessionWorkflow allows all PM round types when a credit is available", async () => {

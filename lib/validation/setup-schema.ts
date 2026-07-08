@@ -20,6 +20,7 @@ export const interviewConfigSchema = z.object({
     message: "Duration must be 15, 30, or 45 minutes",
   }),
   feedback_mode: z.enum(["real_time", "end_only", "silent"]),
+  hintMode: z.enum(["off", "gentle", "coach"]).default("off"),
 
   // Model settings
   stt_model: z.string().min(1),

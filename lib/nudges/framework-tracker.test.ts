@@ -5,6 +5,8 @@
 
 import { FrameworkTracker, createFrameworkTracker, detectFrameworkKeywords } from "./framework-tracker";
 import { TranscriptTurn } from "@/lib/types/nudges";
+import assert from "node:assert/strict";
+import test from "node:test";
 
 /**
  * Example Usage 1: Product Sense Interview
@@ -231,3 +233,35 @@ export function runFrameworkTrackerExamples() {
 
 // Uncomment to run examples:
 // runFrameworkTrackerExamples();
+
+test("execution interviews use the analytical framework for nudges", () => {
+  const tracker = createFrameworkTracker("execution", Date.now());
+  const coverage = tracker.analyzeTurn({
+    id: "execution-turn",
+    speaker: "user",
+    text: "The goal is retention, and I would measure cohort retention and activation metrics.",
+    timestamp: Date.now(),
+  });
+
+  assert.equal(coverage.interviewType, "execution");
+  assert.equal(
+    coverage.elements.some((element) => element.name === "Metrics" && element.detected),
+    true
+  );
+});
+
+test("behavioral interviews use the leadership framework for nudges", () => {
+  const tracker = createFrameworkTracker("behavioral", Date.now());
+  const coverage = tracker.analyzeTurn({
+    id: "behavioral-turn",
+    speaker: "user",
+    text: "The situation was tense, my task was alignment, and I led the action plan.",
+    timestamp: Date.now(),
+  });
+
+  assert.equal(coverage.interviewType, "behavioral");
+  assert.equal(
+    coverage.elements.some((element) => element.name === "Situation" && element.detected),
+    true
+  );
+});

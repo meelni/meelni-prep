@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   DASHBOARD_CONTENT_PANEL_CLASS_NAME,
+  DASHBOARD_SIDEBAR_SHELL_CLASS_NAME,
   DashboardLayout,
   getInitialSidebarCollapsed,
   getSidebarCollapsedForViewport,
@@ -45,6 +46,11 @@ test("dashboard shell wraps every section in the canonical content panel", () =>
   assert.match(html, /History content/);
 });
 
+test("dashboard shell does not reserve desktop sidebar width on mobile", () => {
+  assert.match(DASHBOARD_SIDEBAR_SHELL_CLASS_NAME, /hidden/);
+  assert.match(DASHBOARD_SIDEBAR_SHELL_CLASS_NAME, /md:block/);
+});
+
 test("dashboard shell keeps scrolling inside the content container", () => {
   const html = renderToStaticMarkup(
     React.createElement(
@@ -74,7 +80,7 @@ test("dashboard shell owns the global new rep action", () => {
     )
   );
 
-  assert.match(html, /href="\/setup"/);
+  assert.match(html, /href="\/dashboard\/new-rep"/);
   assert.match(html, />New rep</);
   assert.doesNotMatch(html, /New Interview/);
 });
