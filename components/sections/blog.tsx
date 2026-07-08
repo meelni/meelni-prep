@@ -1,109 +1,76 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { ArrowRight, Calendar, Clock } from "lucide-react";
 import Link from "next/link";
-import { getRecentBlogPosts } from "@/lib/blog-data";
-import { fadeInUp, staggerContainer } from "@/lib/animations";
+
+const guideCards = [
+  {
+    category: "Product Sense",
+    title: "How to choose a user segment without sounding generic",
+    description:
+      "A short tactical guide that should point directly into a matching practice rep.",
+  },
+  {
+    category: "Execution",
+    title: "What strong metric answers do before listing KPIs",
+    description:
+      "Turn metric questions into diagnosis, tradeoff, and decision-making practice.",
+  },
+  {
+    category: "Behavioral",
+    title: "The difference between a story and an interview answer",
+    description:
+      "Make STAR answers tighter, more quantified, and easier for interviewers to trust.",
+  },
+];
 
 export function Blog() {
-  const posts = getRecentBlogPosts(3);
-
   return (
-    <section className="relative py-24 overflow-hidden">
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-background/50 to-background pointer-events-none" />
-
-      <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="space-y-16"
-        >
-          {/* Section Header */}
-          <div className="text-center space-y-4">
-            <motion.div variants={fadeInUp}>
-              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary">
-                Interview Insights
-              </span>
-            </motion.div>
-            <motion.h2
-              variants={fadeInUp}
-              className="text-4xl sm:text-5xl font-display font-bold tracking-tight"
-            >
-              Learn from the Experts
-            </motion.h2>
-            <motion.p
-              variants={fadeInUp}
-              className="text-base text-muted-foreground max-w-2xl mx-auto"
-            >
-              Frameworks, strategies, and insights from our PM coaching practice
-            </motion.p>
+    <section
+      id="prep-library"
+      className="bg-background px-4 py-24 sm:px-6 lg:px-8"
+    >
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-9 flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
+          <div className="max-w-2xl">
+            <div className="text-section-eyebrow text-primary mb-3">
+              Prep Library
+            </div>
+            <h2 className="text-display-section text-foreground">
+              Learn the move, then practice it out loud.
+            </h2>
           </div>
+          <Link
+            href="/blog"
+            className="border-border bg-background text-foreground hover:bg-accent inline-flex h-11 w-fit items-center rounded-full border px-4 text-sm font-bold transition-colors"
+          >
+            Read all guides
+          </Link>
+        </div>
 
-          {/* Blog Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {posts.map((post, index) => (
-              <motion.div
-                key={post.id}
-                variants={fadeInUp}
-                custom={index}
+        <div className="grid gap-8 md:grid-cols-3 md:gap-[18px]">
+          {guideCards.map((guide) => (
+            <article
+              key={guide.category}
+              className="border-foreground/80 flex flex-col gap-5 border-t pt-6"
+            >
+              <div className="text-section-eyebrow text-muted-foreground dark:text-slate-400">
+                {guide.category}
+              </div>
+              <h3 className="text-display-card text-foreground">
+                {guide.title}
+              </h3>
+              <p className="text-muted-foreground text-sm leading-6 dark:text-slate-400">
+                {guide.description}
+              </p>
+              <Link
+                href="/blog"
+                className="text-primary mt-auto text-sm leading-5 font-bold"
               >
-                <Link href={`/blog/${post.id}`}>
-                  <div className="group h-full bg-card/40 backdrop-blur-sm border border-border/60 rounded-2xl overflow-hidden transition-all duration-300 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1">
-                    {/* Category Badge */}
-                    <div className="p-6 pb-4">
-                      <span className="inline-block px-2.5 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium">
-                        {post.category}
-                      </span>
-                    </div>
-
-                    {/* Content */}
-                    <div className="px-6 pb-6 space-y-4">
-                      <h3 className="text-xl font-display font-semibold leading-tight group-hover:text-primary transition-colors duration-200">
-                        {post.title}
-                      </h3>
-                      <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
-                        {post.excerpt}
-                      </p>
-
-                      {/* Meta Info */}
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2">
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="h-3.5 w-3.5" />
-                          <span>{post.date}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="h-3.5 w-3.5" />
-                          <span>{post.readTime}</span>
-                        </div>
-                      </div>
-
-                      {/* Read More Link */}
-                      <div className="flex items-center gap-2 text-sm font-medium text-primary pt-2 group-hover:gap-3 transition-all duration-200">
-                        <span>Read article</span>
-                        <ArrowRight className="h-4 w-4" />
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* View All Link */}
-          <motion.div variants={fadeInUp} className="text-center">
-            <Link
-              href="/blog"
-              className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:gap-3 transition-all duration-200"
-            >
-              View all articles
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </motion.div>
-        </motion.div>
+                Read guide
+              </Link>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );

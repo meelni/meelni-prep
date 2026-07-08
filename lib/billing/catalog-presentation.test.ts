@@ -32,22 +32,29 @@ test("public pricing plans format credits, prices, and rollover copy", () => {
   assert.equal(trial?.priceLabel, "$0");
   assert.equal(trial?.creditLabel, "2 credits");
   assert.equal(trial?.frequencyLabel, "7-day trial");
+  assert.equal(trial?.cta, "Get 2 credits");
   assert.equal(trial?.canPurchase, false);
 
   assert.equal(pass?.priceLabel, "$9");
   assert.equal(pass?.creditLabel, "1 credit");
   assert.equal(pass?.frequencyLabel, "pass");
+  assert.equal(pass?.cta, "Get 1 credit");
   assert.equal(pass?.canPurchase, true);
 
   assert.equal(starter?.priceLabel, "$19");
+  assert.equal(starter?.name, "Monthly Practice");
   assert.equal(starter?.creditLabel, "4 credits/month");
   assert.equal(starter?.rolloverLabel, "Rollover up to 4 credits for 60 days");
+  assert.equal(starter?.cta, "Get 4 credits");
   assert.equal(starter?.canPurchase, true);
+  assert.equal(starter?.popular, false);
 
   assert.equal(pro?.priceLabel, "$49");
   assert.equal(pro?.creditLabel, "12 credits/month");
   assert.equal(pro?.rolloverLabel, "Rollover up to 12 credits for 60 days");
+  assert.equal(pro?.cta, "Get 12 credits");
   assert.equal(pro?.canPurchase, true);
+  assert.equal(pro?.popular, false);
 });
 
 test("structured data offers mirror credit catalog prices", () => {
@@ -72,7 +79,7 @@ test("structured data offers mirror credit catalog prices", () => {
         description: "1 PM interview credit, expires after 30 days",
       },
       {
-        name: "Starter",
+        name: "Monthly Practice",
         price: "19",
         description:
           "4 PM interview credits per month with rollover up to 4 credits for 60 days",

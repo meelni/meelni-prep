@@ -1,26 +1,16 @@
 "use client";
 
 import { Section } from "@/components/section";
-import { motion } from "framer-motion";
-import { AlertCircle, Check, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useState } from "react";
-import {
-  AppSurface,
-  AppSurfaceDescription,
-  AppSurfaceTitle,
-  StatusPill,
-} from "@/components/ui/app-surface";
 import { Button } from "@/components/ui/button";
 import {
   getPublicPricingPlans,
   type PublicPricingPlan,
 } from "@/lib/billing/catalog-presentation";
 import type { StripeCheckoutCatalogId } from "@/lib/billing/stripe-catalog";
-import { FEATURE_GATES } from "@/lib/feature-flags/gates";
-import { useFeatureFlag } from "@/lib/feature-flags";
 
 export function Pricing() {
-  const reactivationEnabled = useFeatureFlag(FEATURE_GATES.meelniReactivationAccess);
   const [loadingCatalogId, setLoadingCatalogId] = useState<string | null>(null);
   const plans = getPublicPricingPlans();
 
@@ -60,113 +50,46 @@ export function Pricing() {
 
   return (
     <Section id="pricing">
-      <div className="pt-16 pb-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          {/* Section Header */}
-          <div className="text-center mb-12">
-            <motion.h2
-              className="text-display-lg font-display font-light text-foreground mb-4"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5 }}
-            >
+      <div className="border-border/50 border-y bg-[#F6F7F9] px-4 py-20 sm:px-6 lg:px-8 dark:bg-[#15161B]">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-9 max-w-xl">
+            <div className="text-section-eyebrow text-primary mb-3">
               Pricing
-            </motion.h2>
+            </div>
+            <h2 className="text-display-section text-foreground">
+              Buy the amount of practice you need.
+            </h2>
           </div>
 
-          {reactivationEnabled ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {plans.map((plan, index) => (
-                <motion.div
-                  key={plan.catalogId}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: index * 0.08 }}
-                >
-                  <AppSurface
-                    variant={plan.popular ? "default" : "muted"}
-                    size="lg"
-                    className="flex h-full flex-col"
-                  >
-                    {plan.popular && (
-                      <StatusPill tone="success" className="mb-4 w-fit">
-                        Most popular
-                      </StatusPill>
-                    )}
-                    <AppSurfaceTitle className="font-display text-xl">
-                      {plan.name}
-                    </AppSurfaceTitle>
-                    <AppSurfaceDescription className="mt-2 text-sm">
-                      {plan.description}
-                    </AppSurfaceDescription>
-                    <div className="mt-6 flex items-end gap-1">
-                      <span className="font-display text-4xl font-light">
-                        {plan.priceLabel}
-                      </span>
-                      <span className="pb-1 text-sm text-muted-foreground">
-                        /{plan.frequencyLabel}
-                      </span>
-                    </div>
-                    <div className="mt-4 text-sm font-medium">
-                      {plan.creditLabel}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {plan.expirationLabel}
-                    </div>
-                    {plan.rolloverLabel && (
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {plan.rolloverLabel}
-                      </div>
-                    )}
-                    <ul className="mt-6 flex-1 space-y-3 text-sm">
-                      {plan.features.map((feature) => (
-                        <li key={feature} className="flex gap-2">
-                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      className="mt-6 w-full"
-                      onClick={() => void handlePlanClick(plan)}
-                      disabled={loadingCatalogId === plan.catalogId}
-                      variant={plan.canPurchase ? "default" : "outline"}
-                    >
-                      {loadingCatalogId === plan.catalogId && (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      )}
-                      {plan.cta}
-                    </Button>
-                  </AppSurface>
-                </motion.div>
-              ))}
-            </div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="mx-auto max-w-2xl"
-            >
-              <AppSurface variant="muted" size="lg" className="text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-warning/10 text-warning">
-                  <AlertCircle className="h-6 w-6" />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {plans.map((plan) => (
+              <article
+                key={plan.catalogId}
+                className="bg-card border-border flex min-h-[262px] flex-col rounded-2xl border p-6"
+              >
+                <h3 className="text-foreground text-lg leading-6 font-bold">
+                  {plan.name}
+                </h3>
+                <div className="text-card-price text-foreground mt-5">
+                  {plan.priceLabel}
                 </div>
-                <StatusPill tone="warning" className="mb-4">
-                  Subscription Update
-                </StatusPill>
-                <AppSurfaceTitle className="font-display text-xl">
-                  Service Discontinued
-                </AppSurfaceTitle>
-                <AppSurfaceDescription className="mx-auto mt-3 max-w-lg text-sm leading-relaxed">
-                  Meelni is no longer accepting new subscriptions. Thank you to everyone who supported our AI-powered mock interview platform.
-                </AppSurfaceDescription>
-              </AppSurface>
-            </motion.div>
-          )}
+                <p className="text-muted-foreground mt-5 text-sm leading-[22px]">
+                  {plan.description}
+                </p>
+                <Button
+                  className="mt-auto h-[42px] w-full rounded-full font-bold"
+                  onClick={() => void handlePlanClick(plan)}
+                  disabled={loadingCatalogId === plan.catalogId}
+                  variant="outline"
+                >
+                  {loadingCatalogId === plan.catalogId && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {plan.cta}
+                </Button>
+              </article>
+            ))}
+          </div>
         </div>
       </div>
     </Section>

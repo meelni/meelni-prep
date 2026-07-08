@@ -1,106 +1,70 @@
 import { Icons } from "@/components/icons";
-import { StatusPill } from "@/components/ui/app-surface";
+import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/lib/config";
 import Link from "next/link";
 
+const footerLinks = [
+  { label: "Questions", href: "/explore" },
+  { label: "Companies", href: "/companies" },
+  { label: "Pricing", href: "/pricing" },
+  { label: "Privacy", href: "/privacy" },
+  { label: "Terms", href: "/terms" },
+];
+
 export function Footer() {
-  const currentYear = new Date().getFullYear();
-
   return (
-    <footer className="border-t border-border/60 bg-background/95 backdrop-blur-lg mt-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Main Footer Content - matches header justify-between layout */}
-        <div className="flex flex-col md:flex-row justify-between gap-12 mb-12">
-          {/* Left Side: Brand + Product Links */}
-          <div className="flex flex-col md:flex-row gap-12 md:gap-16">
-            {/* Brand Column */}
-            <div>
-              <div className="flex items-center gap-x-2 mb-4">
-                <Icons.logo className="h-6 w-6 text-primary" />
-                <h2 className="text-xl font-sans font-semibold text-foreground">
-                  {siteConfig.name}
-                </h2>
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
-                {siteConfig.description}
-              </p>
-            </div>
-
-            {/* Product Links */}
-            <nav className="flex flex-col gap-3">
-              <a
-                href="#features"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200"
-              >
-                Features
-              </a>
-              <a
-                href="#pricing"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200"
-              >
-                Pricing
-              </a>
-              <Link
-                href="/blog"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200"
-              >
-                Blog
-              </Link>
-              <a
-                href="/contact"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200"
-              >
-                Contact
-              </a>
-            </nav>
+    <footer className="bg-footer border-t border-white/10 px-4 pt-[72px] pb-20 text-white sm:px-6 sm:pb-9 lg:px-8">
+      <div className="mx-auto flex max-w-6xl flex-col gap-14">
+        <div className="flex flex-col justify-between gap-10 border-b border-white/15 pb-14 lg:flex-row lg:items-end">
+          <div className="max-w-[690px]">
+            <h2 className="text-display-footer text-balance">
+              Your next answer should be better than the last one.
+            </h2>
+            <p className="mt-5 max-w-xl text-lg leading-7 text-slate-300">
+              Start with a real prompt, practice it out loud, and leave with the
+              next move.
+            </p>
           </div>
 
-          {/* Right Side: Connect - aligns with header CTA button */}
-          <div>
-            <h3 className="text-sm font-sans font-semibold text-foreground mb-4">
-              Connect
-            </h3>
-            <div className="flex gap-x-3">
-              {siteConfig.footer.socialLinks.map((link, index) => (
-                <a
-                  key={index}
-                  href={link.url}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-card/40 text-muted-foreground transition-all duration-200 hover:text-primary hover:border-primary/60 hover:bg-primary/10"
-                >
-                  {link.icon}
-                </a>
-              ))}
-            </div>
+          <div className="flex flex-col gap-3 pb-1 sm:flex-row">
+            <Button
+              asChild
+              size="lg"
+              variant="secondary"
+              className="text-footer-button h-12 rounded-full bg-white px-6 font-bold hover:bg-white/90"
+            >
+              <Link href="/dashboard">Start practice</Link>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="h-12 rounded-full border-white/30 bg-transparent px-6 font-bold text-white hover:bg-white/10 hover:text-white"
+            >
+              <Link href="/explore">Explore questions</Link>
+            </Button>
           </div>
         </div>
 
-        {/* Bottom Bar */}
-        <div className="pt-8 border-t border-border/40">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            {/* Left: Copyright + Legal Links */}
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-2 text-xs text-muted-foreground">
-              <span>© {currentYear} {siteConfig.name}. All rights reserved.</span>
-              <span className="hidden md:inline">|</span>
-              <a
-                href="/terms"
-                className="hover:text-foreground transition-colors duration-200"
-              >
-                Terms of Service
-              </a>
-              <span className="hidden md:inline">|</span>
-              <a
-                href="/privacy"
-                className="hover:text-foreground transition-colors duration-200"
-              >
-                Privacy Policy
-              </a>
-            </div>
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-center sm:justify-between">
+          <Link href="/" className="flex items-center gap-2.5">
+            <span className="text-footer-button flex h-6 w-6 items-center justify-center rounded-md bg-white">
+              <Icons.logo className="h-4 w-4" />
+            </span>
+            <span className="text-sm text-slate-400">{siteConfig.name}</span>
+          </Link>
 
-            {/* Right: Status */}
-            <StatusPill tone="success" className="uppercase tracking-wider">
-              All systems operational
-            </StatusPill>
-          </div>
+          <nav className="flex flex-wrap gap-x-6 gap-y-3">
+            {footerLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-sm text-slate-400 transition-colors hover:text-white"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         </div>
       </div>
     </footer>

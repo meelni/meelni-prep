@@ -1,7 +1,4 @@
-import {
-  BILLING_CATALOG,
-  type BillingCatalogId,
-} from "@meelni/core";
+import { BILLING_CATALOG, type BillingCatalogId } from "@meelni/core";
 import type { StripeCheckoutCatalogId } from "./stripe-catalog";
 
 export interface PublicPricingPlan {
@@ -55,8 +52,8 @@ export function getPublicPricingPlans(): PublicPricingPlan[] {
 
     return {
       catalogId,
-      name: item.displayName,
-      description: item.description,
+      name: getDisplayName(catalogId),
+      description: getDescription(catalogId),
       priceLabel: formatCatalogPrice(item.priceInCents),
       frequencyLabel: getFrequencyLabel(catalogId),
       creditLabel,
@@ -65,7 +62,7 @@ export function getPublicPricingPlans(): PublicPricingPlan[] {
       features: getFeatures(catalogId),
       cta: getCta(catalogId),
       canPurchase: item.canPurchase,
-      popular: catalogId === "starter",
+      popular: false,
     };
   });
 }
@@ -87,6 +84,32 @@ function formatPriceNumber(priceInCents: number): string {
 
 function getCreditLabel(credits: number, suffix: string): string {
   return `${credits} ${credits === 1 ? "credit" : "credits"}${suffix}`;
+}
+
+function getDisplayName(catalogId: PublicPricingPlan["catalogId"]): string {
+  switch (catalogId) {
+    case "trial":
+      return "Trial";
+    case "interview_pass":
+      return "Interview Pass";
+    case "starter":
+      return "Monthly Practice";
+    case "pro":
+      return "Pro";
+  }
+}
+
+function getDescription(catalogId: PublicPricingPlan["catalogId"]): string {
+  switch (catalogId) {
+    case "trial":
+      return "For a first week of practice. 2 credits expire after 7 days.";
+    case "interview_pass":
+      return "For one focused run-through. 1 credit expires after 30 days.";
+    case "starter":
+      return "For a steady prep rhythm. 4 credits each month with rollover.";
+    case "pro":
+      return "For an active interview loop. 12 credits each month with rollover.";
+  }
 }
 
 function getFrequencyLabel(catalogId: PublicPricingPlan["catalogId"]): string {
@@ -155,13 +178,13 @@ function getFeatures(catalogId: PublicPricingPlan["catalogId"]): string[] {
 function getCta(catalogId: PublicPricingPlan["catalogId"]): string {
   switch (catalogId) {
     case "trial":
-      return "Start trial";
+      return "Get 2 credits";
     case "interview_pass":
-      return "Buy pass";
+      return "Get 1 credit";
     case "starter":
-      return "Choose Starter";
+      return "Get 4 credits";
     case "pro":
-      return "Choose Pro";
+      return "Get 12 credits";
   }
 }
 
