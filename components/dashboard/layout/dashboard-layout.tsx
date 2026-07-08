@@ -52,24 +52,31 @@ export function DashboardLayout({
   user,
   onSignOut,
 }: DashboardLayoutProps) {
-  // Initialize from localStorage to prevent animation on page load
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("sidebar-collapsed");
-      return getInitialSidebarCollapsed({
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [hasSyncedSidebarPreference, setHasSyncedSidebarPreference] =
+    useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("sidebar-collapsed");
+    setSidebarCollapsed(
+      getInitialSidebarCollapsed({
         isMobile: window.matchMedia("(max-width: 767px)").matches,
         savedCollapsed: saved === "true",
-      });
-    }
-    return false;
-  });
+      })
+    );
+    setHasSyncedSidebarPreference(true);
+  }, []);
 
   // Persist desktop preference without letting mobile visits overwrite it.
   useEffect(() => {
+    if (!hasSyncedSidebarPreference) {
+      return;
+    }
+
     if (window.matchMedia("(min-width: 768px)").matches) {
       localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
     }
-  }, [sidebarCollapsed]);
+  }, [hasSyncedSidebarPreference, sidebarCollapsed]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");

@@ -68,7 +68,9 @@ function MarketingHero({
       {...props}
     >
       {eyebrow}
-      <h1 className="text-display-xl text-foreground">{title}</h1>
+      <h1 className="text-display-xl text-foreground mx-auto max-w-full break-words">
+        {title}
+      </h1>
       <p className="text-muted-foreground mx-auto max-w-2xl text-lg leading-7">
         {description}
       </p>

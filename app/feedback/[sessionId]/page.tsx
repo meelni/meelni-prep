@@ -17,6 +17,7 @@ import {
 
 import {
   FeedbackActionItem,
+  FeedbackReviewShell,
   FeedbackScoreCard,
   FeedbackSectionCard,
   FeedbackStatusPage,
@@ -65,23 +66,18 @@ interface TranscriptResponse {
 
 function LoadingSkeleton() {
   return (
-    <div className="bg-background min-h-screen">
-      <div className="container mx-auto max-w-4xl px-4 py-8">
-        {/* Header Skeleton */}
-        <div className="mb-8">
-          <div className="bg-muted mb-4 h-8 w-32 animate-pulse rounded" />
-          <div className="bg-muted h-12 w-64 animate-pulse rounded" />
-        </div>
-
-        <div className="mb-8">
-          <FeedbackSectionCard
-            title={<div className="bg-muted h-6 w-40 animate-pulse rounded" />}
-          >
-            <div className="flex items-center justify-center py-8">
-              <div className="bg-muted h-32 w-32 animate-pulse rounded-full" />
-            </div>
-          </FeedbackSectionCard>
-        </div>
+    <FeedbackReviewShell
+      title="Interview Feedback"
+      description="Loading your post-interview review."
+    >
+      <div className="space-y-8">
+        <FeedbackSectionCard
+          title={<div className="bg-muted h-6 w-40 animate-pulse rounded" />}
+        >
+          <div className="flex items-center justify-center py-8">
+            <div className="bg-muted h-32 w-32 animate-pulse rounded-full" />
+          </div>
+        </FeedbackSectionCard>
 
         <FeedbackSectionCard
           title={<div className="bg-muted h-6 w-48 animate-pulse rounded" />}
@@ -95,7 +91,7 @@ function LoadingSkeleton() {
           ))}
         </FeedbackSectionCard>
       </div>
-    </div>
+    </FeedbackReviewShell>
   );
 }
 
@@ -302,147 +298,132 @@ export default function FeedbackPage() {
   ];
 
   return (
-    <div className="bg-background min-h-screen">
-      <div className="container mx-auto max-w-4xl px-4 py-8">
-        {/* Header */}
+    <FeedbackReviewShell
+      title="Interview Feedback"
+      description="Detailed analysis of your performance"
+      action={
         <Button
           variant="ghost"
           onClick={() => router.push("/dashboard")}
-          className="mb-6"
+          className="text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Dashboard
         </Button>
-
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold">Interview Feedback</h1>
-          <p className="text-muted-foreground mt-2">
-            Detailed analysis of your performance
-          </p>
-        </div>
+      }
+    >
+      <div className="space-y-8">
 
         {/* AI Summary */}
         {feedback.summary && (
-          <div className="mb-8">
-            <FeedbackSectionCard title="AI Summary">
-              <p className="text-lg leading-relaxed">{feedback.summary}</p>
-            </FeedbackSectionCard>
-          </div>
+          <FeedbackSectionCard title="AI Summary">
+            <p className="text-lg leading-relaxed">{feedback.summary}</p>
+          </FeedbackSectionCard>
         )}
 
         {/* Overall Score */}
-        <div className="mb-8">
-          <FeedbackScoreCard
-            score={
-              <span className={getScoreColor(scorePercentage)}>
-                {overallScore.toFixed(1)}
-              </span>
-            }
-            label="Overall Score"
-            description="out of 10"
-          />
-        </div>
+        <FeedbackScoreCard
+          score={
+            <span className={getScoreColor(scorePercentage)}>
+              {overallScore.toFixed(1)}
+            </span>
+          }
+          label="Overall Score"
+          description="out of 10"
+        />
 
         {/* Dimension Scores */}
-        <div className="mb-8">
-          <FeedbackSectionCard
-            title="Performance Breakdown"
-            contentClassName="space-y-6"
-          >
-            {dimensions.map((dimension) => {
-              const score = dimension.score || 0;
-              const percentage = (score / 10) * 100;
+        <FeedbackSectionCard
+          title="Performance Breakdown"
+          contentClassName="space-y-6"
+        >
+          {dimensions.map((dimension) => {
+            const score = dimension.score || 0;
+            const percentage = (score / 10) * 100;
 
-              return (
-                <div key={dimension.name} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{dimension.name}</span>
-                    <span
-                      className={`font-semibold ${getScoreColor(percentage)}`}
-                    >
-                      {score}/10
-                    </span>
-                  </div>
-                  <div className="relative">
-                    <div className="bg-muted/30 h-2 w-full rounded-full" />
-                    <div
-                      className={`absolute inset-0 h-2 rounded-full ${getProgressColor(percentage)} transition-all`}
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
+            return (
+              <div key={dimension.name} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{dimension.name}</span>
+                  <span
+                    className={`font-semibold ${getScoreColor(percentage)}`}
+                  >
+                    {score}/10
+                  </span>
                 </div>
-              );
-            })}
-          </FeedbackSectionCard>
-        </div>
+                <div className="relative">
+                  <div className="bg-muted/30 h-2 w-full rounded-full" />
+                  <div
+                    className={`absolute inset-0 h-2 rounded-full ${getProgressColor(percentage)} transition-all`}
+                    style={{ width: `${percentage}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </FeedbackSectionCard>
 
         {/* Strengths */}
         {feedback.strengths && feedback.strengths.length > 0 && (
-          <div className="mb-8">
-            <FeedbackSectionCard
-              title="What Went Well"
-              icon={<CheckCircle2 className="h-5 w-5" />}
-              tone="success"
-            >
-              <ul className="space-y-3">
-                {feedback.strengths.map((strength, index) => (
-                  <FeedbackActionItem
-                    key={index}
-                    icon={<CheckCircle2 className="h-5 w-5" />}
-                    tone="success"
-                  >
-                    {strength}
-                  </FeedbackActionItem>
-                ))}
-              </ul>
-            </FeedbackSectionCard>
-          </div>
+          <FeedbackSectionCard
+            title="What Went Well"
+            icon={<CheckCircle2 className="h-5 w-5" />}
+            tone="success"
+          >
+            <ul className="space-y-3">
+              {feedback.strengths.map((strength, index) => (
+                <FeedbackActionItem
+                  key={index}
+                  icon={<CheckCircle2 className="h-5 w-5" />}
+                  tone="success"
+                >
+                  {strength}
+                </FeedbackActionItem>
+              ))}
+            </ul>
+          </FeedbackSectionCard>
         )}
 
         {/* Areas to Improve */}
         {feedback.improvements && feedback.improvements.length > 0 && (
-          <div className="mb-8">
-            <FeedbackSectionCard
-              title="Areas to Improve"
-              icon={<TrendingUp className="h-5 w-5" />}
-              tone="warning"
-            >
-              <ul className="space-y-3">
-                {feedback.improvements.map((improvement, index) => (
-                  <FeedbackActionItem
-                    key={index}
-                    icon={<TrendingUp className="h-5 w-5" />}
-                    tone="warning"
-                  >
-                    {improvement}
-                  </FeedbackActionItem>
-                ))}
-              </ul>
-            </FeedbackSectionCard>
-          </div>
+          <FeedbackSectionCard
+            title="Areas to Improve"
+            icon={<TrendingUp className="h-5 w-5" />}
+            tone="warning"
+          >
+            <ul className="space-y-3">
+              {feedback.improvements.map((improvement, index) => (
+                <FeedbackActionItem
+                  key={index}
+                  icon={<TrendingUp className="h-5 w-5" />}
+                  tone="warning"
+                >
+                  {improvement}
+                </FeedbackActionItem>
+              ))}
+            </ul>
+          </FeedbackSectionCard>
         )}
 
         {/* Practice Drills */}
         {feedback.drills && feedback.drills.length > 0 && (
-          <div className="mb-8">
-            <FeedbackSectionCard
-              title="Practice Recommendations"
-              icon={<Target className="h-5 w-5" />}
-              tone="info"
-            >
-              <ul className="space-y-3">
-                {feedback.drills.map((drill, index) => (
-                  <FeedbackActionItem
-                    key={index}
-                    icon={<Target className="h-5 w-5" />}
-                    tone="info"
-                  >
-                    {drill}
-                  </FeedbackActionItem>
-                ))}
-              </ul>
-            </FeedbackSectionCard>
-          </div>
+          <FeedbackSectionCard
+            title="Practice Recommendations"
+            icon={<Target className="h-5 w-5" />}
+            tone="info"
+          >
+            <ul className="space-y-3">
+              {feedback.drills.map((drill, index) => (
+                <FeedbackActionItem
+                  key={index}
+                  icon={<Target className="h-5 w-5" />}
+                  tone="info"
+                >
+                  {drill}
+                </FeedbackActionItem>
+              ))}
+            </ul>
+          </FeedbackSectionCard>
         )}
 
         {/* Interview Transcript */}
@@ -468,7 +449,6 @@ export default function FeedbackPage() {
               )}
             </Button>
           }
-          className="mb-8"
         >
           {transcriptExpanded && (
             <>
@@ -516,6 +496,6 @@ export default function FeedbackPage() {
           )}
         </FeedbackSectionCard>
       </div>
-    </div>
+    </FeedbackReviewShell>
   );
 }

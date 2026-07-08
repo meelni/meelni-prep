@@ -50,7 +50,7 @@ export function WeakestAreaCard({ sessions }: WeakestAreaCardProps) {
         description="Complete at least one interview to identify areas for improvement."
         action={
           <Button asChild size="sm">
-            <Link href="/setup">
+            <Link href="/dashboard/new-rep">
               Start First Interview
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
@@ -93,7 +93,9 @@ export function WeakestAreaCard({ sessions }: WeakestAreaCardProps) {
           variant="outline"
           className="border-warning/50 hover:bg-warning/10"
         >
-          <Link href={`/setup?focus=${competencyName.toLowerCase()}`}>
+          <Link
+            href={`/dashboard/new-rep?focus=${competencyName.toLowerCase()}`}
+          >
             Practice This
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>

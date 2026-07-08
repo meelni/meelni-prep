@@ -73,6 +73,211 @@ test("ui source tree does not keep tracked backup files", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("design system front door includes agent-scale operating rules", async () => {
+  const design = await readFile("DESIGN.md", "utf8");
+  const maturity = await readFile(
+    "docs/design/2026-07-08-agent-design-system-maturity.md",
+    "utf8"
+  );
+  const examples = await readFile(
+    "docs/design/2026-07-08-canonical-ui-patterns.md",
+    "utf8"
+  );
+  const externalLenses = await readFile(
+    "docs/design/2026-07-08-external-design-lenses.md",
+    "utf8"
+  );
+  const externalLensSkill = await readFile(
+    ".agents/skills/meelni-design-review-orchestrator/SKILL.md",
+    "utf8"
+  );
+  const externalLensReference = await readFile(
+    ".agents/skills/meelni-design-review-orchestrator/references/external-design-lenses.md",
+    "utf8"
+  );
+  const externalLensDecision = await readFile(
+    "docs/decisions/2026-07-08-external-design-lens-adoption.md",
+    "utf8"
+  );
+  const requiredDesignSections = [
+    "### Action Hierarchy",
+    "### Route And Shell Decision Tree",
+    "### Component Decision Tree",
+    "### Required States",
+    "### Agent UI Change Checklist",
+    "### External Design Lenses",
+    "2026-07-08-agent-design-system-maturity.md",
+    "2026-07-08-canonical-ui-patterns.md",
+    "2026-07-08-external-design-lenses.md",
+  ];
+  const requiredMaturitySections = [
+    "## Current Action Audit",
+    "## Action Hierarchy",
+    "## Shell Decision Matrix",
+    "## Component Composition Rules",
+    "## State Coverage",
+    "## Guardrail Strategy",
+    "## Agent Checklist",
+    "## External Design Lenses",
+  ];
+  const requiredExampleSections = [
+    "## Route Shell Examples",
+    "## Action Cluster Examples",
+    "## State Examples",
+    "## Primitive Examples",
+    "## Anti-Patterns To Avoid",
+    "## When To Add A New Example",
+  ];
+  const requiredExampleReferences = [
+    "components/dashboard/layout/dashboard-page.tsx",
+    "components/dashboard/sections/overview.tsx",
+    "components/feedback/feedback-surface.tsx",
+    "app/interview/page.tsx",
+    "components/marketing/marketing-surface.tsx",
+    "components/auth/auth-shell.tsx",
+    "components/ui/selectable-card.tsx",
+    "components/ui/segmented-control.tsx",
+    "components/ui/filter-pill.tsx",
+    "components/dashboard/sections/settings.tsx",
+  ];
+  const requiredExternalLensSections = [
+    "## Source Of Truth",
+    "## Lens Roles",
+    "## Integration Policy",
+    "## Agent Workflow",
+    "## Rollout",
+  ];
+  const requiredExternalLensPolicyTerms = [
+    "Meelni wins",
+    "Impeccable",
+    "ibelick/ui-skills",
+    "Taste Skill",
+    "advisory",
+    "hooks or CI",
+  ];
+  const requiredExternalLensSkillTerms = [
+    "Meelni route taxonomy",
+    "meelni-ui-design-system",
+    "Impeccable",
+    "ui-skills",
+    "Taste Skill",
+    "External lens recommendations",
+  ];
+  const violations = [];
+
+  for (const section of requiredDesignSections) {
+    if (!design.includes(section)) {
+      violations.push(`DESIGN.md:${section}`);
+    }
+  }
+
+  for (const section of requiredMaturitySections) {
+    if (!maturity.includes(section)) {
+      violations.push(`maturity:${section}`);
+    }
+  }
+
+  if (!maturity.includes("2026-07-08-canonical-ui-patterns.md")) {
+    violations.push("maturity:canonical-ui-patterns-link");
+  }
+
+  for (const section of requiredExampleSections) {
+    if (!examples.includes(section)) {
+      violations.push(`examples:${section}`);
+    }
+  }
+
+  for (const reference of requiredExampleReferences) {
+    if (!examples.includes(reference)) {
+      violations.push(`examples:${reference}`);
+    }
+  }
+
+  for (const section of requiredExternalLensSections) {
+    if (!externalLenses.includes(section)) {
+      violations.push(`external-lenses:${section}`);
+    }
+  }
+
+  for (const term of requiredExternalLensPolicyTerms) {
+    if (
+      !externalLenses.includes(term) ||
+      !externalLensReference.includes(term)
+    ) {
+      violations.push(`external-lenses:${term}`);
+    }
+  }
+
+  for (const term of requiredExternalLensSkillTerms) {
+    if (!externalLensSkill.includes(term)) {
+      violations.push(`external-lens-skill:${term}`);
+    }
+  }
+
+  if (
+    !externalLensDecision.includes(
+      "Meelni will adopt external design ecosystems as calibrated advisory lenses"
+    )
+  ) {
+    violations.push("decision:advisory-lenses");
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("raw native buttons stay inside approved primitives or control groups", async () => {
+  const allowedRawButtonFiles = new Set([
+    "components/dashboard/dashboard-surface.tsx",
+    "components/demo-modal.tsx",
+    "components/ui/filter-pill.tsx",
+    "components/ui/segmented-control.tsx",
+    "components/ui/selectable-card.tsx",
+  ]);
+  const violations = [];
+
+  for (const root of ["app", "components"]) {
+    for await (const file of walk(root)) {
+      if (!file.endsWith(".tsx") || file.startsWith("app/test-")) {
+        continue;
+      }
+
+      const content = await readFile(file, "utf8");
+      const usesRawButton =
+        content.includes("<button") || content.includes("motion.button");
+
+      if (usesRawButton && !allowedRawButtonFiles.has(file)) {
+        violations.push(file);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("production app page routes are classified in the product container audit", async () => {
+  const docs = await readFile(
+    "docs/design/2026-07-08-product-container-audit.md",
+    "utf8"
+  );
+  const violations = [];
+
+  if (!docs.includes("## Production Route Inventory")) {
+    violations.push("docs:Production Route Inventory");
+  }
+
+  for await (const file of walkAll("app")) {
+    if (!file.endsWith("page.tsx") || file.startsWith("app/test-")) {
+      continue;
+    }
+
+    if (!docs.includes(file)) {
+      violations.push(file);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("referenced custom design utilities are declared in globals.css", async () => {
   const globals = await readFile("app/globals.css", "utf8");
   const source = [];
@@ -262,6 +467,127 @@ test("setup selectors use the shared selectable-card primitive", async () => {
   }
 
   assert.deepEqual([...missingExports, ...violations], []);
+});
+
+test("interview launch CTAs use the dashboard-contained New Rep route", async () => {
+  const legacySetupCta =
+    /(?:href=["']\/setup(?:[?#"'])|router\.push\((?:["'`]\/setup)|window\.location\.href\s*=\s*["']\/setup|\]\(\/setup(?:[?#)]))/;
+  const allowedFiles = new Set(["app/setup/page.tsx"]);
+  const violations = [];
+
+  for (const root of ["app", "components", "lib"]) {
+    for await (const file of walk(root)) {
+      if (
+        (!file.endsWith(".tsx") && !file.endsWith(".ts")) ||
+        file.startsWith("app/test-")
+      ) {
+        continue;
+      }
+      if (allowedFiles.has(file)) {
+        continue;
+      }
+
+      const content = await readFile(file, "utf8");
+      if (legacySetupCta.test(content)) {
+        violations.push(file);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("authenticated product routes follow the product container taxonomy", async () => {
+  const docs = await readFile(
+    "docs/design/2026-07-08-product-container-audit.md",
+    "utf8"
+  );
+  const setupPage = await readFile("app/setup/page.tsx", "utf8");
+  const newRepPage = await readFile("app/dashboard/new-rep/page.tsx", "utf8");
+  const interviewPage = await readFile("app/interview/page.tsx", "utf8");
+  const feedbackResultPage = await readFile(
+    "app/feedback/[sessionId]/page.tsx",
+    "utf8"
+  );
+  const feedbackComparePage = await readFile(
+    "app/feedback/[sessionId]/compare/page.tsx",
+    "utf8"
+  );
+  const feedbackLoading = await readFile(
+    "app/feedback/[sessionId]/components/feedback-loading.tsx",
+    "utf8"
+  );
+  const dashboardSections = [
+    "components/dashboard/sections/overview.tsx",
+    "components/dashboard/sections/history.tsx",
+    "components/dashboard/sections/questions.tsx",
+    "components/dashboard/sections/analytics.tsx",
+    "components/dashboard/sections/settings.tsx",
+  ];
+  const violations = [];
+
+  for (const heading of [
+    "Dashboard Workspace",
+    "Feedback Review Workspace",
+    "Focused Interview Room",
+    "Auth Flow",
+    "Compatibility Redirects",
+    "Public And Content Pages",
+    "Production Route Inventory",
+  ]) {
+    if (!docs.includes(heading)) {
+      violations.push(`docs:${heading}`);
+    }
+  }
+
+  if (!setupPage.includes("router.replace(`/dashboard/new-rep")) {
+    violations.push("app/setup/page.tsx:dashboard-new-rep-redirect");
+  }
+  if (setupPage.includes("SetupContent")) {
+    violations.push("app/setup/page.tsx:standalone-setup-content");
+  }
+  if (!newRepPage.includes("SetupContent")) {
+    violations.push("app/dashboard/new-rep/page.tsx:SetupContent");
+  }
+
+  for (const file of dashboardSections) {
+    const content = await readFile(file, "utf8");
+    if (!content.includes("DashboardPage")) {
+      violations.push(`${file}:DashboardPage`);
+    }
+  }
+
+  if (!feedbackResultPage.includes("FeedbackReviewShell")) {
+    violations.push("app/feedback/[sessionId]/page.tsx:FeedbackReviewShell");
+  }
+  if (!feedbackComparePage.includes("FeedbackReviewShell")) {
+    violations.push(
+      "app/feedback/[sessionId]/compare/page.tsx:FeedbackReviewShell"
+    );
+  }
+  if (!feedbackLoading.includes("FeedbackStatusPage")) {
+    violations.push(
+      "app/feedback/[sessionId]/components/feedback-loading.tsx:FeedbackStatusPage"
+    );
+  }
+
+  for (const banned of ["DashboardLayout", "DashboardPage"]) {
+    if (interviewPage.includes(banned)) {
+      violations.push(`app/interview/page.tsx:${banned}`);
+    }
+  }
+  for (const required of [
+    "LiveKitRoomWrapper",
+    "InterviewRoomContent",
+    "StatusPill",
+    "AppSurfaceHeader",
+  ]) {
+    if (!interviewPage.includes(required)) {
+      violations.push(`app/interview/page.tsx:${required}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
 });
 
 test("setup difficulty selector uses semantic selection tones", async () => {
@@ -468,7 +794,11 @@ test("voice orb surfaces use shared runtime color tokens", async () => {
       violations.push(`${file}:inline-orb-colors`);
     }
 
-    if (/\[[\s\n]*["']#[0-9A-Fa-f]{6}["'][\s\n]*,[\s\n]*["']#[0-9A-Fa-f]{6}["'][\s\n]*\]/.test(content)) {
+    if (
+      /\[[\s\n]*["']#[0-9A-Fa-f]{6}["'][\s\n]*,[\s\n]*["']#[0-9A-Fa-f]{6}["'][\s\n]*\]/.test(
+        content
+      )
+    ) {
       violations.push(`${file}:hex-color-pair`);
     }
   }
@@ -836,7 +1166,9 @@ test("priority dashboard cards use shared dashboard surface primitives", async (
     "utf8"
   );
   if (!settingsSource.includes("DashboardPage")) {
-    missingImports.push("components/dashboard/sections/settings.tsx:DashboardPage");
+    missingImports.push(
+      "components/dashboard/sections/settings.tsx:DashboardPage"
+    );
   }
   if (!settingsSource.includes("SETTINGS_CATEGORY_ORDER")) {
     missingImports.push(
@@ -961,7 +1293,9 @@ test("dashboard loading states use shared loading primitive", async () => {
   }
 
   if (!surfaceSource.includes("DashboardLoadingState")) {
-    violations.push("components/dashboard/dashboard-surface.tsx:DashboardLoadingState");
+    violations.push(
+      "components/dashboard/dashboard-surface.tsx:DashboardLoadingState"
+    );
   }
 
   for (const file of pageFiles) {
@@ -1387,8 +1721,7 @@ test("chart trend badges use semantic badge variants", async () => {
     "components/charts/partial-line-chart.tsx",
     "components/charts/rounded-pie-chart.tsx",
   ];
-  const rawTrendBadge =
-    /\b(?:bg|text|border)-(?:green|red)-500(?:\/\d+)?\b/;
+  const rawTrendBadge = /\b(?:bg|text|border)-(?:green|red)-500(?:\/\d+)?\b/;
   const requiredVariants = ['variant="success"', 'variant="destructive"'];
   const violations = [];
   const source = [];
@@ -1492,7 +1825,11 @@ test("question bank child components use shared controls", async () => {
     if (/min-h-\[(?:44|48)px\]/.test(content)) {
       violations.push(`${file}:arbitrary-touch-target`);
     }
-    if (/left-\[280px\]|max-w-\[calc\(100vw-2rem\)\]|min-h-\[140px\]/.test(content)) {
+    if (
+      /left-\[280px\]|max-w-\[calc\(100vw-2rem\)\]|min-h-\[140px\]/.test(
+        content
+      )
+    ) {
       violations.push(`${file}:arbitrary-question-bank-layout`);
     }
     if (/\b(?:h|max-h)-\[60vh\]/.test(content)) {
@@ -1700,7 +2037,11 @@ test("lower landing sections use semantic status and text primitives", async () 
   const expectations = [
     {
       file: "components/sections/use-cases.tsx",
-      requiredImports: ["IntegrationIconBadge", "bg-muted", "text-muted-foreground"],
+      requiredImports: [
+        "IntegrationIconBadge",
+        "bg-muted",
+        "text-muted-foreground",
+      ],
       bannedPatterns: [
         /\b(?:bg|text|border)-(?:blue|green|neutral|purple|slate|yellow|red)-(?:200|400|500|800)(?:\/\d+)?\b/,
         /\btext-white\b/,
@@ -1710,10 +2051,7 @@ test("lower landing sections use semantic status and text primitives", async () 
     {
       file: "components/sections/footer.tsx",
       requiredImports: ["StatusPill"],
-      bannedPatterns: [
-        /\b(?:bg|text|border)-green-500(?:\/\d+)?\b/,
-        /text-\[/,
-      ],
+      bannedPatterns: [/\b(?:bg|text|border)-green-500(?:\/\d+)?\b/, /text-\[/],
     },
   ];
   const violations = [];
@@ -1819,9 +2157,10 @@ test("landing hero display type uses a named responsive utility", async () => {
 });
 
 test("explore question surfaces use shared form and action primitives", async () => {
-  const checkboxSource = await readFile("components/ui/checkbox.tsx", "utf8").catch(
-    () => ""
-  );
+  const checkboxSource = await readFile(
+    "components/ui/checkbox.tsx",
+    "utf8"
+  ).catch(() => "");
   const missingExports = checkboxSource.includes("Checkbox")
     ? []
     : ["components/ui/checkbox.tsx:Checkbox"];
@@ -2026,6 +2365,7 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
     "utf8"
   );
   const requiredExports = [
+    "FeedbackReviewShell",
     "FeedbackSectionCard",
     "FeedbackScoreCard",
     "FeedbackStateCard",
@@ -2101,6 +2441,7 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
     {
       file: "app/feedback/[sessionId]/compare/page.tsx",
       requiredImports: [
+        "FeedbackReviewShell",
         "FeedbackSectionCard",
         "FeedbackStateCard",
         "FeedbackStatusPage",
@@ -2110,6 +2451,7 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
     {
       file: "app/feedback/[sessionId]/page.tsx",
       requiredImports: [
+        "FeedbackReviewShell",
         "FeedbackStatusPage",
         "FeedbackSectionCard",
         "FeedbackScoreCard",
@@ -2143,12 +2485,25 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
     }
     if (
       [
+        "app/feedback/[sessionId]/page.tsx",
         "app/feedback/[sessionId]/compare/page.tsx",
         "app/feedback/[sessionId]/components/feedback-loading.tsx",
       ].includes(file) &&
       content.includes("<button")
     ) {
       violations.push(`${file}:button`);
+    }
+    if (
+      [
+        "app/feedback/[sessionId]/page.tsx",
+        "app/feedback/[sessionId]/compare/page.tsx",
+        "app/feedback/[sessionId]/components/feedback-loading.tsx",
+      ].includes(file) &&
+      (content.includes("container mx-auto") ||
+        content.includes("bg-background min-h-screen") ||
+        content.includes("from-background via-background"))
+    ) {
+      violations.push(`${file}:standalone-shell`);
     }
   }
 
