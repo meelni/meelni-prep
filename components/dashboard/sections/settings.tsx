@@ -2,7 +2,12 @@
 
 import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowUpRight, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/app/providers/auth-provider";
@@ -17,7 +22,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
+import {
+  DashboardLoadingState,
+  DashboardSidebarNavItem,
+} from "@/components/dashboard/dashboard-surface";
 import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
 import {
   SETTINGS_CATEGORY_LABELS,
@@ -225,26 +233,13 @@ export const SettingsSection = memo(function SettingsSection() {
               const selected = activeCategory === category;
 
               return (
-                <button
+                <DashboardSidebarNavItem
                   key={category}
-                  type="button"
+                  selected={selected}
                   onClick={() => setActiveCategory(category)}
-                  className={cn(
-                    "border-dashboard-panel-border flex h-10 shrink-0 items-center justify-between gap-4 rounded-lg px-3 text-left text-sm font-semibold transition-colors lg:w-full",
-                    selected
-                      ? "bg-dashboard-muted/15 text-dashboard-foreground"
-                      : "border-transparent text-dashboard-muted hover:bg-dashboard-muted/10 hover:text-dashboard-foreground"
-                  )}
-                  aria-current={selected ? "page" : undefined}
                 >
                   <span>{SETTINGS_CATEGORY_LABELS[category]}</span>
-                  {selected && (
-                    <span
-                      className="h-1.5 w-1.5 rounded-full bg-primary"
-                      aria-hidden="true"
-                    />
-                  )}
-                </button>
+                </DashboardSidebarNavItem>
               );
             })}
           </nav>
@@ -265,7 +260,11 @@ export const SettingsSection = memo(function SettingsSection() {
               email={user?.email || ""}
               initials={initialsForUser(accountName, user?.email)}
               signInMethod={signInMethod}
-              sessionStartedAt={session?.expires_at ? "Signed in on this device" : "Active session"}
+              sessionStartedAt={
+                session?.expires_at
+                  ? "Signed in on this device"
+                  : "Active session"
+              }
               displayName={settings.displayName}
               onDisplayNameChange={(displayName) =>
                 updateSettings({ displayName })
@@ -345,17 +344,17 @@ function AccountPane({
       description="Profile, login, and session controls."
       footer={<SettingsSaveFooter onSave={onSave} saveState={saveState} />}
     >
-      <div className="divide-dashboard-panel-border divide-y border-y border-dashboard-panel-border">
+      <div className="divide-dashboard-panel-border border-dashboard-panel-border divide-y border-y">
         <div className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-4">
             <div className="border-primary/40 bg-primary/10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full">
               <span className="text-primary text-sm font-bold">{initials}</span>
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-dashboard-foreground">
+              <p className="text-dashboard-foreground truncate text-sm font-bold">
                 {accountName}
               </p>
-              <p className="truncate text-sm text-dashboard-muted">{email}</p>
+              <p className="text-dashboard-muted truncate text-sm">{email}</p>
             </div>
           </div>
           <div className="w-full sm:w-64">
@@ -367,7 +366,7 @@ function AccountPane({
               value={displayName}
               onChange={(event) => onDisplayNameChange(event.target.value)}
               placeholder="Display name"
-              className="border-dashboard-panel-border bg-transparent text-dashboard-foreground placeholder:text-dashboard-muted"
+              className="border-dashboard-panel-border text-dashboard-foreground placeholder:text-dashboard-muted bg-transparent"
             />
           </div>
         </div>
@@ -551,7 +550,7 @@ function PlanCreditsPane({
         />
       )}
 
-      <div className="grid gap-0 border-y border-dashboard-panel-border md:grid-cols-3">
+      <div className="border-dashboard-panel-border grid gap-0 border-y md:grid-cols-3">
         <SummaryTile
           label="Plan"
           value={subscription?.planName || subscription?.tier || "Unavailable"}
@@ -758,10 +757,10 @@ function PaneShell({
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
       <div className="border-dashboard-panel-border border-b pb-5">
-        <h2 className="font-display text-3xl leading-tight font-semibold text-dashboard-foreground">
+        <h2 className="font-display text-dashboard-foreground text-3xl leading-tight font-semibold">
           {title}
         </h2>
-        <p className="mt-2 text-sm leading-6 text-dashboard-muted">
+        <p className="text-dashboard-muted mt-2 text-sm leading-6">
           {description}
         </p>
       </div>
@@ -783,7 +782,7 @@ function SettingsGroup({
       <p className="text-dashboard-muted text-xs font-bold tracking-[0.28em] uppercase">
         {label}
       </p>
-      <div className="mt-4 divide-y divide-dashboard-panel-border border-y border-dashboard-panel-border">
+      <div className="divide-dashboard-panel-border border-dashboard-panel-border mt-4 divide-y border-y">
         {children}
       </div>
     </section>
@@ -799,8 +798,8 @@ function SettingsReadOnlyRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-6 py-4">
-      <p className="text-sm font-semibold text-dashboard-foreground">{label}</p>
-      <p className="text-right text-sm text-dashboard-muted">{value}</p>
+      <p className="text-dashboard-foreground text-sm font-semibold">{label}</p>
+      <p className="text-dashboard-muted text-right text-sm">{value}</p>
     </div>
   );
 }
@@ -831,8 +830,8 @@ function SettingsActionRow({
   return (
     <div className="flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="text-sm font-bold text-dashboard-foreground">{title}</p>
-        <p className="mt-1 text-sm leading-5 text-dashboard-muted">
+        <p className="text-dashboard-foreground text-sm font-bold">{title}</p>
+        <p className="text-dashboard-muted mt-1 text-sm leading-5">
           {description}
         </p>
       </div>
@@ -873,10 +872,10 @@ function SettingsSwitchRow({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-6 border-y border-dashboard-panel-border py-4 first:border-t-0 last:border-b-0">
+    <div className="border-dashboard-panel-border flex items-center justify-between gap-6 border-y py-4 first:border-t-0 last:border-b-0">
       <div className="min-w-0">
-        <p className="text-sm font-bold text-dashboard-foreground">{title}</p>
-        <p className="mt-1 text-sm leading-5 text-dashboard-muted">
+        <p className="text-dashboard-foreground text-sm font-bold">{title}</p>
+        <p className="text-dashboard-muted mt-1 text-sm leading-5">
           {description}
         </p>
       </div>
@@ -907,15 +906,15 @@ function SettingsSelectRow({
   onValueChange: (value: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-4 border-y border-dashboard-panel-border py-4 first:border-t-0 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
+    <div className="border-dashboard-panel-border flex flex-col gap-4 border-y py-4 first:border-t-0 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="text-sm font-bold text-dashboard-foreground">{title}</p>
-        <p className="mt-1 text-sm leading-5 text-dashboard-muted">
+        <p className="text-dashboard-foreground text-sm font-bold">{title}</p>
+        <p className="text-dashboard-muted mt-1 text-sm leading-5">
           {description}
         </p>
       </div>
       <Select value={value} onValueChange={onValueChange}>
-        <SelectTrigger className="border-dashboard-panel-border bg-transparent text-dashboard-foreground sm:w-64">
+        <SelectTrigger className="border-dashboard-panel-border text-dashboard-foreground bg-transparent sm:w-64">
           <SelectValue placeholder={valueLabel} />
         </SelectTrigger>
         <SelectContent>
@@ -939,18 +938,18 @@ function SettingsSaveFooter({
 }) {
   return (
     <div className="border-dashboard-panel-border flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm text-dashboard-muted">
+      <p className="text-dashboard-muted text-sm">
         Changes save to the existing settings API.
       </p>
       <div className="flex items-center gap-3">
         {saveState === "ready" && (
-          <span className="inline-flex items-center gap-1.5 text-sm text-success">
+          <span className="text-success inline-flex items-center gap-1.5 text-sm">
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
             Saved
           </span>
         )}
         {saveState === "error" && (
-          <span className="text-sm text-destructive">Save failed</span>
+          <span className="text-destructive text-sm">Save failed</span>
         )}
         <Button
           type="button"
@@ -982,10 +981,10 @@ function SummaryTile({
       <p className="text-dashboard-muted text-xs font-bold tracking-[0.24em] uppercase">
         {label}
       </p>
-      <p className="mt-3 text-2xl font-semibold text-dashboard-foreground">
+      <p className="text-dashboard-foreground mt-3 text-2xl font-semibold">
         {value}
       </p>
-      <p className="mt-1 text-sm text-dashboard-muted">{description}</p>
+      <p className="text-dashboard-muted mt-1 text-sm">{description}</p>
     </div>
   );
 }
@@ -1002,7 +1001,7 @@ function InlineNotice({
   return (
     <div
       className={cn(
-        "mb-6 flex gap-3 rounded-lg border border-dashboard-panel-border bg-dashboard-muted/10 p-4",
+        "border-dashboard-panel-border bg-dashboard-muted/10 mb-6 flex gap-3 rounded-lg border p-4",
         tone === "warning" && "border-warning/30 bg-warning/10"
       )}
     >
@@ -1014,8 +1013,8 @@ function InlineNotice({
         aria-hidden="true"
       />
       <div>
-        <p className="text-sm font-bold text-dashboard-foreground">{title}</p>
-        <p className="mt-1 text-sm leading-5 text-dashboard-muted">
+        <p className="text-dashboard-foreground text-sm font-bold">{title}</p>
+        <p className="text-dashboard-muted mt-1 text-sm leading-5">
           {description}
         </p>
       </div>

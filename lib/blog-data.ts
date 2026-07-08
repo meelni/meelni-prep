@@ -232,7 +232,7 @@ What questions do you have about this approach?"
 
 ## Practice This Question
 
-Ready to practice your own Product Sense answer? [Try a mock interview with Meelni](/setup) and get real-time feedback on your structure, user empathy, and solution quality.
+Ready to practice your own Product Sense answer? [Try a mock interview with Meelni](/dashboard/new-rep) and get real-time feedback on your structure, user empathy, and solution quality.
 
 ---
 
@@ -462,7 +462,7 @@ What aspects would you like me to elaborate on?"
 
 ## Practice This Question
 
-[Try a mock interview with Meelni](/setup) and see how your education product idea compares.
+[Try a mock interview with Meelni](/dashboard/new-rep) and see how your education product idea compares.
 
 ---
 
@@ -737,7 +737,7 @@ What aspects would you like me to dive deeper on?"
 
 ## Practice This Question
 
-[Try an Analytical Thinking mock interview with Meelni](/setup) and get feedback on your metric selection and tradeoff reasoning.
+[Try an Analytical Thinking mock interview with Meelni](/dashboard/new-rep) and get feedback on your metric selection and tradeoff reasoning.
 
 ---
 
@@ -950,7 +950,7 @@ I'd love to hear about how Meta handles the tension between innovation and stabi
 
 ## Practice This Question
 
-[Try a Leadership & Drive mock interview with Meelni](/setup) and get feedback on your STAR stories, ownership, and growth mindset.
+[Try a Leadership & Drive mock interview with Meelni](/dashboard/new-rep) and get feedback on your STAR stories, ownership, and growth mindset.
 
 ---
 
@@ -1227,7 +1227,7 @@ Our AI interviewer:
 
 **The combination is powerful:** Frameworks give you structure. Product critique builds intuition. But **Meelni builds interview performance** by simulating the real thing.
 
-[Start practicing now](/setup) and see where you stand.
+[Start practicing now](/dashboard/new-rep) and see where you stand.
 
 ---
 
@@ -1401,7 +1401,7 @@ That's where Meelni comes in. Our AI interviewer:
 
 The combination is powerful: **critique builds intuition, Meelni builds interview performance**.
 
-[Start practicing now](/setup) and put your product observations to the test.
+[Start practicing now](/dashboard/new-rep) and put your product observations to the test.
 
 ---
 
@@ -1501,7 +1501,7 @@ This is exactly why we built Meelni. You can't learn product sense by reading—
 - Catches when you skip steps or lose thread
 - Provides framework-based feedback after each session
 
-Ready to practice? [Start your first mock interview](/setup).
+Ready to practice? [Start your first mock interview](/dashboard/new-rep).
 
 ---
 
@@ -1616,7 +1616,7 @@ That's why we built Meelni's execution mode:
 - Our AI pushes back when your metrics are vanity
 - You get post-session feedback on metric selection and trade-off reasoning
 
-[Try an execution interview now](/setup) and see where you stand.
+[Try an execution interview now](/dashboard/new-rep) and see where you stand.
 
 ---
 
@@ -1774,7 +1774,7 @@ That's exactly what Meelni's Leadership & Drive mode does. Our AI interviewer:
 - Catches when you're being too tactical
 - Gives framework-based feedback
 
-[Try a leadership interview now](/setup) and see if your stories hold up.
+[Try a leadership interview now](/dashboard/new-rep) and see if your stories hold up.
 
 ---
 

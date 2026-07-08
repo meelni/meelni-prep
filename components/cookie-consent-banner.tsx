@@ -1,14 +1,22 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import posthog from "posthog-js";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 
 export function CookieConsentBanner() {
+  const pathname = usePathname();
   const [showBanner, setShowBanner] = useState(false);
+  const isFocusedInterview = pathname?.startsWith("/interview");
 
   useEffect(() => {
+    if (isFocusedInterview) {
+      setShowBanner(false);
+      return;
+    }
+
     // Check if user has already made a decision
     const consent = localStorage.getItem("cookie-consent");
     if (!consent) {
@@ -21,7 +29,7 @@ export function CookieConsentBanner() {
       posthog.opt_out_capturing();
     }
     // If accepted, do nothing - PostHog is already tracking by default
-  }, []);
+  }, [isFocusedInterview]);
 
   const handleAccept = () => {
     localStorage.setItem("cookie-consent", "accepted");
@@ -35,7 +43,7 @@ export function CookieConsentBanner() {
     setShowBanner(false);
   };
 
-  if (!showBanner) return null;
+  if (!showBanner || isFocusedInterview) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-md">

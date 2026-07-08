@@ -26,6 +26,8 @@ Read relevant shared primitives before inventing markup:
 - `components/feedback/feedback-surface.tsx`
 - `components/marketing/marketing-surface.tsx`
 
+For external design-audit lenses, use `meelni-design-review-orchestrator` after this skill. Meelni primitives, route taxonomy, and PM interview product behavior remain authoritative over external recommendations.
+
 ## Operating Stance
 
 - Reuse Meelni primitives before custom markup.
@@ -38,6 +40,7 @@ Read relevant shared primitives before inventing markup:
 
 - **Production UI change**: modify the real route/component and cover states.
 - **Design-system drift**: update or reuse a shared primitive, then add/adjust guardrail tests.
+- **External design audit or second opinion**: load `meelni-design-review-orchestrator`; use Impeccable, ibelick/ui-skills, and Taste Skill only through the Meelni routing rules.
 - **Fuzzy UI direction**: prototype 3 structurally different variants at the real render site, behind a dev/internal gate, then delete losing variants.
 - **shadcn component work**: inspect current project config with `npx shadcn@latest info`; use existing installed components first. Before adding/updating shadcn components, run `npx shadcn@latest docs <component>` and inspect docs/examples.
 

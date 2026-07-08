@@ -3,9 +3,9 @@
 import { useAuth } from "@/app/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Icons } from "@/components/icons";
 import { AttemptComparison } from "@/components/feedback/attempt-comparison";
 import {
+  FeedbackReviewShell,
   FeedbackSectionCard,
   FeedbackStateCard,
   FeedbackStatusPage,
@@ -121,17 +121,14 @@ export default function ComparePage() {
   // Loading state
   if (authLoading || loading) {
     return (
-      <div className="from-background via-background to-muted/20 flex min-h-screen items-center justify-center bg-gradient-to-b">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3 }}
-          className="flex flex-col items-center gap-4"
-        >
+      <FeedbackStatusPage
+        tone="info"
+        icon={
           <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
-          <p className="text-muted-foreground text-sm">Loading attempts...</p>
-        </motion.div>
-      </div>
+        }
+        title="Loading Attempts"
+        description="Finding sessions you can compare against this interview."
+      />
     );
   }
 
@@ -158,48 +155,40 @@ export default function ComparePage() {
   // No other attempts available
   if (attempts.length < 2) {
     return (
-      <div className="from-background via-background to-muted/20 min-h-screen bg-gradient-to-b">
-        {/* Header */}
-        <header className="bg-background/80 border-border/50 sticky top-0 z-50 w-full border-b backdrop-blur-md">
-          <div className="container mx-auto h-16 max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="flex h-full items-center justify-between">
-              <Link href="/dashboard" className="group flex items-center gap-3">
-                <Icons.logo className="text-primary h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
-                <span className="text-foreground font-sans text-lg font-semibold">
-                  Meelni
-                </span>
+      <FeedbackReviewShell
+        title="Compare Attempts"
+        description="Track how this round is changing across repeated practice."
+        action={
+          <Link href={`/feedback/${sessionId}`}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Feedback
+            </Button>
+          </Link>
+        }
+      >
+        <FeedbackStateCard
+          icon={<GitCompare className="h-10 w-10" />}
+          title="No Other Attempts Yet"
+          description={`Complete more ${
+            roundTypeLabels[roundType] || roundType
+          } interviews to compare your progress and track improvements over time.`}
+          action={
+            <div className="flex justify-center gap-3">
+              <Link href="/dashboard/new-rep">
+                <Button>Start Another Interview</Button>
               </Link>
               <Link href={`/feedback/${sessionId}`}>
-                <Button variant="ghost" size="sm">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Feedback
-                </Button>
+                <Button variant="outline">View Feedback</Button>
               </Link>
             </div>
-          </div>
-        </header>
-
-        {/* Empty State */}
-        <main className="container mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
-          <FeedbackStateCard
-            icon={<GitCompare className="h-10 w-10" />}
-            title="No Other Attempts Yet"
-            description={`Complete more ${
-              roundTypeLabels[roundType] || roundType
-            } interviews to compare your progress and track improvements over time.`}
-            action={
-              <div className="flex justify-center gap-3">
-                <Link href="/setup">
-                  <Button>Start Another Interview</Button>
-                </Link>
-                <Link href={`/feedback/${sessionId}`}>
-                  <Button variant="outline">View Feedback</Button>
-                </Link>
-              </div>
-            }
-          />
-        </main>
-      </div>
+          }
+        />
+      </FeedbackReviewShell>
     );
   }
 
@@ -213,29 +202,23 @@ export default function ComparePage() {
   };
 
   return (
-    <div className="from-background via-background to-muted/20 min-h-screen bg-gradient-to-b">
-      {/* Header */}
-      <header className="bg-background/80 border-border/50 sticky top-0 z-50 w-full border-b backdrop-blur-md">
-        <div className="container mx-auto h-16 max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-full items-center justify-between">
-            <Link href="/dashboard" className="group flex items-center gap-3">
-              <Icons.logo className="text-primary h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
-              <span className="text-foreground font-sans text-lg font-semibold">
-                Meelni
-              </span>
-            </Link>
-            <Link href={`/feedback/${sessionId}`}>
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Feedback
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+    <FeedbackReviewShell
+      title="Compare Attempts"
+      description="Select two attempts to compare your progress and see how you've improved."
+      maxWidth="xl"
+      action={
+        <Link href={`/feedback/${sessionId}`}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Feedback
+          </Button>
+        </Link>
+      }
+    >
         <motion.div
           variants={staggerContainer}
           initial="initial"
@@ -253,15 +236,6 @@ export default function ComparePage() {
                 Comparison
               </Badge>
             </div>
-
-            <h1 className="text-foreground text-4xl font-bold tracking-tight">
-              Compare Attempts
-            </h1>
-
-            <p className="text-muted-foreground">
-              Select two attempts to compare your progress and see how you've
-              improved.
-            </p>
           </motion.div>
 
           {/* Attempt Selection */}
@@ -368,7 +342,6 @@ export default function ComparePage() {
             </motion.div>
           )}
         </motion.div>
-      </main>
-    </div>
+    </FeedbackReviewShell>
   );
 }

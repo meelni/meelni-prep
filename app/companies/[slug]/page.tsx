@@ -427,7 +427,7 @@ export default function CompanyDetailPage() {
               Practice these questions with real-time AI feedback
             </p>
             <Button asChild variant="outline">
-              <Link href="/setup">
+              <Link href="/dashboard/new-rep">
                 Start practicing
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -486,7 +486,7 @@ export default function CompanyDetailPage() {
           description="Practice with Meelni's AI interview coach. Get real-time feedback, improve your answers, and build confidence before your big day."
           action={
             <Button asChild size="lg" variant="glow">
-              <Link href="/setup">
+              <Link href="/dashboard/new-rep">
                 Start mock interview
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>

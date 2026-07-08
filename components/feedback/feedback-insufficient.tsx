@@ -50,7 +50,7 @@ export function FeedbackInsufficient({
       description="We need more data to provide meaningful feedback"
       actions={
         <>
-          <Button size="lg" onClick={() => router.push("/setup")}>
+          <Button size="lg" onClick={() => router.push("/dashboard/new-rep")}>
             Start New Interview
           </Button>
           <Button
