@@ -45,3 +45,7 @@ test("the default check runs linting, formatting, type checks, and quality gates
     );
   }
 });
+
+test("security quality gate checks Semgrep through the uvx wrapper", () => {
+  assert.equal(scripts["quality:security"], "node scripts/run-semgrep.mjs");
+});

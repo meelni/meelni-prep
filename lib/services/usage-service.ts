@@ -50,8 +50,7 @@ export async function checkUsageQuota(
   // Get current usage record
   const currentUsage = await getCurrentUsageRecord(
     userId,
-    sub.currentPeriodStart!,
-    sub.currentPeriodEnd!
+    sub.currentPeriodStart!
   );
 
   if (!currentUsage) {
@@ -95,9 +94,7 @@ export async function checkUsageQuota(
  *   UPDATE usage_record SET interviews_used = interviews_used + 1
  *   WHERE ... AND (interviews_used < interviews_limit OR interviews_limit = -1)
  */
-export async function incrementUsage(
-  userId: string
-): Promise<{
+export async function incrementUsage(userId: string): Promise<{
   success: boolean;
   reason?: string;
   currentUsage?: number;
@@ -152,11 +149,7 @@ export async function incrementUsage(
   // Check if the query affected any rows (length of rows array indicates success)
   if (!result || result.length === 0) {
     // Quota exceeded or record not found
-    const usage = await getCurrentUsageRecord(
-      userId,
-      sub.currentPeriodStart!,
-      sub.currentPeriodEnd!
-    );
+    const usage = await getCurrentUsageRecord(userId, sub.currentPeriodStart!);
     if (!usage) {
       throw new Error("Usage record not found after initialization");
     }
@@ -179,13 +172,7 @@ export async function incrementUsage(
 /**
  * Get current usage record for billing period
  */
-async function getCurrentUsageRecord(
-  userId: string,
-  periodStart: Date,
-  periodEnd: Date
-) {
-  void periodEnd;
-
+async function getCurrentUsageRecord(userId: string, periodStart: Date) {
   const records = await db
     .select()
     .from(usageRecord)
