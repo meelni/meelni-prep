@@ -14,17 +14,16 @@ import {
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { IoMenuSharp } from "react-icons/io5";
 import { useAuth } from "@/app/providers/auth-provider";
-import { Loader2 } from "lucide-react";
+import { Loader2, Menu } from "lucide-react";
 
 export function MobileDrawer() {
   const { user, isLoading } = useAuth();
 
   return (
     <Drawer>
-      <DrawerTrigger>
-        <IoMenuSharp className="text-2xl" />
+      <DrawerTrigger aria-label="Open navigation menu">
+        <Menu className="h-6 w-6" />
       </DrawerTrigger>
       <DrawerContent>
         <DrawerHeader className="px-6">
@@ -42,22 +41,24 @@ export function MobileDrawer() {
           {isLoading ? (
             // Loading state
             <div className="flex items-center justify-center py-4">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <Loader2 className="text-primary h-6 w-6 animate-spin" />
             </div>
           ) : user ? (
             // Logged in: Show greeting + Dashboard button
             <>
-              <div className="text-center pb-2">
-                <p className="text-sm text-muted-foreground">Welcome back,</p>
-                <p className="text-lg font-semibold text-foreground">
-                  {user.user_metadata?.full_name?.split(" ")[0] || user.email?.split("@")[0] || "User"}
+              <div className="pb-2 text-center">
+                <p className="text-muted-foreground text-sm">Welcome back,</p>
+                <p className="text-foreground text-lg font-semibold">
+                  {user.user_metadata?.full_name?.split(" ")[0] ||
+                    user.email?.split("@")[0] ||
+                    "User"}
                 </p>
               </div>
               <Link
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: "default" }),
-                  "text-primary-foreground rounded-full"
+                  "text-primary-foreground rounded-lg"
                 )}
               >
                 Go to Dashboard
@@ -70,7 +71,7 @@ export function MobileDrawer() {
                 href="/auth/signin"
                 className={cn(
                   buttonVariants({ variant: "ghost" }),
-                  "rounded-full"
+                  "rounded-lg"
                 )}
               >
                 Log In
@@ -79,7 +80,7 @@ export function MobileDrawer() {
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: "default" }),
-                  "text-primary-foreground rounded-full"
+                  "text-primary-foreground rounded-lg"
                 )}
               >
                 {siteConfig.cta}

@@ -1,32 +1,26 @@
-import { Suspense } from 'react';
-import { Blog } from '@/components/sections/blog';
-import { CTA } from '@/components/sections/cta';
-import { Examples } from '@/components/sections/examples';
-import { Features } from '@/components/sections/features';
-import { Footer } from '@/components/sections/footer';
-import { Logos } from '@/components/sections/logos';
-import { Pricing } from '@/components/sections/pricing';
-import { HomeWrapper } from '@/components/home-wrapper';
+import { Suspense } from "react";
+import { Blog } from "@/components/sections/blog";
+import { Examples } from "@/components/sections/examples";
+import { Features } from "@/components/sections/features";
+import { Footer } from "@/components/sections/footer";
+import { Logos } from "@/components/sections/logos";
+import { Pricing } from "@/components/sections/pricing";
+import { HomeWrapper } from "@/components/home-wrapper";
 
 function LandingContent() {
   return (
     <HomeWrapper>
-      <Logos />
-      <div className="mt-20">
+      <div className="bg-background px-4 py-14 sm:px-6 lg:px-8">
+        <Logos />
+      </div>
+      <div className="border-border/50 border-y bg-[#F6F7F9] pb-20 dark:bg-[#15161B]">
         <Examples />
       </div>
-      <div className="mt-20">
+      <div className="bg-background">
         <Features />
       </div>
-      <div className="mt-20">
-        <Pricing />
-      </div>
-      <div className="mt-20">
-        <Blog />
-      </div>
-      <div className="mt-20">
-        <CTA />
-      </div>
+      <Pricing />
+      <Blog />
       <Footer />
     </HomeWrapper>
   );

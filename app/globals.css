@@ -508,12 +508,69 @@
     line-height: 40px;
   }
 
+  .text-display-section {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 48px;
+    line-height: 1.12;
+  }
+
+  .text-display-footer {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 44px;
+    line-height: 48px;
+  }
+
+  .text-display-card {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 28px;
+    line-height: 34px;
+  }
+
   /* UI Text - Public Sans */
   .text-label {
     font-family: var(--font-sans);
     font-weight: 600;
     font-size: 12px;
     line-height: 16px;
+  }
+
+  .text-section-eyebrow {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+  }
+
+  .text-card-price {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 42px;
+    line-height: 44px;
+  }
+
+  .bg-footer {
+    background-color: #111827;
+  }
+
+  .text-footer-button {
+    color: #111827;
+  }
+
+  @media (width >= 40rem) {
+    .text-display-section {
+      font-size: 46px;
+      line-height: 52px;
+    }
+
+    .text-display-footer {
+      font-size: 54px;
+      line-height: 58px;
+    }
   }
 
   .text-body {

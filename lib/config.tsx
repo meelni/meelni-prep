@@ -1,10 +1,4 @@
 import { Icons } from "@/components/icons";
-import {
-  MicIcon,
-  TrendingUpIcon,
-  TargetIcon,
-  SparklesIcon,
-} from "lucide-react";
 
 export const BLUR_FADE_DELAY = 0.15;
 
@@ -34,36 +28,30 @@ export const siteConfig = {
     instagram: "https://instagram.com/meelni",
   },
   hero: {
-    title: "Ace your PM interview",
+    title: "Voice agents for real interview practice",
     description:
-      "The AI interview coach that helps you land your dream PM role.",
+      "Start with PM interviews. Practice live, answer follow-ups, and get feedback after every rep.",
     cta: "Start a mock",
     ctaDescription: "Explore question bank",
   },
   features: [
     {
-      name: "Natural Voice Conversations",
+      name: "Real PM questions",
       description:
-        "Practice with Meelni through realistic voice interviews. Natural interruptions, real-time responses, and conversational flow that feels human.",
-      icon: <MicIcon className="h-6 w-6" />,
+        "Practice Product Sense, Execution, Strategy, and Behavioral prompts.",
     },
     {
-      name: "All PM Interview Types",
-      description:
-        "Master Product Sense, Execution, Behavioral, and Strategy interviews. Each with proven frameworks tailored to top tech companies.",
-      icon: <TargetIcon className="h-6 w-6" />,
+      name: "Voice practice",
+      description: "Say the answer out loud and handle realistic follow-ups.",
     },
     {
-      name: "Post-Interview Feedback",
+      name: "Feedback",
       description:
-        "Receive comprehensive feedback after each session. Get insights on structure, clarity, and framework usage to improve your next interview.",
-      icon: <SparklesIcon className="h-6 w-6" />,
+        "See what was strong, what was missing, and what to change next.",
     },
     {
-      name: "Performance Dashboard",
-      description:
-        "Track your interview practice sessions and monitor your progress. Review transcripts and see your preparation journey over time.",
-      icon: <TrendingUpIcon className="h-6 w-6" />,
+      name: "Progress",
+      description: "Track patterns across reps so prep feels less random.",
     },
   ],
   pricing: [
