@@ -18,7 +18,6 @@ import { ConnectionIndicator } from "./components/connection-indicator";
 import {
   NudgeOverlay,
   Nudge,
-  FrameworkCoverage,
 } from "@/components/interview/nudge-overlay";
 import { useLocalParticipant } from "@livekit/components-react";
 import { RoomAudioRenderer } from "@livekit/components-react";
@@ -93,9 +92,6 @@ function InterviewPageContent() {
   const [transcriptQueue] = useState(() => getTranscriptQueue());
   const [currentNudge, setCurrentNudge] = useState<Nudge | null>(null);
   const [hintMode, setHintMode] = useState<HintMode>("off");
-  const [frameworkCoverage, setFrameworkCoverage] = useState<FrameworkCoverage>(
-    []
-  );
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const initializedRef = useRef(false);
   const activeSessionId = session?.id ?? sessionId ?? "";
@@ -344,11 +340,6 @@ function InterviewPageContent() {
 
       const data = await response.json();
 
-      // Update framework coverage
-      if (data.frameworkCoverage) {
-        setFrameworkCoverage(data.frameworkCoverage);
-      }
-
       // Display nudge if applicable
       if (data.shouldNudge && data.nudgeType && data.message) {
         setCurrentNudge({
@@ -514,7 +505,6 @@ function InterviewPageContent() {
       />
       <NudgeOverlay
         nudge={currentNudge}
-        frameworkCoverage={frameworkCoverage}
         onDismiss={() => {
           if (currentNudge) {
             analytics.track("hint_dismissed", {

@@ -202,15 +202,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify user owns the session
-    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
-    if (!isOwner) {
-      return NextResponse.json(
-        { error: "Session not found or access denied" },
-        { status: 403 }
-      );
-    }
-
     if (!shouldAnalyzeNudges(hintMode)) {
       return NextResponse.json({
         shouldNudge: false,
@@ -218,6 +209,15 @@ export async function POST(req: NextRequest) {
         message: "",
         frameworkCoverage: [],
       });
+    }
+
+    // Verify user owns the session
+    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
+    if (!isOwner) {
+      return NextResponse.json(
+        { error: "Session not found or access denied" },
+        { status: 403 }
+      );
     }
 
     // Check rate limit

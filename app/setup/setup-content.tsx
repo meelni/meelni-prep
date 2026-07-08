@@ -21,6 +21,7 @@ import {
   buildFullConfig,
   DIFFICULTY_LEVELS,
   INTERVIEW_TYPE_LABELS,
+  mapQuestionTypeToRoundType,
   type DifficultyLevel,
   type MinimalInterviewConfig,
   type RoundType,
@@ -42,6 +43,7 @@ export function SetupContent() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const fallbackRecommendation = buildRecommendedRep();
+  const questionIdParam = searchParams.get("questionId");
 
   // Track Web Vitals performance
   useWebVitals('setup');
@@ -70,6 +72,8 @@ export function SetupContent() {
     company: string | null;
     type: string;
   } | null>(null);
+  const launcherViewKey = questionIdParam ?? "dashboard";
+  const trackedLauncherViewKey = useRef<string | null>(null);
 
   const recommendation = buildRecommendedRep({
     selectedQuestion:
@@ -116,8 +120,15 @@ export function SetupContent() {
 
   // Fetch question from URL parameter if provided
   useEffect(() => {
-    const questionIdParam = searchParams.get("questionId");
-    if (!questionIdParam) return;
+    if (!questionIdParam) {
+      setQuestionId(null);
+      setQuestionData(null);
+      return;
+    }
+
+    let isCurrent = true;
+    setQuestionId(null);
+    setQuestionData(null);
 
     async function fetchQuestion() {
       try {
@@ -128,6 +139,8 @@ export function SetupContent() {
         }
 
         const data = await response.json();
+        if (!isCurrent) return;
+
         setQuestionId(questionIdParam);
         setQuestionData({
           text: data.questionText,
@@ -135,19 +148,7 @@ export function SetupContent() {
           type: data.questionType,
         });
 
-        // Map question type to roundType
-        const typeMapping: Record<string, RoundType> = {
-          "Behavioral": "behavioral",
-          "Product Sense": "product_sense",
-          "Product design/strategy": "product_sense",
-          "Execution": "execution",
-          "Estimation": "execution",
-          "A/B Testing": "execution",
-          "Pricing": "execution",
-          "Product Strategy": "strategy",
-        };
-
-        const mappedRoundType = typeMapping[data.questionType];
+        const mappedRoundType = mapQuestionTypeToRoundType(data.questionType);
         if (mappedRoundType) {
           setRoundType(mappedRoundType);
           defaultRoundType.current = mappedRoundType;
@@ -165,20 +166,34 @@ export function SetupContent() {
     }
 
     fetchQuestion();
-  }, [searchParams]);
+    return () => {
+      isCurrent = false;
+    };
+  }, [questionIdParam]);
 
   useEffect(() => {
+    const isLauncherViewReady =
+      !questionIdParam || (questionId === questionIdParam && questionData !== null);
+
+    if (!isLauncherViewReady || trackedLauncherViewKey.current === launcherViewKey) {
+      return;
+    }
+
+    trackedLauncherViewKey.current = launcherViewKey;
     analytics.track("new_rep_launcher_viewed", {
-      source: searchParams.get("questionId") ? "selected_question" : "dashboard",
+      source: questionIdParam ? "selected_question" : "dashboard",
       recommended_round_type: recommendation.roundType,
       recommended_difficulty: recommendation.difficulty,
       recommendation_source: recommendation.source,
     });
   }, [
+    launcherViewKey,
     recommendation.difficulty,
     recommendation.roundType,
     recommendation.source,
-    searchParams,
+    questionData,
+    questionId,
+    questionIdParam,
   ]);
 
   // Fetch user credit balance on mount
