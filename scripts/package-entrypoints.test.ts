@@ -61,7 +61,11 @@ test("workspace package entrypoints expose named contracts", () => {
   );
   assert.equal(getLiveKitEnvironment({}).ok, false);
   assert.equal(
-    providerFailure("livekit", { code: "x", message: "x" }).ok,
+    providerFailure("livekit", {
+      code: "x",
+      message: "x",
+      retryable: false,
+    }).ok,
     false
   );
 });

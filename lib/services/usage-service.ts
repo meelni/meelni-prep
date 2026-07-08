@@ -22,7 +22,9 @@ export interface UsageCheckResult {
  *
  * Returns quota status without modifying usage
  */
-export async function checkUsageQuota(userId: string): Promise<UsageCheckResult> {
+export async function checkUsageQuota(
+  userId: string
+): Promise<UsageCheckResult> {
   // Get current subscription
   const userSub = await db
     .select()
@@ -46,11 +48,19 @@ export async function checkUsageQuota(userId: string): Promise<UsageCheckResult>
   }
 
   // Get current usage record
-  const currentUsage = await getCurrentUsageRecord(userId, sub.currentPeriodStart!, sub.currentPeriodEnd!);
+  const currentUsage = await getCurrentUsageRecord(
+    userId,
+    sub.currentPeriodStart!
+  );
 
   if (!currentUsage) {
     // No usage record yet - create one
-    await initializeUsageRecord(userId, sub.currentPeriodStart!, sub.currentPeriodEnd!, sub.tier);
+    await initializeUsageRecord(
+      userId,
+      sub.currentPeriodStart!,
+      sub.currentPeriodEnd!,
+      sub.tier
+    );
     return {
       allowed: true,
       currentUsage: 0,
@@ -59,7 +69,9 @@ export async function checkUsageQuota(userId: string): Promise<UsageCheckResult>
   }
 
   // Check quota
-  const allowed = currentUsage.interviewsLimit === -1 || currentUsage.interviewsUsed < currentUsage.interviewsLimit;
+  const allowed =
+    currentUsage.interviewsLimit === -1 ||
+    currentUsage.interviewsUsed < currentUsage.interviewsLimit;
 
   return {
     allowed,
@@ -82,9 +94,12 @@ export async function checkUsageQuota(userId: string): Promise<UsageCheckResult>
  *   UPDATE usage_record SET interviews_used = interviews_used + 1
  *   WHERE ... AND (interviews_used < interviews_limit OR interviews_limit = -1)
  */
-export async function incrementUsage(
-  userId: string
-): Promise<{ success: boolean; reason?: string; currentUsage?: number; limit?: number }> {
+export async function incrementUsage(userId: string): Promise<{
+  success: boolean;
+  reason?: string;
+  currentUsage?: number;
+  limit?: number;
+}> {
   // Get current subscription
   const userSub = await db
     .select()
@@ -117,7 +132,7 @@ export async function incrementUsage(
       periodStart: sub.currentPeriodStart!,
       periodEnd: sub.currentPeriodEnd!,
       interviewsUsed: 1,
-      interviewsLimit: sub.tier === 'free' ? 3 : -1,
+      interviewsLimit: sub.tier === "free" ? 3 : -1,
       tierSnapshot: sub.tier,
     })
     .onConflictDoUpdate({
@@ -134,7 +149,7 @@ export async function incrementUsage(
   // Check if the query affected any rows (length of rows array indicates success)
   if (!result || result.length === 0) {
     // Quota exceeded or record not found
-    const usage = await getCurrentUsageRecord(userId, sub.currentPeriodStart!, sub.currentPeriodEnd!);
+    const usage = await getCurrentUsageRecord(userId, sub.currentPeriodStart!);
     if (!usage) {
       throw new Error("Usage record not found after initialization");
     }
@@ -157,7 +172,7 @@ export async function incrementUsage(
 /**
  * Get current usage record for billing period
  */
-async function getCurrentUsageRecord(userId: string, periodStart: Date, periodEnd: Date) {
+async function getCurrentUsageRecord(userId: string, periodStart: Date) {
   const records = await db
     .select()
     .from(usageRecord)
@@ -205,7 +220,12 @@ async function initializeUsageRecord(
  *
  * Called when subscription renews with new currentPeriodStart/End
  */
-export async function resetUsageForNewPeriod(userId: string, newPeriodStart: Date, newPeriodEnd: Date, tier: string) {
+export async function resetUsageForNewPeriod(
+  userId: string,
+  newPeriodStart: Date,
+  newPeriodEnd: Date,
+  tier: string
+) {
   await initializeUsageRecord(userId, newPeriodStart, newPeriodEnd, tier);
 }
 
@@ -248,7 +268,7 @@ export async function getUsageSummary(userId: string) {
       .where(
         and(
           eq(interviewSession.userId, userId),
-          eq(interviewSession.status, 'completed'),
+          eq(interviewSession.status, "completed"),
           gte(interviewSession.startedAt, sub.currentPeriodStart!),
           lte(interviewSession.startedAt, sub.currentPeriodEnd!)
         )
@@ -274,7 +294,7 @@ export async function getUsageSummary(userId: string) {
     .where(
       and(
         eq(interviewSession.userId, userId),
-        eq(interviewSession.status, 'completed'),
+        eq(interviewSession.status, "completed"),
         gte(interviewSession.startedAt, sub.currentPeriodStart!),
         lte(interviewSession.startedAt, sub.currentPeriodEnd!)
       )

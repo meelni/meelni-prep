@@ -1,0 +1,51 @@
+rules:
+  - id: meelni.no-eval
+    message: Avoid dynamic code execution. It is hard to audit and can turn user-controlled input into executable code.
+    severity: ERROR
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+    paths:
+      exclude:
+        - /node_modules/**
+        - /.next/**
+        - /agent/venv/**
+        - /archive/**
+
+  - id: meelni.no-public-secret-env
+    message: NEXT_PUBLIC_* values are exposed to the browser. Do not put secrets, private keys, or tokens behind public env names.
+    severity: ERROR
+    languages: [javascript, typescript]
+    pattern-regex: process\.env\.NEXT_PUBLIC_[A-Z0-9_]*(SECRET|PRIVATE|TOKEN)[A-Z0-9_]*
+    paths:
+      exclude:
+        - /node_modules/**
+        - /.next/**
+        - /agent/venv/**
+        - /archive/**
+
+  - id: meelni.no-service-role-in-client-surface
+    message: Supabase service-role credentials must stay in server-only code and maintenance scripts.
+    severity: ERROR
+    languages: [javascript, typescript]
+    pattern: process.env.SUPABASE_SERVICE_ROLE_KEY
+    paths:
+      include:
+        - /app/**/*.tsx
+        - /components/**/*.tsx
+
+  - id: meelni.no-hardcoded-production-secret
+    message: This looks like a hardcoded production secret. Use gitignored environment files or the provider dashboard instead.
+    severity: ERROR
+    languages: [javascript, typescript, python]
+    pattern-regex: (?i)(sk_live_[A-Za-z0-9_-]{8,}|sk-proj-[A-Za-z0-9_-]{8,}|whsec_[A-Za-z0-9_-]{8,})
+    paths:
+      exclude:
+        - /node_modules/**
+        - /.next/**
+        - /agent/venv/**
+        - /archive/**
+        - "**/*.test.ts"
+        - "**/*.test.tsx"
+        - "**/*.test.mjs"

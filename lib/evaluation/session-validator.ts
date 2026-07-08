@@ -7,8 +7,8 @@
  */
 
 import { db } from "@/lib/db";
-import { interviewSession, transcriptTurn } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { transcriptTurn } from "@/lib/db/schema";
+import { eq, desc } from "drizzle-orm";
 
 /**
  * Session validation tiers based on completeness
@@ -21,7 +21,7 @@ export enum SessionTier {
   /** Insufficient data: < 5 turns or < 5 min */
   INSUFFICIENT = "insufficient",
   /** Abandoned: 0 turns (user never engaged) */
-  ABANDONED = "abandoned"
+  ABANDONED = "abandoned",
 }
 
 /**
@@ -88,7 +88,9 @@ const THRESHOLDS = {
  * console.log(`Session had ${stats.totalTurns} turns`);
  * ```
  */
-export async function calculateSessionStats(sessionId: string): Promise<SessionStats> {
+export async function calculateSessionStats(
+  sessionId: string
+): Promise<SessionStats> {
   // Fetch all transcript turns for this session
   const turns = await db.query.transcriptTurn.findMany({
     where: eq(transcriptTurn.sessionId, sessionId),

@@ -26,13 +26,13 @@ export async function POST(req: Request) {
 
     // Check authentication
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Fetch user's subscription to get Stripe customer ID
@@ -54,20 +54,23 @@ export async function POST(req: Request) {
     // Check if user has a Stripe customer ID
     if (!sub.stripeCustomerId) {
       return NextResponse.json(
-        { error: "No Stripe customer found. Please upgrade to a paid plan first." },
+        {
+          error:
+            "No Stripe customer found. Please upgrade to a paid plan first.",
+        },
         { status: 400 }
       );
     }
 
     // Parse return URL from request body (optional)
-    let returnUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/dashboard/subscription`;
+    let returnUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/dashboard/subscription`;
 
     try {
       const body = await req.json();
       if (body.returnUrl) {
         returnUrl = body.returnUrl;
       }
-    } catch (error) {
+    } catch {
       // No body provided or invalid JSON - use default return URL
     }
 
@@ -76,17 +79,23 @@ export async function POST(req: Request) {
       await stripe.customers.retrieve(sub.stripeCustomerId);
     } catch (stripeError) {
       // Customer doesn't exist in current mode (likely test customer ID with live keys)
-      console.error(`Stripe customer ${sub.stripeCustomerId} not found:`, getErrorMessage(stripeError));
+      console.error(
+        `Stripe customer ${sub.stripeCustomerId} not found:`,
+        getErrorMessage(stripeError)
+      );
 
       // Check if this is a mode mismatch (test customer with live keys or vice versa)
-      const isTestCustomer = sub.stripeCustomerId.startsWith('cus_') && !sub.stripeCustomerId.includes('live');
-      const isLiveMode = process.env.STRIPE_SECRET_KEY?.startsWith('sk_live');
+      const isTestCustomer =
+        sub.stripeCustomerId.startsWith("cus_") &&
+        !sub.stripeCustomerId.includes("live");
+      const isLiveMode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_live");
 
       if (isTestCustomer && isLiveMode) {
         return NextResponse.json(
           {
-            error: "Your subscription was created in test mode. Please create a new subscription to access the customer portal.",
-            code: "MODE_MISMATCH"
+            error:
+              "Your subscription was created in test mode. Please create a new subscription to access the customer portal.",
+            code: "MODE_MISMATCH",
           },
           { status: 400 }
         );
@@ -95,8 +104,9 @@ export async function POST(req: Request) {
       // Generic customer not found error
       return NextResponse.json(
         {
-          error: "Stripe customer not found. Your subscription may need to be recreated.",
-          code: "CUSTOMER_NOT_FOUND"
+          error:
+            "Stripe customer not found. Your subscription may need to be recreated.",
+          code: "CUSTOMER_NOT_FOUND",
         },
         { status: 404 }
       );

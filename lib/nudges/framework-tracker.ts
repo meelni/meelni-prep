@@ -27,31 +27,79 @@ const FRAMEWORKS: Record<FrameworkDefinitionKey, InterviewFramework> = {
       {
         id: "clarify",
         name: "Clarify",
-        keywords: ["clarify", "understand", "question", "assumptions", "assume", "context", "what if", "who is", "define"],
+        keywords: [
+          "clarify",
+          "understand",
+          "question",
+          "assumptions",
+          "assume",
+          "context",
+          "what if",
+          "who is",
+          "define",
+        ],
         detected: false,
       },
       {
         id: "user",
         name: "User",
-        keywords: ["user", "customer", "persona", "segment", "audience", "target", "who", "demographic"],
+        keywords: [
+          "user",
+          "customer",
+          "persona",
+          "segment",
+          "audience",
+          "target",
+          "who",
+          "demographic",
+        ],
         detected: false,
       },
       {
         id: "pain",
         name: "Pain",
-        keywords: ["pain", "problem", "frustration", "challenge", "struggle", "difficulty", "issue", "need"],
+        keywords: [
+          "pain",
+          "problem",
+          "frustration",
+          "challenge",
+          "struggle",
+          "difficulty",
+          "issue",
+          "need",
+        ],
         detected: false,
       },
       {
         id: "solution",
         name: "Solution",
-        keywords: ["solution", "feature", "build", "design", "create", "implement", "develop", "product"],
+        keywords: [
+          "solution",
+          "feature",
+          "build",
+          "design",
+          "create",
+          "implement",
+          "develop",
+          "product",
+        ],
         detected: false,
       },
       {
         id: "metrics",
         name: "Metrics",
-        keywords: ["metric", "measure", "kpi", "data", "number", "%", "percentage", "rate", "engagement", "revenue"],
+        keywords: [
+          "metric",
+          "measure",
+          "kpi",
+          "data",
+          "number",
+          "%",
+          "percentage",
+          "rate",
+          "engagement",
+          "revenue",
+        ],
         detected: false,
       },
     ],
@@ -62,31 +110,73 @@ const FRAMEWORKS: Record<FrameworkDefinitionKey, InterviewFramework> = {
       {
         id: "goal",
         name: "Goal",
-        keywords: ["goal", "objective", "outcome", "target", "aim", "purpose", "mission"],
+        keywords: [
+          "goal",
+          "objective",
+          "outcome",
+          "target",
+          "aim",
+          "purpose",
+          "mission",
+        ],
         detected: false,
       },
       {
         id: "metrics",
         name: "Metrics",
-        keywords: ["metric", "measure", "kpi", "success criteria", "indicator", "benchmark", "data point"],
+        keywords: [
+          "metric",
+          "measure",
+          "kpi",
+          "success criteria",
+          "indicator",
+          "benchmark",
+          "data point",
+        ],
         detected: false,
       },
       {
         id: "data",
         name: "Data",
-        keywords: ["data", "analysis", "research", "evidence", "study", "survey", "analytics", "information"],
+        keywords: [
+          "data",
+          "analysis",
+          "research",
+          "evidence",
+          "study",
+          "survey",
+          "analytics",
+          "information",
+        ],
         detected: false,
       },
       {
         id: "analysis",
         name: "Analysis",
-        keywords: ["because", "therefore", "insight", "finding", "conclusion", "pattern", "trend", "correlation"],
+        keywords: [
+          "because",
+          "therefore",
+          "insight",
+          "finding",
+          "conclusion",
+          "pattern",
+          "trend",
+          "correlation",
+        ],
         detected: false,
       },
       {
         id: "recommendation",
         name: "Recommendation",
-        keywords: ["recommend", "suggest", "propose", "should", "advise", "conclusion", "next step"],
+        keywords: [
+          "recommend",
+          "suggest",
+          "propose",
+          "should",
+          "advise",
+          "conclusion",
+          "next step",
+        ],
         detected: false,
       },
     ],
@@ -97,25 +187,59 @@ const FRAMEWORKS: Record<FrameworkDefinitionKey, InterviewFramework> = {
       {
         id: "situation",
         name: "Situation",
-        keywords: ["situation", "context", "background", "when", "where", "scenario", "circumstance"],
+        keywords: [
+          "situation",
+          "context",
+          "background",
+          "when",
+          "where",
+          "scenario",
+          "circumstance",
+        ],
         detected: false,
       },
       {
         id: "task",
         name: "Task",
-        keywords: ["task", "responsibility", "challenge", "goal", "objective", "role", "assigned"],
+        keywords: [
+          "task",
+          "responsibility",
+          "challenge",
+          "goal",
+          "objective",
+          "role",
+          "assigned",
+        ],
         detected: false,
       },
       {
         id: "action",
         name: "Action",
-        keywords: ["action", "did", "decided", "implemented", "executed", "led", "organized", "initiated"],
+        keywords: [
+          "action",
+          "did",
+          "decided",
+          "implemented",
+          "executed",
+          "led",
+          "organized",
+          "initiated",
+        ],
         detected: false,
       },
       {
         id: "result",
         name: "Result",
-        keywords: ["result", "outcome", "impact", "achieved", "accomplished", "delivered", "success", "improved"],
+        keywords: [
+          "result",
+          "outcome",
+          "impact",
+          "achieved",
+          "accomplished",
+          "delivered",
+          "success",
+          "improved",
+        ],
         detected: false,
       },
     ],
@@ -126,25 +250,59 @@ const FRAMEWORKS: Record<FrameworkDefinitionKey, InterviewFramework> = {
       {
         id: "market",
         name: "Market",
-        keywords: ["market", "industry", "tam", "opportunity", "size", "growth", "landscape", "sector"],
+        keywords: [
+          "market",
+          "industry",
+          "tam",
+          "opportunity",
+          "size",
+          "growth",
+          "landscape",
+          "sector",
+        ],
         detected: false,
       },
       {
         id: "competition",
         name: "Competition",
-        keywords: ["competitor", "competitive", "vs", "alternative", "rival", "threat", "substitute"],
+        keywords: [
+          "competitor",
+          "competitive",
+          "vs",
+          "alternative",
+          "rival",
+          "threat",
+          "substitute",
+        ],
         detected: false,
       },
       {
         id: "positioning",
         name: "Positioning",
-        keywords: ["differentiate", "unique", "value prop", "positioning", "advantage", "moat", "distinctive"],
+        keywords: [
+          "differentiate",
+          "unique",
+          "value prop",
+          "positioning",
+          "advantage",
+          "moat",
+          "distinctive",
+        ],
         detected: false,
       },
       {
         id: "execution",
         name: "Execution",
-        keywords: ["roadmap", "launch", "execute", "timeline", "plan", "strategy", "implementation", "rollout"],
+        keywords: [
+          "roadmap",
+          "launch",
+          "execute",
+          "timeline",
+          "plan",
+          "strategy",
+          "implementation",
+          "rollout",
+        ],
         detected: false,
       },
     ],
@@ -194,14 +352,18 @@ export class FrameworkTracker {
       if (hasKeyword && !element.detected) {
         // First mention of this element
         element.detected = true;
-        element.firstMentionAt = Math.floor((turnTime - this.sessionStartTime) / 1000);
+        element.firstMentionAt = Math.floor(
+          (turnTime - this.sessionStartTime) / 1000
+        );
         this.currentElementId = element.id;
         this.currentElementStartTime = turnTime;
       } else if (hasKeyword && element.detected) {
         // Still talking about this element
         this.currentElementId = element.id;
         if (this.currentElementStartTime) {
-          element.timeSpent = Math.floor((turnTime - this.currentElementStartTime) / 1000);
+          element.timeSpent = Math.floor(
+            (turnTime - this.currentElementStartTime) / 1000
+          );
         }
       }
     }
@@ -213,7 +375,9 @@ export class FrameworkTracker {
    * Returns current framework coverage state
    */
   getCoverage(): FrameworkCoverage {
-    const detectedCount = this.framework.elements.filter((e) => e.detected).length;
+    const detectedCount = this.framework.elements.filter(
+      (e) => e.detected
+    ).length;
     const totalCount = this.framework.elements.length;
     const coveragePercentage = Math.round((detectedCount / totalCount) * 100);
     const elapsedTime = Math.floor((Date.now() - this.sessionStartTime) / 1000);
@@ -242,11 +406,17 @@ export class FrameworkTracker {
   shouldNudge(timeElapsed?: number): NudgeDecision {
     const coverage = this.getCoverage();
     const elapsed = timeElapsed || coverage.elapsedTime;
-    const timeSinceLastNudge = elapsed - Math.floor((this.lastNudgeTime - this.sessionStartTime) / 1000);
+    const timeSinceLastNudge =
+      elapsed - Math.floor((this.lastNudgeTime - this.sessionStartTime) / 1000);
 
     // Don't nudge too frequently (minimum 30 seconds between nudges)
     if (timeSinceLastNudge < 30) {
-      return { shouldNudge: false, nudgeType: null, message: "", priority: "low" };
+      return {
+        shouldNudge: false,
+        nudgeType: null,
+        message: "",
+        priority: "low",
+      };
     }
 
     // Rule 1: No metrics mentioned after 90 seconds
@@ -274,8 +444,14 @@ export class FrameworkTracker {
     }
 
     // Rule 2: Spending too long on one element (>60 seconds)
-    const currentElement = this.framework.elements.find((e) => e.id === this.currentElementId);
-    if (currentElement && currentElement.timeSpent && currentElement.timeSpent > 60) {
+    const currentElement = this.framework.elements.find(
+      (e) => e.id === this.currentElementId
+    );
+    if (
+      currentElement &&
+      currentElement.timeSpent &&
+      currentElement.timeSpent > 60
+    ) {
       this.lastNudgeTime = Date.now();
       return {
         shouldNudge: true,
@@ -290,7 +466,9 @@ export class FrameworkTracker {
     }
 
     // Rule 3: Skipped clarifying questions (Product Sense specific)
-    const clarifyElement = this.framework.elements.find((e) => e.id === "clarify");
+    const clarifyElement = this.framework.elements.find(
+      (e) => e.id === "clarify"
+    );
     if (
       this.interviewType === "product_sense" &&
       elapsed >= 45 &&
@@ -301,7 +479,8 @@ export class FrameworkTracker {
       return {
         shouldNudge: true,
         nudgeType: "clarify",
-        message: "Before we continue, what clarifying questions would you ask first?",
+        message:
+          "Before we continue, what clarifying questions would you ask first?",
         priority: "high",
         context: {
           missingElements: [clarifyElement.name],
@@ -338,7 +517,12 @@ export class FrameworkTracker {
       };
     }
 
-    return { shouldNudge: false, nudgeType: null, message: "", priority: "low" };
+    return {
+      shouldNudge: false,
+      nudgeType: null,
+      message: "",
+      priority: "low",
+    };
   }
 
   /**
@@ -386,7 +570,9 @@ export class FrameworkTracker {
     sessionDuration: number;
   } {
     const coverage = this.getCoverage();
-    const detected = this.framework.elements.filter((e) => e.detected).map((e) => e.name);
+    const detected = this.framework.elements
+      .filter((e) => e.detected)
+      .map((e) => e.name);
     const missing = this.getMissingElements();
 
     return {
