@@ -1,3 +1,5 @@
+import type { HintMode } from "./session";
+
 export const ROUND_TYPES = {
   behavioral: {
     label: "Behavioral",
@@ -78,6 +80,7 @@ export interface InterviewConfig extends MinimalInterviewConfig {
   volume: number;
   duration: number;
   feedback_mode: "real_time" | "end_only" | "silent";
+  hintMode: HintMode;
   questionPreference: QuestionPreference;
   stt_model: string;
   llm_model: string;
@@ -90,6 +93,7 @@ export const SYSTEM_DEFAULTS = {
   emotion: "professional",
   volume: 1.0,
   feedback_mode: "end_only" as const,
+  hintMode: "off" as const,
   questionPreference: {
     recency: "very_recent" as const,
     recentDays: 365

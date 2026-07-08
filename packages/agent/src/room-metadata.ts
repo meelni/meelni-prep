@@ -1,4 +1,4 @@
-import type { InterviewMode, RoundType } from "@meelni/core";
+import type { HintMode, InterviewMode, RoundType } from "@meelni/core";
 
 export type InterviewFeedbackMode = "real_time" | "end_only" | "silent";
 
@@ -10,6 +10,7 @@ export interface InterviewRuntimeConfig {
   volume?: number;
   duration: number;
   feedback_mode: InterviewFeedbackMode;
+  hintMode: HintMode;
   persona?: string | null;
   stt_model: string;
   llm_model: string;
@@ -41,6 +42,7 @@ export const DEFAULT_INTERVIEW_RUNTIME_CONFIG: InterviewRuntimeConfig = {
   volume: 1.0,
   duration: 30,
   feedback_mode: "end_only",
+  hintMode: "off",
   persona: null,
   stt_model: "deepgram/nova-3",
   llm_model: "openai/gpt-4.1-mini",
@@ -123,6 +125,9 @@ export function normalizeInterviewRuntimeConfig(
     feedback_mode: isFeedbackMode(config?.feedback_mode)
       ? config.feedback_mode
       : DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
+    hintMode: isHintMode(config?.hintMode)
+      ? config.hintMode
+      : DEFAULT_INTERVIEW_RUNTIME_CONFIG.hintMode,
     stt_model: modelOrDefault(
       config?.stt_model,
       DEFAULT_INTERVIEW_RUNTIME_CONFIG.stt_model,
@@ -164,6 +169,10 @@ function isRoundType(value: unknown): value is RoundType {
 
 function isFeedbackMode(value: unknown): value is InterviewFeedbackMode {
   return value === "real_time" || value === "end_only" || value === "silent";
+}
+
+function isHintMode(value: unknown): value is HintMode {
+  return value === "off" || value === "gentle" || value === "coach";
 }
 
 function stringOrDefault(value: unknown, fallback: string): string {

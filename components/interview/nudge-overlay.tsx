@@ -9,32 +9,23 @@ import {
   HelpCircle,
   Lightbulb,
   X,
-  CheckCircle,
-  Circle,
 } from "lucide-react";
 
 // Nudge Types
 export type NudgeType =
-  | "metric_missing"
+  | "quantify"
   | "move_on"
-  | "clarify_first"
-  | "framework_element";
+  | "clarify"
+  | "missing_element"
+  | "time_limit";
 
 export interface Nudge {
   type: NudgeType;
   message: string;
 }
 
-export interface FrameworkElement {
-  name: string;
-  covered: boolean;
-}
-
-export type FrameworkCoverage = FrameworkElement[];
-
 interface NudgeOverlayProps {
   nudge: Nudge | null;
-  frameworkCoverage: FrameworkCoverage;
   onDismiss: () => void;
 }
 
@@ -43,7 +34,7 @@ const nudgeConfig: Record<
   NudgeType,
   { icon: typeof TrendingUp; label: string; color: string; surface: string }
 > = {
-  metric_missing: {
+  quantify: {
     icon: TrendingUp,
     label: "Quantify",
     color: "text-info",
@@ -55,15 +46,21 @@ const nudgeConfig: Record<
     color: "text-primary",
     surface: "bg-primary/10",
   },
-  clarify_first: {
+  clarify: {
     icon: HelpCircle,
     label: "Clarify",
     color: "text-warning",
     surface: "bg-warning/10",
   },
-  framework_element: {
+  missing_element: {
     icon: Lightbulb,
-    label: "Framework",
+    label: "Structure",
+    color: "text-primary",
+    surface: "bg-primary/10",
+  },
+  time_limit: {
+    icon: ArrowRight,
+    label: "Keep Moving",
     color: "text-primary",
     surface: "bg-primary/10",
   },
@@ -97,19 +94,8 @@ const nudgeVariants = {
   },
 };
 
-const progressDotVariants = {
-  covered: {
-    scale: [1, 1.2, 1],
-    transition: {
-      duration: 0.3,
-      ease: "easeInOut" as const,
-    },
-  },
-};
-
 export function NudgeOverlay({
   nudge,
-  frameworkCoverage,
   onDismiss,
 }: NudgeOverlayProps) {
   // Auto-dismiss after 5 seconds
@@ -134,12 +120,6 @@ export function NudgeOverlay({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [nudge, onDismiss]);
-
-  // Calculate coverage progress
-  const coveredCount = frameworkCoverage.filter((el) => el.covered).length;
-  const totalCount = frameworkCoverage.length;
-  const progressPercentage =
-    totalCount > 0 ? (coveredCount / totalCount) * 100 : 0;
 
   return (
     <div className="fixed top-20 right-4 z-50 flex flex-col gap-3 pointer-events-none">
@@ -174,7 +154,7 @@ export function NudgeOverlay({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-medium text-foreground">
+                    <p className="text-label text-foreground">
                       {nudgeConfig[nudge.type].label}
                     </p>
                   </div>
@@ -210,89 +190,6 @@ export function NudgeOverlay({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Framework Progress Indicator (always visible) */}
-      {frameworkCoverage.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-card/95 backdrop-blur-md border border-border rounded-lg shadow-lg p-4 pointer-events-auto"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">
-                Framework Progress
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                {coveredCount}/{totalCount} elements covered
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-lg font-bold text-primary">
-                {Math.round(progressPercentage)}%
-              </p>
-            </div>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="mb-3 h-2 bg-muted/30 rounded-full overflow-hidden">
-            <motion.div
-              className="h-full bg-gradient-to-r from-primary to-primary/70 rounded-full"
-              initial={{ width: 0 }}
-              animate={{ width: `${progressPercentage}%` }}
-              transition={{
-                type: "spring",
-                stiffness: 200,
-                damping: 25,
-              }}
-            />
-          </div>
-
-          {/* Framework Elements (Dots) */}
-          <div className="flex items-center gap-2">
-            {frameworkCoverage.map((element, index) => (
-              <div key={index} className="flex flex-col items-center gap-1">
-                <motion.div
-                  variants={progressDotVariants}
-                  animate={element.covered ? "covered" : "initial"}
-                  className="relative"
-                >
-                  {element.covered ? (
-                    <CheckCircle
-                      className="w-5 h-5 text-primary"
-                      aria-label={`${element.name} covered`}
-                    />
-                  ) : (
-                    <Circle
-                      className="w-5 h-5 text-muted-foreground/40"
-                      aria-label={`${element.name} not covered`}
-                    />
-                  )}
-                </motion.div>
-                <span
-                  className={`text-label text-center max-w-[60px] ${
-                    element.covered
-                      ? "text-primary font-medium"
-                      : "text-muted-foreground/60"
-                  }`}
-                  title={element.name}
-                >
-                  {element.name.length > 8
-                    ? element.name.substring(0, 7) + "..."
-                    : element.name}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Accessibility: Screen reader announcement */}
-          <div className="sr-only" aria-live="polite" aria-atomic="true">
-            Framework progress: {coveredCount} out of {totalCount} elements
-            covered ({Math.round(progressPercentage)}%)
-          </div>
-        </motion.div>
-      )}
     </div>
   );
 }

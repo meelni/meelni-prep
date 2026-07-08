@@ -11,6 +11,7 @@ import {
   createTranscriptEvent,
   getFallbackInterviewRoomMetadata,
   isTranscriptEvent,
+  normalizeInterviewRuntimeConfig,
   normalizeAgentState,
   parseInterviewRoomMetadata,
   parseTranscriptEvent,
@@ -80,6 +81,22 @@ test("runtime config rejects arbitrary provider model overrides", () => {
     metadata.config.tts_model,
     "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
   );
+});
+
+test("runtime config normalizes hint mode to safe defaults", () => {
+  assert.equal(
+    normalizeInterviewRuntimeConfig({ hintMode: "gentle" }).hintMode,
+    "gentle"
+  );
+  assert.equal(
+    normalizeInterviewRuntimeConfig({ hintMode: "coach" }).hintMode,
+    "coach"
+  );
+  assert.equal(
+    normalizeInterviewRuntimeConfig({ hintMode: "always-on" }).hintMode,
+    "off"
+  );
+  assert.equal(normalizeInterviewRuntimeConfig({}).hintMode, "off");
 });
 
 test("transcript event parsing normalizes timestamps and speakers", () => {
