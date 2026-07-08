@@ -10,11 +10,18 @@ const companies = [
   "Microsoft",
   "Amazon",
   "Netflix",
-  "YouTube",
-  "Instagram",
+  "Stripe",
+  "Airbnb",
 ];
 
-const companies2 = ["Spotify", "Dropbox", "Tinder", "Slack", "Zoom", "Shopify"];
+const companies2 = [
+  "Uber",
+  "DoorDash",
+  "Coinbase",
+  "Atlassian",
+  "Adobe",
+  "Shopify",
+];
 
 export function Logos() {
   const [currentSet, setCurrentSet] = useState(companies);
@@ -31,39 +38,39 @@ export function Logos() {
     <Section id="logos">
       <div className="w-full">
         {/* Mobile layout: vertical stack */}
-        <div className="md:hidden space-y-6">
+        <div className="space-y-6 md:hidden">
           {/* Title */}
           <div className="text-center">
-            <p className="text-sm font-semibold text-foreground/90 leading-snug tracking-tight">
+            <p className="text-foreground/90 text-sm leading-snug font-semibold tracking-tight">
               Built for PMs interviewing at
             </p>
           </div>
 
           {/* Logo grid - 3 columns on mobile */}
           <div className="grid grid-cols-3 gap-4">
-            {companies.slice(0, 6).map((_, idx) => (
+            {currentSet.map((company, idx) => (
               <div
-                key={idx}
-                className="flex items-center justify-center p-3 rounded-lg border border-border/50 bg-card/30"
+                key={company}
+                className="border-border/50 bg-card/30 flex items-center justify-center rounded-lg border p-3"
               >
                 <AnimatePresence mode="wait">
                   <motion.div
-                    key={currentSet[idx]}
+                    key={company}
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
                     transition={{
                       duration: 0.5,
                       ease: "easeInOut",
-                      delay: Math.random() * 0.5,
+                      delay: idx * 0.05,
                     }}
                   >
                     <Image
                       width={80}
                       height={32}
-                      src={`https://cdn.magicui.design/companies/${currentSet[idx]}.svg`}
-                      className="h-8 w-20 dark:brightness-0 dark:invert grayscale opacity-40"
-                      alt={currentSet[idx]}
+                      src={`https://cdn.magicui.design/companies/${company}.svg`}
+                      className="h-8 w-20 opacity-40 grayscale dark:brightness-0 dark:invert"
+                      alt={company}
                     />
                   </motion.div>
                 </AnimatePresence>
@@ -73,39 +80,39 @@ export function Logos() {
         </div>
 
         {/* Desktop layout: original grid */}
-        <div className="hidden md:block border rounded-lg overflow-hidden">
-          <div className="grid grid-cols-6">
+        <div className="hidden overflow-hidden rounded-lg border md:block">
+          <div className="grid grid-cols-7">
             {/* First box - static intro text */}
-            <div className="flex items-center justify-center p-6 border-r bg-gradient-to-br from-accent/5 to-transparent">
-              <p className="text-sm font-semibold text-foreground/90 text-center leading-snug tracking-tight max-w-[140px]">
+            <div className="from-accent/5 flex items-center justify-center border-r bg-gradient-to-br to-transparent p-6">
+              <p className="text-foreground/90 max-w-[140px] text-center text-sm leading-snug font-semibold tracking-tight">
                 Built for PMs interviewing&nbsp;at
               </p>
             </div>
 
             {/* Remaining boxes with rotating companies */}
-            {companies.slice(0, 5).map((_, idx) => (
+            {currentSet.map((company, idx) => (
               <div
-                key={idx}
-                className="flex group items-center justify-center p-6 border-r last:border-r-0"
+                key={company}
+                className="group flex items-center justify-center border-r p-6 last:border-r-0"
               >
                 <AnimatePresence mode="wait">
                   <motion.div
-                    key={currentSet[idx]}
+                    key={company}
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
                     transition={{
                       duration: 0.5,
                       ease: "easeInOut",
-                      delay: Math.random() * 0.5,
+                      delay: idx * 0.05,
                     }}
                   >
                     <Image
                       width={112}
                       height={40}
-                      src={`https://cdn.magicui.design/companies/${currentSet[idx]}.svg`}
-                      className="h-10 w-28 dark:brightness-0 dark:invert grayscale hover:grayscale-0 hover:brightness-100 dark:hover:brightness-0 dark:hover:invert transition-all duration-200 ease-out opacity-30 hover:opacity-100"
-                      alt={currentSet[idx]}
+                      src={`https://cdn.magicui.design/companies/${company}.svg`}
+                      className="h-10 w-28 opacity-30 grayscale transition-all duration-200 ease-out hover:opacity-100 hover:brightness-100 hover:grayscale-0 dark:brightness-0 dark:invert dark:hover:brightness-0 dark:hover:invert"
+                      alt={company}
                     />
                   </motion.div>
                 </AnimatePresence>

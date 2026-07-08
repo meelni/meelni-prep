@@ -137,7 +137,7 @@ export function Header() {
                   href="/dashboard"
                   className={cn(
                     buttonVariants({ variant: "default", size: "sm" }),
-                    "rounded-full px-4"
+                    "rounded-lg px-4"
                   )}
                 >
                   Dashboard
@@ -148,7 +148,7 @@ export function Header() {
                     href="/auth/signin"
                     className={cn(
                       buttonVariants({ variant: "ghost", size: "sm" }),
-                      "rounded-full px-4"
+                      "rounded-lg px-4"
                     )}
                   >
                     Log In
@@ -157,7 +157,7 @@ export function Header() {
                     href="/dashboard"
                     className={cn(
                       buttonVariants({ variant: "default", size: "sm" }),
-                      "text-primary-foreground rounded-full px-4"
+                      "text-primary-foreground rounded-lg px-4"
                     )}
                   >
                     {siteConfig.cta}

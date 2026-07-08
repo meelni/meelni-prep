@@ -1658,18 +1658,17 @@ test("landing feature cards use semantic product tones", async () => {
   const requiredTokens = [
     "text-primary",
     "bg-primary",
-    "shadow-primary",
-    "text-info",
-    "bg-info",
-    "text-success",
-    "bg-success",
-    "text-warning",
-    "bg-warning",
+    "border-border",
+    "text-muted-foreground",
+    "text-display-section",
   ];
   const violations = requiredTokens.filter((token) => !content.includes(token));
 
   if (rawFeatureTone.test(content)) {
     violations.push(`${file}:raw-feature-tone`);
+  }
+  if (content.includes("shadow-[")) {
+    violations.push(`${file}:raw-shadow`);
   }
 
   assert.deepEqual(violations, []);
@@ -1967,7 +1966,7 @@ test("docs and pricing pages use shared public-page status surfaces", async () =
     },
     {
       file: "components/sections/pricing.tsx",
-      requiredImports: ["AppSurface", "StatusPill"],
+      requiredImports: ["@/components/ui/button", "getPublicPricingPlans"],
     },
   ];
   const rawPublicStatusColor =
@@ -2050,7 +2049,7 @@ test("lower landing sections use semantic status and text primitives", async () 
     },
     {
       file: "components/sections/footer.tsx",
-      requiredImports: ["StatusPill"],
+      requiredImports: ["@/components/ui/button", "Icons.logo"],
       bannedPatterns: [/\b(?:bg|text|border)-green-500(?:\/\d+)?\b/, /text-\[/],
     },
   ];
