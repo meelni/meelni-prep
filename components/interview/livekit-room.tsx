@@ -1,7 +1,11 @@
 "use client";
 
-import { LiveKitRoom, useVoiceAssistant, useDataChannel } from "@livekit/components-react";
-import { useEffect, useState, useRef } from "react";
+import {
+  LiveKitRoom,
+  useVoiceAssistant,
+  useDataChannel,
+} from "@livekit/components-react";
+import { useEffect, useRef } from "react";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { parseTranscriptEvent } from "@meelni/agent";
 
@@ -35,8 +39,6 @@ export function LiveKitRoomWrapper({
   onAgentStateChange,
   children,
 }: LiveKitRoomWrapperProps) {
-  const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const connectionStartTime = useRef<number>(Date.now());
 
   return (
@@ -48,36 +50,33 @@ export function LiveKitRoomWrapper({
       video={false}
       onConnected={() => {
         console.log("Connected to LiveKit room:", roomName);
-        setIsConnected(true);
 
         // Track connection latency
         const connectionTime = Date.now() - connectionStartTime.current;
         const connectionQuality =
-          connectionTime < 1000 ? "excellent" :
-          connectionTime < 3000 ? "good" : "poor";
+          connectionTime < 1000
+            ? "excellent"
+            : connectionTime < 3000
+              ? "good"
+              : "poor";
 
-        analytics.track('livekit_connection_established', {
+        analytics.track("livekit_connection_established", {
           session_id: sessionId,
           connection_time_ms: connectionTime,
-          region: url.includes('livekit.cloud') ? 'cloud' : 'self-hosted',
+          region: url.includes("livekit.cloud") ? "cloud" : "self-hosted",
           connection_quality: connectionQuality,
         });
       }}
       onDisconnected={() => {
         console.log("Disconnected from LiveKit room");
-        setIsConnected(false);
       }}
       onError={(error) => {
         console.error("LiveKit error:", error);
-        setError(error.message);
       }}
     >
       <RoomContent
-        sessionId={sessionId}
         onTranscriptUpdate={onTranscriptUpdate}
         onAgentStateChange={onAgentStateChange}
-        isConnected={isConnected}
-        error={error}
       >
         {children}
       </RoomContent>
@@ -86,23 +85,17 @@ export function LiveKitRoomWrapper({
 }
 
 interface RoomContentProps {
-  sessionId: string;
   onTranscriptUpdate: (turn: TranscriptTurn) => void;
   onAgentStateChange: (state: string) => void;
-  isConnected: boolean;
-  error: string | null;
   children: React.ReactNode;
 }
 
 function RoomContent({
-  sessionId,
   onTranscriptUpdate,
   onAgentStateChange,
-  isConnected,
-  error,
   children,
 }: RoomContentProps) {
-  const { state, audioTrack } = useVoiceAssistant();
+  const { state } = useVoiceAssistant();
   const { message } = useDataChannel("transcript");
 
   // Subscribe to agent state changes

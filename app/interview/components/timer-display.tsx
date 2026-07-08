@@ -14,12 +14,11 @@ export function TimerDisplay({
   estimatedDuration,
 }: TimerDisplayProps) {
   const [elapsed, setElapsed] = useState(0);
-
   // Convert to stable timestamp - handle both Date and string safely
   const startTime = useMemo(() => {
     try {
       let timestamp;
-      if (typeof startedAt === 'string') {
+      if (typeof startedAt === "string") {
         timestamp = new Date(startedAt).getTime();
       } else if (startedAt instanceof Date) {
         timestamp = startedAt.getTime();
@@ -29,21 +28,21 @@ export function TimerDisplay({
 
       // Validate the timestamp is a valid number
       if (isNaN(timestamp)) {
-        console.error('Invalid timestamp from startedAt:', startedAt);
+        console.error("Invalid timestamp from startedAt:", startedAt);
         return Date.now();
       }
 
       return timestamp;
     } catch (error) {
-      console.error('Error parsing startedAt:', startedAt, error);
+      console.error("Error parsing startedAt:", startedAt, error);
       return Date.now();
     }
-  }, [typeof startedAt === 'string' ? startedAt : (startedAt instanceof Date ? startedAt.getTime() : Date.now())]);
+  }, [startedAt]);
 
   useEffect(() => {
     // Validate startTime is a valid number
     if (isNaN(startTime) || !isFinite(startTime)) {
-      console.error('Invalid startTime in timer:', startTime);
+      console.error("Invalid startTime in timer:", startTime);
       setElapsed(0);
       return;
     }
@@ -78,13 +77,13 @@ export function TimerDisplay({
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-lg border border-border/50"
+      className="bg-muted/50 border-border/50 flex items-center gap-2 rounded-lg border px-3 py-1.5"
     >
-      <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-      <span className="text-sm font-mono text-foreground">
+      <Clock className="text-muted-foreground h-3.5 w-3.5" />
+      <span className="text-foreground font-mono text-sm">
         {formatTime(elapsed)}
       </span>
-      <span className="text-sm text-muted-foreground">
+      <span className="text-muted-foreground text-sm">
         / {estimatedDuration} min
       </span>
     </motion.div>

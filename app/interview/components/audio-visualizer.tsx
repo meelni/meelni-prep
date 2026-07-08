@@ -15,10 +15,11 @@ import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
 export function AudioVisualizer() {
   const { localParticipant } = useLocalParticipant();
   const remoteParticipants = useRemoteParticipants();
-  const { state: agentStateFromHook, audioTrack: agentAudioTrackFromHook } = useVoiceAssistant();
+  const { state: agentStateFromHook } = useVoiceAssistant();
 
   // Debounced agent state to prevent flickering during speech pauses
-  const [debouncedAgentState, setDebouncedAgentState] = useState<string>("idle");
+  const [debouncedAgentState, setDebouncedAgentState] =
+    useState<string>("idle");
   const stateChangeTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastSpeakingTimeRef = useRef<number>(0);
 
@@ -32,8 +33,12 @@ export function AudioVisualizer() {
   )?.track;
 
   // Get audio volumes for reactivity
-  const userVolume = useTrackVolume(userAudioTrack as Parameters<typeof useTrackVolume>[0]);
-  const agentVolume = useTrackVolume(agentAudioTrack as Parameters<typeof useTrackVolume>[0]);
+  const userVolume = useTrackVolume(
+    userAudioTrack as Parameters<typeof useTrackVolume>[0]
+  );
+  const agentVolume = useTrackVolume(
+    agentAudioTrack as Parameters<typeof useTrackVolume>[0]
+  );
 
   // Normalize volumes to 0-1 range (same as demo)
   const normalizedUserVolume = Math.min(userVolume, 100) / 100;
@@ -57,7 +62,14 @@ export function AudioVisualizer() {
       }
     }
 
-    console.log('[AudioVisualizer] Current state:', currentState, 'Hook state:', agentStateFromHook, 'Agent vol:', normalizedAgentVolume.toFixed(2));
+    console.log(
+      "[AudioVisualizer] Current state:",
+      currentState,
+      "Hook state:",
+      agentStateFromHook,
+      "Agent vol:",
+      normalizedAgentVolume.toFixed(2)
+    );
 
     // If agent is speaking, update timestamp
     if (currentState === "speaking") {
@@ -73,7 +85,10 @@ export function AudioVisualizer() {
         clearTimeout(stateChangeTimerRef.current);
         stateChangeTimerRef.current = undefined;
       }
-    } else if (currentState !== "speaking" && debouncedAgentState === "speaking") {
+    } else if (
+      currentState !== "speaking" &&
+      debouncedAgentState === "speaking"
+    ) {
       // Agent stopped speaking - check if we should wait before transitioning
       const timeSinceLastSpeaking = Date.now() - lastSpeakingTimeRef.current;
 
@@ -105,7 +120,13 @@ export function AudioVisualizer() {
         clearTimeout(stateChangeTimerRef.current);
       }
     };
-  }, [agentStateFromHook, debouncedAgentState, agentParticipant, normalizedAgentVolume, normalizedUserVolume]);
+  }, [
+    agentStateFromHook,
+    debouncedAgentState,
+    agentParticipant,
+    normalizedAgentVolume,
+    normalizedUserVolume,
+  ]);
 
   // Debounced user speaking state
   const [isUserSpeakingDebounced, setIsUserSpeakingDebounced] = useState(false);
@@ -113,7 +134,10 @@ export function AudioVisualizer() {
 
   useEffect(() => {
     // Higher threshold (0.3) to reduce false positives from background noise
-    const isSpeaking = userAudioTrack && userAudioTrack.isMuted === false && normalizedUserVolume > 0.3;
+    const isSpeaking =
+      userAudioTrack &&
+      userAudioTrack.isMuted === false &&
+      normalizedUserVolume > 0.3;
 
     if (isSpeaking) {
       // Immediately show "Your Turn" when speaking detected
@@ -143,30 +167,36 @@ export function AudioVisualizer() {
   const displayAgentState = debouncedAgentState;
 
   const orbAgentState: OrbAgentState =
-    displayAgentState === "thinking" ? "thinking" :
-    displayAgentState === "listening" ? "listening" :
-    displayAgentState === "speaking" ? "talking" :
-    null;
+    displayAgentState === "thinking"
+      ? "thinking"
+      : displayAgentState === "listening"
+        ? "listening"
+        : displayAgentState === "speaking"
+          ? "talking"
+          : null;
 
   // Use debounced states for UI
   const isUserSpeaking = isUserSpeakingDebounced;
-  const isAgentActive = displayAgentState === "speaking" || displayAgentState === "thinking";
+  const isAgentActive =
+    displayAgentState === "speaking" || displayAgentState === "thinking";
 
   // Only pass volume to Orb when actually speaking (above threshold) to prevent flickering
-  const displayUserVolume = normalizedUserVolume > 0.3 ? normalizedUserVolume : 0;
-  const displayAgentVolume = normalizedAgentVolume > 0.15 ? normalizedAgentVolume : 0;
+  const displayUserVolume =
+    normalizedUserVolume > 0.3 ? normalizedUserVolume : 0;
+  const displayAgentVolume =
+    normalizedAgentVolume > 0.15 ? normalizedAgentVolume : 0;
 
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-center gap-8 p-6 interview-container">
+    <div className="interview-container relative flex h-full w-full flex-col items-center justify-center gap-8 p-6">
       {/* Large Orb with Audio Reactivity */}
-      <div className="relative w-full max-w-md aspect-square">
+      <div className="relative aspect-square w-full max-w-md">
         <Orb
           colors={MEELNI_ORB_COLORS}
           agentState={orbAgentState}
           volumeMode="manual"
           getInputVolume={() => displayUserVolume}
           getOutputVolume={() => displayAgentVolume}
-          className="w-full h-full"
+          className="h-full w-full"
         />
       </div>
 
@@ -176,13 +206,17 @@ export function AudioVisualizer() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          className="relative text-center space-y-2 px-6 py-4 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/30 backdrop-blur-sm shadow-lg"
+          className="from-primary/10 to-primary/5 border-primary/30 relative space-y-2 rounded-2xl border bg-gradient-to-br px-6 py-4 text-center shadow-lg backdrop-blur-sm"
         >
-          <p className="text-2xl font-sans font-medium text-primary">
-            {displayAgentState === "thinking" ? "Meelni is thinking..." : "Meelni is speaking"}
+          <p className="text-primary font-sans text-2xl font-medium">
+            {displayAgentState === "thinking"
+              ? "Meelni is thinking..."
+              : "Meelni is speaking"}
           </p>
-          <p className="text-sm font-sans text-muted-foreground">
-            {displayAgentState === "thinking" ? "Preparing response" : "Listen carefully"}
+          <p className="text-muted-foreground font-sans text-sm">
+            {displayAgentState === "thinking"
+              ? "Preparing response"
+              : "Listen carefully"}
           </p>
         </motion.div>
       )}
@@ -193,17 +227,25 @@ export function AudioVisualizer() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          className="relative text-center space-y-2 px-6 py-4 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/30 backdrop-blur-sm shadow-lg"
+          className="from-primary/10 to-primary/5 border-primary/30 relative space-y-2 rounded-2xl border bg-gradient-to-br px-6 py-4 text-center shadow-lg backdrop-blur-sm"
         >
           <div className="flex items-center justify-center gap-2">
             <motion.div
-              className="w-2 h-2 rounded-full bg-primary"
+              className="bg-primary h-2 w-2 rounded-full"
               animate={{ scale: [1, 1.2, 1], opacity: [0.6, 1, 0.6] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              transition={{
+                duration: 1.5,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
             />
-            <p className="text-2xl font-sans font-medium text-primary">Your Turn</p>
+            <p className="text-primary font-sans text-2xl font-medium">
+              Your Turn
+            </p>
           </div>
-          <p className="text-sm font-sans text-muted-foreground">Meelni is listening</p>
+          <p className="text-muted-foreground font-sans text-sm">
+            Meelni is listening
+          </p>
         </motion.div>
       )}
 
@@ -212,10 +254,14 @@ export function AudioVisualizer() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-center space-y-2"
+          className="space-y-2 text-center"
         >
-          <p className="text-lg font-display font-medium text-foreground">Ready to begin</p>
-          <p className="text-sm font-sans text-muted-foreground">Start speaking to continue the interview</p>
+          <p className="font-display text-foreground text-lg font-medium">
+            Ready to begin
+          </p>
+          <p className="text-muted-foreground font-sans text-sm">
+            Start speaking to continue the interview
+          </p>
         </motion.div>
       )}
     </div>

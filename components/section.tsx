@@ -21,31 +21,25 @@ const Section = forwardRef<HTMLElement, SectionProps>(
   ) => {
     const internalRef = useRef<HTMLElement>(null);
     const ref = forwardedRef || internalRef;
-    const sectionId = title ? title.toLowerCase().replace(/\s+/g, "-") : id;
     const alignmentClass =
       align === "left"
         ? "text-left"
         : align === "right"
-        ? "text-right"
-        : "text-center";
+          ? "text-right"
+          : "text-center";
 
     return (
       <section id={id} ref={ref}>
-        <div
-          className={cn(
-            "relative w-full",
-            className
-          )}
-        >
+        <div className={cn("relative w-full", className)}>
           {(title || subtitle || description) && (
             <div
               className={cn(
                 alignmentClass,
-                "relative mx-auto border-t overflow-hidden p-2 py-8 md:p-12"
+                "relative mx-auto overflow-hidden border-t p-2 py-8 md:p-12"
               )}
             >
               {title && (
-                <h2 className="text-sm text-muted-foreground text-balance font-semibold tracking-tigh uppercase">
+                <h2 className="text-muted-foreground tracking-tigh text-sm font-semibold text-balance uppercase">
                   {title}
                 </h2>
               )}
@@ -53,12 +47,12 @@ const Section = forwardRef<HTMLElement, SectionProps>(
               {subtitle && (
                 <h3
                   className={cn(
-                    "mx-0 mt-4 max-w-lg text-5xl text-balance font-bold sm:max-w-none sm:text-4xl md:text-5xl lg:text-6xl leading-[1.2] tracking-tighter text-foreground lowercase",
+                    "text-foreground mx-0 mt-4 max-w-lg text-5xl leading-[1.2] font-bold tracking-tighter text-balance lowercase sm:max-w-none sm:text-4xl md:text-5xl lg:text-6xl",
                     align === "center"
                       ? "mx-auto"
                       : align === "right"
-                      ? "ml-auto"
-                      : ""
+                        ? "ml-auto"
+                        : ""
                   )}
                 >
                   {subtitle}
@@ -67,25 +61,25 @@ const Section = forwardRef<HTMLElement, SectionProps>(
               {description && (
                 <p
                   className={cn(
-                    "mt-6 text-lg leading-8 text-muted-foreground text-balance max-w-2xl",
+                    "text-muted-foreground mt-6 max-w-2xl text-lg leading-8 text-balance",
                     align === "center"
                       ? "mx-auto"
                       : align === "right"
-                      ? "ml-auto"
-                      : ""
+                        ? "ml-auto"
+                        : ""
                   )}
                 >
                   {description}
                 </p>
               )}
-              <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-full w-full bg-gradient-to-t from-background dark:from-background -z-10 from-50%" />
+              <div className="from-background dark:from-background pointer-events-none absolute right-0 bottom-0 left-0 -z-10 h-full w-full bg-gradient-to-t from-50%" />
               <FlickeringGrid
                 squareSize={4}
                 gridGap={4}
                 color="var(--muted-foreground)"
                 maxOpacity={0.2}
                 flickerChance={0.1}
-                className="-z-20 absolute inset-0 size-full"
+                className="absolute inset-0 -z-20 size-full"
               />
             </div>
           )}

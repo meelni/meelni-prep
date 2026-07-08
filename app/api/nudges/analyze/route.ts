@@ -99,7 +99,10 @@ const RATE_LIMIT_MS = 1000; // 1 request per second
 /**
  * Check if request exceeds rate limit
  */
-function isRateLimited(sessionId: string): { limited: boolean; retryAfter: number } {
+function isRateLimited(sessionId: string): {
+  limited: boolean;
+  retryAfter: number;
+} {
   const now = Date.now();
   const lastRequest = sessionRateLimits.get(sessionId);
 
@@ -159,10 +162,7 @@ export async function POST(req: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Parse request body
@@ -188,7 +188,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!currentTurn || !currentTurn.speaker || !currentTurn.text || currentTurn.timestamp === undefined) {
+    if (
+      !currentTurn ||
+      !currentTurn.speaker ||
+      !currentTurn.text ||
+      currentTurn.timestamp === undefined
+    ) {
       return NextResponse.json(
         { error: "currentTurn must include speaker, text, and timestamp" },
         { status: 400 }
@@ -225,7 +230,8 @@ export async function POST(req: NextRequest) {
     if (rateLimitCheck.limited) {
       return NextResponse.json(
         {
-          error: "Rate limit exceeded. Maximum 1 request per second per session.",
+          error:
+            "Rate limit exceeded. Maximum 1 request per second per session.",
           retryAfter: rateLimitCheck.retryAfter,
         },
         {

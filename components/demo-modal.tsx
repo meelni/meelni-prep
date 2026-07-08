@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -12,10 +12,10 @@ import {
   useTrackVolume,
   useLocalParticipant,
 } from "@livekit/components-react";
-import { Orb, AgentState as OrbAgentState } from "@/components/ui/orb";
+import { Orb } from "@/components/ui/orb";
 import { Track } from "livekit-client";
 import { ConnectionState } from "livekit-client";
-import type { Participant, TrackPublication, TranscriptionSegment } from "livekit-client";
+import type { Participant, TranscriptionSegment } from "livekit-client";
 import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { analytics } from "@/lib/analytics/analytics-service";
@@ -47,22 +47,24 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-full border-l border-primary-foreground/10">
+    <div className="border-primary-foreground/10 flex h-full flex-col border-l">
       {/* Terminal-style Header */}
-      <div className="px-4 py-3 border-b border-primary-foreground/10">
-        <span className="text-xs font-mono text-primary-foreground/60">transcript.log</span>
+      <div className="border-primary-foreground/10 border-b px-4 py-3">
+        <span className="text-primary-foreground/60 font-mono text-xs">
+          transcript.log
+        </span>
       </div>
 
       {/* Messages (Terminal output style) */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-3 font-mono text-sm"
+        className="flex-1 space-y-3 overflow-y-auto px-4 py-4 font-mono text-sm"
       >
         {messages.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center h-full text-center space-y-3"
+            className="flex h-full flex-col items-center justify-center space-y-3 text-center"
           >
             <div className="text-muted-foreground/40 text-xs">
               <p>$ waiting for input...</p>
@@ -71,22 +73,27 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
           </motion.div>
         ) : (
           messages.map((message, index) => (
-            <div
-              key={`${message.speaker}-${index}`}
-              className="space-y-1"
-            >
+            <div key={`${message.speaker}-${index}`} className="space-y-1">
               {/* Terminal-style prompt */}
               <div className="flex items-baseline gap-3 text-xs leading-relaxed">
-                <span className={`flex-shrink-0 font-semibold min-w-[3rem] ${
-                  message.speaker === "user" ? "text-success" : "text-info"
-                } ${!message.isFinal ? "opacity-50" : ""}`}>
+                <span
+                  className={`min-w-[3rem] flex-shrink-0 font-semibold ${
+                    message.speaker === "user" ? "text-success" : "text-info"
+                  } ${!message.isFinal ? "opacity-50" : ""}`}
+                >
                   {message.speaker === "user" ? "user" : "agent"}
                 </span>
-                <span className={`flex-1 ${
-                  message.isFinal ? "text-primary-foreground/90" : "text-primary-foreground/40 italic"
-                }`}>
+                <span
+                  className={`flex-1 ${
+                    message.isFinal
+                      ? "text-primary-foreground/90"
+                      : "text-primary-foreground/40 italic"
+                  }`}
+                >
                   {message.text}
-                  {!message.isFinal && <span className="animate-pulse ml-1">...</span>}
+                  {!message.isFinal && (
+                    <span className="ml-1 animate-pulse">...</span>
+                  )}
                 </span>
               </div>
             </div>
@@ -122,13 +129,17 @@ function DemoControls({
   const demoCompletedTracked = useRef(false);
 
   // Debounced agent state to prevent flickering during speech pauses
-  const [debouncedAgentState, setDebouncedAgentState] = useState<string>("idle");
+  const [debouncedAgentState, setDebouncedAgentState] =
+    useState<string>("idle");
   const stateChangeTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastSpeakingTimeRef = useRef<number>(0);
 
   // Track agent join
   useEffect(() => {
-    if (connectionState === ConnectionState.Connected && room?.remoteParticipants.size > 0) {
+    if (
+      connectionState === ConnectionState.Connected &&
+      room?.remoteParticipants.size > 0
+    ) {
       onAgentJoined();
     }
   }, [connectionState, room?.remoteParticipants.size, onAgentJoined]);
@@ -142,10 +153,18 @@ function DemoControls({
   }, [localParticipant, localParticipant?.isMicrophoneEnabled]);
 
   // Audio reactivity for Orb (same as interview page)
-  const userVolume = useTrackVolume(audioTrack?.publication?.track as Parameters<typeof useTrackVolume>[0]);
-  const firstRemoteParticipant = room?.remoteParticipants ? Array.from(room.remoteParticipants.values())[0] : undefined;
-  const agentAudioTrack = firstRemoteParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
-  const agentVolume = useTrackVolume(agentAudioTrack as Parameters<typeof useTrackVolume>[0]);
+  const userVolume = useTrackVolume(
+    audioTrack?.publication?.track as Parameters<typeof useTrackVolume>[0]
+  );
+  const firstRemoteParticipant = room?.remoteParticipants
+    ? Array.from(room.remoteParticipants.values())[0]
+    : undefined;
+  const agentAudioTrack = firstRemoteParticipant?.getTrackPublication(
+    Track.Source.Microphone
+  )?.track;
+  const agentVolume = useTrackVolume(
+    agentAudioTrack as Parameters<typeof useTrackVolume>[0]
+  );
 
   // Normalize volumes from 0-100
   const normalizedUserVolume = Math.min(userVolume, 100) / 100;
@@ -170,7 +189,10 @@ function DemoControls({
         clearTimeout(stateChangeTimerRef.current);
         stateChangeTimerRef.current = undefined;
       }
-    } else if (currentState !== "speaking" && debouncedAgentState === "speaking") {
+    } else if (
+      currentState !== "speaking" &&
+      debouncedAgentState === "speaking"
+    ) {
       // Agent stopped speaking - check if we should wait before transitioning
       const timeSinceLastSpeaking = Date.now() - lastSpeakingTimeRef.current;
 
@@ -234,8 +256,7 @@ function DemoControls({
 
     const handleTranscription = (
       segments: TranscriptionSegment[],
-      participant?: Participant,
-      _publication?: TrackPublication
+      participant?: Participant
     ) => {
       segments.forEach((segment) => {
         // Show both interim and final transcripts (Option A)
@@ -290,7 +311,9 @@ function DemoControls({
                 (msg) =>
                   msg.text === newMessage.text &&
                   msg.speaker === speaker &&
-                  Math.abs(msg.timestamp.getTime() - newMessage.timestamp.getTime()) < 1000
+                  Math.abs(
+                    msg.timestamp.getTime() - newMessage.timestamp.getTime()
+                  ) < 1000
               );
 
               if (isDuplicate) return withoutInterim;
@@ -306,7 +329,7 @@ function DemoControls({
     return () => {
       room.off("transcriptionReceived", handleTranscription);
     };
-  }, [room]);
+  }, [room, onUserSpoke]);
 
   const toggleMute = async () => {
     if (!localParticipant) return;
@@ -329,7 +352,11 @@ function DemoControls({
 
   // Track demo completion when session ends
   useEffect(() => {
-    if (sessionEnded && !demoCompletedTracked.current && demoStartTime.current) {
+    if (
+      sessionEnded &&
+      !demoCompletedTracked.current &&
+      demoStartTime.current
+    ) {
       demoCompletedTracked.current = true;
       onDemoCompleted();
 
@@ -352,13 +379,13 @@ function DemoControls({
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   return (
-    <div className="relative h-full w-full flex bg-gradient-to-br from-overlay via-overlay to-primary/20">
+    <div className="from-overlay via-overlay to-primary/20 relative flex h-full w-full bg-gradient-to-br">
       {/* Main area: Centered content */}
-      <div className="flex-1 flex flex-col items-center justify-center relative px-4 sm:px-8 md:px-16">
+      <div className="relative flex flex-1 flex-col items-center justify-center px-4 sm:px-8 md:px-16">
         {/* Timer and Demo Badge (top-right) */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
@@ -369,7 +396,7 @@ function DemoControls({
           <div className="flex items-center gap-2 sm:gap-3">
             {/* 5-Minute Demo Badge */}
             {!isConnected && !sessionEnded && (
-              <div className="bg-primary/10 backdrop-blur-xl px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl border border-primary/20">
+              <div className="bg-primary/10 border-primary/20 rounded-lg border px-2 py-1.5 backdrop-blur-xl sm:rounded-xl sm:px-4 sm:py-2">
                 <span className="text-label text-primary">5-MIN DEMO</span>
               </div>
             )}
@@ -379,20 +406,32 @@ function DemoControls({
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className={`bg-primary-foreground/5 backdrop-blur-xl px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border ${
-                  timeRemaining <= 60 ? "border-destructive/40 bg-destructive/10" : "border-primary-foreground/10"
+                className={`bg-primary-foreground/5 rounded-lg border px-3 py-2 backdrop-blur-xl sm:rounded-xl sm:px-5 sm:py-2.5 ${
+                  timeRemaining <= 60
+                    ? "border-destructive/40 bg-destructive/10"
+                    : "border-primary-foreground/10"
                 }`}
               >
                 <div className="flex items-center gap-1.5 sm:gap-2">
-                  <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${
-                    timeRemaining <= 60 ? "bg-destructive animate-pulse" : "bg-primary"
-                  }`} />
-                  <span className={`text-xs sm:text-sm font-mono font-semibold tabular-nums ${
-                    timeRemaining <= 60 ? "text-destructive" : "text-primary-foreground/90"
-                  }`}>
+                  <div
+                    className={`h-1.5 w-1.5 rounded-full sm:h-2 sm:w-2 ${
+                      timeRemaining <= 60
+                        ? "bg-destructive animate-pulse"
+                        : "bg-primary"
+                    }`}
+                  />
+                  <span
+                    className={`font-mono text-xs font-semibold tabular-nums sm:text-sm ${
+                      timeRemaining <= 60
+                        ? "text-destructive"
+                        : "text-primary-foreground/90"
+                    }`}
+                  >
                     {formatTime(timeRemaining)}
                   </span>
-                  <span className="hidden sm:inline text-primary-foreground/50 text-xs">remaining</span>
+                  <span className="text-primary-foreground/50 hidden text-xs sm:inline">
+                    remaining
+                  </span>
                 </div>
               </motion.div>
             )}
@@ -408,14 +447,15 @@ function DemoControls({
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="text-center space-y-6"
+                className="space-y-6 text-center"
               >
                 <div className="space-y-3">
-                  <h2 className="text-3xl font-semibold text-primary-foreground">
+                  <h2 className="text-primary-foreground text-3xl font-semibold">
                     Demo Complete!
                   </h2>
-                  <p className="text-primary-foreground/60 text-base max-w-lg mx-auto">
-                    Thank you for trying Meelni. Ready to practice with a full interview?
+                  <p className="text-primary-foreground/60 mx-auto max-w-lg text-base">
+                    Thank you for trying Meelni. Ready to practice with a full
+                    interview?
                   </p>
                 </div>
                 <Link
@@ -424,13 +464,16 @@ function DemoControls({
                     // Track conversion to signup
                     if (demoStartTime.current) {
                       analytics.track("demo_completed", {
-                        duration_seconds: Math.floor((Date.now() - demoStartTime.current) / 1000),
-                        turn_count: messages.filter((msg) => msg.isFinal).length,
+                        duration_seconds: Math.floor(
+                          (Date.now() - demoStartTime.current) / 1000
+                        ),
+                        turn_count: messages.filter((msg) => msg.isFinal)
+                          .length,
                         converted_to_signup: true,
                       });
                     }
                   }}
-                  className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
                 >
                   Start Full Interview
                   <ArrowRight className="h-5 w-5" />
@@ -442,19 +485,22 @@ function DemoControls({
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.5, type: "spring" }}
-                className="w-[250px] h-[250px] sm:w-[350px] sm:h-[350px] md:w-[400px] md:h-[400px]"
+                className="h-[250px] w-[250px] sm:h-[350px] sm:w-[350px] md:h-[400px] md:w-[400px]"
               >
                 <Orb
                   colors={MEELNI_ORB_COLORS}
                   agentState={
-                    agentState === "thinking" ? "thinking" :
-                    agentState === "listening" ? "listening" :
-                    agentState === "speaking" ? "talking" :
-                    null
+                    agentState === "thinking"
+                      ? "thinking"
+                      : agentState === "listening"
+                        ? "listening"
+                        : agentState === "speaking"
+                          ? "talking"
+                          : null
                   }
                   getInputVolume={() => normalizedUserVolume}
                   getOutputVolume={() => normalizedAgentVolume}
-                  className="w-full h-full"
+                  className="h-full w-full"
                 />
               </motion.div>
             ) : (
@@ -462,12 +508,12 @@ function DemoControls({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-center space-y-3"
+                className="space-y-3 text-center"
               >
-                <h2 className="text-2xl font-semibold text-primary-foreground/90">
+                <h2 className="text-primary-foreground/90 text-2xl font-semibold">
                   Connecting...
                 </h2>
-                <p className="text-primary-foreground/50 text-sm max-w-md">
+                <p className="text-primary-foreground/50 max-w-md text-sm">
                   Establishing secure connection...
                 </p>
               </motion.div>
@@ -482,28 +528,42 @@ function DemoControls({
               transition={{ delay: 0.3 }}
             >
               {!isConnected ? (
-                <div className="flex items-center gap-3 bg-primary-foreground/5 backdrop-blur-xl px-6 py-3 rounded-2xl border border-primary-foreground/10">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <span className="text-primary-foreground/70 text-sm font-medium">Connecting to Meelni...</span>
+                <div className="bg-primary-foreground/5 border-primary-foreground/10 flex items-center gap-3 rounded-2xl border px-6 py-3 backdrop-blur-xl">
+                  <Loader2 className="text-primary h-4 w-4 animate-spin" />
+                  <span className="text-primary-foreground/70 text-sm font-medium">
+                    Connecting to Meelni...
+                  </span>
                 </div>
               ) : agentState === "listening" ? (
-                <div className="flex items-center gap-3 bg-info/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-info/20">
-                  <div className="w-2 h-2 rounded-full bg-info animate-pulse" />
-                  <span className="text-info text-sm font-medium">Listening</span>
+                <div className="bg-info/10 border-info/20 flex items-center gap-3 rounded-2xl border px-6 py-3 backdrop-blur-xl">
+                  <div className="bg-info h-2 w-2 animate-pulse rounded-full" />
+                  <span className="text-info text-sm font-medium">
+                    Listening
+                  </span>
                 </div>
               ) : agentState === "thinking" ? (
-                <div className="flex items-center gap-3 bg-primary/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-primary/20">
+                <div className="bg-primary/10 border-primary/20 flex items-center gap-3 rounded-2xl border px-6 py-3 backdrop-blur-xl">
                   <div className="flex gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0.1s" }} />
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0.2s" }} />
+                    <div className="bg-primary h-1.5 w-1.5 animate-bounce rounded-full" />
+                    <div
+                      className="bg-primary h-1.5 w-1.5 animate-bounce rounded-full"
+                      style={{ animationDelay: "0.1s" }}
+                    />
+                    <div
+                      className="bg-primary h-1.5 w-1.5 animate-bounce rounded-full"
+                      style={{ animationDelay: "0.2s" }}
+                    />
                   </div>
-                  <span className="text-primary text-sm font-medium">Thinking</span>
+                  <span className="text-primary text-sm font-medium">
+                    Thinking
+                  </span>
                 </div>
               ) : agentState === "speaking" ? (
-                <div className="flex items-center gap-3 bg-success/10 backdrop-blur-xl px-6 py-3 rounded-2xl border border-success/20">
-                  <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                  <span className="text-success text-sm font-medium">Speaking</span>
+                <div className="bg-success/10 border-success/20 flex items-center gap-3 rounded-2xl border px-6 py-3 backdrop-blur-xl">
+                  <div className="bg-success h-2 w-2 animate-pulse rounded-full" />
+                  <span className="text-success text-sm font-medium">
+                    Speaking
+                  </span>
                 </div>
               ) : null}
             </motion.div>
@@ -517,46 +577,42 @@ function DemoControls({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 50, opacity: 0 }}
             transition={{ delay: 0.4 }}
-            className="absolute bottom-4 sm:bottom-8 md:bottom-12 left-1/2 -translate-x-1/2"
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 sm:bottom-8 md:bottom-12"
           >
-            <div className="flex items-center gap-3 sm:gap-4 bg-primary-foreground/5 backdrop-blur-2xl rounded-2xl px-4 sm:px-6 md:px-8 py-3 sm:py-4 border border-primary-foreground/10 shadow-2xl">
+            <div className="bg-primary-foreground/5 border-primary-foreground/10 flex items-center gap-3 rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur-2xl sm:gap-4 sm:px-6 sm:py-4 md:px-8">
               {/* Mic button */}
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={toggleMute}
                 disabled={!isConnected || !localParticipant}
-                className={`
-                  relative p-4 rounded-xl transition-all duration-300 shadow-lg
-                  ${
-                    isMuted
-                      ? "bg-destructive/80 hover:bg-destructive"
-                      : "bg-primary-foreground/10 hover:bg-primary-foreground/20"
-                  }
-                  disabled:opacity-50 disabled:cursor-not-allowed
-                `}
+                className={`relative rounded-xl p-4 shadow-lg transition-all duration-300 ${
+                  isMuted
+                    ? "bg-destructive/80 hover:bg-destructive"
+                    : "bg-primary-foreground/10 hover:bg-primary-foreground/20"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 {isMuted ? (
-                  <MicOff className="h-5 w-5 text-primary-foreground" />
+                  <MicOff className="text-primary-foreground h-5 w-5" />
                 ) : (
-                  <Mic className="h-5 w-5 text-primary-foreground" />
+                  <Mic className="text-primary-foreground h-5 w-5" />
                 )}
                 {!isMuted && isConnected && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-success animate-pulse" />
+                  <div className="bg-success absolute -top-1 -right-1 h-3 w-3 animate-pulse rounded-full" />
                 )}
               </motion.button>
 
               {/* Divider */}
-              <div className="w-px h-8 bg-primary-foreground/10" />
+              <div className="bg-primary-foreground/10 h-8 w-px" />
 
               {/* Close button */}
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={onClose}
-                className="p-4 rounded-xl bg-primary-foreground/10 hover:bg-primary-foreground/20 transition-all duration-300 shadow-lg"
+                className="bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-xl p-4 shadow-lg transition-all duration-300"
               >
-                <X className="h-5 w-5 text-primary-foreground" />
+                <X className="text-primary-foreground h-5 w-5" />
               </motion.button>
             </div>
           </motion.div>
@@ -568,7 +624,7 @@ function DemoControls({
         initial={{ x: 100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ delay: 0.3 }}
-        className="hidden lg:block w-[400px] border-l border-border/50"
+        className="border-border/50 hidden w-[400px] border-l lg:block"
       >
         <TranscriptPanel messages={messages} />
       </motion.div>
@@ -599,31 +655,7 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
     };
   }, [isOpen]);
 
-  // Fetch demo token when modal opens
-  useEffect(() => {
-    if (isOpen && !token) {
-      fetchDemoToken();
-    }
-  }, [isOpen]);
-
-  // ESC key listener to close modal
-  useEffect(() => {
-    const handleEscKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && isOpen) {
-        handleClose();
-      }
-    };
-
-    if (isOpen) {
-      window.addEventListener("keydown", handleEscKey);
-    }
-
-    return () => {
-      window.removeEventListener("keydown", handleEscKey);
-    };
-  }, [isOpen]);
-
-  const fetchDemoToken = async () => {
+  const fetchDemoToken = useCallback(async () => {
     setIsLoading(true);
     setError("");
 
@@ -632,7 +664,8 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          participantName: "demo-user-" + Math.random().toString(36).substring(7),
+          participantName:
+            "demo-user-" + Math.random().toString(36).substring(7),
         }),
       });
 
@@ -649,9 +682,9 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     // Track demo close
     if (demoStartTime.current) {
       const duration = (Date.now() - demoStartTime.current) / 1000;
@@ -672,7 +705,31 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
     setUserSpoke(false);
     setDemoCompleted(false);
     onClose();
-  };
+  }, [agentJoined, demoCompleted, onClose, userSpoke]);
+
+  // Fetch demo token when modal opens
+  useEffect(() => {
+    if (isOpen && !token) {
+      fetchDemoToken();
+    }
+  }, [fetchDemoToken, isOpen, token]);
+
+  // ESC key listener to close modal
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isOpen) {
+        handleClose();
+      }
+    };
+
+    if (isOpen) {
+      window.addEventListener("keydown", handleEscKey);
+    }
+
+    return () => {
+      window.removeEventListener("keydown", handleEscKey);
+    };
+  }, [handleClose, isOpen]);
 
   // Only render portal on client-side after mount
   const [mounted, setMounted] = useState(false);
@@ -693,7 +750,7 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] bg-overlay/95 backdrop-blur-sm"
+            className="bg-overlay/95 fixed inset-0 z-[9999] backdrop-blur-sm"
           />
 
           {/* Full-screen Modal Container (LiveKit style) */}
@@ -705,24 +762,24 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
             className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
           >
             {/* Inner modal with border/frame */}
-            <div className="relative w-full h-full max-w-[1600px] max-h-[900px] rounded-2xl border border-primary-foreground/10 bg-gradient-to-br from-overlay via-overlay to-primary/20 shadow-2xl overflow-hidden">
+            <div className="border-primary-foreground/10 from-overlay via-overlay to-primary/20 relative h-full max-h-[900px] w-full max-w-[1600px] overflow-hidden rounded-2xl border bg-gradient-to-br shadow-2xl">
               {/* Keyboard shortcut hint - bottom left - Hidden on mobile */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
-                className="hidden sm:flex absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-50 items-center gap-2 px-3 py-2 rounded-lg bg-primary-foreground/5 backdrop-blur-xl border border-primary-foreground/10 text-xs text-primary-foreground/60"
+                className="bg-primary-foreground/5 border-primary-foreground/10 text-primary-foreground/60 absolute bottom-4 left-4 z-50 hidden items-center gap-2 rounded-lg border px-3 py-2 text-xs backdrop-blur-xl sm:bottom-6 sm:left-6 sm:flex"
               >
-                <kbd className="px-2 py-1 rounded bg-primary-foreground/10 border border-primary-foreground/20 font-mono text-primary-foreground/80">
+                <kbd className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground/80 rounded border px-2 py-1 font-mono">
                   ESC
                 </kbd>
                 <span>to close</span>
               </motion.div>
               {error ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center space-y-4">
-                    <div className="w-16 h-16 rounded-full bg-destructive/20 flex items-center justify-center mx-auto">
-                      <X className="h-8 w-8 text-destructive" />
+                <div className="flex h-full items-center justify-center">
+                  <div className="space-y-4 text-center">
+                    <div className="bg-destructive/20 mx-auto flex h-16 w-16 items-center justify-center rounded-full">
+                      <X className="text-destructive h-8 w-8" />
                     </div>
                     <p className="text-destructive font-medium">{error}</p>
                     <Button
@@ -736,8 +793,8 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
                   </div>
                 </div>
               ) : isLoading || !token ? (
-                <div className="flex flex-col items-center justify-center h-full gap-6">
-                  <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                <div className="flex h-full flex-col items-center justify-center gap-6">
+                  <Loader2 className="text-primary h-12 w-12 animate-spin" />
                   <p className="text-primary-foreground/80 font-medium">
                     Connecting to Meelni...
                   </p>

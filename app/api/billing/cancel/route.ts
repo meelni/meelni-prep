@@ -144,7 +144,8 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          message: "Your subscription has been canceled immediately. You will receive a prorated refund.",
+          message:
+            "Your subscription has been canceled immediately. You will receive a prorated refund.",
           status: "canceled",
           effectiveDate: new Date().toISOString(),
         });
@@ -176,7 +177,8 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          message: "Your subscription will be canceled at the end of the current billing period.",
+          message:
+            "Your subscription will be canceled at the end of the current billing period.",
           status: "cancel_at_period_end",
           effectiveDate: sub.currentPeriodEnd?.toISOString(),
           accessUntil: sub.currentPeriodEnd?.toISOString(),
@@ -185,7 +187,10 @@ export async function POST(req: NextRequest) {
     } catch (stripeError) {
       console.error("Stripe cancellation error:", stripeError);
       return NextResponse.json(
-        { error: "Failed to cancel subscription. Please try again or contact support." },
+        {
+          error:
+            "Failed to cancel subscription. Please try again or contact support.",
+        },
         { status: 500 }
       );
     }
@@ -204,7 +209,7 @@ export async function POST(req: NextRequest) {
  * Reactivate a subscription that was set to cancel at period end.
  * Only works if subscription hasn't actually been canceled yet.
  */
-export async function DELETE(req: NextRequest) {
+export async function DELETE() {
   try {
     // Authenticate user
     const supabase = await createClient();
@@ -227,7 +232,10 @@ export async function DELETE(req: NextRequest) {
       .limit(1);
 
     if (userSubscription.length === 0) {
-      return NextResponse.json({ error: "No subscription found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "No subscription found" },
+        { status: 404 }
+      );
     }
 
     const sub = userSubscription[0];
@@ -235,7 +243,10 @@ export async function DELETE(req: NextRequest) {
     // Check if subscription can be reactivated
     if (sub.status === "canceled") {
       return NextResponse.json(
-        { error: "Subscription has already been canceled and cannot be reactivated. Please start a new subscription." },
+        {
+          error:
+            "Subscription has already been canceled and cannot be reactivated. Please start a new subscription.",
+        },
         { status: 400 }
       );
     }

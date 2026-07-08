@@ -17,7 +17,7 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
   return (
     <div className="space-y-3">
       {/* Step Counter */}
-      <div className="text-sm text-muted-foreground">
+      <div className="text-muted-foreground text-sm">
         Step {currentStep} of {totalSteps}
       </div>
 
@@ -26,16 +26,12 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
         {Array.from({ length: totalSteps }, (_, i) => i + 1).map((step) => {
           const isCompleted = step < currentStep;
           const isActive = step === currentStep;
-          const isFuture = step > currentStep;
 
           return (
-            <div key={step} className="flex items-center gap-2 flex-1">
+            <div key={step} className="flex flex-1 items-center gap-2">
               {/* Dot */}
               <motion.div
-                className={`
-                  relative flex items-center justify-center
-                  ${step === 1 ? "" : "flex-1"}
-                `}
+                className={`relative flex items-center justify-center ${step === 1 ? "" : "flex-1"} `}
                 onHoverStart={() => setHoveredStep(step)}
                 onHoverEnd={() => setHoveredStep(null)}
               >
@@ -44,18 +40,15 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
                   animate={{
                     scale: isActive ? 1.2 : 1,
                   }}
-                  className={`
-                    w-6 h-6 rounded-full flex items-center justify-center transition-colors
-                    ${
-                      isCompleted
-                        ? "bg-primary"
-                        : isActive
-                        ? "bg-primary ring-4 ring-primary/20"
+                  className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                    isCompleted
+                      ? "bg-primary"
+                      : isActive
+                        ? "bg-primary ring-primary/20 ring-4"
                         : "bg-border"
-                    }
-                  `}
+                  } `}
                   transition={{
-                    type: 'spring',
+                    type: "spring",
                     stiffness: 400,
                     damping: 30,
                   }}
@@ -69,18 +62,21 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
                         animate={{ scale: 1, rotate: 0 }}
                         exit={{ scale: 0, rotate: 180 }}
                         transition={{
-                          type: 'spring',
+                          type: "spring",
                           stiffness: 400,
                           damping: 25,
                         }}
                       >
-                        <Check className="w-3.5 h-3.5 text-primary-foreground" strokeWidth={3} />
+                        <Check
+                          className="text-primary-foreground h-3.5 w-3.5"
+                          strokeWidth={3}
+                        />
                       </motion.div>
                     )}
                     {isActive && (
                       <motion.div
                         key="pulse"
-                        className="w-2 h-2 rounded-full bg-primary-foreground"
+                        className="bg-primary-foreground h-2 w-2 rounded-full"
                         animate={{
                           scale: [1, 1.2, 1],
                           opacity: [1, 0.8, 1],
@@ -88,7 +84,7 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
                         transition={{
                           duration: 2,
                           repeat: Infinity,
-                          ease: 'easeInOut',
+                          ease: "easeInOut",
                         }}
                       />
                     )}
@@ -102,9 +98,9 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
                       initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 5 }}
-                      className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded-md bg-popover border border-border shadow-lg whitespace-nowrap z-10"
+                      className="bg-popover border-border absolute -top-8 left-1/2 z-10 -translate-x-1/2 rounded-md border px-2 py-1 whitespace-nowrap shadow-lg"
                     >
-                      <span className="text-xs font-medium text-foreground">
+                      <span className="text-foreground text-xs font-medium">
                         {STEP_LABELS[step - 1]}
                       </span>
                     </motion.div>
@@ -117,7 +113,7 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 5 }}
-                    className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs font-medium text-foreground whitespace-nowrap"
+                    className="text-foreground absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs font-medium whitespace-nowrap"
                   >
                     {STEP_LABELS[step - 1]}
                   </motion.span>
@@ -126,7 +122,7 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
 
               {/* Progress Line */}
               {step < totalSteps && (
-                <div className="flex-1 h-0.5 bg-border rounded-full overflow-hidden">
+                <div className="bg-border h-0.5 flex-1 overflow-hidden rounded-full">
                   <motion.div
                     initial={false}
                     animate={{
@@ -136,7 +132,7 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
                       duration: 0.4,
                       ease: [0.34, 1.56, 0.64, 1],
                     }}
-                    className="h-full bg-primary origin-left"
+                    className="bg-primary h-full origin-left"
                   />
                 </div>
               )}

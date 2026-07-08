@@ -5,9 +5,6 @@
  * These are thin wrappers around the aggregation engine for future extensibility.
  */
 
-import { db } from "@/lib/db";
-import { userInsights } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
 import {
   aggregateUserInsights,
   type UserInsights,
@@ -55,6 +52,10 @@ export async function upsertUserInsights(
   insights: UserInsights,
   lastSessionId: string
 ): Promise<void> {
+  void userId;
+  void insights;
+  void lastSessionId;
+
   // For MVP: No-op (insights calculated on-demand)
   // TODO P2-003: Implement after user_insights table deployed
 
@@ -95,6 +96,9 @@ export async function areInsightsStale(
   userId: string,
   maxAgeMinutes: number = 60
 ): Promise<boolean> {
+  void userId;
+  void maxAgeMinutes;
+
   // For MVP: Always stale (no cache)
   return true;
 

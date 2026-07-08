@@ -8,7 +8,9 @@ import { z } from "zod";
 // Schema for settings validation
 const settingsSchema = z.object({
   displayName: z.string().optional(),
-  defaultInterviewType: z.enum(["product_sense", "analytical", "behavioral", "strategy"]).optional(),
+  defaultInterviewType: z
+    .enum(["product_sense", "analytical", "behavioral", "strategy"])
+    .optional(),
   defaultDifficulty: z.enum(["easy", "medium", "hard"]).optional(),
   questionRecency: z.enum(["current", "recent", "all"]).optional(),
   autoSaveTranscripts: z.boolean().optional(),
@@ -21,7 +23,7 @@ const settingsSchema = z.object({
   theme: z.enum(["light", "dark", "system"]).optional(),
 });
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createClient();
 
@@ -33,7 +35,10 @@ export async function GET(request: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json(
-        { error: "Unauthorized", message: "You must be logged in to access settings." },
+        {
+          error: "Unauthorized",
+          message: "You must be logged in to access settings.",
+        },
         { status: 401 }
       );
     }
@@ -94,7 +99,10 @@ export async function PUT(request: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json(
-        { error: "Unauthorized", message: "You must be logged in to update settings." },
+        {
+          error: "Unauthorized",
+          message: "You must be logged in to update settings.",
+        },
         { status: 401 }
       );
     }
@@ -125,27 +133,35 @@ export async function PUT(request: NextRequest) {
       updatedAt: new Date(),
     };
 
-    if (settings.displayName !== undefined) dbSettings.displayName = settings.displayName;
-    if (settings.defaultInterviewType !== undefined) dbSettings.defaultInterviewType = settings.defaultInterviewType;
-    if (settings.defaultDifficulty !== undefined) dbSettings.defaultDifficulty = settings.defaultDifficulty;
-    if (settings.questionRecency !== undefined) dbSettings.questionRecency = settings.questionRecency;
-    if (settings.autoSaveTranscripts !== undefined) dbSettings.autoSaveTranscripts = settings.autoSaveTranscripts;
-    if (settings.emailNotifications !== undefined) dbSettings.emailNotifications = settings.emailNotifications;
-    if (settings.sessionCompletionEmail !== undefined) dbSettings.sessionCompletionEmail = settings.sessionCompletionEmail;
-    if (settings.feedbackReadyEmail !== undefined) dbSettings.feedbackReadyEmail = settings.feedbackReadyEmail;
-    if (settings.weeklyProgressReport !== undefined) dbSettings.weeklyProgressReport = settings.weeklyProgressReport;
-    if (settings.shareAnonymousData !== undefined) dbSettings.shareAnonymousData = settings.shareAnonymousData;
-    if (settings.saveTranscripts !== undefined) dbSettings.saveTranscripts = settings.saveTranscripts;
+    if (settings.displayName !== undefined)
+      dbSettings.displayName = settings.displayName;
+    if (settings.defaultInterviewType !== undefined)
+      dbSettings.defaultInterviewType = settings.defaultInterviewType;
+    if (settings.defaultDifficulty !== undefined)
+      dbSettings.defaultDifficulty = settings.defaultDifficulty;
+    if (settings.questionRecency !== undefined)
+      dbSettings.questionRecency = settings.questionRecency;
+    if (settings.autoSaveTranscripts !== undefined)
+      dbSettings.autoSaveTranscripts = settings.autoSaveTranscripts;
+    if (settings.emailNotifications !== undefined)
+      dbSettings.emailNotifications = settings.emailNotifications;
+    if (settings.sessionCompletionEmail !== undefined)
+      dbSettings.sessionCompletionEmail = settings.sessionCompletionEmail;
+    if (settings.feedbackReadyEmail !== undefined)
+      dbSettings.feedbackReadyEmail = settings.feedbackReadyEmail;
+    if (settings.weeklyProgressReport !== undefined)
+      dbSettings.weeklyProgressReport = settings.weeklyProgressReport;
+    if (settings.shareAnonymousData !== undefined)
+      dbSettings.shareAnonymousData = settings.shareAnonymousData;
+    if (settings.saveTranscripts !== undefined)
+      dbSettings.saveTranscripts = settings.saveTranscripts;
     if (settings.theme !== undefined) dbSettings.theme = settings.theme;
 
     // Upsert settings (insert or update)
-    await db
-      .insert(userSettings)
-      .values(dbSettings)
-      .onConflictDoUpdate({
-        target: userSettings.userId,
-        set: dbSettings,
-      });
+    await db.insert(userSettings).values(dbSettings).onConflictDoUpdate({
+      target: userSettings.userId,
+      set: dbSettings,
+    });
 
     return NextResponse.json({
       success: true,

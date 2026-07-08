@@ -9,7 +9,7 @@
 
 import { db } from "../index";
 import { interviewSession, feedback, transcriptTurn, appUser } from "../schema";
-import { eq, and, gte, lte, desc, sql, count } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 
 /**
  * User session summary statistics
@@ -107,7 +107,8 @@ export async function getUserSessionSummary(
 
     const avgScore =
       validScores.length > 0
-        ? validScores.reduce((sum, score) => sum + score, 0) / validScores.length
+        ? validScores.reduce((sum, score) => sum + score, 0) /
+          validScores.length
         : 0;
 
     // Calculate total minutes from transcript turns
@@ -123,10 +124,7 @@ export async function getUserSessionSummary(
         )})`
       );
 
-    const totalMs = transcripts.reduce(
-      (sum, t) => sum + (t.audioMs || 0),
-      0
-    );
+    const totalMs = transcripts.reduce((sum, t) => sum + (t.audioMs || 0), 0);
     const totalMinutes = Math.round(totalMs / 60000);
 
     // Calculate completion rate (sessions with endedAt set)
@@ -168,7 +166,9 @@ export async function getUserWeeklyTrend(
   try {
     const now = new Date();
     const currentWeekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const previousWeekStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const previousWeekStart = new Date(
+      now.getTime() - 14 * 24 * 60 * 60 * 1000
+    );
 
     // Get current week sessions
     const currentWeekSessions = await db
@@ -208,8 +208,8 @@ export async function getUserWeeklyTrend(
             ((currentWeekCount - previousWeekCount) / previousWeekCount) * 100
           )
         : currentWeekCount > 0
-        ? 100
-        : null;
+          ? 100
+          : null;
 
     // Score trend
     let scoreChange: number | null = null;
@@ -255,7 +255,9 @@ export async function getUserWeeklyTrend(
           : 0;
 
       if (previousAvg > 0) {
-        scoreChange = Math.round(((currentAvg - previousAvg) / previousAvg) * 100);
+        scoreChange = Math.round(
+          ((currentAvg - previousAvg) / previousAvg) * 100
+        );
       }
     }
 
@@ -330,7 +332,9 @@ export async function getUserWeeklyTrend(
  * @param userId - User UUID from Supabase Auth
  * @returns Milestone achievement flags
  */
-export async function getUserMilestones(userId: string): Promise<UserMilestones> {
+export async function getUserMilestones(
+  userId: string
+): Promise<UserMilestones> {
   try {
     // Get all completed sessions ordered by date
     const sessions = await db
@@ -369,7 +373,8 @@ export async function getUserMilestones(userId: string): Promise<UserMilestones>
 
       // Perfect score milestone: any score >= 90
       perfectScore = scores.some(
-        (s) => s.overallScore !== null && parseFloat(s.overallScore as string) >= 90
+        (s) =>
+          s.overallScore !== null && parseFloat(s.overallScore as string) >= 90
       );
 
       // Improving milestone: last 3 sessions show increasing scores
@@ -380,7 +385,9 @@ export async function getUserMilestones(userId: string): Promise<UserMilestones>
           .reverse(); // Oldest to newest
 
         if (recentScores.every((s) => !isNaN(s))) {
-          improving = recentScores[0] < recentScores[1] && recentScores[1] < recentScores[2];
+          improving =
+            recentScores[0] < recentScores[1] &&
+            recentScores[1] < recentScores[2];
         }
       }
     }

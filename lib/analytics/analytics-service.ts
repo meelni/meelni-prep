@@ -55,7 +55,9 @@ export class AnalyticsService {
    */
   track<E extends AnalyticsEvent>(
     event: E,
-    properties: E extends keyof EventProperties ? EventProperties[E] : Record<string, unknown>
+    properties: E extends keyof EventProperties
+      ? EventProperties[E]
+      : Record<string, unknown>
   ): void {
     if (!clientConfig.enabled) {
       if (clientConfig.debug) {
@@ -67,14 +69,19 @@ export class AnalyticsService {
     // CRITICAL: Check user consent before tracking
     if (!this.hasConsent()) {
       if (clientConfig.debug) {
-        console.log("[Analytics] Tracking blocked - no user consent", { event });
+        console.log("[Analytics] Tracking blocked - no user consent", {
+          event,
+        });
       }
       return;
     }
 
     try {
       // Sanitize properties before sending
-      const sanitizedProperties = this.sanitizeProperties(properties) as Record<string, unknown>;
+      const sanitizedProperties = this.sanitizeProperties(properties) as Record<
+        string,
+        unknown
+      >;
 
       // Track event
       posthog.capture(event, sanitizedProperties);
@@ -188,7 +195,11 @@ export class AnalyticsService {
    * This prevents sending raw UUIDs to PostHog
    */
   private async hashSessionId(sessionId: string): Promise<string> {
-    if (typeof window === "undefined" || !window.crypto || !window.crypto.subtle) {
+    if (
+      typeof window === "undefined" ||
+      !window.crypto ||
+      !window.crypto.subtle
+    ) {
       // Fallback for server-side or old browsers: just truncate
       return `session_${sessionId.substring(0, 8)}`;
     }
@@ -198,9 +209,11 @@ export class AnalyticsService {
       const data = encoder.encode(sessionId);
       const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      const hashHex = hashArray
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
       return `session_${hashHex.substring(0, 16)}`; // First 16 chars of hash
-    } catch (error) {
+    } catch {
       // Fallback on error
       return `session_${sessionId.substring(0, 8)}`;
     }
@@ -237,7 +250,10 @@ export class AnalyticsService {
 
     for (const [key, value] of Object.entries(properties)) {
       // Hash session IDs instead of sending raw UUIDs
-      if (key.toLowerCase().includes("session_id") && typeof value === "string") {
+      if (
+        key.toLowerCase().includes("session_id") &&
+        typeof value === "string"
+      ) {
         sanitized[key] = this.hashSessionIdSync(value);
         continue;
       }
@@ -304,7 +320,10 @@ export class AnalyticsService {
     let sanitized = path.replace(/([?&])email=[^&]*/g, "$1email=[REDACTED]");
 
     // Remove token/session query params
-    sanitized = sanitized.replace(/([?&])(token|session|key)=[^&]*/g, "$1$2=[REDACTED]");
+    sanitized = sanitized.replace(
+      /([?&])(token|session|key)=[^&]*/g,
+      "$1$2=[REDACTED]"
+    );
 
     return sanitized;
   }

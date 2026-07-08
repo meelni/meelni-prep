@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, Calendar, Tag } from "lucide-react";
+import { Building2, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +31,7 @@ export function HoverPreview({
   const hideTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const triggerRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseEnter = (e: React.MouseEvent) => {
+  const handleMouseEnter = () => {
     // Clear any existing hide timeout
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
@@ -95,20 +95,20 @@ export function HoverPreview({
               maxWidth: "400px",
               zIndex: 100,
             }}
-            className="p-4 bg-popover border border-border rounded-lg shadow-xl shadow-primary/5 pointer-events-none"
+            className="bg-popover border-border shadow-primary/5 pointer-events-none rounded-lg border p-4 shadow-xl"
             onMouseEnter={handleMouseLeave} // Hide if mouse enters tooltip
           >
             {/* Full question text */}
-            <p className="text-sm text-foreground mb-3 leading-relaxed">
+            <p className="text-foreground mb-3 text-sm leading-relaxed">
               {question.questionText}
             </p>
 
             {/* Metadata */}
-            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
               {/* Company */}
               {question.company && (
                 <div className="flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 opacity-60" />
+                  <Building2 className="h-3.5 w-3.5 opacity-60" />
                   <span>{question.company}</span>
                 </div>
               )}
@@ -116,7 +116,7 @@ export function HoverPreview({
               {/* Date */}
               {question.askedAt && (
                 <div className="flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 opacity-60" />
+                  <Calendar className="h-3.5 w-3.5 opacity-60" />
                   <span>
                     {new Date(question.askedAt).toLocaleDateString("en-US", {
                       month: "short",
