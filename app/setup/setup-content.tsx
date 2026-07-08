@@ -1,14 +1,25 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  CreditCard,
+  Loader2,
+  Mic,
+  Sparkles,
+} from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import {
+  buildRecommendedRep,
   buildFullConfig,
+  DIFFICULTY_LEVELS,
   INTERVIEW_TYPE_LABELS,
   type DifficultyLevel,
   type MinimalInterviewConfig,
@@ -20,6 +31,7 @@ import { DifficultySelector } from "./components/difficulty-selector";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import { QuotaExceededModal } from "@/components/dashboard/quota-exceeded-modal";
 import { TierUpgradeModal } from "@/components/dashboard/tier-upgrade-modal";
+import { StatusPill } from "@/components/ui/app-surface";
 import { track, AnalyticsEvents } from "@/lib/analytics";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
@@ -28,19 +40,28 @@ export function SetupContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const fallbackRecommendation = buildRecommendedRep();
 
   // Track Web Vitals performance
   useWebVitals('setup');
 
-  // Simplified 2-step state
-  const [step, setStep] = useState<1 | 2>(1);
-  const [roundType, setRoundType] = useState<RoundType | null>(null);
-  const [difficulty, setDifficulty] = useState<DifficultyLevel | null>(null);
+  // Recommendation-first launcher state.
+  const [roundType, setRoundType] = useState<RoundType | null>(
+    fallbackRecommendation.roundType
+  );
+  const [difficulty, setDifficulty] = useState<DifficultyLevel | null>(
+    fallbackRecommendation.difficulty
+  );
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pageLoadTime = useRef(Date.now());
-  const defaultRoundType = useRef<RoundType | null>(null);
-  const defaultDifficulty = useRef<DifficultyLevel | null>(null);
+  const defaultRoundType = useRef<RoundType | null>(
+    fallbackRecommendation.roundType
+  );
+  const defaultDifficulty = useRef<DifficultyLevel | null>(
+    fallbackRecommendation.difficulty
+  );
 
   // Question from explore page
   const [questionId, setQuestionId] = useState<string | null>(null);
@@ -49,6 +70,18 @@ export function SetupContent() {
     company: string | null;
     type: string;
   } | null>(null);
+
+  const recommendation = buildRecommendedRep({
+    selectedQuestion:
+      questionId && questionData
+        ? {
+            id: questionId,
+            text: questionData.text,
+            company: questionData.company,
+            type: questionData.type,
+          }
+        : null,
+  });
 
   // Credit state is informational; session start remains the source of truth.
   const [creditBalance, setCreditBalance] = useState<{
@@ -77,9 +110,9 @@ export function SetupContent() {
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push("/auth/signin?redirectTo=/setup");
+      router.push(`/auth/signin?redirectTo=${encodeURIComponent(pathname)}`);
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, pathname, router]);
 
   // Fetch question from URL parameter if provided
   useEffect(() => {
@@ -118,8 +151,6 @@ export function SetupContent() {
         if (mappedRoundType) {
           setRoundType(mappedRoundType);
           defaultRoundType.current = mappedRoundType;
-          // Skip to difficulty selection (step 2)
-          setStep(2);
         }
 
         // Track that user came from explore page
@@ -135,6 +166,20 @@ export function SetupContent() {
 
     fetchQuestion();
   }, [searchParams]);
+
+  useEffect(() => {
+    analytics.track("new_rep_launcher_viewed", {
+      source: searchParams.get("questionId") ? "selected_question" : "dashboard",
+      recommended_round_type: recommendation.roundType,
+      recommended_difficulty: recommendation.difficulty,
+      recommendation_source: recommendation.source,
+    });
+  }, [
+    recommendation.difficulty,
+    recommendation.roundType,
+    recommendation.source,
+    searchParams,
+  ]);
 
   // Fetch user credit balance on mount
   useEffect(() => {
@@ -200,6 +245,15 @@ export function SetupContent() {
       mode: "voice_video",
       time_to_complete_seconds: Math.floor(timeToComplete),
       selections_changed: selectionsChanged,
+    });
+    analytics.track("new_rep_start_attempted", {
+      interview_type: roundType,
+      skill_level: difficulty,
+      recommendation_source: recommendation.source,
+      accepted_recommendation:
+        roundType === recommendation.roundType &&
+        difficulty === recommendation.difficulty,
+      question_id: questionId || undefined,
     });
 
     try {
@@ -285,6 +339,13 @@ export function SetupContent() {
 
       const { sessionId, token, url, roomName } = await response.json();
 
+      analytics.track("new_rep_start_succeeded", {
+        session_id: sessionId,
+        interview_type: roundType,
+        skill_level: difficulty,
+        question_id: questionId || undefined,
+      });
+
       // Navigate to interview page with session data
       router.push(
         "/interview?sessionId=" + sessionId +
@@ -294,6 +355,11 @@ export function SetupContent() {
       );
     } catch (err) {
       console.error("Failed to start session:", err);
+      analytics.track("new_rep_start_failed", {
+        interview_type: roundType,
+        skill_level: difficulty,
+        error: err instanceof Error ? err.message : "unknown",
+      });
       setError(
         err instanceof Error ? err.message : "Failed to start interview"
       );
@@ -303,8 +369,11 @@ export function SetupContent() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="text-dashboard-muted flex items-center gap-3">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Loading New Rep...</span>
+        </div>
       </div>
     );
   }
@@ -314,245 +383,211 @@ export function SetupContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
-      {/* Header */}
-      <motion.header
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="sticky top-0 z-50 w-full bg-background/80 backdrop-blur-md border-b border-border/50"
-      >
-        <div className="container max-w-4xl mx-auto h-16 px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-full">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors group"
-            >
-              <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
-              Back to Dashboard
-            </Link>
-          </div>
-        </div>
-      </motion.header>
-
-      {/* Main Content */}
-      <main className="container max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="min-h-full bg-dashboard-panel text-dashboard-foreground">
+      <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-5 sm:p-8">
         <motion.div
           initial="initial"
           animate="animate"
           variants={staggerContainer}
           className="space-y-6"
         >
-          {/* Title */}
-          <motion.div variants={fadeInUp} className="space-y-1">
-            <h1 className="text-3xl font-bold tracking-tight">
-              <span className="gradient-text">Setup Your Interview</span>
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Two quick choices and you&apos;re ready to practice
-            </p>
-          </motion.div>
-
-          {/* Simplified Progress Indicator - Just 2 steps */}
-          <motion.div variants={fadeInUp} className="flex items-center gap-3 max-w-md">
-            {[
-              { num: 1, label: "Interview Type" },
-              { num: 2, label: "Difficulty Level" },
-            ].map((s, i) => (
-              <div key={s.num} className="flex items-center gap-3 flex-1">
-                <div className="flex items-center gap-2">
-                  <div
-                    className={
-                      "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all " +
-                      (step >= s.num
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground")
-                    }
-                  >
-                    {s.num}
-                  </div>
-                  <span
-                    className={
-                      "text-sm font-medium hidden sm:inline " +
-                      (step >= s.num
-                        ? "text-foreground"
-                        : "text-muted-foreground")
-                    }
-                  >
-                    {s.label}
-                  </span>
-                </div>
-                {i < 1 && (
-                  <div className="flex-1 h-0.5 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={
-                        "h-full bg-primary transition-all duration-300 " +
-                        (step > s.num ? "w-full" : "w-0")
-                      }
-                    />
-                  </div>
-                )}
+          <motion.div
+            variants={fadeInUp}
+            className="flex flex-col gap-4 border-b border-dashboard-panel-border pb-5 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="space-y-2">
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-2 text-sm text-dashboard-muted transition-colors hover:text-dashboard-foreground"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Dashboard
+              </Link>
+              <div>
+                <h1 className="font-display text-3xl font-light tracking-tight text-dashboard-foreground">
+                  New Rep
+                </h1>
+                <p className="text-sm text-dashboard-muted">
+                  Pick the practice rep you want to start, then enter the room.
+                </p>
               </div>
-            ))}
+            </div>
+            {creditBalance && (
+              <StatusPill tone="muted" className="w-fit">
+                <CreditCard className="h-3.5 w-3.5" />
+                {creditBalance.availableCredits}{" "}
+                {creditBalance.availableCredits === 1 ? "credit" : "credits"}
+              </StatusPill>
+            )}
           </motion.div>
 
-          {/* Error Message */}
           <AnimatePresence>
             {error && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+                className="flex items-start gap-3 rounded-lg border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive"
               >
-                {error}
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{error}</span>
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Step Content */}
-          <AnimatePresence mode="wait">
-            {/* Step 1: Interview Type */}
-            {step === 1 && (
-              <motion.div
-                key="step1"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-4"
-              >
-                <div className="space-y-1">
-                  <h2 className="text-xl font-semibold">
-                    Choose Interview Type
+          <motion.section
+            variants={fadeInUp}
+            className="rounded-lg border border-primary/25 bg-primary/10 p-5 shadow-[0_2px_12px_rgb(0_0_0_/_0.2)]"
+          >
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0 space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusPill tone="primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Recommended
+                  </StatusPill>
+                  <StatusPill tone="muted">
+                    {recommendation.durationMinutes} min
+                  </StatusPill>
+                  <StatusPill tone="muted">
+                    {recommendation.creditCost} credit
+                  </StatusPill>
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-xl font-semibold text-dashboard-foreground">
+                    {INTERVIEW_TYPE_LABELS[recommendation.roundType]} rep for{" "}
+                    {DIFFICULTY_LEVELS[recommendation.difficulty].label}
                   </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Select the type of interview you want to practice
+                  <p className="max-w-2xl text-sm leading-6 text-dashboard-muted">
+                    {recommendation.rationale}
                   </p>
                 </div>
-                {isLoadingCredits ? (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div
-                        key={i}
-                        className="h-32 rounded-lg bg-muted animate-pulse"
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {creditBalance && (
-                      <p className="text-sm text-muted-foreground">
-                        {creditBalance.availableCredits} interview{" "}
-                        {creditBalance.availableCredits === 1
-                          ? "credit"
-                          : "credits"}{" "}
-                        available. Each full interview uses 1 credit.
-                      </p>
-                    )}
-                    <RoundSelector
-                      selected={roundType}
-                      onSelect={(type) => {
-                        // Save first selection as default for comparison later
-                        if (defaultRoundType.current === null) {
-                          defaultRoundType.current = type;
-                        }
-                        setRoundType(type);
-                      }}
-                      lockedTypes={[]}
-                    />
-                  </div>
-                )}
-              </motion.div>
-            )}
-
-            {/* Step 2: Difficulty Level */}
-            {step === 2 && (
-              <motion.div
-                key="step2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-              >
-                {/* Show selected question if coming from explore page */}
                 {questionData && (
-                  <div className="p-6 rounded-xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-primary uppercase tracking-wider">
-                        Selected Question
-                      </span>
+                  <div className="rounded-lg border border-dashboard-panel-border bg-dashboard-canvas/40 p-4">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <StatusPill tone="primary">Selected question</StatusPill>
                       {questionData.company && (
-                        <>
-                          <span className="text-xs text-muted-foreground">•</span>
-                          <span className="text-xs text-muted-foreground">
-                            {questionData.company}
-                          </span>
-                        </>
+                        <StatusPill tone="muted">{questionData.company}</StatusPill>
                       )}
+                      <StatusPill tone="muted">{questionData.type}</StatusPill>
                     </div>
-                    <p className="text-base font-semibold text-foreground leading-relaxed">
+                    <p className="text-sm leading-6 text-dashboard-foreground">
                       {questionData.text}
                     </p>
                   </div>
                 )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setRoundType(recommendation.roundType);
+                  setDifficulty(recommendation.difficulty);
+                  analytics.track("new_rep_recommendation_accepted", {
+                    recommended_round_type: recommendation.roundType,
+                    recommended_difficulty: recommendation.difficulty,
+                    recommendation_source: recommendation.source,
+                  });
+                }}
+                className="w-full shrink-0 sm:w-fit"
+              >
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+                Use recommendation
+              </Button>
+            </div>
+          </motion.section>
 
-                <DifficultySelector
-                  selected={difficulty}
-                  onSelect={(level) => {
-                    // Save first selection as default for comparison later
-                    if (defaultDifficulty.current === null) {
-                      defaultDifficulty.current = level;
-                    }
+          <motion.section variants={fadeInUp} className="space-y-5">
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold text-dashboard-foreground">
+                Customize
+              </h2>
+              <p className="text-sm text-dashboard-muted">
+                Change the round or seniority bar before starting.
+              </p>
+            </div>
 
-                    // Track skill level selection
-                    analytics.track("skill_level_selected", {
-                      skill_level: level,
-                      interview_type: roundType || "unknown",
-                      is_default_selection: defaultDifficulty.current === level,
-                    });
-
-                    setDifficulty(level);
-                  }}
-                />
-              </motion.div>
+            {isLoadingCredits ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="h-32 animate-pulse rounded-lg bg-muted"
+                  />
+                ))}
+              </div>
+            ) : (
+              <RoundSelector
+                selected={roundType}
+                onSelect={(type) => {
+                  if (defaultRoundType.current === null) {
+                    defaultRoundType.current = type;
+                  }
+                  analytics.track("new_rep_recommendation_changed", {
+                    field: "round_type",
+                    value: type,
+                    recommended_round_type: recommendation.roundType,
+                  });
+                  setRoundType(type);
+                }}
+                lockedTypes={[]}
+              />
             )}
-          </AnimatePresence>
 
-          {/* Navigation Buttons */}
+            <DifficultySelector
+              selected={difficulty}
+              onSelect={(level) => {
+                if (defaultDifficulty.current === null) {
+                  defaultDifficulty.current = level;
+                }
+
+                analytics.track("skill_level_selected", {
+                  skill_level: level,
+                  interview_type: roundType || "unknown",
+                  is_default_selection: defaultDifficulty.current === level,
+                });
+                analytics.track("new_rep_recommendation_changed", {
+                  field: "difficulty",
+                  value: level,
+                  recommended_difficulty: recommendation.difficulty,
+                });
+
+                setDifficulty(level);
+              }}
+            />
+          </motion.section>
+
           <motion.div
             variants={fadeInUp}
-            className="flex items-center gap-3 pt-4"
+            className="sticky bottom-0 -mx-5 border-t border-dashboard-panel-border bg-dashboard-panel/95 p-5 backdrop-blur sm:-mx-8 sm:px-8"
           >
-            {step === 2 && (
-              <Button
-                variant="outline"
-                onClick={() => setStep(1)}
-                className="flex-1"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
-              </Button>
-            )}
-
-            {step === 1 && roundType && (
-              <Button
-                onClick={() => setStep(2)}
-                className="flex-1"
-              >
-                Continue
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            )}
-
-            {step === 2 && difficulty && (
+            <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3 text-sm text-dashboard-muted">
+                <Mic className="h-4 w-4 text-primary" />
+                <span>
+                  {roundType && INTERVIEW_TYPE_LABELS[roundType]} ·{" "}
+                  {difficulty && DIFFICULTY_LEVELS[difficulty].label} · hints
+                  off by default
+                </span>
+              </div>
               <Button
                 onClick={handleStartInterview}
-                disabled={isCreatingSession}
-                className="flex-1"
+                disabled={isCreatingSession || !roundType || !difficulty}
+                className="w-full text-primary-foreground sm:w-auto"
               >
-                {isCreatingSession ? "Starting..." : "Start Interview"}
-                <ArrowRight className="w-4 h-4 ml-2" />
+                {isCreatingSession ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Starting rep...
+                  </>
+                ) : (
+                  <>
+                    Start rep
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
               </Button>
-            )}
+            </div>
           </motion.div>
         </motion.div>
       </main>

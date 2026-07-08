@@ -3,7 +3,13 @@
  * Workstream #7 - Real-time framework coverage analysis
  */
 
-export type InterviewType = "product_sense" | "analytical" | "leadership" | "strategy";
+export type InterviewType =
+  | "product_sense"
+  | "execution"
+  | "behavioral"
+  | "analytical"
+  | "leadership"
+  | "strategy";
 
 export interface FrameworkElement {
   id: string;

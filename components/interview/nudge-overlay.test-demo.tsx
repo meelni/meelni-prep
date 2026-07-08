@@ -35,21 +35,25 @@ const mockFrameworkCoverage: FrameworkCoverage = [
 ];
 
 const mockNudges: Record<NudgeType, Nudge> = {
-  metric_missing: {
-    type: "metric_missing",
+  quantify: {
+    type: "quantify",
     message: "Can you quantify that? Consider adding specific numbers or metrics.",
   },
   move_on: {
     type: "move_on",
     message: "Great insights! Let's move to the next part of the framework.",
   },
-  clarify_first: {
-    type: "clarify_first",
+  clarify: {
+    type: "clarify",
     message: "What questions would you ask first to better understand the problem?",
   },
-  framework_element: {
-    type: "framework_element",
+  missing_element: {
+    type: "missing_element",
     message: "Consider discussing the tradeoffs of your proposed solution.",
+  },
+  time_limit: {
+    type: "time_limit",
+    message: "You're spending a while here. Wrap this point and move forward.",
   },
 };
 
@@ -60,8 +64,8 @@ const nudgeDemoButtons: Array<{
   className: string;
 }> = [
   {
-    type: "metric_missing",
-    label: "Metric Missing",
+    type: "quantify",
+    label: "Quantify",
     icon: TrendingUp,
     className:
       "border-info/20 bg-info/10 text-info hover:bg-info/15 hover:text-info",
@@ -74,15 +78,15 @@ const nudgeDemoButtons: Array<{
       "border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
   },
   {
-    type: "clarify_first",
-    label: "Clarify First",
+    type: "clarify",
+    label: "Clarify",
     icon: HelpCircle,
     className:
       "border-warning/20 bg-warning/10 text-warning hover:bg-warning/15 hover:text-warning",
   },
   {
-    type: "framework_element",
-    label: "Framework Element",
+    type: "missing_element",
+    label: "Missing Element",
     icon: Lightbulb,
     className:
       "border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",

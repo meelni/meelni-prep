@@ -58,7 +58,7 @@ export function Toolbar({ activeSection }: ToolbarProps) {
         <Button
           variant="glow"
           size="sm"
-          onClick={() => router.push("/setup")}
+          onClick={() => router.push("/dashboard/new-rep")}
         >
           <Mic className="h-4 w-4 mr-2" />
           New Interview

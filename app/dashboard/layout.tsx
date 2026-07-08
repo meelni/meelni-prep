@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/app/providers/auth-provider";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { DashboardLayout as DashboardLayoutComponent } from "@/components/dashboard/layout/dashboard-layout";
 import { DashboardLoading } from "@/components/dashboard/loading";
@@ -28,9 +28,14 @@ export default function DashboardLayout({
   // Redirect to signin if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push("/auth/signin");
+      const query =
+        typeof window !== "undefined"
+          ? window.location.search.replace(/^\?/, "")
+          : "";
+      const redirectTo = `${pathname}${query ? `?${query}` : ""}`;
+      router.push(`/auth/signin?redirectTo=${encodeURIComponent(redirectTo)}`);
     }
-  }, [authLoading, user, router]);
+  }, [authLoading, pathname, router, user]);
 
   // Handle sign out
   const handleSignOut = async () => {

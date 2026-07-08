@@ -14,7 +14,10 @@ import {
   type CreditEntitlementState,
   getBillingCatalogItem,
   getDefaultDuration,
+  buildRecommendedRep,
   isValidRoundType,
+  mapQuestionTypeToRoundType,
+  shouldAnalyzeNudges,
   validateScores,
 } from "./index";
 
@@ -186,4 +189,55 @@ test("session and question payload contracts are available from core", () => {
 
   assert.equal(turn?.speaker, "user");
   assert.equal(question.company, "Meta");
+});
+
+test("recommended rep has a deterministic PM wedge fallback", () => {
+  const recommendation = buildRecommendedRep();
+
+  assert.equal(recommendation.roundType, "product_sense");
+  assert.equal(recommendation.difficulty, "intermediate");
+  assert.equal(recommendation.creditCost, 1);
+  assert.equal(recommendation.durationMinutes, 45);
+  assert.equal(recommendation.source, "fallback");
+  assert.equal(recommendation.hintMode, "off");
+  assert.equal(recommendation.question, null);
+  assert.match(recommendation.rationale, /Product Sense/);
+});
+
+test("selected question recommendation preserves question handoff", () => {
+  const fixture = createProductSenseInterviewFixture();
+  const recommendation = buildRecommendedRep({
+    selectedQuestion: {
+      id: fixture.question.questionId,
+      text: fixture.question.questionText,
+      company: fixture.question.company,
+      type: "A/B Testing",
+    },
+  });
+
+  assert.equal(recommendation.roundType, "execution");
+  assert.equal(recommendation.difficulty, "intermediate");
+  assert.equal(recommendation.source, "selected_question");
+  assert.deepEqual(recommendation.question, {
+    id: fixture.question.questionId,
+    text: fixture.question.questionText,
+    company: fixture.question.company,
+    type: "A/B Testing",
+  });
+  assert.match(recommendation.rationale, /selected question/);
+});
+
+test("question type mapping supports stored question bank labels", () => {
+  assert.equal(mapQuestionTypeToRoundType("Behavioral"), "behavioral");
+  assert.equal(mapQuestionTypeToRoundType("Product design/strategy"), "product_sense");
+  assert.equal(mapQuestionTypeToRoundType("Pricing"), "execution");
+  assert.equal(mapQuestionTypeToRoundType("Product Strategy"), "strategy");
+  assert.equal(mapQuestionTypeToRoundType("Unknown"), null);
+});
+
+test("hint mode gates optional nudge analysis safely", () => {
+  assert.equal(shouldAnalyzeNudges("off"), false);
+  assert.equal(shouldAnalyzeNudges("gentle"), true);
+  assert.equal(shouldAnalyzeNudges("coach"), true);
+  assert.equal(shouldAnalyzeNudges("unknown"), false);
 });

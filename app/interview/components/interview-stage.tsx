@@ -7,12 +7,15 @@ import { InterviewControls } from "./interview-controls";
 import { AudioVisualizer } from "./audio-visualizer";
 import { useRef } from "react";
 import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
+import type { HintMode } from "@meelni/core";
 
 type AgentState = "idle" | "listening" | "thinking" | "speaking";
 
 interface InterviewStageProps {
   agentState: AgentState;
   isMuted: boolean;
+  hintMode?: HintMode;
+  onHintModeChange?: (mode: HintMode) => void;
   onToggleMute: () => void;
   onEndSession: () => void;
 }
@@ -35,6 +38,8 @@ function mapAgentStateToOrbState(state: AgentState): "thinking" | "listening" | 
 export function InterviewStage({
   agentState,
   isMuted,
+  hintMode = "off",
+  onHintModeChange = () => {},
   onToggleMute,
   onEndSession,
 }: InterviewStageProps) {
@@ -90,6 +95,8 @@ export function InterviewStage({
       >
         <InterviewControls
           isMuted={isMuted}
+          hintMode={hintMode}
+          onHintModeChange={onHintModeChange}
           onToggleMute={onToggleMute}
           onEndSession={onEndSession}
         />
