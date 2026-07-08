@@ -1,0 +1,29 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "next.config.ts",
+    "app/**/{page,layout,route,loading,error,not-found,default,template,metadata,opengraph-image,icon,apple-icon,sitemap}.{ts,tsx}",
+    "instrumentation.{ts,tsx,js,mjs}",
+    "middleware.{ts,tsx,js,mjs}",
+    "scripts/*.{js,mjs,ts}",
+    "packages/*/src/index.ts",
+  ],
+  "project": [
+    "app/**/*.{ts,tsx}",
+    "components/**/*.{ts,tsx}",
+    "hooks/**/*.{ts,tsx}",
+    "lib/**/*.{ts,tsx}",
+    "packages/*/src/**/*.ts",
+    "scripts/*.{js,mjs,ts}",
+    "*.{js,mjs,ts,tsx}",
+  ],
+  "ignore": [
+    "next-env.d.ts",
+    ".next/**",
+    "agent/**",
+    "archive/**",
+    "docs/**",
+    "node_modules/**",
+  ],
+  "ignoreDependencies": ["@types/jest", "vitest"],
+}

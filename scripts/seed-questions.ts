@@ -10,7 +10,8 @@ const sampleQuestions = [
   },
   {
     company: "Google",
-    questionText: "Design a product for people who want to learn a new language.",
+    questionText:
+      "Design a product for people who want to learn a new language.",
     questionType: "Product design/strategy",
     difficulty: "Medium",
   },
@@ -28,7 +29,8 @@ const sampleQuestions = [
   },
   {
     company: "Spotify",
-    questionText: "How would you test whether adding a karaoke feature increases user engagement?",
+    questionText:
+      "How would you test whether adding a karaoke feature increases user engagement?",
     questionType: "A/B Testing",
     difficulty: "Medium",
   },
@@ -40,13 +42,15 @@ const sampleQuestions = [
   },
   {
     company: "Airbnb",
-    questionText: "How would you prioritize features for the Airbnb host mobile app?",
+    questionText:
+      "How would you prioritize features for the Airbnb host mobile app?",
     questionType: "Execution",
     difficulty: "Hard",
   },
   {
     company: "LinkedIn",
-    questionText: "Tell me about a time you had to make a decision without complete information.",
+    questionText:
+      "Tell me about a time you had to make a decision without complete information.",
     questionType: "Behavioral",
     difficulty: "Easy",
   },
@@ -64,13 +68,15 @@ const sampleQuestions = [
   },
   {
     company: "Redfin",
-    questionText: "What metrics would you track for a new home valuation feature?",
+    questionText:
+      "What metrics would you track for a new home valuation feature?",
     questionType: "Product Sense",
     difficulty: "Medium",
   },
   {
     company: "Stripe",
-    questionText: "How would you expand Stripe into a new international market?",
+    questionText:
+      "How would you expand Stripe into a new international market?",
     questionType: "Product Strategy",
     difficulty: "Hard",
   },
@@ -82,19 +88,22 @@ const sampleQuestions = [
   },
   {
     company: "DoorDash",
-    questionText: "How would you test two different commission structures for restaurant partners?",
+    questionText:
+      "How would you test two different commission structures for restaurant partners?",
     questionType: "A/B Testing",
     difficulty: "Hard",
   },
   {
     company: "Twitter",
-    questionText: "You need to ship a feature in 2 weeks but your team says it will take 4 weeks. What do you do?",
+    questionText:
+      "You need to ship a feature in 2 weeks but your team says it will take 4 weeks. What do you do?",
     questionType: "Execution",
     difficulty: "Medium",
   },
   {
     company: "Pinterest",
-    questionText: "Describe a time when you influenced a team to adopt your product vision.",
+    questionText:
+      "Describe a time when you influenced a team to adopt your product vision.",
     questionType: "Behavioral",
     difficulty: "Easy",
   },
@@ -112,13 +121,15 @@ const sampleQuestions = [
   },
   {
     company: null,
-    questionText: "Design a product for elderly people to stay connected with their families.",
+    questionText:
+      "Design a product for elderly people to stay connected with their families.",
     questionType: "Product design/strategy",
     difficulty: "Medium",
   },
   {
     company: "Zoom",
-    questionText: "What features would you build to make Zoom better for large webinars?",
+    questionText:
+      "What features would you build to make Zoom better for large webinars?",
     questionType: "Product Sense",
     difficulty: "Medium",
   },
@@ -128,16 +139,19 @@ async function seedQuestions() {
   try {
     console.log("🌱 Seeding interview questions...");
 
-    const result = await db.insert(interviewQuestion).values(sampleQuestions);
+    await db.insert(interviewQuestion).values(sampleQuestions);
 
     console.log(`✅ Successfully seeded ${sampleQuestions.length} questions!`);
     console.log("\n📊 Question breakdown:");
 
     // Count by type
-    const typeCounts = sampleQuestions.reduce((acc, q) => {
-      acc[q.questionType] = (acc[q.questionType] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    const typeCounts = sampleQuestions.reduce(
+      (acc, q) => {
+        acc[q.questionType] = (acc[q.questionType] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
 
     Object.entries(typeCounts).forEach(([type, count]) => {
       console.log(`   ${type}: ${count} questions`);

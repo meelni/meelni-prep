@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { appUser } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 /**
  * Update user's practice streak after completing an interview.

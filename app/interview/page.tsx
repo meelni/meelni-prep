@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers/auth-provider";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,10 +15,7 @@ import { InterviewControls } from "./components/interview-controls";
 import { TimerDisplay } from "./components/timer-display";
 import { EndSessionModal } from "./components/end-session-modal";
 import { ConnectionIndicator } from "./components/connection-indicator";
-import {
-  NudgeOverlay,
-  Nudge,
-} from "@/components/interview/nudge-overlay";
+import { NudgeOverlay, Nudge } from "@/components/interview/nudge-overlay";
 import { useLocalParticipant } from "@livekit/components-react";
 import { RoomAudioRenderer } from "@livekit/components-react";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
@@ -79,9 +76,6 @@ function InterviewPageContent() {
   const [session, setSession] = useState<InterviewSession | null>(null);
   const [token, setToken] = useState<string>(tokenParam || "");
   const [url, setUrl] = useState<string>(urlParam || "");
-  const [agentState, setAgentState] = useState<
-    "idle" | "listening" | "thinking" | "speaking"
-  >("idle");
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
   const [isMuted, setIsMuted] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
@@ -92,6 +86,9 @@ function InterviewPageContent() {
   const [transcriptQueue] = useState(() => getTranscriptQueue());
   const [currentNudge, setCurrentNudge] = useState<Nudge | null>(null);
   const [hintMode, setHintMode] = useState<HintMode>("off");
+  const [agentState, setAgentState] = useState<
+    "idle" | "listening" | "thinking" | "speaking"
+  >("idle");
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const initializedRef = useRef(false);
   const activeSessionId = session?.id ?? sessionId ?? "";
@@ -112,38 +109,7 @@ function InterviewPageContent() {
     };
   }, [queryClient]);
 
-  useEffect(() => {
-    // Skip if already initialized
-    if (initializedRef.current) return;
-
-    if (authLoading) return;
-
-    if (!user) {
-      router.push("/auth/signin?redirectTo=/interview");
-      return;
-    }
-
-    // Case 1: Config params present (from Setup Modal) → create session
-    if (roundType && mode && !sessionId) {
-      createSession();
-      initializedRef.current = true;
-      return;
-    }
-
-    // Case 2: Session ID present → fetch session details
-    if (sessionId && tokenParam && urlParam) {
-      fetchSessionDetails();
-      initializedRef.current = true;
-      return;
-    }
-
-    // Case 3: No valid params → redirect to dashboard
-    if (!roundType && !sessionId) {
-      router.push("/dashboard");
-    }
-  }, [roundType, mode, sessionId, tokenParam, urlParam, user, authLoading]);
-
-  const createSession = async () => {
+  const createSession = useCallback(async () => {
     if (!roundType || !mode || !user) return;
 
     try {
@@ -205,9 +171,9 @@ function InterviewPageContent() {
       );
       setLoading(false);
     }
-  };
+  }, [emotion, hintMode, mode, questionId, roundType, speed, user, voice]);
 
-  const fetchSessionDetails = async () => {
+  const fetchSessionDetails = useCallback(async () => {
     if (!sessionId || !user) return;
 
     try {
@@ -235,7 +201,49 @@ function InterviewPageContent() {
       setError(err instanceof Error ? err.message : "Failed to load interview");
       setLoading(false);
     }
-  };
+  }, [sessionId, user]);
+
+  useEffect(() => {
+    // Skip if already initialized
+    if (initializedRef.current) return;
+
+    if (authLoading) return;
+
+    if (!user) {
+      router.push("/auth/signin?redirectTo=/interview");
+      return;
+    }
+
+    // Case 1: Config params present (from Setup Modal) → create session
+    if (roundType && mode && !sessionId) {
+      createSession();
+      initializedRef.current = true;
+      return;
+    }
+
+    // Case 2: Session ID present → fetch session details
+    if (sessionId && tokenParam && urlParam) {
+      fetchSessionDetails();
+      initializedRef.current = true;
+      return;
+    }
+
+    // Case 3: No valid params → redirect to dashboard
+    if (!roundType && !sessionId) {
+      router.push("/dashboard");
+    }
+  }, [
+    authLoading,
+    createSession,
+    fetchSessionDetails,
+    mode,
+    roundType,
+    router,
+    sessionId,
+    tokenParam,
+    urlParam,
+    user,
+  ]);
 
   const handleTranscriptUpdate = async (turn: TranscriptTurn) => {
     if (!activeSessionId) {
@@ -353,14 +361,17 @@ function InterviewPageContent() {
     }
   };
 
-  const handleAgentStateChange = (state: string) => {
-    const normalizedState = state.toLowerCase() as
-      | "idle"
-      | "listening"
-      | "thinking"
-      | "speaking";
-    setAgentState(normalizedState);
-  };
+  const handleAgentStateChange = useCallback((state: string) => {
+    const normalizedState = state.toLowerCase();
+    if (
+      normalizedState === "idle" ||
+      normalizedState === "listening" ||
+      normalizedState === "thinking" ||
+      normalizedState === "speaking"
+    ) {
+      setAgentState(normalizedState);
+    }
+  }, []);
 
   // Auto-end session after configured duration
   useEffect(() => {

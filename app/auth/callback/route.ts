@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { upsertUser } from "@/lib/db/users";
-import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -28,7 +27,8 @@ export async function GET(request: Request) {
         await upsertUser({
           id: user.id,
           email: user.email!,
-          name: user.user_metadata?.name || user.user_metadata?.full_name || null,
+          name:
+            user.user_metadata?.name || user.user_metadata?.full_name || null,
         });
       } catch (error) {
         console.error("Error upserting user:", error);

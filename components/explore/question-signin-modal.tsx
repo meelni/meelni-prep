@@ -19,7 +19,6 @@ export function QuestionSignInModal({
   isOpen,
   onClose,
   questionText,
-  questionId,
 }: QuestionSignInModalProps) {
   const router = useRouter();
   const { signInWithGoogle } = useAuth();
@@ -69,7 +68,7 @@ export function QuestionSignInModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-[9999] bg-overlay/80 backdrop-blur-sm"
+            className="bg-overlay/80 fixed inset-0 z-[9999] backdrop-blur-sm"
           />
 
           {/* Modal Container */}
@@ -81,7 +80,7 @@ export function QuestionSignInModal({
             className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
           >
             {/* Modal Card */}
-            <div className="relative w-full max-w-md rounded-2xl border border-border bg-background/95 backdrop-blur-xl p-8 shadow-2xl">
+            <div className="border-border bg-background/95 relative w-full max-w-md rounded-2xl border p-8 shadow-2xl backdrop-blur-xl">
               {/* Close Button */}
               <Button
                 type="button"
@@ -91,19 +90,19 @@ export function QuestionSignInModal({
                 className="absolute top-4 right-4 h-8 w-8"
                 aria-label="Close modal"
               >
-                <X className="w-4 h-4" />
+                <X className="h-4 w-4" />
               </Button>
 
               {/* Heading */}
-              <div className="text-center mb-6">
-                <h2 className="text-2xl font-semibold text-foreground">
+              <div className="mb-6 text-center">
+                <h2 className="text-foreground text-2xl font-semibold">
                   Ready to practice?
                 </h2>
               </div>
 
               {/* Selected Question (Highlighted box) */}
-              <div className="mb-8 p-6 rounded-xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20">
-                <p className="text-base font-semibold text-foreground leading-relaxed line-clamp-2">
+              <div className="from-primary/5 to-primary/10 border-primary/20 mb-8 rounded-xl border bg-gradient-to-br p-6">
+                <p className="text-foreground line-clamp-2 text-base leading-relaxed font-semibold">
                   "{questionText}"
                 </p>
               </div>
@@ -117,7 +116,7 @@ export function QuestionSignInModal({
                 className="mb-4 h-14 w-full rounded-xl border-2 font-semibold"
               >
                 <div className="flex items-center justify-center gap-3">
-                  <Icons.google className="w-5 h-5" />
+                  <Icons.google className="h-5 w-5" />
                   <span>Continue with Google</span>
                 </div>
               </Button>
@@ -134,7 +133,7 @@ export function QuestionSignInModal({
               </Button>
 
               {/* Footer */}
-              <div className="mt-6 text-center text-sm text-muted-foreground">
+              <div className="text-muted-foreground mt-6 text-center text-sm">
                 Don't have an account?{" "}
                 <Button
                   type="button"

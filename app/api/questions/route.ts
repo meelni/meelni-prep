@@ -52,7 +52,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getQuestions } from "@/lib/db/questions";
-import { eq } from "drizzle-orm";
 
 const VALID_QUESTION_TYPES = [
   "behavioral",
@@ -105,7 +104,12 @@ export async function GET(req: NextRequest) {
 
     // Get questions with pagination
     const { questions, total } = await getQuestions(
-      type as "behavioral" | "product_sense" | "execution" | "strategy" | undefined,
+      type as
+        | "behavioral"
+        | "product_sense"
+        | "execution"
+        | "strategy"
+        | undefined,
       limit,
       offset
     );
@@ -115,9 +119,7 @@ export async function GET(req: NextRequest) {
       ? questions.filter((q) => q.isActive)
       : questions;
 
-    const filteredTotal = activeOnly
-      ? filteredQuestions.length
-      : total;
+    const filteredTotal = activeOnly ? filteredQuestions.length : total;
 
     // Pagination metadata
     const pagination = {

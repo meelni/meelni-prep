@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { subscription, stripeCustomerMapping } from "@/lib/db/schema";
@@ -30,7 +30,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
  * - User paid but UI shows free tier (webhook delay or failure)
  * - User canceled but UI still shows active
  */
-export async function POST(req: NextRequest) {
+export async function POST() {
   try {
     // Authenticate user
     const supabase = await createClient();
@@ -87,7 +87,10 @@ export async function POST(req: NextRequest) {
             const stripeSubscription = subscriptions.data[0];
 
             // Sync from Stripe to database
-            const syncedData = await syncSubscriptionFromStripe(userId, stripeSubscription);
+            const syncedData = await syncSubscriptionFromStripe(
+              userId,
+              stripeSubscription
+            );
 
             return NextResponse.json({
               synced: true,
@@ -127,8 +130,13 @@ export async function POST(req: NextRequest) {
     // If user has a Stripe subscription, sync from Stripe
     if (sub.stripeSubscriptionId) {
       try {
-        const stripeSubscription = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId);
-        const syncedData = await syncSubscriptionFromStripe(userId, stripeSubscription);
+        const stripeSubscription = await stripe.subscriptions.retrieve(
+          sub.stripeSubscriptionId
+        );
+        const syncedData = await syncSubscriptionFromStripe(
+          userId,
+          stripeSubscription
+        );
 
         return NextResponse.json({
           synced: true,
@@ -166,7 +174,10 @@ export async function POST(req: NextRequest) {
 
         if (subscriptions.data.length > 0) {
           const stripeSubscription = subscriptions.data[0];
-          const syncedData = await syncSubscriptionFromStripe(userId, stripeSubscription);
+          const syncedData = await syncSubscriptionFromStripe(
+            userId,
+            stripeSubscription
+          );
 
           return NextResponse.json({
             synced: true,
@@ -247,7 +258,10 @@ async function syncSubscriptionFromStripe(
     stripeSubscriptionId: stripeSubscription.id,
     stripeCustomerId: stripeSubscription.customer as string,
     stripePriceId: priceId,
-    billingCycle: firstItem?.price?.recurring?.interval === "year" ? "annual" as const : "monthly" as const,
+    billingCycle:
+      firstItem?.price?.recurring?.interval === "year"
+        ? ("annual" as const)
+        : ("monthly" as const),
     currentPeriodStart: firstItem?.current_period_start
       ? new Date(firstItem.current_period_start * 1000)
       : null,

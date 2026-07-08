@@ -37,7 +37,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
  * - Deletes all interview transcripts
  * - Cancels billing immediately
  */
-export async function DELETE(req: NextRequest) {
+export async function DELETE() {
   try {
     // Get authenticated user
     const supabase = await createClient();
@@ -59,12 +59,19 @@ export async function DELETE(req: NextRequest) {
       .where(eq(subscription.userId, userId))
       .limit(1);
 
-    if (userSubscription.length > 0 && userSubscription[0].stripeSubscriptionId && stripe) {
+    if (
+      userSubscription.length > 0 &&
+      userSubscription[0].stripeSubscriptionId &&
+      stripe
+    ) {
       try {
         // Cancel immediately (not at period end)
-        await stripe.subscriptions.cancel(userSubscription[0].stripeSubscriptionId, {
-          prorate: true, // Give them a refund for unused time
-        });
+        await stripe.subscriptions.cancel(
+          userSubscription[0].stripeSubscriptionId,
+          {
+            prorate: true, // Give them a refund for unused time
+          }
+        );
       } catch (stripeError) {
         console.error("Failed to cancel Stripe subscription:", stripeError);
         // Continue with deletion even if Stripe cancellation fails
@@ -73,7 +80,11 @@ export async function DELETE(req: NextRequest) {
     }
 
     // 2. Delete Stripe customer (optional but good practice)
-    if (userSubscription.length > 0 && userSubscription[0].stripeCustomerId && stripe) {
+    if (
+      userSubscription.length > 0 &&
+      userSubscription[0].stripeCustomerId &&
+      stripe
+    ) {
       try {
         await stripe.customers.del(userSubscription[0].stripeCustomerId);
       } catch (stripeError) {
@@ -100,22 +111,30 @@ export async function DELETE(req: NextRequest) {
 
       // Delete transcript turns for all sessions
       for (const sessionId of sessionIds) {
-        await tx.delete(transcriptTurn).where(eq(transcriptTurn.sessionId, sessionId));
+        await tx
+          .delete(transcriptTurn)
+          .where(eq(transcriptTurn.sessionId, sessionId));
       }
 
       // Delete session questions for all sessions
       for (const sessionId of sessionIds) {
-        await tx.delete(sessionQuestion).where(eq(sessionQuestion.sessionId, sessionId));
+        await tx
+          .delete(sessionQuestion)
+          .where(eq(sessionQuestion.sessionId, sessionId));
       }
 
       // Delete interview sessions
-      await tx.delete(interviewSession).where(eq(interviewSession.userId, userId));
+      await tx
+        .delete(interviewSession)
+        .where(eq(interviewSession.userId, userId));
 
       // Delete user settings
       await tx.delete(userSettings).where(eq(userSettings.userId, userId));
 
       // Delete stripe customer mapping (if not cascaded)
-      await tx.delete(stripeCustomerMapping).where(eq(stripeCustomerMapping.userId, userId));
+      await tx
+        .delete(stripeCustomerMapping)
+        .where(eq(stripeCustomerMapping.userId, userId));
 
       // Delete app_user (this will cascade to: subscription, usage_record, payment_history, user_insights)
       await tx.delete(appUser).where(eq(appUser.id, userId));
@@ -123,7 +142,8 @@ export async function DELETE(req: NextRequest) {
 
     // 4. Delete Supabase auth user
     // Note: This requires service_role key - admin API
-    const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(userId);
+    const { error: deleteAuthError } =
+      await supabase.auth.admin.deleteUser(userId);
 
     if (deleteAuthError) {
       console.error("Failed to delete auth user:", deleteAuthError);
@@ -167,7 +187,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Redirect to DELETE handler
-    return DELETE(req);
+    return DELETE();
   } catch (error) {
     console.error("Account deletion error:", error);
     return NextResponse.json(

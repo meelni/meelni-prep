@@ -72,7 +72,7 @@
  * }
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   getUserSessionSummary,
@@ -82,7 +82,7 @@ import {
   getUserStreak,
 } from "@/lib/db/queries/user-stats";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     // Authenticate user with Supabase
     const supabase = await createClient();
@@ -99,13 +99,14 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch all user statistics in parallel
-    const [summary, trends, milestones, recentActivity, streak] = await Promise.all([
-      getUserSessionSummary(user.id),
-      getUserWeeklyTrend(user.id),
-      getUserMilestones(user.id),
-      getUserRecentActivity(user.id, 20), // Fetch last 20 sessions to ensure we get 8-10 with scores
-      getUserStreak(user.id), // MOTI-001: Fetch practice streak
-    ]);
+    const [summary, trends, milestones, recentActivity, streak] =
+      await Promise.all([
+        getUserSessionSummary(user.id),
+        getUserWeeklyTrend(user.id),
+        getUserMilestones(user.id),
+        getUserRecentActivity(user.id, 20), // Fetch last 20 sessions to ensure we get 8-10 with scores
+        getUserStreak(user.id), // MOTI-001: Fetch practice streak
+      ]);
 
     // Format response with proper types
     return NextResponse.json(

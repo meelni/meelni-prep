@@ -13,14 +13,12 @@ import {
 
 test("dashboard shell keeps the sidebar on the same canvas color", () => {
   const html = renderToStaticMarkup(
-    React.createElement(
-      DashboardLayout,
-      {
-        activeSection: "overview",
-        user: { email: "savi@example.com" },
-      },
-      React.createElement("div", null, "Dashboard content")
-    )
+    <DashboardLayout
+      activeSection="overview"
+      user={{ email: "savi@example.com" }}
+    >
+      <div>Dashboard content</div>
+    </DashboardLayout>
   );
 
   assert.match(html, /<aside[^>]+bg-dashboard-canvas/);
@@ -29,14 +27,12 @@ test("dashboard shell keeps the sidebar on the same canvas color", () => {
 
 test("dashboard shell wraps every section in the canonical content panel", () => {
   const html = renderToStaticMarkup(
-    React.createElement(
-      DashboardLayout,
-      {
-        activeSection: "history",
-        user: { email: "savi@example.com" },
-      },
-      React.createElement("div", null, "History content")
-    )
+    <DashboardLayout
+      activeSection="history"
+      user={{ email: "savi@example.com" }}
+    >
+      <div>History content</div>
+    </DashboardLayout>
   );
 
   assert.match(html, /rounded-\[10px\]/);
@@ -53,14 +49,12 @@ test("dashboard shell does not reserve desktop sidebar width on mobile", () => {
 
 test("dashboard shell keeps scrolling inside the content container", () => {
   const html = renderToStaticMarkup(
-    React.createElement(
-      DashboardLayout,
-      {
-        activeSection: "overview",
-        user: { email: "savi@example.com" },
-      },
-      React.createElement("div", null, "Scrollable work surface")
-    )
+    <DashboardLayout
+      activeSection="overview"
+      user={{ email: "savi@example.com" }}
+    >
+      <div>Scrollable work surface</div>
+    </DashboardLayout>
   );
 
   assert.match(html, /<main[^>]+overflow-hidden/);
@@ -70,14 +64,12 @@ test("dashboard shell keeps scrolling inside the content container", () => {
 
 test("dashboard shell owns the global new rep action", () => {
   const html = renderToStaticMarkup(
-    React.createElement(
-      DashboardLayout,
-      {
-        activeSection: "questions",
-        user: { email: "savi@example.com" },
-      },
-      React.createElement("div", null, "Question bank")
-    )
+    <DashboardLayout
+      activeSection="questions"
+      user={{ email: "savi@example.com" }}
+    >
+      <div>Question bank</div>
+    </DashboardLayout>
   );
 
   assert.match(html, /href="\/dashboard\/new-rep"/);

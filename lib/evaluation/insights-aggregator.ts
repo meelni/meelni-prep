@@ -8,8 +8,8 @@
  */
 
 import { db } from "@/lib/db";
-import { interviewSession, feedback } from "@/lib/db/schema";
-import { eq, and, desc, isNotNull } from "drizzle-orm";
+import { interviewSession } from "@/lib/db/schema";
+import { eq, desc } from "drizzle-orm";
 
 /**
  * Complete user insights data structure (matches userInsights JSONB schema)
@@ -110,7 +110,9 @@ interface SessionWithFeedback {
  * console.log(`Current streak: ${insights.overallStats.currentStreak} days`);
  * ```
  */
-export async function aggregateUserInsights(userId: string): Promise<UserInsights> {
+export async function aggregateUserInsights(
+  userId: string
+): Promise<UserInsights> {
   // Fetch all sessions for user with feedback
   const sessions = (await db.query.interviewSession.findMany({
     where: eq(interviewSession.userId, userId),
@@ -143,13 +145,15 @@ export async function aggregateUserInsights(userId: string): Promise<UserInsight
   );
 
   // Calculate streak days
-  const { currentStreak, longestStreak } = calculateStreakDays(completedSessions);
+  const { currentStreak, longestStreak } =
+    calculateStreakDays(completedSessions);
 
   // Calculate overall stats
   const totalMinutes = Math.round(
     sessions.reduce((sum, s) => {
       if (!s.startedAt || !s.endedAt) return sum;
-      const duration = new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime();
+      const duration =
+        new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime();
       return sum + duration / 1000 / 60;
     }, 0)
   );
@@ -177,13 +181,16 @@ export async function aggregateUserInsights(userId: string): Promise<UserInsight
   };
 
   // Group by difficulty (from session config)
-  const byDifficultyRaw = groupBy(
-    completedSessions,
-    (s) => typeof s.config?.difficulty === "string" ? s.config.difficulty : "intermediate"
+  const byDifficultyRaw = groupBy(completedSessions, (s) =>
+    typeof s.config?.difficulty === "string"
+      ? s.config.difficulty
+      : "intermediate"
   );
   const byDifficulty = {
     junior: calculateDifficultyStats(byDifficultyRaw["junior"] || []),
-    intermediate: calculateDifficultyStats(byDifficultyRaw["intermediate"] || []),
+    intermediate: calculateDifficultyStats(
+      byDifficultyRaw["intermediate"] || []
+    ),
     senior: calculateDifficultyStats(byDifficultyRaw["senior"] || []),
   };
 
@@ -230,9 +237,10 @@ export async function aggregateUserInsights(userId: string): Promise<UserInsight
  * console.log(`You've interviewed ${currentStreak} days in a row!`);
  * ```
  */
-export function calculateStreakDays(
-  sessions: { startedAt: Date | null }[]
-): { currentStreak: number; longestStreak: number } {
+export function calculateStreakDays(sessions: { startedAt: Date | null }[]): {
+  currentStreak: number;
+  longestStreak: number;
+} {
   if (sessions.length === 0) {
     return { currentStreak: 0, longestStreak: 0 };
   }
@@ -344,7 +352,7 @@ export function computeAverageScores(
     };
   }
 
-  const extractScores = (field: keyof typeof feedbackRecords[0]) =>
+  const extractScores = (field: keyof (typeof feedbackRecords)[0]) =>
     feedbackRecords
       .map((f) => f[field])
       .filter((score): score is number => score !== null);
@@ -457,7 +465,9 @@ function calculateVelocity(scores: number[]): number {
 /**
  * Calculate stats for a specific interview type
  */
-function calculateTypeStats(sessions: SessionWithFeedback[]): InterviewTypeStats {
+function calculateTypeStats(
+  sessions: SessionWithFeedback[]
+): InterviewTypeStats {
   if (sessions.length === 0) {
     return { count: 0, avgScore: 0, last5Avg: 0 };
   }
@@ -475,7 +485,9 @@ function calculateTypeStats(sessions: SessionWithFeedback[]): InterviewTypeStats
 /**
  * Calculate stats for a specific difficulty level
  */
-function calculateDifficultyStats(sessions: SessionWithFeedback[]): DifficultyStats {
+function calculateDifficultyStats(
+  sessions: SessionWithFeedback[]
+): DifficultyStats {
   if (sessions.length === 0) {
     return { count: 0, avgScore: 0 };
   }

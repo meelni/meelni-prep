@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
@@ -15,7 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, ArrowRight, ChevronLeft, ChevronRight, Home, ChevronRight as BreadcrumbArrow } from "lucide-react";
+import {
+  Search,
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  Home,
+  ChevronRight as BreadcrumbArrow,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { usePostHog } from "posthog-js/react";
@@ -40,7 +46,11 @@ function formatRelativeTime(date: Date | null): string {
   const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
 
   if (diffInDays < 7) {
-    return diffInDays === 0 ? "Today" : diffInDays === 1 ? "Yesterday" : `${diffInDays} days ago`;
+    return diffInDays === 0
+      ? "Today"
+      : diffInDays === 1
+        ? "Yesterday"
+        : `${diffInDays} days ago`;
   } else if (diffInDays < 30) {
     const weeks = Math.floor(diffInDays / 7);
     return `${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
@@ -67,7 +77,6 @@ function formatQuestionText(text: string): string {
 const QUESTIONS_PER_PAGE = 20;
 
 export default function ExplorePage() {
-  const router = useRouter();
   const posthog = usePostHog();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,7 +85,9 @@ export default function ExplorePage() {
   const [selectedType, setSelectedType] = useState("All Types");
   const [currentPage, setCurrentPage] = useState(1);
   const [signInModalOpen, setSignInModalOpen] = useState(false);
-  const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
+  const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(
+    null
+  );
 
   // Track page view
   useEffect(() => {
@@ -123,7 +134,9 @@ export default function ExplorePage() {
     return questions.filter((q) => {
       const matchesSearch =
         debouncedSearchQuery === "" ||
-        q.questionText.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        q.questionText
+          .toLowerCase()
+          .includes(debouncedSearchQuery.toLowerCase()) ||
         q.company?.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
 
       if (!matchesSearch) return false;
@@ -142,7 +155,7 @@ export default function ExplorePage() {
     const startIndex = (currentPage - 1) * QUESTIONS_PER_PAGE;
     const endIndex = startIndex + QUESTIONS_PER_PAGE;
     return filteredQuestions.slice(startIndex, endIndex);
-  }, [filteredQuestions, currentPage, totalPages]);
+  }, [filteredQuestions, currentPage]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -196,10 +209,12 @@ export default function ExplorePage() {
     return (
       <>
         <Header />
-        <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="bg-background flex min-h-screen items-center justify-center">
           <div className="flex flex-col items-center gap-4">
-            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-muted-foreground">Loading questions...</p>
+            <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
+            <p className="text-muted-foreground text-sm">
+              Loading questions...
+            </p>
           </div>
         </div>
       </>
@@ -218,50 +233,56 @@ export default function ExplorePage() {
 
       <Header />
 
-      <main className="min-h-screen bg-background">
+      <main className="bg-background min-h-screen">
         {/* Breadcrumb Navigation - SEO & UX */}
-        <nav aria-label="Breadcrumb" className="max-w-4xl mx-auto px-4 sm:px-6 pt-6">
-          <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+        <nav
+          aria-label="Breadcrumb"
+          className="mx-auto max-w-4xl px-4 pt-6 sm:px-6"
+        >
+          <ol className="text-muted-foreground flex items-center gap-2 text-sm">
             <li>
               <Link
                 href="/"
-                className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                className="hover:text-foreground flex items-center gap-1.5 transition-colors"
                 aria-label="Home"
               >
-                <Home className="w-4 h-4" />
+                <Home className="h-4 w-4" />
                 <span>Home</span>
               </Link>
             </li>
             <li aria-hidden="true">
-              <BreadcrumbArrow className="w-4 h-4" />
+              <BreadcrumbArrow className="h-4 w-4" />
             </li>
             <li aria-current="page">
-              <span className="text-foreground font-medium">Explore Questions</span>
+              <span className="text-foreground font-medium">
+                Explore Questions
+              </span>
             </li>
           </ol>
         </nav>
 
         {/* Page Header - H1 for SEO */}
-        <header className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
-          <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-3">
+        <header className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+          <h1 className="text-foreground mb-3 text-3xl font-bold sm:text-4xl">
             Product Manager Interview Questions
           </h1>
-          <p className="text-lg text-muted-foreground max-w-3xl">
-            Browse {questions.length.toLocaleString()}+ real interview questions from Google, Meta, Amazon,
-            and 100+ top companies. Practice Product Sense, Behavioral, Execution, and Strategy questions
-            with AI coaching.
+          <p className="text-muted-foreground max-w-3xl text-lg">
+            Browse {questions.length.toLocaleString()}+ real interview questions
+            from Google, Meta, Amazon, and 100+ top companies. Practice Product
+            Sense, Behavioral, Execution, and Strategy questions with AI
+            coaching.
           </p>
         </header>
 
         {/* Sticky Search & Filter Bar */}
-        <div className="sticky top-header z-40">
+        <div className="top-header sticky z-40">
           {/* Solid background with backdrop blur */}
           <div className="bg-background/95 backdrop-blur-xl">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
-              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+            <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+              <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                 {/* Search */}
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <div className="relative flex-1">
+                  <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                   <Input
                     type="text"
                     placeholder="Search questions or companies..."
@@ -272,10 +293,7 @@ export default function ExplorePage() {
                 </div>
 
                 {/* Type Filter */}
-                <Select
-                  value={selectedType}
-                  onValueChange={setSelectedType}
-                >
+                <Select value={selectedType} onValueChange={setSelectedType}>
                   <SelectTrigger className="w-full rounded-lg font-medium sm:w-[180px]">
                     <SelectValue placeholder="Question type" />
                   </SelectTrigger>
@@ -293,20 +311,20 @@ export default function ExplorePage() {
             </div>
           </div>
           {/* Gradient fade at bottom */}
-          <div className="h-8 bg-gradient-to-b from-background/80 via-background/40 to-transparent pointer-events-none" />
+          <div className="from-background/80 via-background/40 pointer-events-none h-8 bg-gradient-to-b to-transparent" />
         </div>
 
         {/* Questions Feed - Semantic Section */}
         <section
-          className="max-w-4xl mx-auto px-4 sm:px-6 pt-0 pb-12"
+          className="mx-auto max-w-4xl px-4 pt-0 pb-12 sm:px-6"
           aria-label="Interview questions list"
         >
           {paginatedQuestions.length === 0 ? (
             <div className="py-24 text-center">
-              <p className="text-lg font-medium text-foreground mb-2">
+              <p className="text-foreground mb-2 text-lg font-medium">
                 No questions found
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Try adjusting your search or filters
               </p>
             </div>
@@ -317,8 +335,9 @@ export default function ExplorePage() {
                   key={question.id}
                   className={cn(
                     "group py-6 transition-all duration-200",
-                    "hover:bg-muted/20 -mx-4 px-4 rounded-lg",
-                    index !== paginatedQuestions.length - 1 && "border-b border-border/40"
+                    "hover:bg-muted/20 -mx-4 rounded-lg px-4",
+                    index !== paginatedQuestions.length - 1 &&
+                      "border-border/40 border-b"
                   )}
                   role="listitem"
                   itemScope
@@ -328,28 +347,43 @@ export default function ExplorePage() {
                     type="button"
                     variant="ghost"
                     onClick={() => handleQuestionClick(question)}
-                    className="h-auto w-full flex-col items-stretch justify-start rounded-lg p-0 text-left hover:bg-transparent hover:text-foreground"
+                    className="hover:text-foreground h-auto w-full flex-col items-stretch justify-start rounded-lg p-0 text-left hover:bg-transparent"
                     aria-label={`Practice question: ${question.questionText}`}
                   >
                     {/* Metadata */}
-                    <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
                       <span
-                        className="text-xs font-medium text-foreground"
+                        className="text-foreground text-xs font-medium"
                         itemProp="author"
                         itemScope
                         itemType="https://schema.org/Organization"
                       >
-                        <span itemProp="name">{formatCompanyName(question.company)}</span>
+                        <span itemProp="name">
+                          {formatCompanyName(question.company)}
+                        </span>
                       </span>
-                      <span className="text-xs text-muted-foreground" aria-hidden="true">•</span>
-                      <span className="text-xs text-muted-foreground font-normal" itemProp="about">
+                      <span
+                        className="text-muted-foreground text-xs"
+                        aria-hidden="true"
+                      >
+                        •
+                      </span>
+                      <span
+                        className="text-muted-foreground text-xs font-normal"
+                        itemProp="about"
+                      >
                         {question.questionType}
                       </span>
                       {question.askedAt && (
                         <>
-                          <span className="text-xs text-muted-foreground" aria-hidden="true">•</span>
+                          <span
+                            className="text-muted-foreground text-xs"
+                            aria-hidden="true"
+                          >
+                            •
+                          </span>
                           <time
-                            className="text-xs text-muted-foreground font-normal"
+                            className="text-muted-foreground text-xs font-normal"
                             dateTime={new Date(question.askedAt).toISOString()}
                             itemProp="dateCreated"
                           >
@@ -362,14 +396,14 @@ export default function ExplorePage() {
                     {/* Question Text */}
                     <div className="flex items-start justify-between gap-4">
                       <h2
-                        className="text-lg font-semibold text-foreground leading-[1.4] group-hover:text-primary transition-colors"
+                        className="text-foreground group-hover:text-primary text-lg leading-[1.4] font-semibold transition-colors"
                         itemProp="name"
                       >
                         {formatQuestionText(question.questionText)}
                       </h2>
-                      <div className="flex-shrink-0 flex items-center gap-2 mt-0.5">
+                      <div className="mt-0.5 flex flex-shrink-0 items-center gap-2">
                         <ArrowRight
-                          className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-all duration-200 group-hover:translate-x-1"
+                          className="text-primary h-5 w-5 opacity-0 transition-all duration-200 group-hover:translate-x-1 group-hover:opacity-100"
                           aria-hidden="true"
                         />
                       </div>
@@ -382,7 +416,7 @@ export default function ExplorePage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-12 pt-8 border-t border-border/40">
+            <div className="border-border/40 mt-12 flex items-center justify-between border-t pt-8">
               <Button
                 variant="outline"
                 size="sm"
@@ -390,12 +424,12 @@ export default function ExplorePage() {
                 disabled={currentPage === 1}
                 className="gap-2"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="h-4 w-4" />
                 Previous
               </Button>
 
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">
+                <span className="text-muted-foreground text-sm">
                   Page {currentPage} of {totalPages}
                 </span>
               </div>
@@ -408,7 +442,7 @@ export default function ExplorePage() {
                 className="gap-2"
               >
                 Next
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           )}
@@ -427,7 +461,8 @@ export default function ExplorePage() {
 
       {/* Live region for accessibility */}
       <div role="status" aria-live="polite" className="sr-only">
-        Showing {paginatedQuestions.length} of {filteredQuestions.length} questions
+        Showing {paginatedQuestions.length} of {filteredQuestions.length}{" "}
+        questions
       </div>
     </>
   );

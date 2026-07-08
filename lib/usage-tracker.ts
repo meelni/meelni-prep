@@ -1,6 +1,6 @@
 /**
  * Usage tracking utilities for monitoring interview consumption
- * 
+ *
  * Use this to track:
  * - Interviews per user per billing cycle
  * - Cost per user (for margin analysis)
@@ -13,7 +13,7 @@ export interface UsageMetrics {
   billingCycleEnd: Date;
   interviewCount: number;
   estimatedCost: number; // $0.39 per interview
-  tier: 'free' | 'pro' | 'premium';
+  tier: "free" | "pro" | "premium";
 }
 
 export const COST_PER_INTERVIEW = 0.39;
@@ -25,11 +25,15 @@ export async function getUserUsageForCycle(
   cycleStart: Date,
   cycleEnd: Date
 ): Promise<UsageMetrics> {
+  void userId;
+  void cycleStart;
+  void cycleEnd;
+
   // TODO: Implement query to interview_session table
-  // SELECT COUNT(*) FROM interview_session 
+  // SELECT COUNT(*) FROM interview_session
   // WHERE user_id = ? AND started_at BETWEEN ? AND ?
-  
-  throw new Error('Not implemented');
+
+  throw new Error("Not implemented");
 }
 
 export function flagHighUsageUsers(metrics: UsageMetrics[]): {
@@ -37,8 +41,10 @@ export function flagHighUsageUsers(metrics: UsageMetrics[]): {
   potentialAbusers: UsageMetrics[];
 } {
   return {
-    powerUsers: metrics.filter(m => m.interviewCount >= POWER_USER_THRESHOLD),
-    potentialAbusers: metrics.filter(m => m.interviewCount >= ABUSE_THRESHOLD),
+    powerUsers: metrics.filter((m) => m.interviewCount >= POWER_USER_THRESHOLD),
+    potentialAbusers: metrics.filter(
+      (m) => m.interviewCount >= ABUSE_THRESHOLD
+    ),
   };
 }
 
@@ -50,11 +56,12 @@ export function calculateBlendedMetrics(metrics: UsageMetrics[]): {
   p90: number;
   p99: number;
 } {
-  const counts = metrics.map(m => m.interviewCount).sort((a, b) => a - b);
-  
+  const counts = metrics.map((m) => m.interviewCount).sort((a, b) => a - b);
+
   return {
     avgInterviewsPerUser: counts.reduce((a, b) => a + b, 0) / counts.length,
-    avgCostPerUser: metrics.reduce((sum, m) => sum + m.estimatedCost, 0) / metrics.length,
+    avgCostPerUser:
+      metrics.reduce((sum, m) => sum + m.estimatedCost, 0) / metrics.length,
     totalCost: metrics.reduce((sum, m) => sum + m.estimatedCost, 0),
     p50: counts[Math.floor(counts.length * 0.5)] || 0,
     p90: counts[Math.floor(counts.length * 0.9)] || 0,

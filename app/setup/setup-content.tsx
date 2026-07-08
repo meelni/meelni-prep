@@ -46,7 +46,7 @@ export function SetupContent() {
   const questionIdParam = searchParams.get("questionId");
 
   // Track Web Vitals performance
-  useWebVitals('setup');
+  useWebVitals("setup");
 
   // Recommendation-first launcher state.
   const [roundType, setRoundType] = useState<RoundType | null>(
@@ -173,9 +173,13 @@ export function SetupContent() {
 
   useEffect(() => {
     const isLauncherViewReady =
-      !questionIdParam || (questionId === questionIdParam && questionData !== null);
+      !questionIdParam ||
+      (questionId === questionIdParam && questionData !== null);
 
-    if (!isLauncherViewReady || trackedLauncherViewKey.current === launcherViewKey) {
+    if (
+      !isLauncherViewReady ||
+      trackedLauncherViewKey.current === launcherViewKey
+    ) {
       return;
     }
 
@@ -226,7 +230,8 @@ export function SetupContent() {
         // Track setup started
         analytics.track("setup_started", {
           user_id: user.id,
-          referrer_page: typeof document !== "undefined" ? document.referrer : undefined,
+          referrer_page:
+            typeof document !== "undefined" ? document.referrer : undefined,
           user_authenticated: true,
         });
       } catch (error) {
@@ -278,7 +283,9 @@ export function SetupContent() {
         console.log("[Setup] Microphone permission granted");
       } catch (permError) {
         console.error("[Setup] Microphone permission denied:", permError);
-        setError("Microphone access is required for voice interviews. Please grant permission and try again.");
+        setError(
+          "Microphone access is required for voice interviews. Please grant permission and try again."
+        );
         setIsCreatingSession(false);
         return;
       }
@@ -320,7 +327,10 @@ export function SetupContent() {
         const errorData = await response.json();
 
         // Handle interview type locked error
-        if (response.status === 403 && errorData.error === "interview_type_locked") {
+        if (
+          response.status === 403 &&
+          errorData.error === "interview_type_locked"
+        ) {
           setTierUpgradeInfo({
             requestedType: roundType,
             currentTier: errorData.currentTier || "free",
@@ -363,10 +373,14 @@ export function SetupContent() {
 
       // Navigate to interview page with session data
       router.push(
-        "/interview?sessionId=" + sessionId +
-        "&token=" + encodeURIComponent(token) +
-        "&url=" + encodeURIComponent(url) +
-        "&room=" + roomName
+        "/interview?sessionId=" +
+          sessionId +
+          "&token=" +
+          encodeURIComponent(token) +
+          "&url=" +
+          encodeURIComponent(url) +
+          "&room=" +
+          roomName
       );
     } catch (err) {
       console.error("Failed to start session:", err);
@@ -398,7 +412,7 @@ export function SetupContent() {
   }
 
   return (
-    <div className="min-h-full bg-dashboard-panel text-dashboard-foreground">
+    <div className="bg-dashboard-panel text-dashboard-foreground min-h-full">
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-5 sm:p-8">
         <motion.div
           initial="initial"
@@ -408,21 +422,21 @@ export function SetupContent() {
         >
           <motion.div
             variants={fadeInUp}
-            className="flex flex-col gap-4 border-b border-dashboard-panel-border pb-5 sm:flex-row sm:items-center sm:justify-between"
+            className="border-dashboard-panel-border flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="space-y-2">
               <Link
                 href="/dashboard"
-                className="inline-flex items-center gap-2 text-sm text-dashboard-muted transition-colors hover:text-dashboard-foreground"
+                className="text-dashboard-muted hover:text-dashboard-foreground inline-flex items-center gap-2 text-sm transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Dashboard
               </Link>
               <div>
-                <h1 className="font-display text-3xl font-light tracking-tight text-dashboard-foreground">
+                <h1 className="font-display text-dashboard-foreground text-3xl font-light tracking-tight">
                   New Rep
                 </h1>
-                <p className="text-sm text-dashboard-muted">
+                <p className="text-dashboard-muted text-sm">
                   Pick the practice rep you want to start, then enter the room.
                 </p>
               </div>
@@ -442,7 +456,7 @@ export function SetupContent() {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="flex items-start gap-3 rounded-lg border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive"
+                className="border-destructive/25 bg-destructive/10 text-destructive flex items-start gap-3 rounded-lg border p-4 text-sm"
               >
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{error}</span>
@@ -452,7 +466,7 @@ export function SetupContent() {
 
           <motion.section
             variants={fadeInUp}
-            className="rounded-lg border border-primary/25 bg-primary/10 p-5 shadow-[0_2px_12px_rgb(0_0_0_/_0.2)]"
+            className="border-primary/25 bg-primary/10 rounded-lg border p-5 shadow-[0_2px_12px_rgb(0_0_0_/_0.2)]"
           >
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 space-y-4">
@@ -469,24 +483,26 @@ export function SetupContent() {
                   </StatusPill>
                 </div>
                 <div className="space-y-2">
-                  <h2 className="text-xl font-semibold text-dashboard-foreground">
+                  <h2 className="text-dashboard-foreground text-xl font-semibold">
                     {INTERVIEW_TYPE_LABELS[recommendation.roundType]} rep for{" "}
                     {DIFFICULTY_LEVELS[recommendation.difficulty].label}
                   </h2>
-                  <p className="max-w-2xl text-sm leading-6 text-dashboard-muted">
+                  <p className="text-dashboard-muted max-w-2xl text-sm leading-6">
                     {recommendation.rationale}
                   </p>
                 </div>
                 {questionData && (
-                  <div className="rounded-lg border border-dashboard-panel-border bg-dashboard-canvas/40 p-4">
+                  <div className="border-dashboard-panel-border bg-dashboard-canvas/40 rounded-lg border p-4">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <StatusPill tone="primary">Selected question</StatusPill>
                       {questionData.company && (
-                        <StatusPill tone="muted">{questionData.company}</StatusPill>
+                        <StatusPill tone="muted">
+                          {questionData.company}
+                        </StatusPill>
                       )}
                       <StatusPill tone="muted">{questionData.type}</StatusPill>
                     </div>
-                    <p className="text-sm leading-6 text-dashboard-foreground">
+                    <p className="text-dashboard-foreground text-sm leading-6">
                       {questionData.text}
                     </p>
                   </div>
@@ -514,10 +530,10 @@ export function SetupContent() {
 
           <motion.section variants={fadeInUp} className="space-y-5">
             <div className="space-y-1">
-              <h2 className="text-base font-semibold text-dashboard-foreground">
+              <h2 className="text-dashboard-foreground text-base font-semibold">
                 Customize
               </h2>
-              <p className="text-sm text-dashboard-muted">
+              <p className="text-dashboard-muted text-sm">
                 Change the round or seniority bar before starting.
               </p>
             </div>
@@ -527,7 +543,7 @@ export function SetupContent() {
                 {[1, 2, 3, 4].map((i) => (
                   <div
                     key={i}
-                    className="h-32 animate-pulse rounded-lg bg-muted"
+                    className="bg-muted h-32 animate-pulse rounded-lg"
                   />
                 ))}
               </div>
@@ -574,11 +590,11 @@ export function SetupContent() {
 
           <motion.div
             variants={fadeInUp}
-            className="sticky bottom-0 -mx-5 border-t border-dashboard-panel-border bg-dashboard-panel/95 p-5 backdrop-blur sm:-mx-8 sm:px-8"
+            className="border-dashboard-panel-border bg-dashboard-panel/95 sticky bottom-0 -mx-5 border-t p-5 backdrop-blur sm:-mx-8 sm:px-8"
           >
             <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3 text-sm text-dashboard-muted">
-                <Mic className="h-4 w-4 text-primary" />
+              <div className="text-dashboard-muted flex items-center gap-3 text-sm">
+                <Mic className="text-primary h-4 w-4" />
                 <span>
                   {roundType && INTERVIEW_TYPE_LABELS[roundType]} ·{" "}
                   {difficulty && DIFFICULTY_LEVELS[difficulty].label} · hints
@@ -588,7 +604,7 @@ export function SetupContent() {
               <Button
                 onClick={handleStartInterview}
                 disabled={isCreatingSession || !roundType || !difficulty}
-                className="w-full text-primary-foreground sm:w-auto"
+                className="text-primary-foreground w-full sm:w-auto"
               >
                 {isCreatingSession ? (
                   <>

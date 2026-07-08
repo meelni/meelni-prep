@@ -6,9 +6,6 @@
  * to handle transient database errors.
  */
 
-import { db } from "../index";
-import { transcriptTurn } from "../schema";
-import { eq, asc } from "drizzle-orm";
 import {
   createTranscriptTurn,
   batchCreateTranscriptTurns,
@@ -39,7 +36,9 @@ function sleep(ms: number): Promise<void> {
  * Calculate exponential backoff delay
  */
 function getRetryDelay(attemptNumber: number): number {
-  const delay = RETRY_CONFIG.initialDelayMs * Math.pow(RETRY_CONFIG.backoffMultiplier, attemptNumber - 1);
+  const delay =
+    RETRY_CONFIG.initialDelayMs *
+    Math.pow(RETRY_CONFIG.backoffMultiplier, attemptNumber - 1);
   return Math.min(delay, RETRY_CONFIG.maxDelayMs);
 }
 
@@ -66,7 +65,9 @@ async function retryOperation<T>(
 
       // Log successful retry if it took more than one attempt
       if (attempt > 1) {
-        console.log(`[Transcript] ${operationName} succeeded on attempt ${attempt}`);
+        console.log(
+          `[Transcript] ${operationName} succeeded on attempt ${attempt}`
+        );
       }
 
       return result;
@@ -123,7 +124,9 @@ export async function saveTranscriptTurn(turn: CreateTranscriptTurnInput) {
  * @returns Array of saved turns with generated IDs
  * @throws Error if all retry attempts fail
  */
-export async function saveTranscriptTurnsBatch(turns: CreateTranscriptTurnInput[]) {
+export async function saveTranscriptTurnsBatch(
+  turns: CreateTranscriptTurnInput[]
+) {
   if (turns.length === 0) return [];
 
   return retryOperation(
@@ -172,7 +175,9 @@ export async function updateTranscriptTurnWithRetry(
  * @param turn - The turn data to validate
  * @returns true if valid, throws error if invalid
  */
-export function validateTranscriptTurn(turn: CreateTranscriptTurnInput): boolean {
+export function validateTranscriptTurn(
+  turn: CreateTranscriptTurnInput
+): boolean {
   if (!turn.sessionId) {
     throw new Error("sessionId is required");
   }
@@ -191,5 +196,10 @@ export function validateTranscriptTurn(turn: CreateTranscriptTurnInput): boolean
 /**
  * Re-export original functions for compatibility
  */
-export { createTranscriptTurn, batchCreateTranscriptTurns, getSessionTranscript, updateTranscriptTurn };
+export {
+  createTranscriptTurn,
+  batchCreateTranscriptTurns,
+  getSessionTranscript,
+  updateTranscriptTurn,
+};
 export type { CreateTranscriptTurnInput, UpdateTranscriptTurnInput };
