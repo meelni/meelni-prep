@@ -19,6 +19,11 @@ export interface Session {
   feedback?: {
     status: string | null;
     overallScore: string | null;
+    structureScore?: number | string | null;
+    clarityScore?: number | string | null;
+    insightScore?: number | string | null;
+    communicationScore?: number | string | null;
+    leadershipScore?: number | string | null;
   };
 }
 

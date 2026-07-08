@@ -1,7 +1,6 @@
 "use client";
 
 import { lazy, Suspense } from "react";
-import { FirstTimeUserExperience } from "@/components/dashboard/first-time-user-experience";
 import { useSessions } from "@/lib/api/queries";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { DashboardError } from "@/components/dashboard/error";
@@ -44,14 +43,6 @@ export default function DashboardPage() {
     avgScore: 0,
     completionRate: 0,
   };
-
-  // Check if first-time user
-  const isFirstTimeUser = stats.totalSessions === 0;
-
-  // Show FTUE for first-time users
-  if (isFirstTimeUser) {
-    return <FirstTimeUserExperience />;
-  }
 
   return (
     <Suspense fallback={<DashboardLoadingState />}>

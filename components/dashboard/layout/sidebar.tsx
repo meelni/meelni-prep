@@ -8,8 +8,10 @@ import {
   Settings,
   LogOut,
   BookOpen,
+  Mic,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AppSurface } from "@/components/ui/app-surface";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -34,7 +36,12 @@ export function Sidebar({
   onSignOut,
 }: SidebarProps) {
   const navigationItems = [
-    { id: "overview", icon: Monitor, label: "Overview", href: "/dashboard" },
+    {
+      id: "overview",
+      icon: Monitor,
+      label: "Practice Home",
+      href: "/dashboard",
+    },
     {
       id: "history",
       icon: History,
@@ -89,7 +96,7 @@ export function Sidebar({
       variants={sidebarVariants}
       initial={collapsed ? "collapsed" : "expanded"}
       animate={collapsed ? "collapsed" : "expanded"}
-      className="bg-dashboard-canvas text-dashboard-foreground relative flex h-screen flex-col p-3"
+      className="bg-dashboard-canvas text-dashboard-foreground relative z-50 flex h-screen shrink-0 flex-col p-3 md:z-auto"
     >
       <div className="flex h-10 items-center justify-between px-2">
         <Link href="/dashboard" className={cn("block", collapsed && "hidden")}>
@@ -149,6 +156,32 @@ export function Sidebar({
             </Link>
           ))}
         </nav>
+
+        <AppSurface
+          size="none"
+          className={cn(
+            "border-0 bg-transparent pt-2 text-dashboard-foreground shadow-none",
+            collapsed ? "flex justify-center" : ""
+          )}
+        >
+          <Button
+            asChild
+            size={collapsed ? "icon" : "sm"}
+            className={cn(
+              "h-9 rounded-lg bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
+              collapsed ? "w-9" : "w-full justify-center gap-2 px-2.5"
+            )}
+          >
+            <Link
+              href="/dashboard/new-rep"
+              aria-label={collapsed ? "Start a new practice rep" : undefined}
+              title={collapsed ? "New rep" : undefined}
+            >
+              <Mic className="size-4 shrink-0" aria-hidden="true" />
+              {!collapsed && <span>New rep</span>}
+            </Link>
+          </Button>
+        </AppSurface>
 
         <div className="flex-1" />
 

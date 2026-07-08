@@ -21,7 +21,25 @@ export interface DashboardUser {
 }
 
 export const DASHBOARD_CONTENT_PANEL_CLASS_NAME =
-  "border-dashboard-panel-border bg-dashboard-panel min-h-full overflow-hidden rounded-[10px] border";
+  "border-dashboard-panel-border bg-dashboard-panel flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border";
+
+export function getInitialSidebarCollapsed({
+  isMobile,
+  savedCollapsed,
+}: {
+  isMobile: boolean;
+  savedCollapsed: boolean;
+}) {
+  return isMobile || savedCollapsed;
+}
+
+export function getSidebarCollapsedForViewport({
+  isMobile,
+}: {
+  isMobile: boolean;
+}) {
+  return isMobile;
+}
 
 export const DASHBOARD_SIDEBAR_SHELL_CLASS_NAME = "hidden md:block";
 
@@ -38,15 +56,35 @@ export function DashboardLayout({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("sidebar-collapsed");
-      return saved === "true";
+      return getInitialSidebarCollapsed({
+        isMobile: window.matchMedia("(max-width: 767px)").matches,
+        savedCollapsed: saved === "true",
+      });
     }
     return false;
   });
 
-  // Persist to localStorage whenever state changes
+  // Persist desktop preference without letting mobile visits overwrite it.
   useEffect(() => {
-    localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+    if (window.matchMedia("(min-width: 768px)").matches) {
+      localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+    }
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const syncSidebarForViewport = (
+      event: MediaQueryListEvent | MediaQueryList
+    ) => {
+      setSidebarCollapsed(
+        getSidebarCollapsedForViewport({ isMobile: event.matches })
+      );
+    };
+
+    syncSidebarForViewport(media);
+    media.addEventListener("change", syncSidebarForViewport);
+    return () => media.removeEventListener("change", syncSidebarForViewport);
+  }, []);
 
   return (
     <div className="bg-dashboard-canvas text-dashboard-foreground flex h-screen [--accent:#24242a] [--border:var(--dashboard-panel-border)] [--card:var(--dashboard-panel)] [--foreground:var(--dashboard-foreground)] [--muted-foreground:var(--dashboard-muted)] [--muted:#2a2a31] [--secondary:#24242a]">
@@ -68,7 +106,7 @@ export function DashboardLayout({
       {/* Preserve the shell overlay token without blocking mobile content. */}
       <div className="bg-overlay/50 fixed inset-0 z-40 hidden md:hidden" />
 
-      <main className="bg-dashboard-canvas min-w-0 flex-1 overflow-auto p-2 sm:p-3">
+      <main className="bg-dashboard-canvas min-w-0 flex-1 overflow-hidden p-3">
         <section className={DASHBOARD_CONTENT_PANEL_CLASS_NAME}>
           {children}
         </section>
