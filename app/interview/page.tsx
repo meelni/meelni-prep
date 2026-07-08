@@ -55,7 +55,7 @@ interface InterviewSession {
 interface PersistedInterviewSession {
   id: string;
   livekitRoomName: string | null;
-  startedAt: string | Date;
+  startedAt: string;
   roundType?: string | null;
   mode?: string | null;
   config?: (Record<string, unknown> & {
@@ -664,10 +664,7 @@ function normalizePersistedSession(
   return {
     id: session.id,
     livekit_room_name: session.livekitRoomName || "",
-    started_at:
-      session.startedAt instanceof Date
-        ? session.startedAt.toISOString()
-        : session.startedAt,
+    started_at: session.startedAt,
     config: {
       ...(session.config || {}),
       roundType: session.roundType || session.config?.roundType || undefined,
