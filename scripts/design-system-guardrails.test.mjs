@@ -469,7 +469,7 @@ test("setup selectors use the shared selectable-card primitive", async () => {
   assert.deepEqual([...missingExports, ...violations], []);
 });
 
-test("interview launch CTAs use the dashboard-contained New Rep route", async () => {
+test("interview launch CTAs use the canonical dashboard launch route", async () => {
   const legacySetupCta =
     /(?:href=["']\/setup(?:[?#"'])|router\.push\((?:["'`]\/setup)|window\.location\.href\s*=\s*["']\/setup|\]\(\/setup(?:[?#)]))/;
   const allowedFiles = new Set(["app/setup/page.tsx"]);
@@ -504,6 +504,14 @@ test("authenticated product routes follow the product container taxonomy", async
   );
   const setupPage = await readFile("app/setup/page.tsx", "utf8");
   const newRepPage = await readFile("app/dashboard/new-rep/page.tsx", "utf8");
+  const newInterviewPage = await readFile(
+    "app/dashboard/new-interview/page.tsx",
+    "utf8"
+  );
+  const launchRedirect = await readFile(
+    "app/setup/interview-launch-redirect.tsx",
+    "utf8"
+  );
   const interviewPage = await readFile("app/interview/page.tsx", "utf8");
   const feedbackResultPage = await readFile(
     "app/feedback/[sessionId]/page.tsx",
@@ -540,14 +548,24 @@ test("authenticated product routes follow the product container taxonomy", async
     }
   }
 
-  if (!setupPage.includes("router.replace(`/dashboard/new-rep")) {
-    violations.push("app/setup/page.tsx:dashboard-new-rep-redirect");
+  if (!setupPage.includes("InterviewLaunchRedirect")) {
+    violations.push("app/setup/page.tsx:interview-launch-redirect");
   }
   if (setupPage.includes("SetupContent")) {
     violations.push("app/setup/page.tsx:standalone-setup-content");
   }
-  if (!newRepPage.includes("SetupContent")) {
-    violations.push("app/dashboard/new-rep/page.tsx:SetupContent");
+  if (!newRepPage.includes("InterviewLaunchRedirect")) {
+    violations.push("app/dashboard/new-rep/page.tsx:interview-launch-redirect");
+  }
+  if (!newInterviewPage.includes("SetupContent")) {
+    violations.push("app/dashboard/new-interview/page.tsx:SetupContent");
+  }
+  if (
+    !launchRedirect.includes("buildNewInterviewHref(searchParams.toString())")
+  ) {
+    violations.push(
+      "app/setup/interview-launch-redirect.tsx:query-preservation"
+    );
   }
 
   for (const file of dashboardSections) {

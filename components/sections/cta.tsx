@@ -57,7 +57,9 @@ export function CTA() {
                 transition={{ duration: 0.6, delay: 0.5 }}
               >
                 <Button asChild size="lg">
-                  <Link href="/dashboard">Start a mock</Link>
+                  <Link href="/dashboard/new-interview">
+                    Start a mock interview
+                  </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline">
                   <Link href="/explore">Explore questions</Link>

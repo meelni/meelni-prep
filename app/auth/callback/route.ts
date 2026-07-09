@@ -1,11 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { AccountDeletionPendingError, upsertUser } from "@/lib/db/users";
+import { buildSafeInternalRedirectUrl } from "@/lib/auth/safe-redirect";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const origin = requestUrl.origin;
+  const next = requestUrl.searchParams.get("next");
 
   if (code) {
     const supabase = await createClient();
@@ -43,8 +45,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // Redirect to dashboard by default
-  // Note: redirectTo from sessionStorage will be handled by client-side navigation
-  // We can't access sessionStorage from server-side code
-  return NextResponse.redirect(`${origin}/dashboard`);
+  // Google OAuth without `next` still uses the existing sessionStorage handoff.
+  // Email confirmation carries a validated `next` so it also survives a new device.
+  return NextResponse.redirect(buildSafeInternalRedirectUrl(origin, next));
 }

@@ -12,6 +12,7 @@ import { getFeatureFlagBootstrap } from "@/lib/feature-flags/server-bootstrap";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Toaster } from "sonner";
+import { PRODUCT_LANGUAGE } from "@/lib/product-language";
 
 // Using Outfit as a free alternative to Everett - similar elegant, geometric feel
 const outfit = Outfit({
@@ -45,7 +46,7 @@ export const metadata: Metadata = {
     default: "Meelni",
     template: "%s | Meelni",
   },
-  description: "Live, voice-first PM interview practice and feedback.",
+  description: PRODUCT_LANGUAGE.oneLine,
   authors: [{ name: "Meelni" }],
   creator: "Meelni",
   publisher: "Meelni",

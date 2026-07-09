@@ -115,7 +115,7 @@ export function NextGoalCard({ sessions, userSummary }: NextGoalCardProps) {
     const params = new URLSearchParams(
       goal.setupParams as Record<string, string>
     );
-    router.push(`/dashboard/new-rep?${params.toString()}`);
+    router.push(`/dashboard/new-interview?${params.toString()}`);
   };
 
   return (

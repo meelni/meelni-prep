@@ -14,7 +14,8 @@ export const blogPosts: BlogPost[] = [
   {
     id: "product-sense-volunteering-meta",
     title: "How to Answer: 'Build a Product for Volunteering' at Meta",
-    excerpt: "A step-by-step breakdown of how to tackle this classic Meta Product Sense question, including framework, segmentation, and solution development with real PM thinking.",
+    excerpt:
+      "A step-by-step breakdown of how to tackle this classic Meta Product Sense question, including framework, segmentation, and solution development with real PM thinking.",
     author: "Meelni Team",
     date: "November 20, 2025",
     readTime: "12 min read",
@@ -232,7 +233,7 @@ What questions do you have about this approach?"
 
 ## Practice This Question
 
-Ready to practice your own Product Sense answer? [Try a mock interview with Meelni](/dashboard/new-rep) and get real-time feedback on your structure, user empathy, and solution quality.
+Ready to practice your own Product Sense answer? [Try a mock interview with Meelni](/dashboard/new-interview) and get real-time feedback on your structure, user empathy, and solution quality.
 
 ---
 
@@ -242,7 +243,8 @@ Ready to practice your own Product Sense answer? [Try a mock interview with Meel
   {
     id: "product-sense-education-meta",
     title: "How to Answer: 'Design a Product for Education' at Meta",
-    excerpt: "Master this common Meta interview question with a complete walkthrough showing expert-level product thinking, from learner segmentation to knowledge retention solutions.",
+    excerpt:
+      "Master this common Meta interview question with a complete walkthrough showing expert-level product thinking, from learner segmentation to knowledge retention solutions.",
     author: "Meelni Team",
     date: "November 19, 2025",
     readTime: "11 min read",
@@ -462,7 +464,7 @@ What aspects would you like me to elaborate on?"
 
 ## Practice This Question
 
-[Try a mock interview with Meelni](/dashboard/new-rep) and see how your education product idea compares.
+[Try a mock interview with Meelni](/dashboard/new-interview) and see how your education product idea compares.
 
 ---
 
@@ -471,8 +473,10 @@ What aspects would you like me to elaborate on?"
   },
   {
     id: "analytical-thinking-instagram-reels",
-    title: "How to Answer: 'Set Goals for Instagram Reels' - Analytical Thinking",
-    excerpt: "A complete walkthrough of how to approach this Meta Analytical Thinking question, including North Star metrics, ecosystem mapping, and tradeoff analysis.",
+    title:
+      "How to Answer: 'Set Goals for Instagram Reels' - Analytical Thinking",
+    excerpt:
+      "A complete walkthrough of how to approach this Meta Analytical Thinking question, including North Star metrics, ecosystem mapping, and tradeoff analysis.",
     author: "Meelni Team",
     date: "November 18, 2025",
     readTime: "10 min read",
@@ -737,7 +741,7 @@ What aspects would you like me to dive deeper on?"
 
 ## Practice This Question
 
-[Try an Analytical Thinking mock interview with Meelni](/dashboard/new-rep) and get feedback on your metric selection and tradeoff reasoning.
+[Try an Analytical Thinking mock interview with Meelni](/dashboard/new-interview) and get feedback on your metric selection and tradeoff reasoning.
 
 ---
 
@@ -746,8 +750,10 @@ What aspects would you like me to dive deeper on?"
   },
   {
     id: "leadership-drive-failure-story",
-    title: "How to Answer: 'Tell Me About a Time You Failed' - Leadership & Drive",
-    excerpt: "Master this critical behavioral question with a complete STAR framework example showing ownership, growth, and Meta's leadership principles in action.",
+    title:
+      "How to Answer: 'Tell Me About a Time You Failed' - Leadership & Drive",
+    excerpt:
+      "Master this critical behavioral question with a complete STAR framework example showing ownership, growth, and Meta's leadership principles in action.",
     author: "Meelni Team",
     date: "November 17, 2025",
     readTime: "9 min read",
@@ -950,7 +956,7 @@ I'd love to hear about how Meta handles the tension between innovation and stabi
 
 ## Practice This Question
 
-[Try a Leadership & Drive mock interview with Meelni](/dashboard/new-rep) and get feedback on your STAR stories, ownership, and growth mindset.
+[Try a Leadership & Drive mock interview with Meelni](/dashboard/new-interview) and get feedback on your STAR stories, ownership, and growth mindset.
 
 ---
 
@@ -960,7 +966,8 @@ I'd love to hear about how Meta handles the tension between innovation and stabi
   {
     id: "big-tech-case-study-interviews",
     title: "Big Tech's Case Study Interview Format: What You Need to Know",
-    excerpt: "Google, Meta, Amazon, and other tech giants rely heavily on case study interviews. Here's what makes them different from traditional PM interviews and how to prepare effectively.",
+    excerpt:
+      "Google, Meta, Amazon, and other tech giants rely heavily on case study interviews. Here's what makes them different from traditional PM interviews and how to prepare effectively.",
     author: "Meelni Team",
     date: "November 12, 2025",
     readTime: "9 min read",
@@ -1216,7 +1223,7 @@ Research Glassdoor, Blind, and interview prep sites for company-specific questio
 
 ## How Meelni Accelerates Your Prep
 
-Case study interviews require **reps with realistic feedback**. That's exactly what we built Meelni for.
+Case study interviews require **realistic practice with useful feedback**. That's exactly what we built Meelni for.
 
 Our AI interviewer:
 - Asks real case study questions across all four types
@@ -1227,7 +1234,7 @@ Our AI interviewer:
 
 **The combination is powerful:** Frameworks give you structure. Product critique builds intuition. But **Meelni builds interview performance** by simulating the real thing.
 
-[Start practicing now](/dashboard/new-rep) and see where you stand.
+[Start practicing now](/dashboard/new-interview) and see where you stand.
 
 ---
 
@@ -1237,7 +1244,8 @@ Our AI interviewer:
   {
     id: "building-product-intuition",
     title: "Building Product Intuition: The Daily Practice Top PMs Use",
-    excerpt: "Product sense isn't innate—it's trained. Here's an observation framework that helps candidates develop world-class product intuition in weeks, not years.",
+    excerpt:
+      "Product sense isn't innate—it's trained. Here's an observation framework that helps candidates develop world-class product intuition in weeks, not years.",
     author: "Meelni Team",
     date: "November 10, 2025",
     readTime: "8 min read",
@@ -1251,7 +1259,7 @@ This is a common compliment after a successful product interview. But here's the
 
 The PMs who consistently crush product interviews aren't lucky. They're not magically intuitive. They're **systematically observant**. They've trained themselves to dissect every product they encounter, and over time, that practice becomes instinct.
 
-This post shares an observation framework that helps candidates develop interview-ready product intuition in weeks instead of years.
+This post shares an observation framework that helps candidates develop stronger product intuition through deliberate practice.
 
 ## What Product Intuition Really Means
 
@@ -1401,7 +1409,7 @@ That's where Meelni comes in. Our AI interviewer:
 
 The combination is powerful: **critique builds intuition, Meelni builds interview performance**.
 
-[Start practicing now](/dashboard/new-rep) and put your product observations to the test.
+[Start practicing now](/dashboard/new-interview) and put your product observations to the test.
 
 ---
 
@@ -1411,7 +1419,8 @@ The combination is powerful: **critique builds intuition, Meelni builds intervie
   {
     id: "mastering-product-sense-interviews",
     title: "Mastering Product Sense Interviews: A Proven Framework",
-    excerpt: "A clear pattern emerges from successful product interviews: candidates who excel aren't lacking creativity—they're using structure. Here's a 5-step framework that works consistently across Meta, Google, and Amazon.",
+    excerpt:
+      "A clear pattern emerges from successful product interviews: candidates who excel aren't lacking creativity—they're using structure. Here's a 5-step framework that works consistently across Meta, Google, and Amazon.",
     author: "Meelni Team",
     date: "November 8, 2025",
     readTime: "6 min read",
@@ -1494,14 +1503,14 @@ Generate 3-5 solution ideas, then prioritize one using a consistent framework. H
 
 ## How Meelni Helps You Master This
 
-This is exactly why we built Meelni. You can't learn product sense by reading—you need **reps**. Our AI interviewer:
+This is exactly why we built Meelni. You can't learn product sense by reading—you need **real interview practice**. Our AI interviewer:
 
 - Throws realistic product sense prompts at you
 - Adapts to your responses in real-time
 - Catches when you skip steps or lose thread
 - Provides framework-based feedback after each session
 
-Ready to practice? [Start your first mock interview](/dashboard/new-rep).
+Ready to practice? [Start your first mock interview](/dashboard/new-interview).
 
 ---
 
@@ -1511,7 +1520,8 @@ Ready to practice? [Start your first mock interview](/dashboard/new-rep).
   {
     id: "execution-interviews-metrics-that-matter",
     title: "Execution Interviews: The Metrics That Actually Matter",
-    excerpt: "Most candidates pick vanity metrics. Here's how to identify metrics that show you understand the business, backed by proven PM frameworks.",
+    excerpt:
+      "Most candidates pick vanity metrics. Here's how to identify metrics that show you understand the business, backed by proven PM frameworks.",
     author: "Meelni Team",
     date: "November 5, 2025",
     readTime: "5 min read",
@@ -1616,7 +1626,7 @@ That's why we built Meelni's execution mode:
 - Our AI pushes back when your metrics are vanity
 - You get post-session feedback on metric selection and trade-off reasoning
 
-[Try an execution interview now](/dashboard/new-rep) and see where you stand.
+[Try an execution interview now](/dashboard/new-interview) and see where you stand.
 
 ---
 
@@ -1626,7 +1636,8 @@ That's why we built Meelni's execution mode:
   {
     id: "star-method-leadership-interviews",
     title: "Beyond STAR: How Top PMs Tell Leadership Stories",
-    excerpt: "STAR is table stakes. Here's an advanced storytelling framework that separates senior PM offers from 'not enough leadership' rejections.",
+    excerpt:
+      "STAR is table stakes. Here's an advanced storytelling framework that separates senior PM offers from 'not enough leadership' rejections.",
     author: "Meelni Team",
     date: "November 1, 2025",
     readTime: "7 min read",
@@ -1774,7 +1785,7 @@ That's exactly what Meelni's Leadership & Drive mode does. Our AI interviewer:
 - Catches when you're being too tactical
 - Gives framework-based feedback
 
-[Try a leadership interview now](/dashboard/new-rep) and see if your stories hold up.
+[Try a leadership interview now](/dashboard/new-interview) and see if your stories hold up.
 
 ---
 

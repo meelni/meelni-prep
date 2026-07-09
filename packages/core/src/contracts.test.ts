@@ -14,7 +14,7 @@ import {
   type CreditEntitlementState,
   getBillingCatalogItem,
   getDefaultDuration,
-  buildRecommendedRep,
+  buildInterviewRecommendation,
   isValidRoundType,
   mapQuestionTypeToRoundType,
   shouldAnalyzeNudges,
@@ -191,8 +191,8 @@ test("session and question payload contracts are available from core", () => {
   assert.equal(question.company, "Meta");
 });
 
-test("recommended rep has a deterministic PM wedge fallback", () => {
-  const recommendation = buildRecommendedRep();
+test("recommended interview has a deterministic PM wedge fallback", () => {
+  const recommendation = buildInterviewRecommendation();
 
   assert.equal(recommendation.roundType, "product_sense");
   assert.equal(recommendation.difficulty, "intermediate");
@@ -206,7 +206,7 @@ test("recommended rep has a deterministic PM wedge fallback", () => {
 
 test("selected question recommendation preserves question handoff", () => {
   const fixture = createProductSenseInterviewFixture();
-  const recommendation = buildRecommendedRep({
+  const recommendation = buildInterviewRecommendation({
     selectedQuestion: {
       id: fixture.question.questionId,
       text: fixture.question.questionText,
@@ -225,6 +225,19 @@ test("selected question recommendation preserves question handoff", () => {
     type: "A/B Testing",
   });
   assert.match(recommendation.rationale, /selected question/);
+});
+
+test("launch context overrides fallback interview defaults", () => {
+  const recommendation = buildInterviewRecommendation({
+    company: "Stripe",
+    focus: "prioritization",
+    requestedDifficulty: "advanced",
+    requestedRoundType: "strategy",
+  });
+
+  assert.equal(recommendation.roundType, "strategy");
+  assert.equal(recommendation.difficulty, "advanced");
+  assert.equal(recommendation.source, "launch_context");
 });
 
 test("question type mapping supports stored question bank labels", () => {

@@ -33,7 +33,7 @@ export function Footer() {
               variant="secondary"
               className="text-footer-button h-12 rounded-full bg-white px-6 font-bold hover:bg-white/90"
             >
-              <Link href="/dashboard">Start practice</Link>
+              <Link href="/dashboard/new-interview">Start practice</Link>
             </Button>
             <Button
               asChild

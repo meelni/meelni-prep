@@ -156,7 +156,7 @@ export function Header() {
                     Log In
                   </Link>
                   <Link
-                    href="/dashboard"
+                    href="/dashboard/new-interview"
                     className={cn(
                       buttonVariants({ variant: "default", size: "sm" }),
                       "text-primary-foreground rounded-lg px-4"

@@ -18,11 +18,11 @@ If an external lens conflicts with Meelni route shells, `lucide-react`, dashboar
 
 ## Lens Roles
 
-| Lens | Status | Best use | Avoid |
-| --- | --- | --- | --- |
-| Impeccable | Recommended pilot | Structured product/brand audit, detector baseline, accessibility/performance/theming/responsive/anti-pattern scoring | Enabling hooks or CI before false positives are reviewed |
-| ibelick/ui-skills | Borrow selectively | Tactical accessibility, motion performance, baseline cleanup, metadata checks | Replacing `meelni-ui-design-system` as the router |
-| Taste Skill | Public/content only | Marketing art direction, anti-generic public-page critique, reference boards | Dashboard, New Rep, interview, feedback, auth, settings, billing, data-heavy product UI |
+| Lens              | Status              | Best use                                                                                                             | Avoid                                                                                              |
+| ----------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Impeccable        | Recommended pilot   | Structured product/brand audit, detector baseline, accessibility/performance/theming/responsive/anti-pattern scoring | Enabling hooks or CI before false positives are reviewed                                           |
+| ibelick/ui-skills | Borrow selectively  | Tactical accessibility, motion performance, baseline cleanup, metadata checks                                        | Replacing `meelni-ui-design-system` as the router                                                  |
+| Taste Skill       | Public/content only | Marketing art direction, anti-generic public-page critique, reference boards                                         | Dashboard, New Mock Interview, interview, feedback, auth, settings, billing, data-heavy product UI |
 
 ## Integration Policy
 
@@ -69,7 +69,7 @@ Use it for:
 Do not use it to drive:
 
 - Dashboard workspace.
-- New Rep flow.
+- New Mock Interview flow.
 - Focused interview room.
 - Feedback review.
 - Authenticated settings, billing, or admin-like UI.

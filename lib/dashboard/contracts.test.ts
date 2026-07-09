@@ -38,23 +38,23 @@ test("practice summary recommends the weakest feedback dimension", () => {
     },
   ]);
 
-  assert.equal(summary.readiness.score, 62);
+  assert.equal(summary.progress.score, 62);
   assert.equal(summary.focusArea.label, "Metrics depth");
   assert.match(summary.recommendation.title, /metric depth/i);
-  assert.equal(summary.recentReps[0]?.scoreLabel, "6.2");
+  assert.equal(summary.recentInterviews[0]?.scoreLabel, "6.2");
   assert.deepEqual(
     summary.progressSignal.bars.map((bar) => bar.state),
     ["actual", "placeholder", "placeholder", "placeholder", "placeholder"]
   );
 });
 
-test("practice summary gives new users a first-rep path", () => {
+test("practice summary gives new users a first-interview path", () => {
   const summary = buildDashboardPracticeSummary([]);
 
   assert.equal(summary.isNewUser, true);
-  assert.equal(summary.readiness.score, 0);
-  assert.equal(summary.recommendation.href, "/dashboard/new-rep");
-  assert.match(summary.recommendation.title, /first pm interview rep/i);
+  assert.equal(summary.progress.score, 0);
+  assert.equal(summary.recommendation.href, "/dashboard/new-interview");
+  assert.match(summary.recommendation.title, /first pm mock interview/i);
 });
 
 test("question summary counts round and company filters while selecting a recommendation", () => {

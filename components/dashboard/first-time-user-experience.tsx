@@ -31,7 +31,7 @@ export function FirstTimeUserExperience() {
       user_id: user?.id,
       cta_text: FTUE_EMPTY_STATE_COPY.cta,
     });
-    router.push("/dashboard/new-rep");
+    router.push("/dashboard/new-interview");
   };
 
   return (

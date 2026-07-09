@@ -40,7 +40,7 @@ export function SessionList({ sessions, onSessionClick }: SessionListProps) {
         description="Start your first mock interview to see your history and track your progress."
         action={
           <Button asChild>
-            <Link href="/dashboard/new-rep">Start First Interview</Link>
+            <Link href="/dashboard/new-interview">Start First Interview</Link>
           </Button>
         }
       />
@@ -105,9 +105,7 @@ export function SessionList({ sessions, onSessionClick }: SessionListProps) {
                 !isCompleted || isProcessing ? (
                   <div className="flex flex-wrap items-center gap-2">
                     {!isCompleted && (
-                      <Badge variant="warning">
-                        In Progress
-                      </Badge>
+                      <Badge variant="warning">In Progress</Badge>
                     )}
                     {isProcessing && (
                       <Badge variant="info">

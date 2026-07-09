@@ -74,7 +74,7 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
     focusAreaLabel: practiceSummary.focusArea.label,
     focusAreaScore: practiceSummary.focusArea.score,
     focusAreaDescription: practiceSummary.focusArea.description,
-    readinessDeltaLabel: practiceSummary.readiness.deltaLabel,
+    progressDeltaLabel: practiceSummary.progress.deltaLabel,
   });
 
   if (loading) {
@@ -82,7 +82,7 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
       <DashboardPage label="Analytics">
         <DashboardLoadingState
           className="min-h-[420px]"
-          label="Loading readiness analytics..."
+          label="Loading practice analytics..."
         />
       </DashboardPage>
     );
@@ -103,11 +103,11 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
     return (
       <DashboardPage label="Analytics">
         <EmptyAnalyticsState
-          title="Readiness needs a few more reps"
-          description={`Complete ${Math.max(1, 3 - completedSessions)} more PM interview rep${3 - completedSessions === 1 ? "" : "s"} to unlock a reliable trend and bottleneck diagnosis.`}
+          title="Your score trend needs a few more interviews"
+          description={`Complete ${Math.max(1, 3 - completedSessions)} more PM mock interview${3 - completedSessions === 1 ? "" : "s"} to see a more reliable trend and bottleneck diagnosis.`}
           action={
             <Button asChild>
-              <Link href="/dashboard/new-rep">Practice</Link>
+              <Link href="/dashboard/new-interview">Start mock interview</Link>
             </Button>
           }
         />
@@ -118,121 +118,121 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
   return (
     <DashboardPage label="Analytics">
       <div className="mx-auto flex w-full max-w-6xl flex-col">
-      <section className="grid gap-6 border-b border-dashboard-panel-border pb-6 lg:grid-cols-[150px_1fr_auto] lg:items-center">
-        <div>
-          <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-            Readiness
-          </p>
-          <p className="font-mono text-5xl font-semibold text-dashboard-foreground">
-            {practiceSummary.readiness.score}
-          </p>
-        </div>
-        <div className="max-w-3xl">
-          <h2 className="text-xl font-semibold text-dashboard-foreground">
-            {getDiagnosis(practiceSummary.focusArea.label)}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-dashboard-muted">
-            Your next rep should force user outcome, business outcome,
-            guardrail, and time horizon before solution ideas.
-          </p>
-        </div>
-        <Button asChild>
-          <Link href={practiceSummary.recommendation.href}>Practice</Link>
-        </Button>
-      </section>
-
-      <div className="grid gap-8 py-6 lg:grid-cols-[1fr_330px]">
-        <section className="min-w-0 space-y-8">
+        <section className="border-dashboard-panel-border grid gap-6 border-b pb-6 lg:grid-cols-[150px_1fr_auto] lg:items-center">
           <div>
             <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Competencies
+              Recent practice score
             </p>
-            <div className="mt-5 space-y-4">
-              {competencies.map((competency) => (
-                <div
-                  key={competency.label}
-                  className="grid grid-cols-[130px_minmax(0,1fr)_88px] items-center gap-4"
-                >
-                  <span className="text-sm font-semibold text-dashboard-foreground">
-                    {competency.label}
-                  </span>
-                  <span className="bg-dashboard-muted/15 h-2 overflow-hidden rounded-full">
-                    <span
-                      className="block h-full rounded-full bg-primary"
-                      style={{
-                        width:
-                          competency.value === null
-                            ? "0%"
-                            : `${competency.value * 10}%`,
-                      }}
-                    />
-                  </span>
-                  <span className="text-right font-mono text-sm font-semibold text-dashboard-foreground">
-                    {competency.value === null
-                      ? "Needs data"
-                      : competency.value.toFixed(1)}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <p className="text-dashboard-foreground font-mono text-5xl font-semibold">
+              {practiceSummary.progress.score}
+            </p>
           </div>
-
-          <div className="border-t border-dashboard-panel-border pt-7">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                Readiness trend
-              </p>
-              <span className="text-sm font-semibold text-primary">
-                {trend === "improving"
-                  ? "Improving"
-                  : trend === "declining"
-                    ? "Needs attention"
-                    : "Stable"}{" "}
-                {practiceSummary.readiness.deltaLabel}
-              </span>
-            </div>
-            <ProgressSignalBars
-              bars={practiceSummary.progressSignal.bars}
-              className="mt-16 h-32 gap-4"
-              showLabels
-            />
+          <div className="max-w-3xl">
+            <h2 className="text-dashboard-foreground text-xl font-semibold">
+              {getDiagnosis(practiceSummary.focusArea.label)}
+            </h2>
+            <p className="text-dashboard-muted mt-2 text-sm leading-6">
+              Your next interview should force user outcome, business outcome,
+              guardrail, and time horizon before solution ideas.
+            </p>
           </div>
+          <Button asChild>
+            <Link href={practiceSummary.recommendation.href}>Practice</Link>
+          </Button>
         </section>
 
-        <aside className="border-dashboard-panel-border border-t pt-7 lg:border-t-0 lg:border-l lg:pl-8 lg:pt-0">
-          <div>
-            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Next target
-            </p>
-            <h3 className="mt-4 text-xl font-semibold text-dashboard-foreground">
-              Open with {practiceSummary.focusArea.label.toLowerCase()}
-            </h3>
-            <p className="mt-3 text-sm leading-6 text-dashboard-muted">
-              {practiceSummary.focusArea.description}
-            </p>
-          </div>
-
-          <div className="mt-8">
-            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Evidence
-            </p>
-            <div className="mt-5 space-y-5">
-              {evidence.length > 0 ? (
-                evidence.map((item) => (
-                  <Evidence key={item.title} title={item.title}>
-                    {item.description}
-                  </Evidence>
-                ))
-              ) : (
-                <p className="text-sm leading-6 text-dashboard-muted">
-                  Evidence appears once recent scored reps include dimension
-                  feedback.
-                </p>
-              )}
+        <div className="grid gap-8 py-6 lg:grid-cols-[1fr_330px]">
+          <section className="min-w-0 space-y-8">
+            <div>
+              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+                Competencies
+              </p>
+              <div className="mt-5 space-y-4">
+                {competencies.map((competency) => (
+                  <div
+                    key={competency.label}
+                    className="grid grid-cols-[130px_minmax(0,1fr)_88px] items-center gap-4"
+                  >
+                    <span className="text-dashboard-foreground text-sm font-semibold">
+                      {competency.label}
+                    </span>
+                    <span className="bg-dashboard-muted/15 h-2 overflow-hidden rounded-full">
+                      <span
+                        className="bg-primary block h-full rounded-full"
+                        style={{
+                          width:
+                            competency.value === null
+                              ? "0%"
+                              : `${competency.value * 10}%`,
+                        }}
+                      />
+                    </span>
+                    <span className="text-dashboard-foreground text-right font-mono text-sm font-semibold">
+                      {competency.value === null
+                        ? "Needs data"
+                        : competency.value.toFixed(1)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        </aside>
-      </div>
+
+            <div className="border-dashboard-panel-border border-t pt-7">
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+                  Score trend
+                </p>
+                <span className="text-primary text-sm font-semibold">
+                  {trend === "improving"
+                    ? "Improving"
+                    : trend === "declining"
+                      ? "Needs attention"
+                      : "Stable"}{" "}
+                  {practiceSummary.progress.deltaLabel}
+                </span>
+              </div>
+              <ProgressSignalBars
+                bars={practiceSummary.progressSignal.bars}
+                className="mt-16 h-32 gap-4"
+                showLabels
+              />
+            </div>
+          </section>
+
+          <aside className="border-dashboard-panel-border border-t pt-7 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+            <div>
+              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+                Next target
+              </p>
+              <h3 className="text-dashboard-foreground mt-4 text-xl font-semibold">
+                Open with {practiceSummary.focusArea.label.toLowerCase()}
+              </h3>
+              <p className="text-dashboard-muted mt-3 text-sm leading-6">
+                {practiceSummary.focusArea.description}
+              </p>
+            </div>
+
+            <div className="mt-8">
+              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+                Evidence
+              </p>
+              <div className="mt-5 space-y-5">
+                {evidence.length > 0 ? (
+                  evidence.map((item) => (
+                    <Evidence key={item.title} title={item.title}>
+                      {item.description}
+                    </Evidence>
+                  ))
+                ) : (
+                  <p className="text-dashboard-muted text-sm leading-6">
+                    Evidence appears once recent scored interviews include
+                    dimension feedback.
+                  </p>
+                )}
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
     </DashboardPage>
   );
@@ -249,10 +249,10 @@ function EmptyAnalyticsState({
 }) {
   return (
     <div className="mx-auto flex min-h-[420px] max-w-xl flex-col items-center justify-center text-center">
-      <h2 className="font-display text-3xl leading-tight font-semibold text-dashboard-foreground">
+      <h2 className="font-display text-dashboard-foreground text-3xl leading-tight font-semibold">
         {title}
       </h2>
-      <p className="mt-4 text-base leading-7 text-dashboard-muted">
+      <p className="text-dashboard-muted mt-4 text-base leading-7">
         {description}
       </p>
       {action && <div className="mt-6">{action}</div>}
@@ -260,24 +260,20 @@ function EmptyAnalyticsState({
   );
 }
 
-function Evidence({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function Evidence({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
-      <h4 className="text-lg font-semibold text-dashboard-foreground">{title}</h4>
-      <p className="mt-1 text-sm leading-6 text-dashboard-muted">{children}</p>
+      <h4 className="text-dashboard-foreground text-lg font-semibold">
+        {title}
+      </h4>
+      <p className="text-dashboard-muted mt-1 text-sm leading-6">{children}</p>
     </div>
   );
 }
 
 function getDiagnosis(focusLabel: string) {
   if (focusLabel === "Metrics depth") {
-    return "Structure is strong. Metrics depth is still blocking readiness.";
+    return "Structure is strong. Metrics depth is the next area to improve.";
   }
-  return `${focusLabel} is the current bottleneck before interview readiness.`;
+  return `${focusLabel} is the clearest opportunity in recent interviews.`;
 }

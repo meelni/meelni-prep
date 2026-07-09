@@ -24,11 +24,11 @@ Flag:
 
 Pressure test whether the idea strengthens Meelni's wedge:
 
-- Does it improve realistic PM reps?
-- Does it make the next rep clearer?
+- Does it improve realistic PM mock interviews?
+- Does it make the next practice action clearer?
 - Does it improve PM-calibrated feedback?
 - Does it create better company, question, or round-type specificity?
-- Does it improve visible progress or readiness confidence?
+- Does it improve visible, evidence-based practice progress?
 
 ## 3. Growth And Monetization Lens
 
@@ -43,7 +43,7 @@ Name the primary lever:
 
 For trials and pricing, tie the decision to activation moments:
 
-- first rep completed
+- first mock interview completed
 - first feedback viewed
 - first targeted drill started
 - first return session
@@ -51,7 +51,7 @@ For trials and pricing, tie the decision to activation moments:
 
 ## 4. AI Product Strategy Lens
 
-Use when AI, voice agents, agent skills, evals, or applied AI PM readiness are central.
+Use when AI, voice agents, agent skills, evals, or applied AI PM practice are central.
 
 Pressure test:
 
@@ -60,7 +60,7 @@ Pressure test:
 - failure and recovery behavior
 - durable product surface, not prompt-dependent trick
 - eval or quality signal
-- connection back to interview reps
+- connection back to mock interviews
 
 ## 5. Tradeoff Evaluation Lens
 

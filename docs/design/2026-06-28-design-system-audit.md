@@ -345,7 +345,7 @@ Status:
 - Question-bank child filter, drawer, question card, practice-set list, practice-set dialog, and autocomplete controls now use shared button/form/dialog primitives; `components/ui/textarea.tsx` adds the missing shared textarea primitive.
 - Dashboard badge display, dashboard error, and dashboard loading states now use shared button/state/skeleton primitives and semantic status treatments.
 - Added shared `success`, `warning`, and `info` status tokens and migrated dashboard helper badges, recommendations, and chart callouts off raw green/orange/blue/red/purple utility classes.
-- 2026-07-08 update: interview launch CTAs now target `/dashboard/new-rep`; `/setup` remains only as a compatibility redirect.
+- 2026-07-09 update: interview launch CTAs now target `/dashboard/new-interview`; `/setup` and `/dashboard/new-rep` remain only as compatibility redirects.
 - Remaining P1 work: scan remaining dashboard/supporting surfaces for bespoke token usage, then continue into marketing and SEO surfaces.
 
 ### Slice 5 - Feedback

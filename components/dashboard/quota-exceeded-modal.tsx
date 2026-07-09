@@ -36,7 +36,9 @@ export function QuotaExceededModal({
   onClose,
 }: QuotaExceededModalProps) {
   const router = useRouter();
-  const purchasePlans = getPublicPricingPlans().filter((plan) => plan.canPurchase);
+  const purchasePlans = getPublicPricingPlans().filter(
+    (plan) => plan.canPurchase
+  );
 
   const handleViewPlans = () => {
     router.push("/pricing");
@@ -47,7 +49,8 @@ export function QuotaExceededModal({
     {
       icon: Sparkles,
       title: "Any PM Round",
-      description: "Use credits for Product Sense, Behavioral, Execution, or Strategy",
+      description:
+        "Use credits for Product Sense, Behavioral, Execution, or Strategy",
     },
     {
       icon: MessageSquare,
@@ -88,7 +91,7 @@ export function QuotaExceededModal({
         <div className="space-y-6">
           <DashboardSectionCard
             title="Purchase options"
-            description="Each credit starts one complete PM interview rep."
+            description="Each credit starts one complete PM mock interview."
           >
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {upgradeBenefits.map((benefit, index) => (

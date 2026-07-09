@@ -62,7 +62,7 @@ test("dashboard shell keeps scrolling inside the content container", () => {
   assert.doesNotMatch(html, /<main[^>]+overflow-auto/);
 });
 
-test("dashboard shell owns the global new rep action", () => {
+test("dashboard shell owns the global new mock interview action", () => {
   const html = renderToStaticMarkup(
     <DashboardLayout
       activeSection="questions"
@@ -72,9 +72,9 @@ test("dashboard shell owns the global new rep action", () => {
     </DashboardLayout>
   );
 
-  assert.match(html, /href="\/dashboard\/new-rep"/);
-  assert.match(html, />New rep</);
-  assert.doesNotMatch(html, /New Interview/);
+  assert.match(html, /href="\/dashboard\/new-interview"/);
+  assert.match(html, />New Mock Interview</);
+  assert.doesNotMatch(html, />New rep</i);
 });
 
 test("dashboard content panel does not add a black frame or shadow around pages", () => {

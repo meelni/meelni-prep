@@ -44,7 +44,7 @@ function HeroCTA({ onDemoClick }: HeroCTAProps) {
           size="lg"
           className="h-12 w-full rounded-lg px-5 sm:w-auto"
         >
-          <Link href="/dashboard">
+          <Link href="/dashboard/new-interview">
             {siteConfig.hero.cta}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>

@@ -1,12 +1,12 @@
 import { Icons } from "@/components/icons";
+import { PRODUCT_LANGUAGE } from "@/lib/product-language";
 
 export const BLUR_FADE_DELAY = 0.15;
 
 export const siteConfig = {
   name: "Meelni",
-  description:
-    "AI-powered mock interview coach for product managers. Practice PM interviews with real-time voice feedback.",
-  cta: "Start a mock",
+  description: PRODUCT_LANGUAGE.oneLine,
+  cta: "Start a mock interview",
   url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   keywords: [
     "AI interview coach",
@@ -28,10 +28,9 @@ export const siteConfig = {
     instagram: "https://instagram.com/meelni",
   },
   hero: {
-    title: "Voice agents for real interview practice",
-    description:
-      "Start with PM interviews. Practice live, answer follow-ups, and get feedback after every rep.",
-    cta: "Start a mock",
+    title: PRODUCT_LANGUAGE.heroPromise,
+    description: PRODUCT_LANGUAGE.oneLine,
+    cta: "Start a mock interview",
     ctaDescription: "Explore question bank",
   },
   features: [
@@ -51,7 +50,8 @@ export const siteConfig = {
     },
     {
       name: "Progress",
-      description: "Track patterns across reps so prep feels less random.",
+      description:
+        "Track patterns across interviews so your next practice session has a clear focus.",
     },
   ],
   pricing: [
