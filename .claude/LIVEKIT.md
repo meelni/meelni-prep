@@ -4,6 +4,13 @@
 **LiveKit Agents Version**: 1.2.18
 **Project**: Meelni - Real-Time AI Mock Interviews
 
+> This is a historical provider guide and contains operational examples from
+> earlier deployments. For current application truth, use
+> `docs/contracts/interview-session-lifecycle.md`,
+> `docs/contracts/livekit-room-metadata.md`, `agent/README.md`, and the runtime
+> source. A LiveKit job ending or participant disconnect is an adapter signal;
+> it is not the canonical Meelni session terminal outcome.
+
 ---
 
 ## Table of Contents

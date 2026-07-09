@@ -5,12 +5,13 @@ import logging
 from typing import Dict, Any
 
 from shared.runtime_config import (
-    DEFAULT_INTERVIEW_RUNTIME_CONFIG,
     get_tts_config,
     normalize_runtime_config,
 )
 
 logger = logging.getLogger("agent-config")
+
+INTERVIEW_ROOM_METADATA_CONTRACT_VERSION = 1
 
 
 def parse_room_metadata(metadata: str) -> Dict[str, Any]:
@@ -19,6 +20,8 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
 
     Expected format:
     {
+        "contract_version": 1,
+        "session_id": "uuid",
         "round_type": "product_sense",
         "question": {
             "id": "uuid",
@@ -49,9 +52,21 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
     """
     try:
         data = json.loads(metadata)
+        if not isinstance(data, dict):
+            raise ValueError("Interview room metadata must be an object")
+        if data.get("contract_version") != INTERVIEW_ROOM_METADATA_CONTRACT_VERSION:
+            raise ValueError("Unsupported interview room metadata contract")
+        session_id = data.get("session_id")
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise ValueError("Interview room metadata requires session_id")
 
-        round_type = data.get("round_type", "product_sense")
-        config_with_defaults = normalize_runtime_config(data.get("config", {}))
+        round_type = data.get("round_type")
+        if round_type not in {"behavioral", "product_sense", "execution", "strategy"}:
+            raise ValueError("Interview room metadata has invalid round_type")
+        raw_config = data.get("config", {})
+        config_with_defaults = normalize_runtime_config(
+            raw_config if isinstance(raw_config, dict) else {}
+        )
         question = normalize_question(data.get("question"))
 
         # Log question info if provided
@@ -62,19 +77,17 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
             logger.info(f"Parsed metadata: round_type={round_type}, difficulty={config_with_defaults['difficulty']}, question=None")
 
         return {
-            "session_id": data.get("session_id"),
+            "contract_version": INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
+            "session_id": session_id,
             "round_type": round_type,
-            "mode": data.get("mode"),
+            "mode": data.get("mode") if data.get("mode") in {"text", "voice_video"} else None,
             "question": question,
             "config": config_with_defaults,
         }
 
-    except json.JSONDecodeError as e:
-        logger.warning(f"Failed to parse room metadata: {e}. Using defaults.")
-        return get_fallback_room_metadata()
-    except Exception as e:
-        logger.error(f"Unexpected error parsing metadata: {e}. Using defaults.")
-        return get_fallback_room_metadata()
+    except (json.JSONDecodeError, ValueError, TypeError) as e:
+        logger.error(f"Invalid interview room metadata: {e}")
+        raise ValueError("Invalid interview room metadata") from e
 
 
 def normalize_question(question: Dict[str, Any] | None) -> Dict[str, Any] | None:
@@ -82,31 +95,30 @@ def normalize_question(question: Dict[str, Any] | None) -> Dict[str, Any] | None
     if not isinstance(question, dict):
         return None
 
-    question_id = question.get("id") or question.get("question_id") or ""
-    text = question.get("text") or question.get("question_text") or ""
-    question_type = question.get("type") or question.get("question_type") or ""
+    question_id = _string_or_default(
+        question.get("id") or question.get("question_id")
+    )
+    text = _string_or_default(
+        question.get("text") or question.get("question_text")
+    )
+    question_type = _string_or_default(
+        question.get("type") or question.get("question_type")
+    )
 
     return {
         "id": question_id,
         "question_id": question_id,
         "text": text,
         "question_text": text,
-        "company": question.get("company"),
+        "company": question.get("company") if isinstance(question.get("company"), str) else None,
         "type": question_type,
         "question_type": question_type,
-        "askedAt": question.get("askedAt"),
+        "askedAt": question.get("askedAt") if isinstance(question.get("askedAt"), str) else None,
     }
 
 
-def get_fallback_room_metadata() -> Dict[str, Any]:
-    """Return the default metadata shape used when room metadata is missing."""
-    return {
-        "session_id": None,
-        "round_type": "product_sense",
-        "mode": None,
-        "question": None,
-        "config": DEFAULT_INTERVIEW_RUNTIME_CONFIG.copy(),
-    }
+def _string_or_default(value: Any) -> str:
+    return value if isinstance(value, str) and value.strip() else ""
 
 
 def extract_tts_config(config: Dict[str, Any]) -> Dict[str, Any]:

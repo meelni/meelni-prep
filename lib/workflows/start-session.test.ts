@@ -5,11 +5,17 @@ import {
   createLiveKitStartFixture,
   createProductSenseInterviewFixture,
 } from "@meelni/test-fixtures";
+import type { InterviewRoomMetadata } from "@meelni/agent";
+import type {
+  InterviewSessionLifecycleStore,
+  PersistedInterviewLifecycle,
+} from "@/lib/db/session-lifecycle";
 
 import {
   type StartInterviewSessionDeps,
   startInterviewSessionWorkflow,
 } from "./start-session";
+import { transitionInterviewSessionWorkflow } from "./transition-interview-session";
 
 type Mutable<T> = {
   -readonly [P in keyof T]: T[P];
@@ -73,6 +79,24 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
       assert.equal(sessionId, productFixture.session.id);
       assert.equal(questionId, productFixture.question.questionId);
     },
+    transitionLifecycle: async (input) => {
+      calls.push(`transition:${input.to}`);
+      return createTransitionResult(input);
+    },
+    livekitProvider: {
+      startInterviewRoom: async (input) => {
+        const metadata = input.metadata as InterviewRoomMetadata;
+        assert.equal(
+          metadata.question?.askedAt,
+          productFixture.session.startedAt.toISOString()
+        );
+        return {
+          ok: true,
+          provider: "livekit",
+          data: liveKitFixture.expectedStartedRoom,
+        };
+      },
+    },
   });
 
   const result = await startInterviewSessionWorkflow(
@@ -115,6 +139,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     "reserveCredit",
     "createSession",
     "recordQuestionUsage",
+    "transition:connecting",
     "consumeReservation",
   ]);
 });
@@ -224,6 +249,7 @@ test("startInterviewSessionWorkflow returns no-credit response before session wo
 
 test("startInterviewSessionWorkflow maps retryable LiveKit failures to service unavailable", async () => {
   const calls: string[] = [];
+  const lifecycle = createStatefulLifecycleHarness();
   const result = await startInterviewSessionWorkflow(
     {
       user,
@@ -249,6 +275,10 @@ test("startInterviewSessionWorkflow maps retryable LiveKit failures to service u
       releaseReservation: async (input) => {
         calls.push(`release:${input.idempotencyKey}`);
       },
+      transitionLifecycle: async (input) => {
+        calls.push(`transition:${input.to}`);
+        return lifecycle.transition(input);
+      },
       consumeReservation: async () => {
         calls.push("consumeReservation");
       },
@@ -261,8 +291,61 @@ test("startInterviewSessionWorkflow maps retryable LiveKit failures to service u
     assert.deepEqual(result.body, { error: "Failed to start voice interview" });
   }
   assert.deepEqual(calls, [
+    "transition:connecting",
     "startInterviewRoom",
+    "transition:ending",
+    "transition:failed",
     "release:release:interview-start:fixture-user-1:interview-1782600000000-i00000",
+  ]);
+  assert.equal(lifecycle.current().state, "failed");
+  assert.equal(lifecycle.current().terminalReason, "provider_failure");
+});
+
+test("provider failure releases credit even when lifecycle persistence fails", async () => {
+  const calls: string[] = [];
+
+  await assert.rejects(
+    () =>
+      startInterviewSessionWorkflow(
+        {
+          user,
+          body: { roundType: "product_sense" },
+          env: createLiveKitStartFixture().input.env,
+          interviewAgentName: createLiveKitStartFixture().input.agentName,
+        },
+        createDeps({
+          livekitProvider: {
+            startInterviewRoom: async () => ({
+              ok: false,
+              provider: "livekit",
+              error: {
+                code: "livekit_agent_dispatch_failed",
+                message: "Dispatch unavailable",
+                retryable: true,
+              },
+            }),
+          },
+          transitionLifecycle: async (input) => {
+            calls.push(`transition:${input.to}`);
+            if (input.to === "connecting") return createTransitionResult(input);
+            return {
+              ok: false,
+              disposition: "conflict",
+              lifecycle: createTransitionResult(input).lifecycle,
+            };
+          },
+          releaseReservation: async () => {
+            calls.push("release");
+          },
+        })
+      ),
+    /session_lifecycle_conflict/
+  );
+
+  assert.deepEqual(calls, [
+    "transition:connecting",
+    "transition:ending",
+    "release",
   ]);
 });
 
@@ -303,11 +386,82 @@ function createDeps(
         data: liveKitFixture.expectedStartedRoom,
       }),
     },
+    transitionLifecycle: async (input) => createTransitionResult(input),
     recordQuestionUsage: async () => {},
     upsertUser: async () => {},
   };
 
   return { ...deps, ...overrides };
+}
+
+function createTransitionResult(
+  input: Parameters<StartInterviewSessionDeps["transitionLifecycle"]>[0]
+) {
+  const now = new Date("2026-06-29T00:00:00.000Z");
+  return {
+    ok: true as const,
+    disposition: "applied" as const,
+    lifecycle: {
+      sessionId: input.sessionId,
+      state: input.to,
+      version: 2,
+      terminalReason: input.terminalReason ?? null,
+      legacyStatus:
+        input.to === "failed" ? ("error" as const) : ("in_progress" as const),
+      activatedAt: null,
+      endingAt: input.to === "ending" ? now : null,
+      lastTransitionAt: now,
+      endedAt: input.to === "failed" ? now : null,
+    },
+  };
+}
+
+function createStatefulLifecycleHarness() {
+  const now = new Date("2026-06-29T00:00:00.000Z");
+  let current: PersistedInterviewLifecycle = {
+    sessionId: createProductSenseInterviewFixture().session.id,
+    state: "created",
+    version: 1,
+    terminalReason: null,
+    legacyStatus: "in_progress",
+    activatedAt: null,
+    endingAt: null,
+    lastTransitionAt: now,
+    endedAt: null,
+  };
+  const store: InterviewSessionLifecycleStore = {
+    get: async () => current,
+    compareAndSet: async (input) => {
+      if (
+        current.state !== input.expectedState ||
+        current.version !== input.expectedVersion
+      ) {
+        return { applied: false, reason: "conflict", current };
+      }
+      current = {
+        ...current,
+        state: input.nextState,
+        version: current.version + 1,
+        terminalReason: input.terminalReason ?? null,
+        legacyStatus: input.nextState === "failed" ? "error" : "in_progress",
+        endingAt: input.nextState === "ending" ? now : current.endingAt,
+        endedAt: input.nextState === "failed" ? now : current.endedAt,
+        lastTransitionAt: now,
+      };
+      return { applied: true, current };
+    },
+  };
+
+  return {
+    transition: (
+      input: Parameters<StartInterviewSessionDeps["transitionLifecycle"]>[0]
+    ) =>
+      transitionInterviewSessionWorkflow(input, {
+        lifecycleStore: store,
+        now: () => now,
+      }),
+    current: () => current,
+  };
 }
 
 function createReservation(reservationKey: string) {

@@ -10,6 +10,7 @@
 import { db } from "../index";
 import { interviewSession, feedback, transcriptTurn, appUser } from "../schema";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { isInterviewSessionCompletedForRead } from "@/lib/internal/core";
 
 /**
  * User session summary statistics
@@ -69,6 +70,8 @@ export async function getUserSessionSummary(
         id: interviewSession.id,
         startedAt: interviewSession.startedAt,
         endedAt: interviewSession.endedAt,
+        lifecycleState: interviewSession.lifecycleState,
+        status: interviewSession.status,
       })
       .from(interviewSession)
       .where(eq(interviewSession.userId, userId));
@@ -127,8 +130,14 @@ export async function getUserSessionSummary(
     const totalMs = transcripts.reduce((sum, t) => sum + (t.audioMs || 0), 0);
     const totalMinutes = Math.round(totalMs / 60000);
 
-    // Calculate completion rate (sessions with endedAt set)
-    const completedSessions = sessions.filter((s) => s.endedAt !== null).length;
+    // Canonical terminal truth wins. The legacy completed fallback remains
+    // only for nonterminal rows until SAV-188 migrates the end/feedback writers.
+    const completedSessions = sessions.filter((session) =>
+      isInterviewSessionCompletedForRead({
+        state: session.lifecycleState,
+        legacyStatus: session.status,
+      })
+    ).length;
     const completionRate =
       totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
 

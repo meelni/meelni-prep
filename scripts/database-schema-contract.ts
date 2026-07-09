@@ -6,6 +6,8 @@ type Queryable = postgres.Sql | postgres.TransactionSql;
 
 export const RELAUNCH_SCHEMA_FINGERPRINT =
   "fc9bdc57d3f4f80a7c694a62da1ec2d11cbba69533a82bbd3b4ee4318d884e89";
+export const SESSION_LIFECYCLE_SCHEMA_FINGERPRINT =
+  "3953f5a151a268941ed48bacb0ed15bf7c4016026ecab249189ec367e0a39ab3";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =

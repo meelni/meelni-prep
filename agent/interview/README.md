@@ -12,7 +12,7 @@ This is the main interview agent that powers full mock interview sessions. It su
 - **3 Difficulty Levels**: Junior, Mid, Senior
 - **3 Coaching Modes**: Mock Interview, Practice, Learning
 - **Dynamic Prompts**: Question bank integration with 2,879+ real PM questions
-- **Real-time Transcripts**: Saves conversation turns to Supabase during session
+- **Real-time Transcripts**: Publishes final conversation turns for authenticated browser persistence
 - **Configurable Duration**: 15, 30, or 45-minute sessions
 - **Advanced VAD**: Silero VAD with tuned thresholds for natural conversation
 
@@ -70,7 +70,7 @@ Uses shared modules from `../shared/`:
 
 ## How It Works
 
-1. User completes setup flow (`/setup`) and navigates to `/interview`
+1. User completes the New Mock Interview flow (`/dashboard/new-interview`) and navigates to `/interview`
 2. Frontend generates room with metadata containing:
    - `round_type`: interview type (e.g., "product_sense")
    - `config`: settings (difficulty, mode, duration, voice)
@@ -85,25 +85,27 @@ Uses shared modules from `../shared/`:
    - Question from bank (or generates own questions)
 6. Agent starts AgentSession with configured models
 7. Agent greets user and conducts interview
-8. Transcript turns saved in real-time to Supabase
-9. Session ends when user disconnects or time limit reached
+8. Final transcript events are published to the room; the authenticated browser persists them through the transcript API and retry queue
+9. The web session workflow owns the terminal outcome; provider disconnect and runtime shutdown are normalized inputs, not terminal truth
 
 ## Room Metadata Schema
 
 ```json
 {
+  "contract_version": 1,
   "round_type": "product_sense",
   "session_id": "uuid-from-supabase",
   "question": {
-    "question_text": "How would you improve Spotify?",
+    "id": "question-uuid",
+    "text": "How would you improve Spotify?",
     "company": "Spotify",
-    "question_type": "Product design/strategy"
+    "type": "Product Sense"
   },
   "config": {
     "role": "interviewee",
     "mode": "mock_interview",
     "difficulty": "intermediate",
-    "feedback_mode": "end",
+    "feedback_mode": "end_only",
     "duration": 30,
     "stt_model": "deepgram/nova-3",
     "llm_model": "openai/gpt-4.1-mini",
@@ -154,10 +156,14 @@ tts_model = config.get("tts_model", "elevenlabs/eleven_turbo_v2_5:...")
 
 The agent registers event handlers for:
 
-- `UserInputTranscribedEvent` - Saves user's speech to transcript
-- `SpeechCreatedEvent` - Saves agent's responses to transcript
+- `UserInputTranscribedEvent` - Publishes final user speech to the transcript data topic
+- `SpeechCreatedEvent` - Publishes delivered, non-interrupted agent speech to the transcript data topic
 
-These handlers use the Supabase client to insert records into the `transcript_turn` table in real-time.
+These handlers do not write Supabase directly. `components/interview/livekit-room.tsx`
+normalizes their data packets and the browser persists them through the
+authenticated transcript endpoint. See
+`docs/contracts/livekit-room-metadata.md` and
+`docs/contracts/interview-session-lifecycle.md`.
 
 ## Troubleshooting
 
@@ -175,9 +181,10 @@ These handlers use the Supabase client to insert records into the `transcript_tu
 
 **Transcript not saving**:
 
-- Check Supabase connection in event handlers
-- Verify `session_id` is in room metadata
-- Check database permissions and schema
+- Verify `contract_version: 1` and `session_id` are present in room metadata
+- Check that the browser receives valid final events on the transcript topic
+- Check the authenticated transcript endpoint, client retry queue, ownership,
+  database permissions, and schema
 
 **Voice cuts off user**:
 
