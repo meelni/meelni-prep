@@ -7,6 +7,7 @@ The Question Bank API endpoints are **ready to deploy** but require the database
 ## Current Status
 
 ✅ **Completed**:
+
 - [x] Database query helpers created (`/lib/db/questions.ts`)
 - [x] Random question endpoint created (`/app/api/questions/random/route.ts`)
 - [x] List questions endpoint created (`/app/api/questions/route.ts`)
@@ -16,6 +17,7 @@ The Question Bank API endpoints are **ready to deploy** but require the database
 - [x] Following existing codebase patterns (Drizzle ORM, Next.js App Router)
 
 ⚠️ **Pending**:
+
 - [ ] Database schema deployment (blocked - waiting for database-optimizer agent)
 - [ ] Schema push to Supabase
 - [ ] Seed data insertion (initial question set)
@@ -24,34 +26,40 @@ The Question Bank API endpoints are **ready to deploy** but require the database
 
 ## Required Schema
 
-The following schema must be added to `/lib/db/schema.ts`:
+The deployed schema is defined in `/lib/db/schema.ts`:
 
 ```typescript
-export const questionBank = pgTable("question_bank", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  company: text("company"),
-  questionText: text("question_text").notNull(),
-  questionType: text("question_type").notNull(),
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-}, (table) => ({
-  questionTypeCheck: check(
-    "question_type_check",
-    sql`${table.questionType} IN ('behavioral', 'product_sense', 'execution', 'strategy')`
-  ),
-}));
+export const interviewQuestion = pgTable(
+  "interview_question",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    company: text("company"),
+    questionText: text("question_text").notNull(),
+    questionType: text("question_type").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    questionTypeCheck: check(
+      "question_type_check",
+      sql`${table.questionType} IN ('A/B Testing', 'Product design/strategy', 'Behavioral', 'Execution', 'Product Sense', 'Pricing', 'Estimation', 'Product Strategy')`
+    ),
+  })
+);
 ```
 
 ## Deployment Steps (Once Schema is Ready)
 
 ### Step 1: Verify Schema Export
+
 ```bash
 # Check that questionBank is exported from schema.ts
 grep "export.*questionBank" /Users/REDACTED/conductor/meelni-prep/.conductor/toronto/lib/db/schema.ts
 ```
 
 ### Step 2: Build Check
+
 ```bash
 # Verify TypeScript compilation
 cd /Users/REDACTED/conductor/meelni-prep/.conductor/toronto
@@ -59,35 +67,39 @@ npm run build
 ```
 
 ### Step 3: Push Schema to Database
+
 ```bash
 # Push schema changes to Supabase
 npx drizzle-kit push
 ```
 
 ### Step 4: Verify Table Creation
+
 ```sql
 -- Check in Supabase SQL Editor
-SELECT * FROM pg_tables WHERE tablename = 'question_bank';
+SELECT * FROM pg_tables WHERE tablename = 'interview_question';
 
 -- Verify schema
-\d question_bank;
+\d interview_question;
 ```
 
 ### Step 5: Seed Initial Questions
+
 ```sql
 -- Insert sample questions for testing
-INSERT INTO question_bank (company, question_text, question_type, is_active) VALUES
-  ('Google', 'How would you improve Google Maps for blind users?', 'product_sense', true),
-  ('Meta', 'Design a new feature for Instagram Stories.', 'product_sense', true),
-  (NULL, 'Tell me about a time you dealt with ambiguity.', 'behavioral', true),
-  (NULL, 'Describe a situation where you had to influence without authority.', 'behavioral', true),
-  ('Amazon', 'How would you prioritize features for Amazon Prime?', 'execution', true),
-  ('Netflix', 'What metrics would you use to measure success for Netflix recommendations?', 'execution', true),
-  (NULL, 'How would you enter a new market with a mature product?', 'strategy', true),
-  (NULL, 'What would you do if your product had 50% churn after 3 months?', 'strategy', true);
+INSERT INTO interview_question (company, question_text, question_type, is_active) VALUES
+  ('Google', 'How would you improve Google Maps for blind users?', 'Product Sense', true),
+  ('Meta', 'Design a new feature for Instagram Stories.', 'Product Sense', true),
+  (NULL, 'Tell me about a time you dealt with ambiguity.', 'Behavioral', true),
+  (NULL, 'Describe a situation where you had to influence without authority.', 'Behavioral', true),
+  ('Amazon', 'How would you prioritize features for Amazon Prime?', 'Execution', true),
+  ('Netflix', 'What metrics would you use to measure success for Netflix recommendations?', 'Execution', true),
+  (NULL, 'How would you enter a new market with a mature product?', 'Product Strategy', true),
+  (NULL, 'What would you do if your product had 50% churn after 3 months?', 'Product Strategy', true);
 ```
 
 ### Step 6: Test Endpoints
+
 ```bash
 # Test random endpoint
 curl http://localhost:3000/api/questions/random
@@ -104,6 +116,7 @@ curl http://localhost:3000/api/questions?limit=10
 ```
 
 ### Step 7: Verify Count by Type
+
 ```bash
 # Check that each type has questions
 curl http://localhost:3000/api/questions?type=behavioral&activeOnly=true
@@ -113,6 +126,7 @@ curl http://localhost:3000/api/questions?type=strategy&activeOnly=true
 ```
 
 ### Step 8: Integration with Interview Agent
+
 Once endpoints are working, update the interview agent to fetch questions:
 
 ```python
@@ -153,6 +167,7 @@ async def entrypoint(ctx: JobContext):
 ## Monitoring & Metrics
 
 After deployment, monitor:
+
 1. API response times (should be <100ms)
 2. 404 error rate (indicates insufficient questions for a type)
 3. Random distribution (ensure questions are evenly distributed)
@@ -184,11 +199,12 @@ DROP TABLE question_bank;
    - Deactivate/activate toggle
 
 2. **Seeding Pipeline**: Create script to bulk-import questions
+
    ```typescript
    // /scripts/seed-questions.ts
-   import { db } from '@/lib/db';
-   import { questionBank } from '@/lib/db/schema';
-   import questionsData from './questions.json';
+   import { db } from "@/lib/db";
+   import { questionBank } from "@/lib/db/schema";
+   import questionsData from "./questions.json";
 
    async function seedQuestions() {
      await db.insert(questionBank).values(questionsData);
@@ -207,17 +223,18 @@ DROP TABLE question_bank;
 
 ## Files Created
 
-| File | Purpose | Status |
-|------|---------|--------|
-| `/lib/db/questions.ts` | Database query helpers | ✅ Ready |
+| File                                 | Purpose                  | Status   |
+| ------------------------------------ | ------------------------ | -------- |
+| `/lib/db/questions.ts`               | Database query helpers   | ✅ Ready |
 | `/app/api/questions/random/route.ts` | Random question endpoint | ✅ Ready |
-| `/app/api/questions/route.ts` | List questions endpoint | ✅ Ready |
-| `/app/api/questions/README.md` | API documentation | ✅ Ready |
-| `/app/api/questions/DEPLOYMENT.md` | This file | ✅ Ready |
+| `/app/api/questions/route.ts`        | List questions endpoint  | ✅ Ready |
+| `/app/api/questions/README.md`       | API documentation        | ✅ Ready |
+| `/app/api/questions/DEPLOYMENT.md`   | This file                | ✅ Ready |
 
 ## Build Status
 
 **Current**: ❌ Build fails (expected)
+
 ```
 Error: Export questionBank doesn't exist in target module
 ```
@@ -227,6 +244,7 @@ Error: Export questionBank doesn't exist in target module
 ## Contact
 
 For questions about this deployment, refer to:
+
 - Technical design: `CLAUDE.md` (Architecture Decisions)
 - Product requirements: `PRD.md` (Question Bank Feature)
 - API patterns: `/lib/db/sessions.ts` (Reference implementation)

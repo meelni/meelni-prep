@@ -4,6 +4,7 @@ import {
   type RoundType,
 } from "./interview";
 import type { HintMode } from "./session";
+import { normalizeQuestionRound } from "./question-taxonomy";
 
 export interface SelectedRepQuestion {
   id: string;
@@ -33,21 +34,10 @@ export interface BuildRecommendedRepInput {
   recentWeaknessRoundType?: RoundType | null;
 }
 
-const QUESTION_TYPE_TO_ROUND_TYPE: Record<string, RoundType> = {
-  "Behavioral": "behavioral",
-  "Product Sense": "product_sense",
-  "Product design/strategy": "product_sense",
-  "Execution": "execution",
-  "Estimation": "execution",
-  "A/B Testing": "execution",
-  "Pricing": "execution",
-  "Product Strategy": "strategy",
-};
-
 export function mapQuestionTypeToRoundType(
   questionType: string
 ): RoundType | null {
-  return QUESTION_TYPE_TO_ROUND_TYPE[questionType] ?? null;
+  return normalizeQuestionRound(questionType);
 }
 
 export function buildRecommendedRep(

@@ -79,7 +79,7 @@ paths:
                   nullable: true
                   description: Custom interviewer persona
                 config:
-                  $ref: '#/components/schemas/SessionConfig'
+                  $ref: "#/components/schemas/SessionConfig"
             examples:
               product_sense:
                 value:
@@ -90,18 +90,18 @@ paths:
                     speed: 1.0
                     emotion: Calm
       responses:
-        '200':
+        "200":
           description: Session started successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StartSessionResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                $ref: "#/components/schemas/StartSessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/session/end:
     post:
@@ -127,7 +127,7 @@ paths:
             example:
               sessionId: "550e8400-e29b-41d4-a716-446655440000"
       responses:
-        '200':
+        "200":
           description: Session ended successfully
           content:
             application/json:
@@ -138,19 +138,19 @@ paths:
                     type: boolean
                     example: true
                   session:
-                    $ref: '#/components/schemas/Session'
+                    $ref: "#/components/schemas/Session"
                   message:
                     type: string
                     nullable: true
                     example: "Session was already ended"
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/session/{sessionId}:
     get:
@@ -169,7 +169,7 @@ paths:
             format: uuid
           description: UUID of the session
       responses:
-        '200':
+        "200":
           description: Session details retrieved successfully
           content:
             application/json:
@@ -177,15 +177,15 @@ paths:
                 type: object
                 properties:
                   session:
-                    $ref: '#/components/schemas/Session'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                    $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/sessions:
     get:
@@ -213,7 +213,7 @@ paths:
             default: 50
           description: Maximum number of results
       responses:
-        '200':
+        "200":
           description: Sessions retrieved successfully
           content:
             application/json:
@@ -223,16 +223,16 @@ paths:
                   sessions:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Session'
+                      $ref: "#/components/schemas/Session"
                   count:
                     type: integer
                     description: Number of sessions returned
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/session/transcript:
     post:
@@ -248,8 +248,8 @@ paths:
           application/json:
             schema:
               oneOf:
-                - $ref: '#/components/schemas/SingleTranscriptRequest'
-                - $ref: '#/components/schemas/BatchTranscriptRequest'
+                - $ref: "#/components/schemas/SingleTranscriptRequest"
+                - $ref: "#/components/schemas/BatchTranscriptRequest"
             examples:
               single_turn:
                 value:
@@ -272,7 +272,7 @@ paths:
                       startedAt: "2025-11-05T10:30:10Z"
                       endedAt: "2025-11-05T10:31:15Z"
       responses:
-        '200':
+        "200":
           description: Transcript saved successfully
           content:
             application/json:
@@ -283,21 +283,21 @@ paths:
                     type: boolean
                     example: true
                   turn:
-                    $ref: '#/components/schemas/TranscriptTurn'
+                    $ref: "#/components/schemas/TranscriptTurn"
                     nullable: true
                   turns:
                     type: array
                     items:
-                      $ref: '#/components/schemas/TranscriptTurn'
+                      $ref: "#/components/schemas/TranscriptTurn"
                     nullable: true
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/session/{sessionId}/transcript:
     get:
@@ -316,7 +316,7 @@ paths:
             format: uuid
           description: UUID of the session
       responses:
-        '200':
+        "200":
           description: Transcript retrieved successfully
           content:
             application/json:
@@ -326,13 +326,13 @@ paths:
                   turns:
                     type: array
                     items:
-                      $ref: '#/components/schemas/TranscriptTurn'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                      $ref: "#/components/schemas/TranscriptTurn"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/feedback/generate:
     post:
@@ -358,7 +358,7 @@ paths:
             example:
               sessionId: "550e8400-e29b-41d4-a716-446655440000"
       responses:
-        '200':
+        "200":
           description: Feedback generated successfully
           content:
             application/json:
@@ -369,22 +369,22 @@ paths:
                     type: boolean
                     example: true
                   feedback:
-                    $ref: '#/components/schemas/Feedback'
+                    $ref: "#/components/schemas/Feedback"
                     nullable: true
                   message:
                     type: string
                     nullable: true
                     example: "Feedback already exists for this session"
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/feedback/{sessionId}:
     get:
@@ -403,7 +403,7 @@ paths:
             format: uuid
           description: UUID of the session
       responses:
-        '200':
+        "200":
           description: Feedback retrieved successfully
           content:
             application/json:
@@ -411,22 +411,24 @@ paths:
                 type: object
                 properties:
                   feedback:
-                    $ref: '#/components/schemas/Feedback'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                    $ref: "#/components/schemas/Feedback"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/livekit/token:
     post:
       tags:
         - LiveKit
-      summary: Generate LiveKit token
-      description: Generates JWT access tokens for LiveKit rooms
+      summary: Issue interview reconnect token
+      description: Issues a short-lived participant token for an authenticated user's owned, active, unexpired voice interview session. Room and participant identity are derived server-side.
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -434,23 +436,16 @@ paths:
             schema:
               type: object
               required:
-                - roomName
-                - participantName
+                - sessionId
               properties:
-                roomName:
+                sessionId:
                   type: string
-                  description: LiveKit room name
-                participantName:
-                  type: string
-                  description: Participant display name
-                metadata:
-                  type: object
-                  description: Optional room metadata
+                  format: uuid
+                  description: Owned interview session to reconnect to
             example:
-              roomName: "interview-1699999999-abc123"
-              participantName: "John Doe"
+              sessionId: "550e8400-e29b-41d4-a716-446655440000"
       responses:
-        '200':
+        "200":
           description: Token generated successfully
           content:
             application/json:
@@ -464,10 +459,23 @@ paths:
                     type: string
                     format: uri
                     description: LiveKit server WebSocket URL
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                  roomName:
+                    type: string
+                    description: Server-authorized LiveKit room name
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Session is no longer joinable
+        "429":
+          description: Reconnect-token request limit exceeded; retry according to the Retry-After response header
+        "503":
+          description: Shared reconnect authorization or LiveKit token service is temporarily unavailable
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/livekit/demo-token:
     post:
@@ -491,7 +499,7 @@ paths:
             example:
               participantName: "Guest"
       responses:
-        '200':
+        "200":
           description: Demo token generated successfully
           content:
             application/json:
@@ -508,10 +516,10 @@ paths:
                   roomName:
                     type: string
                     description: Generated demo room name
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/cartesia/voices:
     get:
@@ -520,14 +528,14 @@ paths:
       summary: List Cartesia voices
       description: Returns a curated list of popular Cartesia TTS voice models
       responses:
-        '200':
+        "200":
           description: Voices retrieved successfully
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/CartesiaVoice'
+                  $ref: "#/components/schemas/CartesiaVoice"
 
 components:
   securitySchemes:
@@ -604,7 +612,7 @@ components:
           format: uri
           description: LiveKit server WebSocket URL
         config:
-          $ref: '#/components/schemas/SessionConfig'
+          $ref: "#/components/schemas/SessionConfig"
 
     Session:
       type: object
@@ -637,7 +645,7 @@ components:
           type: string
           nullable: true
         config:
-          $ref: '#/components/schemas/SessionConfig'
+          $ref: "#/components/schemas/SessionConfig"
 
     TranscriptTurn:
       type: object
@@ -825,7 +833,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
           example:
             error: "roundType is required"
 
@@ -834,7 +842,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
           example:
             error: "Unauthorized"
 
@@ -843,7 +851,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
           example:
             error: "Session not found or access denied"
 
@@ -852,7 +860,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
           example:
             error: "Session not found"
 
@@ -861,7 +869,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
           example:
             error: "Failed to generate feedback"
             details: "OpenAI API rate limit exceeded"

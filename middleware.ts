@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
+import { getAccountAccessDecision } from "@/lib/auth/account-access";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -12,18 +14,41 @@ export async function middleware(request: NextRequest) {
   const publicRoutes = ["/explore", "/browse"];
 
   // Check if the current path is a protected route (excluding public routes)
-  const isProtectedRoute = protectedRoutes.some((route) =>
-    pathname.startsWith(route)
-  ) && !publicRoutes.some((route) => pathname.startsWith(route));
+  const isProtectedRoute =
+    protectedRoutes.some((route) => pathname.startsWith(route)) &&
+    !publicRoutes.some((route) => pathname.startsWith(route));
 
-  if (isProtectedRoute) {
+  const checksAuthenticatedAccess =
+    isProtectedRoute || pathname.startsWith("/api/");
+
+  if (checksAuthenticatedAccess) {
     const supabase = await createClient();
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      data: { user },
+    } = await supabase.auth.getUser();
+    const hasDeletionTombstone = user
+      ? await hasAccountDeletionTombstone(user.id)
+      : false;
+    const decision = getAccountAccessDecision({
+      requiresAuthentication: isProtectedRoute,
+      authenticatedUserId: user?.id,
+      hasDeletionTombstone,
+    });
 
-    // If no session, redirect to signin
-    if (!session) {
+    if (decision === "account_deletion_pending") {
+      await supabase.auth.signOut();
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "account_deletion_pending" },
+          { status: 401 }
+        );
+      }
+      return NextResponse.redirect(
+        new URL("/auth/signin?error=account_deletion_pending", request.url)
+      );
+    }
+
+    if (decision === "unauthenticated") {
       const redirectUrl = new URL("/auth/signin", request.url);
       redirectUrl.searchParams.set("redirectTo", pathname);
       return NextResponse.redirect(redirectUrl);
@@ -45,3 +70,5 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
+
+export const runtime = "nodejs";

@@ -425,8 +425,10 @@ paths:
     post:
       tags:
         - LiveKit
-      summary: Generate LiveKit token
-      description: Generates JWT access tokens for LiveKit rooms
+      summary: Issue interview reconnect token
+      description: Issues a short-lived participant token for an authenticated user's owned, active, unexpired voice interview session. Room and participant identity are derived server-side.
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -434,21 +436,14 @@ paths:
             schema:
               type: object
               required:
-                - roomName
-                - participantName
+                - sessionId
               properties:
-                roomName:
+                sessionId:
                   type: string
-                  description: LiveKit room name
-                participantName:
-                  type: string
-                  description: Participant display name
-                metadata:
-                  type: object
-                  description: Optional room metadata
+                  format: uuid
+                  description: Owned interview session to reconnect to
             example:
-              roomName: "interview-1699999999-abc123"
-              participantName: "John Doe"
+              sessionId: "550e8400-e29b-41d4-a716-446655440000"
       responses:
         "200":
           description: Token generated successfully
@@ -464,8 +459,21 @@ paths:
                     type: string
                     format: uri
                     description: LiveKit server WebSocket URL
+                  roomName:
+                    type: string
+                    description: Server-authorized LiveKit room name
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Session is no longer joinable
+        "429":
+          description: Reconnect-token request limit exceeded; retry according to the Retry-After response header
+        "503":
+          description: Shared reconnect authorization or LiveKit token service is temporarily unavailable
         "500":
           $ref: "#/components/responses/InternalServerError"
 

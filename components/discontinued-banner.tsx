@@ -17,14 +17,15 @@ export function DiscontinuedBanner() {
         <div className="flex flex-col items-center justify-center gap-3 text-center sm:flex-row">
           <StatusPill tone="warning">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            Discontinued
+            Paused
           </StatusPill>
           <div className="text-sm leading-6">
             <span className="text-foreground font-semibold">
-              Meelni has been discontinued.
+              Meelni is currently paused.
             </span>
             <span className="text-muted-foreground ml-1">
-              Thank you to everyone who tried our AI mock interview platform.
+              We are preparing the next version of our PM interview practice
+              experience.
             </span>
           </div>
         </div>

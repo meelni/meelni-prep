@@ -9,7 +9,7 @@ async function analyzeQuestions() {
   const distribution = await db
     .select({
       questionType: interviewQuestion.questionType,
-      count: sql<number>`count(*)::int`
+      count: sql<number>`count(*)::int`,
     })
     .from(interviewQuestion)
     .where(eq(interviewQuestion.isActive, true))
@@ -24,7 +24,7 @@ async function analyzeQuestions() {
     .from(interviewQuestion)
     .orderBy(interviewQuestion.questionType);
 
-  distinct.forEach(row => console.log(`  - "${row.questionType}"`));
+  distinct.forEach((row) => console.log(`  - "${row.questionType}"`));
 
   // Sample behavioral questions
   console.log("\n=== Sample Behavioral Questions ===");
@@ -38,7 +38,7 @@ async function analyzeQuestions() {
     .where(eq(interviewQuestion.questionType, "Behavioral"))
     .limit(5);
 
-  behavioral.forEach(q => {
+  behavioral.forEach((q) => {
     const preview = q.questionText.substring(0, 80);
     console.log(`  [${q.company}] ${preview}...`);
   });
@@ -49,14 +49,19 @@ async function analyzeQuestions() {
     .selectDistinct({ questionType: interviewQuestion.questionType })
     .from(interviewQuestion);
 
-  const expected = ["Behavioral", "Product Sense", "Execution", "Product Strategy"];
-  const actual = allTypes.map(t => t.questionType);
+  const expected = [
+    "Behavioral",
+    "Product Sense",
+    "Execution",
+    "Product Strategy",
+  ];
+  const actual = allTypes.map((t) => t.questionType);
 
   console.log("Expected types:", expected);
   console.log("Actual types:", actual);
 
-  const missing = expected.filter(t => !actual.includes(t));
-  const extra = actual.filter(t => !expected.includes(t));
+  const missing = expected.filter((t) => !actual.includes(t));
+  const extra = actual.filter((t) => !expected.includes(t));
 
   if (missing.length > 0) {
     console.log("\n⚠️  Missing question types:", missing);

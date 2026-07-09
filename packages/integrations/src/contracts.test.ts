@@ -12,6 +12,7 @@ import {
   getProviderEnvContract,
   INTEGRATION_PROVIDERS,
   isProviderFailure,
+  issueInterviewParticipantToken,
   listProviderEnvVars,
   providerFailure,
   providerSuccess,
@@ -159,9 +160,16 @@ test("buildInterviewRoomName creates deterministic interview room names for test
 test("LiveKit provider creates room, dispatches agent, and mints token", async () => {
   const fixture = createLiveKitStartFixture();
   const calls: string[] = [];
+  const constructorCalls: unknown[] = [];
+  const grants: unknown[] = [];
   const provider: LiveKitInterviewProvider = createLiveKitInterviewProvider({
     accessTokenFactory: class {
-      addGrant() {
+      constructor(...args: unknown[]) {
+        constructorCalls.push(args);
+      }
+
+      addGrant(grant: unknown) {
+        grants.push(grant);
         calls.push("grant");
       }
 
@@ -193,4 +201,81 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
     });
   }
   assert.deepEqual(calls, ["room", "dispatch", "grant", "jwt"]);
+  assert.deepEqual(constructorCalls, [
+    [
+      fixture.input.env.apiKey,
+      fixture.input.env.apiSecret,
+      {
+        identity: fixture.input.identity,
+        name: fixture.input.participantName,
+        ttl: 300,
+      },
+    ],
+  ]);
+  assert.deepEqual(grants, [
+    {
+      room: fixture.input.roomName,
+      roomJoin: true,
+      canPublish: true,
+      canPublishData: false,
+      canPublishSources: [2],
+      canSubscribe: true,
+    },
+  ]);
+});
+
+test("LiveKit reconnect tokens use a short TTL and the authorized room grant", async () => {
+  const constructorCalls: unknown[] = [];
+  const grants: unknown[] = [];
+  const result = await issueInterviewParticipantToken(
+    {
+      identity: "authenticated-user-id",
+      participantName: "owner@example.com",
+      roomName: "interview-server-owned-room",
+      ttlSeconds: 300,
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      accessTokenFactory: class {
+        constructor(...args: unknown[]) {
+          constructorCalls.push(args);
+        }
+
+        addGrant(grant: unknown) {
+          grants.push(grant);
+        }
+
+        async toJwt() {
+          return "short-lived-token";
+        }
+      },
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(constructorCalls, [
+    [
+      "key",
+      "secret",
+      {
+        identity: "authenticated-user-id",
+        name: "owner@example.com",
+        ttl: 300,
+      },
+    ],
+  ]);
+  assert.deepEqual(grants, [
+    {
+      room: "interview-server-owned-room",
+      roomJoin: true,
+      canPublish: true,
+      canPublishData: false,
+      canPublishSources: [2],
+      canSubscribe: true,
+    },
+  ]);
 });

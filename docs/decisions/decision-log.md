@@ -1,8 +1,10 @@
 # Decision Log
 
-| Date | Decision | Status | Summary |
-| --- | --- | --- | --- |
-| 2026-07-08 | [External Design Lens Adoption](2026-07-08-external-design-lens-adoption.md) | accepted | Use external design-audit ecosystems as calibrated advisory lenses under Meelni's product-specific design system. |
-| 2026-06-29 | [Credit-Based Billing Catalog](2026-06-29-credit-based-billing-catalog.md) | accepted | Replace ongoing free interviews and unlimited Pro with a credit-based trial, pass, Starter, and Pro catalog with limited rollover. |
-| 2026-06-27 | [Agent-Ready Monorepo Direction](2026-06-27-agent-ready-monorepo.md) | accepted | Adopt a target `apps/*` and `packages/*` monorepo shape while migrating behavior in small vertical slices. |
-| 2026-06-27 | [Defer Physical Web App Relocation](2026-06-27-defer-web-app-relocation.md) | accepted | Keep the root Next.js app in place until path, tooling, and package-entrypoint migration make the `apps/web` move low-risk. |
+| Date       | Decision                                                                                                         | Status   | Summary                                                                                                                                            |
+| ---------- | ---------------------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-09 | [Durable Account Deletion](2026-07-09-durable-account-deletion.md)                                               | accepted | Persist a deletion tombstone and retry Stripe, application-data, and Supabase Auth deletion through an idempotent background workflow.             |
+| 2026-07-09 | [Database Reconciliation And Shared Rate Limits](2026-07-09-reconcile-database-history-and-share-rate-limits.md) | accepted | Reconcile the mixed migration history through one forward-only migration, test least-privilege RLS, and use Postgres for atomic reconnect budgets. |
+| 2026-07-08 | [External Design Lens Adoption](2026-07-08-external-design-lens-adoption.md)                                     | accepted | Use external design-audit ecosystems as calibrated advisory lenses under Meelni's product-specific design system.                                  |
+| 2026-06-29 | [Credit-Based Billing Catalog](2026-06-29-credit-based-billing-catalog.md)                                       | accepted | Replace ongoing free interviews and unlimited Pro with a credit-based trial, pass, Starter, and Pro catalog with limited rollover.                 |
+| 2026-06-27 | [Agent-Ready Monorepo Direction](2026-06-27-agent-ready-monorepo.md)                                             | accepted | Adopt a target `apps/*` and `packages/*` monorepo shape while migrating behavior in small vertical slices.                                         |
+| 2026-06-27 | [Defer Physical Web App Relocation](2026-06-27-defer-web-app-relocation.md)                                      | accepted | Keep the root Next.js app in place until path, tooling, and package-entrypoint migration make the `apps/web` move low-risk.                        |

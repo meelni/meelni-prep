@@ -2,6 +2,7 @@ import {
   AccessToken,
   AgentDispatchClient,
   RoomServiceClient,
+  TrackSource,
 } from "livekit-server-sdk";
 
 import { findMissingRequiredEnv } from "./environment";
@@ -19,6 +20,8 @@ export interface LiveKitEnvironment {
 
 export type LiveKitAgentKind = "interview" | "demo";
 
+const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
+
 export interface StartInterviewRoomInput {
   agentName: string;
   identity: string;
@@ -29,6 +32,20 @@ export interface StartInterviewRoomInput {
 }
 
 export interface StartedInterviewRoom {
+  roomName: string;
+  token: string;
+  url: string;
+}
+
+export interface IssueInterviewParticipantTokenInput {
+  identity: string;
+  participantName: string;
+  roomName: string;
+  ttlSeconds: number;
+  env: LiveKitEnvironment;
+}
+
+export interface IssuedInterviewParticipantToken {
   roomName: string;
   token: string;
   url: string;
@@ -51,6 +68,8 @@ interface AccessTokenLike {
     room: string;
     roomJoin: boolean;
     canPublish: boolean;
+    canPublishData: boolean;
+    canPublishSources: TrackSource[];
     canSubscribe: boolean;
   }): void;
   toJwt(): Promise<string>;
@@ -59,7 +78,7 @@ interface AccessTokenLike {
 type AccessTokenFactory = new (
   apiKey: string,
   apiSecret: string,
-  options: { identity: string; name: string }
+  options: { identity: string; name: string; ttl?: number }
 ) => AccessTokenLike;
 
 interface AgentDispatchClientLike {
@@ -197,6 +216,7 @@ export function createLiveKitInterviewProvider({
         {
           identity: input.identity,
           name: input.participantName,
+          ttl: INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS,
         }
       );
 
@@ -204,6 +224,8 @@ export function createLiveKitInterviewProvider({
         room: input.roomName,
         roomJoin: true,
         canPublish: true,
+        canPublishData: false,
+        canPublishSources: [TrackSource.MICROPHONE],
         canSubscribe: true,
       });
 
@@ -214,6 +236,45 @@ export function createLiveKitInterviewProvider({
       });
     },
   };
+}
+
+export async function issueInterviewParticipantToken(
+  input: IssueInterviewParticipantTokenInput,
+  { accessTokenFactory = AccessToken }: LiveKitProviderDependencies = {}
+): Promise<ProviderResult<IssuedInterviewParticipantToken>> {
+  try {
+    const token = new accessTokenFactory(
+      input.env.apiKey,
+      input.env.apiSecret,
+      {
+        identity: input.identity,
+        name: input.participantName,
+        ttl: input.ttlSeconds,
+      }
+    );
+
+    token.addGrant({
+      room: input.roomName,
+      roomJoin: true,
+      canPublish: true,
+      canPublishData: false,
+      canPublishSources: [TrackSource.MICROPHONE],
+      canSubscribe: true,
+    });
+
+    return providerSuccess("livekit", {
+      roomName: input.roomName,
+      token: await token.toJwt(),
+      url: input.env.url,
+    });
+  } catch (error) {
+    return providerFailure("livekit", {
+      code: "livekit_token_issue_failed",
+      message: getErrorMessage(error),
+      retryable: true,
+      cause: error,
+    });
+  }
 }
 
 function getErrorMessage(error: unknown): string {

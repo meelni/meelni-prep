@@ -75,6 +75,12 @@ When `CONDUCTOR_PORT` or `PORT` changes the web port, `dev:local` derives non-ov
 
 Set `MEELNI_DISABLE_LOCAL_CREDIT_BYPASS=1` in `.env.local` to test the real credit ledger locally.
 
+## Relaunch Gate Fallback
+
+The public relaunch gate is resolved on the server with a non-identifying operational Statsig user and disabled event logging. `MEELNI_REACTIVATION_DEFAULT` is the explicit provider-outage fallback: keep it `false` before relaunch and change it to `true` only as part of the rehearsed launch flip. Rollback changes the Statsig gate and this fallback together so a Statsig outage cannot invert the intended public state.
+
+In local development, the feature-flag menu stores an on/off cookie and reloads the page so the server-rendered body, metadata, and client controls use the same state.
+
 ## Local Inngest Feedback
 
 Run the Inngest dev server while testing post-interview feedback:
@@ -102,3 +108,31 @@ npm run verify:agent
 ```
 
 This runs the local doctor, canonical skill validation, TypeScript, local package tests, lint, and the production build. Python LiveKit agent tests run only when `agent/venv` exists.
+
+## Database Migration Verification
+
+The Drizzle migration chain must support both an empty database and the
+pre-relaunch Supabase schema that was partially created outside the journal.
+CI starts a pinned PostgreSQL 17 service and runs:
+
+```bash
+npm run test:database-migrations
+```
+
+The test refuses remote hosts and requires a maintenance database name ending
+in `_test`. It creates fresh clean and legacy-upgrade databases, exercises the
+guarded CLI path, and verifies repeat idempotency, row preservation, the exact
+schema/RLS/ACL/function fingerprint, entitlement-write denial, and concurrent
+shared LiveKit rate limiting. To run it locally, start a disposable PostgreSQL
+17 database and set only its loopback URL:
+
+```bash
+MIGRATION_TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/meelni_test \
+  npm run test:database-migrations
+```
+
+Never point this command at Preview or Production; the guard intentionally
+rejects non-loopback databases.
+
+The read-only deployment preflight and rollout sequence are documented in
+[Database Migrations](./database-migrations.md).

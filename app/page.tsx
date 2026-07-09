@@ -6,6 +6,17 @@ import { Footer } from "@/components/sections/footer";
 import { Logos } from "@/components/sections/logos";
 import { Pricing } from "@/components/sections/pricing";
 import { HomeWrapper } from "@/components/home-wrapper";
+import { DiscontinuedHome } from "@/components/discontinued-home";
+import { getFeatureFlagBootstrap } from "@/lib/feature-flags/server-bootstrap";
+import { FEATURE_GATES } from "@/lib/feature-flags/gates";
+import { getHomeMetadata } from "@/lib/seo/home-metadata";
+
+export async function generateMetadata() {
+  const featureFlags = await getFeatureFlagBootstrap();
+  return getHomeMetadata(
+    featureFlags.values[FEATURE_GATES.meelniReactivationAccess]
+  );
+}
 
 function LandingContent() {
   return (
@@ -26,12 +37,18 @@ function LandingContent() {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  const featureFlags = await getFeatureFlagBootstrap();
+
   return (
     <main className="flex flex-col">
-      <Suspense fallback={<div className="min-h-screen" />}>
-        <LandingContent />
-      </Suspense>
+      {featureFlags.values[FEATURE_GATES.meelniReactivationAccess] ? (
+        <Suspense fallback={<div className="min-h-screen" />}>
+          <LandingContent />
+        </Suspense>
+      ) : (
+        <DiscontinuedHome />
+      )}
     </main>
   );
 }

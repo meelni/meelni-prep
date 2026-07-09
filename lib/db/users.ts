@@ -1,6 +1,14 @@
 import { db } from "./index";
 import { appUser } from "./schema";
 import { eq } from "drizzle-orm";
+import { hasAccountDeletionTombstone } from "./account-deletions";
+
+export class AccountDeletionPendingError extends Error {
+  constructor() {
+    super("Account deletion is pending");
+    this.name = "AccountDeletionPendingError";
+  }
+}
 
 /**
  * Create or update a user in the app_user table.
@@ -11,6 +19,9 @@ export async function upsertUser(input: {
   email: string;
   name?: string | null;
 }) {
+  if (await hasAccountDeletionTombstone(input.id)) {
+    throw new AccountDeletionPendingError();
+  }
   const [user] = await db
     .insert(appUser)
     .values({
