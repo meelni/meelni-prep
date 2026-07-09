@@ -32,7 +32,7 @@ command = "npm run dev:local"
 [[actions]]
 name = "Pull Env"
 icon = "tool"
-command = "npx vercel@latest link --yes --project meelni && npm run env:pull && npm run doctor"
+command = "npx vercel@55.0.0 link --yes --project meelni && npm run env:pull && npm run doctor"
 
 [[actions]]
 name = "Check"

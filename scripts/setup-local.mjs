@@ -131,7 +131,7 @@ function refreshLocalEnvIfNeeded() {
         .join("; ")
   );
 
-  const whoami = spawnSync("npx", ["--yes", "vercel@latest", "whoami"], {
+  const whoami = spawnSync("npx", ["--yes", "vercel@55.0.0", "whoami"], {
     cwd: repoRoot,
     env: process.env,
     shell: process.platform === "win32",
@@ -140,12 +140,19 @@ function refreshLocalEnvIfNeeded() {
 
   if (whoami.status !== 0) {
     console.warn(
-      "Vercel CLI is not authenticated; keeping existing .env.local. Run `npx vercel@latest login`, then `npm run env:pull`."
+      "Vercel CLI is not authenticated; keeping existing .env.local. Run `npx vercel@55.0.0 login`, then `npm run env:pull`."
     );
     return;
   }
 
-  run("npx", ["--yes", "vercel@latest", "link", "--yes", "--project", "meelni"]);
+  run("npx", [
+    "--yes",
+    "vercel@55.0.0",
+    "link",
+    "--yes",
+    "--project",
+    "meelni",
+  ]);
   run("npm", ["run", "env:pull"]);
 }
 

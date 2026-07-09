@@ -22,9 +22,14 @@ The preflight uses a read-only transaction, prints only redacted counts and
 states, verifies migration hashes, and refuses transaction-pooler URLs:
 
 ```bash
-npm run db:preflight
-MEELNI_ENV_FILE=.env.production.local npm run db:preflight
+npm run db:preflight:preview
+npm run db:preflight:production
 ```
+
+Use the bare `npm run db:preflight` command only when an intentionally selected
+disposable/local `DATABASE_URL` is already in the shell. Shared Preview and
+Production checks must use the scoped aliases above so ambient credentials
+cannot redirect the check.
 
 Expected pre-migration status is `ready_to_reconcile` with two ledger entries,
 zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
@@ -52,7 +57,14 @@ least-privilege RLS, and shared limiter concurrency.
 
 1. Keep the public relaunch gate paused.
 2. Pull the intended environment into a gitignored env file.
-3. Run preflight and retain its redacted output in the Linear issue.
+   Preview uses `npm run env:pull:preview`; Production uses
+   `npm run env:pull:production`. A failed or mismatched refresh leaves the
+   prior file untouched. Never substitute credentials from another
+   environment.
+3. Run `npm run db:preflight:preview` or
+   `npm run db:preflight:production` and retain its redacted output in the
+   Linear issue. These commands explicitly select the file so an ambient shell
+   `DATABASE_URL` cannot redirect the check.
 4. Confirm the provider backup/point-in-time recovery window and capture a
    schema-only dump outside the repository.
 5. Rehearse the upgrade against a disposable clone or the migration test.
