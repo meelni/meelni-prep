@@ -312,7 +312,7 @@ See [Authentication Guide](./docs/AUTHENTICATION.md) for detailed setup instruct
 | `/api/session/:id/transcript` | GET    | Get session transcript                  |
 | `/api/feedback/generate`      | POST   | Generate AI feedback (GPT-4 Turbo)      |
 | `/api/feedback/:id`           | GET    | Get session feedback                    |
-| `/api/livekit/token`          | POST   | Generate LiveKit access token           |
+| `/api/livekit/token`          | POST   | Reconnect to an owned active interview  |
 | `/api/livekit/demo-token`     | POST   | Generate demo token (60-second preview) |
 | `/api/cartesia/voices`        | GET    | List available TTS voices               |
 

@@ -52,6 +52,28 @@ export async function getSessionById(sessionId: string) {
 }
 
 /**
+ * Get the server-owned facts required to authorize a participant reconnect.
+ */
+export async function getSessionForLiveKitJoin(sessionId: string) {
+  const [session] = await db
+    .select({
+      id: interviewSession.id,
+      userId: interviewSession.userId,
+      mode: interviewSession.mode,
+      livekitRoomName: interviewSession.livekitRoomName,
+      config: interviewSession.config,
+      startedAt: interviewSession.startedAt,
+      endedAt: interviewSession.endedAt,
+      status: interviewSession.status,
+    })
+    .from(interviewSession)
+    .where(eq(interviewSession.id, sessionId))
+    .limit(1);
+
+  return session;
+}
+
+/**
  * Get a session by ID with user information
  */
 export async function getSessionWithUser(sessionId: string) {

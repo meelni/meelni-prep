@@ -8,7 +8,14 @@ function createDb() {
     throw new Error("DATABASE_URL environment variable is not set");
   }
 
-  const client = postgres(databaseUrl);
+  const client = postgres(databaseUrl, {
+    // Safe for Supabase transaction-pooler URLs and keeps each serverless
+    // instance from opening a large pool against the shared database.
+    prepare: false,
+    max: 1,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
   return drizzle(client, { schema });
 }
 

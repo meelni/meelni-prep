@@ -9,6 +9,8 @@ import {
   check,
   boolean,
   index,
+  uniqueIndex,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
@@ -92,6 +94,72 @@ export const interviewSession = pgTable(
       table.status
     ),
     endedAtIdx: index("interview_session_ended_at_idx").on(table.endedAt),
+  })
+);
+
+// Shared, database-backed budget for LiveKit reconnect token attempts.
+// The user id comes from Supabase Auth and intentionally has no app_user FK:
+// authorization can succeed before the callback finishes the app-user upsert.
+export const livekitReconnectRateLimit = pgTable(
+  "livekit_reconnect_rate_limit",
+  {
+    userId: uuid("user_id").notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true })
+      .array()
+      .default(sql`ARRAY[]::timestamptz[]`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      name: "livekit_reconnect_rate_limit_pkey",
+      columns: [table.userId],
+    }),
+    capacityCheck: check(
+      "livekit_reconnect_rate_limit_capacity_check",
+      sql`cardinality(${table.acceptedAt}) <= 10`
+    ),
+  })
+);
+
+// Durable tombstone/outbox for cross-provider account deletion. It has no
+// app_user FK so retries remain possible after application data is removed.
+export const accountDeletionRequest = pgTable(
+  "account_deletion_request",
+  {
+    userId: uuid("user_id").primaryKey().notNull(),
+    status: text("status").default("pending").notNull(),
+    stripeSubjects: jsonb("stripe_subjects")
+      .$type<
+        Array<{
+          kind: "customer" | "subscription";
+          providerId: string | null;
+          fingerprint: string;
+        }>
+      >()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    lastErrorCode: text("last_error_code"),
+    requestedAt: timestamp("requested_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    statusCheck: check(
+      "account_deletion_request_status_check",
+      sql`${table.status} IN ('pending', 'processing', 'failed', 'completed')`
+    ),
+    statusUpdatedIdx: index("account_deletion_request_status_updated_idx").on(
+      table.status,
+      table.updatedAt
+    ),
   })
 );
 
@@ -382,10 +450,9 @@ export const userAchievement = pgTable(
       table.achievementId
     ),
     // Unique constraint: user can only earn each achievement once
-    userAchievementUnique: index("user_achievement_user_achievement_idx").on(
-      table.userId,
-      table.achievementId
-    ),
+    userAchievementUnique: uniqueIndex(
+      "user_achievement_user_achievement_idx"
+    ).on(table.userId, table.achievementId),
   })
 );
 
@@ -412,7 +479,7 @@ export const bookmarkedQuestion = pgTable(
       table.questionId
     ),
     // Unique constraint: user can only bookmark each question once
-    userQuestionUnique: index("bookmarked_question_user_question_idx").on(
+    userQuestionUnique: uniqueIndex("bookmarked_question_user_question_idx").on(
       table.userId,
       table.questionId
     ),
@@ -469,7 +536,7 @@ export const practiceSetQuestion = pgTable(
       table.questionId
     ),
     // Unique constraint: question can only be added once per set
-    setQuestionUnique: index("practice_set_question_set_question_idx").on(
+    setQuestionUnique: uniqueIndex("practice_set_question_set_question_idx").on(
       table.practiceSetId,
       table.questionId
     ),

@@ -791,48 +791,43 @@ Retrieves the AI-generated feedback for a completed interview session. User must
 
 ### POST /api/livekit/token
 
-Generates JWT access tokens for LiveKit rooms, enabling participants to join real-time voice/video sessions. Optionally creates rooms with metadata for agent configuration.
+Issues a short-lived JWT access token for reconnecting to an existing, active interview session. Room creation and agent dispatch happen only through `/api/session/start`.
 
-**Authentication**: Public (no authentication required - used for interview sessions)
-**Note**: Authentication is handled at the session level via `/api/session/start`
+**Authentication**: Required (Supabase Auth)
+**Authorization**: The authenticated user must own an active, unexpired `voice_video` session. The session created by the credit-gated start workflow is the entitlement; remaining credit balance is not rechecked for reconnects.
 
 **Request Body**:
 
 ```json
 {
-  "roomName": "interview-1699999999-abc123",
-  "participantName": "John Doe",
-  "metadata": {
-    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-    "roundType": "product_sense",
-    "config": {
-      "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-      "speed": 1.0
-    }
-  }
+  "sessionId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
 **Request Parameters**:
 
-| Field             | Type   | Required | Description                           |
-| ----------------- | ------ | -------- | ------------------------------------- |
-| `roomName`        | string | ✅ Yes   | LiveKit room name to join             |
-| `participantName` | string | ✅ Yes   | Display name for the participant      |
-| `metadata`        | object | No       | Room metadata for agent configuration |
+| Field       | Type | Required | Description                             |
+| ----------- | ---- | -------- | --------------------------------------- |
+| `sessionId` | UUID | ✅ Yes   | Owned interview session to reconnect to |
 
 **Response** (200 OK):
 
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIs...",
-  "url": "wss://mockmate.livekit.cloud"
+  "url": "wss://meelni.livekit.cloud",
+  "roomName": "interview-1699999999-abc123"
 }
 ```
 
 **Errors**:
 
-- `400 Bad Request` - Missing `roomName` or `participantName`
+- `400 Bad Request` - Missing or malformed `sessionId`
+- `401 Unauthorized` - Authentication required
+- `404 Not Found` - Session absent or not owned by the authenticated user
+- `409 Conflict` - Session completed, failed, ended, expired, text-only, or has no room
+- `429 Too Many Requests` - More than 10 reconnect-token requests for the authenticated user in one minute; response includes `Retry-After`
+- `503 Service Unavailable` - Shared reconnect authorization or LiveKit token service is temporarily unavailable
 - `500 Internal Server Error` - LiveKit credentials not configured or token generation failed
 
 ---

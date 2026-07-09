@@ -3,7 +3,11 @@ import {
   normalizeInterviewRuntimeConfig,
   type InterviewRuntimeConfig,
 } from "@/lib/internal/agent";
-import { isValidRoundType, type RoundType } from "@/lib/internal/core";
+import {
+  isValidRoundType,
+  questionTypeStorageAliasesForRound,
+  type RoundType,
+} from "@/lib/internal/core";
 import {
   buildInterviewRoomName,
   createLiveKitInterviewProvider,
@@ -32,10 +36,10 @@ import {
 } from "@/lib/billing/local-dev-bypass";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
-  behavioral: ["Behavioral"],
-  product_sense: ["Product Sense", "Product design/strategy"],
-  execution: ["Execution", "Estimation", "A/B Testing", "Pricing"],
-  strategy: ["Product Strategy"],
+  behavioral: [...questionTypeStorageAliasesForRound("behavioral")],
+  product_sense: [...questionTypeStorageAliasesForRound("product_sense")],
+  execution: [...questionTypeStorageAliasesForRound("execution")],
+  strategy: [...questionTypeStorageAliasesForRound("strategy")],
 };
 
 export interface StartInterviewSessionUser {
@@ -199,7 +203,7 @@ export async function startInterviewSessionWorkflow(
   const livekitResult = await deps.livekitProvider.startInterviewRoom({
     agentName: input.interviewAgentName,
     identity: input.user.id,
-    participantName: input.user.email || input.user.id,
+    participantName: "Candidate",
     roomName,
     metadata: roomMetadata,
     env: input.env,

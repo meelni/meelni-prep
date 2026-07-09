@@ -229,9 +229,13 @@ test("selected question recommendation preserves question handoff", () => {
 
 test("question type mapping supports stored question bank labels", () => {
   assert.equal(mapQuestionTypeToRoundType("Behavioral"), "behavioral");
-  assert.equal(mapQuestionTypeToRoundType("Product design/strategy"), "product_sense");
+  assert.equal(
+    mapQuestionTypeToRoundType("Product design/strategy"),
+    "product_sense"
+  );
   assert.equal(mapQuestionTypeToRoundType("Pricing"), "execution");
   assert.equal(mapQuestionTypeToRoundType("Product Strategy"), "strategy");
+  assert.equal(mapQuestionTypeToRoundType("Strategy"), "strategy");
   assert.equal(mapQuestionTypeToRoundType("Unknown"), null);
 });
 

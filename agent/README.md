@@ -176,10 +176,14 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instruction
 
 When a user starts an interview:
 
-1. Next.js frontend generates a LiveKit access token via `/api/livekit/token`
-2. User joins a room with unique ID (e.g., `interview-abc123`)
-3. Agent worker detects new participant event
-4. Agent spawns instance and joins the same room
+1. Authenticated `/api/session/start` reserves a credit, creates the session and
+   room, dispatches the interview agent, and returns a participant token.
+2. The user joins the server-generated room (for example,
+   `interview-abc123`).
+3. The agent worker receives the explicit dispatch and joins the same room.
+4. If the browser needs a fresh initial-connect token, authenticated
+   `/api/livekit/token` authorizes the owned active session and derives the room
+   and participant identity server-side.
 
 ### 2. Voice Pipeline Orchestration
 

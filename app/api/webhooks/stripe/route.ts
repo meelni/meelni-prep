@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
-import { stripeEventLog, subscription, paymentHistory, stripeCustomerMapping } from "@/lib/db/schema";
+import {
+  stripeEventLog,
+  subscription,
+  paymentHistory,
+  stripeCustomerMapping,
+} from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
+import { getStripeEventSubject } from "@/lib/billing/stripe-privacy";
+import { hasStripeDeletionTombstone } from "@/lib/db/account-deletions";
 import {
   STRIPE_API_VERSION,
   getStripeCatalogIdForPrice,
@@ -42,11 +49,13 @@ export async function POST(req: NextRequest) {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
     } catch (err) {
       console.error("Webhook signature verification failed:", err);
-      return NextResponse.json(
-        { error: "Invalid signature" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
+
+    const subject = getStripeEventSubject(event);
+    const deletionTombstone = subject.fingerprint
+      ? await hasStripeDeletionTombstone(subject.fingerprint)
+      : false;
 
     // CRITICAL: Idempotency check using stripe_event_log
     const existingEvent = await db
@@ -61,7 +70,24 @@ export async function POST(req: NextRequest) {
       // If already processed, return success (idempotent)
       if (eventLog.status === "processed") {
         console.log(`Event ${event.id} already processed, skipping`);
-        return NextResponse.json({ received: true, status: "already_processed" });
+        return NextResponse.json({
+          received: true,
+          status: "already_processed",
+        });
+      }
+
+      if (deletionTombstone) {
+        await db
+          .update(stripeEventLog)
+          .set({
+            status: "processed",
+            payload: "{}",
+            lastError: null,
+            processedAt: new Date(),
+            subjectFingerprint: subject.fingerprint,
+          })
+          .where(eq(stripeEventLog.id, eventLog.id));
+        return NextResponse.json({ received: true, status: "deleted_subject" });
       }
 
       // If failed, allow retry (increment attempts)
@@ -79,10 +105,16 @@ export async function POST(req: NextRequest) {
       await db.insert(stripeEventLog).values({
         stripeEventId: event.id,
         eventType: event.type,
-        payload: JSON.stringify(event),
-        status: "pending",
+        subjectFingerprint: subject.fingerprint,
+        payload: deletionTombstone ? "{}" : JSON.stringify(event),
+        status: deletionTombstone ? "processed" : "pending",
         attempts: 1,
+        processedAt: deletionTombstone ? new Date() : null,
       });
+    }
+
+    if (deletionTombstone) {
+      return NextResponse.json({ received: true, status: "deleted_subject" });
     }
 
     // Process event based on type
@@ -180,7 +212,10 @@ function getStripeWebhookSecret() {
  * CRITICAL: Always check stripe_customer_mapping as fallback
  * Stripe metadata can be overwritten via Customer Portal
  */
-async function getUserIdFromStripe(customerId: string, fallbackMetadata?: string): Promise<string> {
+async function getUserIdFromStripe(
+  customerId: string,
+  fallbackMetadata?: string
+): Promise<string> {
   // First try: metadata (fast path)
   if (fallbackMetadata) {
     return fallbackMetadata;
@@ -229,7 +264,9 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 
   // Prevent stale updates: Only process if event is newer than last processed event
   if (lastEventTime && eventTimestamp <= lastEventTime) {
-    console.log(`Skipping stale event ${event.id} (${eventTimestamp} <= ${lastEventTime})`);
+    console.log(
+      `Skipping stale event ${event.id} (${eventTimestamp} <= ${lastEventTime})`
+    );
     return;
   }
 
@@ -241,7 +278,8 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
   let trialUpdates = {};
   if (
     stripeSubscription.status === "trialing" ||
-    (stripeSubscription.trial_end && new Date(stripeSubscription.trial_end * 1000) < new Date())
+    (stripeSubscription.trial_end &&
+      new Date(stripeSubscription.trial_end * 1000) < new Date())
   ) {
     if (catalogId === "pro") {
       trialUpdates = { proTrialUsed: true };
@@ -255,9 +293,10 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     userId,
     tier: catalogId,
     status: mapStripeStatus(stripeSubscription.status),
-    billingCycle: firstItem?.price.recurring?.interval === "month"
-      ? "monthly" as const
-      : "annual" as const,
+    billingCycle:
+      firstItem?.price.recurring?.interval === "month"
+        ? ("monthly" as const)
+        : ("annual" as const),
     stripeCustomerId: stripeSubscription.customer as string,
     stripeSubscriptionId: stripeSubscription.id,
     stripePriceId: firstItem?.price.id,
@@ -300,7 +339,9 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 
       // If no rows updated, version mismatch (concurrent update detected)
       if (result.length === 0) {
-        throw new Error(`Optimistic lock failure: subscription version mismatch for user ${userId}`);
+        throw new Error(
+          `Optimistic lock failure: subscription version mismatch for user ${userId}`
+        );
       }
     }
 
@@ -321,7 +362,6 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
           updatedAt: new Date(),
         },
       });
-
   });
 }
 
@@ -438,8 +478,12 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
       currency: invoice.currency,
       status: "succeeded",
       tier: catalogId,
-      periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
-      periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : null,
+      periodStart: invoice.period_start
+        ? new Date(invoice.period_start * 1000)
+        : null,
+      periodEnd: invoice.period_end
+        ? new Date(invoice.period_end * 1000)
+        : null,
       receiptUrl: invoice.hosted_invoice_url,
     })
     .onConflictDoNothing({ target: paymentHistory.stripeEventId });
@@ -487,9 +531,14 @@ async function handlePaymentFailed(event: Stripe.Event) {
       currency: invoice.currency,
       status: "failed",
       tier: getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
-      periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
-      periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : null,
-      failureReason: invoice.last_finalization_error?.message || "Payment failed",
+      periodStart: invoice.period_start
+        ? new Date(invoice.period_start * 1000)
+        : null,
+      periodEnd: invoice.period_end
+        ? new Date(invoice.period_end * 1000)
+        : null,
+      failureReason:
+        invoice.last_finalization_error?.message || "Payment failed",
     })
     .onConflictDoNothing({ target: paymentHistory.stripeEventId });
 

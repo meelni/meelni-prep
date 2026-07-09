@@ -65,8 +65,9 @@ All protected endpoints require authentication via Supabase Auth JWT tokens.
 ### Getting Started
 
 1. **Sign in with Google OAuth**:
+
    ```typescript
-   import { createClient } from '@supabase/supabase-js';
+   import { createClient } from "@supabase/supabase-js";
 
    const supabase = createClient(
      process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -74,28 +75,31 @@ All protected endpoints require authentication via Supabase Auth JWT tokens.
    );
 
    const { data, error } = await supabase.auth.signInWithOAuth({
-     provider: 'google',
+     provider: "google",
      options: {
-       redirectTo: `${window.location.origin}/auth/callback`
-     }
+       redirectTo: `${window.location.origin}/auth/callback`,
+     },
    });
    ```
 
 2. **Retrieve access token**:
+
    ```typescript
-   const { data: { session } } = await supabase.auth.getSession();
+   const {
+     data: { session },
+   } = await supabase.auth.getSession();
    const accessToken = session?.access_token;
    ```
 
 3. **Include token in API requests**:
    ```typescript
-   const response = await fetch('/api/session/start', {
-     method: 'POST',
+   const response = await fetch("/api/session/start", {
+     method: "POST",
      headers: {
-       'Authorization': `Bearer ${accessToken}`,
-       'Content-Type': 'application/json'
+       Authorization: `Bearer ${accessToken}`,
+       "Content-Type": "application/json",
      },
-     body: JSON.stringify({ roundType: 'product_sense' })
+     body: JSON.stringify({ roundType: "product_sense" }),
    });
    ```
 
@@ -108,6 +112,7 @@ All protected endpoints require authentication via Supabase Auth JWT tokens.
 ### Public Endpoints
 
 These endpoints do **not** require authentication:
+
 - `POST /api/livekit/demo-token` - Demo token generation
 - `GET /api/cartesia/voices` - Voice model list
 
@@ -128,19 +133,20 @@ All errors return a JSON object with the following structure:
 
 ### HTTP Status Codes
 
-| Status Code | Meaning | Common Causes |
-|-------------|---------|---------------|
-| `200` | OK | Request succeeded |
-| `400` | Bad Request | Missing required fields, invalid parameters |
-| `401` | Unauthorized | Missing or invalid authentication token |
-| `403` | Forbidden | User doesn't own requested resource |
-| `404` | Not Found | Resource doesn't exist |
-| `429` | Too Many Requests | Rate limit exceeded |
-| `500` | Internal Server Error | Database error, AI service failure, unexpected error |
+| Status Code | Meaning               | Common Causes                                        |
+| ----------- | --------------------- | ---------------------------------------------------- |
+| `200`       | OK                    | Request succeeded                                    |
+| `400`       | Bad Request           | Missing required fields, invalid parameters          |
+| `401`       | Unauthorized          | Missing or invalid authentication token              |
+| `403`       | Forbidden             | User doesn't own requested resource                  |
+| `404`       | Not Found             | Resource doesn't exist                               |
+| `429`       | Too Many Requests     | Rate limit exceeded                                  |
+| `500`       | Internal Server Error | Database error, AI service failure, unexpected error |
 
 ### Error Examples
 
 #### 400 Bad Request
+
 ```json
 {
   "error": "roundType is required"
@@ -148,6 +154,7 @@ All errors return a JSON object with the following structure:
 ```
 
 #### 401 Unauthorized
+
 ```json
 {
   "error": "Unauthorized"
@@ -155,6 +162,7 @@ All errors return a JSON object with the following structure:
 ```
 
 #### 403 Forbidden
+
 ```json
 {
   "error": "Session not found or access denied"
@@ -162,6 +170,7 @@ All errors return a JSON object with the following structure:
 ```
 
 #### 500 Internal Server Error
+
 ```json
 {
   "error": "Failed to generate feedback",
@@ -173,13 +182,13 @@ All errors return a JSON object with the following structure:
 
 ```typescript
 try {
-  const response = await fetch('/api/session/start', {
-    method: 'POST',
+  const response = await fetch("/api/session/start", {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ roundType: 'product_sense' })
+    body: JSON.stringify({ roundType: "product_sense" }),
   });
 
   if (!response.ok) {
@@ -190,10 +199,10 @@ try {
       await refreshAuthToken();
     } else if (response.status === 403) {
       // User doesn't own this resource
-      console.error('Access denied:', error.error);
+      console.error("Access denied:", error.error);
     } else if (response.status === 500) {
       // Server error - retry with exponential backoff
-      console.error('Server error:', error.details);
+      console.error("Server error:", error.details);
     }
 
     throw new Error(error.error);
@@ -202,7 +211,7 @@ try {
   const data = await response.json();
   return data;
 } catch (error) {
-  console.error('API request failed:', error);
+  console.error("API request failed:", error);
   throw error;
 }
 ```
@@ -237,6 +246,7 @@ X-RateLimit-Reset: 1699999999
   "retryAfter": 60
 }
 ```
+
 **Status Code**: `429 Too Many Requests`
 
 ### Best Practices
@@ -259,6 +269,7 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
 **Authentication**: Required (Supabase Auth JWT)
 
 **Request Body**:
+
 ```json
 {
   "roundType": "product_sense",
@@ -281,29 +292,30 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
 
 **Request Parameters**:
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `roundType` | string | ✅ Yes | - | Interview type. One of: `behavioral`, `product_sense`, `execution`, `strategy` |
-| `mode` | string | No | `voice_video` | Interview mode. One of: `voice_video`, `text` |
-| `role` | string | No | `pm` | User's role (e.g., `pm`, `designer`, `engineer`) |
-| `persona` | string | No | `null` | Custom interviewer persona description |
-| `config` | object | No | `{}` | Session configuration object (see below) |
+| Field       | Type   | Required | Default       | Description                                                                    |
+| ----------- | ------ | -------- | ------------- | ------------------------------------------------------------------------------ |
+| `roundType` | string | ✅ Yes   | -             | Interview type. One of: `behavioral`, `product_sense`, `execution`, `strategy` |
+| `mode`      | string | No       | `voice_video` | Interview mode. One of: `voice_video`, `text`                                  |
+| `role`      | string | No       | `pm`          | User's role (e.g., `pm`, `designer`, `engineer`)                               |
+| `persona`   | string | No       | `null`        | Custom interviewer persona description                                         |
+| `config`    | object | No       | `{}`          | Session configuration object (see below)                                       |
 
 **Config Object**:
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `voice` | string | No | Tessa voice ID | Cartesia voice ID |
-| `stt_model` | string | No | `deepgram/nova-3` | Speech-to-Text model |
-| `llm_model` | string | No | `openai/gpt-5` | Language model for dialogue |
-| `tts_model` | string | No | `cartesia/sonic-3:{voice_id}` | Text-to-Speech model with voice |
-| `speed` | number | No | `1.0` | Voice speed multiplier (0.6 - 1.5) |
-| `emotion` | string | No | `null` | Voice emotion (Happy, Calm, Confident, etc.) |
-| `volume` | number | No | `1.0` | Voice volume multiplier (0.5 - 2.0) |
-| `skill_level` | string | No | `intermediate` | User skill level (beginner, intermediate, advanced) |
-| `difficulty` | string | No | `medium` | Interview difficulty (easy, medium, hard) |
+| Field         | Type   | Required | Default                       | Description                                         |
+| ------------- | ------ | -------- | ----------------------------- | --------------------------------------------------- |
+| `voice`       | string | No       | Tessa voice ID                | Cartesia voice ID                                   |
+| `stt_model`   | string | No       | `deepgram/nova-3`             | Speech-to-Text model                                |
+| `llm_model`   | string | No       | `openai/gpt-5`                | Language model for dialogue                         |
+| `tts_model`   | string | No       | `cartesia/sonic-3:{voice_id}` | Text-to-Speech model with voice                     |
+| `speed`       | number | No       | `1.0`                         | Voice speed multiplier (0.6 - 1.5)                  |
+| `emotion`     | string | No       | `null`                        | Voice emotion (Happy, Calm, Confident, etc.)        |
+| `volume`      | number | No       | `1.0`                         | Voice volume multiplier (0.5 - 2.0)                 |
+| `skill_level` | string | No       | `intermediate`                | User skill level (beginner, intermediate, advanced) |
+| `difficulty`  | string | No       | `medium`                      | Interview difficulty (easy, medium, hard)           |
 
 **Response** (200 OK):
+
 ```json
 {
   "sessionId": "550e8400-e29b-41d4-a716-446655440000",
@@ -322,6 +334,7 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
 ```
 
 **Errors**:
+
 - `401 Unauthorized` - Missing or invalid authentication token
 - `400 Bad Request` - Missing `roundType` or invalid `roundType` value
 - `500 Internal Server Error` - Database error or LiveKit configuration error
@@ -335,6 +348,7 @@ Marks an interview session as completed by setting the `endedAt` timestamp. User
 **Authentication**: Required (Supabase Auth JWT)
 
 **Request Body**:
+
 ```json
 {
   "sessionId": "550e8400-e29b-41d4-a716-446655440000"
@@ -343,11 +357,12 @@ Marks an interview session as completed by setting the `endedAt` timestamp. User
 
 **Request Parameters**:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `sessionId` | string | ✅ Yes | UUID of the session to end |
+| Field       | Type   | Required | Description                |
+| ----------- | ------ | -------- | -------------------------- |
+| `sessionId` | string | ✅ Yes   | UUID of the session to end |
 
 **Response** (200 OK):
+
 ```json
 {
   "success": true,
@@ -366,6 +381,7 @@ Marks an interview session as completed by setting the `endedAt` timestamp. User
 ```
 
 **Response (Already Ended)**:
+
 ```json
 {
   "success": true,
@@ -375,6 +391,7 @@ Marks an interview session as completed by setting the `endedAt` timestamp. User
 ```
 
 **Errors**:
+
 - `401 Unauthorized` - Missing or invalid authentication token
 - `400 Bad Request` - Missing `sessionId`
 - `403 Forbidden` - User does not own this session
@@ -390,11 +407,12 @@ Retrieves complete information about a specific interview session including conf
 
 **URL Parameters**:
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
+| Parameter   | Type   | Description                     |
+| ----------- | ------ | ------------------------------- |
 | `sessionId` | string | UUID of the session to retrieve |
 
 **Response** (200 OK):
+
 ```json
 {
   "session": {
@@ -420,6 +438,7 @@ Retrieves complete information about a specific interview session including conf
 ```
 
 **Errors**:
+
 - `401 Unauthorized` - Missing or invalid authentication token
 - `403 Forbidden` - User does not own this session
 - `404 Not Found` - Session does not exist
@@ -435,12 +454,13 @@ Retrieves a list of the authenticated user's interview sessions, with optional f
 
 **Query Parameters**:
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `roundType` | string | No | - | Filter by interview type (`behavioral`, `product_sense`, `execution`, `strategy`) |
-| `limit` | number | No | `50` | Maximum number of results (1-100) |
+| Parameter   | Type   | Required | Default | Description                                                                       |
+| ----------- | ------ | -------- | ------- | --------------------------------------------------------------------------------- |
+| `roundType` | string | No       | -       | Filter by interview type (`behavioral`, `product_sense`, `execution`, `strategy`) |
+| `limit`     | number | No       | `50`    | Maximum number of results (1-100)                                                 |
 
 **Response** (200 OK):
+
 ```json
 {
   "sessions": [
@@ -467,6 +487,7 @@ Retrieves a list of the authenticated user's interview sessions, with optional f
 ```
 
 **Errors**:
+
 - `401 Unauthorized` - Missing or invalid authentication token
 - `400 Bad Request` - Invalid `roundType` or `limit` out of range
 - `500 Internal Server Error` - Database query failed
@@ -482,6 +503,7 @@ Saves conversation transcript turns to the database. Supports both single turn a
 **Authentication**: Required (Supabase Auth JWT)
 
 **Request Body (Single Turn)**:
+
 ```json
 {
   "sessionId": "550e8400-e29b-41d4-a716-446655440000",
@@ -496,6 +518,7 @@ Saves conversation transcript turns to the database. Supports both single turn a
 ```
 
 **Request Body (Batch Mode)**:
+
 ```json
 {
   "sessionId": "550e8400-e29b-41d4-a716-446655440000",
@@ -521,19 +544,20 @@ Saves conversation transcript turns to the database. Supports both single turn a
 
 **Request Parameters**:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `sessionId` | string | ✅ Yes | UUID of the session |
-| `speaker` | string | Yes (single) | Speaker identifier: `user` or `interviewer` |
-| `turns` | array | Yes (batch) | Array of turn objects |
-| `startedAt` | string | No | ISO 8601 timestamp when turn started |
-| `endedAt` | string | No | ISO 8601 timestamp when turn ended |
-| `text` | string | No | Transcribed or generated text |
-| `audioMs` | number | No | Duration of audio in milliseconds |
-| `latencyMs` | number | No | Turn-around latency in milliseconds |
-| `section` | string | No | Section/phase of interview (e.g., `opening`, `response`, `closing`) |
+| Field       | Type   | Required     | Description                                                         |
+| ----------- | ------ | ------------ | ------------------------------------------------------------------- |
+| `sessionId` | string | ✅ Yes       | UUID of the session                                                 |
+| `speaker`   | string | Yes (single) | Speaker identifier: `user` or `interviewer`                         |
+| `turns`     | array  | Yes (batch)  | Array of turn objects                                               |
+| `startedAt` | string | No           | ISO 8601 timestamp when turn started                                |
+| `endedAt`   | string | No           | ISO 8601 timestamp when turn ended                                  |
+| `text`      | string | No           | Transcribed or generated text                                       |
+| `audioMs`   | number | No           | Duration of audio in milliseconds                                   |
+| `latencyMs` | number | No           | Turn-around latency in milliseconds                                 |
+| `section`   | string | No           | Section/phase of interview (e.g., `opening`, `response`, `closing`) |
 
 **Response** (200 OK - Single Turn):
+
 ```json
 {
   "success": true,
@@ -552,6 +576,7 @@ Saves conversation transcript turns to the database. Supports both single turn a
 ```
 
 **Response** (200 OK - Batch Mode):
+
 ```json
 {
   "success": true,
@@ -563,6 +588,7 @@ Saves conversation transcript turns to the database. Supports both single turn a
 ```
 
 **Errors**:
+
 - `401 Unauthorized` - Missing or invalid authentication token
 - `400 Bad Request` - Missing `sessionId` or invalid `speaker` value
 - `403 Forbidden` - User does not own this session
@@ -578,11 +604,12 @@ Retrieves the complete conversation transcript for an interview session, includi
 
 **URL Parameters**:
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
+| Parameter   | Type   | Description         |
+| ----------- | ------ | ------------------- |
 | `sessionId` | string | UUID of the session |
 
 **Response** (200 OK):
+
 ```json
 {
   "turns": [
@@ -613,6 +640,7 @@ Retrieves the complete conversation transcript for an interview session, includi
 ```
 
 **Errors**:
+
 - `401 Unauthorized` - Missing or invalid authentication token
 - `403 Forbidden` - User does not own this session
 - `500 Internal Server Error` - Database query failed
@@ -628,6 +656,7 @@ Analyzes an interview session transcript and generates comprehensive feedback us
 **Authentication**: Required (Supabase Auth JWT)
 
 **Request Body**:
+
 ```json
 {
   "sessionId": "550e8400-e29b-41d4-a716-446655440000"
@@ -636,11 +665,12 @@ Analyzes an interview session transcript and generates comprehensive feedback us
 
 **Request Parameters**:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `sessionId` | string | ✅ Yes | UUID of the session to evaluate |
+| Field       | Type   | Required | Description                     |
+| ----------- | ------ | -------- | ------------------------------- |
+| `sessionId` | string | ✅ Yes   | UUID of the session to evaluate |
 
 **Response** (200 OK - New Feedback):
+
 ```json
 {
   "success": true,
@@ -675,6 +705,7 @@ Analyzes an interview session transcript and generates comprehensive feedback us
 ```
 
 **Response** (200 OK - Already Exists):
+
 ```json
 {
   "success": true,
@@ -685,16 +716,17 @@ Analyzes an interview session transcript and generates comprehensive feedback us
 
 **Scoring Dimensions** (all on 0-10 scale):
 
-| Dimension | Description |
-|-----------|-------------|
-| `structureScore` | Use of frameworks (STAR, product sense, etc.) and logical organization |
-| `clarityScore` | Clarity of communication and articulation |
-| `insightScore` | Depth of analysis and unique insights |
-| `communicationScore` | Overall communication effectiveness |
-| `leadershipScore` | Leadership principles and influence (for behavioral/leadership rounds) |
-| `overallScore` | Weighted average of all dimensions |
+| Dimension            | Description                                                            |
+| -------------------- | ---------------------------------------------------------------------- |
+| `structureScore`     | Use of frameworks (STAR, product sense, etc.) and logical organization |
+| `clarityScore`       | Clarity of communication and articulation                              |
+| `insightScore`       | Depth of analysis and unique insights                                  |
+| `communicationScore` | Overall communication effectiveness                                    |
+| `leadershipScore`    | Leadership principles and influence (for behavioral/leadership rounds) |
+| `overallScore`       | Weighted average of all dimensions                                     |
 
 **Errors**:
+
 - `401 Unauthorized` - Missing or invalid authentication token
 - `400 Bad Request` - Missing `sessionId` or empty transcript
 - `403 Forbidden` - User does not own this session
@@ -711,11 +743,12 @@ Retrieves the AI-generated feedback for a completed interview session. User must
 
 **URL Parameters**:
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
+| Parameter   | Type   | Description         |
+| ----------- | ------ | ------------------- |
 | `sessionId` | string | UUID of the session |
 
 **Response** (200 OK):
+
 ```json
 {
   "feedback": {
@@ -746,6 +779,7 @@ Retrieves the AI-generated feedback for a completed interview session. User must
 ```
 
 **Errors**:
+
 - `401 Unauthorized` - Missing or invalid authentication token
 - `403 Forbidden` - User does not own this session
 - `404 Not Found` - Feedback not found for this session (hasn't been generated yet)
@@ -757,45 +791,43 @@ Retrieves the AI-generated feedback for a completed interview session. User must
 
 ### POST /api/livekit/token
 
-Generates JWT access tokens for LiveKit rooms, enabling participants to join real-time voice/video sessions. Optionally creates rooms with metadata for agent configuration.
+Issues a short-lived JWT access token for reconnecting to an existing, active interview session. Room creation and agent dispatch happen only through `/api/session/start`.
 
-**Authentication**: Public (no authentication required - used for interview sessions)
-**Note**: Authentication is handled at the session level via `/api/session/start`
+**Authentication**: Required (Supabase Auth)
+**Authorization**: The authenticated user must own an active, unexpired `voice_video` session. The session created by the credit-gated start workflow is the entitlement; remaining credit balance is not rechecked for reconnects.
 
 **Request Body**:
+
 ```json
 {
-  "roomName": "interview-1699999999-abc123",
-  "participantName": "John Doe",
-  "metadata": {
-    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-    "roundType": "product_sense",
-    "config": {
-      "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-      "speed": 1.0
-    }
-  }
+  "sessionId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
 **Request Parameters**:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `roomName` | string | ✅ Yes | LiveKit room name to join |
-| `participantName` | string | ✅ Yes | Display name for the participant |
-| `metadata` | object | No | Room metadata for agent configuration |
+| Field       | Type | Required | Description                             |
+| ----------- | ---- | -------- | --------------------------------------- |
+| `sessionId` | UUID | ✅ Yes   | Owned interview session to reconnect to |
 
 **Response** (200 OK):
+
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIs...",
-  "url": "wss://mockmate.livekit.cloud"
+  "url": "wss://meelni.livekit.cloud",
+  "roomName": "interview-1699999999-abc123"
 }
 ```
 
 **Errors**:
-- `400 Bad Request` - Missing `roomName` or `participantName`
+
+- `400 Bad Request` - Missing or malformed `sessionId`
+- `401 Unauthorized` - Authentication required
+- `404 Not Found` - Session absent or not owned by the authenticated user
+- `409 Conflict` - Session completed, failed, ended, expired, text-only, or has no room
+- `429 Too Many Requests` - More than 10 reconnect-token requests for the authenticated user in one minute; response includes `Retry-After`
+- `503 Service Unavailable` - Shared reconnect authorization or LiveKit token service is temporarily unavailable
 - `500 Internal Server Error` - LiveKit credentials not configured or token generation failed
 
 ---
@@ -807,6 +839,7 @@ Generates LiveKit access tokens specifically for 60-second demo conversations on
 **Authentication**: Public (no authentication required - for landing page demo)
 
 **Request Body**:
+
 ```json
 {
   "participantName": "Guest"
@@ -815,11 +848,12 @@ Generates LiveKit access tokens specifically for 60-second demo conversations on
 
 **Request Parameters**:
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `participantName` | string | ✅ Yes | - | Display name for the participant (e.g., "Guest") |
+| Field             | Type   | Required | Default | Description                                      |
+| ----------------- | ------ | -------- | ------- | ------------------------------------------------ |
+| `participantName` | string | ✅ Yes   | -       | Display name for the participant (e.g., "Guest") |
 
 **Response** (200 OK):
+
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIs...",
@@ -829,6 +863,7 @@ Generates LiveKit access tokens specifically for 60-second demo conversations on
 ```
 
 **Implementation Details**:
+
 - Room naming format: `demo-{timestamp}-{random}` for tracking and analytics
 - Room lifetime: Auto-deletes 2 minutes after last participant leaves
 - Max participants: 2 (user + demo agent only)
@@ -837,6 +872,7 @@ Generates LiveKit access tokens specifically for 60-second demo conversations on
 - Token TTL: 2 minutes (matches demo duration)
 
 **Errors**:
+
 - `400 Bad Request` - Missing `participantName`
 - `500 Internal Server Error` - LiveKit credentials not configured, room creation failed, or agent dispatch failed
 
@@ -851,6 +887,7 @@ Returns a curated list of popular Cartesia TTS voice models available through Li
 **Authentication**: Public (no authentication required)
 
 **Response** (200 OK):
+
 ```json
 [
   {
@@ -880,15 +917,16 @@ Returns a curated list of popular Cartesia TTS voice models available through Li
 
 **Response Schema**:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Voice UUID (use in `config.voice`) |
-| `name` | string | Display name (e.g., "British Lady", "Confident Lady") |
-| `description` | string | Voice characteristics description |
-| `gender` | string | Voice gender (`male` \| `female`) |
-| `language` | string | Language code (e.g., `en`) |
+| Field         | Type   | Description                                           |
+| ------------- | ------ | ----------------------------------------------------- |
+| `id`          | string | Voice UUID (use in `config.voice`)                    |
+| `name`        | string | Display name (e.g., "British Lady", "Confident Lady") |
+| `description` | string | Voice characteristics description                     |
+| `gender`      | string | Voice gender (`male` \| `female`)                     |
+| `language`    | string | Language code (e.g., `en`)                            |
 
 **Implementation Notes**:
+
 - No Cartesia API key required when using LiveKit Inference
 - LiveKit handles authentication with Cartesia on backend
 - Voices are hardcoded for consistent UX (no external API dependency)
@@ -902,7 +940,7 @@ Returns a curated list of popular Cartesia TTS voice models available through Li
 ### Starting an Interview Session
 
 ```typescript
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -911,29 +949,31 @@ const supabase = createClient(
 
 async function startInterview() {
   // Get auth token
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   const token = session?.access_token;
 
   if (!token) {
-    throw new Error('Not authenticated');
+    throw new Error("Not authenticated");
   }
 
   // Start session
-  const response = await fetch('/api/session/start', {
-    method: 'POST',
+  const response = await fetch("/api/session/start", {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      roundType: 'product_sense',
-      persona: 'Friendly Google PM interviewer',
+      roundType: "product_sense",
+      persona: "Friendly Google PM interviewer",
       config: {
-        voice: '6ccbfb76-1fc6-48f7-b71d-91ac6298247b',
+        voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
         speed: 1.0,
-        emotion: 'Calm'
-      }
-    })
+        emotion: "Calm",
+      },
+    }),
   });
 
   if (!response.ok) {
@@ -942,9 +982,9 @@ async function startInterview() {
   }
 
   const data = await response.json();
-  console.log('Session started:', data.sessionId);
-  console.log('LiveKit token:', data.token);
-  console.log('LiveKit URL:', data.url);
+  console.log("Session started:", data.sessionId);
+  console.log("LiveKit token:", data.token);
+  console.log("LiveKit URL:", data.url);
 
   return data;
 }
@@ -954,27 +994,29 @@ async function startInterview() {
 
 ```typescript
 async function saveTranscript(sessionId: string, turns: any[]) {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   const token = session?.access_token;
 
-  const response = await fetch('/api/session/transcript', {
-    method: 'POST',
+  const response = await fetch("/api/session/transcript", {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       sessionId,
-      turns: turns.map(turn => ({
+      turns: turns.map((turn) => ({
         speaker: turn.speaker,
         text: turn.text,
         startedAt: turn.startedAt,
         endedAt: turn.endedAt,
         audioMs: turn.audioMs,
         latencyMs: turn.latencyMs,
-        section: turn.section
-      }))
-    })
+        section: turn.section,
+      })),
+    }),
   });
 
   if (!response.ok) {
@@ -993,16 +1035,18 @@ async function saveTranscript(sessionId: string, turns: any[]) {
 
 ```typescript
 async function generateFeedback(sessionId: string) {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   const token = session?.access_token;
 
-  const response = await fetch('/api/feedback/generate', {
-    method: 'POST',
+  const response = await fetch("/api/feedback/generate", {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ sessionId })
+    body: JSON.stringify({ sessionId }),
   });
 
   if (!response.ok) {
@@ -1015,9 +1059,9 @@ async function generateFeedback(sessionId: string) {
   if (data.message) {
     console.log(data.message); // "Feedback already exists"
   } else {
-    console.log('Overall score:', data.feedback.overallScore);
-    console.log('Strengths:', data.feedback.strengths);
-    console.log('Improvements:', data.feedback.improvements);
+    console.log("Overall score:", data.feedback.overallScore);
+    console.log("Strengths:", data.feedback.strengths);
+    console.log("Improvements:", data.feedback.improvements);
   }
 
   return data.feedback;
@@ -1028,15 +1072,17 @@ async function generateFeedback(sessionId: string) {
 
 ```typescript
 async function getProductSenseSessions(limit = 10) {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   const token = session?.access_token;
 
   const response = await fetch(
     `/api/sessions?roundType=product_sense&limit=${limit}`,
     {
       headers: {
-        'Authorization': `Bearer ${token}`
-      }
+        Authorization: `Bearer ${token}`,
+      },
     }
   );
 
@@ -1056,17 +1102,17 @@ async function getProductSenseSessions(limit = 10) {
 
 ```typescript
 async function getVoices() {
-  const response = await fetch('/api/cartesia/voices');
+  const response = await fetch("/api/cartesia/voices");
 
   if (!response.ok) {
-    throw new Error('Failed to fetch voices');
+    throw new Error("Failed to fetch voices");
   }
 
   const voices = await response.json();
 
   // Filter by gender
-  const femaleVoices = voices.filter(v => v.gender === 'female');
-  const maleVoices = voices.filter(v => v.gender === 'male');
+  const femaleVoices = voices.filter((v) => v.gender === "female");
+  const maleVoices = voices.filter((v) => v.gender === "male");
 
   console.log(`Available voices: ${voices.length}`);
   console.log(`Female voices: ${femaleVoices.length}`);
@@ -1090,39 +1136,39 @@ async function runFullInterviewFlow() {
   // 3. Save transcript turns during conversation
   await saveTranscript(sessionId, [
     {
-      speaker: 'interviewer',
-      text: 'Tell me about a product you launched.',
+      speaker: "interviewer",
+      text: "Tell me about a product you launched.",
       startedAt: new Date().toISOString(),
       endedAt: new Date(Date.now() + 8000).toISOString(),
-      audioMs: 8000
+      audioMs: 8000,
     },
     {
-      speaker: 'user',
-      text: 'I launched a mobile checkout feature...',
+      speaker: "user",
+      text: "I launched a mobile checkout feature...",
       startedAt: new Date(Date.now() + 10000).toISOString(),
       endedAt: new Date(Date.now() + 75000).toISOString(),
-      audioMs: 65000
-    }
+      audioMs: 65000,
+    },
   ]);
 
   // 4. End session
-  await fetch('/api/session/end', {
-    method: 'POST',
+  await fetch("/api/session/end", {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ sessionId })
+    body: JSON.stringify({ sessionId }),
   });
 
   // 5. Generate feedback
   const feedback = await generateFeedback(sessionId);
 
   // 6. Display feedback to user
-  console.log('Interview complete! Your score:', feedback.overallScore);
-  console.log('Strengths:', feedback.strengths);
-  console.log('Areas to improve:', feedback.improvements);
-  console.log('Practice drills:', feedback.drills);
+  console.log("Interview complete! Your score:", feedback.overallScore);
+  console.log("Strengths:", feedback.strengths);
+  console.log("Areas to improve:", feedback.improvements);
+  console.log("Practice drills:", feedback.drills);
 }
 ```
 
@@ -1133,6 +1179,7 @@ async function runFullInterviewFlow() {
 **Status**: Not yet implemented (planned for Phase 2)
 
 Planned webhook events:
+
 - `session.started` - Interview session started
 - `session.ended` - Interview session ended
 - `feedback.generated` - AI feedback generated
@@ -1145,6 +1192,7 @@ Planned webhook events:
 ### Version 1.0.0 (2025-11-05)
 
 **Added**:
+
 - Initial API release
 - Session management endpoints (`POST /api/session/start`, `POST /api/session/end`, `GET /api/session/:sessionId`, `GET /api/sessions`)
 - Transcript storage endpoints (`POST /api/session/transcript`, `GET /api/session/:sessionId/transcript`)
@@ -1155,18 +1203,23 @@ Planned webhook events:
 - TypeScript type definitions (`/types/api.ts`)
 
 **Changed**:
+
 - N/A
 
 **Deprecated**:
+
 - N/A
 
 **Removed**:
+
 - N/A
 
 **Fixed**:
+
 - N/A
 
 **Security**:
+
 - Implemented Row Level Security (RLS) policies for user-scoped data
 - JWT bearer token authentication via Supabase Auth
 - Rate limiting for feedback generation (GPT-4 Turbo API)
@@ -1176,6 +1229,7 @@ Planned webhook events:
 ## Support
 
 For questions or issues with the API:
+
 - **Email**: [humans@conductor.build](mailto:humans@conductor.build)
 - **GitHub Issues**: [github.com/your-repo/issues](https://github.com/your-repo/issues)
 - **Documentation**: [docs.mockmate.app](https://docs.mockmate.app)

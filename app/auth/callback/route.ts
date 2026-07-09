@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { upsertUser } from "@/lib/db/users";
+import { AccountDeletionPendingError, upsertUser } from "@/lib/db/users";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -31,6 +31,12 @@ export async function GET(request: Request) {
             user.user_metadata?.name || user.user_metadata?.full_name || null,
         });
       } catch (error) {
+        if (error instanceof AccountDeletionPendingError) {
+          await supabase.auth.signOut();
+          return NextResponse.redirect(
+            `${origin}/auth/signin?error=account_deletion_pending`
+          );
+        }
         console.error("Error upserting user:", error);
         // Continue anyway - user is authenticated even if DB insert fails
       }

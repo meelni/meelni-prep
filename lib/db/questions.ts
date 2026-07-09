@@ -1,6 +1,12 @@
 import { db } from "./index";
 import { interviewQuestion } from "./schema";
-import { eq, and, sql, gte, lte } from "drizzle-orm";
+import { eq, and, or, sql, gte, lte, inArray } from "drizzle-orm";
+import {
+  canonicalQuestionTypeLabel,
+  normalizeQuestionRound,
+  questionTypeStorageAliasesForRound,
+  type RoundType,
+} from "@meelni/core";
 
 export interface QuestionBankRecord {
   id: string;
@@ -12,6 +18,121 @@ export interface QuestionBankRecord {
   createdAt: Date | null;
 }
 
+export interface QuestionListOptions {
+  roundType?: RoundType;
+  activeOnly?: boolean;
+  limit?: number;
+  offset?: number;
+  search?: string;
+}
+
+export interface QuestionListFilter {
+  questionTypes?: readonly string[];
+  activeOnly: boolean;
+  search?: string;
+}
+
+export interface QuestionListStore {
+  findMany(
+    filter: QuestionListFilter,
+    pagination: { limit: number; offset: number }
+  ): Promise<QuestionBankRecord[]>;
+  count(filter: QuestionListFilter): Promise<number>;
+}
+
+function buildQuestionListConditions(filter: QuestionListFilter) {
+  const conditions = [];
+
+  if (filter.activeOnly) {
+    conditions.push(eq(interviewQuestion.isActive, true));
+  }
+
+  if (filter.questionTypes?.length === 1) {
+    conditions.push(
+      eq(interviewQuestion.questionType, filter.questionTypes[0])
+    );
+  } else if (filter.questionTypes && filter.questionTypes.length > 1) {
+    conditions.push(
+      inArray(interviewQuestion.questionType, [...filter.questionTypes])
+    );
+  }
+
+  if (filter.search?.trim()) {
+    const pattern = `%${escapeLikePattern(filter.search.trim())}%`;
+    conditions.push(
+      or(
+        sql`${interviewQuestion.questionText} ILIKE ${pattern} ESCAPE '\\'`,
+        sql`${interviewQuestion.company} ILIKE ${pattern} ESCAPE '\\'`
+      )!
+    );
+  }
+
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+const drizzleQuestionListStore: QuestionListStore = {
+  async findMany(filter, pagination) {
+    return db
+      .select({
+        id: interviewQuestion.id,
+        company: interviewQuestion.company,
+        questionText: interviewQuestion.questionText,
+        questionType: interviewQuestion.questionType,
+        askedAt: interviewQuestion.askedAt,
+        isActive: interviewQuestion.isActive,
+        createdAt: interviewQuestion.createdAt,
+      })
+      .from(interviewQuestion)
+      .where(buildQuestionListConditions(filter))
+      .orderBy(
+        sql`${interviewQuestion.askedAt} DESC NULLS LAST`,
+        interviewQuestion.id
+      )
+      .limit(pagination.limit)
+      .offset(pagination.offset);
+  },
+
+  async count(filter) {
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(interviewQuestion)
+      .where(buildQuestionListConditions(filter));
+
+    return Number(result[0]?.count || 0);
+  },
+};
+
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+function canonicalizeQuestionRecord(
+  question: QuestionBankRecord
+): QuestionBankRecord {
+  const canonicalType = canonicalQuestionTypeLabel(question.questionType);
+  return canonicalType
+    ? { ...question, questionType: canonicalType }
+    : question;
+}
+
+function resolveStoredQuestionTypes(
+  questionType?: string | readonly string[]
+): string[] | undefined {
+  if (!questionType) return undefined;
+
+  const values = Array.isArray(questionType) ? questionType : [questionType];
+  return [
+    ...new Set(
+      values.flatMap((value) => {
+        const roundType = normalizeQuestionRound(value);
+        return roundType
+          ? questionTypeStorageAliasesForRound(roundType)
+          : [value];
+      })
+    ),
+  ];
+}
+
 /**
  * Get a random active question, optionally filtered by type
  * Supports multiple question types via array or comma-separated string
@@ -21,12 +142,16 @@ export async function getRandomQuestion(
 ): Promise<QuestionBankRecord | null> {
   const conditions = [eq(interviewQuestion.isActive, true)];
 
-  if (questionType) {
-    const types = Array.isArray(questionType) ? questionType : questionType.split(',').map(t => t.trim());
+  const types = resolveStoredQuestionTypes(
+    typeof questionType === "string"
+      ? questionType.split(",").map((type) => type.trim())
+      : questionType
+  );
+  if (types) {
     if (types.length === 1) {
       conditions.push(eq(interviewQuestion.questionType, types[0]));
     } else {
-      conditions.push(sql`${interviewQuestion.questionType} IN (${sql.join(types.map(t => sql`${t}`), sql`, `)})`);
+      conditions.push(inArray(interviewQuestion.questionType, types));
     }
   }
 
@@ -45,48 +170,37 @@ export async function getRandomQuestion(
     .orderBy(sql`RANDOM()`)
     .limit(1);
 
-  return question || null;
+  return question ? canonicalizeQuestionRecord(question) : null;
 }
 
 /**
  * Get all questions with optional filtering and pagination
  */
 export async function getQuestions(
-  questionType?: "behavioral" | "product_sense" | "execution" | "strategy",
-  limit = 100,
-  offset = 0
+  options: QuestionListOptions = {},
+  store: QuestionListStore = drizzleQuestionListStore
 ): Promise<{ questions: QuestionBankRecord[]; total: number }> {
-  // Build conditions
-  const conditions = questionType
-    ? [eq(interviewQuestion.questionType, questionType)]
-    : [];
+  const limit = options.limit ?? 100;
+  const offset = options.offset ?? 0;
+  const filter: QuestionListFilter = {
+    activeOnly: options.activeOnly ?? false,
+    search: options.search,
+    questionTypes: options.roundType
+      ? questionTypeStorageAliasesForRound(options.roundType)
+      : undefined,
+  };
 
-  // Get questions with pagination, ordered by askedAt DESC (most recent first)
-  const questions = await db
-    .select({
-      id: interviewQuestion.id,
-      company: interviewQuestion.company,
-      questionText: interviewQuestion.questionText,
-      questionType: interviewQuestion.questionType,
-      askedAt: interviewQuestion.askedAt,
-      isActive: interviewQuestion.isActive,
-      createdAt: interviewQuestion.createdAt,
-    })
-    .from(interviewQuestion)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(sql`${interviewQuestion.askedAt} DESC NULLS LAST`)
-    .limit(limit)
-    .offset(offset);
+  // Rows and total deliberately share the same filter. The store applies that
+  // filter before LIMIT/OFFSET so totals describe the complete filtered set.
+  const [questions, total] = await Promise.all([
+    store.findMany(filter, { limit, offset }),
+    store.count(filter),
+  ]);
 
-  // Get total count
-  const countResult = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(interviewQuestion)
-    .where(conditions.length > 0 ? and(...conditions) : undefined);
-
-  const total = Number(countResult[0]?.count || 0);
-
-  return { questions, total };
+  return {
+    questions: questions.map(canonicalizeQuestionRecord),
+    total,
+  };
 }
 
 /**
@@ -109,19 +223,23 @@ export async function getQuestionById(
     .where(eq(interviewQuestion.id, questionId))
     .limit(1);
 
-  return question || null;
+  return question ? canonicalizeQuestionRecord(question) : null;
 }
 
 /**
  * Get count of active questions by type
  */
 export async function getActiveQuestionCount(
-  questionType?: "behavioral" | "product_sense" | "execution" | "strategy"
+  questionType?: RoundType
 ): Promise<number> {
   const conditions = [eq(interviewQuestion.isActive, true)];
 
   if (questionType) {
-    conditions.push(eq(interviewQuestion.questionType, questionType));
+    conditions.push(
+      inArray(interviewQuestion.questionType, [
+        ...questionTypeStorageAliasesForRound(questionType),
+      ])
+    );
   }
 
   const countResult = await db
@@ -145,11 +263,12 @@ export async function getRecentQuestions(
 
   const conditions = [
     eq(interviewQuestion.isActive, true),
-    gte(interviewQuestion.askedAt, cutoffDate)
+    gte(interviewQuestion.askedAt, cutoffDate),
   ];
 
-  if (questionType) {
-    conditions.push(eq(interviewQuestion.questionType, questionType));
+  const questionTypes = resolveStoredQuestionTypes(questionType);
+  if (questionTypes) {
+    conditions.push(inArray(interviewQuestion.questionType, questionTypes));
   }
 
   const questions = await db
@@ -167,7 +286,7 @@ export async function getRecentQuestions(
     .orderBy(sql`${interviewQuestion.askedAt} DESC`)
     .limit(limit);
 
-  return questions;
+  return questions.map(canonicalizeQuestionRecord);
 }
 
 /**
@@ -181,11 +300,12 @@ export async function getQuestionsByDateRange(
   const conditions = [
     eq(interviewQuestion.isActive, true),
     gte(interviewQuestion.askedAt, startDate),
-    lte(interviewQuestion.askedAt, endDate)
+    lte(interviewQuestion.askedAt, endDate),
   ];
 
-  if (questionType) {
-    conditions.push(eq(interviewQuestion.questionType, questionType));
+  const questionTypes = resolveStoredQuestionTypes(questionType);
+  if (questionTypes) {
+    conditions.push(inArray(interviewQuestion.questionType, questionTypes));
   }
 
   const questions = await db
@@ -202,7 +322,7 @@ export async function getQuestionsByDateRange(
     .where(and(...conditions))
     .orderBy(sql`${interviewQuestion.askedAt} DESC`);
 
-  return questions;
+  return questions.map(canonicalizeQuestionRecord);
 }
 
 /**
@@ -218,15 +338,19 @@ export async function getRandomRecentQuestion(
 
   const conditions = [
     eq(interviewQuestion.isActive, true),
-    gte(interviewQuestion.askedAt, cutoffDate)
+    gte(interviewQuestion.askedAt, cutoffDate),
   ];
 
-  if (questionType) {
-    const types = Array.isArray(questionType) ? questionType : questionType.split(',').map(t => t.trim());
+  const types = resolveStoredQuestionTypes(
+    typeof questionType === "string"
+      ? questionType.split(",").map((type) => type.trim())
+      : questionType
+  );
+  if (types) {
     if (types.length === 1) {
       conditions.push(eq(interviewQuestion.questionType, types[0]));
     } else {
-      conditions.push(sql`${interviewQuestion.questionType} IN (${sql.join(types.map(t => sql`${t}`), sql`, `)})`);
+      conditions.push(inArray(interviewQuestion.questionType, types));
     }
   }
 
@@ -245,7 +369,7 @@ export async function getRandomRecentQuestion(
     .orderBy(sql`RANDOM()`)
     .limit(1);
 
-  return question || null;
+  return question ? canonicalizeQuestionRecord(question) : null;
 }
 
 /**
