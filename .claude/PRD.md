@@ -1,358 +1,177 @@
-# Meelni: Real‑Time AI Mock Interviews (MVP PRD + Tech Spec)
+# Meelni Relaunch PRD
 
-_Last updated: 2025-11-05_
+Last updated: 2026-07-09
+Status: accepted product direction; relaunch work in progress
 
-## 0) TL;DR
-Meelni is a real-time AI mock interview platform for technology roles (starting with Product Management). It runs **natural back‑and‑forth conversations** via **LiveKit** for low-latency audio and **Hedra Video** for photoreal, lip‑synced interviewer avatars—so practice feels like a real onsite/virtual loop. After each session, Meelni generates **scored feedback** on structure, clarity, insight, and delivery, with concrete next steps and a longitudinal progress dashboard.
-
----
-
-## 1) Product Overview
-
-### Problem
-Candidates rely on static prep guides or expensive human coaches. There's no affordable way to repeatedly practice **under realistic pressure** and get **high-quality feedback** that improves week over week.
+## Product Contract
 
-### Solution
-A **real‑time** mock interview with an **AI interviewer** that:
-- Speaks and listens naturally, supports interruptions ("barge‑in") and clarifying questions.
-- Mirrors video presence using **Hedra** so the interviewer looks and feels human.
-- Gives **immediate lightweight coaching** between sections and **post‑session rubric feedback**, plus a plan for what to practice next.
+### Category
 
-### MVP Focus
-- **Role**: Product Manager (PM/APM) interviews.
-- **Rounds**: Behavioral, Product Sense, Execution, Strategy.
-- **Modes**: Voice+Video (primary), Text only (fallback).
+**Live PM interview practice**
 
----
-
-## 2) Goals & Non‑Goals
+### One-line description
 
-### Goals (MVP)
-- Natural, **low‑latency** back‑and‑forth interview via LiveKit (audio) + Hedra (video).
-- Dynamic question flow; interviewer asks follow‑ups based on user answers.
-- Rubric‑based evaluation with **quantitative scores** and **actionable feedback**.
-- **Progress tracking** over time by round & competency.
-- **Session transcripts** with time-coded highlights and suggested rewrites.
-
-### Non‑Goals (MVP)
-- Live human interview marketplace.
-- Coding/whiteboard IDE and grading.
-- Enterprise coach dashboards (post‑MVP).
-- Custom company-specific loops (phase 2).
-
----
-
-## 3) Target Users & JTBD
-- **PM Candidates / APMs / Career switchers**
-  - _When I'm preparing for a PM interview, I want to practice realistic sessions so I can improve my structure, confidence, and content._
-- **Bootcamps / Universities (future)**
-  - _When I'm running a cohort, I want scalable mock interviews so students can get repeatable practice and measurable growth._
+Practice real PM interview questions out loud, handle realistic follow-ups, and get PM-calibrated feedback on what to improve next.
 
----
+### Hero promise
 
-## 4) User Stories (MVP)
-1. As a PM candidate, I can choose **Behavioral / Product Sense / Execution / Strategy** to practice.
-2. As a user, I can conduct a **live voice+video** mock interview where the AI interrupts, probes, and clarifies naturally.
-3. As a user, I receive a **scorecard** with strengths, weaknesses, and top 3 improvements.
-4. As a user, I see **trend charts** for my scores by competency over time.
-5. As a user, I can **review the transcript** with timestamps, key moments, and suggested rewrites.
-6. As a user, I can **bookmark** answers to re‑record and compare.
-
----
-
-## 5) Experience Flow
-
-### 5.1 Onboarding
-- Pick role (PM), experience level (APM, PM, Sr PM), and target companies (optional persona tuning).
-- Mic & camera check, consent to recording.
-
-### 5.2 Session Setup
-- Choose round type (Behavioral/Product Sense/Execution/Strategy).
-- Choose mode: **Voice+Video (AI avatar)** or **Text**.
-- Warmup tip + sample prompt ("Use STAR", "Clarify constraints", etc.).
-
-### 5.3 Live Interview (Conversational)
-- **Turn-taking**: VAD + partial ASR enable interruptions; interviewer adapts mid-sentence.
-- **Hedra avatar** renders photoreal interviewer synced to TTS; **eye-gaze** and subtle gestures for presence.
-- **Adaptive flow**: follow-ups based on missing STAR elements, metrics depth, or weak assumptions.
-- **Section markers**: soft transitions ("Let's move to execution…") to segment scoring.
-
-### 5.4 Wrap-up & Feedback
-- Instant **lightweight summary** (wins + 1 quick fix).
-- Full **scorecard** (Clarity, Structure, Insight, Communication, Leadership signals).
-- **Suggested drills** + 3 example prompts to practice tomorrow.
-- Transcript + highlights + suggested rewrite blocks.
-
-### 5.5 Progress
-- Dashboard: rolling average, by-round radar chart, common weaknesses.
-- Streaks & reminders (optional).
-
----
-
-## 6) Conversational Design & Latency Targets
-
-### 6.1 Natural Conversation Requirements
-- **Barge‑in**: user can interrupt; interviewer yields and adapts.
-- **Backchannels**: short verbal cues ("Okay", "Go on") to feel human.
-- **Clarification**: interviewer asks for missing concrete metrics, constraints, or trade-offs.
-- **Persona**: configurable (e.g., "Ex‑FAANG PM", "Startup Founder", "Strict Bar Raiser").
-
-### 6.2 Latency Budget (E2E, P95)
-| Stage | Target |
-|---|---|
-| Capture + uplink (LiveKit) | 30–60 ms |
-| ASR partials (streaming) | 200–400 ms |
-| NLU/Policy + Dialogue | 150–300 ms |
-| TTS start (first audio byte) | < 300 ms |
-| Hedra video sync lead | 0–100 ms (viseme pre-roll) |
-| **Total Per Turn (perceived)** | **< 1.2 s** |
-
-Notes: Favor **incremental generation** (ASR partials → early intent → speak-while-think).
-
----
-
-## 7) Scoring Rubric (PM MVP)
-
-**Dimensions (1–5 each):**
-- **Structure**: clear frameworks (STAR, metrics trees, PR/FAQ ordering).
-- **Clarity & Brevity**: concise points, minimal ramble.
-- **Insight/Reasoning**: trade-offs, metrics, edge cases, risks.
-- **Communication**: tone, pace, confidence, active listening.
-- **Leadership Signals**: ownership, bar-raising, collaboration.
-
-**Output:**
-- Overall score (avg + weighted if needed).
-- 3 strengths, 3 targeted improvements.
-- 2–3 example rewrites ("Try saying it like this…").
-
----
-
-## 8) Metrics (MVP)
-- **Session completion rate** ≥ 75%
-- **Weekly return rate** ≥ 40%
-- **Avg CSAT on feedback helpfulness** ≥ 4.5/5
-- **Latency P95** ≤ 1.2s per turn
-- **Rubric inter-rater agreement** (human vs. AI) ≥ 0.75 Cohen's κ on sample set
-
----
-
-## 9) Risks & Mitigations
-- **Latency spikes** → Regional LiveKit + GPU autoscaling; degrade to audio-only if needed.
-- **Uncanny avatar** → Calibrate Hedra persona; use subtle motion; allow "minimal animations" mode.
-- **Generic feedback** → Chain-of-thought suppressed but multi-pass rubric with **evidence quotes** from transcript.
-- **Cost** → Cache evaluation; compress transcripts; on-device VAD; schedule batch evaluation post-session.
-
----
-
-## 10) Architecture (MVP)
-
-**Frontend**: Next.js (App Router) + React + Tailwind + shadcn/ui
-**Realtime**: LiveKit WebRTC (Audio) + Hedra Video (Avatar render)
-**ASR/TTS**: Realtime model (e.g., OpenAI Realtime / Whisper + low-latency TTS)
-**Dialogue**: Interviewer Agent (RAG + tools)
-**Eval**: Separate Scorer LLM (rubric prompt)
-**DB**: Postgres (Supabase)
-**Auth**: Clerk/NextAuth
-**Hosting**: Vercel (web), LiveKit Cloud, Supabase
-
-### 10.1 High-Level Flow
-1. Browser connects to **LiveKit**; publishes mic; subscribes to **Interviewer** downlink.
-2. Audio → **ASR (streaming)** → partial tokens → **Dialogue Agent**.
-3. Agent plans response; streams **TTS audio**; simultaneously streams **viseme/phoneme** to **Hedra** for lip‑sync video.
-4. Session segmentation events emitted for **scoring**.
-5. On end: transcript → **Eval LLM** → scores + feedback → DB.
-6. Dashboard pulls aggregates.
-
-### 10.2 State Machine (Interview Agent)
-```
-IDLE -> INTRO -> QUESTION(n) -> FOLLOW_UP* -> COACHING? -> TRANSITION -> ... -> WRAP
-```
-- Interrupt handler at every state.
-- Timebox guardrails (e.g., 90s answer nudges).
-- Policy layer prevents sensitive/PII capture beyond consent.
-
----
-
-## 11) Data Model (Draft)
-
-```sql
--- Users
-create table app_user (
-  id uuid primary key default gen_random_uuid(),
-  email text unique not null,
-  name text,
-  created_at timestamptz default now()
-);
-
--- Interview sessions
-create table interview_session (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references app_user(id),
-  role text default 'pm',
-  round_type text check (round_type in ('behavioral','product_sense','execution','strategy')),
-  mode text check (mode in ('voice_video','text')),
-  persona text, -- e.g., 'bar_raiser', 'founder'
-  started_at timestamptz default now(),
-  ended_at timestamptz
-);
-
--- Turn-level transcript
-create table transcript_turn (
-  id uuid primary key default gen_random_uuid(),
-  session_id uuid references interview_session(id),
-  speaker text check (speaker in ('user','interviewer')),
-  started_at timestamptz,
-  ended_at timestamptz,
-  text text,
-  audio_ms int,
-  latency_ms int,
-  section text -- 'behavioral','product_sense', etc.
-);
-
--- Feedback / scoring
-create table feedback (
-  id uuid primary key default gen_random_uuid(),
-  session_id uuid references interview_session(id) unique,
-  structure_score int,
-  clarity_score int,
-  insight_score int,
-  communication_score int,
-  leadership_score int,
-  overall_score numeric,
-  strengths jsonb,
-  improvements jsonb,
-  drills jsonb,
-  summary text,
-  created_at timestamptz default now()
-);
-```
-
----
-
-## 12) API Spec (MVP)
-
-### Auth
-- `POST /api/auth/callback` (Clerk/NextAuth)
-
-### Session
-- `POST /api/interview/start` → `{ sessionId, token(LiveKit), persona, roundType }`
-- `POST /api/interview/end` → `{ sessionId }` (triggers evaluation job)
-
-### Realtime Hooks (server → client events via LiveKit data channel)
-- `sectionTransition`
-- `nudgeTimebox`
-- `coachTip`
-- `wrapSignal`
-
-### Evaluation
-- `POST /api/eval/{{sessionId}}` → generates scores & feedback (idempotent)
-- `GET /api/feedback/{{sessionId}}`
-
-### Dashboard
-- `GET /api/metrics/summary` → per-user aggregates
-- `GET /api/history` → session list + key scores
-
----
-
-## 13) Prompting & Policy (Sketch)
-
-### 13.1 Interviewer Agent System Prompt
-> You are a seasoned PM interviewer. Conduct a realistic, time‑boxed mock interview.
-> Behaviors: ask one question at a time, use brief backchannels, interrupt if candidate rambles, probe for metrics, constraints, trade‑offs, and risks. Adapt questions to their previous answer. Avoid giving away solutions. Keep tone professional but supportive.
-
-### 13.2 Scorer Prompt (Rubric)
-Inputs: transcript, section markers, time budget.
-Outputs: 5 dimension scores (1–5), 3 strengths, 3 improvements with "how to fix" and examples.
-
-### 13.3 Safety & Privacy
-- Explicit consent modal for audio/video recording.
-- Redact PII from transcripts before storage (server-side filter).
-- EU data residency toggle (post‑MVP).
-
----
-
-## 14) Hedra Integration Notes
-- Use **viseme stream** or phoneme-aligned cues for lip sync.
-- Preload **persona templates** (lighting, camera angle, attire).
-- Provide **Fallbacks**: audio-only if GPU saturation or network loss.
-- Allow **user toggle**: "Subtle animation" vs "Expressive".
-
----
-
-## 15) Test Plan
-
-### Functional
-- Barge-in handling, partial ASR, error recovery.
-- Section transitions + timers.
-- Eval consistency on a fixed gold transcript set.
-
-### Non‑Functional
-- Latency P95 under varied network (Wi‑Fi, LTE).
-- Load test: concurrent sessions with avatar render.
-- Cost profiling per 20‑min session.
-
-### Acceptance
-- 20 pilot users rate feedback helpfulness ≥ 4.5/5.
-- Latency & stability within targets.
-- Rubric agreement with human coach ≥ 0.75 κ on 30 samples.
-
----
-
-## 16) Rollout
-- **Alpha**: Invite-only (20–50 users).
-- **Beta**: Payment wall (monthly), text-only fallback public.
-- **v1**: Add company-specific templates, coach marketplace (optional).
-
----
-
-## 17) Open Questions
-- Do we weight **Insight** more heavily than **Communication** for PM v1?
-- Add **Hypothesis‑driven drill mode** (micro‑exercises between sessions)?
-- Store raw audio for model improvement or discard after eval (privacy)?
-- Which Hedra persona defaults resonate most with users?
-
----
-
-## 18) Roadmap (90 Days)
-- **Weeks 1–2**: Architecture, UI wireframes, DB, auth.
-- **Weeks 3–5**: LiveKit audio, streaming ASR/TTS, barge‑in.
-- **Weeks 6–7**: Hedra avatar integration, persona presets.
-- **Weeks 8–9**: Interview agent policies + sectioning.
-- **Weeks 10–11**: Evaluation engine + dashboard.
-- **Week 12**: Alpha pilot + tuning.
-
----
-
-## 19) Appendix A — Sample Question Sets (PM)
-- **Behavioral**: conflict resolution, failure postmortem, cross‑functional alignment.
-- **Product Sense**: design X for Y users; prioritize v1; success metrics.
-- **Execution**: metrics drops; experiment design; trade‑offs.
-- **Strategy**: market entry; pricing; platform bets.
-
----
-
-## 20) Appendix B — Sample JSON for Feedback
-```json
-{
-  "sessionId": "uuid",
-  "scores": {
-    "structure": 4,
-    "clarity": 3,
-    "insight": 4,
-    "communication": 4,
-    "leadership": 3,
-    "overall": 3.6
-  },
-  "strengths": ["Clear problem framing", "Good metric awareness", "Calm delivery"],
-  "improvements": [
-    "Tighten STAR: add concrete numbers in Results",
-    "State 2–3 trade‑offs before choosing",
-    "Proactively call out risks + mitigation"
-  ],
-  "drills": [
-    "60‑sec STAR answers on 3 conflicts",
-    "Metrics tree for retention drop",
-    "Design critique: 2 alternatives + trade‑offs"
-  ]
-}
-```
+**Practice the answer before it counts.**
+
+### Product vocabulary
+
+- A complete simulated session is a **mock interview**.
+- The broader activity is **interview practice**.
+- A partial or generic activity can be a **practice session**.
+- The dashboard home is **Overview**.
+- The launch action is **New Mock Interview**.
+- Do not frame Meelni as a gym or call interviews reps.
+- Do not claim that Meelni predicts hiring outcomes, certifies readiness, or guarantees interview success.
+- Use **practice progress**, **recent practice score**, or the specific observed measure instead of readiness language.
+
+The accepted positioning and compatibility rules are recorded in `docs/decisions/2026-07-09-live-pm-interview-practice-positioning.md`. Canonical constants live in `lib/product-language.ts`.
+
+## Problem
+
+PM candidates can study frameworks and read sample answers without learning whether they can produce a clear, structured answer under interview conditions. Human mock interviews and coaching can help, but they are costly and difficult to repeat. Generic AI interview tools often miss PM-specific reasoning, round conventions, and feedback standards.
+
+Meelni should close the gap between knowing PM interview advice and practicing the answer out loud.
+
+## Primary User
+
+The relaunch serves PM candidates actively preparing for interviews, including APMs, product managers, senior product managers, and career switchers. The immediate wedge is not every profession and not enterprise hiring software.
+
+Core PM round types:
+
+- Product Sense
+- Execution and Product Metrics
+- Strategy
+- Behavioral
+
+Core jobs to be done:
+
+- Practice realistic PM questions out loud.
+- Respond to follow-up questions without losing structure.
+- Receive feedback grounded in the answer and a PM-specific rubric.
+- Review transcripts and completed-interview history.
+- Understand what to improve and what to practice next.
+
+## Product Loop
+
+1. Discover a real PM question through marketing, company pages, the question bank, or the authenticated product.
+2. Start a New Mock Interview with the selected question or round context preserved.
+3. Complete a live voice interview with realistic follow-ups.
+4. Review the transcript and PM-calibrated feedback.
+5. Choose a concrete next practice action.
+6. Return for another mock interview and compare observed practice progress.
+
+The loop should optimize for useful completed interviews and clear follow-up actions, not time spent in the product.
+
+## Current Product Truth
+
+The repository contains a working foundation for:
+
+- Public marketing, pricing, blog, company, question-bank, and SEO surfaces.
+- Supabase authentication and an authenticated dashboard.
+- Question and round selection for PM practice.
+- LiveKit-backed voice interview sessions with a Python agent runtime.
+- Session transcript persistence and post-interview feedback flows.
+- Interview history, aggregate analytics, settings, and billing surfaces.
+- Stripe subscription, credit, and usage foundations.
+- A relaunch feature flag that can keep the discontinued experience unavailable while readiness work is open.
+
+The existence of a foundation in code does not mean every path is launch-ready, enabled, or validated in production. The relaunch program must verify claims and complete the end-to-end journey before public availability expands.
+
+## Intentional Relaunch Gate
+
+The discontinued experience is intentionally behind a relaunch feature flag. The default-off state is a rollout control, not a product defect.
+
+- Keep the relaunch experience off by default while launch-readiness work remains open.
+- Test the enabled experience deliberately in development and preview environments.
+- Change the default to on only as an explicit launch action after the relaunch criteria pass.
+- Preserve an operational way to disable the experience if launch monitoring exposes a material issue.
+
+## Relaunch Scope
+
+The relaunch is ready when a candidate can complete the core loop without ambiguity or a trust-breaking failure:
+
+- Public positioning consistently describes live PM interview practice.
+- Public proof matches production behavior.
+- New links use `/dashboard/new-interview`; legacy launch links preserve their context and redirect.
+- Authentication, interview selection, entitlement, microphone permission, live voice, ending, transcript, feedback, and return-to-dashboard paths work together.
+- Empty, loading, error, partial, exhausted-credit, and recovery states are understandable.
+- Feedback identifies evidence-based strengths and improvements rather than generic advice.
+- Dashboard language reports observed practice progress without predicting readiness.
+- Billing promises, credit enforcement, checkout, webhook handling, and account state agree.
+- Analytics distinguish launch attempts, starts, completions, feedback views, failures, and returns.
+- Production operations, security controls, data contracts, and rollback paths are documented and verified.
+
+## Proof And Claims
+
+Approved proof points:
+
+- Real PM interview questions across the four core round types.
+- Live voice mock interviews with follow-up questions.
+- PM-calibrated feedback, transcripts, and practice history after completed interviews.
+
+Claims require evidence. Do not promise real-time perfection, guaranteed job outcomes, interviewer-equivalent scoring, or a validated readiness score. If latency, evaluation agreement, or user-outcome targets are adopted later, document the measurement method and baseline before using them in marketing.
+
+## Billing Direction
+
+The accepted catalog is credit-based because full voice interviews have meaningful variable cost:
+
+- Trial: 2 full-interview credits for 7 days.
+- Interview Pass: 1 full-interview credit for $9, expiring after 30 days.
+- Starter: $19/month for 4 credits per month.
+- Pro: $49/month for 12 credits per month.
+- Subscription rollover follows the limits in `docs/decisions/2026-06-29-credit-based-billing-catalog.md`.
+
+The relaunch must verify that pricing copy, checkout products, subscription state, credit reservation and consumption, failure refunds, structured data, and upgrade states all implement the same catalog. Do not describe the catalog as shipped merely because it is accepted.
+
+## Success Signals
+
+Establish baselines during controlled relaunch traffic before setting hard targets. At minimum, measure:
+
+- Question or landing-page visit to mock-interview start.
+- Start attempt to successful room connection.
+- Successful connection to completed interview.
+- Completion to feedback availability and feedback view.
+- Feedback view to another practice start.
+- Trial activation and paid conversion by completed-interview count.
+- Failure and recovery rates by stage.
+- User-rated feedback helpfulness.
+
+Use observed session and feedback data as product-quality signals. Do not relabel an aggregate score as interview readiness.
+
+## Non-goals For Relaunch
+
+- General interview preparation for every profession.
+- Human interviewer or coach marketplace.
+- Enterprise cohort administration, hiring workflows, or candidate ranking.
+- Coding interview or whiteboard evaluation.
+- Photoreal avatar or mandatory video experience.
+- User-facing model, provider, or prompt-tuning controls.
+- Guaranteed outcomes or readiness certification.
+
+## Future Direction
+
+These ideas are not shipped relaunch promises:
+
+- More targeted drills and learning material tied to actual answers.
+- Deeper company- and round-specific practice paths.
+- AI and agent product-management practice tracks.
+- Validated progress models based on longitudinal evidence.
+- Enterprise custom rubrics, cohorts, privacy controls, and evaluation exports.
+- Broader roles only after the PM wedge is working or a concrete distribution advantage justifies expansion.
+
+Future work should strengthen acquisition, activation, retention, monetization, enterprise validation, or product quality and name which lever it serves.
+
+## Product Principles
+
+- PM-specific depth beats generic breadth.
+- Realistic practice is the core value; content should lead into practice.
+- Feedback should make the next action obvious.
+- Measured behavior beats aspirational claims.
+- Monetization should attach to serious preparation and visible value.
+- Enterprise optionality must not distort the consumer wedge prematurely.
+- AI should improve interview practice, not become generic decoration.
+- Future direction must remain labeled as future until it ships and is verified.

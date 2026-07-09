@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { getAccountAccessDecision } from "@/lib/auth/account-access";
+import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -50,7 +51,10 @@ export async function middleware(request: NextRequest) {
 
     if (decision === "unauthenticated") {
       const redirectUrl = new URL("/auth/signin", request.url);
-      redirectUrl.searchParams.set("redirectTo", pathname);
+      redirectUrl.searchParams.set(
+        "redirectTo",
+        buildInternalRequestDestination(pathname, request.nextUrl.search)
+      );
       return NextResponse.redirect(redirectUrl);
     }
   }

@@ -29,8 +29,8 @@ export function Features() {
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: 0.1 }}
             >
-              Questions, reps, feedback, and progress in one focused practice
-              flow.
+              Questions, mock interviews, feedback, and progress in one focused
+              practice flow.
             </motion.p>
           </div>
 

@@ -1,11 +1,12 @@
 "use client";
 
 import { useAuth } from "@/app/providers/auth-provider";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { DashboardLayout as DashboardLayoutComponent } from "@/components/dashboard/layout/dashboard-layout";
 import { DashboardLoading } from "@/components/dashboard/loading";
 import { useSessions } from "@/lib/api/queries";
+import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
 
 export default function DashboardLayout({
   children,
@@ -15,27 +16,25 @@ export default function DashboardLayout({
   const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   // Check for pending redirect from OAuth (e.g., from explore page)
   useEffect(() => {
     const pendingRedirect = sessionStorage.getItem("auth_redirect_to");
     if (pendingRedirect) {
       sessionStorage.removeItem("auth_redirect_to");
-      router.push(pendingRedirect);
+      router.push(getSafeInternalRedirect(pendingRedirect) ?? "/dashboard");
     }
   }, [router]);
 
   // Redirect to signin if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
-      const query =
-        typeof window !== "undefined"
-          ? window.location.search.replace(/^\?/, "")
-          : "";
+      const query = searchParams.toString();
       const redirectTo = `${pathname}${query ? `?${query}` : ""}`;
       router.push(`/auth/signin?redirectTo=${encodeURIComponent(redirectTo)}`);
     }
-  }, [authLoading, pathname, router, user]);
+  }, [authLoading, pathname, router, searchParams, user]);
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -44,10 +43,7 @@ export default function DashboardLayout({
   };
 
   // Fetch sessions using React Query
-  const {
-    data,
-    isLoading: sessionsLoading,
-  } = useSessions(20);
+  const { data, isLoading: sessionsLoading } = useSessions(20);
 
   // Map pathname to section ID
   const getActiveSectionFromPath = (path: string) => {
@@ -76,7 +72,7 @@ export default function DashboardLayout({
 
   return (
     <DashboardLayoutComponent
-      key={`dashboard-${user?.id || 'guest'}`}
+      key={`dashboard-${user?.id || "guest"}`}
       activeSection={activeSection}
       totalSessions={stats.totalSessions}
       totalMinutes={stats.totalMinutes}

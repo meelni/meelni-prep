@@ -6,32 +6,37 @@ import {
 import type { HintMode } from "./session";
 import { normalizeQuestionRound } from "./question-taxonomy";
 
-export interface SelectedRepQuestion {
+export interface SelectedInterviewQuestion {
   id: string;
   text: string;
   company: string | null;
   type: string;
 }
 
-export type RecommendedRepSource =
+export type InterviewRecommendationSource =
   | "fallback"
+  | "launch_context"
   | "selected_question"
   | "recent_feedback";
 
-export interface RecommendedRep {
+export interface InterviewRecommendation {
   roundType: RoundType;
   difficulty: DifficultyLevel;
-  question: SelectedRepQuestion | null;
+  question: SelectedInterviewQuestion | null;
   rationale: string;
   creditCost: 1;
   durationMinutes: number;
   hintMode: HintMode;
-  source: RecommendedRepSource;
+  source: InterviewRecommendationSource;
 }
 
-export interface BuildRecommendedRepInput {
-  selectedQuestion?: SelectedRepQuestion | null;
+export interface BuildInterviewRecommendationInput {
+  selectedQuestion?: SelectedInterviewQuestion | null;
   recentWeaknessRoundType?: RoundType | null;
+  requestedRoundType?: RoundType | null;
+  requestedDifficulty?: DifficultyLevel | null;
+  focus?: string | null;
+  company?: string | null;
 }
 
 export function mapQuestionTypeToRoundType(
@@ -40,17 +45,18 @@ export function mapQuestionTypeToRoundType(
   return normalizeQuestionRound(questionType);
 }
 
-export function buildRecommendedRep(
-  input: BuildRecommendedRepInput = {}
-): RecommendedRep {
+export function buildInterviewRecommendation(
+  input: BuildInterviewRecommendationInput = {}
+): InterviewRecommendation {
   if (input.selectedQuestion) {
     const roundType =
+      input.requestedRoundType ??
       mapQuestionTypeToRoundType(input.selectedQuestion.type) ??
       "product_sense";
 
     return {
       roundType,
-      difficulty: "intermediate",
+      difficulty: input.requestedDifficulty ?? "intermediate",
       question: input.selectedQuestion,
       rationale:
         "Practice the selected question with the matching PM interview round.",
@@ -58,6 +64,27 @@ export function buildRecommendedRep(
       durationMinutes: getDefaultDuration(roundType),
       hintMode: "off",
       source: "selected_question",
+    };
+  }
+
+  if (
+    input.requestedRoundType ||
+    input.requestedDifficulty ||
+    input.focus ||
+    input.company
+  ) {
+    const roundType = input.requestedRoundType ?? "product_sense";
+
+    return {
+      roundType,
+      difficulty: input.requestedDifficulty ?? "intermediate",
+      question: null,
+      rationale:
+        "Start a mock interview using the practice context you selected.",
+      creditCost: 1,
+      durationMinutes: getDefaultDuration(roundType),
+      hintMode: "off",
+      source: "launch_context",
     };
   }
 
@@ -69,7 +96,7 @@ export function buildRecommendedRep(
       difficulty: "intermediate",
       question: null,
       rationale:
-        "Run another rep where your recent feedback showed the most room to improve.",
+        "Practice another mock interview where your recent feedback showed the most room to improve.",
       creditCost: 1,
       durationMinutes: getDefaultDuration(roundType),
       hintMode: "off",
@@ -82,7 +109,7 @@ export function buildRecommendedRep(
     difficulty: "intermediate",
     question: null,
     rationale:
-      "Start with Product Sense, the broadest PM interview rep for sharpening problem framing and prioritization.",
+      "Start with Product Sense, a broad PM interview format for sharpening problem framing and prioritization.",
     creditCost: 1,
     durationMinutes: getDefaultDuration("product_sense"),
     hintMode: "off",

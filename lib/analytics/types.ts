@@ -31,6 +31,13 @@ export type AnalyticsEvent =
   | "auth_error"
   // Setup Events
   | "setup_started"
+  | "new_interview_launcher_viewed"
+  | "new_interview_recommendation_accepted"
+  | "new_interview_recommendation_changed"
+  | "new_interview_start_attempted"
+  | "new_interview_start_succeeded"
+  | "new_interview_start_failed"
+  // Compatibility aliases retained through 2026-08-09.
   | "new_rep_launcher_viewed"
   | "new_rep_recommendation_accepted"
   | "new_rep_recommendation_changed"
@@ -148,6 +155,55 @@ interface AuthProperties {
 /**
  * Setup Event Properties
  */
+interface InterviewLaunchAnalyticsContext {
+  focus?: string;
+  company?: string;
+  return_to?: string;
+}
+
+type InterviewLauncherViewedProperties = InterviewLaunchAnalyticsContext & {
+  source: "dashboard" | "launch_context" | "selected_question";
+  recommended_round_type: string;
+  recommended_difficulty: string;
+  recommendation_source: string;
+};
+
+type InterviewRecommendationAcceptedProperties =
+  InterviewLaunchAnalyticsContext & {
+    recommended_round_type: string;
+    recommended_difficulty: string;
+    recommendation_source: string;
+  };
+
+type InterviewRecommendationChangedProperties =
+  InterviewLaunchAnalyticsContext & {
+    field: "round_type" | "difficulty";
+    value: string;
+    recommended_round_type?: string;
+    recommended_difficulty?: string;
+  };
+
+type InterviewStartAttemptedProperties = InterviewLaunchAnalyticsContext & {
+  interview_type: string;
+  skill_level: string;
+  recommendation_source: string;
+  accepted_recommendation: boolean;
+  question_id?: string;
+};
+
+type InterviewStartSucceededProperties = InterviewLaunchAnalyticsContext & {
+  session_id: string;
+  interview_type: string;
+  skill_level: string;
+  question_id?: string;
+};
+
+type InterviewStartFailedProperties = InterviewLaunchAnalyticsContext & {
+  interview_type: string | null;
+  skill_level: string | null;
+  error: string;
+};
+
 interface SetupProperties {
   setup_started: {
     user_id: string;
@@ -171,41 +227,18 @@ interface SetupProperties {
     time_to_complete_seconds: number;
     selections_changed: number;
   };
-  new_rep_launcher_viewed: {
-    source: "dashboard" | "selected_question";
-    recommended_round_type: string;
-    recommended_difficulty: string;
-    recommendation_source: string;
-  };
-  new_rep_recommendation_accepted: {
-    recommended_round_type: string;
-    recommended_difficulty: string;
-    recommendation_source: string;
-  };
-  new_rep_recommendation_changed: {
-    field: "round_type" | "difficulty";
-    value: string;
-    recommended_round_type?: string;
-    recommended_difficulty?: string;
-  };
-  new_rep_start_attempted: {
-    interview_type: string;
-    skill_level: string;
-    recommendation_source: string;
-    accepted_recommendation: boolean;
-    question_id?: string;
-  };
-  new_rep_start_succeeded: {
-    session_id: string;
-    interview_type: string;
-    skill_level: string;
-    question_id?: string;
-  };
-  new_rep_start_failed: {
-    interview_type: string | null;
-    skill_level: string | null;
-    error: string;
-  };
+  new_interview_launcher_viewed: InterviewLauncherViewedProperties;
+  new_interview_recommendation_accepted: InterviewRecommendationAcceptedProperties;
+  new_interview_recommendation_changed: InterviewRecommendationChangedProperties;
+  new_interview_start_attempted: InterviewStartAttemptedProperties;
+  new_interview_start_succeeded: InterviewStartSucceededProperties;
+  new_interview_start_failed: InterviewStartFailedProperties;
+  new_rep_launcher_viewed: InterviewLauncherViewedProperties;
+  new_rep_recommendation_accepted: InterviewRecommendationAcceptedProperties;
+  new_rep_recommendation_changed: InterviewRecommendationChangedProperties;
+  new_rep_start_attempted: InterviewStartAttemptedProperties;
+  new_rep_start_succeeded: InterviewStartSucceededProperties;
+  new_rep_start_failed: InterviewStartFailedProperties;
 }
 
 /**
@@ -257,7 +290,13 @@ interface InterviewProperties {
  */
 interface DashboardProperties {
   dashboard_viewed: {
-    section: "overview" | "history" | "analytics" | "feedback" | "settings" | "questions";
+    section:
+      | "overview"
+      | "history"
+      | "analytics"
+      | "feedback"
+      | "settings"
+      | "questions";
   };
   ftue_cta_clicked: {
     user_id?: string;
@@ -283,7 +322,11 @@ interface DashboardProperties {
     overall_score?: number;
   };
   chart_interacted: {
-    chart_type: "score_chart" | "competency_radar" | "stats_cards" | "interview_type_breakdown";
+    chart_type:
+      | "score_chart"
+      | "competency_radar"
+      | "stats_cards"
+      | "interview_type_breakdown";
     interaction_type: "hover" | "click" | "expand";
     data_point?: string;
     time_spent_seconds?: number;
@@ -409,6 +452,5 @@ export interface UserTraits {
 /**
  * Helper type to ensure event properties are correct
  */
-export type ValidEventProperties<E extends AnalyticsEvent> = E extends keyof EventProperties
-  ? EventProperties[E]
-  : never;
+export type ValidEventProperties<E extends AnalyticsEvent> =
+  E extends keyof EventProperties ? EventProperties[E] : never;

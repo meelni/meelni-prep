@@ -56,13 +56,13 @@ export function buildAnalyticsEvidence({
   focusAreaLabel,
   focusAreaScore,
   focusAreaDescription,
-  readinessDeltaLabel,
+  progressDeltaLabel,
 }: {
   completedSessions: number;
   focusAreaLabel: string;
   focusAreaScore: number | null;
   focusAreaDescription: string;
-  readinessDeltaLabel: string;
+  progressDeltaLabel: string;
 }): AnalyticsEvidenceItem[] {
   if (completedSessions <= 0 || focusAreaScore === null) {
     return [];
@@ -71,14 +71,15 @@ export function buildAnalyticsEvidence({
   return [
     {
       title: "Current bottleneck",
-      description: `${focusAreaLabel} is the lowest recent signal across ${completedSessions} completed reps. ${focusAreaDescription}`,
+      description: `${focusAreaLabel} is the lowest recent signal across ${completedSessions} completed interviews. ${focusAreaDescription}`,
     },
     {
-      title: "Readiness movement",
+      title: "Score trend",
       description:
-        readinessDeltaLabel === "new"
-          ? "The trend will become more specific as more scored reps are completed."
-          : `Recent scored reps moved readiness ${readinessDeltaLabel}.`,
+        progressDeltaLabel === "new" ||
+        progressDeltaLabel === "Needs more interviews"
+          ? "The trend will become more specific as more scored interviews are completed."
+          : `Recent scored interviews changed by ${progressDeltaLabel}.`,
     },
   ];
 }

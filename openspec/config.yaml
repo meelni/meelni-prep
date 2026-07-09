@@ -1,5 +1,5 @@
 project: Meelni
-purpose: PM interview practice with real questions, live voice reps, PM-calibrated feedback, and progress tracking.
+purpose: Live PM interview practice with real questions, live voice mock interviews, PM-calibrated feedback, and progress tracking.
 principles:
   - Prefer PM interview behavior over generic interview-platform abstractions.
   - Keep LiveKit, Supabase, Stripe, PostHog, and Google Sheets behind clear boundaries.

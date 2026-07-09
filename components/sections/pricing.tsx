@@ -16,7 +16,7 @@ export function Pricing() {
 
   async function handlePlanClick(plan: PublicPricingPlan) {
     if (!plan.canPurchase) {
-      window.location.href = "/dashboard/new-rep";
+      window.location.href = "/dashboard/new-interview";
       return;
     }
 

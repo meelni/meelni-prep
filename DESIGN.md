@@ -4,7 +4,7 @@ The entry point for how Meelni should look, feel, and be implemented. Read this 
 
 ## Product Direction
 
-Meelni is a PM interview gym: real product-manager questions, live voice reps, PM-calibrated feedback, and visible improvement over time.
+Meelni is live PM interview practice: real product-manager questions, live voice mock interviews, PM-calibrated feedback, and practice progress over time. Avoid fitness metaphors and unsupported interview-readiness claims in product UI.
 
 The UI should feel professional, tactical, trustworthy, and focused. It should help a candidate feel prepared and in control, not entertained by generic AI decoration.
 
@@ -88,7 +88,7 @@ Use the shared text utilities in `app/globals.css` when they fit: `text-display-
 
 Every product surface should have a clear action model before styling buttons.
 
-- Primary action: the one next PM interview action in the current scope. Use `Button` default or `glow` only for high-emphasis marketing or launch CTAs. Examples: start rep, generate feedback, save settings.
+- Primary action: the one next PM interview action in the current scope. Use `Button` default or `glow` only for high-emphasis marketing or launch CTAs. Examples: start mock interview, generate feedback, save settings.
 - Secondary action: useful but not the main commitment. Use `outline`. Examples: view feedback, repeat later, manage plan.
 - Tertiary/navigation action: local back, dismiss, reveal, collapse, or low-risk utility. Use `ghost` or `link`; do not make these compete with the primary action.
 - Destructive action: irreversible or scary actions. Use `destructive`; pair with confirmation or recovery copy when the consequence is meaningful.
@@ -102,12 +102,12 @@ Button variants currently allowed in the shared primitive are `default`, `destru
 
 Before editing a page, classify the route family:
 
-1. Dashboard workspace: authenticated sidebar pages and New Rep. Use `app/dashboard/layout.tsx`, the dashboard content panel, and `DashboardPage`.
+1. Dashboard workspace: authenticated sidebar pages and New Mock Interview. Use `app/dashboard/layout.tsx`, the dashboard content panel, and `DashboardPage`.
 2. Feedback review workspace: result, loading/status, skipped/partial/insufficient, and comparison pages. Use `FeedbackReviewShell` or `FeedbackStatusPage`.
 3. Focused interview room: `/interview` only. Keep full-screen stage-first chrome and shared controls; do not add dashboard sidebar chrome.
 4. Auth flow: sign-in, sign-up, forgot password, and reset password. Use `AuthShell` and auth primitives; do not borrow dashboard or marketing shells.
 5. Public/content: marketing, blog, companies, docs, pricing, contact, legal, and explore. Use marketing/article/question-bank primitives, not authenticated product shells.
-6. Compatibility redirect: legacy `/setup`; do not route new CTAs there.
+6. Compatibility redirect: legacy `/setup` and `/dashboard/new-rep`; do not route new CTAs there. Interview-launch CTAs target `/dashboard/new-interview`.
 
 If a route does not fit one of these families, stop and add the family to the product-container audit before building UI.
 

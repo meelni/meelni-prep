@@ -179,7 +179,7 @@ export default function ComparePage() {
           } interviews to compare your progress and track improvements over time.`}
           action={
             <div className="flex justify-center gap-3">
-              <Link href="/dashboard/new-rep">
+              <Link href="/dashboard/new-interview">
                 <Button>Start Another Interview</Button>
               </Link>
               <Link href={`/feedback/${sessionId}`}>
@@ -219,129 +219,129 @@ export default function ComparePage() {
         </Link>
       }
     >
-        <motion.div
-          variants={staggerContainer}
-          initial="initial"
-          animate="animate"
-          className="space-y-8"
-        >
-          {/* Page Header */}
-          <motion.div variants={fadeInUp} className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Badge className="bg-primary/10 text-primary border-primary/20">
-                {roundTypeLabels[roundType] || roundType}
-              </Badge>
-              <Badge className="bg-muted/50 text-muted-foreground border-border/50">
-                <GitCompare className="mr-1 h-3 w-3" />
-                Comparison
-              </Badge>
-            </div>
-          </motion.div>
+      <motion.div
+        variants={staggerContainer}
+        initial="initial"
+        animate="animate"
+        className="space-y-8"
+      >
+        {/* Page Header */}
+        <motion.div variants={fadeInUp} className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Badge className="bg-primary/10 text-primary border-primary/20">
+              {roundTypeLabels[roundType] || roundType}
+            </Badge>
+            <Badge className="bg-muted/50 text-muted-foreground border-border/50">
+              <GitCompare className="mr-1 h-3 w-3" />
+              Comparison
+            </Badge>
+          </div>
+        </motion.div>
 
-          {/* Attempt Selection */}
-          <motion.div variants={fadeInUp}>
-            <FeedbackSectionCard
-              title="Select Attempts to Compare"
-              icon={<GitCompare className="h-5 w-5" />}
-            >
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {/* Attempt 1 Selection */}
-                <div className="space-y-3">
-                  <label className="text-foreground text-sm font-medium">
-                    Earlier Attempt
-                  </label>
-                  <div className="space-y-2">
-                    {attempts
-                      .filter((attempt) => attempt.id !== selectedAttempt2)
-                      .map((attempt) => (
-                        <SelectableCard
-                          key={attempt.id}
-                          onClick={() => setSelectedAttempt1(attempt.id)}
-                          selected={selectedAttempt1 === attempt.id}
-                        >
-                          <div className="mb-2 flex items-start justify-between">
-                            <span className="text-foreground text-sm font-medium">
-                              {formatDate(attempt.startedAt)}
-                            </span>
-                            {attempt.overallScore !== null && (
-                              <Badge className="border-border/50 bg-muted/50 text-muted-foreground">
-                                {attempt.overallScore}/10
-                              </Badge>
-                            )}
-                          </div>
-                          {attempt.overallScore === null && (
-                            <span className="text-muted-foreground text-xs">
-                              No feedback yet
-                            </span>
+        {/* Attempt Selection */}
+        <motion.div variants={fadeInUp}>
+          <FeedbackSectionCard
+            title="Select Attempts to Compare"
+            icon={<GitCompare className="h-5 w-5" />}
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {/* Attempt 1 Selection */}
+              <div className="space-y-3">
+                <label className="text-foreground text-sm font-medium">
+                  Earlier Attempt
+                </label>
+                <div className="space-y-2">
+                  {attempts
+                    .filter((attempt) => attempt.id !== selectedAttempt2)
+                    .map((attempt) => (
+                      <SelectableCard
+                        key={attempt.id}
+                        onClick={() => setSelectedAttempt1(attempt.id)}
+                        selected={selectedAttempt1 === attempt.id}
+                      >
+                        <div className="mb-2 flex items-start justify-between">
+                          <span className="text-foreground text-sm font-medium">
+                            {formatDate(attempt.startedAt)}
+                          </span>
+                          {attempt.overallScore !== null && (
+                            <Badge className="border-border/50 bg-muted/50 text-muted-foreground">
+                              {attempt.overallScore}/10
+                            </Badge>
                           )}
-                        </SelectableCard>
-                      ))}
-                  </div>
-                </div>
-
-                {/* Attempt 2 Selection (Current) */}
-                <div className="space-y-3">
-                  <label className="text-foreground text-sm font-medium">
-                    Latest Attempt
-                  </label>
-                  <div className="space-y-2">
-                    {attempts
-                      .filter((attempt) => attempt.id === selectedAttempt2)
-                      .map((attempt) => (
-                        <SelectableCard
-                          key={attempt.id}
-                          selected
-                          disabled
-                          className="cursor-default disabled:opacity-100"
-                        >
-                          <div className="mb-2 flex items-start justify-between">
-                            <span className="text-foreground text-sm font-medium">
-                              {formatDate(attempt.startedAt)}
-                            </span>
-                            {attempt.overallScore !== null && (
-                              <Badge className="border-primary/20 bg-primary/10 text-primary">
-                                {attempt.overallScore}/10
-                              </Badge>
-                            )}
-                          </div>
-                          <Badge className="border-primary/20 bg-primary/10 text-primary text-xs">
-                            Current Session
-                          </Badge>
-                        </SelectableCard>
-                      ))}
-                  </div>
+                        </div>
+                        {attempt.overallScore === null && (
+                          <span className="text-muted-foreground text-xs">
+                            No feedback yet
+                          </span>
+                        )}
+                      </SelectableCard>
+                    ))}
                 </div>
               </div>
-            </FeedbackSectionCard>
-          </motion.div>
 
-          {/* Comparison Display */}
-          {comparing && (
-            <motion.div
-              variants={fadeInUp}
-              className="flex flex-col items-center gap-4 py-12"
-            >
-              <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
-              <p className="text-muted-foreground text-sm">
-                Loading comparison...
-              </p>
-            </motion.div>
-          )}
-
-          {!comparing && comparisonData && (
-            <AttemptComparison comparison={comparisonData} />
-          )}
-
-          {!comparing && !comparisonData && selectedAttempt1 && (
-            <motion.div variants={fadeInUp}>
-              <FeedbackStateCard
-                icon={<GitCompare className="h-10 w-10" />}
-                title="Select Both Attempts"
-                description="Select both attempts to view the comparison."
-              />
-            </motion.div>
-          )}
+              {/* Attempt 2 Selection (Current) */}
+              <div className="space-y-3">
+                <label className="text-foreground text-sm font-medium">
+                  Latest Attempt
+                </label>
+                <div className="space-y-2">
+                  {attempts
+                    .filter((attempt) => attempt.id === selectedAttempt2)
+                    .map((attempt) => (
+                      <SelectableCard
+                        key={attempt.id}
+                        selected
+                        disabled
+                        className="cursor-default disabled:opacity-100"
+                      >
+                        <div className="mb-2 flex items-start justify-between">
+                          <span className="text-foreground text-sm font-medium">
+                            {formatDate(attempt.startedAt)}
+                          </span>
+                          {attempt.overallScore !== null && (
+                            <Badge className="border-primary/20 bg-primary/10 text-primary">
+                              {attempt.overallScore}/10
+                            </Badge>
+                          )}
+                        </div>
+                        <Badge className="border-primary/20 bg-primary/10 text-primary text-xs">
+                          Current Session
+                        </Badge>
+                      </SelectableCard>
+                    ))}
+                </div>
+              </div>
+            </div>
+          </FeedbackSectionCard>
         </motion.div>
+
+        {/* Comparison Display */}
+        {comparing && (
+          <motion.div
+            variants={fadeInUp}
+            className="flex flex-col items-center gap-4 py-12"
+          >
+            <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
+            <p className="text-muted-foreground text-sm">
+              Loading comparison...
+            </p>
+          </motion.div>
+        )}
+
+        {!comparing && comparisonData && (
+          <AttemptComparison comparison={comparisonData} />
+        )}
+
+        {!comparing && !comparisonData && selectedAttempt1 && (
+          <motion.div variants={fadeInUp}>
+            <FeedbackStateCard
+              icon={<GitCompare className="h-10 w-10" />}
+              title="Select Both Attempts"
+              description="Select both attempts to view the comparison."
+            />
+          </motion.div>
+        )}
+      </motion.div>
     </FeedbackReviewShell>
   );
 }

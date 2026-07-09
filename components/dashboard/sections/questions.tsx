@@ -18,6 +18,7 @@ import {
 } from "@/lib/dashboard/contracts";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
+import { buildNewInterviewHref } from "@/lib/navigation/interview-launch";
 
 interface Question extends DashboardQuestionInput {
   createdAt?: Date | string | null;
@@ -68,7 +69,9 @@ export const QuestionsSection = memo(function QuestionsSection() {
         const res = await fetch(`/api/questions?${params.toString()}`);
         const data = await res.json();
         setQuestions(data.questions || []);
-        setTotalQuestions(data.pagination?.total || data.questions?.length || 0);
+        setTotalQuestions(
+          data.pagination?.total || data.questions?.length || 0
+        );
       } catch (error) {
         console.error("Error fetching questions:", error);
       } finally {
@@ -93,7 +96,10 @@ export const QuestionsSection = memo(function QuestionsSection() {
     fetchBookmarks();
   }, []);
 
-  const summary = useMemo(() => buildQuestionBankSummary(questions), [questions]);
+  const summary = useMemo(
+    () => buildQuestionBankSummary(questions),
+    [questions]
+  );
   const companyFilters = useMemo(
     () =>
       Object.entries(summary.companyCounts)
@@ -175,188 +181,191 @@ export const QuestionsSection = memo(function QuestionsSection() {
   return (
     <DashboardPage label="Question Bank">
       <div className="mx-auto flex w-full max-w-6xl flex-col">
-      {recommendedQuestion && (
-        <section className="flex flex-col gap-4 border-b border-dashboard-panel-border pb-5 lg:flex-row lg:items-center">
-          <Pill tone="primary">Recommended</Pill>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold text-dashboard-foreground">
-              {recommendedQuestion.questionText}
-            </h2>
-            <p className="mt-1 text-sm text-dashboard-muted">
-              {formatRoundType(recommendedQuestion.questionType)} · metric-depth fit
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button asChild>
-              <Link href={getQuestionStartHref(recommendedQuestion)}>
-                <Play className="mr-2 h-4 w-4" aria-hidden="true" />
-                Start
-              </Link>
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => toggleBookmark(recommendedQuestion.id)}
-              className="border-dashboard-panel-border bg-transparent text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
-            >
-              <Bookmark
-                className={cn(
-                  "mr-2 h-4 w-4",
-                  bookmarkedQuestionIds.has(recommendedQuestion.id) &&
-                    "fill-current"
-                )}
-                aria-hidden="true"
-              />
-              Save
-            </Button>
-          </div>
-        </section>
-      )}
-
-      <div className="grid flex-1 gap-7 py-5 lg:grid-cols-[240px_1fr]">
-        <aside className="space-y-7 lg:border-r lg:border-dashboard-panel-border lg:pr-7">
-          <div className="space-y-3">
-            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Search
-            </p>
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dashboard-muted"
-                aria-hidden="true"
-              />
-              <Input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="border-dashboard-panel-border bg-dashboard-panel pl-9 text-dashboard-foreground"
-                placeholder="Company or keyword"
-                aria-label="Search questions"
-              />
+        {recommendedQuestion && (
+          <section className="border-dashboard-panel-border flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-center">
+            <Pill tone="primary">Recommended</Pill>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-dashboard-foreground text-lg font-semibold">
+                {recommendedQuestion.questionText}
+              </h2>
+              <p className="text-dashboard-muted mt-1 text-sm">
+                {formatRoundType(recommendedQuestion.questionType)} ·
+                metric-depth fit
+              </p>
             </div>
-          </div>
-
-          <FilterGroup title="Round">
-            {ROUND_FILTERS.map((round) => (
-              <FilterButton
-                key={round}
-                active={selectedRound === round}
-                label={round}
-                count={
-                  round === "All rounds"
-                    ? totalQuestions || summary.totalActive
-                    : summary.roundCounts[round] || 0
-                }
-                onClick={() => setSelectedRound(round)}
-              />
-            ))}
-          </FilterGroup>
-
-          <FilterGroup title="Company">
-            {companyFilters.map(([company, count]) => (
-              <Button
-                key={company}
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setSelectedCompany((current) =>
-                    current === company ? null : company
-                  )
-                }
-                className={cn(
-                  "h-8 rounded-full border px-3 text-sm",
-                  selectedCompany === company
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-dashboard-panel-border text-dashboard-muted hover:text-dashboard-foreground"
-                )}
-              >
-                {company} {count > 1 ? count : ""}
+            <div className="flex gap-2">
+              <Button asChild>
+                <Link href={getQuestionStartHref(recommendedQuestion)}>
+                  <Play className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Start
+                </Link>
               </Button>
-            ))}
-          </FilterGroup>
-
-          <div className="border-t border-dashboard-panel-border pt-7">
-            <p className="font-display text-2xl font-semibold text-dashboard-foreground">
-              Queue: {bookmarkedQuestionIds.size}
-            </p>
-            <p className="mt-2 text-sm leading-6 text-dashboard-muted">
-              Saved prompts become a short practice set.
-            </p>
-          </div>
-        </aside>
-
-        <section className="min-w-0">
-          <div className="flex flex-col gap-3 border-b border-dashboard-panel-border pb-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                All questions
-              </p>
-              <p className="mt-1 text-sm text-dashboard-muted">
-                Showing {Math.min(filteredQuestions.length, 8)} of{" "}
-                {totalQuestions || summary.totalActive}
-              </p>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-dashboard-muted">
-              Sort
-              <select
-                value={sortBy}
-                onChange={(event) =>
-                  setSortBy(event.target.value as "best" | "recent" | "company")
-                }
-                className="rounded-md border border-dashboard-panel-border bg-dashboard-panel px-3 py-2 text-dashboard-foreground"
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => toggleBookmark(recommendedQuestion.id)}
+                className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground bg-transparent"
               >
-                <option value="best">Best fit</option>
-                <option value="recent">Recent</option>
-                <option value="company">Company</option>
-              </select>
-            </label>
-          </div>
+                <Bookmark
+                  className={cn(
+                    "mr-2 h-4 w-4",
+                    bookmarkedQuestionIds.has(recommendedQuestion.id) &&
+                      "fill-current"
+                  )}
+                  aria-hidden="true"
+                />
+                Save
+              </Button>
+            </div>
+          </section>
+        )}
 
-          <div className="overflow-x-auto">
-            <div className="min-w-[760px]">
-              <div className="grid grid-cols-[88px_140px_140px_1fr_92px] gap-4 border-b border-dashboard-panel-border py-3 text-xs font-bold tracking-[0.2em] text-dashboard-muted uppercase">
-                <span>Fit</span>
-                <span>Company</span>
-                <span>Round</span>
-                <span>Question</span>
-                <span className="text-right">Action</span>
+        <div className="grid flex-1 gap-7 py-5 lg:grid-cols-[240px_1fr]">
+          <aside className="lg:border-dashboard-panel-border space-y-7 lg:border-r lg:pr-7">
+            <div className="space-y-3">
+              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+                Search
+              </p>
+              <div className="relative">
+                <Search
+                  className="text-dashboard-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+                  aria-hidden="true"
+                />
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground pl-9"
+                  placeholder="Company or keyword"
+                  aria-label="Search questions"
+                />
               </div>
-              <div className="divide-y divide-dashboard-panel-border">
-                {filteredQuestions.slice(0, 12).map((question) => (
-                  <div
-                    key={question.id}
-                    className="grid grid-cols-[88px_140px_140px_1fr_92px] gap-4 py-4 text-sm"
-                  >
-                    <span className="font-mono font-semibold text-primary">
-                      {getFitScore(question)}%
-                    </span>
-                    <span className="font-semibold text-dashboard-foreground">
-                      {question.company || "Meelni"}
-                    </span>
-                    <span className="text-dashboard-muted">
-                      {formatRoundType(question.questionType)}
-                    </span>
-                    <span className="text-dashboard-foreground">
-                      {question.questionText}
-                    </span>
-                    <Link
-                      href={getQuestionStartHref(question)}
-                      className="text-right font-semibold text-primary hover:underline"
+            </div>
+
+            <FilterGroup title="Round">
+              {ROUND_FILTERS.map((round) => (
+                <FilterButton
+                  key={round}
+                  active={selectedRound === round}
+                  label={round}
+                  count={
+                    round === "All rounds"
+                      ? totalQuestions || summary.totalActive
+                      : summary.roundCounts[round] || 0
+                  }
+                  onClick={() => setSelectedRound(round)}
+                />
+              ))}
+            </FilterGroup>
+
+            <FilterGroup title="Company">
+              {companyFilters.map(([company, count]) => (
+                <Button
+                  key={company}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setSelectedCompany((current) =>
+                      current === company ? null : company
+                    )
+                  }
+                  className={cn(
+                    "h-8 rounded-full border px-3 text-sm",
+                    selectedCompany === company
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-dashboard-panel-border text-dashboard-muted hover:text-dashboard-foreground"
+                  )}
+                >
+                  {company} {count > 1 ? count : ""}
+                </Button>
+              ))}
+            </FilterGroup>
+
+            <div className="border-dashboard-panel-border border-t pt-7">
+              <p className="font-display text-dashboard-foreground text-2xl font-semibold">
+                Queue: {bookmarkedQuestionIds.size}
+              </p>
+              <p className="text-dashboard-muted mt-2 text-sm leading-6">
+                Saved prompts become a short practice set.
+              </p>
+            </div>
+          </aside>
+
+          <section className="min-w-0">
+            <div className="border-dashboard-panel-border flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+                  All questions
+                </p>
+                <p className="text-dashboard-muted mt-1 text-sm">
+                  Showing {Math.min(filteredQuestions.length, 8)} of{" "}
+                  {totalQuestions || summary.totalActive}
+                </p>
+              </div>
+              <label className="text-dashboard-muted flex items-center gap-2 text-sm">
+                Sort
+                <select
+                  value={sortBy}
+                  onChange={(event) =>
+                    setSortBy(
+                      event.target.value as "best" | "recent" | "company"
+                    )
+                  }
+                  className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground rounded-md border px-3 py-2"
+                >
+                  <option value="best">Best fit</option>
+                  <option value="recent">Recent</option>
+                  <option value="company">Company</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="overflow-x-auto">
+              <div className="min-w-[760px]">
+                <div className="border-dashboard-panel-border text-dashboard-muted grid grid-cols-[88px_140px_140px_1fr_92px] gap-4 border-b py-3 text-xs font-bold tracking-[0.2em] uppercase">
+                  <span>Fit</span>
+                  <span>Company</span>
+                  <span>Round</span>
+                  <span>Question</span>
+                  <span className="text-right">Action</span>
+                </div>
+                <div className="divide-dashboard-panel-border divide-y">
+                  {filteredQuestions.slice(0, 12).map((question) => (
+                    <div
+                      key={question.id}
+                      className="grid grid-cols-[88px_140px_140px_1fr_92px] gap-4 py-4 text-sm"
                     >
-                      Start
-                    </Link>
-                  </div>
-                ))}
+                      <span className="text-primary font-mono font-semibold">
+                        {getFitScore(question)}%
+                      </span>
+                      <span className="text-dashboard-foreground font-semibold">
+                        {question.company || "Meelni"}
+                      </span>
+                      <span className="text-dashboard-muted">
+                        {formatRoundType(question.questionType)}
+                      </span>
+                      <span className="text-dashboard-foreground">
+                        {question.questionText}
+                      </span>
+                      <Link
+                        href={getQuestionStartHref(question)}
+                        className="text-primary text-right font-semibold hover:underline"
+                      >
+                        Start
+                      </Link>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
 
-          {filteredQuestions.length === 0 && (
-            <div className="py-16 text-center text-sm text-dashboard-muted">
-              No questions match the current filters.
-            </div>
-          )}
-        </section>
-      </div>
+            {filteredQuestions.length === 0 && (
+              <div className="text-dashboard-muted py-16 text-center text-sm">
+                No questions match the current filters.
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </DashboardPage>
   );
@@ -374,7 +383,9 @@ function FilterGroup({
       <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
         {title}
       </p>
-      <div className="flex flex-wrap gap-2 lg:block lg:space-y-1">{children}</div>
+      <div className="flex flex-wrap gap-2 lg:block lg:space-y-1">
+        {children}
+      </div>
     </div>
   );
 }
@@ -398,7 +409,7 @@ function FilterButton({
       className={cn(
         "flex h-9 w-full items-center justify-between rounded-md px-0 py-2 text-sm",
         active
-          ? "font-semibold text-dashboard-foreground"
+          ? "text-dashboard-foreground font-semibold"
           : "text-dashboard-muted hover:text-dashboard-foreground"
       )}
     >
@@ -433,9 +444,9 @@ function getQuestionStartHref(question: DashboardQuestionInput) {
   const params = new URLSearchParams({
     questionId: question.id,
     roundType: normalizeRoundType(question.questionType),
-    mode: "mock_interview",
   });
-  return `/interview?${params.toString()}`;
+  if (question.company) params.set("company", question.company);
+  return buildNewInterviewHref(params);
 }
 
 function normalizeRoundType(roundType: string) {

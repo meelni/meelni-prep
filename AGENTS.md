@@ -14,7 +14,7 @@ Canonical instructions for Codex, Claude, and other coding agents working in thi
 
 ## Product
 
-Meelni is a PM interview practice product. The restart direction is a PM-focused interview gym: real PM interview questions, live voice reps, PM-calibrated feedback, and visible improvement over time.
+Meelni is a live PM interview practice product: real PM interview questions, live voice mock interviews, PM-calibrated feedback, and practice progress over time. Do not frame the product as a gym or call interviews reps. Follow `lib/product-language.ts` and the accepted positioning decision for canonical customer-facing language.
 
 Primary product surfaces:
 

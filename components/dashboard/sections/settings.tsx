@@ -412,7 +412,7 @@ function InterviewDefaultsPane({
   return (
     <PaneShell
       title="Interview defaults"
-      description="Defaults used when you start a PM practice rep."
+      description="Defaults used when you start a PM mock interview."
       footer={<SettingsSaveFooter onSave={onSave} saveState={saveState} />}
     >
       <SettingsSelectRow
@@ -435,7 +435,7 @@ function InterviewDefaultsPane({
       />
       <SettingsSelectRow
         title="Default difficulty"
-        description="The starting challenge level for recommended reps."
+        description="The starting challenge level for recommended interviews."
         value={settings.defaultDifficulty}
         valueLabel={labelForDifficulty(settings.defaultDifficulty)}
         onValueChange={(defaultDifficulty) =>
@@ -475,7 +475,7 @@ function InterviewDefaultsPane({
       />
       <SettingsSwitchRow
         title="Auto-save transcripts"
-        description="Store completed rep transcripts without asking each time."
+        description="Store completed interview transcripts without asking each time."
         checked={settings.autoSaveTranscripts}
         onCheckedChange={(autoSaveTranscripts) =>
           onChange({ autoSaveTranscripts })
@@ -609,7 +609,7 @@ function NotificationsPane({
   return (
     <PaneShell
       title="Notifications"
-      description="Emails tied to completed reps and progress signals."
+      description="Emails tied to completed interviews and progress signals."
       footer={<SettingsSaveFooter onSave={onSave} saveState={saveState} />}
     >
       <SettingsSwitchRow
@@ -622,7 +622,7 @@ function NotificationsPane({
       />
       <SettingsSwitchRow
         title="Session completion email"
-        description="Send a confirmation when a PM practice rep is complete."
+        description="Send a confirmation when a PM mock interview is complete."
         checked={settings.sessionCompletionEmail}
         disabled={!settings.emailNotifications}
         onCheckedChange={(sessionCompletionEmail) =>
@@ -640,7 +640,7 @@ function NotificationsPane({
       />
       <SettingsSwitchRow
         title="Weekly progress report"
-        description="Send a weekly digest of readiness and practice focus."
+        description="Send a weekly digest of recent score trends and practice focus."
         checked={settings.weeklyProgressReport}
         disabled={!settings.emailNotifications}
         onCheckedChange={(weeklyProgressReport) =>
@@ -696,7 +696,7 @@ function DataPrivacyPane({
     >
       <SettingsSwitchRow
         title="Save transcripts"
-        description="Store transcripts so prior reps can be reviewed later."
+        description="Store transcripts so prior interviews can be reviewed later."
         checked={settings.saveTranscripts}
         onCheckedChange={(saveTranscripts) => onChange({ saveTranscripts })}
       />

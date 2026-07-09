@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
 
 function AuthLoadingState() {
   return (
@@ -40,7 +41,7 @@ function SignUpContent() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") || "/dashboard";
+  const redirectTo = getSafeInternalRedirect(searchParams.get("redirectTo"))!;
 
   useEffect(() => {
     analytics.track("auth_signup_started", {
@@ -59,7 +60,7 @@ function SignUpContent() {
     setError(null);
 
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(redirectTo);
     } catch (err) {
       console.error("Sign in error:", err);
       setError("Failed to sign in. Please try again.");
@@ -86,7 +87,7 @@ function SignUpContent() {
     }
 
     try {
-      await signUpWithEmail(email, password);
+      await signUpWithEmail(email, password, redirectTo);
       setSuccess(true);
       setIsSigningUp(false);
     } catch (err) {
@@ -123,7 +124,11 @@ function SignUpContent() {
             </AuthMessage>
             <Button
               type="button"
-              onClick={() => router.push("/auth/signin")}
+              onClick={() =>
+                router.push(
+                  `/auth/signin?redirectTo=${encodeURIComponent(redirectTo)}`
+                )
+              }
               className="h-auto w-full rounded-xl px-6 py-3 font-semibold"
             >
               Go to Sign In
@@ -210,7 +215,11 @@ function SignUpContent() {
               <Button
                 type="button"
                 variant="link"
-                onClick={() => router.push("/auth/signin")}
+                onClick={() =>
+                  router.push(
+                    `/auth/signin?redirectTo=${encodeURIComponent(redirectTo)}`
+                  )
+                }
                 className="h-auto p-0 font-medium"
               >
                 Sign in

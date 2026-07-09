@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
@@ -17,7 +17,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import {
-  buildRecommendedRep,
+  buildInterviewRecommendation,
   buildFullConfig,
   DIFFICULTY_LEVELS,
   INTERVIEW_TYPE_LABELS,
@@ -35,15 +35,36 @@ import { TierUpgradeModal } from "@/components/dashboard/tier-upgrade-modal";
 import { StatusPill } from "@/components/ui/app-surface";
 import { track, AnalyticsEvents } from "@/lib/analytics";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { trackInterviewLaunchEvent } from "@/lib/analytics/interview-launch-compat";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
+import {
+  parseInterviewLaunchContext,
+} from "@/lib/navigation/interview-launch";
 
 export function SetupContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const pathname = usePathname();
-  const fallbackRecommendation = buildRecommendedRep();
-  const questionIdParam = searchParams.get("questionId");
+  const launchContext = useMemo(
+    () => parseInterviewLaunchContext(searchParams),
+    [searchParams]
+  );
+  const fallbackRecommendation = useMemo(
+    () =>
+      buildInterviewRecommendation({
+        requestedRoundType: launchContext.roundType,
+        requestedDifficulty: launchContext.difficulty,
+        focus: launchContext.focus,
+        company: launchContext.company,
+      }),
+    [
+      launchContext.company,
+      launchContext.difficulty,
+      launchContext.focus,
+      launchContext.roundType,
+    ]
+  );
+  const questionIdParam = launchContext.questionId;
 
   // Track Web Vitals performance
   useWebVitals("setup");
@@ -75,17 +96,36 @@ export function SetupContent() {
   const launcherViewKey = questionIdParam ?? "dashboard";
   const trackedLauncherViewKey = useRef<string | null>(null);
 
-  const recommendation = buildRecommendedRep({
+  const recommendation = buildInterviewRecommendation({
     selectedQuestion:
       questionId && questionData
         ? {
             id: questionId,
             text: questionData.text,
-            company: questionData.company,
+            company: questionData.company ?? launchContext.company,
             type: questionData.type,
           }
         : null,
+    requestedRoundType: launchContext.roundType,
+    requestedDifficulty: launchContext.difficulty,
+    focus: launchContext.focus,
+    company: launchContext.company,
   });
+  const hasLaunchContext = Boolean(
+    launchContext.roundType ||
+      launchContext.difficulty ||
+      launchContext.focus ||
+      launchContext.company ||
+      launchContext.returnTo
+  );
+  const analyticsLaunchContext = useMemo(
+    () => ({
+      focus: launchContext.focus ?? undefined,
+      company: launchContext.company ?? undefined,
+      return_to: launchContext.returnTo ?? undefined,
+    }),
+    [launchContext.company, launchContext.focus, launchContext.returnTo]
+  );
 
   // Credit state is informational; session start remains the source of truth.
   const [creditBalance, setCreditBalance] = useState<{
@@ -111,12 +151,16 @@ export function SetupContent() {
     message: string;
   } | null>(null);
 
-  // Redirect if not authenticated
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push(`/auth/signin?redirectTo=${encodeURIComponent(pathname)}`);
+    if (launchContext.roundType) {
+      setRoundType(launchContext.roundType);
+      defaultRoundType.current = launchContext.roundType;
     }
-  }, [user, authLoading, pathname, router]);
+    if (launchContext.difficulty) {
+      setDifficulty(launchContext.difficulty);
+      defaultDifficulty.current = launchContext.difficulty;
+    }
+  }, [launchContext.difficulty, launchContext.roundType]);
 
   // Fetch question from URL parameter if provided
   useEffect(() => {
@@ -149,7 +193,7 @@ export function SetupContent() {
         });
 
         const mappedRoundType = mapQuestionTypeToRoundType(data.questionType);
-        if (mappedRoundType) {
+        if (mappedRoundType && !launchContext.roundType) {
           setRoundType(mappedRoundType);
           defaultRoundType.current = mappedRoundType;
         }
@@ -169,7 +213,7 @@ export function SetupContent() {
     return () => {
       isCurrent = false;
     };
-  }, [questionIdParam]);
+  }, [launchContext.roundType, questionIdParam]);
 
   useEffect(() => {
     const isLauncherViewReady =
@@ -184,13 +228,22 @@ export function SetupContent() {
     }
 
     trackedLauncherViewKey.current = launcherViewKey;
-    analytics.track("new_rep_launcher_viewed", {
-      source: questionIdParam ? "selected_question" : "dashboard",
+    const properties = {
+      source: questionIdParam
+        ? ("selected_question" as const)
+        : hasLaunchContext
+          ? ("launch_context" as const)
+          : ("dashboard" as const),
       recommended_round_type: recommendation.roundType,
       recommended_difficulty: recommendation.difficulty,
       recommendation_source: recommendation.source,
-    });
+      ...analyticsLaunchContext,
+    };
+
+    trackInterviewLaunchEvent("new_interview_launcher_viewed", properties);
   }, [
+    analyticsLaunchContext,
+    hasLaunchContext,
     launcherViewKey,
     recommendation.difficulty,
     recommendation.roundType,
@@ -266,7 +319,7 @@ export function SetupContent() {
       time_to_complete_seconds: Math.floor(timeToComplete),
       selections_changed: selectionsChanged,
     });
-    analytics.track("new_rep_start_attempted", {
+    const startAttemptedProperties = {
       interview_type: roundType,
       skill_level: difficulty,
       recommendation_source: recommendation.source,
@@ -274,7 +327,12 @@ export function SetupContent() {
         roundType === recommendation.roundType &&
         difficulty === recommendation.difficulty,
       question_id: questionId || undefined,
-    });
+      ...analyticsLaunchContext,
+    };
+    trackInterviewLaunchEvent(
+      "new_interview_start_attempted",
+      startAttemptedProperties
+    );
 
     try {
       // Request microphone permission before starting interview
@@ -364,12 +422,17 @@ export function SetupContent() {
 
       const { sessionId, token, url, roomName } = await response.json();
 
-      analytics.track("new_rep_start_succeeded", {
+      const startSucceededProperties = {
         session_id: sessionId,
         interview_type: roundType,
         skill_level: difficulty,
         question_id: questionId || undefined,
-      });
+        ...analyticsLaunchContext,
+      };
+      trackInterviewLaunchEvent(
+        "new_interview_start_succeeded",
+        startSucceededProperties
+      );
 
       // Navigate to interview page with session data
       router.push(
@@ -384,11 +447,16 @@ export function SetupContent() {
       );
     } catch (err) {
       console.error("Failed to start session:", err);
-      analytics.track("new_rep_start_failed", {
+      const startFailedProperties = {
         interview_type: roundType,
         skill_level: difficulty,
         error: err instanceof Error ? err.message : "unknown",
-      });
+        ...analyticsLaunchContext,
+      };
+      trackInterviewLaunchEvent(
+        "new_interview_start_failed",
+        startFailedProperties
+      );
       setError(
         err instanceof Error ? err.message : "Failed to start interview"
       );
@@ -401,7 +469,7 @@ export function SetupContent() {
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-dashboard-muted flex items-center gap-3">
           <Loader2 className="h-5 w-5 animate-spin" />
-          <span>Loading New Rep...</span>
+          <span>Loading New Mock Interview...</span>
         </div>
       </div>
     );
@@ -426,18 +494,19 @@ export function SetupContent() {
           >
             <div className="space-y-2">
               <Link
-                href="/dashboard"
+                href={launchContext.returnTo ?? "/dashboard"}
                 className="text-dashboard-muted hover:text-dashboard-foreground inline-flex items-center gap-2 text-sm transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Dashboard
+                {launchContext.returnTo ? "Back" : "Dashboard"}
               </Link>
               <div>
                 <h1 className="font-display text-dashboard-foreground text-3xl font-light tracking-tight">
-                  New Rep
+                  New Mock Interview
                 </h1>
                 <p className="text-dashboard-muted text-sm">
-                  Pick the practice rep you want to start, then enter the room.
+                  Choose the interview you want to practice, then enter the
+                  room.
                 </p>
               </div>
             </div>
@@ -484,7 +553,8 @@ export function SetupContent() {
                 </div>
                 <div className="space-y-2">
                   <h2 className="text-dashboard-foreground text-xl font-semibold">
-                    {INTERVIEW_TYPE_LABELS[recommendation.roundType]} rep for{" "}
+                    {INTERVIEW_TYPE_LABELS[recommendation.roundType]} mock
+                    interview for{" "}
                     {DIFFICULTY_LEVELS[recommendation.difficulty].label}
                   </h2>
                   <p className="text-dashboard-muted max-w-2xl text-sm leading-6">
@@ -507,6 +577,20 @@ export function SetupContent() {
                     </p>
                   </div>
                 )}
+                {(launchContext.focus || launchContext.company) && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {launchContext.company && (
+                      <StatusPill tone="muted">
+                        Company: {launchContext.company}
+                      </StatusPill>
+                    )}
+                    {launchContext.focus && (
+                      <StatusPill tone="muted">
+                        Focus: {launchContext.focus}
+                      </StatusPill>
+                    )}
+                  </div>
+                )}
               </div>
               <Button
                 type="button"
@@ -514,11 +598,16 @@ export function SetupContent() {
                 onClick={() => {
                   setRoundType(recommendation.roundType);
                   setDifficulty(recommendation.difficulty);
-                  analytics.track("new_rep_recommendation_accepted", {
+                  const properties = {
                     recommended_round_type: recommendation.roundType,
                     recommended_difficulty: recommendation.difficulty,
                     recommendation_source: recommendation.source,
-                  });
+                    ...analyticsLaunchContext,
+                  };
+                  trackInterviewLaunchEvent(
+                    "new_interview_recommendation_accepted",
+                    properties
+                  );
                 }}
                 className="w-full shrink-0 sm:w-fit"
               >
@@ -554,11 +643,16 @@ export function SetupContent() {
                   if (defaultRoundType.current === null) {
                     defaultRoundType.current = type;
                   }
-                  analytics.track("new_rep_recommendation_changed", {
+                  const properties = {
                     field: "round_type",
                     value: type,
                     recommended_round_type: recommendation.roundType,
-                  });
+                    ...analyticsLaunchContext,
+                  } as const;
+                  trackInterviewLaunchEvent(
+                    "new_interview_recommendation_changed",
+                    properties
+                  );
                   setRoundType(type);
                 }}
                 lockedTypes={[]}
@@ -577,11 +671,16 @@ export function SetupContent() {
                   interview_type: roundType || "unknown",
                   is_default_selection: defaultDifficulty.current === level,
                 });
-                analytics.track("new_rep_recommendation_changed", {
+                const properties = {
                   field: "difficulty",
                   value: level,
                   recommended_difficulty: recommendation.difficulty,
-                });
+                  ...analyticsLaunchContext,
+                } as const;
+                trackInterviewLaunchEvent(
+                  "new_interview_recommendation_changed",
+                  properties
+                );
 
                 setDifficulty(level);
               }}
@@ -609,11 +708,11 @@ export function SetupContent() {
                 {isCreatingSession ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Starting rep...
+                    Starting mock interview...
                   </>
                 ) : (
                   <>
-                    Start rep
+                    Start mock interview
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </>
                 )}
