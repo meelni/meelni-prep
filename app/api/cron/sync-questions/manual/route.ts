@@ -18,12 +18,15 @@ export async function POST(request: Request) {
   try {
     // Verify user is authenticated
     const supabase = await createClient();
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    const {
+      data: { session },
+      error: authError,
+    } = await supabase.auth.getSession();
 
     if (authError || !session) {
-      console.error('❌ Unauthorized: No valid session');
+      console.error("❌ Unauthorized: No valid session");
       return NextResponse.json(
-        { success: false, error: 'Unauthorized: Authentication required' },
+        { success: false, error: "Unauthorized: Authentication required" },
         { status: 401 }
       );
     }
@@ -44,24 +47,38 @@ export async function POST(request: Request) {
       verbose,
     });
 
-    console.log(`✅ Manual sync complete: ${result.questionsAdded} added, ${result.questionsDeactivated} deactivated`);
+    if (!result.success) {
+      console.error("❌ Manual sync failed:", result.errorMessages);
+      return NextResponse.json(
+        {
+          ...result,
+          triggeredBy: "manual",
+          triggeredByUser: session.user.email,
+          triggeredAt: new Date().toISOString(),
+        },
+        { status: 500 }
+      );
+    }
+
+    console.log(
+      `✅ Manual sync complete: ${result.questionsAdded} added, ${result.questionsDeactivated} deactivated`
+    );
 
     return NextResponse.json({
       ...result,
-      triggeredBy: 'manual',
+      triggeredBy: "manual",
       triggeredByUser: session.user.email,
       triggeredAt: new Date().toISOString(),
     });
-
   } catch (error) {
-    console.error('❌ Manual sync failed:', error);
+    console.error("❌ Manual sync failed:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error: 'Sync failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-        triggeredBy: 'manual',
+        error: "Sync failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+        triggeredBy: "manual",
         triggeredAt: new Date().toISOString(),
       },
       { status: 500 }

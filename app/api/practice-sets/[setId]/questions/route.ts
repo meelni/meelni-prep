@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { practiceSet, practiceSetQuestion, interviewQuestion } from "@/lib/db/schema";
+import {
+  practiceSet,
+  practiceSetQuestion,
+  interviewQuestion,
+} from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
+import { canonicalQuestionTypeLabel } from "@meelni/core";
 
 // GET /api/practice-sets/[setId]/questions - Get all questions in a practice set
 export async function GET(
@@ -28,7 +33,10 @@ export async function GET(
       .limit(1);
 
     if (!set) {
-      return NextResponse.json({ error: "Practice set not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Practice set not found" },
+        { status: 404 }
+      );
     }
 
     // Get all questions in the set
@@ -43,11 +51,21 @@ export async function GET(
         addedAt: practiceSetQuestion.createdAt,
       })
       .from(practiceSetQuestion)
-      .innerJoin(interviewQuestion, eq(practiceSetQuestion.questionId, interviewQuestion.id))
+      .innerJoin(
+        interviewQuestion,
+        eq(practiceSetQuestion.questionId, interviewQuestion.id)
+      )
       .where(eq(practiceSetQuestion.practiceSetId, setId))
       .orderBy(practiceSetQuestion.createdAt);
 
-    return NextResponse.json({ questions });
+    return NextResponse.json({
+      questions: questions.map((question) => ({
+        ...question,
+        questionType:
+          canonicalQuestionTypeLabel(question.questionType) ||
+          question.questionType,
+      })),
+    });
   } catch (error) {
     console.error("Error fetching practice set questions:", error);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
@@ -78,14 +96,20 @@ export async function POST(
       .limit(1);
 
     if (!set) {
-      return NextResponse.json({ error: "Practice set not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Practice set not found" },
+        { status: 404 }
+      );
     }
 
     const body = await request.json();
     const { questionId } = body;
 
     if (!questionId) {
-      return NextResponse.json({ error: "Question ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Question ID is required" },
+        { status: 400 }
+      );
     }
 
     // Add question to set (will fail if already exists due to unique constraint)
@@ -98,7 +122,10 @@ export async function POST(
       .onConflictDoNothing();
 
     // Update the practice set's updatedAt timestamp
-    await db.update(practiceSet).set({ updatedAt: new Date() }).where(eq(practiceSet.id, setId));
+    await db
+      .update(practiceSet)
+      .set({ updatedAt: new Date() })
+      .where(eq(practiceSet.id, setId));
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -131,14 +158,20 @@ export async function DELETE(
       .limit(1);
 
     if (!set) {
-      return NextResponse.json({ error: "Practice set not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Practice set not found" },
+        { status: 404 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
     const questionId = searchParams.get("questionId");
 
     if (!questionId) {
-      return NextResponse.json({ error: "Question ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Question ID is required" },
+        { status: 400 }
+      );
     }
 
     // Remove question from set
@@ -152,7 +185,10 @@ export async function DELETE(
       );
 
     // Update the practice set's updatedAt timestamp
-    await db.update(practiceSet).set({ updatedAt: new Date() }).where(eq(practiceSet.id, setId));
+    await db
+      .update(practiceSet)
+      .set({ updatedAt: new Date() })
+      .where(eq(practiceSet.id, setId));
 
     return NextResponse.json({ success: true });
   } catch (error) {

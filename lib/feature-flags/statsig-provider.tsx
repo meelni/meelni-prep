@@ -53,12 +53,22 @@ const statsigConfig = getStatsigConfig({
   VERCEL_ENV: process.env.VERCEL_ENV,
 });
 
-export function StatsigProvider({ children }: { children: React.ReactNode }) {
+interface StatsigProviderProps {
+  children: React.ReactNode;
+  initialGateValues?: Record<string, boolean>;
+}
+
+export function StatsigProvider({
+  children,
+  initialGateValues = {},
+}: StatsigProviderProps) {
   const { user } = useAuth();
   const [anonymousId, setAnonymousId] = useState<string | null>(null);
   const [clientAvailable, setClientAvailable] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
-  const [localOverrides, setLocalOverrides] = useState<FeatureFlagOverrides>({});
+  const [localOverrides, setLocalOverrides] = useState<FeatureFlagOverrides>(
+    {}
+  );
   const [ready, setReady] = useState(false);
   const clientRef = useRef<StatsigClient | null>(null);
   const initializedUserKeyRef = useRef<string | null>(null);
@@ -97,20 +107,24 @@ export function StatsigProvider({ children }: { children: React.ReactNode }) {
         setLastError(null);
 
         if (!clientRef.current) {
-          const client = new StatsigClient(statsigConfig.clientKey, userForStatsig, {
-            environment: {
-              tier: statsigConfig.environmentTier,
-            },
-            networkConfig: statsigConfig.apiUrl
-              ? {
-                  api: statsigConfig.apiUrl,
-                }
-              : undefined,
-            plugins: [
-              new StatsigSessionReplayPlugin(),
-              new StatsigAutoCapturePlugin(),
-            ],
-          });
+          const client = new StatsigClient(
+            statsigConfig.clientKey,
+            userForStatsig,
+            {
+              environment: {
+                tier: statsigConfig.environmentTier,
+              },
+              networkConfig: statsigConfig.apiUrl
+                ? {
+                    api: statsigConfig.apiUrl,
+                  }
+                : undefined,
+              plugins: [
+                new StatsigSessionReplayPlugin(),
+                new StatsigAutoCapturePlugin(),
+              ],
+            }
+          );
 
           clientRef.current = client;
           setClientAvailable(true);
@@ -118,7 +132,9 @@ export function StatsigProvider({ children }: { children: React.ReactNode }) {
           await client.initializeAsync({ timeoutMs: 3000 });
         } else if (initializedUserKeyRef.current !== statsigUserKey) {
           initializedUserKeyRef.current = statsigUserKey;
-          await clientRef.current.updateUserAsync(userForStatsig, { timeoutMs: 3000 });
+          await clientRef.current.updateUserAsync(userForStatsig, {
+            timeoutMs: 3000,
+          });
         }
 
         if (active) {
@@ -126,7 +142,10 @@ export function StatsigProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         initializedUserKeyRef.current = null;
-        const message = error instanceof Error ? error.message : "Statsig initialization failed";
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Statsig initialization failed";
         if (statsigConfig.debug) {
           console.error("[FeatureFlags] Failed to initialize Statsig", error);
         }
@@ -153,13 +172,21 @@ export function StatsigProvider({ children }: { children: React.ReactNode }) {
   const checkGate = useCallback(
     (name: string, defaultValue = false) => {
       const override = localOverrides[name] ?? "statsig";
+      const serverValue = initialGateValues[name];
+
+      if (serverValue !== undefined) {
+        return applyFeatureFlagOverride(serverValue, override);
+      }
 
       if (!statsigConfig.enabled || !ready || !clientRef.current) {
         return applyFeatureFlagOverride(defaultValue, override);
       }
 
       try {
-        return applyFeatureFlagOverride(clientRef.current.checkGate(name), override);
+        return applyFeatureFlagOverride(
+          clientRef.current.checkGate(name),
+          override
+        );
       } catch (error) {
         if (statsigConfig.debug) {
           console.error("[FeatureFlags] Failed to check gate", name, error);
@@ -167,12 +194,24 @@ export function StatsigProvider({ children }: { children: React.ReactNode }) {
         return applyFeatureFlagOverride(defaultValue, override);
       }
     },
-    [localOverrides, ready]
+    [initialGateValues, localOverrides, ready]
   );
 
   const setLocalOverride = useCallback(
     (name: string, mode: FeatureFlagOverrideMode) => {
-      setLocalOverrides(setFeatureFlagOverride(window.localStorage, name, mode));
+      setLocalOverrides(
+        setFeatureFlagOverride(window.localStorage, name, mode)
+      );
+
+      if (process.env.NODE_ENV === "development") {
+        const cookieName = `meelni_feature_flag_${encodeURIComponent(name)}`;
+        if (mode === "statsig") {
+          window.document.cookie = `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`;
+        } else {
+          window.document.cookie = `${cookieName}=${mode}; Path=/; SameSite=Lax`;
+        }
+        window.location.reload();
+      }
     },
     []
   );
@@ -197,7 +236,8 @@ export function StatsigProvider({ children }: { children: React.ReactNode }) {
       await clientRef.current?.flush();
       setLastError(null);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Statsig flush failed";
+      const message =
+        error instanceof Error ? error.message : "Statsig flush failed";
       if (statsigConfig.debug) {
         console.error("[FeatureFlags] Failed to flush Statsig events", error);
       }

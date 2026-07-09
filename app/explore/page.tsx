@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
@@ -79,6 +79,7 @@ const QUESTIONS_PER_PAGE = 20;
 export default function ExplorePage() {
   const posthog = usePostHog();
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -92,34 +93,50 @@ export default function ExplorePage() {
   // Track page view
   useEffect(() => {
     posthog?.capture("explore_page_viewed", {
-      total_questions: questions.length,
+      total_questions: totalQuestions,
     });
-  }, [posthog, questions.length]);
+  }, [posthog, totalQuestions]);
 
   // Fetch questions
   useEffect(() => {
+    const controller = new AbortController();
+
     async function fetchQuestions() {
       try {
         setLoading(true);
         const params = new URLSearchParams({
-          limit: "500",
+          limit: String(QUESTIONS_PER_PAGE),
+          offset: String((currentPage - 1) * QUESTIONS_PER_PAGE),
           activeOnly: "true",
         });
+
+        if (debouncedSearchQuery) {
+          params.set("search", debouncedSearchQuery);
+        }
 
         if (selectedType !== "All Types") {
           const typeMap: Record<string, string> = {
             Behavioral: "behavioral",
             "Product Sense": "product_sense",
             Execution: "execution",
-            "Product Strategy": "strategy",
+            Strategy: "strategy",
           };
           params.append("type", typeMap[selectedType]);
         }
 
-        const res = await fetch(`/api/questions?${params.toString()}`);
+        const res = await fetch(`/api/questions?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          throw new Error(`Question request failed with ${res.status}`);
+        }
         const data = await res.json();
         setQuestions(data.questions || []);
+        setTotalQuestions(data.pagination?.total || 0);
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
         console.error("Error fetching questions:", error);
       } finally {
         setLoading(false);
@@ -127,35 +144,12 @@ export default function ExplorePage() {
     }
 
     fetchQuestions();
-  }, [selectedType]);
-
-  // Filter questions
-  const filteredQuestions = useMemo(() => {
-    return questions.filter((q) => {
-      const matchesSearch =
-        debouncedSearchQuery === "" ||
-        q.questionText
-          .toLowerCase()
-          .includes(debouncedSearchQuery.toLowerCase()) ||
-        q.company?.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
-
-      if (!matchesSearch) return false;
-
-      if (selectedType !== "All Types" && q.questionType !== selectedType) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [questions, debouncedSearchQuery, selectedType]);
+    return () => controller.abort();
+  }, [currentPage, debouncedSearchQuery, selectedType]);
 
   // Paginate questions
-  const totalPages = Math.ceil(filteredQuestions.length / QUESTIONS_PER_PAGE);
-  const paginatedQuestions = useMemo(() => {
-    const startIndex = (currentPage - 1) * QUESTIONS_PER_PAGE;
-    const endIndex = startIndex + QUESTIONS_PER_PAGE;
-    return filteredQuestions.slice(startIndex, endIndex);
-  }, [filteredQuestions, currentPage]);
+  const totalPages = Math.ceil(totalQuestions / QUESTIONS_PER_PAGE);
+  const paginatedQuestions = questions;
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -167,20 +161,20 @@ export default function ExplorePage() {
     if (debouncedSearchQuery) {
       posthog?.capture("explore_search", {
         query: debouncedSearchQuery,
-        results_count: filteredQuestions.length,
+        results_count: totalQuestions,
       });
     }
-  }, [debouncedSearchQuery, filteredQuestions.length, posthog]);
+  }, [debouncedSearchQuery, posthog, totalQuestions]);
 
   // Track filter changes
   useEffect(() => {
     if (selectedType !== "All Types") {
       posthog?.capture("explore_filter_type", {
         filter_type: selectedType,
-        results_count: filteredQuestions.length,
+        results_count: totalQuestions,
       });
     }
-  }, [selectedType, filteredQuestions.length, posthog]);
+  }, [selectedType, posthog, totalQuestions]);
 
   const handleQuestionClick = (question: Question) => {
     // Track click
@@ -225,10 +219,10 @@ export default function ExplorePage() {
     <>
       {/* Structured Data for SEO & LLM Indexing */}
       <ExploreStructuredData
-        questions={filteredQuestions}
+        questions={questions}
         currentPage={currentPage}
         totalPages={totalPages}
-        totalQuestions={questions.length}
+        totalQuestions={totalQuestions}
       />
 
       <Header />
@@ -267,7 +261,7 @@ export default function ExplorePage() {
             Product Manager Interview Questions
           </h1>
           <p className="text-muted-foreground max-w-3xl text-lg">
-            Browse {questions.length.toLocaleString()}+ real interview questions
+            Browse {totalQuestions.toLocaleString()} real interview questions
             from Google, Meta, Amazon, and 100+ top companies. Practice Product
             Sense, Behavioral, Execution, and Strategy questions with AI
             coaching.
@@ -302,9 +296,7 @@ export default function ExplorePage() {
                     <SelectItem value="Product Sense">Product Sense</SelectItem>
                     <SelectItem value="Execution">Execution</SelectItem>
                     <SelectItem value="Behavioral">Behavioral</SelectItem>
-                    <SelectItem value="Product Strategy">
-                      Product Strategy
-                    </SelectItem>
+                    <SelectItem value="Strategy">Strategy</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -461,8 +453,7 @@ export default function ExplorePage() {
 
       {/* Live region for accessibility */}
       <div role="status" aria-live="polite" className="sr-only">
-        Showing {paginatedQuestions.length} of {filteredQuestions.length}{" "}
-        questions
+        Showing {paginatedQuestions.length} of {totalQuestions} questions
       </div>
     </>
   );

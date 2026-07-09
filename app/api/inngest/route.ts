@@ -7,6 +7,10 @@ import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
 import { generateFeedback } from "@/lib/inngest/functions/generate-feedback";
 import { updateUserInsights } from "@/lib/inngest/functions/update-user-insights";
+import {
+  deleteAccount,
+  recoverAccountDeletions,
+} from "@/lib/inngest/functions/delete-account";
 
 /**
  * Serve Inngest functions via Next.js API route
@@ -24,7 +28,9 @@ import { updateUserInsights } from "@/lib/inngest/functions/update-user-insights
 export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [
-    generateFeedback,    // P1-003: Feedback generation worker
-    updateUserInsights,  // P2-003: User insights aggregation
+    generateFeedback, // P1-003: Feedback generation worker
+    updateUserInsights, // P2-003: User insights aggregation
+    deleteAccount, // Durable cross-provider account deletion
+    recoverAccountDeletions, // Requeues persisted outbox/tombstone work
   ],
 });

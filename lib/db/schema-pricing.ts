@@ -414,6 +414,7 @@ export const stripeEventLog = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     stripeEventId: text("stripe_event_id").unique().notNull(),
     eventType: text("event_type").notNull(),
+    subjectFingerprint: text("subject_fingerprint"),
     payload: text("payload").notNull(), // JSON stringified
     status: text("status").notNull().default("pending"), // 'pending', 'processed', 'failed'
     attempts: integer("attempts").default(0).notNull(),
@@ -436,6 +437,9 @@ export const stripeEventLog = pgTable(
     ),
     statusIdx: index("stripe_event_log_status_idx").on(table.status),
     eventTypeIdx: index("stripe_event_log_event_type_idx").on(table.eventType),
+    subjectFingerprintIdx: index("stripe_event_log_subject_fingerprint_idx").on(
+      table.subjectFingerprint
+    ),
     createdAtIdx: index("stripe_event_log_created_at_idx").on(table.createdAt),
   })
 );

@@ -171,10 +171,10 @@ curl -X GET ${BASE_URL}/api/feedback/550e8400-e29b-41d4-a716-446655440000 \
 
 ```bash
 curl -X POST ${BASE_URL}/api/livekit/token \
+  -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "roomName": "interview-1699999999-abc123",
-    "participantName": "John Doe"
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000"
   }'
 ```
 

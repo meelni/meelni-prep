@@ -11,8 +11,12 @@ configuration, not source-owned constants.
   `startInterviewSessionWorkflow`, creates the room, explicitly dispatches the
   interview agent, and returns the participant token.
 - Public demos start through `POST /api/livekit/demo-token`.
-- The generic `POST /api/livekit/token` endpoint is compatibility-only and must
-  not be used to start paid/full interview sessions.
+- `POST /api/livekit/token` is an authenticated reconnect-token endpoint. It
+  accepts only a session ID and derives the LiveKit room, participant identity,
+  and participant name from the authenticated user and stored session. Token
+  requests use an exact, database-backed limit of ten accepted attempts in the
+  trailing 60 seconds per authenticated user and return `429` with
+  `Retry-After` when exceeded. Shared-store failures fail closed with `503`.
 - Python workers live under `agent/interview` and `agent/demo`.
 - Shared room metadata and transcript event contracts live in `packages/agent`.
 - LiveKit room/token/dispatch helpers live in `packages/integrations`.
@@ -68,6 +72,14 @@ npm run typecheck
   transcript turns, and feedback.
 - Treat room creation, dispatch, and token minting as one start operation for
   full interviews; failed dispatch should not consume a usable session.
+- Treat an authenticated, owned, active `voice_video` session created through
+  the credit-gated start workflow as the reconnect entitlement. Do not recheck
+  remaining credit balance after the start credit was consumed. Reject absent,
+  cross-user, completed, failed, ended, expired, text-only, and roomless
+  sessions before issuing a short-lived reconnect token.
+- Consume the shared reconnect budget before reading the session or signing a
+  token. The database function accepts only the authenticated user UUID; callers
+  cannot choose a bucket, limit, window, or clock.
 - Publish transcript events over the `transcript` data topic using the contract
   in `docs/contracts/livekit-room-metadata.md`.
 

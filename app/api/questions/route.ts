@@ -11,9 +11,10 @@
  * @query {number} limit Optional - Maximum number of results per page (1-500, default: 100)
  * @query {number} offset Optional - Number of results to skip (default: 0)
  * @query {boolean} activeOnly Optional - Return only active questions (default: false)
+ * @query {string} search Optional - Search question text or company
  *
  * @response {Object} response - Questions data with pagination
- * @response.questions {Array<Object>} - Array of question objects
+ * @response.questions {Array<Object>} - Questions with canonical round labels
  * @response.pagination {Object} - Pagination metadata
  * @response.pagination.total {number} - Total number of questions
  * @response.pagination.limit {number} - Limit parameter
@@ -34,7 +35,7 @@
  *       "id": "550e8400-e29b-41d4-a716-446655440000",
  *       "company": "Google",
  *       "questionText": "How would you improve Google Maps?",
- *       "questionType": "product_sense",
+ *       "questionType": "Product Sense",
  *       "isActive": true,
  *       "createdAt": "2025-11-06T10:00:00Z",
  *       "updatedAt": "2025-11-06T10:00:00Z"
@@ -52,15 +53,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getQuestions } from "@/lib/db/questions";
+import { normalizeQuestionRound, QUESTION_ROUND_TYPES } from "@meelni/core";
 
-const VALID_QUESTION_TYPES = [
-  "behavioral",
-  "product_sense",
-  "execution",
-  "strategy",
-] as const;
-
-type QuestionType = (typeof VALID_QUESTION_TYPES)[number];
+const MAX_QUESTION_OFFSET = 100_000;
 
 export async function GET(req: NextRequest) {
   try {
@@ -70,10 +65,18 @@ export async function GET(req: NextRequest) {
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
     const activeOnlyParam = searchParams.get("activeOnly");
+    const search = searchParams.get("search")?.trim() || undefined;
 
-    const limit = limitParam ? parseInt(limitParam, 10) : 100;
-    const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
+    const limit = parseIntegerParam(limitParam, 100);
+    const offset = parseIntegerParam(offsetParam, 0);
     const activeOnly = activeOnlyParam === "true";
+
+    if (limit === null || offset === null) {
+      return NextResponse.json(
+        { error: "Limit and offset must be whole numbers" },
+        { status: 400 }
+      );
+    }
 
     // Validate limit
     if (limit < 1 || limit > 500) {
@@ -84,53 +87,44 @@ export async function GET(req: NextRequest) {
     }
 
     // Validate offset
-    if (offset < 0) {
+    if (offset < 0 || offset > MAX_QUESTION_OFFSET) {
       return NextResponse.json(
-        { error: "Offset must be non-negative" },
+        { error: `Offset must be between 0 and ${MAX_QUESTION_OFFSET}` },
         { status: 400 }
       );
     }
 
     // Validate question type if provided
-    if (type && !VALID_QUESTION_TYPES.includes(type as QuestionType)) {
+    const roundType = type ? normalizeQuestionRound(type) : null;
+    if (type && !roundType) {
       return NextResponse.json(
         {
           error: "Invalid question type",
-          validTypes: VALID_QUESTION_TYPES,
+          validTypes: QUESTION_ROUND_TYPES,
         },
         { status: 400 }
       );
     }
 
     // Get questions with pagination
-    const { questions, total } = await getQuestions(
-      type as
-        | "behavioral"
-        | "product_sense"
-        | "execution"
-        | "strategy"
-        | undefined,
+    const { questions, total } = await getQuestions({
+      roundType: roundType ?? undefined,
+      activeOnly,
       limit,
-      offset
-    );
-
-    // Filter for active only if requested
-    const filteredQuestions = activeOnly
-      ? questions.filter((q) => q.isActive)
-      : questions;
-
-    const filteredTotal = activeOnly ? filteredQuestions.length : total;
+      offset,
+      search,
+    });
 
     // Pagination metadata
     const pagination = {
-      total: filteredTotal,
+      total,
       limit,
       offset,
-      hasMore: offset + filteredQuestions.length < filteredTotal,
+      hasMore: offset + questions.length < total,
     };
 
     return NextResponse.json({
-      questions: filteredQuestions,
+      questions,
       pagination,
     });
   } catch (error) {
@@ -143,4 +137,15 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export function parseIntegerParam(
+  value: string | null,
+  fallback: number
+): number | null {
+  if (value === null) return fallback;
+  if (!/^\d+$/.test(value)) return null;
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }

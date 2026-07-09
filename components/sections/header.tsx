@@ -85,50 +85,52 @@ export function Header() {
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden items-center gap-8 lg:flex">
-            {navLinks.map((link, index) => {
-              const isActive = activeSection === link.href.slice(1);
-              const isExternalRoute = link.href.startsWith("/");
-              return (
-                <motion.div
-                  key={link.name}
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: 0.1 + index * 0.1 }}
-                >
-                  {isExternalRoute ? (
-                    <Link
-                      href={link.href}
-                      className="group text-muted-foreground hover:text-foreground relative text-sm font-medium transition-colors duration-200"
-                    >
-                      {link.name}
+          {reactivationEnabled && (
+            <nav className="hidden items-center gap-8 lg:flex">
+              {navLinks.map((link, index) => {
+                const isActive = activeSection === link.href.slice(1);
+                const isExternalRoute = link.href.startsWith("/");
+                return (
+                  <motion.div
+                    key={link.name}
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 0.1 + index * 0.1 }}
+                  >
+                    {isExternalRoute ? (
+                      <Link
+                        href={link.href}
+                        className="group text-muted-foreground hover:text-foreground relative text-sm font-medium transition-colors duration-200"
+                      >
+                        {link.name}
 
-                      {/* Underline animation */}
-                      <span className="bg-primary absolute -bottom-1 left-1/2 h-0.5 w-0 -translate-x-1/2 transition-all duration-300 ease-out group-hover:w-full" />
-                    </Link>
-                  ) : (
-                    <a
-                      href={link.href}
-                      onClick={(e) => handleSmoothScroll(e, link.href)}
-                      className="group text-muted-foreground hover:text-foreground relative text-sm font-medium transition-colors duration-200"
-                    >
-                      {link.name}
+                        {/* Underline animation */}
+                        <span className="bg-primary absolute -bottom-1 left-1/2 h-0.5 w-0 -translate-x-1/2 transition-all duration-300 ease-out group-hover:w-full" />
+                      </Link>
+                    ) : (
+                      <a
+                        href={link.href}
+                        onClick={(e) => handleSmoothScroll(e, link.href)}
+                        className="group text-muted-foreground hover:text-foreground relative text-sm font-medium transition-colors duration-200"
+                      >
+                        {link.name}
 
-                      {/* Underline animation */}
-                      <span
-                        className={cn(
-                          "bg-primary absolute -bottom-1 left-1/2 h-0.5 transition-all duration-300 ease-out",
-                          isActive
-                            ? "w-full -translate-x-1/2"
-                            : "w-0 -translate-x-1/2 group-hover:w-full"
-                        )}
-                      />
-                    </a>
-                  )}
-                </motion.div>
-              );
-            })}
-          </nav>
+                        {/* Underline animation */}
+                        <span
+                          className={cn(
+                            "bg-primary absolute -bottom-1 left-1/2 h-0.5 transition-all duration-300 ease-out",
+                            isActive
+                              ? "w-full -translate-x-1/2"
+                              : "w-0 -translate-x-1/2 group-hover:w-full"
+                          )}
+                        />
+                      </a>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </nav>
+          )}
 
           {reactivationEnabled && (
             <div className="hidden items-center gap-2 lg:flex">

@@ -13,7 +13,7 @@
  * @response.id {string} - Question UUID
  * @response.company {string|null} - Associated company name (if applicable)
  * @response.questionText {string} - The question text
- * @response.questionType {string} - Question type (behavioral | product_sense | execution | strategy)
+ * @response.questionType {string} - Canonical question label
  *
  * @throws {400} Bad Request - Invalid question type parameter
  * @throws {404} Not Found - No active questions found matching the filter
@@ -28,7 +28,7 @@
  *   "id": "550e8400-e29b-41d4-a716-446655440000",
  *   "company": "Google",
  *   "questionText": "How would you improve Google Maps for blind users?",
- *   "questionType": "product_sense"
+ *   "questionType": "Product Sense"
  * }
  *
  * @example
@@ -40,26 +40,17 @@
  *   "id": "650e8400-e29b-41d4-a716-446655440001",
  *   "company": null,
  *   "questionText": "Tell me about a time you dealt with ambiguity.",
- *   "questionType": "behavioral"
+ *   "questionType": "Behavioral"
  * }
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getRandomQuestion, getRandomRecentQuestion } from "@/lib/db/questions";
-
-// Map user-friendly types to database question types
-const QUESTION_TYPE_MAP: Record<string, string> = {
-  behavioral: "Behavioral",
-  product_sense: "Product Sense",
-  product_design: "Product design/strategy",
-  execution: "Execution",
-  strategy: "Product Strategy",
-  ab_testing: "A/B Testing",
-  estimation: "Estimation",
-  pricing: "Pricing",
-} as const;
-
-const VALID_QUESTION_TYPES = Object.keys(QUESTION_TYPE_MAP);
+import {
+  normalizeQuestionRound,
+  QUESTION_ROUND_TYPES,
+  questionTypeStorageAliasesForRound,
+} from "@meelni/core";
 
 export async function GET(req: NextRequest) {
   try {
@@ -69,20 +60,20 @@ export async function GET(req: NextRequest) {
     const recent = searchParams.get("recent"); // Optional: "true" or number of days
 
     // Validate question type if provided
-    if (type) {
-      if (!VALID_QUESTION_TYPES.includes(type)) {
-        return NextResponse.json(
-          {
-            error: "Invalid question type",
-            validTypes: VALID_QUESTION_TYPES,
-          },
-          { status: 400 }
-        );
-      }
+    const roundType = type ? normalizeQuestionRound(type) : null;
+    if (type && !roundType) {
+      return NextResponse.json(
+        {
+          error: "Invalid question type",
+          validTypes: QUESTION_ROUND_TYPES,
+        },
+        { status: 400 }
+      );
     }
 
-    // Map the type to database format
-    const dbType = type ? QUESTION_TYPE_MAP[type] : undefined;
+    const dbTypes = roundType
+      ? [...questionTypeStorageAliasesForRound(roundType)]
+      : undefined;
 
     // Get random question (recent or all)
     let question;
@@ -91,13 +82,16 @@ export async function GET(req: NextRequest) {
       const days = recent === "true" ? 365 : parseInt(recent, 10);
       if (isNaN(days) || days < 1) {
         return NextResponse.json(
-          { error: "Invalid 'recent' parameter. Must be 'true' or a positive number of days." },
+          {
+            error:
+              "Invalid 'recent' parameter. Must be 'true' or a positive number of days.",
+          },
           { status: 400 }
         );
       }
-      question = await getRandomRecentQuestion(days, dbType);
+      question = await getRandomRecentQuestion(days, dbTypes);
     } else {
-      question = await getRandomQuestion(dbType);
+      question = await getRandomQuestion(dbTypes);
     }
 
     if (!question) {

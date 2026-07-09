@@ -31,6 +31,10 @@ import {
   type SheetRow,
 } from "@/lib/google-sheets-client";
 import { fetchSheetViaAPI } from "@/lib/google-sheets-api";
+import {
+  canonicalQuestionTypeLabel,
+  type CanonicalQuestionType,
+} from "@meelni/core";
 
 // Question type mapping from Google Sheet to database
 // Maps various input formats to canonical database types
@@ -320,23 +324,23 @@ const QUESTION_TYPE_MAPPING: Record<string, string> = {
   "Execution and metrics ": "Execution",
 };
 
-// Valid question types in our database
-const VALID_QUESTION_TYPES = new Set([
-  "A/B Testing",
-  "Product design/strategy",
+type QuestionStorageType =
+  | Exclude<CanonicalQuestionType, "Strategy">
+  | "Product Strategy";
+
+// Valid provider-facing labels while the historical database constraint remains.
+const VALID_QUESTION_TYPES = new Set<QuestionStorageType>([
   "Behavioral",
   "Execution",
   "Product Sense",
-  "Pricing",
-  "Estimation",
   "Product Strategy",
 ]);
 
-function mapQuestionType(rawQuestionType: string): string | null {
+function mapQuestionType(rawQuestionType: string): QuestionStorageType | null {
   const trimmed = rawQuestionType.trim();
   const mapped = QUESTION_TYPE_MAPPING[trimmed];
   if (mapped) {
-    return mapped;
+    return toQuestionStorageType(canonicalQuestionTypeLabel(mapped));
   }
 
   const normalized = trimmed.toLowerCase();
@@ -358,11 +362,11 @@ function mapQuestionType(rawQuestionType: string): string | null {
     normalized.includes("ab test") ||
     normalized.includes("experiment")
   ) {
-    return "A/B Testing";
+    return "Execution";
   }
 
   if (normalized.includes("pricing") || normalized.includes("monetiz")) {
-    return "Pricing";
+    return "Execution";
   }
 
   if (
@@ -370,7 +374,7 @@ function mapQuestionType(rawQuestionType: string): string | null {
     normalized.includes("guesstimate") ||
     normalized.includes("market sizing")
   ) {
-    return "Estimation";
+    return "Execution";
   }
 
   if (
@@ -406,7 +410,7 @@ function mapQuestionType(rawQuestionType: string): string | null {
     normalized.includes("technical") ||
     normalized.includes("system")
   ) {
-    return "Product design/strategy";
+    return "Product Sense";
   }
 
   if (
@@ -446,6 +450,41 @@ export interface SyncResult {
   errors: number;
   errorMessages?: string[];
   timestamp: string;
+}
+
+const MIN_SAFE_VALIDATION_RATIO = 0.7;
+const MAX_SAFE_DEACTIVATION_RATIO = 0.25;
+
+export function getQuestionSyncSafetyError({
+  activeExistingRows,
+  deactivationRows,
+  sourceRows,
+  validRows,
+}: {
+  activeExistingRows: number;
+  deactivationRows: number;
+  sourceRows: number;
+  validRows: number;
+}): string | null {
+  if (sourceRows > 0 && validRows === 0) {
+    return "Question sync aborted: no source rows passed validation.";
+  }
+
+  const validationRatio = sourceRows > 0 ? validRows / sourceRows : 1;
+  if (validationRatio < MIN_SAFE_VALIDATION_RATIO) {
+    return `Question sync aborted: only ${(validationRatio * 100).toFixed(1)}% of source rows passed validation.`;
+  }
+
+  const deactivationRatio =
+    activeExistingRows > 0 ? deactivationRows / activeExistingRows : 0;
+  if (
+    activeExistingRows > 0 &&
+    deactivationRatio > MAX_SAFE_DEACTIVATION_RATIO
+  ) {
+    return `Question sync aborted: proposed deactivation affects ${(deactivationRatio * 100).toFixed(1)}% of active questions.`;
+  }
+
+  return null;
 }
 
 /**
@@ -548,6 +587,16 @@ async function syncQuestions(options: SyncOptions): Promise<SyncResult> {
         q.isActive && !sheetQuestionTexts.has(normalizeText(q.questionText))
     );
 
+    const safetyError = getQuestionSyncSafetyError({
+      activeExistingRows: existingQuestions.filter((q) => q.isActive).length,
+      deactivationRows: questionsToDeactivate.length,
+      sourceRows: sheetRows.length,
+      validRows: validQuestions.length,
+    });
+    if (safetyError) {
+      throw new Error(safetyError);
+    }
+
     stats.newQuestions = newQuestions.length;
     stats.deactivatedQuestions = questionsToDeactivate.length;
 
@@ -602,7 +651,7 @@ async function syncQuestions(options: SyncOptions): Promise<SyncResult> {
 interface ProcessedQuestion {
   company: string | null;
   questionText: string;
-  questionType: string;
+  questionType: QuestionStorageType;
   askedAt: Date | null;
 }
 
@@ -912,8 +961,8 @@ async function main() {
   const options = parseArgs();
 
   try {
-    await syncQuestions(options);
-    process.exit(0);
+    const result = await syncQuestions(options);
+    process.exit(result.success ? 0 : 1);
   } catch (error) {
     console.error("\n❌ Fatal error:", error);
     process.exit(1);
@@ -925,4 +974,10 @@ if (require.main === module) {
   main();
 }
 
-export { syncQuestions };
+export { mapQuestionType, syncQuestions };
+
+function toQuestionStorageType(
+  questionType: CanonicalQuestionType | null
+): QuestionStorageType | null {
+  return questionType === "Strategy" ? "Product Strategy" : questionType;
+}

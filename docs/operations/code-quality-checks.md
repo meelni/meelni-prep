@@ -17,7 +17,7 @@ to the right owner.
 
 ## Prerequisites
 
-- `quality:security` runs Semgrep through `uvx`, which is provided by the
+- `quality:security` runs pinned Semgrep `1.168.0` through `uvx`, which is provided by the
   Python `uv` toolchain. Install `uv` before running the aggregate checks:
   `curl -LsSf https://astral.sh/uv/install.sh | sh`. If `uvx` is missing,
   `npm run quality:security` exits with an actionable install message.

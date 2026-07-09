@@ -12,7 +12,7 @@ const sampleQuestions = [
     company: "Google",
     questionText:
       "Design a product for people who want to learn a new language.",
-    questionType: "Product design/strategy",
+    questionType: "Product Sense",
     difficulty: "Medium",
   },
   {
@@ -31,13 +31,13 @@ const sampleQuestions = [
     company: "Spotify",
     questionText:
       "How would you test whether adding a karaoke feature increases user engagement?",
-    questionType: "A/B Testing",
+    questionType: "Execution",
     difficulty: "Medium",
   },
   {
     company: "Uber",
     questionText: "Design a feature to reduce rider cancellations.",
-    questionType: "Product design/strategy",
+    questionType: "Product Sense",
     difficulty: "Medium",
   },
   {
@@ -57,13 +57,13 @@ const sampleQuestions = [
   {
     company: "Microsoft",
     questionText: "How many searches happen on Bing per day?",
-    questionType: "Estimation",
+    questionType: "Execution",
     difficulty: "Medium",
   },
   {
     company: "Apple",
     questionText: "How would you price a new Apple subscription service?",
-    questionType: "Pricing",
+    questionType: "Execution",
     difficulty: "Hard",
   },
   {
@@ -83,14 +83,14 @@ const sampleQuestions = [
   {
     company: "Slack",
     questionText: "Design a feature to help remote teams feel more connected.",
-    questionType: "Product design/strategy",
+    questionType: "Product Sense",
     difficulty: "Medium",
   },
   {
     company: "DoorDash",
     questionText:
       "How would you test two different commission structures for restaurant partners?",
-    questionType: "A/B Testing",
+    questionType: "Execution",
     difficulty: "Hard",
   },
   {
@@ -110,20 +110,20 @@ const sampleQuestions = [
   {
     company: "Dropbox",
     questionText: "How many files are stored in Dropbox worldwide?",
-    questionType: "Estimation",
+    questionType: "Execution",
     difficulty: "Medium",
   },
   {
     company: "Instagram",
     questionText: "How would you monetize Instagram Reels?",
-    questionType: "Pricing",
+    questionType: "Execution",
     difficulty: "Hard",
   },
   {
     company: null,
     questionText:
       "Design a product for elderly people to stay connected with their families.",
-    questionType: "Product design/strategy",
+    questionType: "Product Sense",
     difficulty: "Medium",
   },
   {

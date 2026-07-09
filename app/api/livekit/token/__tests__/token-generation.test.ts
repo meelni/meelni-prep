@@ -1,79 +1,146 @@
-/**
- * Unit tests for LiveKit token generation.
- *
- * Full authenticated interview credit enforcement lives in /api/session/start.
- */
-
 import { NextRequest } from "next/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  createClient: vi.fn(),
+  getLiveKitEnvironment: vi.fn(),
+  joinInterviewSessionWorkflow: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: mocks.createClient,
+}));
+
+vi.mock("@/lib/internal/integrations", () => ({
+  getLiveKitEnvironment: mocks.getLiveKitEnvironment,
+}));
+
+vi.mock("@/lib/workflows/join-interview-session", () => ({
+  joinInterviewSessionWorkflow: mocks.joinInterviewSessionWorkflow,
+}));
 
 import { POST } from "../route";
 
-jest.mock("livekit-server-sdk", () => ({
-  AccessToken: jest.fn().mockImplementation(() => ({
-    addGrant: jest.fn(),
-    toJwt: jest.fn().mockResolvedValue("mock-token"),
-  })),
-  RoomServiceClient: jest.fn().mockImplementation(() => ({
-    createRoom: jest.fn().mockResolvedValue({}),
-    updateRoomMetadata: jest.fn().mockResolvedValue({}),
-  })),
-}));
+const sessionId = "550e8400-e29b-41d4-a716-446655440000";
+const livekitEnv = {
+  apiKey: "test-key",
+  apiSecret: "test-secret",
+  url: "wss://test.livekit.cloud",
+};
 
 describe("POST /api/livekit/token", () => {
-  const validRequestBody = {
-    roomName: "test-room",
-    participantName: "Test User",
-  };
-
   beforeEach(() => {
-    jest.clearAllMocks();
-
-    process.env.LIVEKIT_API_KEY = "test-api-key";
-    process.env.LIVEKIT_API_SECRET = "test-api-secret";
-    process.env.NEXT_PUBLIC_LIVEKIT_URL = "wss://test.livekit.cloud";
+    vi.clearAllMocks();
+    mocks.getLiveKitEnvironment.mockReturnValue({
+      ok: true,
+      provider: "livekit",
+      data: livekitEnv,
+    });
   });
 
-  it("allows token generation without billing checks", async () => {
-    const request = new NextRequest("http://localhost:3000/api/livekit/token", {
-      method: "POST",
-      body: JSON.stringify(validRequestBody),
+  it("rejects unauthenticated token requests before reading session data", async () => {
+    mocks.createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: null,
+        }),
+      },
     });
 
-    const response = await POST(request);
-    const data = await response.json();
+    const response = await POST(createRequest({ sessionId }));
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+    expect(mocks.joinInterviewSessionWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("passes only the authenticated user and session ID to authorization", async () => {
+    mocks.createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: { id: "authenticated-user", email: "owner@example.com" },
+          },
+          error: null,
+        }),
+      },
+    });
+    mocks.joinInterviewSessionWorkflow.mockResolvedValue({
+      ok: true,
+      body: {
+        token: "signed-token",
+        url: livekitEnv.url,
+        roomName: "server-owned-room",
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        sessionId,
+        roomName: "attacker-room",
+        participantName: "attacker",
+        metadata: { session_id: "attacker-session" },
+      })
+    );
 
     expect(response.status).toBe(200);
-    expect(data.token).toBe("mock-token");
-    expect(data.url).toBe("wss://test.livekit.cloud");
-  });
-
-  it("returns 400 when roomName is missing", async () => {
-    const request = new NextRequest("http://localhost:3000/api/livekit/token", {
-      method: "POST",
-      body: JSON.stringify({ participantName: "Test User" }),
-    });
-
-    const response = await POST(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(data).toEqual({
-      error: "Missing roomName or participantName",
+    expect(mocks.joinInterviewSessionWorkflow).toHaveBeenCalledWith({
+      user: { id: "authenticated-user" },
+      sessionId,
+      env: livekitEnv,
     });
   });
 
-  it("returns 400 when participantName is missing", async () => {
-    const request = new NextRequest("http://localhost:3000/api/livekit/token", {
-      method: "POST",
-      body: JSON.stringify({ roomName: "test-room" }),
+  it("preserves workflow authorization failures", async () => {
+    mocks.createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "authenticated-user", email: null } },
+          error: null,
+        }),
+      },
+    });
+    mocks.joinInterviewSessionWorkflow.mockResolvedValue({
+      ok: false,
+      status: 404,
+      body: { error: "session_not_found" },
     });
 
-    const response = await POST(request);
-    const data = await response.json();
+    const response = await POST(createRequest({ sessionId }));
 
-    expect(response.status).toBe(400);
-    expect(data).toEqual({
-      error: "Missing roomName or participantName",
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "session_not_found" });
+  });
+
+  it("returns reconnect rate limits with a Retry-After header", async () => {
+    mocks.createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "authenticated-user", email: null } },
+          error: null,
+        }),
+      },
     });
+    mocks.joinInterviewSessionWorkflow.mockResolvedValue({
+      ok: false,
+      status: 429,
+      body: { error: "rate_limit_exceeded" },
+      retryAfterSeconds: 42,
+    });
+
+    const response = await POST(createRequest({ sessionId }));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("42");
+    expect(await response.json()).toEqual({ error: "rate_limit_exceeded" });
   });
 });
+
+function createRequest(body: Record<string, unknown>): NextRequest {
+  return new NextRequest("http://localhost:3000/api/livekit/token", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}

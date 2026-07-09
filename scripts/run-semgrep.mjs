@@ -22,7 +22,16 @@ if (uvxCheck.error) {
 
 const semgrep = spawnSync(
   "uvx",
-  ["semgrep", "scan", "--config", ".semgrep.yml", "--error", "--metrics=off"],
+  [
+    "--from",
+    "semgrep==1.168.0",
+    "semgrep",
+    "scan",
+    "--config",
+    ".semgrep.yml",
+    "--error",
+    "--metrics=off",
+  ],
   { stdio: "inherit" }
 );
 
