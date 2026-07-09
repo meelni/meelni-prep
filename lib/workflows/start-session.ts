@@ -34,6 +34,11 @@ import {
   createLocalDevCreditLedgerService,
   isLocalDevCreditBypassEnabled,
 } from "@/lib/billing/local-dev-bypass";
+import {
+  transitionInterviewSessionWorkflow,
+  type TransitionInterviewSessionInput,
+  type TransitionInterviewSessionResult,
+} from "./transition-interview-session";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   behavioral: [...questionTypeStorageAliasesForRound("behavioral")],
@@ -84,6 +89,9 @@ export interface StartInterviewSessionDeps {
   consumeReservation(input: CompleteReservationInput): Promise<unknown>;
   releaseReservation(input: CompleteReservationInput): Promise<unknown>;
   livekitProvider: LiveKitInterviewProvider;
+  transitionLifecycle(
+    input: TransitionInterviewSessionInput
+  ): Promise<TransitionInterviewSessionResult>;
   recordQuestionUsage(sessionId: string, questionId: string): Promise<void>;
   upsertUser(input: {
     id: string;
@@ -163,7 +171,9 @@ export async function startInterviewSessionWorkflow(
     return reservation;
   }
 
-  let session: Awaited<ReturnType<StartInterviewSessionDeps["createSession"]>>;
+  let session:
+    | Awaited<ReturnType<StartInterviewSessionDeps["createSession"]>>
+    | undefined;
 
   try {
     session = await deps.createSession({
@@ -179,8 +189,21 @@ export async function startInterviewSessionWorkflow(
     if (question.value) {
       await deps.recordQuestionUsage(session.id, question.value.id);
     }
+
+    await requireLifecycleTransition(
+      { sessionId: session.id, to: "connecting" },
+      deps
+    );
   } catch (error) {
-    await releaseInterviewCredit(reservationKey, deps);
+    if (session) {
+      await terminalizeProviderFailureAndRelease(
+        session.id,
+        reservationKey,
+        deps
+      );
+    } else {
+      await releaseInterviewCredit(reservationKey, deps);
+    }
     throw error;
   }
 
@@ -211,7 +234,11 @@ export async function startInterviewSessionWorkflow(
 
   if (!livekitResult.ok) {
     console.error("LiveKit interview start error:", livekitResult.error);
-    await releaseInterviewCredit(reservationKey, deps);
+    await terminalizeProviderFailureAndRelease(
+      session.id,
+      reservationKey,
+      deps
+    );
     return {
       ok: false,
       status: livekitResult.error.retryable ? 503 : 500,
@@ -226,6 +253,7 @@ export async function startInterviewSessionWorkflow(
     });
   } catch (error) {
     console.error("Credit consume error:", getErrorMessage(error));
+    await terminalizeProviderFailure(session.id, deps);
     return {
       ok: false,
       status: 503,
@@ -273,9 +301,46 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
     consumeReservation: creditLedger.consumeReservation,
     releaseReservation: creditLedger.releaseReservation,
     livekitProvider: createLiveKitInterviewProvider(),
+    transitionLifecycle: transitionInterviewSessionWorkflow,
     recordQuestionUsage,
     upsertUser,
   };
+}
+
+async function requireLifecycleTransition(
+  input: TransitionInterviewSessionInput,
+  deps: StartInterviewSessionDeps
+): Promise<void> {
+  const result = await deps.transitionLifecycle(input);
+  if (!result.ok) {
+    throw new Error(`session_lifecycle_${result.disposition}`);
+  }
+}
+
+async function terminalizeProviderFailure(
+  sessionId: string,
+  deps: StartInterviewSessionDeps
+): Promise<void> {
+  await requireLifecycleTransition(
+    { sessionId, to: "ending", terminalReason: "provider_failure" },
+    deps
+  );
+  await requireLifecycleTransition(
+    { sessionId, to: "failed", terminalReason: "provider_failure" },
+    deps
+  );
+}
+
+async function terminalizeProviderFailureAndRelease(
+  sessionId: string,
+  reservationKey: string,
+  deps: StartInterviewSessionDeps
+): Promise<void> {
+  try {
+    await terminalizeProviderFailure(sessionId, deps);
+  } finally {
+    await releaseInterviewCredit(reservationKey, deps);
+  }
 }
 
 type ParsedStartInterviewBody = {

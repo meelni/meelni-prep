@@ -1,6 +1,7 @@
 """Runtime defaults and config helpers for the interview agent."""
 
 from copy import deepcopy
+import math
 from typing import Any, Dict
 
 DEFAULT_INTERVIEW_RUNTIME_CONFIG: Dict[str, Any] = {
@@ -11,6 +12,7 @@ DEFAULT_INTERVIEW_RUNTIME_CONFIG: Dict[str, Any] = {
     "volume": 1.0,
     "duration": 30,
     "feedback_mode": "end_only",
+    "hintMode": "off",
     "persona": None,
     "stt_model": "deepgram/nova-3",
     "llm_model": "openai/gpt-4.1-mini",
@@ -37,13 +39,26 @@ def normalize_runtime_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
         if not isinstance(normalized.get(key), str) or not normalized[key].strip():
             normalized[key] = DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
 
+    if normalized["feedback_mode"] not in {"real_time", "end_only", "silent"}:
+        normalized["feedback_mode"] = DEFAULT_INTERVIEW_RUNTIME_CONFIG["feedback_mode"]
+    if normalized.get("hintMode") not in {"off", "gentle", "coach"}:
+        normalized["hintMode"] = DEFAULT_INTERVIEW_RUNTIME_CONFIG["hintMode"]
+    if not isinstance(normalized.get("emotion"), str) or not normalized["emotion"].strip():
+        normalized["emotion"] = DEFAULT_INTERVIEW_RUNTIME_CONFIG["emotion"]
+    if normalized.get("persona") is not None and not isinstance(normalized["persona"], str):
+        normalized["persona"] = DEFAULT_INTERVIEW_RUNTIME_CONFIG["persona"]
+
     for key, allowed_values in ALLOWED_RUNTIME_MODELS.items():
         if normalized[key] not in allowed_values:
             normalized[key] = DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
 
     for key in ("speed", "volume", "duration"):
         value = normalized.get(key)
-        if not isinstance(value, (int, float)):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+        ):
             normalized[key] = DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
 
     return normalized

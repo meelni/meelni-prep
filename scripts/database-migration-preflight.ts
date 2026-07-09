@@ -12,6 +12,7 @@ import {
   getDatabasePreMigrationContract,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
   RELAUNCH_SCHEMA_FINGERPRINT,
+  SESSION_LIFECYCLE_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
 const envFile = process.env.MEELNI_ENV_FILE || ".env.local";
@@ -70,9 +71,9 @@ async function run(url: string) {
         FROM drizzle.__drizzle_migrations
         ORDER BY created_at
       `;
-      if (![2, 6].includes(migrations.length)) {
+      if (![2, 6, 7].includes(migrations.length)) {
         throw new Error(
-          `Expected 2 pre-reconciliation or 6 reconciled migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, or 7 lifecycle migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -205,7 +206,11 @@ async function run(url: string) {
           "Data violates reconciliation preconditions; inspect redacted counts before migration"
         );
       }
-      let startingContract: "clean_0001" | "legacy_relaunch" | "reconciled";
+      let startingContract:
+        | "clean_0001"
+        | "legacy_relaunch"
+        | "relaunch_reconciled"
+        | "session_lifecycle";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -221,10 +226,12 @@ async function run(url: string) {
             "Database does not match an accepted pre-migration schema contract"
           );
         }
+      } else if (migrations.length === 6) {
+        startingContract = "relaunch_reconciled";
       } else {
-        startingContract = "reconciled";
+        startingContract = "session_lifecycle";
       }
-      if (migrations.length === 6) {
+      if (migrations.length >= 6) {
         if (
           summary.tables !== 23 ||
           summary.rls_tables !== 23 ||
@@ -238,20 +245,89 @@ async function run(url: string) {
         const schemaFingerprint = databaseSchemaFingerprint(
           await getDatabaseSchemaContract(tx)
         );
-        if (schemaFingerprint !== RELAUNCH_SCHEMA_FINGERPRINT) {
+        const expectedFingerprint =
+          migrations.length === 6
+            ? RELAUNCH_SCHEMA_FINGERPRINT
+            : SESSION_LIFECYCLE_SCHEMA_FINGERPRINT;
+        if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             "Reconciled database differs from the exact launch schema contract"
           );
         }
       }
 
+      const lifecycleBackfillCounts =
+        migrations.length === 6
+          ? await tx<
+              {
+                legacy_status: string;
+                lifecycle_state: string;
+                terminal_reason: string;
+                rows: number;
+              }[]
+            >`
+              SELECT legacy_status, lifecycle_state, terminal_reason,
+                count(*)::int AS rows
+              FROM (
+                SELECT status AS legacy_status,
+                  CASE
+                    WHEN status = 'error' THEN 'failed'
+                    WHEN status IN ('abandoned', 'too_short') THEN 'abandoned'
+                    WHEN status = 'completed' THEN 'completed'
+                    WHEN ended_at IS NOT NULL THEN 'abandoned'
+                    ELSE 'connecting'
+                  END AS lifecycle_state,
+                  CASE
+                    WHEN status = 'too_short' THEN 'insufficient_signal'
+                    WHEN status IN ('error', 'abandoned', 'completed')
+                      OR ended_at IS NOT NULL THEN 'legacy_unknown'
+                    ELSE 'none'
+                  END AS terminal_reason
+                FROM interview_session
+              ) preview
+              GROUP BY legacy_status, lifecycle_state, terminal_reason
+              ORDER BY legacy_status, lifecycle_state, terminal_reason
+            `
+          : migrations.length === 7
+            ? await tx<
+                {
+                  legacy_status: string;
+                  lifecycle_state: string;
+                  terminal_reason: string;
+                  rows: number;
+                }[]
+              >`
+                SELECT status AS legacy_status, lifecycle_state,
+                  COALESCE(terminal_reason, 'none') AS terminal_reason,
+                  count(*)::int AS rows
+                FROM interview_session
+                GROUP BY status, lifecycle_state, terminal_reason
+                ORDER BY status, lifecycle_state, terminal_reason
+              `
+            : [];
+
       return {
-        status: migrations.length === 2 ? "ready_to_reconcile" : "reconciled",
+        status:
+          migrations.length === 2
+            ? "ready_to_reconcile"
+            : migrations.length === 6
+              ? "ready_for_session_lifecycle"
+              : "reconciled",
         connectionMode: "direct_or_session",
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 6 ? RELAUNCH_SCHEMA_FINGERPRINT : "pending",
+          migrations.length === 7
+            ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+            : migrations.length === 6
+              ? RELAUNCH_SCHEMA_FINGERPRINT
+              : "pending",
+        lifecycleBackfill:
+          migrations.length === 6
+            ? { phase: "preview", counts: lifecycleBackfillCounts }
+            : migrations.length === 7
+              ? { phase: "applied", counts: lifecycleBackfillCounts }
+              : { phase: "not_ready", counts: [] },
         ...summary,
       };
     });

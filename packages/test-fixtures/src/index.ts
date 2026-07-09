@@ -13,6 +13,8 @@ import type {
   StartedInterviewRoom,
 } from "@meelni/integrations";
 
+export * from "./session-lifecycle";
+
 export const FIXTURE_CLOCK = {
   startedAt: new Date("2026-06-27T17:30:00.000Z"),
   firstUserTurnAt: new Date("2026-06-27T17:31:00.000Z"),
@@ -44,6 +46,10 @@ const productSenseInterviewFixture: ProductSenseInterviewFixture = {
     mode: "voice_video",
     persona: "senior-meta-pm",
     livekitRoomName: "interview-1782600000000-i00000",
+    runtimeRef: {
+      provider: "livekit",
+      id: "interview-1782600000000-i00000",
+    },
     config: {
       difficulty: "medium",
       duration: 45,
@@ -53,6 +59,12 @@ const productSenseInterviewFixture: ProductSenseInterviewFixture = {
       ttsModel: "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
     },
     startedAt: FIXTURE_CLOCK.startedAt,
+    activatedAt: FIXTURE_CLOCK.startedAt,
+    endingAt: new Date("2026-06-27T18:14:58.000Z"),
+    lifecycleState: "completed",
+    lifecycleVersion: 5,
+    terminalReason: "user_end",
+    lastTransitionAt: FIXTURE_CLOCK.endedAt,
     endedAt: FIXTURE_CLOCK.endedAt,
   },
   question: {
@@ -102,6 +114,7 @@ const productSenseInterviewFixture: ProductSenseInterviewFixture = {
     },
   ],
   roomMetadata: {
+    contract_version: 1,
     session_id: "fixture-session-product-sense-1",
     round_type: "product_sense",
     mode: "voice_video",

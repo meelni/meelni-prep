@@ -23,7 +23,7 @@ import {
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
-  RELAUNCH_SCHEMA_FINGERPRINT,
+  SESSION_LIFECYCLE_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -33,6 +33,12 @@ const UPGRADE_DATABASE = "meelni_upgrade_test";
 const USER_ONE = "11111111-1111-4111-8111-111111111111";
 const USER_TWO = "22222222-2222-4222-8222-222222222222";
 const SESSION_ONE = "33333333-3333-4333-8333-333333333333";
+const SESSION_ENDED_IN_PROGRESS = "44444444-4444-4444-8444-444444444444";
+const SESSION_COMPLETED = "55555555-5555-4555-8555-555555555555";
+const SESSION_ABANDONED = "66666666-6666-4666-8666-666666666666";
+const SESSION_TOO_SHORT = "77777777-7777-4777-8777-777777777777";
+const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
+const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -83,10 +89,13 @@ async function run() {
       databaseSchemaFingerprint(await getDatabasePreMigrationContract(clean)),
       CLEAN_0001_SCHEMA_FINGERPRINT
     );
-    runPreflight(cleanUrl, true);
+    runPreflight(cleanUrl, true, "ready_to_reconcile");
     runCliMigration(cleanUrl);
+    runPreflight(cleanUrl, true, "reconciled");
     await seedAuthorizationFixtures(clean);
     await verifyDatabase(clean);
+    await verifyCleanLifecycleDefaults(clean);
+    await verifyLifecycleConcurrency(clean);
     await verifyAuthorization(clean);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
@@ -94,7 +103,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, RELAUNCH_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, SESSION_LIFECYCLE_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -125,7 +134,7 @@ async function run() {
         ),
         LEGACY_RELAUNCH_SCHEMA_FINGERPRINT
       );
-      runPreflight(upgradeUrl, true);
+      runPreflight(upgradeUrl, true, "ready_to_reconcile");
       await upgrade.unsafe(
         "ALTER TABLE practice_set ADD COLUMN unexpected_preflight_drift text"
       );
@@ -133,13 +142,28 @@ async function run() {
       await upgrade.unsafe(
         "ALTER TABLE practice_set DROP COLUMN unexpected_preflight_drift"
       );
-      runPreflight(upgradeUrl, true);
+      runPreflight(upgradeUrl, true, "ready_to_reconcile");
+      const relaunchFolder = await createMigrationFolderThrough(5);
+      try {
+        await migrate(drizzle(upgrade), { migrationsFolder: relaunchFolder });
+      } finally {
+        await rm(relaunchFolder, { recursive: true, force: true });
+      }
+      runPreflight(upgradeUrl, true, "ready_for_session_lifecycle");
       await seedAuthorizationFixtures(upgrade);
+      await seedLifecycleBackfillFixtures(upgrade);
+      const lifecyclePreview = runPreflight(
+        upgradeUrl,
+        true,
+        "ready_for_session_lifecycle"
+      );
       const countsBefore = await protectedRowCounts(upgrade);
-
       await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
+      const lifecycleApplied = runPreflight(upgradeUrl, true, "reconciled");
+      assertLifecycleBackfillCountsMatch(lifecyclePreview!, lifecycleApplied!);
       assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
       await verifyDatabase(upgrade);
+      await verifyLifecycleBackfill(upgrade);
       await verifyAuthorization(upgrade);
       assert.equal(
         databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
@@ -176,7 +200,11 @@ function runCliMigration(databaseUrl: string) {
   assert.match(result.stdout, /Database target fingerprint:/);
 }
 
-function runPreflight(databaseUrl: string, expectedSuccess: boolean) {
+function runPreflight(
+  databaseUrl: string,
+  expectedSuccess: boolean,
+  expectedStatus = "ready_to_reconcile"
+): MigrationPreflightResult | null {
   const result = spawnSync("npm", ["run", "db:preflight"], {
     cwd: ROOT,
     encoding: "utf8",
@@ -188,11 +216,77 @@ function runPreflight(databaseUrl: string, expectedSuccess: boolean) {
       0,
       `Database preflight failed: ${result.stderr || result.stdout}`
     );
-    assert.match(result.stdout, /"status": "ready_to_reconcile"/);
+    assert.match(result.stdout, new RegExp(`"status": "${expectedStatus}"`));
+    if (expectedStatus === "ready_for_session_lifecycle") {
+      assert.match(result.stdout, /"phase": "preview"/);
+    }
+    if (expectedStatus === "reconciled") {
+      assert.match(result.stdout, /"phase": "applied"/);
+    }
+    return parsePreflightResult(result.stdout);
   } else {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /accepted pre-migration schema contract/);
+    return null;
   }
+}
+
+interface MigrationPreflightCount {
+  lifecycle_state: string;
+  terminal_reason: string;
+  rows: number;
+}
+
+interface MigrationPreflightResult {
+  lifecycleBackfill: {
+    phase: "not_ready" | "preview" | "applied";
+    counts: MigrationPreflightCount[];
+  };
+}
+
+function parsePreflightResult(output: string): MigrationPreflightResult {
+  const lines = output.split(/\r?\n/);
+  const end = lines.findLastIndex((line) => line.trim() === "}");
+  for (let start = end - 1; start >= 0; start -= 1) {
+    if (lines[start]?.trim() !== "{") continue;
+    try {
+      const parsed = JSON.parse(
+        lines.slice(start, end + 1).join("\n")
+      ) as Partial<MigrationPreflightResult>;
+      if (parsed.lifecycleBackfill) {
+        return parsed as MigrationPreflightResult;
+      }
+    } catch {
+      // npm and dotenv may print brace-containing diagnostics before the final
+      // preflight JSON. Keep scanning backward for the outer JSON object.
+    }
+  }
+
+  throw new Error("Preflight output did not contain parseable result JSON");
+}
+
+function assertLifecycleBackfillCountsMatch(
+  preview: MigrationPreflightResult,
+  applied: MigrationPreflightResult
+) {
+  assert.equal(preview.lifecycleBackfill.phase, "preview");
+  assert.equal(applied.lifecycleBackfill.phase, "applied");
+
+  const aggregate = (counts: MigrationPreflightCount[]) => {
+    const totals = new Map<string, number>();
+    for (const count of counts) {
+      const key = `${count.lifecycle_state}:${count.terminal_reason}`;
+      totals.set(key, (totals.get(key) ?? 0) + Number(count.rows));
+    }
+    return [...totals.entries()].sort(([left], [right]) =>
+      left.localeCompare(right)
+    );
+  };
+
+  assert.deepEqual(
+    aggregate(applied.lifecycleBackfill.counts),
+    aggregate(preview.lifecycleBackfill.counts)
+  );
 }
 
 async function installSupabaseTestSurface(sql: postgres.Sql) {
@@ -226,22 +320,26 @@ async function installSupabaseTestSurface(sql: postgres.Sql) {
 }
 
 async function createInitialMigrationFolder(): Promise<string> {
+  return createMigrationFolderThrough(1);
+}
+
+async function createMigrationFolderThrough(maxIndex: number): Promise<string> {
   const folder = await mkdtemp(join(tmpdir(), "meelni-initial-migrations-"));
   const meta = join(folder, "meta");
   await mkdir(meta, { recursive: true });
-  await copyFile(
-    join(MIGRATIONS, "0000_many_nocturne.sql"),
-    join(folder, "0000_many_nocturne.sql")
-  );
-  await copyFile(
-    join(MIGRATIONS, "0001_panoramic_otto_octavius.sql"),
-    join(folder, "0001_panoramic_otto_octavius.sql")
-  );
 
   const journal = JSON.parse(
     await readFile(join(MIGRATIONS, "meta/_journal.json"), "utf8")
-  ) as { entries: Array<{ idx: number }> };
-  journal.entries = journal.entries.filter((entry) => entry.idx <= 1);
+  ) as { entries: Array<{ idx: number; tag: string }> };
+  journal.entries = journal.entries.filter((entry) => entry.idx <= maxIndex);
+  await Promise.all(
+    journal.entries.map((entry) =>
+      copyFile(
+        join(MIGRATIONS, `${entry.tag}.sql`),
+        join(folder, `${entry.tag}.sql`)
+      )
+    )
+  );
   await writeFile(join(meta, "_journal.json"), JSON.stringify(journal));
   return folder;
 }
@@ -270,8 +368,213 @@ async function seedAuthorizationFixtures(sql: postgres.Sql) {
   `;
 }
 
+async function seedLifecycleBackfillFixtures(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, started_at, ended_at
+    ) VALUES
+      (
+        ${SESSION_ENDED_IN_PROGRESS}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        '2026-07-09T20:00:00.000Z'::timestamptz,
+        '2026-07-09T20:20:00.000Z'::timestamptz
+      ),
+      (
+        ${SESSION_COMPLETED}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'completed',
+        '2026-07-09T20:00:00.000Z'::timestamptz,
+        '2026-07-09T20:20:00.000Z'::timestamptz
+      ),
+      (
+        ${SESSION_ABANDONED}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'abandoned',
+        '2026-07-09T20:00:00.000Z'::timestamptz,
+        '2026-07-09T20:02:00.000Z'::timestamptz
+      ),
+      (
+        ${SESSION_TOO_SHORT}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'too_short',
+        '2026-07-09T20:00:00.000Z'::timestamptz,
+        '2026-07-09T20:02:00.000Z'::timestamptz
+      ),
+      (
+        ${SESSION_ERROR}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'error',
+        '2026-07-09T20:00:00.000Z'::timestamptz,
+        NULL
+      )
+    ON CONFLICT (id) DO NOTHING
+  `;
+}
+
+async function verifyCleanLifecycleDefaults(sql: postgres.Sql) {
+  const rows = await sql<
+    {
+      lifecycle_state: string;
+      lifecycle_version: number;
+      terminal_reason: string | null;
+      activated_at: Date | null;
+      ending_at: Date | null;
+    }[]
+  >`
+    SELECT lifecycle_state, lifecycle_version, terminal_reason,
+      activated_at, ending_at
+    FROM interview_session
+    WHERE id = ${SESSION_ONE}::uuid
+  `;
+  assert.deepEqual(rows[0], {
+    lifecycle_state: "created",
+    lifecycle_version: 1,
+    terminal_reason: null,
+    activated_at: null,
+    ending_at: null,
+  });
+}
+
+async function verifyLifecycleBackfill(sql: postgres.Sql) {
+  const rows = await sql<
+    {
+      id: string;
+      lifecycle_state: string;
+      lifecycle_version: number;
+      terminal_reason: string | null;
+      status: string;
+      activated_at: Date | null;
+      ending_at: Date | null;
+    }[]
+  >`
+    SELECT id::text, lifecycle_state, lifecycle_version, terminal_reason,
+      status, activated_at, ending_at
+    FROM interview_session
+    WHERE id IN (
+      ${SESSION_ONE}::uuid,
+      ${SESSION_ENDED_IN_PROGRESS}::uuid,
+      ${SESSION_COMPLETED}::uuid,
+      ${SESSION_ABANDONED}::uuid,
+      ${SESSION_TOO_SHORT}::uuid,
+      ${SESSION_ERROR}::uuid
+    )
+    ORDER BY id
+  `;
+
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  for (const row of rows) {
+    assert.equal(row.lifecycle_version, 1);
+    assert.equal(row.activated_at, null);
+  }
+  assert.equal(byId.get(SESSION_ONE)?.ending_at, null);
+  assert.equal(byId.get(SESSION_ERROR)?.ending_at, null);
+  assert.ok(byId.get(SESSION_ENDED_IN_PROGRESS)?.ending_at);
+  assert.ok(byId.get(SESSION_COMPLETED)?.ending_at);
+  assert.ok(byId.get(SESSION_ABANDONED)?.ending_at);
+  assert.ok(byId.get(SESSION_TOO_SHORT)?.ending_at);
+  assert.equal(byId.get(SESSION_ENDED_IN_PROGRESS)?.status, "abandoned");
+  assert.equal(byId.get(SESSION_COMPLETED)?.status, "completed");
+  assert.equal(byId.get(SESSION_ABANDONED)?.status, "abandoned");
+  assert.equal(byId.get(SESSION_TOO_SHORT)?.status, "too_short");
+  assert.equal(byId.get(SESSION_ERROR)?.status, "error");
+  assert.deepEqual(lifecycleOutcome(byId, SESSION_ONE), ["connecting", null]);
+  assert.deepEqual(lifecycleOutcome(byId, SESSION_ENDED_IN_PROGRESS), [
+    "abandoned",
+    "legacy_unknown",
+  ]);
+  assert.deepEqual(lifecycleOutcome(byId, SESSION_COMPLETED), [
+    "completed",
+    "legacy_unknown",
+  ]);
+  assert.deepEqual(lifecycleOutcome(byId, SESSION_ABANDONED), [
+    "abandoned",
+    "legacy_unknown",
+  ]);
+  assert.deepEqual(lifecycleOutcome(byId, SESSION_TOO_SHORT), [
+    "abandoned",
+    "insufficient_signal",
+  ]);
+  assert.deepEqual(lifecycleOutcome(byId, SESSION_ERROR), [
+    "failed",
+    "legacy_unknown",
+  ]);
+}
+
+async function verifyLifecycleConcurrency(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status,
+      lifecycle_state, lifecycle_version, activated_at
+    ) VALUES (
+      ${SESSION_CONCURRENT}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      3,
+      now()
+    )
+  `;
+
+  const reasons = [
+    "user_end",
+    "time_limit",
+    "disconnect_timeout",
+    "provider_failure",
+    "insufficient_signal",
+  ] as const;
+  const attempts = await Promise.all(
+    Array.from({ length: 10 }, (_, index) => {
+      const reason = reasons[index % reasons.length]!;
+      return sql<{ terminal_reason: string; lifecycle_version: number }[]>`
+        UPDATE interview_session
+        SET lifecycle_state = 'ending',
+          lifecycle_version = lifecycle_version + 1,
+          terminal_reason = ${reason},
+          status = 'in_progress',
+          ending_at = now(),
+          last_transition_at = now()
+        WHERE id = ${SESSION_CONCURRENT}::uuid
+          AND lifecycle_state = 'active'
+          AND lifecycle_version = 3
+        RETURNING terminal_reason, lifecycle_version
+      `;
+    })
+  );
+
+  const winners = attempts.flat();
+  assert.equal(winners.length, 1);
+  assert.equal(winners[0]?.lifecycle_version, 4);
+
+  const stored = await sql<
+    {
+      lifecycle_state: string;
+      lifecycle_version: number;
+      terminal_reason: string;
+    }[]
+  >`
+    SELECT lifecycle_state, lifecycle_version, terminal_reason
+    FROM interview_session
+    WHERE id = ${SESSION_CONCURRENT}::uuid
+  `;
+  assert.deepEqual(stored[0], {
+    lifecycle_state: "ending",
+    lifecycle_version: 4,
+    terminal_reason: winners[0]?.terminal_reason,
+  });
+}
+
+function lifecycleOutcome(
+  rows: Map<
+    string,
+    { lifecycle_state: string; terminal_reason: string | null }
+  >,
+  sessionId: string
+) {
+  const row = rows.get(sessionId);
+  assert.ok(row);
+  return [row.lifecycle_state, row.terminal_reason];
+}
+
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 6);
+  assert.equal(await migrationCount(sql), 7);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -288,6 +591,31 @@ async function verifyDatabase(sql: postgres.Sql) {
   assert.ok(
     tables.some(({ table_name }) => table_name === "account_deletion_request")
   );
+
+  const lifecycleColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'interview_session'
+      AND column_name IN (
+        'lifecycle_state', 'lifecycle_version', 'terminal_reason',
+        'activated_at', 'ending_at', 'last_transition_at'
+      )
+    ORDER BY column_name
+  `;
+  assert.equal(lifecycleColumns.length, 6);
+
+  const lifecycleIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'interview_session_lifecycle_state_transition_idx',
+        'interview_session_user_lifecycle_state_idx'
+      )
+    ORDER BY indexname
+  `;
+  assert.equal(lifecycleIndexes.length, 2);
 
   const tierConstraint = await sql<{ definition: string }[]>`
     SELECT pg_get_constraintdef(oid) AS definition
