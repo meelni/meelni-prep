@@ -43,16 +43,17 @@ test("analytics evidence is derived from current dashboard summary", () => {
     completedSessions: 4,
     focusAreaLabel: "Metrics depth",
     focusAreaScore: 5.9,
-    focusAreaDescription: "Add success metrics and guardrails before solutions.",
-    readinessDeltaLabel: "+6",
+    focusAreaDescription:
+      "Add success metrics and guardrails before solutions.",
+    progressDeltaLabel: "+6 points across 4 interviews",
   });
 
   assert.equal(evidence.length, 2);
   assert.match(evidence[0]?.description ?? "", /Metrics depth/);
-  assert.match(evidence[0]?.description ?? "", /4 completed reps/);
+  assert.match(evidence[0]?.description ?? "", /4 completed interviews/);
   assert.doesNotMatch(
     evidence.map((item) => item.description).join(" "),
-    /consistently state users|Only one strategy rep/
+    /consistently state users|Only one strategy interview/
   );
 });
 
@@ -62,8 +63,9 @@ test("analytics evidence stays empty without scored dimension data", () => {
       completedSessions: 4,
       focusAreaLabel: "Metrics depth",
       focusAreaScore: null,
-      focusAreaDescription: "Add success metrics and guardrails before solutions.",
-      readinessDeltaLabel: "new",
+      focusAreaDescription:
+        "Add success metrics and guardrails before solutions.",
+      progressDeltaLabel: "new",
     }),
     []
   );

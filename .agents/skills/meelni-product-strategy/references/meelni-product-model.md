@@ -2,7 +2,7 @@
 
 ## Product Thesis
 
-Meelni is a PM interview practice product for product managers who need realistic reps, live voice practice, PM-calibrated feedback, and visible improvement before interviews.
+Meelni is a live PM interview practice product for product managers who need realistic mock interviews, live voice practice, PM-calibrated feedback, and visible improvement before interviews.
 
 The restart direction is not generic mock interviews. The wedge is PM-specific depth: Product Sense, Execution/Product Metrics, Strategy, and Behavioral practice with realistic questions, voice agents, transcripts, feedback, drills, and progress loops.
 
@@ -18,7 +18,7 @@ The restart direction is not generic mock interviews. The wedge is PM-specific d
 
 ## Core Product Vision
 
-Meelni helps PM candidates get better through repeated realistic interview reps.
+Meelni helps PM candidates get better through repeated realistic mock interviews.
 
 The strongest version of the product turns one practice session into the next obvious action: a better question, a targeted drill, a clearer weakness, a sharper answer, or a confidence signal that the user is interview-ready.
 
@@ -31,14 +31,14 @@ Strong areas versus generic interview prep:
 - company and question-bank SEO as acquisition
 - feedback artifacts that show progress
 - targeted drills tied to actual answers
-- future applied AI PM readiness: agent product strategy, skill design, eval design, and AI product case practice
+- future applied AI PM practice: agent product strategy, skill design, eval design, and AI product case practice
 - future enterprise use cases around hiring enablement, talent development, custom rubrics, and skill evaluation
 
 ## Primary Users
 
 ### PM Candidate
 
-The core consumer user preparing for PM interviews who wants realistic reps, feedback, and confidence.
+The core consumer user preparing for PM interviews who wants realistic practice, feedback, and confidence.
 
 ### Active Interviewer
 
@@ -50,7 +50,7 @@ A PM who wants to practice modern AI product thinking, agent workflows, skill de
 
 ### Team Or Enterprise Buyer
 
-A future buyer who may care about PM interview readiness, internal talent development, hiring calibration, cohort analytics, custom rubrics, and evaluation exports.
+A future buyer who may care about PM interview preparation, internal talent development, hiring calibration, cohort analytics, custom rubrics, and evaluation exports.
 
 ## Core JTBD
 
@@ -58,7 +58,7 @@ A future buyer who may care about PM interview readiness, internal talent develo
 - select relevant company or question prompts
 - receive feedback that names concrete weaknesses
 - know what to practice next
-- build confidence through repeated reps
+- build confidence through repeated mock interviews
 - understand whether performance is improving
 - learn how to answer AI and agent product questions
 - prepare teams or cohorts with consistent rubrics and practice environments
@@ -69,17 +69,17 @@ Default loop:
 
 1. Question, company, SEO, or content discovery
 2. Selected question practice
-3. Live voice rep
+3. Live voice mock interview
 4. Transcript and feedback artifact
 5. Targeted drill or learning material
 6. Return practice and progress tracking
 
-Prefer product work that makes the next rep more obvious, personalized, or likely to happen.
+Prefer product work that makes the next practice action more obvious, personalized, or likely to happen.
 
 ## Monetization Direction
 
 - Consumer first: free discovery, short trial such as seven days, clear limits, and paid plans for serious prep.
-- Consumer paid value should map to outcomes: more reps, deeper feedback, saved history, targeted drills, company-specific prep, analytics, and readiness confidence.
+- Consumer paid value should map to outcomes: more mock interviews, deeper feedback, saved history, targeted drills, company-specific prep, analytics, and visible practice progress.
 - Keep packaging simple until activation, completion, return practice, and paid conversion signals are understood.
 - Enterprise later: organizations, seats, admin visibility, cohort analytics, custom rubrics, custom agents, privacy controls, and evaluation exports.
 
@@ -97,8 +97,8 @@ Prefer product work that makes the next rep more obvious, personalized, or likel
 - richer trial and packaging experiments
 - deeper targeted drills and learning materials
 - AI/agent product practice tracks for PMs
-- improved progress/readiness signals
-- enterprise team readiness, custom rubrics, and cohort reporting
+- improved practice-progress signals
+- enterprise team practice, custom rubrics, and cohort reporting
 - broader professions only after the PM wedge is clearly working or a distribution reason appears
 
 Do not describe future direction as already shipped.
@@ -106,9 +106,9 @@ Do not describe future direction as already shipped.
 ## Product Principles
 
 - PM-specific depth beats generic breadth.
-- Reps create value; content should point back to reps.
+- Practice creates value; content should point back to mock interviews.
 - Feedback should make the next action obvious.
 - Monetization should attach to serious preparation and visible improvement.
 - Enterprise optionality should not distort the consumer beachhead too early.
-- AI features should deepen PM readiness, not become generic AI novelty.
+- AI features should deepen PM interview preparation, not become generic AI novelty.
 - Every major product bet should name the lever it improves: acquisition, activation, retention, monetization, enterprise validation, or product quality.

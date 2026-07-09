@@ -32,7 +32,7 @@ export interface DashboardProgressBar {
 
 export interface DashboardPracticeSummary {
   isNewUser: boolean;
-  readiness: {
+  progress: {
     score: number;
     label: string;
     description: string;
@@ -65,7 +65,7 @@ export interface DashboardPracticeSummary {
     description: string;
     active?: boolean;
   }>;
-  recentReps: Array<{
+  recentInterviews: Array<{
     id: string;
     dateLabel: string;
     roundLabel: string;
@@ -126,7 +126,8 @@ const FOCUS_AREAS = [
   {
     key: "structure",
     label: "Structure",
-    description: "Open with a cleaner product frame before exploring solutions.",
+    description:
+      "Open with a cleaner product frame before exploring solutions.",
   },
   {
     key: "clarity",
@@ -182,7 +183,7 @@ export function buildDashboardPracticeSummary(
       ? recentScores.reduce((sum, score) => sum + score, 0) /
         recentScores.length
       : 0;
-  const readinessScore = Math.round(Math.min(100, Math.max(0, avgScore * 10)));
+  const progressScore = Math.round(Math.min(100, Math.max(0, avgScore * 10)));
   const focusArea = getFocusArea(latestScored?.feedback);
   const latestRound = formatRoundType(latestScored?.roundType);
   const roundParam = latestScored?.roundType || "product_sense";
@@ -190,31 +191,31 @@ export function buildDashboardPracticeSummary(
 
   return {
     isNewUser,
-    readiness: {
-      score: readinessScore,
+    progress: {
+      score: progressScore,
       label:
-        readinessScore >= 78
-          ? "Interview-ready"
-          : readinessScore >= 55
-            ? "Building"
+        progressScore >= 78
+          ? "Strong recent signal"
+          : progressScore >= 55
+            ? "Developing signal"
             : "Early signal",
       description:
-        readinessScore > 0
-          ? `${latestRound} structure is improving; ${focusArea.label.toLowerCase()} is the bottleneck.`
-          : "Start with one focused rep so Meelni can calibrate your next action.",
+        progressScore > 0
+          ? `Based on your recent scored interviews. Focus next on ${focusArea.label.toLowerCase()}.`
+          : "Complete one focused mock interview to establish your first progress signal.",
       deltaLabel: getDeltaLabel(recentScores),
     },
     focusArea,
     recommendation: isNewUser
       ? {
-          title: "Start your first PM interview rep.",
+          title: "Start your first PM mock interview.",
           description:
             "Begin with a Product Sense mock interview so your feedback and practice plan can calibrate around real answers.",
-          eyebrow: "First rep",
+          eyebrow: "First interview",
           roundType: "Product Sense",
           difficulty: "Intermediate",
           creditLabel: "1 credit",
-          href: "/dashboard/new-rep",
+          href: "/dashboard/new-interview",
         }
       : {
           title: `Sharpen ${formatFocusPhrase(focusArea.label)} before your next ${latestRound.toLowerCase()} loop.`,
@@ -223,20 +224,22 @@ export function buildDashboardPracticeSummary(
           roundType: latestRound,
           difficulty: "Intermediate",
           creditLabel: "1 credit",
-          href: `/dashboard/new-rep?interview_type=${encodeURIComponent(roundParam)}`,
+          href: `/dashboard/new-interview?interview_type=${encodeURIComponent(roundParam)}`,
         },
     lastFeedback: latestScored
       ? {
           sessionId: latestScored.id,
           label: "Latest feedback",
-        summary: `Strongest signal: ${getBestSignal(latestScored.feedback)}. Focus next on ${focusArea.label.toLowerCase()}.`,
+          summary: `Strongest signal: ${getBestSignal(latestScored.feedback)}. Focus next on ${focusArea.label.toLowerCase()}.`,
           href: `/feedback/${latestScored.id}`,
         }
       : null,
     prepPlan: [
       {
         label: "Today",
-        title: isNewUser ? "First Product Sense rep" : `${latestRound} rep`,
+        title: isNewUser
+          ? "First Product Sense interview"
+          : `${latestRound} interview`,
         description: isNewUser
           ? "Answer one real PM prompt out loud."
           : focusArea.description,
@@ -253,7 +256,7 @@ export function buildDashboardPracticeSummary(
         description: "Apply the same structure to a target-company prompt.",
       },
     ],
-    recentReps: sortedSessions.slice(0, 4).map((session) => {
+    recentInterviews: sortedSessions.slice(0, 4).map((session) => {
       const score = parseScore(session.feedback?.overallScore);
       const rowFocus = getFocusArea(session.feedback);
       return {
@@ -273,8 +276,8 @@ export function buildDashboardPracticeSummary(
       bars: buildProgressBars(recentScores),
       description:
         recentScores.length >= 2 && recentScores[0]! >= recentScores.at(-1)!
-          ? "Your recent reps show steady improvement. Keep the next rep focused on one bottleneck."
-          : "Complete a few more reps to make the progress signal reliable.",
+          ? "Your recent interviews show steady improvement. Keep the next interview focused on one bottleneck."
+          : "Complete a few more interviews to make the progress signal more useful.",
     },
   };
 }
@@ -282,7 +285,9 @@ export function buildDashboardPracticeSummary(
 export function buildQuestionBankSummary(
   questions: DashboardQuestionInput[]
 ): QuestionBankSummary {
-  const activeQuestions = questions.filter((question) => question.isActive !== false);
+  const activeQuestions = questions.filter(
+    (question) => question.isActive !== false
+  );
   const roundCounts: Record<string, number> = {};
   const companyCounts: Record<string, number> = {};
 
@@ -291,12 +296,15 @@ export function buildQuestionBankSummary(
     roundCounts[roundLabel] = (roundCounts[roundLabel] || 0) + 1;
 
     if (question.company) {
-      companyCounts[question.company] = (companyCounts[question.company] || 0) + 1;
+      companyCounts[question.company] =
+        (companyCounts[question.company] || 0) + 1;
     }
   }
 
   const recommendedQuestion =
-    activeQuestions.find((question) => question.questionType === "product_sense") ||
+    activeQuestions.find(
+      (question) => question.questionType === "product_sense"
+    ) ||
     activeQuestions[0] ||
     null;
 
@@ -333,7 +341,7 @@ export function buildHistorySummary(
       scoreLabel: hasScore ? score.toFixed(1) : "Pending",
       statusLabel: hasScore ? "Feedback ready" : "Processing",
       feedbackHref: hasScore ? `/feedback/${session.id}` : null,
-      repeatHref: `/dashboard/new-rep?interview_type=${encodeURIComponent(session.roundType || "product_sense")}`,
+      repeatHref: `/dashboard/new-interview?interview_type=${encodeURIComponent(session.roundType || "product_sense")}`,
     };
   });
 
@@ -364,15 +372,15 @@ export function buildHistorySummary(
   return {
     nextReview: {
       countLabel: `${Math.max(topPattern.count, latestReady ? 1 : 0)}x`,
-      title: `${topPattern.label} is repeating across recent reps`,
+      title: `${topPattern.label} is repeating across recent interviews`,
       description:
         topPattern.count > 1
           ? "Open the latest feedback, then repeat the same weakness with the fix stated earlier."
           : "Open your latest feedback, then repeat the prompt while the lesson is still fresh.",
       feedbackHref: latestReady?.feedbackHref || null,
-      repeatHref: latestReady?.repeatHref || "/dashboard/new-rep",
+      repeatHref: latestReady?.repeatHref || "/dashboard/new-interview",
     },
-    filters: ["All reps", "Product Sense", "Execution", "Behavioral"],
+    filters: ["All interviews", "Product Sense", "Execution", "Behavioral"],
     rows,
     patterns,
   };
@@ -423,11 +431,11 @@ function getBestSignal(feedback?: DashboardFeedback | null) {
 }
 
 function getDeltaLabel(scores: number[]) {
-  if (scores.length < 2) return "Needs more reps";
+  if (scores.length < 2) return "Needs more interviews";
   const delta = scores[0]! - scores[scores.length - 1]!;
   const rounded = Math.round(delta * 10);
-  if (rounded === 0) return "Flat over recent reps";
-  return `${rounded > 0 ? "+" : ""}${rounded} over last ${scores.length} reps`;
+  if (rounded === 0) return "Flat across recent interviews";
+  return `${rounded > 0 ? "+" : ""}${rounded} points across ${scores.length} interviews`;
 }
 
 export function buildProgressBars(scores: number[], targetSlots = 5) {
@@ -471,7 +479,7 @@ function getSessionQuestionLabel(session: DashboardSessionInput) {
   const questionText = config.config?.questionText || config.config?.question;
   return typeof questionText === "string"
     ? questionText
-    : `${formatRoundType(session.roundType)} practice rep`;
+    : `${formatRoundType(session.roundType)} mock interview`;
 }
 
 function getTime(date: Date | string | null) {

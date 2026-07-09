@@ -18,7 +18,7 @@ function LoadingFallback() {
       <MarketingCtaCard
         className="w-full max-w-md"
         mark={
-          <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-b-primary" />
+          <div className="border-primary/20 border-b-primary h-7 w-7 animate-spin rounded-full border-2" />
         }
         title="Loading..."
         description="Please wait while we load your page."
@@ -52,7 +52,7 @@ function CheckoutSuccessContent() {
         <MarketingCtaCard
           className="w-full max-w-md"
           mark={
-            <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-b-primary" />
+            <div className="border-primary/20 border-b-primary h-7 w-7 animate-spin rounded-full border-2" />
           }
           title="Processing..."
           description="Please wait while we set up your account."
@@ -77,14 +77,12 @@ function CheckoutSuccessContent() {
             </Button>
 
             <Button asChild size="lg" variant="outline" className="w-full">
-              <Link href="/dashboard/new-rep">Start an Interview</Link>
+              <Link href="/dashboard/new-interview">Start an Interview</Link>
             </Button>
           </div>
         }
         footer={
-          <>
-            Subscription plans can be managed from your billing settings.
-          </>
+          <>Subscription plans can be managed from your billing settings.</>
         }
       />
     </MarketingPage>

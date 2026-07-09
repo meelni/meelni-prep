@@ -77,7 +77,7 @@ export function MobileDrawer() {
                 Log In
               </Link>
               <Link
-                href="/dashboard"
+                href="/dashboard/new-interview"
                 className={cn(
                   buttonVariants({ variant: "default" }),
                   "text-primary-foreground rounded-lg"

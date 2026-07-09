@@ -7,7 +7,7 @@ const guideCards = [
     category: "Product Sense",
     title: "How to choose a user segment without sounding generic",
     description:
-      "A short tactical guide that should point directly into a matching practice rep.",
+      "A short tactical guide that should point directly into a matching practice interview.",
   },
   {
     category: "Execution",

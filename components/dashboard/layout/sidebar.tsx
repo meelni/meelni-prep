@@ -39,7 +39,7 @@ export function Sidebar({
     {
       id: "overview",
       icon: Monitor,
-      label: "Practice Home",
+      label: "Overview",
       href: "/dashboard",
     },
     {
@@ -160,7 +160,7 @@ export function Sidebar({
         <AppSurface
           size="none"
           className={cn(
-            "border-0 bg-transparent pt-2 text-dashboard-foreground shadow-none",
+            "text-dashboard-foreground border-0 bg-transparent pt-2 shadow-none",
             collapsed ? "flex justify-center" : ""
           )}
         >
@@ -168,17 +168,17 @@ export function Sidebar({
             asChild
             size={collapsed ? "icon" : "sm"}
             className={cn(
-              "h-9 rounded-lg bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
+              "bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-lg shadow-sm",
               collapsed ? "w-9" : "w-full justify-center gap-2 px-2.5"
             )}
           >
             <Link
-              href="/dashboard/new-rep"
-              aria-label={collapsed ? "Start a new practice rep" : undefined}
-              title={collapsed ? "New rep" : undefined}
+              href="/dashboard/new-interview"
+              aria-label={collapsed ? "Start a new mock interview" : undefined}
+              title={collapsed ? "New Mock Interview" : undefined}
             >
               <Mic className="size-4 shrink-0" aria-hidden="true" />
-              {!collapsed && <span>New rep</span>}
+              {!collapsed && <span>New Mock Interview</span>}
             </Link>
           </Button>
         </AppSurface>

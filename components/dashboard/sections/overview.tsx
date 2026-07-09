@@ -30,10 +30,10 @@ export const OverviewSection = memo(function OverviewSection({
 }: OverviewSectionProps) {
   if (loadingSessions) {
     return (
-      <DashboardPage label="Practice Home">
+      <DashboardPage label="Overview">
         <DashboardLoadingState
           className="min-h-[420px]"
-          label="Loading practice home..."
+          label="Loading overview..."
         />
       </DashboardPage>
     );
@@ -44,16 +44,16 @@ export const OverviewSection = memo(function OverviewSection({
   );
 
   return (
-    <DashboardPage label="Practice Home">
+    <DashboardPage label="Overview">
       <div className="mx-auto flex w-full max-w-6xl flex-col">
         <section className="max-w-3xl space-y-3">
           <div className="space-y-3">
-            <h2 className="font-display text-3xl leading-[1.08] font-semibold text-dashboard-foreground sm:text-4xl">
+            <h2 className="font-display text-dashboard-foreground text-3xl leading-[1.08] font-semibold sm:text-4xl">
               {summary.isNewUser
-                ? "Your first PM interview rep starts here."
-                : "Today's highest-leverage rep"}
+                ? "Your first PM mock interview starts here."
+                : "Today's highest-leverage interview"}
             </h2>
-            <p className="max-w-2xl text-base leading-7 text-dashboard-muted">
+            <p className="text-dashboard-muted max-w-2xl text-base leading-7">
               {summary.isNewUser
                 ? "Start with one real Product Sense answer out loud. Meelni will turn the result into your next practice plan."
                 : "A focused next action based on your recent PM interview feedback, not a dashboard you have to interpret."}
@@ -71,17 +71,17 @@ export const OverviewSection = memo(function OverviewSection({
                 <Pill>{summary.recommendation.creditLabel}</Pill>
               </div>
               <div className="max-w-3xl space-y-3">
-                <h2 className="font-display text-2xl leading-tight font-semibold text-dashboard-foreground sm:text-3xl">
+                <h2 className="font-display text-dashboard-foreground text-2xl leading-tight font-semibold sm:text-3xl">
                   {summary.recommendation.title}
                 </h2>
-                <p className="text-base leading-7 text-dashboard-muted">
+                <p className="text-dashboard-muted text-base leading-7">
                   {summary.recommendation.description}
                 </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Button asChild size="lg" className="gap-2">
                   <Link href={summary.recommendation.href}>
-                    Start rep
+                    Start mock interview
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </Link>
                 </Button>
@@ -90,7 +90,7 @@ export const OverviewSection = memo(function OverviewSection({
                     asChild
                     variant="outline"
                     size="lg"
-                    className="border-dashboard-panel-border bg-transparent text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
+                    className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground bg-transparent"
                   >
                     <Link href={summary.lastFeedback.href}>Feedback</Link>
                   </Button>
@@ -100,132 +100,139 @@ export const OverviewSection = memo(function OverviewSection({
 
             <aside className="border-dashboard-panel-border border-t py-6 sm:py-7 lg:border-t-0 lg:border-l lg:pl-8">
               <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                Readiness
+                Recent practice score
               </p>
-              <div className="mt-5 font-mono text-5xl leading-none font-semibold text-dashboard-muted sm:text-6xl">
-                {summary.readiness.score}
+              <div className="text-dashboard-muted mt-5 font-mono text-5xl leading-none font-semibold sm:text-6xl">
+                {summary.progress.score}
                 <span className="text-dashboard-muted/60">/100</span>
               </div>
               <div className="bg-dashboard-muted/15 mt-5 h-2 overflow-hidden rounded-full">
                 <div
                   className="bg-primary h-full rounded-full"
-                  style={{ width: `${summary.readiness.score}%` }}
+                  style={{ width: `${summary.progress.score}%` }}
                 />
               </div>
-              <p className="mt-5 text-sm leading-6 text-dashboard-muted">
-                {summary.readiness.description}
+              <p className="text-dashboard-muted mt-5 text-sm leading-6">
+                {summary.progress.description}
               </p>
             </aside>
           </div>
         </section>
 
         <section className="border-dashboard-panel-border grid border-b py-6 md:grid-cols-3">
-        <InfoPanel
-          eyebrow="Readiness snapshot"
-          title={String(summary.readiness.score)}
-          meta={summary.readiness.deltaLabel}
-          rows={[
-            ["Best signal", summary.lastFeedback ? "Structure" : "First rep"],
-            ["Focus area", summary.focusArea.label],
-          ]}
-        />
-        <div className="border-dashboard-panel-border mt-7 border-t pt-7 md:mt-0 md:border-t-0 md:border-l md:px-7 md:pt-0">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Last feedback
+          <InfoPanel
+            eyebrow="Progress signal"
+            title={String(summary.progress.score)}
+            meta={summary.progress.deltaLabel}
+            rows={[
+              [
+                "Best signal",
+                summary.lastFeedback ? "Structure" : "First interview",
+              ],
+              ["Focus area", summary.focusArea.label],
+            ]}
+          />
+          <div className="border-dashboard-panel-border mt-7 border-t pt-7 md:mt-0 md:border-t-0 md:border-l md:px-7 md:pt-0">
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+                Last feedback
+              </p>
+              <span className="text-dashboard-muted text-xs">
+                {summary.lastFeedback ? "Latest" : "Pending"}
+              </span>
+            </div>
+            <p className="text-dashboard-foreground mt-5 min-h-16 text-base leading-7">
+              {summary.lastFeedback?.summary ||
+                "Complete an interview to unlock a calibrated feedback summary."}
             </p>
-            <span className="text-xs text-dashboard-muted">
-              {summary.lastFeedback ? "Latest" : "Pending"}
-            </span>
+            {summary.lastFeedback && (
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground mt-5 bg-transparent"
+              >
+                <Link href={summary.lastFeedback.href}>Feedback</Link>
+              </Button>
+            )}
           </div>
-          <p className="mt-5 min-h-16 text-base leading-7 text-dashboard-foreground">
-            {summary.lastFeedback?.summary ||
-              "Complete a rep to unlock a calibrated feedback summary."}
-          </p>
-          {summary.lastFeedback && (
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="border-dashboard-panel-border mt-5 bg-transparent text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
-            >
-              <Link href={summary.lastFeedback.href}>Feedback</Link>
-            </Button>
-          )}
-        </div>
-        <div className="border-dashboard-panel-border mt-7 border-t pt-7 md:mt-0 md:border-t-0 md:border-l md:px-7 md:pt-0">
-          <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-            Prep plan
-          </p>
-          <div className="mt-5 space-y-4">
-            {summary.prepPlan.map((item) => (
-              <div key={item.label} className="flex gap-3">
-                <span
-                  className={cn(
-                    "mt-1 h-4 w-4 shrink-0 rounded-full",
-                    item.active ? "bg-primary" : "bg-dashboard-muted/15"
-                  )}
-                />
-                <div>
-                  <p className="text-sm font-semibold text-dashboard-foreground">
-                    {item.label}
-                  </p>
-                  <p className="text-sm text-dashboard-muted">{item.title}</p>
+          <div className="border-dashboard-panel-border mt-7 border-t pt-7 md:mt-0 md:border-t-0 md:border-l md:px-7 md:pt-0">
+            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+              Prep plan
+            </p>
+            <div className="mt-5 space-y-4">
+              {summary.prepPlan.map((item) => (
+                <div key={item.label} className="flex gap-3">
+                  <span
+                    className={cn(
+                      "mt-1 h-4 w-4 shrink-0 rounded-full",
+                      item.active ? "bg-primary" : "bg-dashboard-muted/15"
+                    )}
+                  />
+                  <div>
+                    <p className="text-dashboard-foreground text-sm font-semibold">
+                      {item.label}
+                    </p>
+                    <p className="text-dashboard-muted text-sm">{item.title}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
         </section>
 
         <section className="grid gap-8 py-6 lg:grid-cols-[1.4fr_1fr]">
-        <div>
-          <div className="flex items-center justify-between gap-4 border-b border-dashboard-panel-border pb-4">
-            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Recent reps
-            </p>
-            <Button asChild variant="link" size="sm" className="h-auto p-0">
-              <Link href="/dashboard/history">All</Link>
-            </Button>
+          <div>
+            <div className="border-dashboard-panel-border flex items-center justify-between gap-4 border-b pb-4">
+              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+                Recent interviews
+              </p>
+              <Button asChild variant="link" size="sm" className="h-auto p-0">
+                <Link href="/dashboard/history">All</Link>
+              </Button>
+            </div>
+            {summary.recentInterviews.length > 0 ? (
+              <div className="divide-dashboard-panel-border divide-y">
+                {summary.recentInterviews.map((interview) => (
+                  <Link
+                    key={interview.id}
+                    href={interview.feedbackHref || "/dashboard/history"}
+                    className="hover:text-primary grid gap-3 py-4 text-sm transition-colors sm:grid-cols-[88px_150px_1fr_56px]"
+                  >
+                    <span className="text-dashboard-muted">
+                      {interview.dateLabel}
+                    </span>
+                    <span className="text-dashboard-foreground font-semibold">
+                      {interview.roundLabel}
+                    </span>
+                    <span className="text-dashboard-muted">
+                      {interview.focusLabel}
+                    </span>
+                    <span className="text-dashboard-foreground font-mono font-semibold sm:text-right">
+                      {interview.scoreLabel}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="text-dashboard-muted py-10 text-sm">
+                Your interviews will appear here after your first session.
+              </div>
+            )}
           </div>
-          {summary.recentReps.length > 0 ? (
-            <div className="divide-y divide-dashboard-panel-border">
-              {summary.recentReps.map((rep) => (
-                <Link
-                  key={rep.id}
-                  href={rep.feedbackHref || "/dashboard/history"}
-                  className="grid gap-3 py-4 text-sm transition-colors hover:text-primary sm:grid-cols-[88px_150px_1fr_56px]"
-                >
-                  <span className="text-dashboard-muted">{rep.dateLabel}</span>
-                  <span className="font-semibold text-dashboard-foreground">
-                    {rep.roundLabel}
-                  </span>
-                  <span className="text-dashboard-muted">{rep.focusLabel}</span>
-                  <span className="font-mono font-semibold text-dashboard-foreground sm:text-right">
-                    {rep.scoreLabel}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div className="py-10 text-sm text-dashboard-muted">
-              Your reps will appear here after your first interview.
-            </div>
-          )}
-        </div>
 
-        <div className="border-dashboard-panel-border border-t pt-7 lg:border-t-0 lg:border-l lg:pl-8 lg:pt-0">
-          <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-            Progress signal
-          </p>
-          <ProgressSignalBars
-            bars={summary.progressSignal.bars}
-            className="mt-8 h-28"
-          />
-          <p className="mt-6 text-sm leading-6 text-dashboard-muted">
-            {summary.progressSignal.description}
-          </p>
-        </div>
+          <div className="border-dashboard-panel-border border-t pt-7 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+              Progress signal
+            </p>
+            <ProgressSignalBars
+              bars={summary.progressSignal.bars}
+              className="mt-8 h-28"
+            />
+            <p className="text-dashboard-muted mt-6 text-sm leading-6">
+              {summary.progressSignal.description}
+            </p>
+          </div>
         </section>
       </div>
     </DashboardPage>
@@ -273,16 +280,19 @@ function InfoPanel({
         <span className="text-primary text-xs font-semibold">{meta}</span>
       </div>
       <div className="mt-5 flex items-end gap-4">
-        <span className="font-mono text-5xl leading-none font-semibold text-dashboard-foreground">
+        <span className="text-dashboard-foreground font-mono text-5xl leading-none font-semibold">
           {title}
         </span>
-        <CheckCircle2 className="mb-2 h-5 w-5 text-primary" aria-hidden="true" />
+        <CheckCircle2
+          className="text-primary mb-2 h-5 w-5"
+          aria-hidden="true"
+        />
       </div>
       <div className="mt-5 space-y-3">
         {rows.map(([label, value]) => (
           <div key={label} className="flex items-center justify-between gap-4">
-            <span className="text-sm text-dashboard-muted">{label}</span>
-            <span className="text-sm font-semibold text-dashboard-foreground">
+            <span className="text-dashboard-muted text-sm">{label}</span>
+            <span className="text-dashboard-foreground text-sm font-semibold">
               {value}
             </span>
           </div>

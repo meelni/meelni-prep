@@ -23,7 +23,7 @@ export const HistorySection = memo(function HistorySection({
   sessions,
   loadingSessions,
 }: HistorySectionProps) {
-  const [activeFilter, setActiveFilter] = useState("All reps");
+  const [activeFilter, setActiveFilter] = useState("All interviews");
   const summary = useMemo(
     () => buildHistorySummary(sessions as DashboardSessionInput[]),
     [sessions]
@@ -40,7 +40,8 @@ export const HistorySection = memo(function HistorySection({
   }, [loadingSessions, sessions.length, summary.rows]);
 
   const rows = summary.rows.filter(
-    (row) => activeFilter === "All reps" || row.roundLabel === activeFilter
+    (row) =>
+      activeFilter === "All interviews" || row.roundLabel === activeFilter
   );
 
   if (loadingSessions) {
@@ -159,7 +160,7 @@ export const HistorySection = memo(function HistorySection({
 
             {rows.length === 0 && (
               <div className="text-dashboard-muted py-16 text-center text-sm">
-                No reps match this filter yet.
+                No interviews match this filter yet.
               </div>
             )}
           </section>

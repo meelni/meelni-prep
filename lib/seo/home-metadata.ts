@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PRODUCT_LANGUAGE } from "@/lib/product-language";
 
 export function getHomeMetadata(reactivated: boolean): Metadata {
   if (!reactivated) {
@@ -23,8 +24,7 @@ export function getHomeMetadata(reactivated: boolean): Metadata {
     };
   }
 
-  const description =
-    "Practice real Product Sense, Execution, Strategy, and Behavioral questions out loud in a live PM mock interview, then get specific feedback on what to improve next.";
+  const description = PRODUCT_LANGUAGE.oneLine;
 
   return {
     title: { absolute: "Meelni — Live PM Interview Practice" },
@@ -44,16 +44,14 @@ export function getHomeMetadata(reactivated: boolean): Metadata {
     alternates: { canonical: "/" },
     openGraph: {
       title: "Meelni — Live PM Interview Practice",
-      description:
-        "Practice real PM interview questions out loud, handle realistic follow-ups, and get specific feedback on what to improve next.",
+      description,
       type: "website",
       url: "/",
     },
     twitter: {
       card: "summary_large_image",
       title: "Meelni — Live PM Interview Practice",
-      description:
-        "Practice real PM interview questions out loud and get specific feedback on what to improve next.",
+      description,
       creator: "@trymeelni",
       site: "@trymeelni",
     },

@@ -24,7 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   Home,
-  ChevronRight
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -123,20 +123,22 @@ export default function CompanyDetailPage() {
   const params = useParams();
   const slug = params.slug as string;
   const company = getCompanyBySlug(slug);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+    new Set()
+  );
 
   if (!company) {
     return (
       <MarketingPage className="flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-foreground mb-2">Company not found</h1>
+          <h1 className="text-foreground mb-2 text-2xl font-bold">
+            Company not found
+          </h1>
           <p className="text-muted-foreground mb-4">
             We don't have a guide for this company yet.
           </p>
           <Button asChild variant="outline">
-            <Link href="/companies">
-              View all companies
-            </Link>
+            <Link href="/companies">View all companies</Link>
           </Button>
         </div>
       </MarketingPage>
@@ -162,19 +164,19 @@ export default function CompanyDetailPage() {
       <Header />
 
       {/* Breadcrumb Navigation */}
-      <nav aria-label="Breadcrumb" className="max-w-3xl mx-auto px-6 pt-8">
-        <ol className="flex items-center gap-2 text-sm text-muted-foreground">
+      <nav aria-label="Breadcrumb" className="mx-auto max-w-3xl px-6 pt-8">
+        <ol className="text-muted-foreground flex items-center gap-2 text-sm">
           <li>
             <Link
               href="/"
-              className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+              className="hover:text-foreground flex items-center gap-1.5 transition-colors"
             >
-              <Home className="w-4 h-4" />
+              <Home className="h-4 w-4" />
               <span>Home</span>
             </Link>
           </li>
           <li aria-hidden="true">
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="h-4 w-4" />
           </li>
           <li>
             <Link
@@ -185,7 +187,7 @@ export default function CompanyDetailPage() {
             </Link>
           </li>
           <li aria-hidden="true">
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="h-4 w-4" />
           </li>
           <li aria-current="page">
             <span className="text-foreground font-medium">{company.name}</span>
@@ -194,28 +196,31 @@ export default function CompanyDetailPage() {
       </nav>
 
       {/* Article */}
-      <article className="max-w-3xl mx-auto px-6 py-12">
+      <article className="mx-auto max-w-3xl px-6 py-12">
         <MarketingArticleHeader
-          className="mb-12 border-b border-border/30 pb-10"
+          className="border-border/30 mb-12 border-b pb-10"
           eyebrow={
-            <MarketingEyebrow className="px-3 py-1.5 text-xs uppercase tracking-wide">
+            <MarketingEyebrow className="px-3 py-1.5 text-xs tracking-wide uppercase">
               {company.industry}
             </MarketingEyebrow>
           }
           title={`${company.name} PM Interview Guide`}
           meta={
             <div className="space-y-6">
-              <p className="text-lg leading-loose text-foreground/85">
+              <p className="text-foreground/85 text-lg leading-loose">
                 {company.description}
               </p>
               <MarketingMetaRow
                 className="border-t-0 pt-0 text-sm"
                 items={[
                   { icon: Clock, label: company.interviewDuration },
-                  { icon: Users, label: `${company.interviewRounds} interview rounds` },
+                  {
+                    icon: Users,
+                    label: `${company.interviewRounds} interview rounds`,
+                  },
                 ]}
               >
-                <span className="rounded-lg border border-border/40 bg-muted/50 px-3 py-1.5 font-medium text-muted-foreground">
+                <span className="border-border/40 bg-muted/50 text-muted-foreground rounded-lg border px-3 py-1.5 font-medium">
                   {company.difficulty}
                 </span>
               </MarketingMetaRow>
@@ -224,35 +229,52 @@ export default function CompanyDetailPage() {
         />
 
         {/* Table of Contents */}
-        <nav className="mb-14 p-6 rounded-2xl bg-muted/30 border border-border/40">
-          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">On this page</h2>
+        <nav className="bg-muted/30 border-border/40 mb-14 rounded-2xl border p-6">
+          <h2 className="text-foreground mb-4 text-sm font-semibold tracking-wide uppercase">
+            On this page
+          </h2>
           <ul className="space-y-3 text-sm">
             <li>
-              <a href="#role" className="text-foreground/70 hover:text-primary transition-colors flex items-center gap-2">
+              <a
+                href="#role"
+                className="text-foreground/70 hover:text-primary flex items-center gap-2 transition-colors"
+              >
                 <Briefcase className="h-4 w-4" />
                 Role Overview & Salary
               </a>
             </li>
             <li>
-              <a href="#process" className="text-foreground/70 hover:text-primary transition-colors flex items-center gap-2">
+              <a
+                href="#process"
+                className="text-foreground/70 hover:text-primary flex items-center gap-2 transition-colors"
+              >
                 <Users className="h-4 w-4" />
                 Interview Process
               </a>
             </li>
             <li>
-              <a href="#questions" className="text-foreground/70 hover:text-primary transition-colors flex items-center gap-2">
+              <a
+                href="#questions"
+                className="text-foreground/70 hover:text-primary flex items-center gap-2 transition-colors"
+              >
                 <MessageSquare className="h-4 w-4" />
                 Example Questions
               </a>
             </li>
             <li>
-              <a href="#tips" className="text-foreground/70 hover:text-primary transition-colors flex items-center gap-2">
+              <a
+                href="#tips"
+                className="text-foreground/70 hover:text-primary flex items-center gap-2 transition-colors"
+              >
                 <Lightbulb className="h-4 w-4" />
                 Interview Tips
               </a>
             </li>
             <li>
-              <a href="#preparation" className="text-foreground/70 hover:text-primary transition-colors flex items-center gap-2">
+              <a
+                href="#preparation"
+                className="text-foreground/70 hover:text-primary flex items-center gap-2 transition-colors"
+              >
                 <GraduationCap className="h-4 w-4" />
                 How to Prepare
               </a>
@@ -262,22 +284,27 @@ export default function CompanyDetailPage() {
 
         {/* Role Overview & Salary */}
         <section id="role" className="mb-16 scroll-mt-24">
-          <h2 className="text-3xl font-display font-bold mb-6 leading-tight text-foreground border-b border-border/20 pb-3 flex items-center gap-3">
-            <Briefcase className="h-6 w-6 text-primary" />
+          <h2 className="font-display text-foreground border-border/20 mb-6 flex items-center gap-3 border-b pb-3 text-3xl leading-tight font-bold">
+            <Briefcase className="text-primary h-6 w-6" />
             Role Overview & Salary
           </h2>
 
-          <p className="text-lg leading-loose mb-8 text-foreground/85">
+          <p className="text-foreground/85 mb-8 text-lg leading-loose">
             {company.roleOverview.description}
           </p>
 
           {/* Skills */}
           <div className="mb-10">
-            <h3 className="text-xl font-display font-semibold mb-4 text-foreground">Key Skills Required</h3>
-            <ul className="grid sm:grid-cols-2 gap-3">
+            <h3 className="font-display text-foreground mb-4 text-xl font-semibold">
+              Key Skills Required
+            </h3>
+            <ul className="grid gap-3 sm:grid-cols-2">
               {company.roleOverview.skills.map((skill, index) => (
-                <li key={index} className="flex items-start gap-3 text-base text-foreground/85">
-                  <CheckCircle2 className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+                <li
+                  key={index}
+                  className="text-foreground/85 flex items-start gap-3 text-base"
+                >
+                  <CheckCircle2 className="text-primary mt-0.5 h-5 w-5 flex-shrink-0" />
                   <span>{skill}</span>
                 </li>
               ))}
@@ -286,36 +313,53 @@ export default function CompanyDetailPage() {
 
           {/* Salary Table */}
           {company.salaryLevels && (
-            <div className="overflow-hidden rounded-2xl border border-border/40">
-              <div className="px-6 py-4 bg-gradient-to-r from-primary/10 to-primary/5 border-b border-border/40">
-                <h3 className="font-display font-semibold text-foreground flex items-center gap-2 text-lg">
-                  <DollarSign className="h-5 w-5 text-primary" />
+            <div className="border-border/40 overflow-hidden rounded-2xl border">
+              <div className="from-primary/10 to-primary/5 border-border/40 border-b bg-gradient-to-r px-6 py-4">
+                <h3 className="font-display text-foreground flex items-center gap-2 text-lg font-semibold">
+                  <DollarSign className="text-primary h-5 w-5" />
                   {company.name} PM Compensation
                 </h3>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-border/40 bg-muted/30">
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Level</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Base Salary</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Total Comp</th>
+                    <tr className="border-border/40 bg-muted/30 border-b">
+                      <th className="text-foreground px-6 py-4 text-left text-sm font-semibold">
+                        Level
+                      </th>
+                      <th className="text-foreground px-6 py-4 text-left text-sm font-semibold">
+                        Base Salary
+                      </th>
+                      <th className="text-foreground px-6 py-4 text-left text-sm font-semibold">
+                        Total Comp
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {company.salaryLevels.map((level, index) => (
-                      <tr key={index} className="border-b border-border/30 last:border-0 hover:bg-muted/20 transition-colors">
-                        <td className="px-6 py-4 text-sm text-foreground font-medium">{level.level}</td>
-                        <td className="px-6 py-4 text-sm text-foreground/70">{level.baseSalary}</td>
-                        <td className="px-6 py-4 text-sm font-semibold text-primary">{level.totalComp}</td>
+                      <tr
+                        key={index}
+                        className="border-border/30 hover:bg-muted/20 border-b transition-colors last:border-0"
+                      >
+                        <td className="text-foreground px-6 py-4 text-sm font-medium">
+                          {level.level}
+                        </td>
+                        <td className="text-foreground/70 px-6 py-4 text-sm">
+                          {level.baseSalary}
+                        </td>
+                        <td className="text-primary px-6 py-4 text-sm font-semibold">
+                          {level.totalComp}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               {company.salaryNote && (
-                <div className="px-6 py-4 bg-muted/20 border-t border-border/40">
-                  <p className="text-xs text-foreground/60 leading-relaxed">{company.salaryNote}</p>
+                <div className="bg-muted/20 border-border/40 border-t px-6 py-4">
+                  <p className="text-foreground/60 text-xs leading-relaxed">
+                    {company.salaryNote}
+                  </p>
                 </div>
               )}
             </div>
@@ -324,38 +368,39 @@ export default function CompanyDetailPage() {
 
         {/* Interview Process */}
         <section id="process" className="mb-16 scroll-mt-24">
-          <h2 className="text-3xl font-display font-bold mb-8 leading-tight text-foreground border-b border-border/20 pb-3 flex items-center gap-3">
-            <Users className="h-6 w-6 text-primary" />
+          <h2 className="font-display text-foreground border-border/20 mb-8 flex items-center gap-3 border-b pb-3 text-3xl leading-tight font-bold">
+            <Users className="text-primary h-6 w-6" />
             Interview Process
           </h2>
 
           <div className="space-y-6">
             {company.interviewStages.map((stage, index) => (
-              <div
-                key={index}
-                className="relative pl-12"
-              >
+              <div key={index} className="relative pl-12">
                 {/* Timeline line */}
                 {index !== company.interviewStages.length - 1 && (
-                  <div className="absolute left-[17px] top-12 bottom-0 w-0.5 bg-gradient-to-b from-primary/40 to-border/40" />
+                  <div className="from-primary/40 to-border/40 absolute top-12 bottom-0 left-[17px] w-0.5 bg-gradient-to-b" />
                 )}
 
                 {/* Timeline dot */}
-                <div className="absolute left-0 top-0 w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/20">
-                  <span className="text-xs font-bold text-primary-foreground">{index + 1}</span>
+                <div className="from-primary to-primary/60 shadow-primary/20 absolute top-0 left-0 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br shadow-lg">
+                  <span className="text-primary-foreground text-xs font-bold">
+                    {index + 1}
+                  </span>
                 </div>
 
                 {/* Content */}
-                <div className="rounded-2xl border border-border/40 p-6 bg-card/50 hover:bg-card/80 transition-colors">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <h3 className="font-display font-semibold text-foreground text-lg">{stage.name}</h3>
+                <div className="border-border/40 bg-card/50 hover:bg-card/80 rounded-2xl border p-6 transition-colors">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <h3 className="font-display text-foreground text-lg font-semibold">
+                      {stage.name}
+                    </h3>
                     {stage.duration && (
-                      <span className="text-xs px-3 py-1 rounded-full bg-primary/10 text-primary font-medium border border-primary/20">
+                      <span className="bg-primary/10 text-primary border-primary/20 rounded-full border px-3 py-1 text-xs font-medium">
                         {stage.duration}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-foreground/70 leading-relaxed">
+                  <p className="text-foreground/70 text-sm leading-relaxed">
                     {stage.description}
                   </p>
                 </div>
@@ -366,8 +411,8 @@ export default function CompanyDetailPage() {
 
         {/* Example Questions */}
         <section id="questions" className="mb-16 scroll-mt-24">
-          <h2 className="text-3xl font-display font-bold mb-8 leading-tight text-foreground border-b border-border/20 pb-3 flex items-center gap-3">
-            <MessageSquare className="h-6 w-6 text-primary" />
+          <h2 className="font-display text-foreground border-border/20 mb-8 flex items-center gap-3 border-b pb-3 text-3xl leading-tight font-bold">
+            <MessageSquare className="text-primary h-6 w-6" />
             Example Interview Questions
           </h2>
 
@@ -381,17 +426,22 @@ export default function CompanyDetailPage() {
               return (
                 <div
                   key={category.category}
-                  className="rounded-2xl border border-border/40 overflow-hidden bg-card/50"
+                  className="border-border/40 bg-card/50 overflow-hidden rounded-2xl border"
                 >
-                  <div className="px-6 py-4 bg-gradient-to-r from-muted/50 to-transparent border-b border-border/40">
-                    <h3 className="font-display font-semibold text-foreground text-base">{category.category}</h3>
-                    <p className="text-xs text-foreground/50 mt-1">
+                  <div className="from-muted/50 border-border/40 border-b bg-gradient-to-r to-transparent px-6 py-4">
+                    <h3 className="font-display text-foreground text-base font-semibold">
+                      {category.category}
+                    </h3>
+                    <p className="text-foreground/50 mt-1 text-xs">
                       {category.questions.length} questions
                     </p>
                   </div>
-                  <ul className="divide-y divide-border/30">
+                  <ul className="divide-border/30 divide-y">
                     {displayQuestions.map((question, index) => (
-                      <li key={index} className="px-6 py-4 text-sm text-foreground/85 hover:bg-muted/30 transition-colors leading-relaxed">
+                      <li
+                        key={index}
+                        className="text-foreground/85 hover:bg-muted/30 px-6 py-4 text-sm leading-relaxed transition-colors"
+                      >
                         {question}
                       </li>
                     ))}
@@ -401,7 +451,7 @@ export default function CompanyDetailPage() {
                       type="button"
                       variant="ghost"
                       onClick={() => toggleCategory(category.category)}
-                      className="w-full rounded-none border-t border-border/40 text-primary"
+                      className="border-border/40 text-primary w-full rounded-none border-t"
                     >
                       {isExpanded ? (
                         <>
@@ -422,12 +472,12 @@ export default function CompanyDetailPage() {
           </div>
 
           {/* Mini CTA */}
-          <div className="mt-8 p-6 rounded-2xl bg-muted/30 border border-border/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <p className="text-sm text-foreground/70">
+          <div className="bg-muted/30 border-border/40 mt-8 flex flex-col items-start justify-between gap-4 rounded-2xl border p-6 sm:flex-row sm:items-center">
+            <p className="text-foreground/70 text-sm">
               Practice these questions with real-time AI feedback
             </p>
             <Button asChild variant="outline">
-              <Link href="/dashboard/new-rep">
+              <Link href="/dashboard/new-interview">
                 Start practicing
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -437,8 +487,8 @@ export default function CompanyDetailPage() {
 
         {/* Interview Tips */}
         <section id="tips" className="mb-16 scroll-mt-24">
-          <h2 className="text-3xl font-display font-bold mb-8 leading-tight text-foreground border-b border-border/20 pb-3 flex items-center gap-3">
-            <Lightbulb className="h-6 w-6 text-primary" />
+          <h2 className="font-display text-foreground border-border/20 mb-8 flex items-center gap-3 border-b pb-3 text-3xl leading-tight font-bold">
+            <Lightbulb className="text-primary h-6 w-6" />
             Interview Tips
           </h2>
 
@@ -446,10 +496,12 @@ export default function CompanyDetailPage() {
             {company.interviewTips.map((tip, index) => (
               <div
                 key={index}
-                className="p-6 rounded-2xl border border-border/40 bg-card/50 hover:bg-card/80 hover:border-primary/30 transition-all"
+                className="border-border/40 bg-card/50 hover:bg-card/80 hover:border-primary/30 rounded-2xl border p-6 transition-all"
               >
-                <h3 className="font-display font-semibold text-foreground mb-3 text-base">{tip.title}</h3>
-                <p className="text-sm text-foreground/70 leading-relaxed">
+                <h3 className="font-display text-foreground mb-3 text-base font-semibold">
+                  {tip.title}
+                </h3>
+                <p className="text-foreground/70 text-sm leading-relaxed">
                   {tip.description}
                 </p>
               </div>
@@ -459,8 +511,8 @@ export default function CompanyDetailPage() {
 
         {/* Preparation Steps */}
         <section id="preparation" className="mb-16 scroll-mt-24">
-          <h2 className="text-3xl font-display font-bold mb-8 leading-tight text-foreground border-b border-border/20 pb-3 flex items-center gap-3">
-            <GraduationCap className="h-6 w-6 text-primary" />
+          <h2 className="font-display text-foreground border-border/20 mb-8 flex items-center gap-3 border-b pb-3 text-3xl leading-tight font-bold">
+            <GraduationCap className="text-primary h-6 w-6" />
             How to Prepare
           </h2>
 
@@ -468,12 +520,16 @@ export default function CompanyDetailPage() {
             {company.preparationSteps.map((step, index) => (
               <div
                 key={index}
-                className="flex items-start gap-4 p-5 rounded-2xl border border-border/40 bg-card/50 hover:bg-card/80 transition-colors"
+                className="border-border/40 bg-card/50 hover:bg-card/80 flex items-start gap-4 rounded-2xl border p-5 transition-colors"
               >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center flex-shrink-0 shadow-md shadow-primary/20">
-                  <span className="text-xs font-bold text-primary-foreground">{index + 1}</span>
+                <div className="from-primary to-primary/60 shadow-primary/20 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br shadow-md">
+                  <span className="text-primary-foreground text-xs font-bold">
+                    {index + 1}
+                  </span>
                 </div>
-                <p className="text-base text-foreground/85 leading-relaxed pt-1">{step}</p>
+                <p className="text-foreground/85 pt-1 text-base leading-relaxed">
+                  {step}
+                </p>
               </div>
             ))}
           </div>
@@ -486,7 +542,7 @@ export default function CompanyDetailPage() {
           description="Practice with Meelni's AI interview coach. Get real-time feedback, improve your answers, and build confidence before your big day."
           action={
             <Button asChild size="lg" variant="glow">
-              <Link href="/dashboard/new-rep">
+              <Link href="/dashboard/new-interview">
                 Start mock interview
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -495,8 +551,12 @@ export default function CompanyDetailPage() {
         />
 
         {/* Back Link */}
-        <div className="mt-16 pt-10 border-t border-border/30">
-          <Button asChild variant="link" className="h-auto p-0 text-muted-foreground">
+        <div className="border-border/30 mt-16 border-t pt-10">
+          <Button
+            asChild
+            variant="link"
+            className="text-muted-foreground h-auto p-0"
+          >
             <Link href="/companies" className="gap-2">
               <ArrowLeft className="h-4 w-4" />
               View all companies

@@ -53,7 +53,10 @@ export function FeedbackPartial({
       description="Good start! Longer sessions unlock more detailed insights"
       actions={
         <>
-          <Button size="lg" onClick={() => router.push("/dashboard/new-rep")}>
+          <Button
+            size="lg"
+            onClick={() => router.push("/dashboard/new-interview")}
+          >
             Try Full Session (20+ min)
           </Button>
           <Button

@@ -39,13 +39,13 @@ export function ProgressSignalBars({
             style={{ height: `${bar.value}%` }}
             aria-label={
               bar.state === "actual"
-                ? `Rep ${index + 1}: ${Math.round(bar.value)} percent`
+                ? `Interview ${index + 1}: ${Math.round(bar.value)} percent`
                 : `Future progress slot ${index + 1}`
             }
           />
           {showLabels && (
-            <span className="text-xs text-dashboard-muted">
-              Rep {index + 1}
+            <span className="text-dashboard-muted text-xs">
+              Interview {index + 1}
             </span>
           )}
         </div>

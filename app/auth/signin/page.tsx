@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
 
 function AuthLoadingState() {
   return (
@@ -38,7 +39,7 @@ function SignInContent() {
   const [password, setPassword] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") || "/dashboard";
+  const redirectTo = getSafeInternalRedirect(searchParams.get("redirectTo"))!;
 
   useEffect(() => {
     analytics.track("auth_signin_started", {
@@ -171,7 +172,11 @@ function SignInContent() {
           <Button
             type="button"
             variant="link"
-            onClick={() => router.push("/auth/signup")}
+            onClick={() =>
+              router.push(
+                `/auth/signup?redirectTo=${encodeURIComponent(redirectTo)}`
+              )
+            }
             className="h-auto p-0 font-medium"
           >
             Sign up

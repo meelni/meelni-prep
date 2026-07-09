@@ -4,5 +4,5 @@ export * from "./entitlements";
 export * from "./evaluation";
 export * from "./question";
 export * from "./question-taxonomy";
-export * from "./rep-launch";
+export * from "./interview-launch";
 export * from "./session";

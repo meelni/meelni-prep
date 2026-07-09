@@ -459,7 +459,7 @@ function DemoControls({
                   </p>
                 </div>
                 <Link
-                  href="/dashboard/new-rep"
+                  href="/dashboard/new-interview"
                   onClick={() => {
                     // Track conversion to signup
                     if (demoStartTime.current) {

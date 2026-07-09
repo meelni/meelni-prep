@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { Icons } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
+import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
 
 interface QuestionSignInModalProps {
   isOpen: boolean;
@@ -19,9 +20,11 @@ export function QuestionSignInModal({
   isOpen,
   onClose,
   questionText,
+  questionId,
 }: QuestionSignInModalProps) {
   const router = useRouter();
   const { signInWithGoogle } = useAuth();
+  const interviewDestination = buildQuestionInterviewHref(questionId);
 
   // Handle ESC key to close modal
   useEffect(() => {
@@ -44,18 +47,19 @@ export function QuestionSignInModal({
   }, [isOpen, onClose]);
 
   const handleGoogleSignIn = async () => {
-    // Redirect to dashboard after Google OAuth
-    await signInWithGoogle("/dashboard");
+    await signInWithGoogle(interviewDestination);
   };
 
   const handleEmailSignIn = () => {
-    // Redirect to sign-in page
-    router.push("/auth/signin");
+    router.push(
+      `/auth/signin?redirectTo=${encodeURIComponent(interviewDestination)}`
+    );
   };
 
   const handleSignUp = () => {
-    // Redirect to sign-up page
-    router.push("/auth/signup");
+    router.push(
+      `/auth/signup?redirectTo=${encodeURIComponent(interviewDestination)}`
+    );
   };
 
   return (

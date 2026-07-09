@@ -181,7 +181,7 @@ export default function BlogIndex() {
         <div className="mt-12">
           <MarketingCtaCard
             mark="M"
-            title="Turn the next article into a live rep"
+            title="Turn the next article into a live mock interview"
             description="Pick a PM interview question, practice it out loud, and use Meelni feedback to find the next skill to tighten."
             action={
               <Button asChild>

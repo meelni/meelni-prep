@@ -59,14 +59,14 @@ Rules:
 
 ## Shell Decision Matrix
 
-| Route family              | Required shell                                       | Primary primitives                                                               | Notes                                                               |
-| ------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Dashboard workspace       | `app/dashboard/layout.tsx` + dashboard content panel | `DashboardPage`, dashboard surfaces, `Button`, `StatusPill`                      | Authenticated sidebar pages and `/dashboard/new-rep`                |
-| Feedback review workspace | `FeedbackReviewShell` or `FeedbackStatusPage`        | Feedback surfaces, `Button`, `StatusPill`                                        | Result, loading, skipped, partial, insufficient, abandoned, compare |
-| Focused interview room    | Full-screen room chrome                              | Interview controls, transcript rail, `Button`, `StatusPill`, app-surface headers | Intentional exception; no dashboard sidebar                         |
-| Auth flow                 | `AuthShell`                                          | Auth shell/card/message primitives, form controls, `Button`                      | Sign in, sign up, forgot password, reset password                   |
-| Public/content            | Marketing/content primitives                         | Marketing surfaces, article/prose, `Button`, question-bank primitives            | Do not borrow authenticated shells                                  |
-| Compatibility redirect    | Redirect only                                        | None                                                                             | `/setup` should not regain standalone UI                            |
+| Route family              | Required shell                                       | Primary primitives                                                               | Notes                                                                    |
+| ------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Dashboard workspace       | `app/dashboard/layout.tsx` + dashboard content panel | `DashboardPage`, dashboard surfaces, `Button`, `StatusPill`                      | Authenticated sidebar pages and `/dashboard/new-interview`               |
+| Feedback review workspace | `FeedbackReviewShell` or `FeedbackStatusPage`        | Feedback surfaces, `Button`, `StatusPill`                                        | Result, loading, skipped, partial, insufficient, abandoned, compare      |
+| Focused interview room    | Full-screen room chrome                              | Interview controls, transcript rail, `Button`, `StatusPill`, app-surface headers | Intentional exception; no dashboard sidebar                              |
+| Auth flow                 | `AuthShell`                                          | Auth shell/card/message primitives, form controls, `Button`                      | Sign in, sign up, forgot password, reset password                        |
+| Public/content            | Marketing/content primitives                         | Marketing surfaces, article/prose, `Button`, question-bank primitives            | Do not borrow authenticated shells                                       |
+| Compatibility redirect    | Redirect only                                        | None                                                                             | `/setup` and `/dashboard/new-rep` redirect to the canonical launch route |
 
 ## Component Composition Rules
 
@@ -100,7 +100,7 @@ For each meaningful workflow, account for:
 - Mobile and desktop.
 - Keyboard and screen-reader affordances.
 
-Feedback, dashboard, auth, setup/New Rep, and interview already have domain primitives for most of these. Use them before local state markup.
+Feedback, dashboard, auth, New Mock Interview setup, and interview already have domain primitives for most of these. Use them before local state markup.
 
 ## Guardrail Strategy
 
