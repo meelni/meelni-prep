@@ -41,11 +41,21 @@ interface FeedbackData {
 }
 
 interface FeedbackResponse {
-  status: "pending" | "processing" | "completed" | "failed" | "skipped";
+  status:
+    | "missing"
+    | "session_not_ended"
+    | "pending"
+    | "processing"
+    | "completed"
+    | "failed"
+    | "skipped";
   feedback?: FeedbackData;
   estimatedTimeRemaining?: number;
   error?: string;
   skipReason?: string;
+  message?: string;
+  retryable?: boolean;
+  dispatch?: { status: string; retryable: boolean };
 }
 
 interface TranscriptTurn {
@@ -122,6 +132,33 @@ export default function FeedbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  const retryFeedback = async () => {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const response = await fetch(`/api/feedback/${sessionId}`, {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          data?.message || "Feedback could not be queued. Please try again."
+        );
+      }
+      router.replace(`/feedback/${sessionId}/loading`);
+    } catch (retryError) {
+      setRetryError(
+        retryError instanceof Error
+          ? retryError.message
+          : "Feedback could not be queued. Please try again."
+      );
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   useEffect(() => {
     if (!sessionId) return;
@@ -129,16 +166,22 @@ export default function FeedbackPage() {
     async function fetchFeedback() {
       try {
         const response = await fetch(`/api/feedback/${sessionId}`);
+        const data: FeedbackResponse = await response.json();
 
         if (!response.ok) {
           if (response.status === 401) {
             router.push("/auth/signin");
             return;
           }
-          throw new Error("Failed to fetch feedback");
+          if (response.status === 409 && data.status === "session_not_ended") {
+            setFeedbackData(data);
+            return;
+          }
+          throw new Error(
+            data.message || data.error || "Failed to fetch feedback"
+          );
         }
 
-        const data: FeedbackResponse = await response.json();
         setFeedbackData(data);
 
         // If still processing, poll again
@@ -208,6 +251,46 @@ export default function FeedbackPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Go to Dashboard
           </Button>
+        }
+      />
+    );
+  }
+
+  if (
+    feedbackData?.status === "missing" ||
+    (feedbackData?.status === "pending" && feedbackData.dispatch?.retryable)
+  ) {
+    return (
+      <FeedbackStatusPage
+        tone="warning"
+        icon={<AlertCircle className="h-8 w-8" />}
+        title="Feedback Is Waiting to Start"
+        description={
+          retryError ||
+          feedbackData.message ||
+          "Your interview is saved. Queue feedback again to continue."
+        }
+        actions={
+          <Button onClick={retryFeedback} disabled={retrying}>
+            {retrying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Queue Feedback
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (feedbackData?.status === "session_not_ended") {
+    return (
+      <FeedbackStatusPage
+        tone="warning"
+        icon={<AlertCircle className="h-8 w-8" />}
+        title="Interview Still In Progress"
+        description={
+          feedbackData.message || "End the interview before viewing feedback."
+        }
+        actions={
+          <Button onClick={() => router.back()}>Return to Interview</Button>
         }
       />
     );
@@ -313,7 +396,6 @@ export default function FeedbackPage() {
       }
     >
       <div className="space-y-8">
-
         {/* AI Summary */}
         {feedback.summary && (
           <FeedbackSectionCard title="AI Summary">

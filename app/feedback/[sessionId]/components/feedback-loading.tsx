@@ -48,6 +48,7 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
     "pending" | "processing" | "completed" | "failed" | "skipped"
   >("pending");
   const [error, setError] = useState<string | null>(null);
+  const [retryMode, setRetryMode] = useState<"dispatch" | "poll" | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [, setPollCount] = useState(0);
 
@@ -58,6 +59,22 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
     try {
       const res = await fetch(`/api/feedback/${sessionId}`);
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          data.message || data.error || "Could not check feedback status."
+        );
+      }
+
+      if (data.status === "missing" || data.dispatch?.retryable) {
+        setStatus("failed");
+        setRetryMode("dispatch");
+        setError(
+          data.message ||
+            "Your interview is saved, but feedback still needs to be queued."
+        );
+        return;
+      }
 
       if (data.status === "completed" && data.feedback) {
         console.log(
@@ -78,7 +95,8 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
           data.error
         );
         setStatus("failed");
-        setError(data.error || "Feedback generation failed. Please try again.");
+        setRetryMode(null);
+        setError(data.error || "Feedback generation failed.");
         return;
       }
 
@@ -110,6 +128,7 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
         if (newCount >= MAX_POLLS) {
           console.error("[FeedbackLoading] Timeout reached after 90 seconds");
           setStatus("failed");
+          setRetryMode("poll");
           setError(
             "Feedback generation timed out after 90 seconds. Please try again."
           );
@@ -128,7 +147,13 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       });
     } catch (err) {
       console.error("[FeedbackLoading] Error polling feedback:", err);
-      // Don't increment on error, just log it
+      setStatus("failed");
+      setRetryMode("poll");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not check feedback status. Please try again."
+      );
     }
   }, [sessionId, router]);
 
@@ -180,31 +205,48 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
   }, [progress]);
 
   const handleRetry = async () => {
+    if (retryMode === "poll") {
+      setError(null);
+      setRetryMode(null);
+      setStatus("pending");
+      setPollCount(0);
+      return;
+    }
+    if (retryMode !== "dispatch") return;
+
     setIsRetrying(true);
     setError(null);
-    setStatus("pending");
-    setPollCount(0);
-    setProgress(0);
-    setCurrentStage(0);
-    setMessageIndex(0);
 
-    // Trigger feedback generation
     try {
       const response = await fetch(`/api/feedback/${sessionId}`, {
         method: "POST",
       });
+      const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error("Failed to regenerate feedback");
+        throw new Error(
+          data?.message || "Failed to queue feedback. Please try again."
+        );
+      }
+      if (data?.status === "failed") {
+        setRetryMode(null);
+        throw new Error(
+          data.error || "Feedback generation failed and cannot be requeued."
+        );
       }
 
-      // Reset and start polling again
-      setIsRetrying(false);
+      setRetryMode(null);
+      setStatus("pending");
+      setPollCount(0);
+      setProgress(0);
+      setCurrentStage(0);
+      setMessageIndex(0);
     } catch (err) {
       console.error("[FeedbackLoading] Error retrying feedback:", err);
       setError(
         err instanceof Error ? err.message : "Failed to regenerate feedback"
       );
+    } finally {
       setIsRetrying(false);
     }
   };
@@ -219,26 +261,36 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       <FeedbackStatusPage
         tone="danger"
         icon={<AlertCircle className="h-8 w-8" />}
-        title="Generation Failed"
+        title={
+          retryMode === "dispatch"
+            ? "Feedback Is Waiting to Start"
+            : retryMode === "poll"
+              ? "Status Check Failed"
+              : "Generation Failed"
+        }
         description={
           error ||
           "An unexpected error occurred while generating your feedback."
         }
         actions={
           <>
-            <Button onClick={handleRetry} disabled={isRetrying}>
-              {isRetrying ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Retrying
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Retry
-                </>
-              )}
-            </Button>
+            {retryMode && (
+              <Button onClick={handleRetry} disabled={isRetrying}>
+                {isRetrying ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Retrying
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    {retryMode === "dispatch"
+                      ? "Queue Feedback"
+                      : "Check Again"}
+                  </>
+                )}
+              </Button>
+            )}
             <Button variant="outline" onClick={handleSkip}>
               Skip
             </Button>
