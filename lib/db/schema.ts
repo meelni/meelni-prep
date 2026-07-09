@@ -264,6 +264,36 @@ export const feedback = pgTable(
       withTimezone: true,
     }),
     processingDurationMs: integer("processing_duration_ms"),
+
+    // Immutable completion evidence used by idempotent end-session replays.
+    completionTier: text("completion_tier").$type<
+      "full" | "partial" | "insufficient" | "abandoned"
+    >(),
+    completionStats: jsonb("completion_stats").$type<{
+      totalTurns: number;
+      userTurns: number;
+      totalWords: number;
+      durationSeconds: number;
+      substantiveResponses: number;
+    }>(),
+    completionRecommendations: jsonb("completion_recommendations").$type<
+      string[]
+    >(),
+
+    // Durable dispatch state for the feedback-generation event. The feedback
+    // row is also the outbox so session completion and job intent commit in
+    // the same transaction.
+    dispatchStatus: text("dispatch_status")
+      .$type<"not_required" | "pending" | "sending" | "sent" | "failed">()
+      .default("not_required")
+      .notNull(),
+    dispatchEventId: text("dispatch_event_id"),
+    dispatchAttempts: integer("dispatch_attempts").default(0).notNull(),
+    dispatchClaimedAt: timestamp("dispatch_claimed_at", {
+      withTimezone: true,
+    }),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    dispatchLastError: text("dispatch_last_error"),
   },
   (table) => ({
     statusCheck: check(
@@ -274,6 +304,37 @@ export const feedback = pgTable(
     sessionIdStatusIdx: index("feedback_session_status_idx").on(
       table.sessionId,
       table.status
+    ),
+    dispatchStatusCheck: check(
+      "feedback_dispatch_status_check",
+      sql`${table.dispatchStatus} IN ('not_required', 'pending', 'sending', 'sent', 'failed')`
+    ),
+    dispatchAttemptsCheck: check(
+      "feedback_dispatch_attempts_check",
+      sql`${table.dispatchAttempts} >= 0`
+    ),
+    completionTierCheck: check(
+      "feedback_completion_tier_check",
+      sql`${table.completionTier} IS NULL OR ${table.completionTier} IN ('full', 'partial', 'insufficient', 'abandoned')`
+    ),
+    dispatchEventRequiredCheck: check(
+      "feedback_dispatch_event_required_check",
+      sql`(${table.dispatchStatus} = 'not_required' AND ${table.dispatchEventId} IS NULL) OR (${table.dispatchStatus} <> 'not_required' AND ${table.dispatchEventId} IS NOT NULL)`
+    ),
+    dispatchClaimCheck: check(
+      "feedback_dispatch_claim_check",
+      sql`${table.dispatchStatus} <> 'sending' OR (${table.dispatchClaimedAt} IS NOT NULL AND ${table.dispatchAttempts} > 0)`
+    ),
+    dispatchSentCheck: check(
+      "feedback_dispatch_sent_check",
+      sql`${table.dispatchStatus} <> 'sent' OR (${table.dispatchedAt} IS NOT NULL AND ${table.dispatchAttempts} > 0)`
+    ),
+    dispatchEventIdUnique: uniqueIndex("feedback_dispatch_event_id_idx").on(
+      table.dispatchEventId
+    ),
+    dispatchRecoveryIdx: index("feedback_dispatch_recovery_idx").on(
+      table.dispatchStatus,
+      table.dispatchClaimedAt
     ),
   })
 );

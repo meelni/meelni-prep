@@ -88,9 +88,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { isSessionOwnedByUser } from "@/lib/db/sessions";
+import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
+import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
+import { isInterviewTerminalState } from "@meelni/core";
+import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 
 // Estimated total processing time (seconds)
 const ESTIMATED_PROCESSING_TIME = 45;
@@ -126,9 +129,27 @@ export async function GET(
     const feedbackRecord = await getFeedbackBySessionId(sessionId);
 
     if (!feedbackRecord) {
+      const session = await getSessionById(sessionId);
+      if (session && isInterviewTerminalState(session.lifecycleState)) {
+        return NextResponse.json(
+          {
+            status: "missing",
+            retryable: true,
+            message: "Feedback has not been queued yet.",
+          },
+          { headers: { "Cache-Control": "private, no-store" } }
+        );
+      }
       return NextResponse.json(
-        { error: "Feedback not found for this session" },
-        { status: 404 }
+        {
+          status: "session_not_ended",
+          retryable: false,
+          message: "This interview has not ended yet.",
+        },
+        {
+          status: 409,
+          headers: { "Cache-Control": "private, no-store" },
+        }
       );
     }
 
@@ -141,10 +162,17 @@ export async function GET(
         {
           status: "pending",
           estimatedTimeRemaining: ESTIMATED_PROCESSING_TIME,
+          dispatch: {
+            status: feedbackRecord.dispatchStatus,
+            retryable: isFeedbackDispatchRetryable({
+              status: feedbackRecord.dispatchStatus,
+              claimedAt: feedbackRecord.dispatchClaimedAt,
+            }),
+          },
         },
         {
           headers: {
-            "Cache-Control": "no-cache",
+            "Cache-Control": "private, no-store",
           },
         }
       );
@@ -156,9 +184,14 @@ export async function GET(
 
       if (feedbackRecord.processingStartedAt) {
         const elapsed = Math.floor(
-          (Date.now() - new Date(feedbackRecord.processingStartedAt).getTime()) / 1000
+          (Date.now() -
+            new Date(feedbackRecord.processingStartedAt).getTime()) /
+            1000
         );
-        estimatedTimeRemaining = Math.max(0, ESTIMATED_PROCESSING_TIME - elapsed);
+        estimatedTimeRemaining = Math.max(
+          0,
+          ESTIMATED_PROCESSING_TIME - elapsed
+        );
       }
 
       return NextResponse.json(
@@ -168,7 +201,7 @@ export async function GET(
         },
         {
           headers: {
-            "Cache-Control": "no-cache",
+            "Cache-Control": "private, no-store",
           },
         }
       );
@@ -200,7 +233,7 @@ export async function GET(
         },
         {
           headers: {
-            "Cache-Control": "public, max-age=3600", // Cache for 1 hour
+            "Cache-Control": "private, max-age=3600",
           },
         }
       );
@@ -214,7 +247,8 @@ export async function GET(
       return NextResponse.json(
         {
           status: "skipped",
-          skipReason: feedbackRecord.statusReason || "Feedback generation was skipped",
+          skipReason:
+            feedbackRecord.statusReason || "Feedback generation was skipped",
           validation: {
             tier: validation.tier,
             stats: validation.stats,
@@ -224,7 +258,7 @@ export async function GET(
         },
         {
           headers: {
-            "Cache-Control": "public, max-age=300", // Cache for 5 minutes
+            "Cache-Control": "private, max-age=300",
           },
         }
       );
@@ -239,7 +273,7 @@ export async function GET(
         },
         {
           headers: {
-            "Cache-Control": "public, max-age=300", // Cache for 5 minutes
+            "Cache-Control": "private, no-store",
           },
         }
       );
@@ -254,6 +288,83 @@ export async function GET(
     console.error("Error fetching feedback:", error);
     return NextResponse.json(
       { error: "Failed to fetch feedback" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(
+  _req: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { sessionId } = await params;
+    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
+    if (!isOwner) {
+      return NextResponse.json(
+        { error: "Session not found or access denied" },
+        { status: 404 }
+      );
+    }
+
+    const session = await getSessionById(sessionId);
+    if (
+      !session ||
+      (session.lifecycleState !== "ending" &&
+        !isInterviewTerminalState(session.lifecycleState))
+    ) {
+      return NextResponse.json(
+        {
+          error: "session_not_ended",
+          message: "End the interview before queueing feedback.",
+        },
+        { status: 409 }
+      );
+    }
+
+    const result = await endInterviewSessionWorkflow({
+      sessionId,
+      userId: user.id,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    const dispatchStatus =
+      result.dispatch?.dispatch?.status ??
+      result.completion.feedback.dispatchStatus;
+    const retryable =
+      result.completion.feedback.status === "pending" &&
+      isFeedbackDispatchRetryable({
+        status: dispatchStatus,
+        claimedAt:
+          result.dispatch?.dispatch?.claimedAt ??
+          result.completion.feedback.dispatchClaimedAt,
+      });
+    return NextResponse.json(
+      {
+        status: result.completion.feedback.status,
+        feedbackId: result.completion.feedback.id,
+        dispatch: { status: dispatchStatus, retryable },
+      },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
+  } catch (error) {
+    console.error("Error retrying feedback dispatch:", error);
+    return NextResponse.json(
+      {
+        error: "feedback_retry_failed",
+        message: "Feedback could not be queued yet. Please try again.",
+      },
       { status: 500 }
     );
   }

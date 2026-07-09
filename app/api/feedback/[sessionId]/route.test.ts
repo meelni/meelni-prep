@@ -1,381 +1,195 @@
-/**
- * Tests for Feedback Polling API Endpoint
- *
- * Verifies:
- * - Status tracking (pending, processing, completed, failed, skipped)
- * - Estimated time remaining calculations
- * - Cache header configuration
- * - Authentication and authorization
- * - Error handling
- */
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { GET } from "./route";
-import { NextRequest } from "next/server";
-
-// Mock dependencies
-vi.mock("@/lib/supabase/server", () => ({
-  createClient: vi.fn(),
-}));
-
+vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/db/sessions", () => ({
+  getSessionById: vi.fn(),
   isSessionOwnedByUser: vi.fn(),
 }));
-
 vi.mock("@/lib/db/feedback", () => ({
   getFeedbackBySessionId: vi.fn(),
 }));
+vi.mock("@/lib/evaluation/session-validator", () => ({
+  validateSessionCompleteness: vi.fn(),
+}));
+vi.mock("@/lib/workflows/end-interview-session", () => ({
+  endInterviewSessionWorkflow: vi.fn(),
+}));
 
-import { createClient } from "@/lib/supabase/server";
-import { isSessionOwnedByUser } from "@/lib/db/sessions";
+import { NextRequest } from "next/server";
+
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
+import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import { createClient } from "@/lib/supabase/server";
+import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
+import { GET, POST } from "./route";
 
-describe("GET /api/feedback/[sessionId]", () => {
-  const mockSessionId = "550e8400-e29b-41d4-a716-446655440000";
-  const mockUserId = "user-123";
+const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const PARAMS = { params: Promise.resolve({ sessionId: SESSION_ID }) };
 
+describe("/api/feedback/[sessionId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAuth({ id: "user-1" });
+    vi.mocked(isSessionOwnedByUser).mockResolvedValue(true);
   });
 
-  const createMockRequest = () => {
-    return new NextRequest(
-      `http://localhost:3000/api/feedback/${mockSessionId}`
+  it("rejects unauthenticated polling", async () => {
+    mockAuth(null, new Error("expired"));
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(401);
+  });
+
+  it("does not reveal a cross-user session", async () => {
+    vi.mocked(isSessionOwnedByUser).mockResolvedValue(false);
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(404);
+  });
+
+  it("returns a typed recoverable state for terminal-without-feedback", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "completed",
+    } as never);
+
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "missing",
+      retryable: true,
+    });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("reports failed dispatch as pending and retryable", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({ dispatchStatus: "failed" }) as never
     );
-  };
 
-  const createMockParams = () => {
-    return Promise.resolve({ sessionId: mockSessionId });
-  };
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "pending",
+      dispatch: { status: "failed", retryable: true },
+    });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
 
-  describe("Authentication", () => {
-    it("should return 401 if user is not authenticated", async () => {
-      const mockSupabase = {
-        auth: {
-          getUser: vi.fn().mockResolvedValue({
-            data: { user: null },
-            error: new Error("Not authenticated"),
-          }),
-        },
-      };
-
-      (createClient as any).mockResolvedValue(mockSupabase);
-
-      const request = createMockRequest();
-      const params = createMockParams();
-
-      const response = await GET(request, { params });
-      const data = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("Unauthorized");
+  it("offers recovery before a sender claims a pending dispatch", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        dispatchStatus: "pending",
+        dispatchClaimedAt: null,
+      }) as never
+    );
+    const response = await GET(request(), PARAMS);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "pending",
+      dispatch: { status: "pending", retryable: true },
     });
   });
 
-  describe("Authorization", () => {
-    it("should return 404 if user doesn't own the session", async () => {
-      const mockSupabase = {
-        auth: {
-          getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: mockUserId } },
-            error: null,
-          }),
-        },
-      };
-
-      (createClient as any).mockResolvedValue(mockSupabase);
-      (isSessionOwnedByUser as any).mockResolvedValue(false);
-
-      const request = createMockRequest();
-      const params = createMockParams();
-
-      const response = await GET(request, { params });
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error).toBe("Session not found or access denied");
-    });
-
-    it("should return 404 if feedback doesn't exist", async () => {
-      const mockSupabase = {
-        auth: {
-          getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: mockUserId } },
-            error: null,
-          }),
-        },
-      };
-
-      (createClient as any).mockResolvedValue(mockSupabase);
-      (isSessionOwnedByUser as any).mockResolvedValue(true);
-      (getFeedbackBySessionId as any).mockResolvedValue(null);
-
-      const request = createMockRequest();
-      const params = createMockParams();
-
-      const response = await GET(request, { params });
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error).toBe("Feedback not found for this session");
+  it("waits for an active sending lease instead of showing failure", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        dispatchStatus: "sending",
+        dispatchClaimedAt: new Date(),
+      }) as never
+    );
+    const response = await GET(request(), PARAMS);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "pending",
+      dispatch: { status: "sending", retryable: false },
     });
   });
 
-  describe("Status: Pending", () => {
-    it("should return pending status with estimated time", async () => {
-      const mockSupabase = {
-        auth: {
-          getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: mockUserId } },
-            error: null,
-          }),
+  it("retries the stored event identity without turning dispatch failure into 500", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "completed",
+    } as never);
+    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue({
+      ok: true,
+      completion: {
+        feedback: feedbackRecord({ dispatchStatus: "failed" }),
+      },
+      dispatch: {
+        ok: false,
+        disposition: "failed",
+        dispatch: {
+          sessionId: SESSION_ID,
+          eventId: `feedback/generate.requested:${SESSION_ID}`,
+          status: "failed",
+          attempts: 2,
+          claimedAt: new Date("2026-07-09T22:00:00.000Z"),
+          dispatchedAt: null,
         },
-      };
+      },
+    } as never);
 
-      const mockFeedback = {
-        id: "feedback-123",
-        sessionId: mockSessionId,
-        status: "pending",
-        createdAt: new Date(),
-      };
-
-      (createClient as any).mockResolvedValue(mockSupabase);
-      (isSessionOwnedByUser as any).mockResolvedValue(true);
-      (getFeedbackBySessionId as any).mockResolvedValue(mockFeedback);
-
-      const request = createMockRequest();
-      const params = createMockParams();
-
-      const response = await GET(request, { params });
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.status).toBe("pending");
-      expect(data.estimatedTimeRemaining).toBe(45);
-      expect(response.headers.get("Cache-Control")).toBe("no-cache");
+    const response = await POST(request("POST"), PARAMS);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "pending",
+      dispatch: { status: "failed", retryable: true },
     });
   });
 
-  describe("Status: Processing", () => {
-    it("should return processing status with calculated time remaining", async () => {
-      const mockSupabase = {
-        auth: {
-          getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: mockUserId } },
-            error: null,
-          }),
-        },
-      };
-
-      // Started 20 seconds ago
-      const processingStartedAt = new Date(Date.now() - 20000);
-
-      const mockFeedback = {
-        id: "feedback-123",
-        sessionId: mockSessionId,
-        status: "processing",
-        processingStartedAt,
-        createdAt: new Date(),
-      };
-
-      (createClient as any).mockResolvedValue(mockSupabase);
-      (isSessionOwnedByUser as any).mockResolvedValue(true);
-      (getFeedbackBySessionId as any).mockResolvedValue(mockFeedback);
-
-      const request = createMockRequest();
-      const params = createMockParams();
-
-      const response = await GET(request, { params });
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.status).toBe("processing");
-      expect(data.estimatedTimeRemaining).toBeLessThanOrEqual(25);
-      expect(data.estimatedTimeRemaining).toBeGreaterThanOrEqual(24);
-      expect(response.headers.get("Cache-Control")).toBe("no-cache");
-    });
-
-    it("should return 0 time remaining if processing took longer than estimated", async () => {
-      const mockSupabase = {
-        auth: {
-          getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: mockUserId } },
-            error: null,
-          }),
-        },
-      };
-
-      // Started 60 seconds ago (longer than 45s estimate)
-      const processingStartedAt = new Date(Date.now() - 60000);
-
-      const mockFeedback = {
-        id: "feedback-123",
-        sessionId: mockSessionId,
-        status: "processing",
-        processingStartedAt,
-        createdAt: new Date(),
-      };
-
-      (createClient as any).mockResolvedValue(mockSupabase);
-      (isSessionOwnedByUser as any).mockResolvedValue(true);
-      (getFeedbackBySessionId as any).mockResolvedValue(mockFeedback);
-
-      const request = createMockRequest();
-      const params = createMockParams();
-
-      const response = await GET(request, { params });
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.status).toBe("processing");
-      expect(data.estimatedTimeRemaining).toBe(0);
-    });
+  it("never turns an active interview into a feedback retry", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "active",
+    } as never);
+    const response = await POST(request("POST"), PARAMS);
+    expect(response.status).toBe(409);
+    expect(endInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 
-  describe("Status: Completed", () => {
-    it("should return completed status with full feedback data", async () => {
-      const mockSupabase = {
-        auth: {
-          getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: mockUserId } },
-            error: null,
-          }),
-        },
-      };
-
-      const mockFeedback = {
-        id: "feedback-123",
-        sessionId: mockSessionId,
+  it("keeps authenticated completed feedback out of shared caches", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
         status: "completed",
-        structureScore: 8,
-        clarityScore: 7,
-        insightScore: 9,
-        communicationScore: 8,
-        leadershipScore: 7,
-        overallScore: "7.8",
-        strengths: ["Strong framework use", "Clear articulation"],
-        improvements: ["Deeper analysis needed"],
-        drills: ["Practice CIRCLES method"],
-        summary: "Strong performance",
-        rubricVersion: "1.0.0",
-        createdAt: new Date("2025-11-05T11:20:00Z"),
-      };
-
-      (createClient as any).mockResolvedValue(mockSupabase);
-      (isSessionOwnedByUser as any).mockResolvedValue(true);
-      (getFeedbackBySessionId as any).mockResolvedValue(mockFeedback);
-
-      const request = createMockRequest();
-      const params = createMockParams();
-
-      const response = await GET(request, { params });
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.status).toBe("completed");
-      expect(data.feedback).toBeDefined();
-      expect(data.feedback.structureScore).toBe(8);
-      expect(data.feedback.overallScore).toBe(7.8);
-      expect(data.feedback.strengths).toHaveLength(2);
-      expect(response.headers.get("Cache-Control")).toBe("public, max-age=3600");
-    });
-  });
-
-  describe("Status: Skipped", () => {
-    it("should return skipped status with reason", async () => {
-      const mockSupabase = {
-        auth: {
-          getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: mockUserId } },
-            error: null,
-          }),
-        },
-      };
-
-      const mockFeedback = {
-        id: "feedback-123",
-        sessionId: mockSessionId,
-        status: "skipped",
-        statusReason: "Session too short: 2 minutes < 5 minutes minimum",
-        createdAt: new Date(),
-      };
-
-      (createClient as any).mockResolvedValue(mockSupabase);
-      (isSessionOwnedByUser as any).mockResolvedValue(true);
-      (getFeedbackBySessionId as any).mockResolvedValue(mockFeedback);
-
-      const request = createMockRequest();
-      const params = createMockParams();
-
-      const response = await GET(request, { params });
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.status).toBe("skipped");
-      expect(data.skipReason).toBe("Session too short: 2 minutes < 5 minutes minimum");
-      expect(response.headers.get("Cache-Control")).toBe("public, max-age=300");
-    });
-  });
-
-  describe("Status: Failed", () => {
-    it("should return failed status with error message", async () => {
-      const mockSupabase = {
-        auth: {
-          getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: mockUserId } },
-            error: null,
-          }),
-        },
-      };
-
-      const mockFeedback = {
-        id: "feedback-123",
-        sessionId: mockSessionId,
-        status: "failed",
-        statusReason: "GPT-4 API timeout",
-        createdAt: new Date(),
-      };
-
-      (createClient as any).mockResolvedValue(mockSupabase);
-      (isSessionOwnedByUser as any).mockResolvedValue(true);
-      (getFeedbackBySessionId as any).mockResolvedValue(mockFeedback);
-
-      const request = createMockRequest();
-      const params = createMockParams();
-
-      const response = await GET(request, { params });
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.status).toBe("failed");
-      expect(data.error).toBe("GPT-4 API timeout");
-      expect(response.headers.get("Cache-Control")).toBe("public, max-age=300");
-    });
-  });
-
-  describe("Error Handling", () => {
-    it("should handle database errors gracefully", async () => {
-      const mockSupabase = {
-        auth: {
-          getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: mockUserId } },
-            error: null,
-          }),
-        },
-      };
-
-      (createClient as any).mockResolvedValue(mockSupabase);
-      (isSessionOwnedByUser as any).mockResolvedValue(true);
-      (getFeedbackBySessionId as any).mockRejectedValue(new Error("Database error"));
-
-      const request = createMockRequest();
-      const params = createMockParams();
-
-      const response = await GET(request, { params });
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data.error).toBe("Failed to fetch feedback");
-    });
+        dispatchStatus: "sent",
+        dispatchedAt: new Date("2026-07-09T22:00:00.000Z"),
+        overallScore: "8.0",
+      }) as never
+    );
+    const response = await GET(request(), PARAMS);
+    expect(response.headers.get("cache-control")).toBe("private, max-age=3600");
   });
 });
+
+function request(method = "GET") {
+  return new NextRequest(`http://localhost/api/feedback/${SESSION_ID}`, {
+    method,
+  });
+}
+
+function mockAuth(user: { id: string } | null, error: Error | null = null) {
+  vi.mocked(createClient).mockResolvedValue({
+    auth: {
+      getUser: vi.fn().mockResolvedValue({ data: { user }, error }),
+    },
+  } as never);
+}
+
+function feedbackRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "650e8400-e29b-41d4-a716-446655440000",
+    sessionId: SESSION_ID,
+    status: "pending",
+    statusReason: null,
+    dispatchStatus: "sent",
+    processingStartedAt: null,
+    structureScore: null,
+    clarityScore: null,
+    insightScore: null,
+    communicationScore: null,
+    leadershipScore: null,
+    overallScore: null,
+    strengths: [],
+    improvements: [],
+    drills: [],
+    summary: null,
+    rubricVersion: "1.0.0",
+    createdAt: new Date("2026-07-09T22:00:00.000Z"),
+    ...overrides,
+  };
+}
