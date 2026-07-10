@@ -30,6 +30,11 @@ const CUSTOMER_COPY_FILES = [
   "lib/data/companies.ts",
   "lib/seo/home-metadata.ts",
 ];
+const GENERATED_CUSTOMER_COPY_FILES = [
+  "lib/evaluation/prompts.ts",
+  "lib/evaluation/drill-generator.ts",
+];
+const FEEDBACK_EXPERIENCE_ROOTS = ["app/feedback", "components/feedback"];
 const PUBLIC_CUSTOMER_CONTENT_ROOTS = ["content", "docs/api", "public/docs"];
 const PUBLIC_CUSTOMER_CONTENT_FILES = ["docs/openapi.yaml"];
 const LEGACY_ROUTE_FILE = "app/dashboard/new-rep/page.tsx";
@@ -50,6 +55,8 @@ const PROHIBITION_BREAK = /[,.;]|\b(?:but|however|yet)\b/i;
 const FITNESS_LANGUAGE = /\b(?:gym|rep|reps|workout|workouts|drill|drills)\b/i;
 const UNSUPPORTED_FEEDBACK_TIMING =
   /\b(?:real[- ]time|instant|immediate)\b.{0,30}\bfeedback\b|\bfeedback\b.{0,30}\b(?:real[- ]time|instant|immediate)\b/i;
+const UNSUPPORTED_QUANTIFIED_LATENCY =
+  /\b(?:takes?|ready in|complete[sd]? in)\b.{0,30}\b(?:less than|under|within|about|around)?\s*(?:a|an|\d+)\s*(?:seconds?|minutes?)\b/i;
 const UNSUPPORTED_OUTCOME_PROMISE =
   /\b(?:ace|crush|master)\b.{0,40}\binterviews?\b|\bland\b.{0,30}\b(?:offers?|dream role)\b|\binterviews?\b.{0,40}\b(?:ace|crush|master)\b/i;
 const FORBIDDEN_CANONICAL_CLAIMS = [
@@ -146,6 +153,13 @@ function stripExactLegacyIdentifiers(file, source) {
   return sanitized;
 }
 
+function stringLiteralContent(source) {
+  const sanitized = stripExactCompatibilityIdentifiers(source);
+  return [...sanitized.matchAll(/(["'`])((?:\\.|(?!\1)[\s\S])*)\1/g)]
+    .map((match) => match[2])
+    .join("\n");
+}
+
 function findForbiddenCanonicalClaims(source) {
   const violations = [];
   const lines = stripExactCompatibilityIdentifiers(source).split("\n");
@@ -230,6 +244,46 @@ test("active product surfaces use interview-practice language", async () => {
 
     for (const [label, pattern] of forbiddenLanguage) {
       if (pattern.test(customerCopy)) violations.push(`${file}: ${label}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("generated feedback copy uses focused-practice language", async () => {
+  const violations = [];
+
+  for (const file of GENERATED_CUSTOMER_COPY_FILES) {
+    const source = await readFile(path.join(ROOT, file), "utf8");
+    const generatedCopy = stringLiteralContent(source);
+
+    if (FITNESS_LANGUAGE.test(generatedCopy)) {
+      violations.push(`${file}: fitness metaphor`);
+    }
+    if (UNSUPPORTED_FEEDBACK_TIMING.test(generatedCopy)) {
+      violations.push(`${file}: unsupported feedback timing`);
+    }
+    if (UNSUPPORTED_QUANTIFIED_LATENCY.test(generatedCopy)) {
+      violations.push(`${file}: unsupported quantified latency`);
+    }
+    if (UNSUPPORTED_OUTCOME_PROMISE.test(generatedCopy)) {
+      violations.push(`${file}: unsupported outcome promise`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("feedback experience makes no unsupported quantified latency promise", async () => {
+  const files = (
+    await Promise.all(FEEDBACK_EXPERIENCE_ROOTS.map(sourceFiles))
+  ).flat();
+  const violations = [];
+
+  for (const file of files) {
+    const source = await readFile(path.join(ROOT, file), "utf8");
+    if (UNSUPPORTED_QUANTIFIED_LATENCY.test(stringLiteralContent(source))) {
+      violations.push(file);
     }
   }
 
@@ -381,6 +435,21 @@ test("feedback timing guard rejects real-time, instant, and immediate product cl
   assert.doesNotMatch(
     "Review feedback after your completed interview.",
     UNSUPPORTED_FEEDBACK_TIMING
+  );
+});
+
+test("feedback timing guard rejects unsupported quantified latency promises", () => {
+  assert.match(
+    "This usually takes less than a minute.",
+    UNSUPPORTED_QUANTIFIED_LATENCY
+  );
+  assert.match(
+    "Your review will be ready in 30 seconds.",
+    UNSUPPORTED_QUANTIFIED_LATENCY
+  );
+  assert.doesNotMatch(
+    "You can leave this page and return when your review is ready.",
+    UNSUPPORTED_QUANTIFIED_LATENCY
   );
 });
 
