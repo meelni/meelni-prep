@@ -43,7 +43,6 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
   const [progress, setProgress] = useState(0);
   const [currentStage, setCurrentStage] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
-  const [estimatedTime, setEstimatedTime] = useState(45);
   const [status, setStatus] = useState<
     "pending" | "processing" | "completed" | "failed" | "skipped"
   >("pending");
@@ -109,11 +108,6 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
 
       // Only update state if still processing
       setStatus(data.status);
-
-      // Update estimated time if provided
-      if (data.estimatedTimeRemaining !== undefined) {
-        setEstimatedTime(Math.max(0, data.estimatedTimeRemaining));
-      }
 
       // Update poll count, check timeout, and update progress
       setPollCount((prevCount) => {
@@ -423,14 +417,6 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
             })}
           </ul>
 
-          <div className="text-center">
-            <p className="text-muted-foreground text-sm">
-              Estimated time remaining:{" "}
-              <span className="text-primary font-medium">
-                {estimatedTime > 0 ? `${estimatedTime}s` : "Almost done..."}
-              </span>
-            </p>
-          </div>
         </FeedbackSectionCard>
       </motion.div>
     </FeedbackStatusPage>
