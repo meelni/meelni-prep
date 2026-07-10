@@ -18,6 +18,7 @@ import {
   stripeCustomerMapping,
   subscription,
   transcriptTurn,
+  userInsights,
   userSettings,
 } from "./schema";
 
@@ -34,50 +35,94 @@ export interface AccountDeletionRecord {
   attempts: number;
 }
 
-export async function loadAccountDeletionSubjects(userId: string) {
-  const [currentSubscription] = await db
-    .select({
-      stripeSubscriptionId: subscription.stripeSubscriptionId,
-      stripeCustomerId: subscription.stripeCustomerId,
-    })
-    .from(subscription)
-    .where(eq(subscription.userId, userId))
-    .limit(1);
-  const customerMappings = await db
-    .select({ stripeCustomerId: stripeCustomerMapping.stripeCustomerId })
-    .from(stripeCustomerMapping)
-    .where(eq(stripeCustomerMapping.userId, userId));
-
-  return buildStripeDeletionSubjects({
-    subscriptionId: currentSubscription?.stripeSubscriptionId,
-    subscriptionCustomerId: currentSubscription?.stripeCustomerId,
-    mappedCustomerIds: customerMappings.map(
-      ({ stripeCustomerId }) => stripeCustomerId
-    ),
-  });
-}
-
 export async function requestAccountDeletion(input: {
   userId: string;
   stripeSubjects: StripeDeletionSubject[];
 }): Promise<AccountDeletionRecord> {
-  const [record] = await db
-    .insert(accountDeletionRequest)
-    .values({
-      userId: input.userId,
-      stripeSubjects: input.stripeSubjects,
-    })
-    .onConflictDoUpdate({
-      target: accountDeletionRequest.userId,
-      set: {
-        status: "pending",
+  const record = await db.transaction(async (tx) => {
+    // Serialize deletion intent with credit-ledger fulfillment. The ledger
+    // locks the same app_user row before checking this tombstone, so either a
+    // grant commits before deletion intent or it fails closed afterward.
+    await tx
+      .select({ id: appUser.id })
+      .from(appUser)
+      .where(eq(appUser.id, input.userId))
+      .limit(1)
+      .for("update");
+
+    const [persisted] = await tx
+      .insert(accountDeletionRequest)
+      .values({
+        userId: input.userId,
         stripeSubjects: input.stripeSubjects,
-        lastErrorCode: null,
-        completedAt: null,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
+      })
+      .onConflictDoUpdate({
+        target: accountDeletionRequest.userId,
+        set: {
+          status: "pending",
+          stripeSubjects: input.stripeSubjects,
+          lastErrorCode: null,
+          completedAt: null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return persisted;
+  });
+  if (!record) throw new Error("Account deletion request was not persisted");
+  return toDeletionRecord(record);
+}
+
+export async function requestAccountDeletionWithCurrentSubjects(
+  userId: string
+): Promise<AccountDeletionRecord> {
+  const record = await db.transaction(async (tx) => {
+    await tx
+      .select({ id: appUser.id })
+      .from(appUser)
+      .where(eq(appUser.id, userId))
+      .limit(1)
+      .for("update");
+
+    // Billing webhook fulfillment locks the same user row. Taking the subject
+    // snapshot after this lock prevents a concurrent subscription/mapping
+    // commit from falling between the snapshot and durable tombstone.
+    const [currentSubscription] = await tx
+      .select({
+        stripeSubscriptionId: subscription.stripeSubscriptionId,
+        stripeCustomerId: subscription.stripeCustomerId,
+      })
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1);
+    const customerMappings = await tx
+      .select({ stripeCustomerId: stripeCustomerMapping.stripeCustomerId })
+      .from(stripeCustomerMapping)
+      .where(eq(stripeCustomerMapping.userId, userId));
+    const stripeSubjects = buildStripeDeletionSubjects({
+      subscriptionId: currentSubscription?.stripeSubscriptionId,
+      subscriptionCustomerId: currentSubscription?.stripeCustomerId,
+      mappedCustomerIds: customerMappings.map(
+        ({ stripeCustomerId }) => stripeCustomerId
+      ),
+    });
+
+    const [persisted] = await tx
+      .insert(accountDeletionRequest)
+      .values({ userId, stripeSubjects })
+      .onConflictDoUpdate({
+        target: accountDeletionRequest.userId,
+        set: {
+          status: "pending",
+          stripeSubjects,
+          lastErrorCode: null,
+          completedAt: null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return persisted;
+  });
   if (!record) throw new Error("Account deletion request was not persisted");
   return toDeletionRecord(record);
 }
@@ -95,6 +140,48 @@ export async function hasAccountDeletionTombstone(
   userId: string
 ): Promise<boolean> {
   return Boolean(await getAccountDeletionRequest(userId));
+}
+
+export async function recordLateStripeDeletionSubjects(
+  userId: string,
+  incomingSubjects: StripeDeletionSubject[]
+): Promise<boolean> {
+  if (incomingSubjects.length === 0) return false;
+  return db.transaction(async (tx) => {
+    const [request] = await tx
+      .select()
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1)
+      .for("update");
+    if (!request) return false;
+
+    const subjects = new Map(
+      request.stripeSubjects.map((subject) => [subject.fingerprint, subject])
+    );
+    for (const subject of incomingSubjects) {
+      const existing = subjects.get(subject.fingerprint);
+      subjects.set(subject.fingerprint, {
+        kind: existing?.kind ?? subject.kind,
+        fingerprint: subject.fingerprint,
+        // Completed tombstones retain fingerprints only. Active deletion work
+        // may retain the provider ID temporarily so a recovery retry can remove
+        // a resource discovered after the original snapshot.
+        providerId:
+          request.status === "completed"
+            ? null
+            : (existing?.providerId ?? subject.providerId),
+      });
+    }
+    await tx
+      .update(accountDeletionRequest)
+      .set({
+        stripeSubjects: [...subjects.values()],
+        updatedAt: new Date(),
+      })
+      .where(eq(accountDeletionRequest.userId, userId));
+    return true;
+  });
 }
 
 export async function markAccountDeletionProcessing(userId: string) {
@@ -125,21 +212,28 @@ export async function markAccountDeletionFailed(
 
 export async function markAccountDeletionCompleted(userId: string) {
   const now = new Date();
-  const request = await getAccountDeletionRequest(userId);
-  if (!request) throw new Error("Account deletion tombstone is missing");
-  await db
-    .update(accountDeletionRequest)
-    .set({
-      status: "completed",
-      lastErrorCode: null,
-      completedAt: now,
-      stripeSubjects: request.stripeSubjects.map((subject) => ({
-        ...subject,
-        providerId: null,
-      })),
-      updatedAt: now,
-    })
-    .where(eq(accountDeletionRequest.userId, userId));
+  await db.transaction(async (tx) => {
+    const [request] = await tx
+      .select()
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1)
+      .for("update");
+    if (!request) throw new Error("Account deletion tombstone is missing");
+    await tx
+      .update(accountDeletionRequest)
+      .set({
+        status: "completed",
+        lastErrorCode: null,
+        completedAt: now,
+        stripeSubjects: request.stripeSubjects.map((subject) => ({
+          ...subject,
+          providerId: null,
+        })),
+        updatedAt: now,
+      })
+      .where(eq(accountDeletionRequest.userId, userId));
+  });
 }
 
 export async function hasStripeDeletionTombstone(
@@ -231,6 +325,10 @@ export async function deleteUserApplicationData(userId: string) {
         .where(eq(sessionQuestion.sessionId, sessionId));
     }
 
+    // user_insights.last_session_id has a NO ACTION foreign key to
+    // interview_session. Remove the user's aggregate row before deleting the
+    // session graph so a populated account cannot wedge durable deletion.
+    await tx.delete(userInsights).where(eq(userInsights.userId, userId));
     await tx
       .delete(interviewSession)
       .where(eq(interviewSession.userId, userId));

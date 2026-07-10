@@ -3,6 +3,7 @@ import { and, asc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   appUser,
+  accountDeletionRequest,
   creditGrant,
   creditReservation,
   creditReservationGrant,
@@ -51,6 +52,13 @@ export function createDrizzleCreditLedgerStore(
           .limit(1)
           .for("update");
         if (!users[0]) throw new Error("credit_ledger_user_not_found");
+
+        const tombstones = await transaction
+          .select({ userId: accountDeletionRequest.userId })
+          .from(accountDeletionRequest)
+          .where(eq(accountDeletionRequest.userId, userId))
+          .limit(1);
+        if (tombstones[0]) throw new Error("account_deletion_pending");
 
         return work(createDrizzleCreditLedgerOperations(transaction));
       });

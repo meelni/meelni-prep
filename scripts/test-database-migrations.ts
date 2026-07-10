@@ -32,6 +32,7 @@ const CLEAN_DATABASE = "meelni_clean_test";
 const UPGRADE_DATABASE = "meelni_upgrade_test";
 const USER_ONE = "11111111-1111-4111-8111-111111111111";
 const USER_TWO = "22222222-2222-4222-8222-222222222222";
+const SESSION_DELETION = "22222222-3333-4333-8333-222222222222";
 const SESSION_ONE = "33333333-3333-4333-8333-333333333333";
 const SESSION_ENDED_IN_PROGRESS = "44444444-4444-4444-8444-444444444444";
 const SESSION_COMPLETED = "55555555-5555-4555-8555-555555555555";
@@ -1851,8 +1852,9 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
   const {
     deleteUserApplicationData,
     markAccountDeletionCompleted,
+    recordLateStripeDeletionSubjects,
     redactStripeEventLogs,
-    requestAccountDeletion,
+    requestAccountDeletionWithCurrentSubjects,
   } = await import("../lib/db/account-deletions");
   const { AccountDeletionPendingError, upsertUser } = await import(
     "../lib/db/users"
@@ -1861,14 +1863,59 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     INSERT INTO app_user (id, email)
     VALUES (${USER_TWO}::uuid, 'deletion-user@example.invalid')
   `;
-  const deletionRequest = await requestAccountDeletion({
-    userId: USER_TWO,
-    stripeSubjects: buildStripeDeletionSubjects({
-      subscriptionId: "sub_private",
-      subscriptionCustomerId: null,
-      mappedCustomerIds: ["cus_private", "cus_second_private"],
-    }),
-  });
+  await sql`
+    INSERT INTO interview_session (id, user_id, round_type, mode)
+    VALUES (
+      ${SESSION_DELETION}::uuid,
+      ${USER_TWO}::uuid,
+      'product_sense',
+      'voice_video'
+    )
+  `;
+  await sql`
+    INSERT INTO user_insights (
+      user_id,
+      overall_stats,
+      by_interview_type,
+      by_difficulty,
+      trends,
+      competency_breakdown,
+      last_session_id
+    ) VALUES (
+      ${USER_TWO}::uuid,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      ${SESSION_DELETION}::uuid
+    )
+  `;
+  await sql`
+    INSERT INTO stripe_customer_mapping (stripe_customer_id, user_id)
+    VALUES
+      ('cus_private', ${USER_TWO}::uuid),
+      ('cus_second_private', ${USER_TWO}::uuid)
+  `;
+  const deletionRequest =
+    await requestAccountDeletionWithCurrentSubjects(USER_TWO);
+  const { createDrizzleCreditLedgerStore } = await import(
+    "../lib/billing/credit-ledger-store"
+  );
+  const { createCreditLedgerService } = await import("../lib/billing/credits");
+  await assert.rejects(
+    () =>
+      createCreditLedgerService({
+        store: createDrizzleCreditLedgerStore(),
+      }).grantCredits({
+        userId: USER_TWO,
+        catalogId: "interview_pass",
+        source: "checkout",
+        sourceId: "cs_deleted_account",
+        idempotencyKey: "stripe:checkout:deleted-account",
+      }),
+    /account_deletion_pending/
+  );
   await sql`
     INSERT INTO stripe_event_log (
       stripe_event_id, event_type, payload, status, attempts, last_error
@@ -1892,10 +1939,20 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
   await redactStripeEventLogs(deletionRequest);
   await deleteUserApplicationData(USER_TWO);
   await markAccountDeletionCompleted(USER_TWO);
+  await recordLateStripeDeletionSubjects(
+    USER_TWO,
+    buildStripeDeletionSubjects({
+      subscriptionId: null,
+      subscriptionCustomerId: "cus_late_after_completion",
+      mappedCustomerIds: [],
+    })
+  );
 
   const [state] = await sql<
     {
       app_user_exists: boolean;
+      interview_session_exists: boolean;
+      user_insights_exists: boolean;
       tombstone_exists: boolean;
       raw_provider_ids: number;
       provider_fingerprints: number;
@@ -1906,6 +1963,14 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     SELECT
       EXISTS (SELECT 1 FROM app_user WHERE id = ${USER_TWO}::uuid)
         AS app_user_exists,
+      EXISTS (
+        SELECT 1 FROM interview_session
+        WHERE user_id = ${USER_TWO}::uuid
+      ) AS interview_session_exists,
+      EXISTS (
+        SELECT 1 FROM user_insights
+        WHERE user_id = ${USER_TWO}::uuid
+      ) AS user_insights_exists,
       EXISTS (
         SELECT 1 FROM account_deletion_request
         WHERE user_id = ${USER_TWO}::uuid
@@ -1924,6 +1989,8 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
   `;
   assert.deepEqual(state, {
     app_user_exists: false,
+    interview_session_exists: false,
+    user_insights_exists: false,
     tombstone_exists: true,
     raw_provider_ids: 0,
     provider_fingerprints: 3,

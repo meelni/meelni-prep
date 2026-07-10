@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
 import {
+  accountDeletionRequest,
+  appUser,
   stripeEventLog,
   subscription,
   paymentHistory,
@@ -10,8 +12,25 @@ import {
 import { eq, and } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
-import { getStripeEventSubject } from "@/lib/billing/stripe-privacy";
-import { hasStripeDeletionTombstone } from "@/lib/db/account-deletions";
+import {
+  buildStripeDeletionSubjects,
+  getStripeEventSubject,
+} from "@/lib/billing/stripe-privacy";
+import {
+  hasAccountDeletionTombstone,
+  hasStripeDeletionTombstone,
+  getAccountDeletionRequest,
+  recordLateStripeDeletionSubjects,
+  redactStripeEventLogs,
+} from "@/lib/db/account-deletions";
+import {
+  checkoutReconciliationErrorCode,
+  checkoutSessionAuthenticatedUserId,
+  deletedBillingIdempotencyKey,
+  reconcileDeletedCheckoutSession,
+  stripeEventMetadataUserId,
+} from "@/lib/billing/account-deletion-guard";
+import { isAlreadyDeletedProviderError } from "@/lib/workflows/delete-account";
 import {
   STRIPE_API_VERSION,
   getStripeCatalogIdForPrice,
@@ -47,15 +66,22 @@ export async function POST(req: NextRequest) {
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-    } catch (err) {
-      console.error("Webhook signature verification failed:", err);
+    } catch {
+      console.error("Webhook signature verification failed");
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
     const subject = getStripeEventSubject(event);
-    const deletionTombstone = subject.fingerprint
+    const eventUserId = stripeEventMetadataUserId(event);
+    const subjectDeletionTombstone = subject.fingerprint
       ? await hasStripeDeletionTombstone(subject.fingerprint)
       : false;
+    const userDeletionTombstone = eventUserId
+      ? await hasAccountDeletionTombstone(eventUserId)
+      : false;
+    const deletionTombstone = subjectDeletionTombstone || userDeletionTombstone;
+    const reconcileDeletedBilling =
+      deletionTombstone && isDeletedBillingReconciliationEvent(event.type);
 
     // CRITICAL: Idempotency check using stripe_event_log
     const existingEvent = await db
@@ -68,7 +94,7 @@ export async function POST(req: NextRequest) {
       const eventLog = existingEvent[0];
 
       // If already processed, return success (idempotent)
-      if (eventLog.status === "processed") {
+      if (eventLog.status === "processed" && !reconcileDeletedBilling) {
         console.log(`Event ${event.id} already processed, skipping`);
         return NextResponse.json({
           received: true,
@@ -76,7 +102,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      if (deletionTombstone) {
+      if (deletionTombstone && !reconcileDeletedBilling) {
         await db
           .update(stripeEventLog)
           .set({
@@ -99,6 +125,13 @@ export async function POST(req: NextRequest) {
             status: "pending",
           })
           .where(eq(stripeEventLog.id, eventLog.id));
+      } else if (reconcileDeletedBilling) {
+        // Reconcile even if an older deployment marked the event processed.
+        // The provider operations share object-derived idempotency keys.
+        await db
+          .update(stripeEventLog)
+          .set({ status: "pending", payload: "{}", lastError: null })
+          .where(eq(stripeEventLog.id, eventLog.id));
       }
     } else {
       // Log new event
@@ -107,21 +140,71 @@ export async function POST(req: NextRequest) {
         eventType: event.type,
         subjectFingerprint: subject.fingerprint,
         payload: deletionTombstone ? "{}" : JSON.stringify(event),
-        status: deletionTombstone ? "processed" : "pending",
+        status:
+          deletionTombstone && !reconcileDeletedBilling
+            ? "processed"
+            : "pending",
         attempts: 1,
-        processedAt: deletionTombstone ? new Date() : null,
+        processedAt:
+          deletionTombstone && !reconcileDeletedBilling ? new Date() : null,
       });
     }
 
     if (deletionTombstone) {
+      if (reconcileDeletedBilling) {
+        await db
+          .update(stripeEventLog)
+          .set({
+            payload: "{}",
+            lastError: null,
+            subjectFingerprint: subject.fingerprint,
+          })
+          .where(eq(stripeEventLog.stripeEventId, event.id));
+        try {
+          const reconciliationStatus =
+            await reconcileStripeEventForDeletedAccount(
+              event,
+              stripe,
+              eventUserId
+            );
+          await db
+            .update(stripeEventLog)
+            .set({
+              status: "processed",
+              payload: "{}",
+              lastError: null,
+              processedAt: new Date(),
+              subjectFingerprint: subject.fingerprint,
+            })
+            .where(eq(stripeEventLog.stripeEventId, event.id));
+          return NextResponse.json({
+            received: true,
+            status: reconciliationStatus,
+          });
+        } catch (error) {
+          await db
+            .update(stripeEventLog)
+            .set({
+              status: "failed",
+              payload: "{}",
+              lastError: checkoutReconciliationErrorCode(error),
+              subjectFingerprint: subject.fingerprint,
+            })
+            .where(eq(stripeEventLog.stripeEventId, event.id));
+          throw error;
+        }
+      }
       return NextResponse.json({ received: true, status: "deleted_subject" });
     }
 
     // Process event based on type
     try {
+      let redactProcessedPayload = false;
       switch (event.type) {
         case "checkout.session.completed":
-          await handleCheckoutCompleted(event);
+          redactProcessedPayload =
+            (await handleCheckoutCompleted(event, stripe)) ===
+            "deleted_checkout_reconciled";
           break;
 
         case "customer.subscription.created":
@@ -159,24 +242,65 @@ export async function POST(req: NextRequest) {
         .set({
           status: "processed",
           processedAt: new Date(),
+          ...(redactProcessedPayload ? { payload: "{}" } : {}),
         })
         .where(eq(stripeEventLog.stripeEventId, event.id));
 
       return NextResponse.json({ received: true });
     } catch (error) {
+      if (
+        isAccountDeletionPendingError(error) &&
+        isDeletedBillingReconciliationEvent(event.type)
+      ) {
+        await redactDeletedStripeEvent(event);
+        try {
+          const reconciliationStatus =
+            await reconcileStripeEventForDeletedAccount(
+              event,
+              stripe,
+              eventUserId
+            );
+          await db
+            .update(stripeEventLog)
+            .set({
+              status: "processed",
+              payload: "{}",
+              lastError: null,
+              processedAt: new Date(),
+              subjectFingerprint: subject.fingerprint,
+            })
+            .where(eq(stripeEventLog.stripeEventId, event.id));
+          return NextResponse.json({
+            received: true,
+            status: reconciliationStatus,
+          });
+        } catch (reconciliationError) {
+          await db
+            .update(stripeEventLog)
+            .set({
+              status: "failed",
+              payload: "{}",
+              lastError: checkoutReconciliationErrorCode(reconciliationError),
+              subjectFingerprint: subject.fingerprint,
+            })
+            .where(eq(stripeEventLog.stripeEventId, event.id));
+          throw reconciliationError;
+        }
+      }
+
       // Mark event as failed
       await db
         .update(stripeEventLog)
         .set({
           status: "failed",
-          lastError: error instanceof Error ? error.message : String(error),
+          lastError: safeStripeWebhookErrorCode(error),
         })
         .where(eq(stripeEventLog.stripeEventId, event.id));
 
       throw error;
     }
-  } catch (error) {
-    console.error("Webhook error:", error);
+  } catch {
+    console.error("Stripe webhook processing failed");
     return NextResponse.json(
       { error: "Webhook handler failed" },
       { status: 500 }
@@ -321,6 +445,20 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 
   // Wrap all updates in a transaction for atomicity (P1 fix #5)
   await db.transaction(async (tx) => {
+    const [activeUser] = await tx
+      .select({ id: appUser.id })
+      .from(appUser)
+      .where(eq(appUser.id, userId))
+      .limit(1)
+      .for("update");
+    if (!activeUser) throw new Error("billing_user_not_found");
+    const [tombstone] = await tx
+      .select({ userId: accountDeletionRequest.userId })
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1);
+    if (tombstone) throw new Error("account_deletion_pending");
+
     if (currentSub.length === 0) {
       // Create new subscription
       await tx.insert(subscription).values(subscriptionData);
@@ -368,40 +506,54 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 /**
  * Handle checkout.session.completed events for one-time credit products.
  */
-async function handleCheckoutCompleted(event: Stripe.Event) {
+async function handleCheckoutCompleted(
+  event: Stripe.Event,
+  stripe: Stripe
+): Promise<"processed" | "deleted_checkout_reconciled"> {
   const session = event.data.object as Stripe.Checkout.Session;
-  const userId = session.metadata?.userId;
+  const userId = checkoutSessionAuthenticatedUserId(session);
   const catalogId = session.metadata?.catalogId;
 
   if (!userId || !catalogId || !isStripeCheckoutCatalogId(catalogId)) {
-    console.warn("Missing Checkout metadata for credit grant", {
-      sessionId: session.id,
-    });
-    return;
+    console.warn("Checkout fulfillment rejected invalid account correlation");
+    return "processed";
   }
 
-  const customerId = getStripeCustomerId(session.customer);
-  if (customerId) {
-    await upsertStripeCustomerMapping({
-      stripeCustomerId: customerId,
-      userId,
-    });
+  if (await hasAccountDeletionTombstone(userId)) {
+    await redactDeletedStripeEvent(event);
+    await reconcileCheckoutForDeletedAccount(session, stripe, userId);
+    return "deleted_checkout_reconciled";
   }
 
-  if (catalogId !== "interview_pass") {
-    return;
+  try {
+    if (catalogId === "interview_pass") {
+      const ledger = createCreditLedgerService({
+        store: createDrizzleCreditLedgerStore(),
+      });
+      await ledger.grantCredits({
+        userId,
+        catalogId,
+        source: "checkout",
+        sourceId: session.id,
+        idempotencyKey: `stripe:checkout:${session.id}:interview_pass`,
+      });
+    }
+
+    const customerId = getStripeCustomerId(session.customer);
+    if (customerId) {
+      await upsertStripeCustomerMapping({
+        stripeCustomerId: customerId,
+        userId,
+      });
+    }
+  } catch (error) {
+    if (!isAccountDeletionPendingError(error)) throw error;
+    await redactDeletedStripeEvent(event);
+    await reconcileCheckoutForDeletedAccount(session, stripe, userId);
+    return "deleted_checkout_reconciled";
   }
 
-  const ledger = createCreditLedgerService({
-    store: createDrizzleCreditLedgerStore(),
-  });
-  await ledger.grantCredits({
-    userId,
-    catalogId,
-    source: "checkout",
-    sourceId: session.id,
-    idempotencyKey: `stripe:checkout:${session.id}:interview_pass`,
-  });
+  return "processed";
 }
 
 /**
@@ -635,19 +787,287 @@ async function upsertStripeCustomerMapping({
   stripeSubscriptionId?: string | null;
   userId: string;
 }) {
-  await db
-    .insert(stripeCustomerMapping)
-    .values({
-      stripeCustomerId,
-      stripeSubscriptionId: stripeSubscriptionId ?? null,
-      userId,
-    })
-    .onConflictDoUpdate({
-      target: stripeCustomerMapping.stripeCustomerId,
-      set: {
+  await db.transaction(async (tx) => {
+    const [user] = await tx
+      .select({ id: appUser.id })
+      .from(appUser)
+      .where(eq(appUser.id, userId))
+      .limit(1)
+      .for("update");
+    if (!user) throw new Error("billing_user_not_found");
+    const [tombstone] = await tx
+      .select({ userId: accountDeletionRequest.userId })
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1);
+    if (tombstone) throw new Error("account_deletion_pending");
+
+    await tx
+      .insert(stripeCustomerMapping)
+      .values({
+        stripeCustomerId,
         stripeSubscriptionId: stripeSubscriptionId ?? null,
         userId,
-        updatedAt: new Date(),
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: stripeCustomerMapping.stripeCustomerId,
+        set: {
+          stripeSubscriptionId: stripeSubscriptionId ?? null,
+          userId,
+          updatedAt: new Date(),
+        },
+      });
+  });
+}
+
+async function reconcileCheckoutForDeletedAccount(
+  session: Stripe.Checkout.Session,
+  stripe: Stripe,
+  userId: string | null
+) {
+  await recordAndRedactLateSubjects(
+    userId,
+    getProviderId(session.subscription),
+    getStripeCustomerId(session.customer)
+  );
+
+  return reconcileDeletedCheckoutSession(session, {
+    expireCheckout: async (checkoutSessionId, idempotencyKey) => {
+      try {
+        await stripe.checkout.sessions.expire(
+          checkoutSessionId,
+          {},
+          { idempotencyKey }
+        );
+      } catch (error) {
+        if (!isAlreadyDeletedProviderError(error)) throw error;
+      }
+    },
+    cancelSubscription: async (subscriptionId, idempotencyKey) => {
+      await cancelDeletedSubscription(stripe, subscriptionId, idempotencyKey);
+    },
+    loadInvoicePayment: (invoiceId) =>
+      loadPaidInvoicePayment(stripe, invoiceId),
+    refundPayment: async (payment, idempotencyKey) => {
+      await refundDeletedPayment(stripe, payment, idempotencyKey);
+    },
+  });
+}
+
+type DeletedPaymentReference = {
+  kind: "payment_intent" | "charge";
+  providerId: string;
+};
+
+async function reconcileStripeEventForDeletedAccount(
+  event: Stripe.Event,
+  stripe: Stripe,
+  userId: string | null
+): Promise<
+  | "deleted_checkout_reconciled"
+  | "deleted_subscription_reconciled"
+  | "deleted_invoice_reconciled"
+> {
+  if (event.type === "checkout.session.completed") {
+    await reconcileCheckoutForDeletedAccount(
+      event.data.object as Stripe.Checkout.Session,
+      stripe,
+      userId
+    );
+    return "deleted_checkout_reconciled";
+  }
+
+  if (
+    event.type === "customer.subscription.created" ||
+    event.type === "customer.subscription.updated"
+  ) {
+    const stripeSubscription = event.data.object as Stripe.Subscription;
+    const customerId = getStripeCustomerId(stripeSubscription.customer);
+    await recordAndRedactLateSubjects(
+      userId,
+      stripeSubscription.id,
+      customerId
+    );
+    await cancelDeletedSubscription(
+      stripe,
+      stripeSubscription.id,
+      deletedBillingIdempotencyKey(stripeSubscription.id, "cancel")
+    );
+    return "deleted_subscription_reconciled";
+  }
+
+  if (event.type === "invoice.payment_succeeded") {
+    const invoice = event.data.object as Stripe.Invoice;
+    const subscriptionId = getInvoiceSubscriptionId(invoice);
+    await recordAndRedactLateSubjects(
+      userId,
+      subscriptionId,
+      getStripeCustomerId(invoice.customer)
+    );
+    if (subscriptionId) {
+      await cancelDeletedSubscription(
+        stripe,
+        subscriptionId,
+        deletedBillingIdempotencyKey(subscriptionId, "cancel")
+      );
+    }
+
+    if (invoice.amount_paid > 0) {
+      const payment = await loadPaidInvoicePayment(stripe, invoice.id, invoice);
+      if (!payment) {
+        throw deletedBillingError(
+          "deleted_invoice_manual_reconciliation_required"
+        );
+      }
+      await refundDeletedPayment(
+        stripe,
+        payment,
+        deletedBillingIdempotencyKey(payment.providerId, "refund")
+      );
+    }
+    return "deleted_invoice_reconciled";
+  }
+
+  throw deletedBillingError("deleted_billing_reconciliation_failed");
+}
+
+async function recordAndRedactLateSubjects(
+  userId: string | null,
+  subscriptionId: string | null,
+  customerId: string | null
+) {
+  if (!userId) return;
+  const recorded = await recordLateStripeDeletionSubjects(
+    userId,
+    buildStripeDeletionSubjects({
+      subscriptionId,
+      subscriptionCustomerId: customerId,
+      mappedCustomerIds: [],
+    })
+  );
+  if (!recorded) return;
+  const request = await getAccountDeletionRequest(userId);
+  if (request) await redactStripeEventLogs(request);
+}
+
+async function cancelDeletedSubscription(
+  stripe: Stripe,
+  subscriptionId: string,
+  idempotencyKey: string
+) {
+  try {
+    await stripe.subscriptions.cancel(
+      subscriptionId,
+      { prorate: false },
+      { idempotencyKey }
+    );
+  } catch (error) {
+    if (!isAlreadyDeletedProviderError(error)) throw error;
+  }
+}
+
+async function loadPaidInvoicePayment(
+  stripe: Stripe,
+  invoiceId: string,
+  suppliedInvoice?: Stripe.Invoice
+): Promise<DeletedPaymentReference | null> {
+  const suppliedPayment = getPaidInvoicePayment(suppliedInvoice);
+  if (suppliedPayment) return suppliedPayment;
+  const invoice = await stripe.invoices.retrieve(invoiceId, {
+    expand: ["payments"],
+  });
+  return getPaidInvoicePayment(invoice);
+}
+
+function getPaidInvoicePayment(
+  invoice?: Pick<Stripe.Invoice, "payments">
+): DeletedPaymentReference | null {
+  const paidPayment = invoice?.payments?.data.find(
+    (payment) => payment.status === "paid"
+  );
+  const paymentIntentId = getProviderId(
+    paidPayment?.payment.payment_intent ?? null
+  );
+  if (paymentIntentId) {
+    return { kind: "payment_intent", providerId: paymentIntentId };
+  }
+  const chargeId = getProviderId(paidPayment?.payment.charge ?? null);
+  return chargeId ? { kind: "charge", providerId: chargeId } : null;
+}
+
+async function refundDeletedPayment(
+  stripe: Stripe,
+  payment: DeletedPaymentReference,
+  idempotencyKey: string
+) {
+  await stripe.refunds.create(
+    {
+      ...(payment.kind === "payment_intent"
+        ? { payment_intent: payment.providerId }
+        : { charge: payment.providerId }),
+      reason: "requested_by_customer",
+    },
+    { idempotencyKey }
+  );
+}
+
+function getInvoiceSubscriptionId(invoice: Stripe.Invoice) {
+  return getProviderId(invoice.parent?.subscription_details?.subscription);
+}
+
+async function redactDeletedStripeEvent(event: Stripe.Event) {
+  const subject = getStripeEventSubject(event);
+  await db
+    .update(stripeEventLog)
+    .set({
+      payload: "{}",
+      lastError: null,
+      subjectFingerprint: subject.fingerprint,
+    })
+    .where(eq(stripeEventLog.stripeEventId, event.id));
+}
+
+function isAccountDeletionPendingError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.message === "account_deletion_pending" ||
+      error.message === "credit_ledger_user_not_found" ||
+      error.message === "billing_user_not_found")
+  );
+}
+
+function safeStripeWebhookErrorCode(error: unknown) {
+  if (isAccountDeletionPendingError(error)) return "account_deletion_pending";
+  if (error && typeof error === "object" && "code" in error) {
+    const reconciliationCode = checkoutReconciliationErrorCode(error);
+    if (
+      String(error.code).startsWith("deleted_checkout_") ||
+      String(error.code).startsWith("deleted_subscription_") ||
+      String(error.code).startsWith("deleted_invoice_") ||
+      String(error.code) === "deleted_billing_reconciliation_failed"
+    ) {
+      return reconciliationCode;
+    }
+  }
+  return "stripe_webhook_processing_failed";
+}
+
+function isDeletedBillingReconciliationEvent(type: Stripe.Event.Type) {
+  return (
+    type === "checkout.session.completed" ||
+    type === "customer.subscription.created" ||
+    type === "customer.subscription.updated" ||
+    type === "invoice.payment_succeeded"
+  );
+}
+
+function deletedBillingError(code: string): Error & { code: string } {
+  return Object.assign(new Error("Deleted billing reconciliation failed"), {
+    code,
+  });
+}
+
+function getProviderId(value: string | { id: string } | null | undefined) {
+  if (!value) return null;
+  return typeof value === "string" ? value : value.id;
 }

@@ -4,9 +4,8 @@ import type { User } from "@supabase/supabase-js";
 import { z } from "zod";
 
 import {
-  loadAccountDeletionSubjects,
   markAccountDeletionFailed,
-  requestAccountDeletion,
+  requestAccountDeletionWithCurrentSubjects,
 } from "@/lib/db/account-deletions";
 import { inngest } from "@/lib/inngest/client";
 import { createClient } from "@/lib/supabase/server";
@@ -79,8 +78,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const stripeSubjects = await loadAccountDeletionSubjects(user.id);
-    await requestAccountDeletion({ userId: user.id, stripeSubjects });
+    await requestAccountDeletionWithCurrentSubjects(user.id);
 
     let status: "deletion_requested" | "deletion_retry_scheduled" =
       "deletion_requested";
