@@ -29,15 +29,58 @@ describe("POST /api/session/transcript", () => {
     expect(ingestTranscriptEvent).not.toHaveBeenCalled();
   });
 
-  it("rejects empty or aborted JSON as a malformed event", async () => {
+  it("rejects an empty request body without logging a parser error", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const response = await POST(
       new NextRequest("http://localhost/api/session/transcript", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_transcript_event",
+    });
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("rejects truncated JSON without logging a parser error", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await POST(
+      new NextRequest("http://localhost/api/session/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: "{",
       })
     );
+
     expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_transcript_event",
+    });
     expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("quietly maps an aborted body read to a malformed event", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await POST({
+      json: vi
+        .fn()
+        .mockRejectedValue(new DOMException("request aborted", "AbortError")),
+    } as unknown as NextRequest);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_transcript_event",
+    });
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
   it("rejects malformed request envelopes before ingest", async () => {
