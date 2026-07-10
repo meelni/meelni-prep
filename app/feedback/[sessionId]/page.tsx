@@ -23,6 +23,7 @@ import {
   FeedbackStatusPage,
 } from "@/components/feedback/feedback-surface";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import { isFeedbackV2Item, projectFeedbackItems } from "@meelni/core";
 
 interface FeedbackData {
   id: string;
@@ -33,11 +34,15 @@ interface FeedbackData {
   communicationScore: number | null;
   leadershipScore: number | null;
   overallScore: number | null;
-  strengths: string[];
-  improvements: string[];
+  strengths: unknown[];
+  improvements: unknown[];
   drills: string[];
   summary: string | null;
   rubricVersion: string;
+  schemaVersion: string | null;
+  promptVersion: string | null;
+  modelVersion: string | null;
+  evaluationState: "full" | "partial" | null;
   createdAt: string;
 }
 
@@ -70,6 +75,30 @@ interface TranscriptTurn {
   audioMs: number | null;
   latencyMs: number | null;
   section: string | null;
+  eventId?: string | null;
+}
+
+function renderFinding(finding: unknown) {
+  if (typeof finding === "string") return finding;
+  if (!isFeedbackV2Item(finding)) {
+    return projectFeedbackItems([finding])[0] ?? "Feedback detail unavailable.";
+  }
+  return (
+    <div className="space-y-2">
+      <p>{finding.observation}</p>
+      {finding.evidence.map((evidence) => (
+        <blockquote
+          key={evidence.turnRef}
+          className="text-muted-foreground border-l-2 border-current/30 pl-3 text-sm"
+        >
+          “{evidence.quote}”
+        </blockquote>
+      ))}
+      <p className="text-sm">
+        <span className="font-medium">Next step:</span> {finding.nextStep}
+      </p>
+    </div>
+  );
 }
 
 interface TranscriptResponse {
@@ -449,6 +478,17 @@ export default function FeedbackPage() {
       }
     >
       <div className="space-y-8">
+        {feedback.evaluationState === "partial" && (
+          <FeedbackSectionCard
+            title="Partial interview evidence"
+            tone="warning"
+          >
+            <p className="text-muted-foreground">
+              This feedback is limited to the recorded portion of the interview.
+              It should not be read as an assessment of a complete interview.
+            </p>
+          </FeedbackSectionCard>
+        )}
         {/* AI Summary */}
         {feedback.summary && (
           <FeedbackSectionCard title="AI Summary">
@@ -512,7 +552,7 @@ export default function FeedbackPage() {
                   icon={<CheckCircle2 className="h-5 w-5" />}
                   tone="success"
                 >
-                  {strength}
+                  {renderFinding(strength)}
                 </FeedbackActionItem>
               ))}
             </ul>
@@ -533,7 +573,7 @@ export default function FeedbackPage() {
                   icon={<TrendingUp className="h-5 w-5" />}
                   tone="warning"
                 >
-                  {improvement}
+                  {renderFinding(improvement)}
                 </FeedbackActionItem>
               ))}
             </ul>
