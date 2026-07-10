@@ -7,3 +7,4 @@ export * from "./question-taxonomy";
 export * from "./interview-launch";
 export * from "./session";
 export * from "./session-lifecycle";
+export * from "./account-privacy";

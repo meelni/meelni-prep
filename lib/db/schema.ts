@@ -182,7 +182,12 @@ export const accountDeletionRequest = pgTable(
     stripeSubjects: jsonb("stripe_subjects")
       .$type<
         Array<{
-          kind: "customer" | "subscription";
+          kind:
+            | "charge"
+            | "customer"
+            | "invoice"
+            | "payment_intent"
+            | "subscription";
           providerId: string | null;
           fingerprint: string;
         }>

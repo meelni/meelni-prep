@@ -1,13 +1,11 @@
-"use client";
-
 import { companies } from "@/lib/data/companies";
+import { toPublicCompanyGuide } from "@/lib/data/public-company";
 import {
   ArrowRight,
   Building2,
   ChevronRight,
-  Clock,
   Home,
-  Users,
+  MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
@@ -20,6 +18,8 @@ import {
   MarketingPage,
 } from "@/components/marketing/marketing-surface";
 import { Button } from "@/components/ui/button";
+
+const publicCompanies = companies.map(toPublicCompanyGuide);
 
 // Structured Data for SEO
 function CompaniesStructuredData() {
@@ -48,15 +48,15 @@ function CompaniesStructuredData() {
     "@context": "https://schema.org",
     "@type": "ItemList",
     name: "PM Interview Company Guides",
-    description: `Comprehensive interview guides for ${companies.length} top tech companies including process, questions, tips, and salary information.`,
-    numberOfItems: companies.length,
-    itemListElement: companies.map((company, index) => ({
+    description: `PM interview practice guides for ${publicCompanies.length} companies, with illustrative questions organized by round type.`,
+    numberOfItems: publicCompanies.length,
+    itemListElement: publicCompanies.map((company, index) => ({
       "@type": "ListItem",
       position: index + 1,
       item: {
         "@type": "Article",
         name: `${company.name} PM Interview Guide`,
-        description: company.description,
+        description: `Illustrative PM practice questions associated with ${company.name}.`,
         url: `${baseUrl}/companies/${company.slug}`,
       },
     })),
@@ -67,7 +67,7 @@ function CompaniesStructuredData() {
     "@type": "CollectionPage",
     name: "Company Interview Guides | Meelni",
     description:
-      "Master your PM interviews with detailed guides for top tech companies. Learn the interview process, practice real questions, and land your dream role.",
+      "Explore PM interview practice guides with illustrative questions organized by company and round type.",
     url: `${baseUrl}/companies`,
     inLanguage: "en-US",
     isPartOf: {
@@ -139,12 +139,12 @@ export default function CompaniesPage() {
             </MarketingEyebrow>
           }
           title="Company Guides"
-          description="Master your PM interviews with detailed guides for top tech companies. Learn the process, practice real questions, and land your dream role."
+          description="Explore illustrative PM questions organized by company and round type. Confirm each company's current interview process with your recruiter."
         />
 
         {/* Company Cards Grid */}
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-          {companies.map((company) => (
+          {publicCompanies.map((company) => (
             <MarketingCard key={company.slug}>
               <div className="p-6 pb-4">
                 <MarketingEyebrow className="min-h-8 px-3 py-1.5 text-xs">
@@ -158,24 +158,27 @@ export default function CompaniesPage() {
                     {company.name}
                   </h2>
                   <p className="text-muted-foreground line-clamp-3 text-sm leading-relaxed">
-                    {company.description}
+                    Illustrative PM practice questions associated with{" "}
+                    {company.name}.
                   </p>
                 </div>
 
                 <div className="mt-auto space-y-4">
                   <MarketingMetaRow
                     items={[
-                      { icon: Clock, label: company.interviewDuration },
                       {
-                        icon: Users,
-                        label: `${company.interviewRounds} rounds`,
+                        icon: MessageSquare,
+                        label: `${company.questionCategories.reduce(
+                          (count, category) =>
+                            count + category.questions.length,
+                          0
+                        )} practice questions`,
                       },
                     ]}
                   />
-
                   <div className="flex items-center justify-between gap-3">
-                    <span className="border-border bg-muted/60 text-muted-foreground rounded-full border px-2.5 py-1 text-xs font-medium">
-                      {company.difficulty}
+                    <span className="text-muted-foreground text-xs">
+                      Current process varies by role.
                     </span>
                     <Button asChild variant="link" className="h-auto p-0">
                       <Link
@@ -198,7 +201,7 @@ export default function CompaniesPage() {
           className="mt-20"
           mark="M"
           title="Ready to practice?"
-          description="Put your knowledge into action with Meelni's AI interview coach. Get real-time feedback and improve faster than solo practice."
+          description="Practice a PM question out loud, then review feedback and choose what to improve next."
           action={
             <Button asChild size="lg" variant="glow">
               <Link href="/dashboard/new-interview">

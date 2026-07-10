@@ -1,7 +1,7 @@
 import { db } from "./index";
-import { appUser } from "./schema";
+import { accountDeletionRequest, appUser } from "./schema";
 import { eq } from "drizzle-orm";
-import { hasAccountDeletionTombstone } from "./account-deletions";
+import { lockAccountIdentity } from "./account-identity-lock";
 
 export class AccountDeletionPendingError extends Error {
   constructor() {
@@ -19,26 +19,39 @@ export async function upsertUser(input: {
   email: string;
   name?: string | null;
 }) {
-  if (await hasAccountDeletionTombstone(input.id)) {
-    throw new AccountDeletionPendingError();
-  }
-  const [user] = await db
-    .insert(appUser)
-    .values({
-      id: input.id,
-      email: input.email,
-      name: input.name,
-    })
-    .onConflictDoUpdate({
-      target: appUser.id,
-      set: {
+  return db.transaction(async (tx) => {
+    await lockAccountIdentity(tx, input.id);
+    await tx
+      .select({ id: appUser.id })
+      .from(appUser)
+      .where(eq(appUser.id, input.id))
+      .limit(1)
+      .for("update");
+    const [tombstone] = await tx
+      .select({ userId: accountDeletionRequest.userId })
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, input.id))
+      .limit(1);
+    if (tombstone) throw new AccountDeletionPendingError();
+
+    const [user] = await tx
+      .insert(appUser)
+      .values({
+        id: input.id,
         email: input.email,
         name: input.name,
-      },
-    })
-    .returning();
+      })
+      .onConflictDoUpdate({
+        target: appUser.id,
+        set: {
+          email: input.email,
+          name: input.name,
+        },
+      })
+      .returning();
 
-  return user;
+    return user;
+  });
 }
 
 /**
