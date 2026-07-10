@@ -140,6 +140,19 @@ export function FeedbackLifecycleStatus({
     );
   }
 
+  if (state.kind === "unavailable") {
+    return (
+      <FeedbackStatusPage
+        role="alert"
+        tone="danger"
+        icon={<FileWarning className="h-8 w-8" aria-hidden="true" />}
+        title="Feedback unavailable"
+        description={state.message}
+        actions={<FeedbackDashboardLink />}
+      />
+    );
+  }
+
   const retryable = state.kind === "failed-retryable";
   return (
     <FeedbackStatusPage

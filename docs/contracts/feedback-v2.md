@@ -165,3 +165,7 @@ historical notes to 4,000; stored-but-hidden exercise strings to 2,000; and
 database numeric string representations to 32. Numeric strings must use plain
 unsigned decimal notation before range validation. Oversized or malformed
 values fail closed as `invalid` rather than reaching the API response.
+The database read uses explicit projections and one-character-over-limit
+sentinels for numeric text, summaries, versions, findings JSON, and stored
+practice suggestions. JSON is decoded only after that bounded projection, so a
+corrupt row cannot force unbounded database-to-application materialization.

@@ -62,6 +62,7 @@ describe("/api/feedback/[sessionId]", () => {
     vi.mocked(isSessionOwnedByUser).mockResolvedValue(false);
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(404);
+    expect(getFeedbackBySessionId).not.toHaveBeenCalled();
     expect(getFeedbackEvidenceTurns).not.toHaveBeenCalled();
   });
 

@@ -33,3 +33,20 @@ test("invalid completed feedback exposes no inferred score", () => {
   assert.doesNotMatch(html, /Transcript evidence/);
   assert.doesNotMatch(html, /invented quote/);
 });
+
+test("unsupported lifecycle payloads render an explicit unavailable state", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "unavailable",
+        message: "Feedback returned an unsupported response.",
+      },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+  assert.match(html, /Feedback unavailable/);
+  assert.match(html, /unsupported response/);
+  assert.doesNotMatch(html, /Loading your saved feedback/);
+});

@@ -13,6 +13,7 @@ import {
   FeedbackLoadingSkeleton,
 } from "./feedback-lifecycle-status";
 import { FeedbackDashboardLink } from "./feedback-navigation";
+import { decodeFeedbackResponseOrThrow } from "./feedback-response";
 import { FeedbackStatusPage } from "./feedback-surface";
 import {
   createFeedbackPollBudget,
@@ -94,22 +95,22 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
     async function fetchFeedback() {
       try {
         const response = await fetch(`/api/feedback/${sessionId}`);
-        const body = (await response
-          .json()
-          .catch(() => null)) as FeedbackLifecycleResponse | null;
+        const payload: unknown = await response.json().catch(() => null);
         if (response.status === 401) {
           router.replace("/auth/signin");
           return;
         }
-        if (!body || !("status" in body)) {
-          throw new Error("Feedback could not be loaded.");
-        }
+        const body = decodeFeedbackResponseOrThrow(payload);
         if (!response.ok && body.status !== "session_not_ended") {
           throw new Error("Feedback could not be loaded.");
         }
         await applyResponse(body);
       } catch (error) {
-        if (active) setTransportError(getErrorMessage(error));
+        if (active) {
+          const message = getErrorMessage(error);
+          setViewState({ kind: "unavailable", message });
+          setTransportError(message);
+        }
       }
     }
 
@@ -180,26 +181,35 @@ async function requestFeedbackRecovery(
   const response = await fetch(`/api/feedback/${sessionId}`, {
     method: "POST",
   });
-  const body = (await response.json().catch(() => null)) as {
-    status?: string;
-    message?: string;
-  } | null;
-  if (!response.ok || !body?.status) {
+  const payload: unknown = await response.json().catch(() => null);
+  const errorMessage =
+    typeof payload === "object" &&
+    payload !== null &&
+    "message" in payload &&
+    typeof payload.message === "string"
+      ? payload.message
+      : null;
+  if (!response.ok) {
     throw new Error(
-      body?.message || "Feedback could not be queued. Please try again."
+      errorMessage || "Feedback could not be queued. Please try again."
     );
   }
-  if (body.status === "completed" || body.status === "skipped") {
+  const status =
+    typeof payload === "object" &&
+    payload !== null &&
+    "status" in payload &&
+    typeof payload.status === "string"
+      ? payload.status
+      : null;
+  if (status === "completed" || status === "skipped" || status === "failed") {
     const refreshed = await fetch(`/api/feedback/${sessionId}`);
-    const refreshedBody = (await refreshed
-      .json()
-      .catch(() => null)) as FeedbackLifecycleResponse | null;
-    if (!refreshed.ok || !refreshedBody) {
+    const refreshedPayload: unknown = await refreshed.json().catch(() => null);
+    if (!refreshed.ok) {
       throw new Error("Feedback status could not be refreshed.");
     }
-    return refreshedBody;
+    return decodeFeedbackResponseOrThrow(refreshedPayload);
   }
-  return body as FeedbackLifecycleResponse;
+  return decodeFeedbackResponseOrThrow(payload);
 }
 
 function getErrorMessage(error: unknown): string {
