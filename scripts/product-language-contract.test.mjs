@@ -57,6 +57,10 @@ const UNSUPPORTED_FEEDBACK_TIMING =
   /\b(?:real[- ]time|instant|immediate)\b.{0,30}\bfeedback\b|\bfeedback\b.{0,30}\b(?:real[- ]time|instant|immediate)\b/i;
 const UNSUPPORTED_QUANTIFIED_LATENCY =
   /\b(?:takes?|ready|arrives?|complete[sd]?|done)\b.{0,24}\b(?:in|within|under|less than|about|around)?\s*(?:a|an|\d+)\s*(?:seconds?|minutes?|secs?|mins?)\b|\bexpect\b.{0,30}\b(?:feedback|review|analysis)\b.{0,20}\b(?:in|within|under|less than|about|around)\s*(?:a|an|\d+)\s*(?:seconds?|minutes?|secs?|mins?)\b|\b(?:usually|typically)?\s*(?:in|within|under|less than|about|around)\s*(?:a|an|\d+)\s*(?:seconds?|minutes?|secs?|mins?)\s*(?:for|until)\s*(?:feedback|review|analysis)\b/i;
+const QUANTIFIED_TIME_UNIT =
+  /\b(?:seconds?|minutes?|secs?|mins?)\b/i;
+const FEEDBACK_LATENCY_CONTEXT =
+  /\b(?:feedback|review|analysis|analyzing|ready|wait|available|arrives?|takes?|done|complete[sd]?|expect|have your)\b/i;
 const UNSUPPORTED_OUTCOME_PROMISE =
   /\b(?:ace|crush|master)\b.{0,40}\binterviews?\b|\bland\b.{0,30}\b(?:offers?|dream role)\b|\binterviews?\b.{0,40}\b(?:ace|crush|master)\b/i;
 const FORBIDDEN_CANONICAL_CLAIMS = [
@@ -153,11 +157,24 @@ function stripExactLegacyIdentifiers(file, source) {
   return sanitized;
 }
 
-function stringLiteralContent(source) {
+function stringLiteralValues(source) {
   const sanitized = stripExactCompatibilityIdentifiers(source);
-  return [...sanitized.matchAll(/(["'`])((?:\\.|(?!\1)[\s\S])*)\1/g)]
-    .map((match) => match[2])
-    .join("\n");
+  return [...sanitized.matchAll(/(["'`])((?:\\.|(?!\1)[\s\S])*)\1/g)].map(
+    (match) => match[2]
+  );
+}
+
+function stringLiteralContent(source) {
+  return stringLiteralValues(source).join("\n");
+}
+
+function hasUnsupportedQuantifiedLatency(source) {
+  return stringLiteralValues(source).some(
+    (value) =>
+      QUANTIFIED_TIME_UNIT.test(value) &&
+      FEEDBACK_LATENCY_CONTEXT.test(value) &&
+      !/\b(?:timed out|timeout|elapsed)\b/i.test(value)
+  );
 }
 
 function findForbiddenCanonicalClaims(source) {
@@ -282,7 +299,7 @@ test("feedback experience makes no unsupported quantified latency promise", asyn
 
   for (const file of files) {
     const source = await readFile(path.join(ROOT, file), "utf8");
-    if (UNSUPPORTED_QUANTIFIED_LATENCY.test(stringLiteralContent(source))) {
+    if (hasUnsupportedQuantifiedLatency(source)) {
       violations.push(file);
     }
   }
@@ -446,12 +463,23 @@ test("feedback timing guard rejects unsupported quantified latency promises", ()
     "Your feedback arrives within 30 seconds.",
     "Usually under a minute for feedback.",
     "Your review should be done in 30 seconds.",
+    "Feedback is available in 30 seconds.",
+    "We will have your review in under a minute.",
+    "Wait 30 seconds for feedback.",
   ]) {
-    assert.match(claim, UNSUPPORTED_QUANTIFIED_LATENCY);
+    assert.equal(hasUnsupportedQuantifiedLatency(JSON.stringify(claim)), true);
   }
-  assert.doesNotMatch(
-    "You can leave this page and return when your review is ready.",
-    UNSUPPORTED_QUANTIFIED_LATENCY
+  assert.equal(
+    hasUnsupportedQuantifiedLatency(
+      JSON.stringify(
+        "You can leave this page and return when your review is ready."
+      )
+    ),
+    false
+  );
+  assert.equal(
+    hasUnsupportedQuantifiedLatency(JSON.stringify("Practice for 20 minutes.")),
+    false
   );
 });
 
