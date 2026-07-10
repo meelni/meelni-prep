@@ -31,6 +31,7 @@ import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
 import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
 import { resolveQuestionEntryAction } from "@/lib/navigation/question-auth-entry";
 import {
+  getExploreResultsAnnouncement,
   resolvePublicQuestionAvailability,
   type QuestionLoadState,
 } from "@/lib/explore/public-question-availability";
@@ -495,9 +496,11 @@ export default function ExplorePage() {
 
       {/* Live region for accessibility */}
       <div role="status" aria-live="polite" className="sr-only">
-        {authLoading
-          ? "Checking sign-in status. Question actions will be available shortly."
-          : `Showing ${paginatedQuestions.length} of ${totalQuestions} questions`}
+        {getExploreResultsAnnouncement({
+          authLoading,
+          availability: publicAvailability,
+          visibleQuestions: paginatedQuestions.length,
+        })}
       </div>
     </>
   );
