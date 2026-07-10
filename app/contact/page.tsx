@@ -40,6 +40,7 @@ import type {
   ContactReason,
   ContactSubmissionResponse,
 } from "@/lib/contact/contracts";
+import { isCurrentContactSubmissionVersion } from "@/lib/contact/client-state";
 
 interface FormData {
   name: string;
@@ -98,11 +99,13 @@ export default function ContactPage() {
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [error, setError] = useState<SubmissionError | null>(null);
   const idempotencyKey = useRef<string | null>(null);
+  const formVersion = useRef(0);
 
   const updateForm = <Key extends keyof FormData>(
     field: Key,
     value: FormData[Key]
   ) => {
+    formVersion.current += 1;
     idempotencyKey.current = null;
     setError(null);
     setFormData((current) => ({ ...current, [field]: value }));
@@ -112,6 +115,7 @@ export default function ContactPage() {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    const submittedVersion = formVersion.current;
 
     if (!idempotencyKey.current) {
       idempotencyKey.current = crypto.randomUUID();
@@ -129,11 +133,25 @@ export default function ContactPage() {
       const result = (await response.json()) as ContactSubmissionResponse;
 
       if (response.ok && result.ok && result.state === "stored") {
+        if (
+          !isCurrentContactSubmissionVersion(
+            submittedVersion,
+            formVersion.current
+          )
+        )
+          return;
         setReceiptId(result.receiptId);
         return;
       }
 
       if (!result.ok) {
+        if (
+          !isCurrentContactSubmissionVersion(
+            submittedVersion,
+            formVersion.current
+          )
+        )
+          return;
         if (result.code === "idempotency_conflict") {
           idempotencyKey.current = null;
         }
@@ -153,6 +171,13 @@ export default function ContactPage() {
           "We could not confirm that your request was saved. Try again or email support@meelni.com directly.",
       });
     } catch {
+      if (
+        !isCurrentContactSubmissionVersion(
+          submittedVersion,
+          formVersion.current
+        )
+      )
+        return;
       setError({
         title: "Request not saved",
         message:
@@ -171,7 +196,7 @@ export default function ContactPage() {
           tone="success"
           mark={<CheckCircle className="h-8 w-8" />}
           title="Request saved"
-          description="Your request is stored in our support inbox. We’ll reply to the email address you provided."
+          description="Your request is stored in our support inbox. Keep the receipt below if you need to follow up by email."
           action={
             <div className="flex w-full flex-col gap-3">
               <Button asChild variant="outline" className="w-full">
@@ -253,6 +278,7 @@ export default function ContactPage() {
                         autoComplete="name"
                         maxLength={100}
                         required
+                        disabled={isSubmitting}
                       />
                     </div>
                     <div className="space-y-2">
@@ -267,6 +293,7 @@ export default function ContactPage() {
                         autoComplete="email"
                         maxLength={320}
                         required
+                        disabled={isSubmitting}
                       />
                     </div>
                   </div>
@@ -280,6 +307,7 @@ export default function ContactPage() {
                         <SelectableCard
                           key={reason.value}
                           selected={formData.reason === reason.value}
+                          disabled={isSubmitting}
                           onClick={() => updateForm("reason", reason.value)}
                           className="flex items-center gap-2 p-3 text-sm"
                         >
@@ -305,6 +333,7 @@ export default function ContactPage() {
                       }
                       maxLength={200}
                       required
+                      disabled={isSubmitting}
                     />
                   </div>
 
@@ -322,6 +351,7 @@ export default function ContactPage() {
                       required
                       rows={6}
                       className="resize-y"
+                      disabled={isSubmitting}
                     />
                   </div>
 
@@ -396,8 +426,8 @@ export default function ContactPage() {
                 </div>
                 <ol className="text-muted-foreground space-y-3 text-sm">
                   <li>Your request is saved with a receipt.</li>
-                  <li>Our support team reviews the details.</li>
-                  <li>We reply to the email address you provide.</li>
+                  <li>Keep the receipt for your records.</li>
+                  <li>Include the receipt if you follow up by email.</li>
                 </ol>
               </MarketingCard>
 

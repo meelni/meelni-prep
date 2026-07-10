@@ -10,6 +10,7 @@ import { contactSubmission } from "./schema";
 
 const EMAIL_REQUESTS_PER_HOUR = 3;
 const CLIENT_REQUESTS_PER_HOUR = 10;
+const CLIENT_ATTEMPTS_PER_HOUR = 60;
 const GLOBAL_REQUESTS_PER_HOUR = 10_000;
 
 type ContactSubmissionDatabase = typeof db;
@@ -34,6 +35,18 @@ export function createDrizzleContactSubmissionStore(
   return {
     async accept(input) {
       try {
+        const attemptDecision = await consumeContactRateLimit(
+          database,
+          input.rateLimitIdentities.attempt,
+          CLIENT_ATTEMPTS_PER_HOUR
+        );
+        if (!attemptDecision.allowed) {
+          return {
+            disposition: "rate_limited",
+            retryAfterSeconds: attemptDecision.retryAfterSeconds,
+          };
+        }
+
         return await database.transaction(async (transaction) => {
           await transaction.execute(sql`
             SELECT pg_advisory_xact_lock(
@@ -163,10 +176,23 @@ function parseRateLimitDecision(
 }
 
 export const contactSubmissionRateLimitPolicy = {
+  clientAttemptsPerHour: CLIENT_ATTEMPTS_PER_HOUR,
   emailRequestsPerHour: EMAIL_REQUESTS_PER_HOUR,
   clientRequestsPerHour: CLIENT_REQUESTS_PER_HOUR,
   globalRequestsPerHour: GLOBAL_REQUESTS_PER_HOUR,
 } as const;
+
+async function consumeContactRateLimit(
+  database: ContactSubmissionDatabase,
+  identityHash: string,
+  limit: number
+) {
+  const rows = await database.execute<ContactRateLimitRow>(sql`
+    SELECT allowed, retry_after_seconds, remaining, reset_at
+    FROM public.consume_contact_submission_rate_limit(${identityHash}, ${limit})
+  `);
+  return parseRateLimitDecision(rows[0], limit);
+}
 
 export async function cleanupStaleContactRateLimits(
   batchSize: number
