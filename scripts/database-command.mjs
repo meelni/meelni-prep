@@ -74,7 +74,6 @@ export function getDatabaseCommandPolicy({
       productionProjectRef,
       vercelEnvironment,
     });
-    if (!identityPolicy.allowed) return identityPolicy;
     return identityPolicy;
   }
 
