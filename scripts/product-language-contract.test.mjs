@@ -62,6 +62,7 @@ const QUANTIFIED_TIME_UNIT =
   /\b(?:seconds?|minutes?|secs?|mins?)\b/i;
 const FEEDBACK_LATENCY_CONTEXT =
   /\b(?:feedback|review|analysis|analyzing|ready|wait|available|arrives?|takes?|done|complete[sd]?|expect|have your)\b/i;
+const UNSUPPORTED_ESTIMATE_CONTEXT = /\bestimated time remaining\b/i;
 const UNSUPPORTED_OUTCOME_PROMISE =
   /\b(?:ace|crush|master)\b.{0,40}\binterviews?\b|\bland\b.{0,30}\b(?:offers?|dream role)\b|\binterviews?\b.{0,40}\b(?:ace|crush|master)\b/i;
 const FORBIDDEN_CANONICAL_CLAIMS = [
@@ -193,10 +194,36 @@ function customerFacingCopyValues(source) {
   );
   const values = [];
 
+  function jsxVisibleText(node) {
+    const parts = [];
+
+    function collect(child) {
+      if (ts.isJsxText(child)) parts.push(child.getText(sourceFile));
+      if (ts.isJsxExpression(child) && child.expression) {
+        parts.push(child.expression.getText(sourceFile));
+      }
+      if (ts.isJsxElement(child) || ts.isJsxFragment(child)) {
+        child.children.forEach(collect);
+      }
+    }
+
+    node.children.forEach(collect);
+    return parts.join(" ").trim();
+  }
+
   function visit(node) {
     if (ts.isStringLiteralLike(node)) values.push(node.text);
     if (ts.isJsxText(node)) {
       const text = node.getText(sourceFile).trim();
+      if (text) values.push(text);
+    }
+    if (
+      ts.isJsxElement(node) &&
+      /^(?:p|span|small|label|li|button)$/.test(
+        node.openingElement.tagName.getText(sourceFile)
+      )
+    ) {
+      const text = jsxVisibleText(node);
       if (text) values.push(text);
     }
     ts.forEachChild(node, visit);
@@ -209,9 +236,10 @@ function customerFacingCopyValues(source) {
 function hasUnsupportedQuantifiedLatency(source) {
   return customerFacingCopyValues(source).some(
     (value) =>
-      QUANTIFIED_TIME_UNIT.test(value) &&
-      FEEDBACK_LATENCY_CONTEXT.test(value) &&
-      !/\b(?:timed out|timeout|elapsed)\b/i.test(value)
+      UNSUPPORTED_ESTIMATE_CONTEXT.test(value) ||
+      (QUANTIFIED_TIME_UNIT.test(value) &&
+        FEEDBACK_LATENCY_CONTEXT.test(value) &&
+        !/\b(?:timed out|timeout|elapsed)\b/i.test(value))
   );
 }
 
@@ -524,6 +552,18 @@ test("feedback timing guard rejects unsupported quantified latency promises", ()
       "<p>Feedback generation timed out after 90 seconds.</p>"
     ),
     false
+  );
+  assert.equal(
+    hasUnsupportedQuantifiedLatency(
+      "<p>Your feedback will be ready in {remaining} seconds.</p>"
+    ),
+    true
+  );
+  assert.equal(
+    hasUnsupportedQuantifiedLatency(
+      "<p>Estimated time remaining: <span>{remaining}s</span></p>"
+    ),
+    true
   );
 });
 
