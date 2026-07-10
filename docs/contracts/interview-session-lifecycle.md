@@ -1,6 +1,6 @@
 # Interview Session Lifecycle Contract
 
-Status: canonical contract, persistence/CAS foundation, atomic completion, start-path failure handling, metadata validation, and server/client/voice-runtime hard-deadline enforcement are implemented; Preview rollout evidence remains open
+Status: canonical contract, persistence/CAS foundation, atomic completion, start-path failure handling, metadata validation, hard-deadline enforcement, and reconnect recovery are implemented; Preview rollout evidence remains open
 
 ## Purpose
 
@@ -12,16 +12,20 @@ The TypeScript source of truth is `packages/core/src/session-lifecycle.ts`. Reus
 
 A lifecycle-aware session exposes these domain facts:
 
-| Field              | Contract                                                                                                                                                                            |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lifecycleState`   | One canonical state from the state machine below.                                                                                                                                   |
-| `lifecycleVersion` | Monotonically increasing compare-and-set version. A newly created row starts at `1`; the first accepted transition writes `2`, and every later accepted transition increments once. |
-| `terminalReason`   | Required from the accepted transition into `ending` onward; immutable after the first accepted terminal claim.                                                                      |
-| `activatedAt`      | Set once when the session first reaches `active`; never cleared.                                                                                                                    |
-| `endingAt`         | Set once when the first terminal claim reaches `ending`.                                                                                                                            |
-| `endedAt`          | Set once when terminalization reaches `completed`, `abandoned`, or `failed`.                                                                                                        |
-| `lastTransitionAt` | Timestamp of the last accepted transition.                                                                                                                                          |
-| `runtimeRef`       | Provider-neutral `{ provider, id }` correlation. Provider-specific room fields are adapter compatibility only.                                                                      |
+| Field                                                                      | Contract                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lifecycleState`                                                           | One canonical state from the state machine below.                                                                                                                                                               |
+| `lifecycleVersion`                                                         | Monotonically increasing compare-and-set version. A newly created row starts at `1`; the first accepted transition writes `2`, and every later accepted transition increments once.                             |
+| `terminalReason`                                                           | Required from the accepted transition into `ending` onward; immutable after the first accepted terminal claim.                                                                                                  |
+| `activatedAt`                                                              | Set once when the session first reaches `active`; never cleared.                                                                                                                                                |
+| `endingAt`                                                                 | Set once when the first terminal claim reaches `ending`.                                                                                                                                                        |
+| `endedAt`                                                                  | Set once when terminalization reaches `completed`, `abandoned`, or `failed`.                                                                                                                                    |
+| `lastTransitionAt`                                                         | Timestamp of the last accepted transition.                                                                                                                                                                      |
+| `reconnectDeadlineAt`                                                      | Immutable deadline for the accepted reconnect generation and durable room-cleanup marker; cleared on recovery or successful room deletion. A null value while reconnecting means the hard deadline owns expiry. |
+| `runtimeReadyAt`                                                           | First signed provider evidence that the dispatched interviewer runtime is active. Initial activation also requires current candidate presence.                                                                  |
+| `roomCleanupPending`                                                       | Durable provider-cleanup intent set by terminal settlement when a room exists; cleared only after idempotent room deletion succeeds.                                                                            |
+| `lastTransportEventAt` / `lastTransportEventId` / `lastTransportEventName` | Signed candidate-presence ordering and replay evidence. These values never replace the lifecycle version as the write-conflict authority.                                                                       |
+| `runtimeRef`                                                               | Provider-neutral `{ provider, id }` correlation. Provider-specific room fields are adapter compatibility only.                                                                                                  |
 
 `activatedAt` is historical evidence, not a synonym for the current state. It remains populated during reconnecting, ending, and terminal states.
 
@@ -139,6 +143,51 @@ zero it mutes local input, removes voluntary controls, presents a non-dismissibl
 saving state, and polls stored terminal truth before navigating to feedback.
 The relaunch gate remains off until Preview timing evidence and rollback are
 verified.
+
+## Reconnect Boundary
+
+The provider-neutral policy lives in `packages/core/src/session-reconnect.ts`.
+An activated session receives one fixed 30-second reconnect grace period per
+accepted loss generation. Duplicate loss delivery does not extend the stored
+deadline. The hard session deadline keeps priority when it is earlier than or
+equal to the potential reconnect deadline, and reconnect never pauses or
+restarts the interview clock.
+
+LiveKit room retention is 60 seconds, while the Python agent uses
+`RoomOptions(close_on_disconnect=False)`, so a browser reload can rejoin the
+same room and agent job. Signed `participant_joined`, `participant_left`, and
+`participant_connection_aborted` webhooks are normalized before the session
+workflow sees them. A connecting room activates only after both the signed
+agent-ready signal and the latest candidate-presence observation are joined;
+candidate loss moves an active session to reconnecting, and candidate rejoin
+recovers it. Candidate observations persist their ordering watermark even when
+they do not change lifecycle state, preventing delayed loss delivery from
+overriding a later join.
+
+The accepted reconnecting lifecycle version is the generation fence. The
+grace event carries that version and the exact stored deadline. At expiry the
+worker atomically claims `ending (disconnect_timeout)` only while all three
+facts still match, then deletes the room and runs the shared completion path.
+A restored session, later disconnect generation, user end, or hard deadline
+makes the old event stale before any room deletion. Inngest sleeps to the exact
+deadline, and a five-minute recovery scan re-emits distinct deliveries for
+missing schedules or already-claimed retries. The reconnect deadline also acts
+as a durable room-cleanup marker after terminal settlement; it is cleared only
+after idempotent LiveKit deletion succeeds, so recovery continues after
+provider retries are exhausted.
+
+Every terminal path also sets `roomCleanupPending` when a LiveKit room exists.
+User end attempts cleanup immediately but still returns committed terminal
+truth if the provider is unavailable. Hard-deadline and reconnect workers clear
+the same marker after acknowledged deletion. A five-minute terminal-room
+recovery scan retries any remaining marker independently of reconnect state or
+deadline, preventing a retained agent or issued token from surviving an
+exhausted provider retry window.
+
+Browser history contains only `sessionId`. Reload requests a fresh short-lived
+participant token from the owned session; it never creates a room, redispatches
+the agent, or consumes another credit. Transcript ingest remains independently
+governed by SAV-194 and must be complete before reconnect readiness is closed.
 
 ## Legacy Compatibility And Backfill
 

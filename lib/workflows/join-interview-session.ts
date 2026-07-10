@@ -27,6 +27,7 @@ export interface JoinableInterviewSession {
   endedAt: Date | null;
   status: string;
   lifecycleState: InterviewLifecycleState;
+  reconnectDeadlineAt?: Date | null;
 }
 
 export interface JoinInterviewSessionInput {
@@ -251,6 +252,14 @@ function isJoinableSession(
     session.endedAt ||
     !session.livekitRoomName ||
     !session.startedAt
+  ) {
+    return false;
+  }
+
+  if (
+    session.lifecycleState === "reconnecting" &&
+    session.reconnectDeadlineAt &&
+    now.getTime() >= session.reconnectDeadlineAt.getTime()
   ) {
     return false;
   }

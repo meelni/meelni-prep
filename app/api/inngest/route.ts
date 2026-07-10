@@ -15,6 +15,11 @@ import {
   enforceInterviewDeadline,
   recoverInterviewDeadlines,
 } from "@/lib/inngest/functions/enforce-interview-deadline";
+import {
+  enforceInterviewReconnect,
+  recoverInterviewReconnects,
+} from "@/lib/inngest/functions/enforce-interview-reconnect";
+import { recoverInterviewRoomCleanup } from "@/lib/inngest/functions/cleanup-interview-rooms";
 
 /**
  * Serve Inngest functions via Next.js API route
@@ -38,5 +43,8 @@ export const { GET, POST, PUT } = serve({
     recoverAccountDeletions, // Requeues persisted outbox/tombstone work
     enforceInterviewDeadline, // Server-owned hard interview deadline
     recoverInterviewDeadlines, // Requeues missing deadline schedules
+    enforceInterviewReconnect, // Server-owned reconnect grace expiry
+    recoverInterviewReconnects, // Requeues missing reconnect schedules
+    recoverInterviewRoomCleanup, // Reclaims terminal rooms after provider outages
   ],
 });

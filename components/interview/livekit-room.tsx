@@ -2,11 +2,18 @@
 
 import {
   LiveKitRoom,
+  useConnectionState,
   useVoiceAssistant,
   useDataChannel,
 } from "@livekit/components-react";
 import { useCallback, useEffect, useRef } from "react";
 import { analytics } from "@/lib/analytics/analytics-service";
+import {
+  reduceInterviewConnectionState,
+  type InterviewConnectionStatus,
+  type InterviewConnectionTracker,
+  type RealtimeConnectionState,
+} from "@/components/interview/session-recovery";
 import {
   acceptTranscriptEventOnce,
   getTranscriptEventTiming,
@@ -36,8 +43,10 @@ interface LiveKitRoomWrapperProps {
   url: string;
   roomName: string;
   sessionId: string;
+  credentialGeneration: number;
   onTranscriptUpdate: (turn: TranscriptTurn) => void;
   onAgentStateChange: (state: string) => void;
+  onConnectionStateChange: (state: InterviewConnectionStatus) => void;
   children: React.ReactNode;
 }
 
@@ -46,14 +55,30 @@ export function LiveKitRoomWrapper({
   url,
   roomName,
   sessionId,
+  credentialGeneration,
   onTranscriptUpdate,
   onAgentStateChange,
+  onConnectionStateChange,
   children,
 }: LiveKitRoomWrapperProps) {
   const connectionStartTime = useRef<number>(Date.now());
+  const acceptedTranscriptEvents = useRef(new Set<string>());
+  const connectionTracker = useRef<InterviewConnectionTracker>({
+    attemptObserved: false,
+    recoveryObserved: false,
+  });
+
+  useEffect(() => {
+    acceptedTranscriptEvents.current.clear();
+    connectionTracker.current = {
+      attemptObserved: false,
+      recoveryObserved: false,
+    };
+  }, [roomName, sessionId]);
 
   return (
     <LiveKitRoom
+      key={credentialGeneration}
       token={token}
       serverUrl={url}
       connect={true}
@@ -88,8 +113,11 @@ export function LiveKitRoomWrapper({
       <RoomContent
         roomName={roomName}
         sessionId={sessionId}
+        acceptedTranscriptEvents={acceptedTranscriptEvents}
+        connectionTracker={connectionTracker}
         onTranscriptUpdate={onTranscriptUpdate}
         onAgentStateChange={onAgentStateChange}
+        onConnectionStateChange={onConnectionStateChange}
       >
         {children}
       </RoomContent>
@@ -100,26 +128,30 @@ export function LiveKitRoomWrapper({
 interface RoomContentProps {
   roomName: string;
   sessionId: string;
+  acceptedTranscriptEvents: React.RefObject<Set<string>>;
+  connectionTracker: React.RefObject<InterviewConnectionTracker>;
   onTranscriptUpdate: (turn: TranscriptTurn) => void;
   onAgentStateChange: (state: string) => void;
+  onConnectionStateChange: (state: InterviewConnectionStatus) => void;
   children: React.ReactNode;
 }
 
 function RoomContent({
   roomName,
   sessionId,
+  acceptedTranscriptEvents,
+  connectionTracker,
   onTranscriptUpdate,
   onAgentStateChange,
+  onConnectionStateChange,
   children,
 }: RoomContentProps) {
   const { state } = useVoiceAssistant();
-  const acceptedTranscriptEvents = useRef(new Set<string>());
+  const connectionState = useConnectionState();
   const transcriptUpdateRef = useRef(onTranscriptUpdate);
+  const connectionStateChangeRef = useRef(onConnectionStateChange);
   transcriptUpdateRef.current = onTranscriptUpdate;
-
-  useEffect(() => {
-    acceptedTranscriptEvents.current.clear();
-  }, [roomName, sessionId]);
+  connectionStateChangeRef.current = onConnectionStateChange;
 
   // Subscribe to agent state changes
   useEffect(() => {
@@ -127,6 +159,17 @@ function RoomContent({
       onAgentStateChange(state);
     }
   }, [state, onAgentStateChange]);
+
+  useEffect(() => {
+    const transition = reduceInterviewConnectionState(
+      connectionTracker.current,
+      connectionState as RealtimeConnectionState
+    );
+    connectionTracker.current = transition.tracker;
+    if (transition.status) {
+      connectionStateChangeRef.current(transition.status);
+    }
+  }, [connectionState, connectionTracker]);
 
   const handleTranscriptMessage = useCallback(
     (message: { payload: Uint8Array }) => {
@@ -195,7 +238,7 @@ function RoomContent({
         console.error("[Transcript] Failed to parse transcript data:", error);
       }
     },
-    [roomName, sessionId]
+    [acceptedTranscriptEvents, roomName, sessionId]
   );
 
   useDataChannel("transcript", handleTranscriptMessage);

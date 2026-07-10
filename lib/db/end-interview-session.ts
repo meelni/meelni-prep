@@ -22,6 +22,10 @@ export type EndInterviewSessionCommand = { sessionId: string } & (
       actor: { type: "system"; source: "hard_deadline" };
       requestedTerminalReason: "time_limit";
     }
+  | {
+      actor: { type: "system"; source: "reconnect_timeout" };
+      requestedTerminalReason: "disconnect_timeout";
+    }
 );
 
 export type FinalizeInterviewSessionInput = EndInterviewSessionCommand & {
@@ -129,10 +133,23 @@ export async function finalizeInterviewSession(
             terminalReason: reason,
           }),
           lastTransitionAt: now,
+          ...(nextState === "active" ? { reconnectDeadlineAt: null } : {}),
           ...(nextState === "active" ? { activatedAt: nextActivatedAt } : {}),
-          ...(nextState === "ending" ? { endingAt: nextEndingAt } : {}),
+          ...(nextState === "ending"
+            ? {
+                endingAt: nextEndingAt,
+                roomCleanupPending: stored.livekitRoomName !== null,
+              }
+            : {}),
           ...(isInterviewTerminalState(nextState)
-            ? { endedAt: nextEndedAt }
+            ? {
+                endedAt: nextEndedAt,
+                ...(stored.reconnectDeadlineAt &&
+                (reason === "disconnect_timeout" ||
+                  reason === "insufficient_signal")
+                  ? {}
+                  : { reconnectDeadlineAt: null }),
+              }
             : {}),
         })
         .where(
@@ -266,7 +283,7 @@ export async function finalizeInterviewSession(
 
 export function resolveInterviewTerminalReason(
   validation: Pick<SessionValidation, "isValid">,
-  requestedTerminalReason: "user_end" | "time_limit"
+  requestedTerminalReason: "user_end" | "time_limit" | "disconnect_timeout"
 ): InterviewTerminalReason {
   return validation.isValid ? requestedTerminalReason : "insufficient_signal";
 }
