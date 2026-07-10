@@ -1,11 +1,16 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import type { RefObject } from "react";
 import { Icons } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/app/providers/auth-provider";
 import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
 
@@ -14,6 +19,7 @@ interface QuestionSignInModalProps {
   onClose: () => void;
   questionText: string;
   questionId: string;
+  returnFocusRef: RefObject<HTMLButtonElement | null>;
 }
 
 export function QuestionSignInModal({
@@ -21,30 +27,11 @@ export function QuestionSignInModal({
   onClose,
   questionText,
   questionId,
+  returnFocusRef,
 }: QuestionSignInModalProps) {
   const router = useRouter();
   const { signInWithGoogle } = useAuth();
   const interviewDestination = buildQuestionInterviewHref(questionId);
-
-  // Handle ESC key to close modal
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscape);
-      // Prevent body scroll when modal is open
-      document.body.style.overflow = "hidden";
-    }
-
-    return () => {
-      document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = "unset";
-    };
-  }, [isOpen, onClose]);
 
   const handleGoogleSignIn = async () => {
     await signInWithGoogle(interviewDestination);
@@ -63,95 +50,69 @@ export function QuestionSignInModal({
   };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="bg-overlay/80 fixed inset-0 z-[9999] backdrop-blur-sm"
-          />
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        overlayClassName="bg-overlay/80"
+        closeClassName="flex h-11 w-11 items-center justify-center"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          returnFocusRef.current?.focus();
+        }}
+        className="max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-md overflow-y-auto p-5 sm:p-8"
+      >
+        <DialogHeader className="pr-12 text-left">
+          <DialogTitle className="text-2xl">Ready to practice?</DialogTitle>
+          <DialogDescription>
+            Continue to start a mock interview with this question selected.
+          </DialogDescription>
+        </DialogHeader>
 
-          {/* Modal Container */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+        <div className="border-primary/20 bg-primary/5 max-h-32 overflow-y-auto rounded-xl border p-4 sm:p-6">
+          <p className="text-foreground text-sm leading-relaxed font-semibold [overflow-wrap:anywhere] break-words sm:text-base">
+            &ldquo;{questionText}&rdquo;
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={handleGoogleSignIn}
+            className="min-h-12 w-full gap-3 rounded-xl border-2 font-semibold whitespace-normal"
           >
-            {/* Modal Card */}
-            <div className="border-border bg-background/95 relative w-full max-w-md rounded-2xl border p-8 shadow-2xl backdrop-blur-xl">
-              {/* Close Button */}
-              <Button
-                type="button"
-                variant="quiet"
-                size="icon"
-                onClick={onClose}
-                className="absolute top-4 right-4 h-8 w-8"
-                aria-label="Close modal"
-              >
-                <X className="h-4 w-4" />
-              </Button>
+            <Icons.google className="h-5 w-5 shrink-0" />
+            <span>Continue with Google</span>
+          </Button>
 
-              {/* Heading */}
-              <div className="mb-6 text-center">
-                <h2 className="text-foreground text-2xl font-semibold">
-                  Ready to practice?
-                </h2>
-              </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={handleEmailSignIn}
+            className="min-h-12 w-full rounded-xl border-2 font-semibold whitespace-normal"
+          >
+            Continue with Email
+          </Button>
+        </div>
 
-              {/* Selected Question (Highlighted box) */}
-              <div className="from-primary/5 to-primary/10 border-primary/20 mb-8 rounded-xl border bg-gradient-to-br p-6">
-                <p className="text-foreground line-clamp-2 text-base leading-relaxed font-semibold">
-                  "{questionText}"
-                </p>
-              </div>
-
-              {/* Google Sign In */}
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                onClick={handleGoogleSignIn}
-                className="mb-4 h-14 w-full rounded-xl border-2 font-semibold"
-              >
-                <div className="flex items-center justify-center gap-3">
-                  <Icons.google className="h-5 w-5" />
-                  <span>Continue with Google</span>
-                </div>
-              </Button>
-
-              {/* Email Sign In */}
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                onClick={handleEmailSignIn}
-                className="h-14 w-full rounded-xl border-2 font-semibold"
-              >
-                Continue with Email
-              </Button>
-
-              {/* Footer */}
-              <div className="text-muted-foreground mt-6 text-center text-sm">
-                Don't have an account?{" "}
-                <Button
-                  type="button"
-                  variant="link"
-                  onClick={handleSignUp}
-                  className="h-auto p-0 font-medium"
-                >
-                  Sign up free
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+        <div className="text-muted-foreground text-center text-sm">
+          Don&apos;t have an account?{" "}
+          <Button
+            type="button"
+            variant="link"
+            onClick={handleSignUp}
+            className="h-auto min-h-11 p-0 font-medium whitespace-normal"
+          >
+            Sign up free
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
