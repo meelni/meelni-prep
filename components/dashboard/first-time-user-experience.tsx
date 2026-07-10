@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/app/providers/auth-provider";
 import { fadeInUp } from "@/lib/animations";
 import { analytics } from "@/lib/analytics/analytics-service";
 
@@ -16,21 +15,15 @@ export const FTUE_EMPTY_STATE_COPY = {
 
 export function FirstTimeUserExperience() {
   const router = useRouter();
-  const { user } = useAuth();
 
   // Track first-time user experience view
   useEffect(() => {
-    analytics.track("ftue_viewed", {
-      user_id: user?.id,
-    });
-  }, [user?.id]);
+    analytics.track("ftue_viewed", {});
+  }, []);
 
   // Track CTA click
   const handleStartInterview = () => {
-    analytics.track("ftue_cta_clicked", {
-      user_id: user?.id,
-      cta_text: FTUE_EMPTY_STATE_COPY.cta,
-    });
+    analytics.track("ftue_cta_clicked", { source: "empty_state" });
     router.push("/dashboard/new-interview");
   };
 

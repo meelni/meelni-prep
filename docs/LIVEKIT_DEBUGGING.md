@@ -6,6 +6,7 @@
 ---
 
 ## Table of Contents
+
 1. [Debugging Tools](#debugging-tools)
 2. [Common Issues and Solutions](#common-issues-and-solutions)
 3. [Model Configuration](#model-configuration)
@@ -43,6 +44,7 @@ lk agent logs | grep -i "TTS"
 ```
 
 **What to look for**:
+
 - `ModuleNotFoundError`: Missing Python modules/files
 - `AttributeError`: Invalid API usage or missing attributes
 - `ValueError`: Invalid configuration (model names, voice IDs)
@@ -62,6 +64,7 @@ lk agent logs --log-type=deploy | tail -50
 ```
 
 **What to look for**:
+
 - Deployment status: `"deployment succeeded"`, `"deployment failed"`
 - Version numbers: Ensure latest version is deployed
 - Rollback events: Previous deployments still active
@@ -82,6 +85,7 @@ lk agent logs --log-type=build | grep -i "requirement"
 ```
 
 **What to look for**:
+
 - `COPY failed`: Missing files/directories in Docker context
 - `pip install failed`: Missing or incompatible dependencies
 - Build warnings: Potential issues with dependencies
@@ -109,6 +113,7 @@ lk agent status
 ### Issue 1: ModuleNotFoundError
 
 **Symptoms**:
+
 ```
 ModuleNotFoundError: No module named 'utils'
 ```
@@ -116,6 +121,7 @@ ModuleNotFoundError: No module named 'utils'
 **Cause**: Missing directory in Dockerfile COPY command
 
 **Solution**:
+
 ```dockerfile
 # ❌ BAD - Only copies files, not directories
 COPY agent.py .
@@ -131,6 +137,7 @@ COPY . .
 ```
 
 **Verification**:
+
 ```bash
 # Check build logs for COPY errors
 lk agent logs --log-type=build | grep -i "COPY"
@@ -144,6 +151,7 @@ lk agent deploy .
 ### Issue 2: Agent Not Speaking
 
 **Symptoms**:
+
 - Agent joins room but says nothing
 - User sees "Agent connected" but no greeting
 - No errors in logs
@@ -167,6 +175,7 @@ Then proceed to ask interview questions."""
 ```
 
 **Debugging Steps**:
+
 1. Check logs for session start:
    ```bash
    lk agent logs | grep "session started"
@@ -176,6 +185,7 @@ Then proceed to ask interview questions."""
 4. Check if `session.say()` is called before `session.start()` completes (race condition)
 
 **Race Condition Fix**:
+
 ```python
 # ❌ BAD - Race condition
 session = AgentSession(...)
@@ -192,6 +202,7 @@ await session.start(agent, room)  # Agent greets via prompt instructions
 ### Issue 3: Invalid Voice ID
 
 **Symptoms**:
+
 ```
 elevenlabs error: Voice not found
 ValueError: Invalid voice ID
@@ -202,6 +213,7 @@ ValueError: Invalid voice ID
 **Solution**:
 
 **ElevenLabs Voice ID Format**:
+
 ```python
 # ✅ CORRECT - Full format with model and voice ID
 tts_model = "elevenlabs/eleven_turbo_v2_5:21m00Tcm4TlvDq8ikWAM"
@@ -213,6 +225,7 @@ tts_model = "elevenlabs/eleven_turbo_v2_5:21m00Tcm4TlvDq8ikWAM"
 ```
 
 **Cartesia Voice ID Format**:
+
 ```python
 # ✅ CORRECT - Full format with model and voice ID
 tts_model = "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
@@ -236,6 +249,7 @@ tts_model = "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
    - Test voice ID: `6ccbfb76-1fc6-48f7-b71d-91ac6298247b` (Tessa)
 
 **Debugging**:
+
 ```bash
 # Check logs for voice errors
 lk agent logs | grep -i "voice"
@@ -248,6 +262,7 @@ lk agent logs | grep -i "cartesia"
 ### Issue 4: Agent Not Receiving Dispatches
 
 **Symptoms**:
+
 - Agent deployed successfully
 - No errors in logs
 - Agent never joins rooms when dispatched
@@ -255,6 +270,7 @@ lk agent logs | grep -i "cartesia"
 **Cause**: Missing `agent_name` in WorkerOptions
 
 **Solution**:
+
 ```python
 # ❌ BAD - No agent_name (automatic dispatch only)
 cli.run_app(
@@ -275,6 +291,7 @@ cli.run_app(
 ```
 
 **Verification**:
+
 ```bash
 # Check agent status shows correct ID
 lk agent status
@@ -290,12 +307,14 @@ await dispatchClient.createDispatch(roomName, MAIN_AGENT_ID);
 ### Issue 5: Agent Crashes on Startup
 
 **Symptoms**:
+
 ```
 Agent started but immediately stopped
 Exit code: 1
 ```
 
 **Common Causes**:
+
 1. Missing environment variables
 2. Invalid model names
 3. Missing dependencies
@@ -319,6 +338,7 @@ lk agent logs --log-type=build | grep -i "requirement"
 ```
 
 **Solution Checklist**:
+
 - [ ] All API keys set in LiveKit Cloud secrets
 - [ ] Model names use correct format: `provider/model-name`
 - [ ] All dependencies in `requirements.txt`
@@ -333,6 +353,7 @@ lk agent logs --log-type=build | grep -i "requirement"
 **Format**: `{provider}/{model-name}:{optional-voice-id}`
 
 **Examples**:
+
 ```python
 # STT Models
 stt_model = "deepgram/nova-3"
@@ -380,6 +401,7 @@ tts_model = "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
 **Important**: When using LiveKit Inference, you do NOT need separate API keys for Cartesia or ElevenLabs.
 
 **Required Environment Variables**:
+
 ```bash
 # Always required
 LIVEKIT_API_KEY=your_livekit_key
@@ -397,6 +419,7 @@ DEEPGRAM_API_KEY=your_deepgram_key
 ```
 
 **How to verify**:
+
 ```bash
 # Check what secrets are configured
 lk agent status
@@ -471,6 +494,7 @@ agent/
 ```
 
 **Deploy demo agent**:
+
 ```bash
 cp Dockerfile.demo Dockerfile
 cp .dockerignore.demo .dockerignore
@@ -478,6 +502,7 @@ lk agent deploy .
 ```
 
 **Deploy main agent**:
+
 ```bash
 # Ensure Dockerfile and .dockerignore are for main agent
 lk agent deploy .
@@ -490,7 +515,7 @@ Keep track of deployed agent IDs:
 ```
 # Demo Agent
 Agent ID: CA_t3sKQEihMQ7x
-Purpose: 60-second landing page demos
+Purpose: bounded two-minute landing-page voice previews
 Room Pattern: demo-*
 
 # Main Interview Agent
@@ -500,6 +525,7 @@ Room Pattern: interview-*
 ```
 
 **Update in code**:
+
 ```typescript
 // /app/api/livekit/demo-token/route.ts
 const DEMO_AGENT_ID = "CA_t3sKQEihMQ7x";
@@ -569,6 +595,7 @@ name = "CA_yawKG67rCMG4"
 ```
 
 Then deploy:
+
 ```bash
 lk agent deploy .
 ```
@@ -613,18 +640,22 @@ Agent not working?
 ## Getting Help
 
 ### 1. Check Official Documentation
+
 - LiveKit Agents: https://docs.livekit.io/agents/
 - LiveKit Cloud: https://cloud.livekit.io/
 
 ### 2. Search GitHub Issues
+
 - LiveKit Agents: https://github.com/livekit/agents/issues
 - LiveKit Core: https://github.com/livekit/livekit/issues
 
 ### 3. Join LiveKit Community
+
 - Discord: https://livekit.io/discord
 - Forum: https://github.com/livekit/livekit/discussions
 
 ### 4. Internal Documentation
+
 - Project docs: `.claude/CLAUDE.md`
 - Deployment guide: `agent/DEPLOY_DEMO.md`
 - Troubleshooting: This file

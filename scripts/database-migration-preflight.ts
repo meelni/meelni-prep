@@ -7,6 +7,8 @@ import postgres from "postgres";
 
 import {
   ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
+  PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
+  ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
@@ -99,9 +101,9 @@ async function run(url: string, environmentIdentity: string) {
         FROM drizzle.__drizzle_migrations
         ORDER BY created_at
       `;
-      if (![2, 6, 7, 8, 9, 10, 11].includes(migrations.length)) {
+      if (![2, 6, 7, 8, 9, 10, 11, 12, 13].includes(migrations.length)) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 reconnect, 10 transcript-ingest, or 11 feedback-v2 migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 reconnect, 10 transcript-ingest, 11 feedback-v2, 12 public-demo, or 13 analytics-consent migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -251,7 +253,9 @@ async function run(url: string, environmentIdentity: string) {
         | "atomic_session_completion"
         | "interview_reconnect"
         | "transcript_ingest"
-        | "feedback_v2";
+        | "feedback_v2"
+        | "public_demo_limits"
+        | "explicit_analytics_consent";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -277,13 +281,18 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "interview_reconnect";
       } else if (migrations.length === 10) {
         startingContract = "transcript_ingest";
-      } else {
+      } else if (migrations.length === 11) {
         startingContract = "feedback_v2";
+      } else if (migrations.length === 12) {
+        startingContract = "public_demo_limits";
+      } else {
+        startingContract = "explicit_analytics_consent";
       }
       if (migrations.length >= 6) {
+        const expectedTableCount = migrations.length >= 12 ? 25 : 23;
         if (
-          summary.tables !== 23 ||
-          summary.rls_tables !== 23 ||
+          summary.tables !== expectedTableCount ||
+          summary.rls_tables !== expectedTableCount ||
           summary.unsafe_policies !== 0 ||
           summary.unique_contracts !== 3
         ) {
@@ -305,7 +314,11 @@ async function run(url: string, environmentIdentity: string) {
                   ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
                   : migrations.length === 10
                     ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-                    : FEEDBACK_V2_SCHEMA_FINGERPRINT;
+                    : migrations.length === 11
+                      ? FEEDBACK_V2_SCHEMA_FINGERPRINT
+                      : migrations.length === 12
+                        ? PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
+                        : ANALYTICS_CONSENT_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -383,19 +396,23 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 11
-            ? FEEDBACK_V2_SCHEMA_FINGERPRINT
-            : migrations.length === 10
-              ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-              : migrations.length === 9
-                ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                : migrations.length === 8
-                  ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                  : migrations.length === 7
-                    ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                    : migrations.length === 6
-                      ? RELAUNCH_SCHEMA_FINGERPRINT
-                      : "pending",
+          migrations.length === 13
+            ? ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
+            : migrations.length === 12
+              ? PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
+              : migrations.length === 11
+                ? FEEDBACK_V2_SCHEMA_FINGERPRINT
+                : migrations.length === 10
+                  ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                  : migrations.length === 9
+                    ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                    : migrations.length === 8
+                      ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                      : migrations.length === 7
+                        ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                        : migrations.length === 6
+                          ? RELAUNCH_SCHEMA_FINGERPRINT
+                          : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }

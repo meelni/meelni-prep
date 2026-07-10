@@ -1,0 +1,305 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import type { LiveKitPublicDemoProvider } from "@/lib/internal/integrations";
+
+import {
+  type StartPublicDemoDeps,
+  startPublicDemoWorkflow,
+} from "./start-public-demo";
+
+const INPUT = {
+  sessionId: "22222222-2222-4222-8222-222222222222",
+  participantIdentity: "demo-opaque",
+  ipHash: "a".repeat(64),
+  deviceHash: "b".repeat(64),
+  deploymentScope: "production" as const,
+  agentName: "demo-agent",
+  env: {
+    apiKey: "key",
+    apiSecret: "secret",
+    url: "wss://test.livekit.cloud",
+  },
+};
+const RECOVERY_CLAIM = "11111111-1111-4111-8111-111111111111";
+
+test("public demo workflow authorizes before provider work and maps a typed denial", async () => {
+  const calls: string[] = [];
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => {
+        calls.push("reserve");
+        return {
+          action: "rate_limited",
+          roomName: null,
+          limitingScope: "device",
+          retryAfterSeconds: 600,
+          remaining: 0,
+          recoveryClaimToken: null,
+        };
+      },
+      livekit: provider({
+        startPublicDemoRoom: async () => {
+          calls.push("provider");
+          throw new Error("must not run");
+        },
+      }),
+    })
+  );
+
+  assert.deepEqual(calls, ["reserve"]);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 429,
+    body: {
+      error: "demo_rate_limited",
+      retryAfterSeconds: 600,
+      retryAt: "2026-07-09T12:10:00.000Z",
+    },
+    retryAfterSeconds: 600,
+  });
+});
+
+test("public demo workflow provisions one room and durably finalizes it", async () => {
+  const calls: string[] = [];
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => {
+        calls.push("reserve");
+        return allowed("provision");
+      },
+      livekit: provider({
+        startPublicDemoRoom: async (input) => {
+          calls.push(`start:${input.roomName}:${input.metadata && "metadata"}`);
+          return success(input.roomName);
+        },
+      }),
+      completeSession: async (_id, status) => {
+        calls.push(`complete:${status}`);
+        return true;
+      },
+    })
+  );
+
+  assert.deepEqual(calls, [
+    "reserve",
+    "start:demo-room:metadata",
+    "complete:ready",
+  ]);
+  assert.deepEqual(result, {
+    ok: true,
+    body: {
+      token: "signed-token",
+      url: INPUT.env.url,
+      durationSeconds: 120,
+    },
+  });
+});
+
+test("ready-session replay returns an ack receipt without finalizing the claim", async () => {
+  const calls: string[] = [];
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => allowed("issue_token"),
+      livekit: provider({
+        issuePublicDemoToken: async (input) => {
+          calls.push(`token:${input.roomName}`);
+          return success(input.roomName);
+        },
+        startPublicDemoRoom: async () => {
+          calls.push("dispatch");
+          throw new Error("replay must not redispatch");
+        },
+      }),
+    })
+  );
+
+  assert.deepEqual(calls, ["token:demo-room"]);
+  assert.deepEqual(result, {
+    ok: true,
+    body: {
+      token: "signed-token",
+      url: INPUT.env.url,
+      durationSeconds: 120,
+      recoveryReceipt: RECOVERY_CLAIM,
+    },
+  });
+});
+
+test("transient recovery failure rolls back its claim and preserves the session cookie", async () => {
+  const calls: string[] = [];
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => allowed("issue_token"),
+      livekit: provider({
+        issuePublicDemoToken: async () => ({
+          ok: false,
+          provider: "livekit",
+          error: {
+            code: "livekit_demo_room_verify_failed",
+            message: "provider unavailable",
+            retryable: true,
+          },
+        }),
+      }),
+      rollbackRecovery: async (sessionId, claimToken) => {
+        calls.push(`rollback:${sessionId}:${claimToken}`);
+        return true;
+      },
+    })
+  );
+
+  assert.deepEqual(calls, [`rollback:${INPUT.sessionId}:${RECOVERY_CLAIM}`]);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 503,
+    body: { error: "demo_temporarily_unavailable" },
+  });
+});
+
+test("a verified missing agent invalidates the active session before cookie reset", async () => {
+  const calls: string[] = [];
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => allowed("issue_token"),
+      livekit: provider({
+        issuePublicDemoToken: async () => ({
+          ok: false,
+          provider: "livekit",
+          error: {
+            code: "livekit_demo_room_not_ready",
+            message: "agent participant missing",
+            retryable: true,
+          },
+        }),
+      }),
+      failRecovery: async (sessionId, claimToken, failureCode) => {
+        calls.push(`fail:${sessionId}:${claimToken}:${failureCode}`);
+        return true;
+      },
+      rollbackRecovery: async () => {
+        calls.push("rollback");
+        return true;
+      },
+    })
+  );
+
+  assert.deepEqual(calls, [
+    `fail:${INPUT.sessionId}:${RECOVERY_CLAIM}:livekit_demo_room_not_ready`,
+  ]);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 503,
+    body: { error: "demo_temporarily_unavailable" },
+    resetSessionCookie: true,
+  });
+});
+
+test("limiter failure fails closed without LiveKit work", async () => {
+  let providerCalled = false;
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => {
+        throw new Error("database unavailable");
+      },
+      livekit: provider({
+        startPublicDemoRoom: async () => {
+          providerCalled = true;
+          return success("demo-room");
+        },
+      }),
+    })
+  );
+
+  assert.equal(providerCalled, false);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 503,
+    body: { error: "demo_temporarily_unavailable" },
+  });
+});
+
+test("provider failure is recorded with a safe code", async () => {
+  const completions: unknown[] = [];
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => allowed("provision"),
+      livekit: provider({
+        startPublicDemoRoom: async () => ({
+          ok: false,
+          provider: "livekit",
+          error: {
+            code: "LiveKit/Dispatch Failed",
+            message: "provider details",
+            retryable: true,
+          },
+        }),
+      }),
+      completeSession: async (...args) => {
+        completions.push(args);
+        return true;
+      },
+    })
+  );
+
+  assert.deepEqual(completions, [
+    [INPUT.sessionId, "failed", "livekit_dispatch_failed"],
+  ]);
+  assert.equal(result.ok, false);
+});
+
+function deps(
+  overrides: Partial<StartPublicDemoDeps> = {}
+): StartPublicDemoDeps {
+  return {
+    audit: () => undefined,
+    completeSession: async () => true,
+    failRecovery: async () => true,
+    livekit: provider(),
+    now: () => new Date("2026-07-09T12:00:00.000Z"),
+    reserveSession: async () => allowed("provision"),
+    rollbackRecovery: async () => true,
+    ...overrides,
+  };
+}
+
+function provider(
+  overrides: Partial<LiveKitPublicDemoProvider> = {}
+): LiveKitPublicDemoProvider {
+  return {
+    startPublicDemoRoom: async (input) => success(input.roomName),
+    issuePublicDemoToken: async (input) => success(input.roomName),
+    deletePublicDemoRoom: async () => undefined,
+    ...overrides,
+  };
+}
+
+function allowed(action: "provision" | "issue_token") {
+  return {
+    action,
+    roomName: "demo-room",
+    limitingScope: null,
+    retryAfterSeconds: 0,
+    remaining: 1,
+    recoveryClaimToken: action === "issue_token" ? RECOVERY_CLAIM : null,
+  };
+}
+
+function success(roomName: string) {
+  return {
+    ok: true as const,
+    provider: "livekit" as const,
+    data: {
+      token: "signed-token",
+      url: INPUT.env.url,
+      roomName,
+    },
+  };
+}

@@ -10,10 +10,12 @@ import {
   useState,
 } from "react";
 import { StatsigClient, type StatsigUser } from "@statsig/js-client";
-import { StatsigSessionReplayPlugin } from "@statsig/session-replay";
-import { StatsigAutoCapturePlugin } from "@statsig/web-analytics";
+import { useAnalyticsConsent } from "@/app/providers/analytics-consent-provider";
 import { useAuth } from "@/app/providers/auth-provider";
-import { getOrCreateStatsigAnonymousId } from "./anonymous-id";
+import {
+  clearStatsigAnonymousIdentifiers,
+  getOrCreateStatsigAnonymousId,
+} from "./anonymous-id";
 import { buildStatsigUser, getStatsigConfig } from "./config";
 import {
   applyFeatureFlagOverride,
@@ -44,7 +46,6 @@ interface FeatureFlagsContextValue {
 const FeatureFlagsContext = createContext<FeatureFlagsContextValue | undefined>(
   undefined
 );
-
 const statsigConfig = getStatsigConfig({
   NODE_ENV: process.env.NODE_ENV,
   NEXT_PUBLIC_STATSIG_API_URL: process.env.NEXT_PUBLIC_STATSIG_API_URL,
@@ -53,16 +54,16 @@ const statsigConfig = getStatsigConfig({
   VERCEL_ENV: process.env.VERCEL_ENV,
 });
 
-interface StatsigProviderProps {
-  children: React.ReactNode;
-  initialGateValues?: Record<string, boolean>;
-}
-
 export function StatsigProvider({
   children,
   initialGateValues = {},
-}: StatsigProviderProps) {
+}: {
+  children: React.ReactNode;
+  initialGateValues?: Record<string, boolean>;
+}) {
   const { user } = useAuth();
+  const { decision, resolved } = useAnalyticsConsent();
+  const accepted = resolved && decision === "accepted";
   const [anonymousId, setAnonymousId] = useState<string | null>(null);
   const [clientAvailable, setClientAvailable] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -74,58 +75,57 @@ export function StatsigProvider({
   const initializedUserKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setAnonymousId(getOrCreateStatsigAnonymousId());
     setLocalOverrides(readFeatureFlagOverrides(window.localStorage));
   }, []);
 
-  const statsigUser = useMemo(() => {
-    if (!anonymousId) {
-      return null;
+  useEffect(() => {
+    if (accepted) {
+      setAnonymousId(getOrCreateStatsigAnonymousId());
+      return;
     }
+    setAnonymousId(null);
+    clearStatsigAnonymousIdentifiers();
+    setReady(false);
+    setClientAvailable(false);
+    initializedUserKeyRef.current = null;
+    const client = clientRef.current;
+    clientRef.current = null;
+    if (client) void client.shutdown();
+  }, [accepted]);
 
-    return buildStatsigUser({
-      anonymousId,
-      user,
-    });
-  }, [anonymousId, user]);
-
+  const statsigUser = useMemo(
+    () => (anonymousId ? buildStatsigUser({ anonymousId, user }) : null),
+    [anonymousId, user]
+  );
   const statsigUserKey = useMemo(
     () => (statsigUser ? JSON.stringify(statsigUser) : null),
     [statsigUser]
   );
 
   useEffect(() => {
-    if (!statsigConfig.enabled || !statsigUser || !statsigUserKey) {
+    if (!accepted || !statsigConfig.enabled || !statsigUser || !statsigUserKey)
       return;
-    }
-
     let active = true;
 
     async function initializeOrUpdate(userForStatsig: StatsigUser) {
       try {
         setReady(false);
         setLastError(null);
-
         if (!clientRef.current) {
           const client = new StatsigClient(
             statsigConfig.clientKey,
             userForStatsig,
             {
-              environment: {
-                tier: statsigConfig.environmentTier,
-              },
+              disableStableID: true,
+              disableStorage: true,
+              includeCurrentPageUrlWithEvents: false,
+              loggingEnabled: "disabled",
+              environment: { tier: statsigConfig.environmentTier },
               networkConfig: statsigConfig.apiUrl
-                ? {
-                    api: statsigConfig.apiUrl,
-                  }
+                ? { api: statsigConfig.apiUrl }
                 : undefined,
-              plugins: [
-                new StatsigSessionReplayPlugin(),
-                new StatsigAutoCapturePlugin(),
-              ],
             }
           );
-
           clientRef.current = client;
           setClientAvailable(true);
           initializedUserKeyRef.current = statsigUserKey;
@@ -136,65 +136,47 @@ export function StatsigProvider({
             timeoutMs: 3000,
           });
         }
-
-        if (active) {
-          setReady(true);
-        }
+        if (active) setReady(true);
       } catch (error) {
         initializedUserKeyRef.current = null;
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Statsig initialization failed";
-        if (statsigConfig.debug) {
-          console.error("[FeatureFlags] Failed to initialize Statsig", error);
-        }
         if (active) {
-          setLastError(message);
+          setLastError(
+            error instanceof Error
+              ? error.message
+              : "Statsig initialization failed"
+          );
           setReady(false);
         }
       }
     }
 
     void initializeOrUpdate(statsigUser);
-
     return () => {
       active = false;
     };
-  }, [statsigUser, statsigUserKey]);
+  }, [accepted, statsigUser, statsigUserKey]);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       void clientRef.current?.shutdown();
-    };
-  }, []);
+    },
+    []
+  );
 
   const checkGate = useCallback(
     (name: string, defaultValue = false) => {
       const override = localOverrides[name] ?? "statsig";
-      const serverValue = initialGateValues[name];
-
-      if (serverValue !== undefined) {
-        return applyFeatureFlagOverride(serverValue, override);
-      }
-
-      if (!statsigConfig.enabled || !ready || !clientRef.current) {
-        return applyFeatureFlagOverride(defaultValue, override);
-      }
-
-      try {
-        return applyFeatureFlagOverride(
-          clientRef.current.checkGate(name),
-          override
-        );
-      } catch (error) {
-        if (statsigConfig.debug) {
-          console.error("[FeatureFlags] Failed to check gate", name, error);
+      let value = initialGateValues[name] ?? defaultValue;
+      if (accepted && ready && clientRef.current) {
+        try {
+          value = clientRef.current.checkGate(name);
+        } catch {
+          /* use bootstrap */
         }
-        return applyFeatureFlagOverride(defaultValue, override);
       }
+      return applyFeatureFlagOverride(value, override);
     },
-    [initialGateValues, localOverrides, ready]
+    [accepted, initialGateValues, localOverrides, ready]
   );
 
   const setLocalOverride = useCallback(
@@ -202,61 +184,26 @@ export function StatsigProvider({
       setLocalOverrides(
         setFeatureFlagOverride(window.localStorage, name, mode)
       );
-
       if (process.env.NODE_ENV === "development") {
         const cookieName = `meelni_feature_flag_${encodeURIComponent(name)}`;
-        if (mode === "statsig") {
-          window.document.cookie = `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`;
-        } else {
-          window.document.cookie = `${cookieName}=${mode}; Path=/; SameSite=Lax`;
-        }
+        window.document.cookie =
+          mode === "statsig"
+            ? `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`
+            : `${cookieName}=${mode}; Path=/; SameSite=Lax`;
         window.location.reload();
       }
     },
     []
   );
 
-  const logEvent = useCallback(
-    (
-      eventName: string,
-      value?: string | number,
-      metadata?: Record<string, string>
-    ) => {
-      if (!statsigConfig.enabled || !clientRef.current) {
-        return;
-      }
-
-      clientRef.current.logEvent(eventName, value, metadata);
-    },
-    []
-  );
-
-  const flush = useCallback(async () => {
-    try {
-      await clientRef.current?.flush();
-      setLastError(null);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Statsig flush failed";
-      if (statsigConfig.debug) {
-        console.error("[FeatureFlags] Failed to flush Statsig events", error);
-      }
-      setLastError(message);
-    }
-  }, []);
-
   const apiHost = useMemo(() => {
-    if (!statsigConfig.apiUrl) {
-      return null;
-    }
-
+    if (!statsigConfig.apiUrl) return null;
     try {
       return new URL(statsigConfig.apiUrl).host;
     } catch {
       return statsigConfig.apiUrl;
     }
   }, []);
-
   const value = useMemo<FeatureFlagsContextValue>(
     () => ({
       apiHost,
@@ -268,18 +215,16 @@ export function StatsigProvider({
       ready,
       checkGate,
       setLocalOverride,
-      logEvent,
-      flush,
+      logEvent: () => undefined,
+      flush: async () => undefined,
     }),
     [
       anonymousId,
       apiHost,
       checkGate,
       clientAvailable,
-      flush,
       lastError,
       localOverrides,
-      logEvent,
       ready,
       setLocalOverride,
     ]
@@ -294,16 +239,13 @@ export function StatsigProvider({
 
 export function useFeatureFlags() {
   const context = useContext(FeatureFlagsContext);
-  if (context === undefined) {
+  if (!context)
     throw new Error("useFeatureFlags must be used within a StatsigProvider");
-  }
-
   return context;
 }
 
 export function useFeatureFlag(name: string, defaultValue = false) {
   const { checkGate } = useFeatureFlags();
-
   return useMemo(
     () => checkGate(name, defaultValue),
     [checkGate, defaultValue, name]

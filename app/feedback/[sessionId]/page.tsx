@@ -82,17 +82,19 @@ function renderFinding(finding: unknown) {
     return projectFeedbackItems([finding])[0] ?? "Feedback detail unavailable.";
   }
   return (
-    <div className="space-y-2">
-      <p>{finding.observation}</p>
+    <div className="min-w-0 space-y-2 [overflow-wrap:anywhere] break-words">
+      <p className="[overflow-wrap:anywhere] break-words">
+        {finding.observation}
+      </p>
       {finding.evidence.map((evidence) => (
         <blockquote
           key={evidence.turnRef}
-          className="text-muted-foreground border-l-2 border-current/30 pl-3 text-sm"
+          className="text-muted-foreground min-w-0 border-l-2 border-current/30 pl-3 text-sm leading-6 [overflow-wrap:anywhere] break-words"
         >
           “{evidence.quote}”
         </blockquote>
       ))}
-      <p className="text-sm">
+      <p className="text-sm leading-6 [overflow-wrap:anywhere] break-words">
         <span className="font-medium">Next step:</span> {finding.nextStep}
       </p>
     </div>
@@ -598,7 +600,7 @@ export default function FeedbackPage() {
                       className={`flex ${turn.speaker === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-message-bubble rounded-lg px-4 py-3 ${
+                        className={`max-w-message-bubble min-w-0 rounded-lg px-4 py-3 ${
                           turn.speaker === "user"
                             ? "bg-primary/10 text-foreground"
                             : "bg-muted text-foreground"
@@ -614,7 +616,7 @@ export default function FeedbackPage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                        <p className="text-sm leading-relaxed [overflow-wrap:anywhere] break-words whitespace-pre-wrap">
                           {turn.text || "(No text recorded)"}
                         </p>
                       </div>

@@ -30,10 +30,12 @@ export interface AnalyticsConfig {
 /**
  * Get analytics configuration based on environment
  */
-export function getAnalyticsConfig(): AnalyticsConfig {
-  const isProduction = process.env.NODE_ENV === "production";
-  const isDevelopment = process.env.NODE_ENV === "development";
-  const isTest = process.env.NODE_ENV === "test";
+export function getAnalyticsConfig(
+  env: Record<string, string | undefined> = process.env
+): AnalyticsConfig {
+  const isProduction = env.NODE_ENV === "production";
+  const isDevelopment = env.NODE_ENV === "development";
+  const isTest = env.NODE_ENV === "test";
 
   // Disable in test environment
   if (isTest) {
@@ -56,8 +58,8 @@ export function getAnalyticsConfig(): AnalyticsConfig {
     };
   }
 
-  const apiKey = process.env.NEXT_PUBLIC_POSTHOG_KEY || "";
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
+  const apiKey = env.NEXT_PUBLIC_POSTHOG_KEY || "";
+  const host = env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
   // Warn if missing API key in production
   if (isProduction && !apiKey) {
@@ -70,8 +72,10 @@ export function getAnalyticsConfig(): AnalyticsConfig {
     enabled: !!apiKey && !isTest,
     debug: isDevelopment,
     sessionRecording: {
-      enabled: true,
-      sampleRate: isProduction ? 0.3 : 1.0, // 30% in prod, 100% in dev
+      // Voice and interview surfaces render live transcript text. Recording is
+      // globally disabled so privacy does not depend on DOM masking conventions.
+      enabled: false,
+      sampleRate: 0,
       maskTextInputs: true,
       maskEmails: true,
     },
