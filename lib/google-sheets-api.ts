@@ -86,9 +86,7 @@ export async function fetchSheetViaAPI(
   range: string = "Sheet1"
 ): Promise<SheetRow[]> {
   try {
-    console.log(`📥 Fetching from Google Sheets API...`);
-    console.log(`   Sheet ID: ${spreadsheetId}`);
-    console.log(`   Range: ${range}`);
+    console.log("📥 Fetching configured Google Sheets API source");
 
     const sheets = getGoogleSheetsClient();
 
@@ -110,7 +108,7 @@ export async function fetchSheetViaAPI(
     // Parse rows
     return parseSheetValues(rows);
   } catch (error) {
-    console.error("❌ Error fetching from Google Sheets API:", error);
+    console.error("❌ Google Sheets API fetch failed");
 
     if (error instanceof Error) {
       // Provide helpful error messages
@@ -121,7 +119,7 @@ export async function fetchSheetViaAPI(
       }
       if (error.message.includes("Unable to parse range")) {
         throw new Error(
-          `Invalid range "${range}". Check that the sheet name is correct.`
+          "Invalid configured range. Check that the sheet name is correct."
         );
       }
       if (error.message.includes("credentials")) {
@@ -131,7 +129,7 @@ export async function fetchSheetViaAPI(
       }
     }
 
-    throw error;
+    throw new Error("Google Sheets API fetch failed");
   }
 }
 

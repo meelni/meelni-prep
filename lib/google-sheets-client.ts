@@ -29,12 +29,12 @@ export interface SheetRow {
  */
 export async function fetchSheetAsCSV(csvUrl: string): Promise<SheetRow[]> {
   try {
-    console.log(`📥 Fetching CSV from: ${csvUrl}`);
+    console.log("📥 Fetching configured Google Sheets CSV source");
 
     const response = await fetch(csvUrl, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'Accept': 'text/csv',
+        Accept: "text/csv",
       },
     });
 
@@ -45,13 +45,13 @@ export async function fetchSheetAsCSV(csvUrl: string): Promise<SheetRow[]> {
     const csvText = await response.text();
 
     if (!csvText || csvText.trim().length === 0) {
-      throw new Error('Empty CSV response');
+      throw new Error("Empty CSV response");
     }
 
     return parseCSV(csvText);
-  } catch (error) {
-    console.error('❌ Error fetching CSV:', error);
-    throw new Error(`Failed to fetch CSV: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } catch {
+    console.error("❌ Google Sheets CSV fetch failed");
+    throw new Error("Google Sheets CSV fetch failed");
   }
 }
 
@@ -65,41 +65,44 @@ export async function fetchSheetAsCSV(csvUrl: string): Promise<SheetRow[]> {
  */
 export async function fetchSheetViaAPI(
   spreadsheetId: string,
-  range: string = 'Sheet1'
+  range: string = "Sheet1"
 ): Promise<SheetRow[]> {
   try {
     const apiKey = process.env.GOOGLE_SHEETS_API_KEY;
 
     if (!apiKey) {
-      throw new Error('GOOGLE_SHEETS_API_KEY not set. Use Method A (CSV) instead or configure API key.');
+      throw new Error(
+        "GOOGLE_SHEETS_API_KEY not set. Use Method A (CSV) instead or configure API key."
+      );
     }
 
-    console.log(`📥 Fetching from Google Sheets API: ${spreadsheetId}`);
+    console.log("📥 Fetching configured Google Sheets API source");
 
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?key=${apiKey}`;
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'Accept': 'application/json',
+        Accept: "application/json",
       },
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`API error (${response.status}): ${errorBody}`);
+      throw new Error(
+        `Google Sheets API request failed with status ${response.status}`
+      );
     }
 
     const data = await response.json();
 
     if (!data.values || !Array.isArray(data.values)) {
-      throw new Error('Invalid response format from Google Sheets API');
+      throw new Error("Invalid response format from Google Sheets API");
     }
 
     return parseSheetValues(data.values);
-  } catch (error) {
-    console.error('❌ Error fetching via API:', error);
-    throw new Error(`Failed to fetch via API: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } catch {
+    console.error("❌ Google Sheets API fetch failed");
+    throw new Error("Google Sheets API fetch failed");
   }
 }
 
@@ -108,10 +111,12 @@ export async function fetchSheetViaAPI(
  * Handles quoted fields with commas correctly
  */
 function parseCSV(csvText: string): SheetRow[] {
-  const lines = parseCSVRecords(csvText).filter(line => line.trim().length > 0);
+  const lines = parseCSVRecords(csvText).filter(
+    (line) => line.trim().length > 0
+  );
 
   if (lines.length === 0) {
-    throw new Error('CSV is empty');
+    throw new Error("CSV is empty");
   }
 
   // Skip header row
@@ -126,21 +131,21 @@ function parseCSV(csvText: string): SheetRow[] {
 
       // Expecting 7 columns: Timestamp, Company, Question Text, Question Type, Interview Type, Comments, Notes
       if (fields.length < 4) {
-        console.warn(`⚠️  Row ${i + 2} has fewer than 4 fields, skipping: ${line.substring(0, 50)}...`);
+        console.warn(`⚠️  Row ${i + 2} has fewer than 4 fields, skipping`);
         continue;
       }
 
       rows.push({
-        timestamp: fields[0] || '',
-        company: fields[1] || '',
-        questionText: fields[2] || '',
-        questionType: fields[3] || '',
-        interviewType: fields[4] || '',
-        comments: fields[5] || '',
-        notes: fields[6] || '',
+        timestamp: fields[0] || "",
+        company: fields[1] || "",
+        questionText: fields[2] || "",
+        questionType: fields[3] || "",
+        interviewType: fields[4] || "",
+        comments: fields[5] || "",
+        notes: fields[6] || "",
       });
-    } catch (error) {
-      console.warn(`⚠️  Error parsing row ${i + 2}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch {
+      console.warn(`⚠️  Error parsing row ${i + 2}, skipping`);
     }
   }
 
@@ -152,7 +157,7 @@ function parseCSV(csvText: string): SheetRow[] {
  */
 function parseCSVRecords(csvText: string): string[] {
   const records: string[] = [];
-  let currentRecord = '';
+  let currentRecord = "";
   let insideQuotes = false;
 
   for (let i = 0; i < csvText.length; i++) {
@@ -170,12 +175,12 @@ function parseCSVRecords(csvText: string): string[] {
       continue;
     }
 
-    if ((char === '\n' || char === '\r') && !insideQuotes) {
+    if ((char === "\n" || char === "\r") && !insideQuotes) {
       if (currentRecord.trim().length > 0) {
         records.push(currentRecord);
       }
-      currentRecord = '';
-      if (char === '\r' && nextChar === '\n') {
+      currentRecord = "";
+      if (char === "\r" && nextChar === "\n") {
         i++;
       }
       continue;
@@ -196,7 +201,7 @@ function parseCSVRecords(csvText: string): string[] {
  */
 function parseCSVLine(line: string): string[] {
   const fields: string[] = [];
-  let currentField = '';
+  let currentField = "";
   let insideQuotes = false;
 
   for (let i = 0; i < line.length; i++) {
@@ -212,10 +217,10 @@ function parseCSVLine(line: string): string[] {
         // Toggle quote state
         insideQuotes = !insideQuotes;
       }
-    } else if (char === ',' && !insideQuotes) {
+    } else if (char === "," && !insideQuotes) {
       // End of field
       fields.push(currentField.trim());
-      currentField = '';
+      currentField = "";
     } else {
       currentField += char;
     }
@@ -239,7 +244,7 @@ function parseSheetValues(values: string[][]): SheetRow[] {
     const row = dataRows[i];
 
     // Skip empty rows
-    if (!row || row.length === 0 || !row.some(cell => cell && cell.trim())) {
+    if (!row || row.length === 0 || !row.some((cell) => cell && cell.trim())) {
       continue;
     }
 
@@ -250,13 +255,13 @@ function parseSheetValues(values: string[][]): SheetRow[] {
     }
 
     rows.push({
-      timestamp: row[0] || '',
-      company: row[1] || '',
-      questionText: row[2] || '',
-      questionType: row[3] || '',
-      interviewType: row[4] || '',
-      comments: row[5] || '',
-      notes: row[6] || '',
+      timestamp: row[0] || "",
+      company: row[1] || "",
+      questionText: row[2] || "",
+      questionType: row[3] || "",
+      interviewType: row[4] || "",
+      comments: row[5] || "",
+      notes: row[6] || "",
     });
   }
 
@@ -266,13 +271,16 @@ function parseSheetValues(values: string[][]): SheetRow[] {
 /**
  * Validate that a sheet row has required fields
  */
-export function validateSheetRow(row: SheetRow): { valid: boolean; error?: string } {
+export function validateSheetRow(row: SheetRow): {
+  valid: boolean;
+  error?: string;
+} {
   if (!row.questionText || row.questionText.trim().length === 0) {
-    return { valid: false, error: 'Missing question text' };
+    return { valid: false, error: "Missing question text" };
   }
 
   if (!row.questionType || row.questionType.trim().length === 0) {
-    return { valid: false, error: 'Missing question type' };
+    return { valid: false, error: "Missing question type" };
   }
 
   return { valid: true };
