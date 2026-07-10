@@ -7,12 +7,14 @@ export interface BlogPost {
   readTime: string;
   category: string;
   image?: string;
+  published?: boolean;
   content: string;
 }
 
-export const blogPosts: BlogPost[] = [
+const allBlogPosts: BlogPost[] = [
   {
     id: "product-sense-volunteering-meta",
+    published: false,
     title: "How to Answer: 'Build a Product for Volunteering' at Meta",
     excerpt:
       "A step-by-step breakdown of how to tackle this classic Meta Product Sense question, including framework, segmentation, and solution development with real PM thinking.",
@@ -242,6 +244,7 @@ Ready to practice your own Product Sense answer? [Try a mock interview with Meel
   },
   {
     id: "product-sense-education-meta",
+    published: false,
     title: "How to Answer: 'Design a Product for Education' at Meta",
     excerpt:
       "Work through this common Meta interview question with a structured example covering learner segmentation and knowledge retention.",
@@ -473,6 +476,7 @@ What aspects would you like me to elaborate on?"
   },
   {
     id: "analytical-thinking-instagram-reels",
+    published: false,
     title:
       "How to Answer: 'Set Goals for Instagram Reels' - Analytical Thinking",
     excerpt:
@@ -965,25 +969,26 @@ I'd love to hear about how Meta handles the tension between innovation and stabi
   },
   {
     id: "big-tech-case-study-interviews",
-    title: "Big Tech's Case Study Interview Format: What You Need to Know",
+    published: false,
+    title: "Practicing PM Case-Style Questions: What You Need to Know",
     excerpt:
-      "Google, Meta, Amazon, and other tech giants rely heavily on case study interviews. Here's what makes them different from traditional PM interviews and how to prepare effectively.",
+      "Case-style PM questions reveal how you structure ambiguous problems. Learn a durable practice method without assuming a company's current interview format.",
     author: "Meelni Team",
     date: "November 12, 2025",
     readTime: "9 min read",
     category: "Interview Strategy",
     content: `
-# Big Tech's Case Study Interview Format: What You Need to Know
+# Practicing PM Case-Style Questions: What You Need to Know
 
-If you're preparing for PM interviews at Google, Meta, Amazon, or other top tech companies, there's one format you'll face repeatedly: **the case study interview**.
+Case-style prompts are useful practice for PM interviews because they make you explain how you would design a product, diagnose a metric change, or choose among strategic trade-offs.
 
-Unlike traditional behavioral interviews where you draw from past experience, case study interviews throw you into hypothetical scenarios—often ones you've never encountered before. You're asked to design products, solve business problems, or optimize systems, all while the interviewer evaluates your structured thinking in real-time.
+Company interview formats change by role, level, location, and hiring cycle. Treat company examples in Meelni as illustrative practice prompts, not claims about current stages or timing. Confirm the active process with your recruiter.
 
-This post breaks down how major tech companies use case study formats, what they're actually testing, and how to prepare effectively.
+This guide focuses on the durable skill: making your reasoning visible when the problem is ambiguous.
 
-## Why Big Tech Loves Case Study Interviews
+## Why Case-Style Practice Is Useful
 
-Case study interviews have become the standard across major tech companies because they simulate the day-to-day challenges Product Managers actually face. Instead of asking "Tell me about a time you...", interviewers can directly observe:
+These prompts resemble common product work and let a practice partner observe:
 
 - **Your problem-solving process** (not just the outcome)
 - **How you think under pressure** (when you can't prepare in advance)
@@ -1245,7 +1250,7 @@ Our AI interviewer:
     id: "building-product-intuition",
     title: "Building Product Intuition: The Daily Practice Top PMs Use",
     excerpt:
-      "Product sense isn't innate—it's trained. Here's an observation framework that helps candidates develop world-class product intuition in weeks, not years.",
+      "Product sense can improve through deliberate observation. Use this framework to practice noticing user needs, trade-offs, and product decisions.",
     author: "Meelni Team",
     date: "November 10, 2025",
     readTime: "8 min read",
@@ -1793,6 +1798,10 @@ That's exactly what Meelni's Leadership & Drive mode does. Our AI interviewer:
     `,
   },
 ];
+
+export const blogPosts: BlogPost[] = allBlogPosts.filter(
+  (post) => post.published !== false
+);
 
 export function getBlogPostById(id: string): BlogPost | undefined {
   return blogPosts.find((post) => post.id === id);

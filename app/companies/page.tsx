@@ -1,14 +1,7 @@
 "use client";
 
 import { companies } from "@/lib/data/companies";
-import {
-  ArrowRight,
-  Building2,
-  ChevronRight,
-  Clock,
-  Home,
-  Users,
-} from "lucide-react";
+import { ArrowRight, Building2, ChevronRight, Home } from "lucide-react";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import {
@@ -16,7 +9,6 @@ import {
   MarketingCtaCard,
   MarketingEyebrow,
   MarketingHero,
-  MarketingMetaRow,
   MarketingPage,
 } from "@/components/marketing/marketing-surface";
 import { Button } from "@/components/ui/button";
@@ -48,7 +40,7 @@ function CompaniesStructuredData() {
     "@context": "https://schema.org",
     "@type": "ItemList",
     name: "PM Interview Company Guides",
-    description: `Comprehensive interview guides for ${companies.length} top tech companies including process, questions, tips, and salary information.`,
+    description: `PM interview practice guides for ${companies.length} companies, with illustrative questions organized by round type.`,
     numberOfItems: companies.length,
     itemListElement: companies.map((company, index) => ({
       "@type": "ListItem",
@@ -56,7 +48,7 @@ function CompaniesStructuredData() {
       item: {
         "@type": "Article",
         name: `${company.name} PM Interview Guide`,
-        description: company.description,
+        description: `Illustrative PM practice questions associated with ${company.name}.`,
         url: `${baseUrl}/companies/${company.slug}`,
       },
     })),
@@ -67,7 +59,7 @@ function CompaniesStructuredData() {
     "@type": "CollectionPage",
     name: "Company Interview Guides | Meelni",
     description:
-      "Prepare for PM interviews with detailed guides for top tech companies. Learn the interview process and practice real questions.",
+      "Explore PM interview practice guides with illustrative questions organized by company and round type.",
     url: `${baseUrl}/companies`,
     inLanguage: "en-US",
     isPartOf: {
@@ -139,7 +131,7 @@ export default function CompaniesPage() {
             </MarketingEyebrow>
           }
           title="Company Guides"
-          description="Prepare for PM interviews with detailed guides for top tech companies. Learn the process and practice real questions."
+          description="Explore illustrative PM questions organized by company and round type. Confirm each company's current interview process with your recruiter."
         />
 
         {/* Company Cards Grid */}
@@ -158,24 +150,19 @@ export default function CompaniesPage() {
                     {company.name}
                   </h2>
                   <p className="text-muted-foreground line-clamp-3 text-sm leading-relaxed">
-                    {company.description}
+                    Illustrative PM practice questions associated with
+                    {company.name}.
                   </p>
                 </div>
 
                 <div className="mt-auto space-y-4">
-                  <MarketingMetaRow
-                    items={[
-                      { icon: Clock, label: company.interviewDuration },
-                      {
-                        icon: Users,
-                        label: `${company.interviewRounds} rounds`,
-                      },
-                    ]}
-                  />
-
                   <div className="flex items-center justify-between gap-3">
                     <span className="border-border bg-muted/60 text-muted-foreground rounded-full border px-2.5 py-1 text-xs font-medium">
-                      {company.difficulty}
+                      {company.questionCategories.reduce(
+                        (count, category) => count + category.questions.length,
+                        0
+                      )}{" "}
+                      practice questions
                     </span>
                     <Button asChild variant="link" className="h-auto p-0">
                       <Link
@@ -198,7 +185,7 @@ export default function CompaniesPage() {
           className="mt-20"
           mark="M"
           title="Ready to practice?"
-          description="Put your knowledge into action in a live mock interview, then review feedback from your completed session."
+          description="Practice a PM question out loud, then review feedback and choose what to improve next."
           action={
             <Button asChild size="lg" variant="glow">
               <Link href="/dashboard/new-interview">

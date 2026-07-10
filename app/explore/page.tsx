@@ -41,32 +41,6 @@ interface Question {
   createdAt: Date | null;
 }
 
-// Format relative time for question recency
-function formatRelativeTime(date: Date | null): string {
-  if (!date) return "";
-
-  const now = new Date();
-  const askedDate = new Date(date);
-  const diffInMs = now.getTime() - askedDate.getTime();
-  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-
-  if (diffInDays < 7) {
-    return diffInDays === 0
-      ? "Today"
-      : diffInDays === 1
-        ? "Yesterday"
-        : `${diffInDays} days ago`;
-  } else if (diffInDays < 30) {
-    const weeks = Math.floor(diffInDays / 7);
-    return `${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
-  } else if (diffInDays < 365) {
-    const months = Math.floor(diffInDays / 30);
-    return `${months} ${months === 1 ? "month" : "months"} ago`;
-  } else {
-    return askedDate.getFullYear().toString();
-  }
-}
-
 // Capitalize company name
 function formatCompanyName(company: string | null): string {
   if (!company) return "Unknown";
@@ -294,10 +268,9 @@ export default function ExplorePage() {
             Product Manager Interview Questions
           </h1>
           <p className="text-muted-foreground max-w-3xl text-lg">
-            Browse {totalQuestions.toLocaleString()} real interview questions
-            from Google, Meta, Amazon, and 100+ top companies. Practice Product
-            Sense, Behavioral, Execution, and Strategy questions with AI
-            coaching.
+            Browse {totalQuestions.toLocaleString()} available practice
+            questions tagged by company and round type. Practice Product Sense,
+            Behavioral, Execution, and Strategy answers out loud.
           </p>
         </header>
 
@@ -405,23 +378,6 @@ export default function ExplorePage() {
                       >
                         {question.questionType}
                       </span>
-                      {question.askedAt && (
-                        <>
-                          <span
-                            className="text-muted-foreground text-xs"
-                            aria-hidden="true"
-                          >
-                            •
-                          </span>
-                          <time
-                            className="text-muted-foreground text-xs font-normal"
-                            dateTime={new Date(question.askedAt).toISOString()}
-                            itemProp="dateCreated"
-                          >
-                            {formatRelativeTime(question.askedAt)}
-                          </time>
-                        </>
-                      )}
                     </div>
 
                     {/* Question Text */}

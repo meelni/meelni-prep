@@ -43,7 +43,7 @@ export function ExploreStructuredData({
     "@context": "https://schema.org",
     "@type": "ItemList",
     name: "Product Manager Interview Questions",
-    description: `Browse ${totalQuestions.toLocaleString()} real interview questions from top tech companies including Google, Meta, Amazon, and more.`,
+    description: `Browse ${totalQuestions.toLocaleString()} currently available PM practice questions by company and round type.`,
     numberOfItems: totalQuestions,
     itemListElement: questions.slice(0, 20).map((question, index) => ({
       "@type": "ListItem",
@@ -52,7 +52,9 @@ export function ExploreStructuredData({
         "@type": "Question",
         name: question.questionText,
         text: question.questionText,
-        dateCreated: question.createdAt ? new Date(question.createdAt).toISOString() : undefined,
+        dateCreated: question.createdAt
+          ? new Date(question.createdAt).toISOString()
+          : undefined,
         author: {
           "@type": "Organization",
           name: question.company || "Various Companies",
@@ -104,7 +106,7 @@ export function ExploreStructuredData({
     "@context": "https://schema.org",
     "@type": "WebPage",
     name: "Explore Real PM Interview Questions",
-    description: `Browse and search through ${totalQuestions.toLocaleString()} real Product Manager interview questions from companies like Google, Meta, Amazon, Apple, and more.`,
+    description: `Browse and search ${totalQuestions.toLocaleString()} currently available Product Manager practice questions by company and round type.`,
     url: `${baseUrl}/explore`,
     inLanguage: "en-US",
     isPartOf: {
@@ -136,12 +138,14 @@ export function ExploreStructuredData({
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     name: `PM Interview Questions - Page ${currentPage} of ${totalPages}`,
-    description: "Searchable database of real Product Manager interview questions",
+    description:
+      "Searchable database of real Product Manager interview questions",
     url: `${baseUrl}/explore?page=${currentPage}`,
     about: {
       "@type": "Thing",
       name: "Product Manager Interviews",
-      description: "Interview questions for Product Manager roles at top technology companies",
+      description:
+        "Interview questions for Product Manager roles at top technology companies",
     },
     keywords: [
       "product manager interview questions",
@@ -161,7 +165,7 @@ export function ExploreStructuredData({
     "@context": "https://schema.org",
     "@type": "Dataset",
     name: "Meelni PM Interview Question Database",
-    description: `Comprehensive database of ${totalQuestions.toLocaleString()} real Product Manager interview questions collected from actual interviews at top tech companies.`,
+    description: `Question bank containing ${totalQuestions.toLocaleString()} currently available Product Manager practice questions.`,
     url: `${baseUrl}/explore`,
     keywords: [
       "product manager",
