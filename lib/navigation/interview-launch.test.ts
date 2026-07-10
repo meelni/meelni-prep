@@ -53,7 +53,26 @@ test("canonical href preserves the complete query string", () => {
     "/dashboard/new-interview?questionId=question-1&tag=first&tag=second"
   );
   assert.equal(
-    buildQuestionInterviewHref("question 1"),
-    "/dashboard/new-interview?questionId=question+1"
+    buildQuestionInterviewHref("question 1", "/explore?company=Stripe"),
+    "/dashboard/new-interview?questionId=question+1&returnTo=%2Fexplore%3Fcompany%3DStripe"
+  );
+  assert.equal(
+    buildQuestionInterviewHref("question-1", "https://evil.example"),
+    "/dashboard/new-interview?questionId=question-1"
+  );
+});
+
+test("launch context treats the first repeated or empty question ID safely", () => {
+  assert.equal(
+    parseInterviewLaunchContext(
+      new URLSearchParams("questionId=question-1&questionId=question-2")
+    ).questionId,
+    "question-1"
+  );
+  assert.equal(
+    parseInterviewLaunchContext(
+      new URLSearchParams("questionId=&questionId=question-2")
+    ).questionId,
+    null
   );
 });
