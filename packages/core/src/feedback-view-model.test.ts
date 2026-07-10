@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  decodeFeedbackLifecycleResponse,
   getFeedbackConfidenceLabel,
   presentCompletedFeedback,
   toFeedbackViewState,
@@ -398,6 +399,51 @@ test("maps every non-completed lifecycle response to an explicit view state", ()
     }).kind,
     "completed-invalid"
   );
+});
+
+test("runtime-decodes every lifecycle status and rejects malformed or unknown payloads", () => {
+  const validCompleted = present(completed());
+  const valid: unknown[] = [
+    { status: "missing", retryable: true },
+    { status: "session_not_ended", retryable: false },
+    { status: "pending", retryable: true, estimatedTimeRemaining: 10 },
+    { status: "processing", retryable: false },
+    { status: "failed", retryable: true, message: "Try again." },
+    {
+      status: "skipped",
+      retryable: false,
+      details: { tier: "insufficient", reasons: [], recommendations: [] },
+    },
+    { status: "completed", retryable: false, feedback: validCompleted },
+  ];
+  for (const payload of valid) {
+    assert.ok(decodeFeedbackLifecycleResponse(payload));
+  }
+
+  const invalid: unknown[] = [
+    null,
+    {},
+    { status: "unknown", retryable: false },
+    { status: "missing", retryable: false },
+    { status: "session_not_ended", retryable: true },
+    { status: "pending", retryable: "yes" },
+    { status: "processing", retryable: false, estimatedTimeRemaining: -1 },
+    { status: "failed", retryable: true },
+    {
+      status: "skipped",
+      retryable: false,
+      details: { tier: "invented", reasons: [], recommendations: [] },
+    },
+    { status: "completed", retryable: false, feedback: { kind: "v2" } },
+  ];
+  for (const payload of invalid) {
+    assert.equal(decodeFeedbackLifecycleResponse(payload), null);
+  }
+
+  assert.deepEqual(toFeedbackViewState({ status: "unknown" } as never), {
+    kind: "unavailable",
+    message: "Feedback returned an unsupported response.",
+  });
 });
 
 test("confidence language describes evidence strength rather than readiness", () => {

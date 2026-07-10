@@ -146,6 +146,7 @@ export type FeedbackLifecycleResponse =
     };
 
 export type FeedbackViewState =
+  | { kind: "unavailable"; message: string }
   | { kind: "missing"; retryable: true; message?: string }
   | { kind: "session-active"; message?: string }
   | { kind: "pending"; retryable: boolean }
@@ -229,7 +230,288 @@ export function toFeedbackViewState(
       return response.feedback.evaluationState === "partial"
         ? { kind: "completed-partial", feedback: response.feedback }
         : { kind: "completed-full", feedback: response.feedback };
+    default:
+      return {
+        kind: "unavailable",
+        message: "Feedback returned an unsupported response.",
+      };
   }
+}
+
+/** Decode the untrusted JSON returned by the feedback lifecycle API. */
+export function decodeFeedbackLifecycleResponse(
+  value: unknown
+): FeedbackLifecycleResponse | null {
+  if (!isRecord(value) || typeof value.status !== "string") return null;
+  switch (value.status) {
+    case "missing":
+      return value.retryable === true && isOptionalString(value.message)
+        ? {
+            status: "missing",
+            retryable: true,
+            ...(value.message ? { message: value.message } : {}),
+          }
+        : null;
+    case "session_not_ended":
+      return value.retryable === false && isOptionalString(value.message)
+        ? {
+            status: "session_not_ended",
+            retryable: false,
+            ...(value.message ? { message: value.message } : {}),
+          }
+        : null;
+    case "pending":
+    case "processing":
+      return typeof value.retryable === "boolean" &&
+        isOptionalNonNegativeNumber(value.estimatedTimeRemaining)
+        ? {
+            status: value.status,
+            retryable: value.retryable,
+            ...(value.estimatedTimeRemaining !== undefined
+              ? { estimatedTimeRemaining: value.estimatedTimeRemaining }
+              : {}),
+          }
+        : null;
+    case "failed":
+      return typeof value.retryable === "boolean" &&
+        isBoundedString(value.message, FEEDBACK_READ_LIMITS.summary)
+        ? {
+            status: "failed",
+            retryable: value.retryable,
+            message: value.message,
+          }
+        : null;
+    case "skipped": {
+      const details = decodeSkippedDetails(value.details);
+      return value.retryable === false && details
+        ? { status: "skipped", retryable: false, details }
+        : null;
+    }
+    case "completed": {
+      const feedback = decodeCompletedFeedbackView(value.feedback);
+      return value.retryable === false && feedback
+        ? { status: "completed", retryable: false, feedback }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {
+  if (!isRecord(value)) return null;
+  if (value.tier !== "insufficient" && value.tier !== "abandoned") return null;
+  if (!isBoundedStringArray(value.reasons, 20, FEEDBACK_READ_LIMITS.summary)) {
+    return null;
+  }
+  if (
+    !isBoundedStringArray(
+      value.recommendations,
+      20,
+      FEEDBACK_READ_LIMITS.summary
+    )
+  ) {
+    return null;
+  }
+  if (value.stats !== undefined && !isSkippedStats(value.stats)) return null;
+  return {
+    tier: value.tier,
+    reasons: value.reasons,
+    recommendations: value.recommendations,
+    ...(value.stats !== undefined ? { stats: value.stats } : {}),
+  };
+}
+
+function decodeCompletedFeedbackView(
+  value: unknown
+): CompletedFeedbackView | null {
+  if (!isRecord(value) || typeof value.kind !== "string") return null;
+  if (value.kind === "invalid") {
+    return value.reason === "incompatible_or_corrupt"
+      ? { kind: "invalid", reason: "incompatible_or_corrupt" }
+      : null;
+  }
+  if (!isCompletedFeedbackBase(value)) return null;
+  if (value.kind === "legacy") {
+    return value.rubricVersion === LEGACY_FEEDBACK_RUBRIC_VERSION &&
+      isBoundedStringArray(
+        value.strengths,
+        10,
+        FEEDBACK_READ_LIMITS.legacyNote,
+        1
+      ) &&
+      isBoundedStringArray(
+        value.improvements,
+        10,
+        FEEDBACK_READ_LIMITS.legacyNote,
+        1
+      )
+      ? (value as unknown as FeedbackLegacyView)
+      : null;
+  }
+  if (value.kind !== "v2") return null;
+  if (
+    value.schemaVersion !== FEEDBACK_SCHEMA_VERSION ||
+    value.promptVersion !== FEEDBACK_PROMPT_VERSION ||
+    value.rubricVersion !== FEEDBACK_RUBRIC_VERSION ||
+    !isBoundedString(value.modelVersion, FEEDBACK_READ_LIMITS.modelVersion) ||
+    (value.evaluationState !== "full" && value.evaluationState !== "partial") ||
+    !isFeedbackFindingArray(value.strengths) ||
+    !isFeedbackFindingArray(value.improvements) ||
+    !hasCanonicalV2Overall(value.scores)
+  ) {
+    return null;
+  }
+  return value as unknown as FeedbackV2View;
+}
+
+function isCompletedFeedbackBase(value: Record<string, unknown>): boolean {
+  return (
+    isBoundedString(value.id, FEEDBACK_READ_LIMITS.identifier) &&
+    isBoundedString(value.sessionId, FEEDBACK_READ_LIMITS.identifier) &&
+    isFeedbackScoreView(value.scores) &&
+    isBoundedString(value.summary, FEEDBACK_READ_LIMITS.summary) &&
+    isCanonicalDateString(value.createdAt) &&
+    value.nextPracticeRecommendation === null
+  );
+}
+
+function isFeedbackScoreView(value: unknown): value is FeedbackScoreView {
+  if (!isRecord(value)) return false;
+  return (
+    [
+      value.structure,
+      value.clarity,
+      value.insight,
+      value.communication,
+      value.leadership,
+    ].every(isDimensionScore) && isScore(value.overall)
+  );
+}
+
+function hasCanonicalV2Overall(value: unknown): boolean {
+  if (!isFeedbackScoreView(value)) return false;
+  return (
+    calculateOverallScore({
+      structure: value.structure,
+      clarity: value.clarity,
+      insight: value.insight,
+      communication: value.communication,
+      leadership: value.leadership,
+    }) === value.overall
+  );
+}
+
+function isDimensionScore(value: unknown): boolean {
+  return Number.isInteger(value) && isScore(value);
+}
+
+function isFeedbackFindingArray(value: unknown): value is FeedbackV2Item[] {
+  return (
+    Array.isArray(value) &&
+    value.length >= 1 &&
+    value.length <= 5 &&
+    value.every((entry) => {
+      if (!isRecord(entry)) return false;
+      return (
+        typeof entry.dimension === "string" &&
+        DIMENSIONS.has(entry.dimension as FeedbackDimension) &&
+        isBoundedString(entry.observation, FEEDBACK_READ_LIMITS.findingText) &&
+        isBoundedString(entry.nextStep, FEEDBACK_READ_LIMITS.findingText) &&
+        entry.rubricVersion === FEEDBACK_RUBRIC_VERSION &&
+        typeof entry.confidence === "number" &&
+        Number.isFinite(entry.confidence) &&
+        entry.confidence >= 0 &&
+        entry.confidence <= 1 &&
+        isBoundedStringArray(
+          entry.transcriptRefs,
+          5,
+          FEEDBACK_READ_LIMITS.identifier,
+          1
+        ) &&
+        Array.isArray(entry.evidence) &&
+        entry.evidence.length >= 1 &&
+        entry.evidence.length <= 5 &&
+        entry.evidence.every(
+          (evidence) =>
+            isRecord(evidence) &&
+            isBoundedString(
+              evidence.turnRef,
+              FEEDBACK_READ_LIMITS.identifier
+            ) &&
+            isBoundedString(evidence.quote, FEEDBACK_READ_LIMITS.evidenceQuote)
+        )
+      );
+    })
+  );
+}
+
+function isSkippedStats(
+  value: unknown
+): value is NonNullable<SkippedFeedbackDetails["stats"]> {
+  if (!isRecord(value)) return false;
+  return [
+    value.totalTurns,
+    value.userTurns,
+    value.totalWords,
+    value.durationSeconds,
+    value.substantiveResponses,
+  ].every(isNonNegativeFiniteNumber);
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return (
+    value === undefined || isBoundedString(value, FEEDBACK_READ_LIMITS.summary)
+  );
+}
+
+function isOptionalNonNegativeNumber(
+  value: unknown
+): value is number | undefined {
+  return value === undefined || isNonNegativeFiniteNumber(value);
+}
+
+function isBoundedStringArray(
+  value: unknown,
+  maximum: number,
+  itemLimit: number,
+  minimum = 0
+): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length >= minimum &&
+    value.length <= maximum &&
+    value.every((entry) => isBoundedString(entry, itemLimit))
+  );
+}
+
+function isBoundedString(value: unknown, maximum: number): value is string {
+  return (
+    typeof value === "string" && value.length > 0 && value.length <= maximum
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isScore(value: unknown): boolean {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 10
+  );
+}
+
+function isNonNegativeFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isCanonicalDateString(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
 }
 
 export function getFeedbackConfidenceLabel(
