@@ -47,3 +47,17 @@ activation timestamp or a user/provider cause. An `in_progress` row with only
 The migration is a launch prerequisite for SAV-187 and its dependent runtime
 reliability slices. Rehearse both the clean chain and the six-migration upgrade
 path with `npm run test:database-migrations` before applying it remotely.
+
+## Atomic session completion
+
+`0007_atomic_session_completion` adds immutable completion evidence and a
+durable feedback-dispatch outbox to the unique feedback row. Existing rows are
+conservatively marked `not_required`; the migration never enqueues historical
+feedback. New eligible completions store one deterministic event identity,
+dispatch lease state, attempt fencing, and redacted recovery metadata in the
+same transaction as terminalization.
+
+The migration adds database checks for tier values, dispatch identity,
+nonnegative attempts, active claims, and sent acknowledgements. See the
+[session completion runbook](./interview-session-completion.md) for Preview
+rehearsal and recovery.

@@ -18,12 +18,12 @@ import postgres from "postgres";
 import { buildStripeDeletionSubjects } from "../lib/billing/stripe-privacy";
 
 import {
+  ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
-  SESSION_LIFECYCLE_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -39,6 +39,8 @@ const SESSION_ABANDONED = "66666666-6666-4666-8666-666666666666";
 const SESSION_TOO_SHORT = "77777777-7777-4777-8777-777777777777";
 const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
+const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -96,6 +98,7 @@ async function run() {
     await verifyDatabase(clean);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
+    await verifyAtomicSessionCompletion(clean, cleanUrl);
     await verifyAuthorization(clean);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
@@ -103,7 +106,10 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, SESSION_LIFECYCLE_SCHEMA_FINGERPRINT);
+    assert.equal(
+      cleanFingerprint,
+      ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+    );
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -164,6 +170,7 @@ async function run() {
       assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
+      await verifyAtomicSessionCompletion(upgrade, upgradeUrl);
       await verifyAuthorization(upgrade);
       assert.equal(
         databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
@@ -562,6 +569,207 @@ async function verifyLifecycleConcurrency(sql: postgres.Sql) {
   });
 }
 
+async function verifyAtomicSessionCompletion(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    { finalizeInterviewSession },
+    { createDrizzleFeedbackDispatchStore },
+    { SessionTier },
+    schema,
+  ] = await Promise.all([
+    import("../lib/db/end-interview-session"),
+    import("../lib/db/feedback-dispatch"),
+    import("../lib/evaluation/session-validator"),
+    import("../lib/db/schema"),
+  ]);
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status,
+      lifecycle_state, lifecycle_version, activated_at
+    ) VALUES (
+      ${SESSION_ATOMIC_END}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      1,
+      now()
+    )
+  `;
+
+  const validation = {
+    tier: SessionTier.FULL,
+    isValid: true,
+    stats: {
+      totalTurns: 20,
+      userTurns: 10,
+      totalWords: 800,
+      durationSeconds: 1200,
+      substantiveResponses: 8,
+    },
+    reasons: [],
+    recommendations: ["Practice another product-sense response."],
+  };
+  const clients = Array.from({ length: 10 }, () =>
+    postgres(databaseUrl, { max: 1, prepare: false })
+  );
+  const databases = clients.map((client) => drizzle(client, { schema }));
+
+  try {
+    const results = await Promise.all(
+      databases.map((database) =>
+        finalizeInterviewSession(
+          {
+            sessionId: SESSION_ATOMIC_END,
+            userId: USER_ONE,
+            validation,
+          },
+          database
+        )
+      )
+    );
+    assert.ok(results.every((result) => result.ok));
+    const successful = results.filter(
+      (result): result is Extract<typeof result, { ok: true }> => result.ok
+    );
+    const signatures = successful.map((result) => ({
+      state: result.lifecycle.state,
+      version: result.lifecycle.version,
+      reason: result.lifecycle.terminalReason,
+      endedAt: result.lifecycle.endedAt.toISOString(),
+      feedbackId: result.feedback.id,
+      eventId: result.feedback.dispatchEventId,
+      tier: result.tier,
+      stats: result.stats,
+    }));
+    assert.ok(
+      signatures.every((signature) => deepEqual(signature, signatures[0]))
+    );
+    assert.equal(signatures[0]?.state, "completed");
+    assert.equal(signatures[0]?.version, 3);
+    assert.equal(signatures[0]?.reason, "user_end");
+
+    const feedbackRows = await sql<
+      { rows: number; event_ids: number; dispatch_attempts: number }[]
+    >`
+      SELECT count(*)::int AS rows,
+        count(DISTINCT dispatch_event_id)::int AS event_ids,
+        max(dispatch_attempts)::int AS dispatch_attempts
+      FROM feedback
+      WHERE session_id = ${SESSION_ATOMIC_END}::uuid
+    `;
+    assert.deepEqual(feedbackRows[0], {
+      rows: 1,
+      event_ids: 1,
+      dispatch_attempts: 0,
+    });
+
+    const stores = databases.map((database) =>
+      createDrizzleFeedbackDispatchStore(database)
+    );
+    const now = new Date("2026-07-09T22:00:00.000Z");
+    const claims = await Promise.all(
+      stores.map((store) =>
+        store.claim({
+          sessionId: SESSION_ATOMIC_END,
+          now,
+          staleBefore: new Date(now.getTime() - 120_000),
+        })
+      )
+    );
+    const winners = claims.filter((claim) => claim !== null);
+    assert.equal(winners.length, 1);
+    assert.equal(winners[0]?.attempts, 1);
+    const eventId = winners[0]?.eventId;
+    assert.ok(eventId);
+
+    assert.equal(
+      await stores[0]!.markFailed({
+        sessionId: SESSION_ATOMIC_END,
+        eventId,
+        attempt: 1,
+        errorCode: "test_dispatch_failure",
+      }),
+      true
+    );
+    const retry = await stores[1]!.claim({
+      sessionId: SESSION_ATOMIC_END,
+      now: new Date(now.getTime() + 1_000),
+      staleBefore: new Date(now.getTime() - 119_000),
+    });
+    assert.equal(retry?.attempts, 2);
+    assert.notEqual(retry?.eventId, eventId);
+    const retryEventId = retry?.eventId;
+    assert.ok(retryEventId);
+    assert.equal(
+      await stores[0]!.markSent({
+        sessionId: SESSION_ATOMIC_END,
+        eventId,
+        attempt: 1,
+        now,
+      }),
+      false
+    );
+    assert.equal(
+      await stores[1]!.markSent({
+        sessionId: SESSION_ATOMIC_END,
+        eventId: retryEventId,
+        attempt: 2,
+        now: new Date(now.getTime() + 2_000),
+      }),
+      true
+    );
+
+    await sql`
+      INSERT INTO interview_session (
+        id, user_id, round_type, mode, status, lifecycle_state,
+        lifecycle_version, terminal_reason, ended_at, last_transition_at
+      ) VALUES (
+        ${SESSION_REPAIR}::uuid,
+        ${USER_ONE}::uuid,
+        'product_sense',
+        'voice_video',
+        'completed',
+        'completed',
+        9,
+        'legacy_unknown',
+        now(),
+        now()
+      )
+    `;
+    const repaired = await finalizeInterviewSession(
+      {
+        sessionId: SESSION_REPAIR,
+        userId: USER_ONE,
+        validation,
+      },
+      databases[0]!
+    );
+    assert.equal(repaired.ok, true);
+    if (repaired.ok) {
+      assert.equal(repaired.disposition, "repaired");
+      assert.equal(repaired.lifecycle.version, 9);
+      assert.equal(repaired.lifecycle.terminalReason, "legacy_unknown");
+      assert.equal(repaired.feedback.sessionId, SESSION_REPAIR);
+    }
+  } finally {
+    await Promise.all(clients.map((client) => client.end()));
+  }
+}
+
+function deepEqual(left: unknown, right: unknown): boolean {
+  try {
+    assert.deepEqual(left, right);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function lifecycleOutcome(
   rows: Map<
     string,
@@ -575,7 +783,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 7);
+  assert.equal(await migrationCount(sql), 8);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -617,6 +825,47 @@ async function verifyDatabase(sql: postgres.Sql) {
     ORDER BY indexname
   `;
   assert.equal(lifecycleIndexes.length, 2);
+
+  const completionColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'feedback'
+      AND column_name IN (
+        'completion_tier', 'completion_stats', 'completion_recommendations',
+        'dispatch_status', 'dispatch_event_id', 'dispatch_attempts',
+        'dispatch_claimed_at', 'dispatched_at', 'dispatch_last_error'
+      )
+    ORDER BY column_name
+  `;
+  assert.equal(completionColumns.length, 9);
+
+  const completionConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname IN (
+      'feedback_completion_tier_check',
+      'feedback_dispatch_attempts_check',
+      'feedback_dispatch_claim_check',
+      'feedback_dispatch_event_required_check',
+      'feedback_dispatch_sent_check',
+      'feedback_dispatch_status_check'
+    )
+    ORDER BY conname
+  `;
+  assert.equal(completionConstraints.length, 6);
+
+  const completionIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'feedback_dispatch_event_id_idx',
+        'feedback_dispatch_recovery_idx'
+      )
+    ORDER BY indexname
+  `;
+  assert.equal(completionIndexes.length, 2);
 
   const tierConstraint = await sql<{ definition: string }[]>`
     SELECT pg_get_constraintdef(oid) AS definition

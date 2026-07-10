@@ -6,13 +6,14 @@
 import { inngest } from "../client";
 import { db } from "@/lib/db";
 import { feedback, interviewSession, transcriptTurn } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
-  validateSessionCompleteness,
   SessionTier,
+  validateSessionCompleteness,
 } from "@/lib/evaluation/session-validator";
 import { generateFeedback as generateFeedbackWithGPT4 } from "@/lib/evaluation/scorer";
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
+import { resolveFeedbackGenerationEligibility } from "@/lib/workflows/feedback-generation-evidence";
 
 /**
  * Feedback generation event payload
@@ -84,6 +85,28 @@ export const generateFeedback = inngest.createFunction(
       limit: 10, // Max 10 concurrent executions
       period: "1m", // Per minute
     },
+    concurrency: [{ limit: 1, key: "event.data.sessionId" }],
+    onFailure: async ({ event, step }) => {
+      const failedEvent = event.data.event;
+      const sessionId = String(failedEvent.data?.sessionId ?? "");
+      const eventId = String(failedEvent.id ?? "");
+      if (!sessionId || !eventId) return;
+      await step.run("mark-feedback-generation-exhausted", async () => {
+        await db
+          .update(feedback)
+          .set({
+            status: "failed",
+            statusReason: getEvaluationFailureReason(event.data.error),
+          })
+          .where(
+            and(
+              eq(feedback.sessionId, sessionId),
+              eq(feedback.dispatchEventId, eventId),
+              inArray(feedback.status, ["pending", "processing"])
+            )
+          );
+      });
+    },
   },
   { event: "feedback/generate.requested" },
   async ({ event, step }) => {
@@ -108,44 +131,137 @@ export const generateFeedback = inngest.createFunction(
       return { validated: true };
     });
 
-    // Step 1: Validate session
-    const validation = await step.run("validate-session", async () => {
-      return await validateSessionCompleteness(sessionId);
+    await step.run("validate-dispatch-identity", async () => {
+      const feedbackRecord = await db.query.feedback.findFirst({
+        where: eq(feedback.sessionId, sessionId),
+      });
+      if (
+        feedbackRecord?.dispatchStatus === "not_required" &&
+        !feedbackRecord.dispatchEventId
+      ) {
+        return { validated: true, legacy: true };
+      }
+      if (!feedbackRecord?.dispatchEventId) {
+        throw new Error(`Feedback dispatch identity missing for ${sessionId}`);
+      }
+      if (event.id !== feedbackRecord.dispatchEventId) {
+        throw new Error(`Feedback dispatch identity mismatch for ${sessionId}`);
+      }
+      return { validated: true };
     });
 
-    if (!validation.isValid) {
-      // Update existing feedback to skipped (record already created by /api/interview/end)
-      await step.run("mark-skipped", async () => {
+    const generationClaim = await step.run(
+      "claim-feedback-generation",
+      async () => {
+        const claimed = await db
+          .update(feedback)
+          .set({
+            status: "processing",
+            statusReason: null,
+            processingStartedAt: new Date(),
+            dispatchStatus: sql`CASE
+              WHEN ${feedback.dispatchStatus} = 'not_required' THEN 'sent'
+              ELSE ${feedback.dispatchStatus}
+            END`,
+            dispatchEventId: sql`COALESCE(${feedback.dispatchEventId}, ${event.id})`,
+            dispatchAttempts: sql`CASE
+              WHEN ${feedback.dispatchStatus} = 'not_required'
+                THEN GREATEST(${feedback.dispatchAttempts}, 1)
+              ELSE ${feedback.dispatchAttempts}
+            END`,
+            dispatchedAt: sql`CASE
+              WHEN ${feedback.dispatchStatus} = 'not_required'
+                THEN COALESCE(${feedback.dispatchedAt}, now())
+              ELSE ${feedback.dispatchedAt}
+            END`,
+          })
+          .where(
+            and(
+              inArray(feedback.status, ["pending", "failed"]),
+              eq(feedback.sessionId, sessionId)
+            )
+          )
+          .returning({ status: feedback.status });
+        if (claimed[0]) return { claimed: true, status: claimed[0].status };
+
+        const current = await db.query.feedback.findFirst({
+          where: eq(feedback.sessionId, sessionId),
+        });
+        return { claimed: false, status: current?.status ?? "missing" };
+      }
+    );
+
+    if (!generationClaim.claimed) {
+      return {
+        status: generationClaim.status,
+        sessionId,
+        idempotent: true,
+      };
+    }
+
+    // Step 1: Consume the eligibility decision committed atomically with the
+    // terminal session. Revalidating here could contradict the stored outcome
+    // after late transcript writes or a validator-rule deployment.
+    const completionEvidence = await step.run(
+      "read-completion-evidence",
+      async () => {
+        const record = await db.query.feedback.findFirst({
+          where: eq(feedback.sessionId, sessionId),
+        });
+        if (!record) throw new Error(`Feedback ${sessionId} not found`);
+        return {
+          tier: record.completionTier,
+          stats: record.completionStats,
+        };
+      }
+    );
+    const eligibility = resolveFeedbackGenerationEligibility(
+      completionEvidence.tier
+    );
+    let evaluationTier: SessionTier;
+    if (eligibility.disposition === "committed_eligible") {
+      evaluationTier = eligibility.tier;
+    } else if (eligibility.disposition === "legacy_requires_validation") {
+      const legacyValidation = await step.run(
+        "validate-legacy-session",
+        async () => validateSessionCompleteness(sessionId)
+      );
+      if (legacyValidation.isValid) {
+        evaluationTier = legacyValidation.tier;
+      } else {
+        await step.run("mark-skipped-legacy-session", async () => {
+          await db
+            .update(feedback)
+            .set({
+              status: "skipped",
+              statusReason: legacyValidation.reasons.join(", "),
+            })
+            .where(eq(feedback.sessionId, sessionId));
+        });
+        return {
+          status: "skipped",
+          reason: legacyValidation.reasons[0],
+          tier: legacyValidation.tier,
+        };
+      }
+    } else {
+      await step.run("mark-skipped-invalid-evidence", async () => {
         await db
           .update(feedback)
           .set({
             status: "skipped",
-            statusReason: validation.reasons.join(", "),
+            statusReason: "Session is not eligible for feedback",
           })
           .where(eq(feedback.sessionId, sessionId));
       });
-
       return {
         status: "skipped",
-        reason: validation.reasons[0],
-        tier: validation.tier,
+        reason: "Session is not eligible for feedback",
+        tier: eligibility.tier,
       };
     }
 
-    // Step 2: Update session with stats
-    await step.run("update-session-stats", async () => {
-      await db
-        .update(interviewSession)
-        .set({
-          status: "completed",
-          totalTurns: validation.stats.totalTurns,
-          totalWords: validation.stats.totalWords,
-          durationSeconds: validation.stats.durationSeconds,
-        })
-        .where(eq(interviewSession.id, sessionId));
-    });
-
-    // Step 3: Fetch session data and transcript
+    // Step 2: Fetch session data and transcript
     const sessionData = await step.run("fetch-session-data", async () => {
       return await fetchSessionData(sessionId);
     });
@@ -171,19 +287,8 @@ export const generateFeedback = inngest.createFunction(
       };
     }
 
-    // Step 4: Update feedback to processing status
-    await step.run("update-feedback-processing", async () => {
-      await db
-        .update(feedback)
-        .set({
-          status: "processing",
-          processingStartedAt: new Date(),
-        })
-        .where(eq(feedback.sessionId, sessionId));
-    });
-
-    // Step 5: Evaluate with GPT-4
-    let evaluation: {
+    // Step 3: Evaluate with GPT-4
+    const evaluation: {
       overall_score: number;
       structure_score: number;
       clarity_score: number;
@@ -195,49 +300,33 @@ export const generateFeedback = inngest.createFunction(
       drills: string[];
       summary: string;
       processingDurationMs: number;
-    };
+    } = await step.run("evaluate-session", async () => {
+      const startTime = Date.now();
 
-    try {
-      evaluation = await step.run("evaluate-session", async () => {
-        const startTime = Date.now();
+      // Call the real GPT-4 evaluation service
+      const result = await generateFeedbackWithGPT4(
+        sessionData.roundType || "product_sense",
+        transcript
+      );
 
-        // Call the real GPT-4 evaluation service
-        const result = await generateFeedbackWithGPT4(
-          sessionData.roundType || "product_sense",
-          transcript
-        );
+      const processingDuration = Date.now() - startTime;
 
-        const processingDuration = Date.now() - startTime;
+      return {
+        overall_score: result.overall_score,
+        structure_score: result.scores.structure,
+        clarity_score: result.scores.clarity,
+        insight_score: result.scores.insight,
+        communication_score: result.scores.communication,
+        leadership_score: result.scores.leadership,
+        strengths: result.strengths,
+        improvements: result.improvements,
+        drills: result.drills,
+        summary: result.summary,
+        processingDurationMs: processingDuration,
+      };
+    });
 
-        return {
-          overall_score: result.overall_score,
-          structure_score: result.scores.structure,
-          clarity_score: result.scores.clarity,
-          insight_score: result.scores.insight,
-          communication_score: result.scores.communication,
-          leadership_score: result.scores.leadership,
-          strengths: result.strengths,
-          improvements: result.improvements,
-          drills: result.drills,
-          summary: result.summary,
-          processingDurationMs: processingDuration,
-        };
-      });
-    } catch (error) {
-      await step.run("mark-failed-evaluation", async () => {
-        await db
-          .update(feedback)
-          .set({
-            status: "failed",
-            statusReason: getEvaluationFailureReason(error),
-          })
-          .where(eq(feedback.sessionId, sessionId));
-      });
-
-      throw error;
-    }
-
-    // Step 6: Save feedback
+    // Step 4: Save feedback
     await step.run("save-feedback", async () => {
       await db
         .update(feedback)
@@ -259,7 +348,7 @@ export const generateFeedback = inngest.createFunction(
         .where(eq(feedback.sessionId, sessionId));
     });
 
-    // Step 7: Trigger insights update (Phase 2)
+    // Step 5: Trigger insights update (Phase 2)
     await step.sendEvent("trigger-insights-update", {
       name: "insights/update.requested",
       data: { userId, sessionId },
@@ -268,7 +357,7 @@ export const generateFeedback = inngest.createFunction(
     return {
       status: "completed",
       sessionId,
-      tier: validation.tier,
+      tier: evaluationTier,
       overallScore: evaluation.overall_score,
     };
   }
