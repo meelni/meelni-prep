@@ -134,3 +134,9 @@ evidence available when they acquire the same lock.
 The browser remains a temporary authenticated transport bridge and cannot make
 a packet durable until the server acknowledges it. SAV-193 owns removal of raw
 browser persistence and the longer-term server-side ingest trust boundary.
+
+Before feedback eligibility is calculated, canonical events pass through the
+feedback transcript preparation boundary. Malformed events fail closed,
+semantic replays are counted once, and sessions without usable user speech or
+with high-confidence instruction-injection content become insufficient. The
+same prepared event set feeds evaluation so counting and evidence cannot drift.

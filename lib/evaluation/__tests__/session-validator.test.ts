@@ -159,8 +159,8 @@ describe("Session Validator", () => {
           i % 2 === 0
             ? "Question here?"
             : "This is my answer with enough words to be substantive and detailed.",
-        startedAt: new Date(`2024-01-01T10:00:${i * 10}Z`),
-        endedAt: new Date(`2024-01-01T10:00:${i * 10 + 5}Z`),
+        startedAt: new Date(Date.UTC(2024, 0, 1, 10, 0, i * 10)),
+        endedAt: new Date(Date.UTC(2024, 0, 1, 10, 0, i * 10 + 5)),
       }));
 
       vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue(
@@ -180,8 +180,8 @@ describe("Session Validator", () => {
       const mockTurns = Array.from({ length: 10 }, (_, i) => ({
         speaker: "interviewer",
         text: "Question " + i,
-        startedAt: new Date(`2024-01-01T10:${i}:00Z`),
-        endedAt: new Date(`2024-01-01T10:${i}:30Z`),
+        startedAt: new Date(Date.UTC(2024, 0, 1, 10, i, 0)),
+        endedAt: new Date(Date.UTC(2024, 0, 1, 10, i, 30)),
       }));
 
       vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue(
@@ -270,8 +270,8 @@ describe("Session Validator", () => {
           i % 2 === 0
             ? `Question ${i}: Tell me more about your experience`
             : `Response ${i}: I have extensive experience in product management, working on features that impact millions of users. I focus on user research, data analysis, and cross-functional collaboration.`,
-        startedAt: new Date(`2024-01-01T10:${Math.floor(i * 1.2)}:00Z`),
-        endedAt: new Date(`2024-01-01T10:${Math.floor(i * 1.2)}:30Z`),
+        startedAt: new Date(Date.UTC(2024, 0, 1, 10, 0, i * 75)),
+        endedAt: new Date(Date.UTC(2024, 0, 1, 10, 0, i * 75 + 30)),
       }));
 
       vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue(
@@ -358,9 +358,9 @@ describe("Session Validator", () => {
         text:
           i % 2 === 0
             ? "Question"
-            : "Detailed response with many words explaining my thoughts",
-        startedAt: new Date(`2024-01-01T10:${i}:00Z`),
-        endedAt: new Date(`2024-01-01T10:${i}:30Z`),
+            : "This detailed response explains my product reasoning, user priority, measurement approach, and expected impact clearly.",
+        startedAt: new Date(Date.UTC(2024, 0, 1, 10, i, 0)),
+        endedAt: new Date(Date.UTC(2024, 0, 1, 10, i, 30)),
       }));
 
       vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue(

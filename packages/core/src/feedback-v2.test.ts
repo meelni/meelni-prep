@@ -142,6 +142,72 @@ test("rejects evidence quotes that do not exactly occur in the referenced turn",
   );
 });
 
+test("normalizes harmless quote typography to exact canonical transcript text", () => {
+  const response = validResponse();
+  const typographicTranscript = [
+    {
+      eventId: "writer-a:1",
+      speaker: "user" as const,
+      text: "I would start with working parents — and measure weekly completed plans.",
+    },
+    transcript[1],
+  ];
+  response.strengths[0].evidence[0].quote =
+    "working parents - and  measure weekly completed plans";
+  const parsed = parseFeedbackV2(response, {
+    transcript: typographicTranscript,
+    evaluationState: "full",
+    modelVersion: "gpt-test-1",
+  });
+  assert.equal(
+    parsed.strengths[0].evidence[0].quote,
+    "working parents — and measure weekly completed plans"
+  );
+});
+
+test("rejects interviewer speech and repeated evidence across findings", () => {
+  const interviewerTranscript = [
+    ...transcript,
+    {
+      eventId: "writer-a:3",
+      speaker: "interviewer" as const,
+      text: "You should define a decision threshold.",
+    },
+  ];
+  const interviewerEvidence = validResponse();
+  interviewerEvidence.improvements[0].transcriptRefs = ["writer-a:3"];
+  interviewerEvidence.improvements[0].evidence = [
+    { turnRef: "writer-a:3", quote: "define a decision threshold" },
+  ];
+  assert.throws(
+    () =>
+      parseFeedbackV2(interviewerEvidence, {
+        transcript: interviewerTranscript,
+        evaluationState: "full",
+        modelVersion: "gpt-test-1",
+      }),
+    /must reference user speech/
+  );
+
+  const repeatedEvidence = validResponse();
+  repeatedEvidence.improvements[0].transcriptRefs = ["writer-a:1"];
+  repeatedEvidence.improvements[0].evidence = [
+    {
+      turnRef: "writer-a:1",
+      quote: "working parents and measure weekly completed plans",
+    },
+  ];
+  assert.throws(
+    () =>
+      parseFeedbackV2(repeatedEvidence, {
+        transcript,
+        evaluationState: "full",
+        modelVersion: "gpt-test-1",
+      }),
+    /repeated across findings/
+  );
+});
+
 test("rejects reference and evidence sets that do not match", () => {
   const response = validResponse();
   response.strengths[0].transcriptRefs.push("writer-a:2");

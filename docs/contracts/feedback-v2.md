@@ -51,11 +51,16 @@ Each strength and improvement contains exactly these fields:
 - `transcriptRefs` contains unique canonical transcript `eventId` values. A
   database row UUID is not a feedback evidence identity.
 - Every reference has exactly one evidence entry and vice versa.
-- `quote` is a non-empty, case-sensitive substring of the referenced durable
-  turn. The parser rejects paraphrases, altered capitalization, and unknown
-  references.
-- `confidence` is a finite number from zero through one. SAV-196 owns policy
-  thresholds and adversarial confidence validation.
+- `quote` resolves to a non-empty, case-sensitive substring of the referenced
+  durable user turn. Harmless Unicode punctuation and whitespace differences
+  may be normalized, but the persisted value is always sliced byte-for-byte
+  from the canonical transcript. The parser rejects paraphrases, altered
+  capitalization, interviewer speech, and unknown references.
+- The same `(turnRef, quote)` evidence identity cannot be repeated across
+  findings. A turn can support separate findings only with distinct exact
+  evidence spans.
+- `confidence` is a finite number from zero through one. It is a finding-level
+  evidence signal, not a readiness probability.
 - Unknown fields at the result, score, finding, or evidence level are rejected.
 
 ## Scores
@@ -79,10 +84,27 @@ version tuple for a legacy row or a complete, internally consistent v2 tuple.
 Historical string-array v1 rows keep `rubric_version=1.0.0` and remain readable.
 New completed writes use v2 only.
 
-## Ownership boundary
+## Transcript validation boundary
 
-SAV-195 guarantees structural completeness and exact quote-to-turn grounding.
-SAV-196 owns adversarial and low-signal policy, normalization or regeneration,
-repeated-turn inflation defenses, prompt-injection/corruption/missing-user-
-speech fixtures, and honest precision thresholds. Passing this parser is not a
-claim of comprehensive adversarial launch validation.
+`packages/core/src/feedback-transcript.ts` prepares untrusted transcript data
+before both eligibility and model evaluation:
+
+- malformed or non-v2 canonical events fail closed for new feedback;
+- bounded event/text lengths and invalid control or replacement characters are
+  treated as corruption;
+- exact and near-identical semantic replays are normalized across ASR
+  punctuation and small lexical variants, then removed before turn and
+  substantive-answer thresholds are calculated;
+- substantive answers require minimum length and lexical variety, so repeated
+  filler cannot create numerical precision;
+- no usable user speech routes to `insufficient`;
+- high-confidence instruction-injection and direct score-manipulation shapes
+  route to `insufficient` and are never sent to the evaluation model; ordinary
+  product discussion about injection defenses remains evaluable;
+- worker and direct-evaluation entry points repeat the guard so a late corrupt
+  read cannot become scored feedback.
+
+`insufficient` is represented by a skipped feedback record with reasons and
+recommendations, never a v2 score object. Existing completed legacy feedback
+remains readable without reinterpretation. These deterministic controls do not
+claim exhaustive adversarial coverage or hiring calibration.
