@@ -272,6 +272,46 @@ test("analytics failure cannot turn a committed settlement into a workflow failu
   }
 });
 
+test("asynchronous analytics rejection is contained after settlement", async () => {
+  const log = console.error;
+  let failureLogs = 0;
+  console.error = (message?: unknown) => {
+    if (message === "billing_terminal_settlement_analytics_failed") {
+      failureLogs += 1;
+    }
+  };
+  try {
+    const ledger = createCreditLedgerService({
+      store: createMemoryCreditLedgerStore(),
+      now: () => new Date("2026-06-29T00:00:00.000Z"),
+      trackTerminalSettlement: async () => {
+        throw new Error("private asynchronous analytics failure");
+      },
+    });
+    await ledger.grantCredits({
+      userId: "user-async-analytics-failure",
+      catalogId: "trial",
+      source: "trial",
+      idempotencyKey: "trial:user-async-analytics-failure",
+    });
+    await ledger.reserveCredit({
+      userId: "user-async-analytics-failure",
+      reservationKey: "session:async-analytics-failure",
+    });
+
+    const settled = await ledger.consumeReservation({
+      reservationKey: "session:async-analytics-failure",
+      idempotencyKey: "consume:async-analytics-failure",
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(settled.reservation.status, "consumed");
+    assert.equal(failureLogs, 1);
+  } finally {
+    console.error = log;
+  }
+});
+
 test("subscription renewal respects the rollover cap and 60 day expiration", async () => {
   const store = createMemoryCreditLedgerStore();
   const renewedAt = new Date();
