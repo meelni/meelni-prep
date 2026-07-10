@@ -21,7 +21,7 @@
 
 ## Scope
 
-- In scope: Safe post-auth and cancellation destinations; Google OAuth, email sign-in, same-browser PKCE email sign-up confirmation, and auth-page transitions; direct/repeated/invalid query regression coverage; responsive browser verification.
+- In scope: Safe post-auth and cancellation destinations; Google OAuth, email sign-in, same-browser PKCE email sign-up confirmation and password recovery, and auth-page transitions; bounded accessible auth initialization; direct/repeated/invalid query regression coverage; responsive browser verification.
 - Out of scope: Provider configuration, database writes, feature flags, question-bank redesign, SAV-206.
 - Assumptions: `/dashboard/new-interview` remains the canonical launcher, `/explore` remains the public question-bank route, and cross-device email confirmation remains out of scope until a token-hash verification route and provider email template are configured together.
 
@@ -42,7 +42,7 @@
 
 - Required commands: `npm run check:ci`; `npm run build`.
 - Optional/manual checks: Signed-out desktop/mobile Explore-to-auth states; close/back behavior; canonical query preservation. Existing URL query parameters are preserved; Explore's local-only filter controls are not converted into a new URL-state model in this slice.
-- Fixtures or regression tests needed: Valid question intent, repeated parameters, empty values, external/protocol-relative/backslash/control-character destinations, and OAuth callback decisions.
+- Fixtures or regression tests needed: Valid question intent, repeated parameters, empty values, external/protocol-relative/backslash/control-character destinations, OAuth callback decisions including coded access denial, password recovery handoff, and rendered auth initialization semantics.
 
 ## Rollout
 

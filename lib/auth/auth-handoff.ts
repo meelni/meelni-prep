@@ -2,6 +2,8 @@ import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
 
 export const AUTH_SIGNIN_PATH = "/auth/signin";
 export const AUTH_SIGNUP_PATH = "/auth/signup";
+export const AUTH_FORGOT_PASSWORD_PATH = "/auth/forgot-password";
+export const AUTH_RESET_PASSWORD_PATH = "/auth/reset-password";
 export const AUTH_CALLBACK_PATH = "/auth/callback";
 export const DEFAULT_AUTH_CANCEL_DESTINATION = "/";
 
@@ -13,7 +15,11 @@ export const AUTH_FAILURE_MESSAGES = {
     "This account is pending deletion and cannot be used to sign in.",
 } as const;
 
-type AuthPagePath = typeof AUTH_SIGNIN_PATH | typeof AUTH_SIGNUP_PATH;
+type AuthPagePath =
+  | typeof AUTH_SIGNIN_PATH
+  | typeof AUTH_SIGNUP_PATH
+  | typeof AUTH_FORGOT_PASSWORD_PATH
+  | typeof AUTH_RESET_PASSWORD_PATH;
 type SearchParamsReader = Pick<URLSearchParams, "get">;
 export type AuthFailureCode = keyof typeof AUTH_FAILURE_MESSAGES;
 
@@ -76,6 +82,12 @@ export function buildAuthCallbackHref(
   return `${AUTH_CALLBACK_PATH}?${searchParams.toString()}`;
 }
 
+export function buildPasswordResetCallbackHref(
+  handoff: Partial<AuthHandoffContext>
+): string {
+  return buildAuthPageHref(AUTH_RESET_PASSWORD_PATH, handoff);
+}
+
 export function buildAuthFailureHref(
   handoff: Partial<AuthHandoffContext>,
   code: AuthFailureCode = "auth_failed"
@@ -101,8 +113,16 @@ export function resolveAuthCallbackAction(
   searchParams: SearchParamsReader
 ): AuthCallbackAction {
   const providerError = searchParams.get("error")?.trim();
+  const providerErrorCode = searchParams.get("error_code")?.trim();
 
-  if (providerError === "access_denied") {
+  // Supabase also uses access_denied for account and provider failures, with
+  // a specific error_code. Only the bare OAuth denial shape means the user
+  // canceled; all coded failures receive fixed first-party recovery copy.
+  if (
+    providerError === "access_denied" &&
+    !providerErrorCode &&
+    !searchParams.get("code")
+  ) {
     return {
       type: "cancel",
       destination: normalizeAuthHandoff({

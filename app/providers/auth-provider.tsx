@@ -6,8 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import { analytics } from "@/lib/analytics/analytics-service";
 import {
   buildAuthCallbackHref,
+  buildPasswordResetCallbackHref,
   type AuthHandoffContext,
 } from "@/lib/auth/auth-handoff";
+import { resolveAuthInitializationWithin } from "@/lib/auth/auth-initialization";
 
 interface AuthContextType {
   user: User | null;
@@ -20,7 +22,10 @@ interface AuthContextType {
     password: string,
     handoff?: Partial<AuthHandoffContext>
   ) => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
+  resetPassword: (
+    email: string,
+    handoff?: Partial<AuthHandoffContext>
+  ) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -33,28 +38,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
   useEffect(() => {
+    let active = true;
+
+    const applySession = (nextSession: Session | null) => {
+      if (!active) return;
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+
+      if (nextSession?.user) {
+        const provider = nextSession.user.app_metadata.provider;
+        analytics.identify(nextSession.user.id, {
+          email_domain: nextSession.user.email?.split("@")[1],
+          signup_method: provider === "google" ? "google" : "email",
+          created_at: nextSession.user.created_at,
+        });
+      }
+    };
+
     // Get initial session
     const getInitialSession = async () => {
+      const sessionRequest = supabase.auth.getSession();
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        // Identify user if session exists
-        if (session?.user) {
-          const provider = session.user.app_metadata.provider;
-          analytics.identify(session.user.id, {
-            email_domain: session.user.email?.split("@")[1],
-            signup_method: provider === "google" ? "google" : "email",
-            created_at: session.user.created_at,
-          });
+        const result = await resolveAuthInitializationWithin(sessionRequest);
+        if (result.status === "ready") {
+          applySession(result.value.data.session);
+        } else {
+          console.error("[auth] initial session check timed out");
+          void sessionRequest.then(
+            ({ data }) => applySession(data.session),
+            () => console.error("[auth] delayed session check failed")
+          );
         }
       } catch (error) {
         console.error("Error fetching session:", error);
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
 
@@ -117,7 +135,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, [supabase]);
 
   const signInWithGoogle = async (handoff?: Partial<AuthHandoffContext>) => {
@@ -171,9 +192,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const resetPassword = async (email: string) => {
+  const resetPassword = async (
+    email: string,
+    handoff?: Partial<AuthHandoffContext>
+  ) => {
+    const resetHref = buildPasswordResetCallbackHref(handoff ?? {});
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
+      redirectTo: new URL(resetHref, window.location.origin).toString(),
     });
 
     if (error) {

@@ -8,6 +8,7 @@ import { useAuth } from "@/app/providers/auth-provider";
 import {
   AuthCard,
   AuthDivider,
+  AuthInitializationStatus,
   AuthMessage,
   AuthShell,
   GoogleAuthButton,
@@ -21,14 +22,6 @@ import {
   buildAuthPageHref,
   parseAuthHandoffContext,
 } from "@/lib/auth/auth-handoff";
-
-function AuthLoadingState() {
-  return (
-    <div className="bg-background flex min-h-screen items-center justify-center">
-      <Loader2 className="text-primary h-8 w-8 animate-spin" />
-    </div>
-  );
-}
 
 function SignUpContent() {
   const {
@@ -112,7 +105,7 @@ function SignUpContent() {
   };
 
   if (authLoading || user) {
-    return <AuthLoadingState />;
+    return <AuthInitializationStatus />;
   }
 
   return (
@@ -192,7 +185,7 @@ function SignUpContent() {
               >
                 {isSigningUp ? (
                   <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />
                     <span>Creating account...</span>
                   </span>
                 ) : (
@@ -235,7 +228,7 @@ function SignUpContent() {
 
 export default function SignUpPage() {
   return (
-    <Suspense fallback={<AuthLoadingState />}>
+    <Suspense fallback={<AuthInitializationStatus />}>
       <SignUpContent />
     </Suspense>
   );

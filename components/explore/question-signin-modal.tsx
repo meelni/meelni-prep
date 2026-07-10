@@ -111,7 +111,10 @@ export function QuestionSignInModal({
           >
             <span className="flex items-center justify-center gap-3">
               {isStartingGoogle ? (
-                <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+                <Loader2
+                  className="h-5 w-5 animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
               ) : (
                 <Icons.google className="h-5 w-5" />
               )}

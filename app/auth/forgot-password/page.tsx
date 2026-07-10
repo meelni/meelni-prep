@@ -1,22 +1,34 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 import { useAuth } from "@/app/providers/auth-provider";
-import { AuthCard, AuthMessage, AuthShell } from "@/components/auth/auth-shell";
+import {
+  AuthCard,
+  AuthInitializationStatus,
+  AuthMessage,
+  AuthShell,
+} from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AUTH_SIGNIN_PATH,
+  buildAuthPageHref,
+  parseAuthHandoffContext,
+} from "@/lib/auth/auth-handoff";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
   const { resetPassword } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [email, setEmail] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const authHandoff = parseAuthHandoffContext(searchParams);
 
   const handleResetPassword = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -25,7 +37,7 @@ export default function ForgotPasswordPage() {
     setSuccess(false);
 
     try {
-      await resetPassword(email);
+      await resetPassword(email, authHandoff);
       setSuccess(true);
       setIsSubmitting(false);
     } catch (err) {
@@ -40,7 +52,10 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <AuthShell backLabel="Back to home" onBack={() => router.push("/")}>
+    <AuthShell
+      backLabel="Back"
+      onBack={() => router.push(authHandoff.cancelTo)}
+    >
       <AuthCard
         icon="key"
         title="Reset your password"
@@ -54,7 +69,9 @@ export default function ForgotPasswordPage() {
             </AuthMessage>
             <Button
               type="button"
-              onClick={() => router.push("/auth/signin")}
+              onClick={() =>
+                router.push(buildAuthPageHref(AUTH_SIGNIN_PATH, authHandoff))
+              }
               className="h-auto w-full rounded-xl px-6 py-3 font-semibold"
             >
               Back to Sign In
@@ -85,7 +102,7 @@ export default function ForgotPasswordPage() {
               >
                 {isSubmitting ? (
                   <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />
                     <span>Sending reset link...</span>
                   </span>
                 ) : (
@@ -101,7 +118,9 @@ export default function ForgotPasswordPage() {
               <Button
                 type="button"
                 variant="link"
-                onClick={() => router.push("/auth/signin")}
+                onClick={() =>
+                  router.push(buildAuthPageHref(AUTH_SIGNIN_PATH, authHandoff))
+                }
                 className="h-auto p-0 font-medium"
               >
                 Sign in
@@ -111,5 +130,13 @@ export default function ForgotPasswordPage() {
         )}
       </AuthCard>
     </AuthShell>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<AuthInitializationStatus />}>
+      <ForgotPasswordContent />
+    </Suspense>
   );
 }

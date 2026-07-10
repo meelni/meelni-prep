@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  AUTH_FORGOT_PASSWORD_PATH,
+  AUTH_RESET_PASSWORD_PATH,
   AUTH_SIGNIN_PATH,
   AUTH_SIGNUP_PATH,
   buildAuthCallbackHref,
   buildAuthFailureHref,
   buildAuthPageHref,
+  buildPasswordResetCallbackHref,
   getAuthFailureMessage,
   parseAuthHandoffContext,
   resolveAuthCallbackAction,
@@ -19,7 +22,12 @@ test("auth pages preserve independent success and cancellation destinations", ()
     cancelTo: "/explore?company=Stripe",
   };
 
-  for (const path of [AUTH_SIGNIN_PATH, AUTH_SIGNUP_PATH] as const) {
+  for (const path of [
+    AUTH_SIGNIN_PATH,
+    AUTH_SIGNUP_PATH,
+    AUTH_FORGOT_PASSWORD_PATH,
+    AUTH_RESET_PASSWORD_PATH,
+  ] as const) {
     const href = buildAuthPageHref(path, handoff);
     const url = new URL(href, "https://meelni.com");
 
@@ -33,6 +41,16 @@ test("auth pages preserve independent success and cancellation destinations", ()
   );
   assert.equal(callback.searchParams.get("next"), handoff.redirectTo);
   assert.equal(callback.searchParams.get("cancelTo"), handoff.cancelTo);
+
+  const passwordReset = new URL(
+    buildPasswordResetCallbackHref(handoff),
+    "https://meelni.com"
+  );
+  assert.equal(passwordReset.pathname, AUTH_RESET_PASSWORD_PATH);
+  assert.deepEqual(
+    parseAuthHandoffContext(passwordReset.searchParams),
+    handoff
+  );
 });
 
 test("auth handoff rejects open redirects independently", () => {
@@ -107,18 +125,20 @@ test("callback failures and missing codes use safe first-party recovery", () => 
   for (const query of [
     "",
     "error=server_error&error_description=untrusted+provider+detail",
-    "error=access_denied&code=ambiguous-code",
   ]) {
     const action = resolveAuthCallbackAction(new URLSearchParams(query));
-    if (query.startsWith("error=access_denied")) {
-      assert.deepEqual(action, { type: "cancel", destination: "/" });
-    } else {
-      assert.deepEqual(action, {
-        type: "failure",
-        code: "auth_callback_failed",
-      });
-    }
+    assert.deepEqual(action, {
+      type: "failure",
+      code: "auth_callback_failed",
+    });
   }
+
+  assert.deepEqual(
+    resolveAuthCallbackAction(
+      new URLSearchParams("error=access_denied&code=ambiguous-code")
+    ),
+    { type: "failure", code: "auth_callback_failed" }
+  );
 
   assert.equal(
     getAuthFailureMessage(new URLSearchParams("error=auth_callback_failed")),
@@ -132,6 +152,21 @@ test("callback failures and missing codes use safe first-party recovery", () => 
     ),
     null
   );
+
+  for (const errorCode of [
+    "signup_disabled",
+    "user_banned",
+    "provider_email_needs_verification",
+  ]) {
+    assert.deepEqual(
+      resolveAuthCallbackAction(
+        new URLSearchParams(
+          `error=access_denied&error_code=${errorCode}&cancelTo=%2Fexplore`
+        )
+      ),
+      { type: "failure", code: "auth_callback_failed" }
+    );
+  }
 });
 
 test("OAuth exchange failure retries without losing safe handoff", () => {
