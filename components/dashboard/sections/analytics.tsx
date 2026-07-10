@@ -64,7 +64,6 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
   const competencies = buildAnalyticsCompetencies(insights);
   const evidence = practiceSummary.focusArea
     ? buildAnalyticsEvidence({
-        completedSessions,
         focusAreaLabel: practiceSummary.focusArea.label,
         focusAreaScore: practiceSummary.focusArea.score,
         focusAreaDescription: practiceSummary.focusArea.description,
