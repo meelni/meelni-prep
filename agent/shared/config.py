@@ -61,6 +61,18 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         session_id = data.get("session_id")
         if not isinstance(session_id, str) or not session_id.strip():
             raise ValueError("Interview room metadata requires session_id")
+        raw_candidate_identity = data.get("candidate_identity")
+        if raw_candidate_identity is None:
+            candidate_identity = None
+        elif (
+            not isinstance(raw_candidate_identity, str)
+            or not raw_candidate_identity.strip()
+        ):
+            raise ValueError(
+                "Interview room metadata has invalid candidate_identity"
+            )
+        else:
+            candidate_identity = raw_candidate_identity.strip()
         transcript_ingest_url = validate_internal_ingest_url(
             data.get("transcript_ingest_url")
         )
@@ -84,6 +96,7 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         return {
             "contract_version": INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
             "session_id": session_id,
+            "candidate_identity": candidate_identity,
             "transcript_ingest_url": transcript_ingest_url,
             "deadline_at": normalize_deadline_at(data.get("deadline_at")),
             "round_type": round_type,

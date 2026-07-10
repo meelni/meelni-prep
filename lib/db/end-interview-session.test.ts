@@ -3,10 +3,15 @@ import test from "node:test";
 
 import {
   applyTranscriptIntegrityValidation,
+  finalizeInterviewSession,
   resolveInterviewTerminalReason,
   shouldRefineProvisionalTerminalReason,
+  type EndInterviewSessionDatabase,
 } from "./end-interview-session";
-import { SessionTier } from "@/lib/evaluation/session-validator";
+import {
+  SessionTier,
+  type SessionValidation,
+} from "@/lib/evaluation/session-validator";
 
 test("valid durable signal preserves the command's terminal reason", () => {
   assert.equal(
@@ -128,3 +133,152 @@ test("runtime settlement and textless interruption own final feedback eligibilit
     baseValidation
   );
 });
+
+test("durable turns do not synthesize canonical activation during terminalization", async () => {
+  const validation = validSessionValidation();
+  const transitions: string[] = [];
+  let lifecycle = {
+    state: "connecting",
+    version: 2,
+    terminalReason: null as string | null,
+    activatedAt: null as Date | null,
+    endingAt: null as Date | null,
+    endedAt: null as Date | null,
+  };
+  const stored = {
+    id: "550e8400-e29b-41d4-a716-446655440000",
+    userId: "650e8400-e29b-41d4-a716-446655440000",
+    livekitRoomName: "interview-session",
+    reconnectDeadlineAt: null,
+    lifecycleState: lifecycle.state,
+    lifecycleVersion: lifecycle.version,
+    terminalReason: lifecycle.terminalReason,
+    activatedAt: lifecycle.activatedAt,
+    endingAt: lifecycle.endingAt,
+    endedAt: lifecycle.endedAt,
+  };
+  const database = {
+    async transaction<T>(callback: (tx: unknown) => Promise<T>): Promise<T> {
+      const tx = {
+        select() {
+          return {
+            from() {
+              return {
+                where() {
+                  return {
+                    limit() {
+                      return {
+                        async for() {
+                          return [{ ...stored }];
+                        },
+                      };
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+        update() {
+          return {
+            set(values: Record<string, unknown>) {
+              return {
+                where() {
+                  return {
+                    async returning() {
+                      const nextState = values.lifecycleState;
+                      if (typeof nextState !== "string") return [];
+                      transitions.push(nextState);
+                      lifecycle = {
+                        state: nextState,
+                        version: lifecycle.version + 1,
+                        terminalReason:
+                          (values.terminalReason as string | null) ?? null,
+                        activatedAt: lifecycle.activatedAt,
+                        endingAt:
+                          nextState === "ending"
+                            ? new Date("2026-07-10T08:00:00.000Z")
+                            : lifecycle.endingAt,
+                        endedAt:
+                          nextState === "completed" ||
+                          nextState === "abandoned" ||
+                          nextState === "failed"
+                            ? new Date("2026-07-10T08:00:00.000Z")
+                            : lifecycle.endedAt,
+                      };
+                      Object.assign(stored, {
+                        lifecycleState: lifecycle.state,
+                        lifecycleVersion: lifecycle.version,
+                        terminalReason: lifecycle.terminalReason,
+                        activatedAt: lifecycle.activatedAt,
+                        endingAt: lifecycle.endingAt,
+                        endedAt: lifecycle.endedAt,
+                      });
+                      return [{ ...lifecycle }];
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+        insert() {
+          return {
+            values(values: Record<string, unknown>) {
+              return {
+                onConflictDoNothing() {
+                  return {
+                    async returning() {
+                      return [
+                        {
+                          id: "750e8400-e29b-41d4-a716-446655440000",
+                          ...values,
+                        },
+                      ];
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+      return callback(tx);
+    },
+  } as EndInterviewSessionDatabase;
+
+  const result = await finalizeInterviewSession(
+    {
+      sessionId: stored.id,
+      actor: { type: "user", userId: stored.userId },
+      requestedTerminalReason: "user_end",
+      validationOverride: validation,
+      now: new Date("2026-07-10T08:00:00.000Z"),
+    },
+    database
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.lifecycle.state, "abandoned");
+    assert.equal(result.lifecycle.terminalReason, "user_end");
+  }
+  assert.deepEqual(transitions, ["ending", "abandoned"]);
+  assert.equal(stored.activatedAt, null);
+});
+
+function validSessionValidation(): SessionValidation {
+  return {
+    tier: SessionTier.FULL,
+    isValid: true,
+    stats: {
+      totalTurns: 20,
+      userTurns: 10,
+      totalWords: 800,
+      durationSeconds: 1200,
+      substantiveResponses: 8,
+    },
+    reasons: [],
+    recommendations: [],
+  };
+}

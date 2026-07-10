@@ -45,6 +45,16 @@ npm run db:preflight:preview
 npm run db:preflight:production
 ```
 
+These commands are diagnostic and continue to exit successfully when the
+schema is valid but launch-readiness counts are nonzero. The relaunch decision
+must use strict mode, which prints the same redacted report and exits nonzero
+unless `stableStartLaunchReady` is true:
+
+```bash
+MEELNI_LAUNCH_STRICT=1 npm run db:preflight:preview
+MEELNI_LAUNCH_STRICT=1 npm run db:preflight:production
+```
+
 Use the bare `npm run db:preflight` command only when an intentionally selected
 disposable/local `DATABASE_URL` is already in the shell. Shared Preview and
 Production checks must use the scoped aliases above so ambient credentials

@@ -61,6 +61,7 @@ test("agent and candidate presence activate once regardless of delivery order", 
   assert.equal(activated.lifecycle?.state, "active");
   assert.equal(duplicate.disposition, "duplicate");
   assert.equal(fixture.writes, 1);
+  assert.deepEqual(fixture.settlements, [SESSION_ID, SESSION_ID]);
 });
 
 test("candidate loss before agent readiness cannot activate an empty session", async () => {
@@ -581,6 +582,7 @@ function createFixture(
     deadlineAt: Date;
   }>;
   readonly writes: number;
+  settlements: string[];
 } {
   let current = initial;
   let writes = 0;
@@ -589,6 +591,7 @@ function createFixture(
     expectedVersion: number;
     deadlineAt: Date;
   }> = [];
+  const settlements: string[] = [];
   const store: InterviewReconnectStore = {
     getDatabaseTime: async () => new Date(now),
     getByRoom: async () => current,
@@ -699,8 +702,13 @@ function createFixture(
       scheduleReconnect: async (input) => {
         schedules.push(input);
       },
+      settleCredit: async (sessionId) => {
+        settlements.push(sessionId);
+      },
+      now: () => NOW,
     },
     schedules,
+    settlements,
     get writes() {
       return writes;
     },

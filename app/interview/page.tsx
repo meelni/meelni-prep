@@ -43,6 +43,7 @@ import {
   type InterviewConnectionStatus,
   type InterviewRoomCredentials,
 } from "@/components/interview/session-recovery";
+import { buildNewInterviewHref } from "@/lib/navigation/interview-launch";
 import { establishTranscriptEndCutoff } from "@/lib/utils/transcript-end-settlement";
 
 const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
@@ -105,13 +106,6 @@ function InterviewPageContent() {
 
   // Track Web Vitals performance
   useWebVitals("interview");
-
-  // Config from Setup Modal (query params)
-  const roundType = searchParams.get("roundType");
-  const modeParam = searchParams.get("mode");
-  // Ensure mode is valid (fallback for cached URLs with "mock_interview")
-  const mode = modeParam === "mock_interview" ? "voice_video" : modeParam;
-  const questionId = searchParams.get("questionId"); // Optional: pre-selected question
 
   // Session info (after session is created)
   const sessionId = searchParams.get("sessionId");
@@ -181,72 +175,6 @@ function InterviewPageContent() {
       queryClient.invalidateQueries({ queryKey: sessionKeys.all });
     };
   }, [queryClient]);
-
-  const createSession = useCallback(async () => {
-    if (!roundType || !mode || !user) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch("/api/session/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roundType,
-          mode,
-          questionId: questionId || undefined, // Include questionId if present
-          config: {
-            hintMode,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to create session");
-      }
-
-      const data = await response.json();
-      const credentials = parseInterviewRoomCredentials(data, data.roomName);
-      if (!credentials || typeof data.sessionId !== "string") {
-        throw new Error("Interview room credentials were invalid");
-      }
-
-      setToken(credentials.token);
-      setUrl(credentials.url);
-      setSession({
-        id: data.sessionId,
-        livekit_room_name: data.roomName,
-        started_at: new Date().toISOString(),
-        deadline_at: data.deadlineAt,
-        config: {
-          ...data.config,
-          roundType,
-          mode,
-        },
-        question: data.question || null,
-      });
-      setSessionStartTime(Date.now());
-      router.replace(getCanonicalInterviewHref(data.sessionId));
-      setLoading(false);
-
-      // Track interview started
-      analytics.track("interview_started", {
-        session_id: data.sessionId,
-        interview_type: roundType,
-        mode: mode,
-        skill_level: data.config?.difficulty,
-      });
-    } catch (err) {
-      console.error("Error creating session:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to create interview session"
-      );
-      setLoading(false);
-    }
-  }, [hintMode, mode, questionId, roundType, router, user]);
 
   const fetchSessionDetails = useCallback(async () => {
     if (!sessionId || !user) return;
@@ -333,6 +261,14 @@ function InterviewPageContent() {
     // Skip if already initialized
     if (initializedRef.current) return;
 
+    // Session creation has one canonical owner. Old bookmarked launch URLs are
+    // forwarded to setup so they cannot construct a divergent start intent.
+    if (!sessionId) {
+      initializedRef.current = true;
+      router.replace(buildNewInterviewHref(searchParams.toString()));
+      return;
+    }
+
     if (authLoading) return;
 
     if (!user) {
@@ -347,35 +283,9 @@ function InterviewPageContent() {
       router.replace(getCanonicalInterviewHref(sessionId));
     }
 
-    // Case 1: Config params present (from Setup Modal) → create session
-    if (roundType && mode && !sessionId) {
-      createSession();
-      initializedRef.current = true;
-      return;
-    }
-
-    // Case 2: Session ID present → fetch session details
-    if (sessionId) {
-      fetchSessionDetails();
-      initializedRef.current = true;
-      return;
-    }
-
-    // Case 3: No valid params → redirect to dashboard
-    if (!roundType && !sessionId) {
-      router.push("/dashboard");
-    }
-  }, [
-    authLoading,
-    createSession,
-    fetchSessionDetails,
-    mode,
-    roundType,
-    router,
-    searchParams,
-    sessionId,
-    user,
-  ]);
+    fetchSessionDetails();
+    initializedRef.current = true;
+  }, [authLoading, fetchSessionDetails, router, searchParams, sessionId, user]);
 
   const handleTranscriptUpdate = async (turn: TranscriptTurn) => {
     if (!activeSessionId) {

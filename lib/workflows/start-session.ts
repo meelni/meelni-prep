@@ -8,33 +8,41 @@ import {
 } from "@/lib/internal/agent";
 import {
   deriveInterviewDeadlineAt,
+  isInterviewDeadlineReached,
   isValidRoundType,
   normalizeQuestionRound,
+  normalizeInterviewDurationMinutes,
   questionTypeStorageAliasesForRound,
   serializeInterviewDeadlineAt,
   type RoundType,
 } from "@/lib/internal/core";
 import {
-  buildInterviewRoomName,
   createLiveKitInterviewProvider,
+  issueInterviewParticipantToken,
   terminateInterviewRoom,
   type LiveKitEnvironment,
   type LiveKitInterviewProvider,
 } from "@/lib/internal/integrations";
-import { createSession, type CreateSessionInput } from "@/lib/db/sessions";
 import {
   getQuestionById,
   getRandomQuestion,
   getRandomRecentQuestion,
   type QuestionBankRecord,
-  recordQuestionUsage,
 } from "@/lib/db/questions";
+import {
+  createDrizzleInterviewStartStore,
+  InterviewProvisioningLeaseLostError,
+  InterviewStartConflictError,
+  InterviewStartFailedError,
+  type InterviewStartStore,
+  type PersistedStableInterviewStart,
+  type StableInterviewStartInput,
+} from "@/lib/db/interview-starts";
 import { upsertUser } from "@/lib/db/users";
 import {
   createCreditLedgerService,
-  type CompleteReservationInput,
+  trackReservedCreditEvents,
   type ReserveCreditInput,
-  type ReserveCreditResult,
 } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import {
@@ -43,10 +51,10 @@ import {
 } from "@/lib/billing/local-dev-bypass";
 import { ensureCanonicalTrialGrant } from "@/lib/billing/trial";
 import {
-  transitionInterviewSessionWorkflow,
   type TransitionInterviewSessionInput,
   type TransitionInterviewSessionResult,
 } from "./transition-interview-session";
+import { transitionInterviewSessionWorkflow } from "./transition-interview-session";
 import { scheduleInterviewDeadline } from "./schedule-interview-deadline";
 import { createDrizzleInterviewReconnectStore } from "@/lib/db/session-reconnects";
 import { createFailedInterviewStartSettler } from "@/lib/billing/failed-interview-start";
@@ -68,6 +76,7 @@ export interface StartInterviewSessionUser {
 }
 
 export interface StartInterviewSessionBody {
+  startAttemptId?: unknown;
   roundType?: unknown;
   mode?: unknown;
   role?: unknown;
@@ -80,14 +89,15 @@ export interface StartInterviewSessionInput {
   body: StartInterviewSessionBody;
   env: LiveKitEnvironment;
   interviewAgentName: string;
-  appBaseUrl?: string;
+  appBaseUrl: string;
 }
 
 export interface StartInterviewSessionDeps {
-  buildRoomName(): string;
-  createSession(
-    input: CreateSessionInput
-  ): Promise<{ id: string; config: unknown; startedAt: Date | null }>;
+  startStore: InterviewStartStore;
+  prepareStart(input: {
+    start: StableInterviewStartInput;
+    reservation: ReserveCreditInput;
+  }): Promise<PersistedStableInterviewStart>;
   getQuestionById(questionId: string): Promise<QuestionBankRecord | null>;
   getRandomQuestion(
     questionTypes: string[]
@@ -97,10 +107,10 @@ export interface StartInterviewSessionDeps {
     questionTypes: string[]
   ): Promise<QuestionBankRecord | null>;
   ensureTrialGrant(userId: string): Promise<unknown>;
-  reserveCredit(input: ReserveCreditInput): Promise<ReserveCreditResult>;
-  consumeReservation(input: CompleteReservationInput): Promise<unknown>;
-  releaseReservation(input: CompleteReservationInput): Promise<unknown>;
-  settleFailedReservation(reservationKey: string): Promise<void>;
+  releaseReservation(input: {
+    reservationKey: string;
+    idempotencyKey: string;
+  }): Promise<unknown>;
   scheduleDeadline(input: {
     sessionId: string;
     deadlineAt: Date;
@@ -117,10 +127,18 @@ export interface StartInterviewSessionDeps {
   }): Promise<boolean>;
   markRoomProvisioningSettled(sessionId: string): Promise<void>;
   livekitProvider: LiveKitInterviewProvider;
+  issueParticipantToken(input: {
+    identity: string;
+    participantName: string;
+    roomName: string;
+    ttlSeconds: number;
+    observedAt: Date;
+    expiresAt: Date;
+    env: LiveKitEnvironment;
+  }): ReturnType<typeof issueInterviewParticipantToken>;
   transitionLifecycle(
     input: TransitionInterviewSessionInput
   ): Promise<TransitionInterviewSessionResult>;
-  recordQuestionUsage(sessionId: string, questionId: string): Promise<void>;
   upsertUser(input: {
     id: string;
     email: string;
@@ -129,6 +147,8 @@ export interface StartInterviewSessionDeps {
   resolveRuntimeConfig(
     preferences: InterviewClientPreferences
   ): InterviewRuntimeConfig;
+  now(): Date;
+  createLeaseId(): string;
 }
 
 export type StartInterviewSessionResult =
@@ -169,21 +189,23 @@ export async function startInterviewSessionWorkflow(
     return parsed;
   }
 
-  const { roundType, mode, role, config, questionId } = parsed;
+  const { startAttemptId, roundType, mode, role, persona, config, questionId } =
+    parsed;
   const preferences = normalizeInterviewClientPreferences(config);
   const runtimeConfig = deps.resolveRuntimeConfig(preferences);
-
-  const question = await selectQuestion({
+  const requestFingerprint = fingerprintStartRequest({
     roundType,
-    questionId,
-    recentDays: getRecentDays(runtimeConfig),
-    deps,
+    mode,
+    role,
+    persona: persona ?? null,
+    config: runtimeConfig,
+    questionId: questionId ?? null,
   });
-
-  if (!question.ok) {
-    return question;
-  }
-  const resolvedRoundType = question.roundType;
+  const roomName = buildInterviewRoomNameForAttempt(startAttemptId);
+  const reservationKey = buildInterviewReservationKey(
+    input.user.id,
+    startAttemptId
+  );
 
   await deps.upsertUser({
     id: input.user.id,
@@ -196,185 +218,389 @@ export async function startInterviewSessionWorkflow(
     return trialGrant;
   }
 
-  const roomName = deps.buildRoomName();
-  const reservationKey = `interview-start:${input.user.id}:${roomName}`;
-  const reservation = await reserveInterviewCredit({
-    userId: input.user.id,
-    reservationKey,
-    deps,
-  });
-
-  if (!reservation.ok) {
-    return reservation;
-  }
-
-  let session:
-    | Awaited<ReturnType<StartInterviewSessionDeps["createSession"]>>
-    | undefined;
-  let deadlineAt: Date | undefined;
-  let connectingVersion: number | undefined;
-
+  let start: PersistedStableInterviewStart;
+  let deadlineAt: Date;
   try {
-    session = await deps.createSession({
+    const existing = await deps.startStore.find({
+      startAttemptId,
       userId: input.user.id,
-      role,
-      roundType: resolvedRoundType,
-      mode,
-      livekitRoomName: roomName,
-      config: { ...runtimeConfig },
+      requestFingerprint,
+    });
+    let question = existing?.question;
+    let resolvedRoundType = existing?.roundType ?? roundType;
+    if (!question) {
+      const selection = await selectQuestion({
+        roundType,
+        questionId,
+        recentDays: getRecentDays(preferences),
+        deps,
+      });
+      if (!selection.ok) return selection;
+      if (!selection.value) throw new Error("interview_start_question_missing");
+      question = selection.value;
+      resolvedRoundType = selection.roundType;
+    }
+    const startedAt = existing?.startedAt ?? deps.now();
+    start = await deps.prepareStart({
+      start: {
+        startAttemptId,
+        userId: input.user.id,
+        requestFingerprint,
+        role,
+        roundType: resolvedRoundType,
+        mode,
+        persona,
+        roomName,
+        config: runtimeConfig,
+        startedAt,
+        question,
+      },
+      reservation: {
+        userId: input.user.id,
+        reservationKey,
+        sessionId: startAttemptId,
+        startContractVersion: 1,
+        startAttemptId,
+      },
     });
     deadlineAt = deriveInterviewDeadlineAt({
-      startedAt: requireSessionStartedAt(session.startedAt),
+      startedAt: start.startedAt,
       durationMinutes: runtimeConfig.duration,
     });
-
-    if (question.value) {
-      await deps.recordQuestionUsage(session.id, question.value.id);
-    }
-
-    const connecting = await requireLifecycleTransition(
-      { sessionId: session.id, to: "connecting" },
-      deps
-    );
-    connectingVersion = connecting.version;
   } catch (error) {
-    if (session) {
-      await terminalizeProviderFailureAndRelease(
-        session.id,
-        reservationKey,
-        deps
-      );
-    } else {
-      await releaseInterviewCredit(reservationKey, deps);
+    if (error instanceof InterviewStartConflictError) {
+      return {
+        ok: false,
+        status: 409,
+        body: {
+          error: "interview_start_attempt_conflict",
+          message: "This interview start attempt does not match the request.",
+          retryable: false,
+        },
+      };
+    }
+    const creditError = mapCreditReservationError(error);
+    if (creditError) return creditError;
+    throw error;
+  }
+
+  const leaseId = deps.createLeaseId();
+  let claim;
+  try {
+    claim = await deps.startStore.claimProvisioning({
+      startAttemptId,
+      userId: input.user.id,
+      requestFingerprint,
+      leaseId,
+      now: deps.now(),
+    });
+  } catch (error) {
+    if (error instanceof InterviewStartFailedError) {
+      try {
+        await cleanupFailedStart(start, reservationKey, input.env, deps);
+      } catch (cleanupError) {
+        console.error(
+          "Failed interview start cleanup remains pending:",
+          getErrorMessage(cleanupError)
+        );
+        return {
+          ok: false,
+          status: 503,
+          body: {
+            error: "interview_start_cleanup_pending",
+            message:
+              "The failed interview is still being reconciled. Please try again.",
+            retryable: true,
+          },
+        };
+      }
+      return {
+        ok: false,
+        status: 409,
+        body: {
+          error: error.message,
+          message: "This interview start attempt cannot be resumed.",
+          retryable: false,
+        },
+      };
+    }
+    if (error instanceof InterviewStartConflictError) {
+      return {
+        ok: false,
+        status: 409,
+        body: {
+          error: error.message,
+          message: "This interview start attempt cannot be resumed.",
+          retryable: false,
+        },
+      };
     }
     throw error;
   }
 
-  if (!deadlineAt) {
-    throw new Error("Interview session deadline was not established");
-  }
-  if (connectingVersion === undefined) {
-    throw new Error("Interview room provisioning lease was not established");
-  }
-
-  const roomMetadata = buildInterviewRoomMetadata({
-    session_id: session.id,
-    transcript_ingest_url: buildTranscriptIngestUrl(
-      input.appBaseUrl ||
-        process.env.NEXT_PUBLIC_APP_URL ||
-        "http://localhost:3000"
-    ),
-    round_type: resolvedRoundType,
-    mode,
-    deadline_at: serializeInterviewDeadlineAt(deadlineAt),
-    config: runtimeConfig,
-    question: question.value
-      ? {
-          id: question.value.id,
-          text: question.value.questionText,
-          company: question.value.company,
-          type: question.value.questionType,
-          askedAt: question.value.askedAt,
-        }
-      : null,
-  });
-
-  let livekitResult;
-  try {
-    livekitResult = await deps.livekitProvider.startInterviewRoom({
-      agentName: input.interviewAgentName,
-      identity: input.user.id,
-      participantName: "Candidate",
-      roomName,
-      metadata: roomMetadata,
-      env: input.env,
-    });
-  } catch (error) {
-    console.error("LiveKit interview start exception:", getErrorMessage(error));
-    await terminalizeCleanupAndRelease(
-      session.id,
-      roomName,
-      input.user.id,
-      input.env,
-      reservationKey,
-      deps
-    );
-    return {
-      ok: false,
-      status: 503,
-      body: { error: "Failed to start voice interview" },
-    };
-  }
-
-  if (!livekitResult.ok) {
-    console.error("LiveKit interview start error:", livekitResult.error);
-    await terminalizeCleanupAndRelease(
-      session.id,
-      roomName,
-      input.user.id,
-      input.env,
-      reservationKey,
-      deps
-    );
-    return {
-      ok: false,
-      status: livekitResult.error.retryable ? 503 : 500,
-      body: { error: "Failed to start voice interview" },
-    };
-  }
-
-  try {
-    await deps.scheduleDeadline({ sessionId: session.id, deadlineAt });
-  } catch (error) {
-    console.error("Interview deadline schedule error:", getErrorMessage(error));
-    await terminalizeCleanupAndRelease(
-      session.id,
-      roomName,
-      input.user.id,
-      input.env,
-      reservationKey,
-      deps
-    );
+  if (claim.disposition === "busy") {
     return {
       ok: false,
       status: 503,
       body: {
-        error: "service_unavailable",
-        message:
-          "Unable to establish the interview time limit. Please try again in a moment.",
+        error: "interview_start_in_progress",
+        message: "The interview is still starting. Please try again.",
+        retryable: true,
+        retryAfterMs: claim.retryAfterMs,
       },
     };
   }
 
-  try {
-    await deps.consumeReservation({
-      reservationKey,
-      idempotencyKey: `consume:${reservationKey}`,
-    });
-    const completed = await deps.completeRoomProvisioning({
-      sessionId: session.id,
-      expectedVersion: connectingVersion,
-    });
-    if (!completed) {
-      throw new Error("room_provisioning_lease_lost");
+  if (claim.disposition === "failed") {
+    try {
+      await cleanupFailedStart(start, reservationKey, input.env, deps);
+    } catch (cleanupError) {
+      console.error(
+        "Expired interview start cleanup remains pending:",
+        getErrorMessage(cleanupError)
+      );
+      return {
+        ok: false,
+        status: 503,
+        body: {
+          error: "interview_start_cleanup_pending",
+          message:
+            "The expired interview start is still being reconciled. Please try again.",
+          retryable: true,
+        },
+      };
     }
-  } catch (error) {
-    console.error("Credit consume error:", getErrorMessage(error));
-    await terminalizeCleanupAndRelease(
-      session.id,
-      roomName,
-      input.user.id,
-      input.env,
-      reservationKey,
-      deps
-    );
+    return terminalStartResult("interview_start_attempt_expired");
+  }
+
+  if (claim.disposition === "claimed") {
+    start = claim.start;
+    try {
+      await requireLifecycleTransition(
+        { sessionId: start.sessionId, to: "connecting" },
+        deps
+      );
+      await deps.scheduleDeadline({ sessionId: start.sessionId, deadlineAt });
+    } catch {
+      await deps.startStore.releaseProvisioningClaim({
+        startAttemptId,
+        leaseId: claim.leaseId,
+      });
+      return {
+        ok: false,
+        status: 503,
+        body: {
+          error: "interview_lifecycle_start_pending",
+          message: "The interview is still starting. Please try again.",
+          retryable: true,
+        },
+      };
+    }
+    const roomMetadata = buildInterviewRoomMetadata({
+      session_id: start.sessionId,
+      candidate_identity: input.user.id,
+      transcript_ingest_url: buildTranscriptIngestUrl(input.appBaseUrl),
+      round_type: start.roundType,
+      mode,
+      deadline_at: serializeInterviewDeadlineAt(deadlineAt),
+      config: runtimeConfig,
+      question: toRoomQuestion(start.question),
+    });
+    let livekitResult;
+    try {
+      livekitResult = await deps.livekitProvider.startInterviewRoom({
+        agentName: input.interviewAgentName,
+        identity: input.user.id,
+        participantName: "Candidate",
+        roomName: start.roomName,
+        metadata: roomMetadata,
+        env: input.env,
+      });
+    } catch (error) {
+      console.error(
+        "LiveKit interview provisioning threw:",
+        getErrorMessage(error)
+      );
+      await safelyTerminateProvisioningRoom(start.roomName, input.env, deps);
+      await deps.startStore.releaseProvisioningClaim({
+        startAttemptId,
+        leaseId: claim.leaseId,
+      });
+      return {
+        ok: false,
+        status: 503,
+        body: {
+          error: "voice_interview_start_unavailable",
+          message: "The voice interview is still starting. Please try again.",
+          retryable: true,
+        },
+      };
+    }
+    if (!livekitResult.ok) {
+      console.error("LiveKit interview start error:", livekitResult.error);
+      if (livekitResult.error.retryable) {
+        await safelyTerminateProvisioningRoom(start.roomName, input.env, deps);
+        await deps.startStore.releaseProvisioningClaim({
+          startAttemptId,
+          leaseId: claim.leaseId,
+        });
+        return {
+          ok: false,
+          status: 503,
+          body: {
+            error: "voice_interview_start_unavailable",
+            message: "The voice interview is still starting. Please try again.",
+            retryable: true,
+          },
+        };
+      }
+      try {
+        await failProvisioningAndRelease({
+          start,
+          leaseId: claim.leaseId,
+          reservationKey,
+          env: input.env,
+          deps,
+        });
+      } catch (cleanupError) {
+        console.error(
+          "Failed interview start cleanup remains pending:",
+          getErrorMessage(cleanupError)
+        );
+        return {
+          ok: false,
+          status: 503,
+          body: {
+            error: "interview_start_cleanup_pending",
+            message:
+              "The failed interview is still being reconciled. Please try again.",
+            retryable: true,
+          },
+        };
+      }
+      return {
+        ok: false,
+        status: 409,
+        body: {
+          error: livekitResult.error.code,
+          message: "The voice interview could not be started safely.",
+          retryable: false,
+        },
+      };
+    }
+
+    try {
+      start = await deps.startStore.markProvisioned({
+        startAttemptId,
+        leaseId: claim.leaseId,
+        provisionedAt: deps.now(),
+      });
+      const completed = await deps.completeRoomProvisioning({
+        sessionId: start.sessionId,
+        expectedVersion: start.lifecycleVersion,
+      });
+      if (!completed) {
+        throw new InterviewProvisioningLeaseLostError();
+      }
+    } catch (error) {
+      console.error(
+        "Interview provisioning acknowledgement error:",
+        getErrorMessage(error)
+      );
+
+      let durableStart: PersistedStableInterviewStart | null;
+      try {
+        durableStart = await deps.startStore.find({
+          startAttemptId,
+          userId: input.user.id,
+          requestFingerprint,
+        });
+      } catch (reconciliationError) {
+        console.error(
+          "Interview provisioning acknowledgement reconciliation error:",
+          getErrorMessage(reconciliationError)
+        );
+        return {
+          ok: false,
+          status: 503,
+          body: {
+            error: "interview_start_acknowledgement_pending",
+            message: "The interview is still starting. Please try again.",
+            retryable: true,
+          },
+        };
+      }
+
+      // A commit can succeed even when its acknowledgement is lost. Preserve
+      // the reconciled ready room rather than deleting durable provider state.
+      if (durableStart?.provisioningState === "ready") {
+        start = durableStart;
+        await deps.markRoomProvisioningSettled(start.sessionId);
+      } else {
+        if (!(error instanceof InterviewProvisioningLeaseLostError)) {
+          await deps.startStore.releaseProvisioningClaim({
+            startAttemptId,
+            leaseId: claim.leaseId,
+          });
+        }
+        try {
+          await deps.terminateRoom({
+            roomName: start.roomName,
+            env: input.env,
+          });
+        } catch (cleanupError) {
+          console.error(
+            "Interview room cleanup after lost provisioning fence failed:",
+            getErrorMessage(cleanupError)
+          );
+        }
+        return {
+          ok: false,
+          status: 503,
+          body: {
+            error: "interview_start_acknowledgement_pending",
+            message: "The interview is still starting. Please try again.",
+            retryable: true,
+          },
+        };
+      }
+    }
+  }
+
+  const tokenNow = deps.now();
+  if (
+    start.provisioningState !== "ready" ||
+    start.endedAt !== null ||
+    !["connecting", "active", "reconnecting"].includes(start.lifecycleState) ||
+    isInterviewDeadlineReached({ deadlineAt, now: tokenNow })
+  ) {
+    return terminalStartResult("interview_start_not_joinable");
+  }
+  const remainingSeconds = Math.floor(
+    (deadlineAt.getTime() - tokenNow.getTime()) / 1000
+  );
+  if (remainingSeconds < 1) {
+    return terminalStartResult("interview_start_not_joinable");
+  }
+
+  const tokenResult = await deps.issueParticipantToken({
+    identity: input.user.id,
+    participantName: "Candidate",
+    roomName: start.roomName,
+    ttlSeconds: Math.min(5 * 60, remainingSeconds),
+    observedAt: tokenNow,
+    expiresAt: deadlineAt,
+    env: input.env,
+  });
+  if (!tokenResult.ok) {
     return {
       ok: false,
       status: 503,
       body: {
-        error: "service_unavailable",
+        error: "interview_token_unavailable",
         message:
-          "Unable to confirm interview credit usage. Please try again in a moment.",
+          "The interview is ready, but access is temporarily unavailable.",
+        retryable: true,
       },
     };
   }
@@ -382,19 +608,17 @@ export async function startInterviewSessionWorkflow(
   return {
     ok: true,
     body: {
-      sessionId: session.id,
-      roomName,
-      token: livekitResult.data.token,
-      url: livekitResult.data.url,
+      sessionId: start.sessionId,
+      roomName: start.roomName,
+      token: tokenResult.data.token,
+      url: tokenResult.data.url,
       deadlineAt: serializeInterviewDeadlineAt(deadlineAt),
       config: preferences,
-      question: question.value
-        ? {
-            id: question.value.id,
-            text: question.value.questionText,
-            company: question.value.company,
-          }
-        : null,
+      question: {
+        id: start.question.id,
+        text: start.question.questionText,
+        company: start.question.company,
+      },
     },
   };
 }
@@ -409,6 +633,7 @@ function buildTranscriptIngestUrl(appBaseUrl: string): string {
 
 export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
   const localCreditBypass = isLocalDevCreditBypassEnabled();
+  const startStore = createDrizzleInterviewStartStore();
   const persistentCreditLedger = localCreditBypass
     ? null
     : createCreditLedgerService({ store: createDrizzleCreditLedgerStore() });
@@ -418,8 +643,30 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
   const settleFailedReservation = createFailedInterviewStartSettler();
 
   return {
-    buildRoomName: buildInterviewRoomName,
-    createSession,
+    startStore,
+    prepareStart: async ({ start, reservation }) => {
+      if (localCreditBypass) {
+        const persisted = await startStore.createOrLoad(start);
+        const localDeadlineAt = deriveInterviewDeadlineAt({
+          startedAt: persisted.startedAt,
+          durationMinutes: normalizeInterviewDurationMinutes(
+            persisted.config.duration
+          ),
+        });
+        await creditLedger.reserveCredit({
+          ...reservation,
+          expiresAt: new Date(localDeadlineAt.getTime() + 10 * 60_000),
+        });
+        return persisted;
+      }
+      const result = await startStore.createOrLoadAndReserve({
+        start,
+        reservation,
+        currentTime: new Date(),
+      });
+      trackReservedCreditEvents(reservation, result.credit);
+      return result.start;
+    },
     getQuestionById,
     getRandomQuestion,
     getRandomRecentQuestion,
@@ -429,15 +676,12 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
       }
       await ensureCanonicalTrialGrant(persistentCreditLedger, userId);
     },
-    reserveCredit: creditLedger.reserveCredit,
-    consumeReservation: creditLedger.consumeReservation,
     releaseReservation: creditLedger.releaseReservation,
     settleFailedReservation,
     scheduleDeadline: scheduleInterviewDeadline,
     terminateRoom: async (input) => {
       const result = await terminateInterviewRoom(input);
       if (!result.ok) throw new Error(result.error.code);
-      return result;
     },
     markRoomCleanupComplete: (sessionId) =>
       reconnectStore.markRoomCleanupComplete({ sessionId }),
@@ -446,14 +690,16 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
     markRoomProvisioningSettled: (sessionId) =>
       reconnectStore.markRoomProvisioningSettled({ sessionId }),
     livekitProvider: createLiveKitInterviewProvider(),
+    issueParticipantToken: issueInterviewParticipantToken,
     transitionLifecycle: transitionInterviewSessionWorkflow,
-    recordQuestionUsage,
     upsertUser,
     resolveRuntimeConfig: (preferences) =>
       resolveInterviewRuntimeConfig(
         preferences,
         interviewRuntimeSettingsFromEnv(process.env)
       ),
+    now: () => new Date(),
+    createLeaseId: randomUUID,
   };
 }
 
@@ -475,30 +721,6 @@ async function ensureTrialGrantForStart(
           "Unable to activate interview credits. Please try again in a moment.",
       },
     };
-  }
-}
-
-function requireSessionStartedAt(startedAt: Date | null): Date {
-  if (!startedAt) {
-    throw new Error("Interview session is missing its server start time");
-  }
-  return startedAt;
-}
-
-async function attemptProvisionedRoomCleanup(
-  sessionId: string,
-  roomName: string,
-  participantIdentity: string,
-  env: LiveKitEnvironment,
-  deps: StartInterviewSessionDeps
-): Promise<boolean> {
-  try {
-    await deps.terminateRoom({ roomName, participantIdentity, env });
-    await deps.markRoomCleanupComplete(sessionId);
-    return true;
-  } catch (error) {
-    console.error("Interview room cleanup error:", getErrorMessage(error));
-    return false;
   }
 }
 
@@ -544,63 +766,9 @@ async function terminalizeProviderFailure(
   );
 }
 
-async function terminalizeProviderFailureAndRelease(
-  sessionId: string,
-  reservationKey: string,
-  deps: StartInterviewSessionDeps
-): Promise<void> {
-  let terminalized = false;
-  try {
-    await terminalizeProviderFailure(sessionId, deps);
-    terminalized = true;
-  } finally {
-    if (terminalized && (await releaseInterviewCredit(reservationKey, deps))) {
-      await deps.markRoomProvisioningSettled(sessionId);
-    } else if (!terminalized) {
-      await releaseInterviewCredit(reservationKey, deps);
-    }
-  }
-}
-
-async function terminalizeCleanupAndRelease(
-  sessionId: string,
-  roomName: string,
-  participantIdentity: string,
-  env: LiveKitEnvironment,
-  reservationKey: string,
-  deps: StartInterviewSessionDeps
-): Promise<void> {
-  let lifecycleError: unknown;
-  try {
-    await terminalizeProviderFailure(sessionId, deps);
-  } catch (error) {
-    lifecycleError = error;
-  }
-
-  let cleanupSucceeded = false;
-  let creditSettled = false;
-  try {
-    cleanupSucceeded = await attemptProvisionedRoomCleanup(
-      sessionId,
-      roomName,
-      participantIdentity,
-      env,
-      deps
-    );
-  } finally {
-    creditSettled = await releaseInterviewCredit(reservationKey, deps);
-  }
-  if (creditSettled && cleanupSucceeded && !lifecycleError) {
-    await deps.markRoomProvisioningSettled(sessionId);
-  }
-
-  if (lifecycleError) {
-    throw lifecycleError;
-  }
-}
-
 type ParsedStartInterviewBody = {
   ok: true;
+  startAttemptId: string;
   roundType: RoundType;
   mode: "voice_video" | "text";
   role: "pm";
@@ -611,6 +779,13 @@ type ParsedStartInterviewBody = {
 function parseStartInterviewBody(
   body: StartInterviewSessionBody
 ): ParsedStartInterviewBody | StartInterviewSessionErrorResult {
+  if (typeof body.startAttemptId !== "string" || !isUuid(body.startAttemptId)) {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: "startAttemptId must be a UUID", retryable: false },
+    };
+  }
   if (!body.roundType) {
     return {
       ok: false,
@@ -637,6 +812,7 @@ function parseStartInterviewBody(
 
   return {
     ok: true,
+    startAttemptId: body.startAttemptId,
     roundType: body.roundType,
     mode: body.mode === "text" ? "text" : "voice_video",
     role: "pm",
@@ -646,55 +822,22 @@ function parseStartInterviewBody(
   };
 }
 
-async function reserveInterviewCredit({
-  userId,
-  reservationKey,
-  deps,
-}: {
-  userId: string;
-  reservationKey: string;
-  deps: StartInterviewSessionDeps;
-}): Promise<{ ok: true } | StartInterviewSessionErrorResult> {
-  try {
-    await deps.reserveCredit({ userId, reservationKey });
-    return { ok: true };
-  } catch (error) {
-    if (isInsufficientCreditsError(error)) {
-      return {
-        ok: false,
-        status: 402,
-        body: {
-          error: "no_credits_remaining",
-          message: "You need an interview credit to start a full interview.",
-          upgradeUrl: "/pricing",
-        },
-      };
-    }
-
-    console.error("Credit reservation error:", getErrorMessage(error));
+function mapCreditReservationError(
+  error: unknown
+): StartInterviewSessionErrorResult | null {
+  if (isInsufficientCreditsError(error)) {
     return {
       ok: false,
-      status: 503,
+      status: 402,
       body: {
-        error: "service_unavailable",
-        message:
-          "Unable to verify interview credits. Please try again in a moment.",
+        error: "no_credits_remaining",
+        message: "You need an interview credit to start a full interview.",
+        upgradeUrl: "/pricing",
+        retryable: false,
       },
     };
   }
-}
-
-async function releaseInterviewCredit(
-  reservationKey: string,
-  deps: StartInterviewSessionDeps
-): Promise<boolean> {
-  try {
-    await deps.settleFailedReservation(reservationKey);
-    return true;
-  } catch (error) {
-    console.error("Credit release error:", getErrorMessage(error));
-    return false;
-  }
+  return null;
 }
 
 async function selectQuestion({
@@ -803,6 +946,115 @@ function logQuestion(
   });
 }
 
+export function fingerprintStartRequest(
+  input: Record<string, unknown>
+): string {
+  return createHash("sha256").update(stableSerialize(input)).digest("hex");
+}
+
+export function buildInterviewRoomNameForAttempt(
+  startAttemptId: string
+): string {
+  return `interview-${startAttemptId}`;
+}
+
+export function buildInterviewReservationKey(
+  userId: string,
+  startAttemptId: string
+): string {
+  return `interview-start:${userId}:${startAttemptId}`;
+}
+
+function toRoomQuestion(question: QuestionBankRecord) {
+  return {
+    id: question.id,
+    text: question.questionText,
+    company: question.company,
+    type: question.questionType,
+    askedAt: question.askedAt,
+  };
+}
+
+async function failProvisioningAndRelease({
+  start,
+  leaseId,
+  reservationKey,
+  env,
+  deps,
+}: {
+  start: PersistedStableInterviewStart;
+  leaseId: string;
+  reservationKey: string;
+  env: LiveKitEnvironment;
+  deps: StartInterviewSessionDeps;
+}) {
+  await deps.startStore.markProvisioningFailed({
+    startAttemptId: start.startAttemptId,
+    leaseId,
+  });
+  await cleanupFailedStart(start, reservationKey, env, deps);
+}
+
+async function cleanupFailedStart(
+  start: PersistedStableInterviewStart,
+  reservationKey: string,
+  env: LiveKitEnvironment,
+  deps: StartInterviewSessionDeps
+) {
+  await deps.terminateRoom({ roomName: start.roomName, env });
+  await terminalizeProviderFailure(start.sessionId, deps);
+  await deps.releaseReservation({
+    reservationKey,
+    idempotencyKey: `release:${reservationKey}`,
+  });
+}
+
+function terminalStartResult(error: string): StartInterviewSessionErrorResult {
+  return {
+    ok: false,
+    status: 409,
+    body: {
+      error,
+      message: "This interview start attempt is no longer active.",
+      retryable: false,
+    },
+  };
+}
+
+async function safelyTerminateProvisioningRoom(
+  roomName: string,
+  env: LiveKitEnvironment,
+  deps: StartInterviewSessionDeps
+): Promise<void> {
+  try {
+    await deps.terminateRoom({ roomName, env });
+  } catch (error) {
+    console.error(
+      "Interview provisioning room cleanup failed:",
+      getErrorMessage(error)
+    );
+  }
+}
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableSerialize).join(",")}]`;
+  }
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -814,3 +1066,4 @@ function isInsufficientCreditsError(error: unknown): boolean {
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+import { createHash, randomUUID } from "node:crypto";

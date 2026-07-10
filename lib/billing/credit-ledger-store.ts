@@ -23,8 +23,8 @@ import type {
   LedgerReservationAllocation,
 } from "./credits";
 
-type CreditLedgerDatabase = typeof db;
-type CreditLedgerTransactionDatabase = Parameters<
+export type CreditLedgerDatabase = typeof db;
+export type CreditLedgerTransactionDatabase = Parameters<
   Parameters<CreditLedgerDatabase["transaction"]>[0]
 >[0];
 type CreditLedgerExecutor =
@@ -58,63 +58,77 @@ export function createDrizzleCreditLedgerStore(
       userId: string,
       work: (transaction: CreditLedgerTransaction) => Promise<T>
     ): Promise<T> {
-      return database.transaction(async (transaction) => {
-        const users = await transaction
-          .select({ id: appUser.id })
-          .from(appUser)
-          .where(eq(appUser.id, userId))
-          .limit(1)
-          .for("update");
-        if (!users[0]) throw new Error("credit_ledger_user_not_found");
-
-        const tombstones = await transaction
-          .select({ userId: accountDeletionRequest.userId })
-          .from(accountDeletionRequest)
-          .where(eq(accountDeletionRequest.userId, userId))
-          .limit(1);
-        if (tombstones[0]) throw new Error("account_deletion_pending");
-
-        const lease: CreditLedgerTransactionLease = {
-          active: true,
-          accepting: true,
-          inFlight: new Set(),
-        };
-        const transactionOperations = createDrizzleCreditLedgerTransaction(
-          transaction,
-          userId,
-          lease
-        );
-        const scopedTransaction = createCallbackScopedTransaction(
-          transactionOperations,
-          lease
-        );
-        let callbackResult: T | undefined;
-        let callbackError: unknown;
-        let callbackFailed = false;
-        try {
-          callbackResult = await work(scopedTransaction);
-        } catch (error) {
-          callbackFailed = true;
-          callbackError = error;
-        } finally {
-          lease.accepting = false;
-          const operationResults = await Promise.allSettled([
-            ...lease.inFlight,
-          ]);
-          lease.active = false;
-          if (callbackFailed) throw callbackError;
-
-          const failedOperation = operationResults.find(
-            (result) => result.status === "rejected"
-          );
-          if (failedOperation?.status === "rejected") {
-            throw failedOperation.reason;
-          }
-        }
-        return callbackResult as T;
-      });
+      return withDrizzleCreditLedgerUserTransaction(
+        userId,
+        ({ ledger }) => work(ledger),
+        database
+      );
     },
   };
+}
+
+/**
+ * Runs a cross-domain mutation behind the ledger's per-user lock. Domain rows
+ * must be acquired only after this helper has locked app_user.
+ */
+export async function withDrizzleCreditLedgerUserTransaction<T>(
+  userId: string,
+  work: (context: {
+    database: CreditLedgerTransactionDatabase;
+    ledger: CreditLedgerTransaction;
+  }) => Promise<T>,
+  database: CreditLedgerDatabase = db
+): Promise<T> {
+  return database.transaction(async (transaction) => {
+    const users = await transaction
+      .select({ id: appUser.id })
+      .from(appUser)
+      .where(eq(appUser.id, userId))
+      .limit(1)
+      .for("update");
+    if (!users[0]) throw new Error("credit_ledger_user_not_found");
+
+    const tombstones = await transaction
+      .select({ userId: accountDeletionRequest.userId })
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1);
+    if (tombstones[0]) throw new Error("account_deletion_pending");
+
+    const lease: CreditLedgerTransactionLease = {
+      active: true,
+      accepting: true,
+      inFlight: new Set(),
+    };
+    const operations = createDrizzleCreditLedgerTransaction(
+      transaction,
+      userId,
+      lease
+    );
+    const ledger = createCallbackScopedTransaction(operations, lease);
+    let callbackResult: T | undefined;
+    let callbackError: unknown;
+    let callbackFailed = false;
+    try {
+      callbackResult = await work({ database: transaction, ledger });
+    } catch (error) {
+      callbackFailed = true;
+      callbackError = error;
+    } finally {
+      lease.accepting = false;
+      const operationResults = await Promise.allSettled([...lease.inFlight]);
+      lease.active = false;
+      if (callbackFailed) throw callbackError;
+
+      const failedOperation = operationResults.find(
+        (result) => result.status === "rejected"
+      );
+      if (failedOperation?.status === "rejected") {
+        throw failedOperation.reason;
+      }
+    }
+    return callbackResult as T;
+  });
 }
 
 function createCallbackScopedTransaction(
@@ -622,6 +636,8 @@ function mapReservation(row: CreditReservationRow): LedgerCreditReservation {
     status: row.status as CreditReservationStatus,
     credits: row.credits,
     sessionId: row.sessionId,
+    startContractVersion: row.startContractVersion,
+    startAttemptId: row.startAttemptId,
     expiresAt: row.expiresAt,
     metadata: row.metadata ?? null,
     createdAt: row.createdAt,

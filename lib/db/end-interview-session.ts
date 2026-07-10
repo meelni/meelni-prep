@@ -282,13 +282,6 @@ export async function finalizeInterviewSession(
     };
 
     if (!wasTerminal) {
-      if (state !== "ending" && validation.stats.totalTurns > 0) {
-        if (state === "created") await advance("connecting", null);
-        if (state === "connecting" || state === "reconnecting") {
-          await advance("active", null);
-        }
-      }
-
       if (state !== "ending") {
         const requestedReason = resolveInterviewTerminalReason(
           validation,

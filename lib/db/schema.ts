@@ -12,15 +12,12 @@ import {
   index,
   uniqueIndex,
   primaryKey,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
-import type {
-  InterviewLifecycleState,
-  InterviewTerminalReason,
-  LegacyInterviewSessionStatus,
-} from "@meelni/core";
 import { appUser } from "./schema-core";
+import { interviewSession } from "./schema-session";
 
 // ==================== Pricing Schema Import ====================
 // Phase 0.5A: Import pricing tables for subscription management
@@ -56,161 +53,8 @@ export {
   creditReservation,
   creditReservationGrant,
   creditTransaction,
+  interviewSession,
 };
-
-// Interview sessions
-export const interviewSession = pgTable(
-  "interview_session",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .references(() => appUser.id)
-      .notNull(),
-    role: text("role").default("pm"),
-    roundType: text("round_type").notNull(),
-    mode: text("mode").notNull(),
-    persona: text("persona"),
-    livekitRoomName: text("livekit_room_name"),
-    config: jsonb("config"),
-    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow(),
-    endedAt: timestamp("ended_at", { withTimezone: true }),
-
-    // Canonical lifecycle state. The legacy status column remains during the
-    // staged workflow migration so existing readers and writers keep working.
-    lifecycleState: text("lifecycle_state")
-      .$type<InterviewLifecycleState>()
-      .default("created")
-      .notNull(),
-    lifecycleVersion: integer("lifecycle_version").default(1).notNull(),
-    terminalReason: text("terminal_reason").$type<InterviewTerminalReason>(),
-    activatedAt: timestamp("activated_at", { withTimezone: true }),
-    endingAt: timestamp("ending_at", { withTimezone: true }),
-    reconnectDeadlineAt: timestamp("reconnect_deadline_at", {
-      withTimezone: true,
-    }),
-    reconnectDeadlineOwner: text("reconnect_deadline_owner").$type<
-      "reconnect_grace" | "hard_deadline"
-    >(),
-    roomCleanupPending: boolean("room_cleanup_pending")
-      .default(false)
-      .notNull(),
-    roomCleanupAttemptedAt: timestamp("room_cleanup_attempted_at", {
-      withTimezone: true,
-    }),
-    roomProvisioningPending: boolean("room_provisioning_pending")
-      .default(false)
-      .notNull(),
-    roomProvisioningStartedAt: timestamp("room_provisioning_started_at", {
-      withTimezone: true,
-    }),
-    presenceReconciledAt: timestamp("presence_reconciled_at", {
-      withTimezone: true,
-    }),
-    runtimeReadyAt: timestamp("runtime_ready_at", { withTimezone: true }),
-    lastTransportEventAt: timestamp("last_transport_event_at", {
-      withTimezone: true,
-    }),
-    lastTransportEventId: text("last_transport_event_id"),
-    lastTransportEventName: text("last_transport_event_name"),
-    lastTransitionAt: timestamp("last_transition_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    deadlineRoomCleanupStatus: text("deadline_room_cleanup_status").$type<
-      "pending" | "deleted" | "already_absent"
-    >(),
-    deadlineRoomCleanupAcknowledgedAt: timestamp(
-      "deadline_room_cleanup_acknowledged_at",
-      { withTimezone: true }
-    ),
-
-    // P1-001: Session validation and status tracking
-    status: text("status")
-      .$type<LegacyInterviewSessionStatus>()
-      .default("in_progress")
-      .notNull(),
-    totalTurns: integer("total_turns").default(0),
-    totalWords: integer("total_words").default(0),
-    durationSeconds: integer("duration_seconds"),
-  },
-  (table) => ({
-    roundTypeCheck: check(
-      "round_type_check",
-      sql`${table.roundType} IN ('behavioral', 'product_sense', 'execution', 'strategy')`
-    ),
-    modeCheck: check(
-      "mode_check",
-      sql`${table.mode} IN ('voice_video', 'text')`
-    ),
-    statusCheck: check(
-      "status_check",
-      sql`${table.status} IN ('in_progress', 'completed', 'abandoned', 'too_short', 'error')`
-    ),
-    lifecycleStateCheck: check(
-      "interview_session_lifecycle_state_check",
-      sql`${table.lifecycleState} IN ('created', 'connecting', 'active', 'reconnecting', 'ending', 'completed', 'abandoned', 'failed')`
-    ),
-    terminalReasonCheck: check(
-      "interview_session_terminal_reason_check",
-      sql`${table.terminalReason} IS NULL OR ${table.terminalReason} IN ('user_end', 'time_limit', 'disconnect_timeout', 'provider_failure', 'insufficient_signal', 'legacy_unknown')`
-    ),
-    lifecycleVersionCheck: check(
-      "interview_session_lifecycle_version_check",
-      sql`${table.lifecycleVersion} >= 1`
-    ),
-    terminalReasonStateCheck: check(
-      "interview_session_terminal_reason_state_check",
-      sql`(${table.lifecycleState} IN ('ending', 'completed', 'abandoned', 'failed') AND ${table.terminalReason} IS NOT NULL) OR (${table.lifecycleState} NOT IN ('ending', 'completed', 'abandoned', 'failed') AND ${table.terminalReason} IS NULL)`
-    ),
-    endingAtStateCheck: check(
-      "interview_session_ending_at_state_check",
-      sql`${table.endingAt} IS NULL OR ${table.lifecycleState} IN ('ending', 'completed', 'abandoned', 'failed')`
-    ),
-    roomProvisioningClaimCheck: check(
-      "interview_session_room_provisioning_claim_check",
-      sql`(${table.roomProvisioningPending} AND ${table.roomProvisioningStartedAt} IS NOT NULL) OR (NOT ${table.roomProvisioningPending} AND ${table.roomProvisioningStartedAt} IS NULL)`
-    ),
-    reconnectDeadlineOwnerCheck: check(
-      "interview_session_reconnect_deadline_owner_check",
-      sql`(${table.reconnectDeadlineAt} IS NULL AND ${table.reconnectDeadlineOwner} IS NULL) OR (${table.reconnectDeadlineAt} IS NOT NULL AND ${table.reconnectDeadlineOwner} IN ('reconnect_grace', 'hard_deadline'))`
-    ),
-    deadlineRoomCleanupStatusCheck: check(
-      "interview_session_deadline_room_cleanup_status_check",
-      sql`${table.deadlineRoomCleanupStatus} IS NULL OR ${table.deadlineRoomCleanupStatus} IN ('pending', 'deleted', 'already_absent')`
-    ),
-    deadlineRoomCleanupAcknowledgementCheck: check(
-      "interview_session_deadline_room_cleanup_ack_check",
-      sql`(${table.deadlineRoomCleanupStatus} IN ('deleted', 'already_absent') AND ${table.deadlineRoomCleanupAcknowledgedAt} IS NOT NULL) OR (${table.deadlineRoomCleanupStatus} IS NULL OR ${table.deadlineRoomCleanupStatus} = 'pending') AND ${table.deadlineRoomCleanupAcknowledgedAt} IS NULL`
-    ),
-    // P1-001: Indexes for performance
-    userIdStatusIdx: index("interview_session_user_status_idx").on(
-      table.userId,
-      table.status
-    ),
-    endedAtIdx: index("interview_session_ended_at_idx").on(table.endedAt),
-    lifecycleStateTransitionIdx: index(
-      "interview_session_lifecycle_state_transition_idx"
-    ).on(table.lifecycleState, table.lastTransitionAt),
-    reconnectDeadlineIdx: index("interview_session_reconnect_deadline_idx").on(
-      table.lifecycleState,
-      table.reconnectDeadlineAt
-    ),
-    presenceReconciliationIdx: index(
-      "interview_session_presence_reconciliation_idx"
-    ).on(table.lifecycleState, table.presenceReconciledAt),
-    roomCleanupRecoveryIdx: index(
-      "interview_session_room_cleanup_recovery_idx"
-    ).on(table.roomCleanupPending, table.roomCleanupAttemptedAt),
-    roomProvisioningRecoveryIdx: index(
-      "interview_session_room_provisioning_recovery_idx"
-    ).on(table.roomProvisioningPending, table.roomProvisioningStartedAt),
-    userLifecycleStateIdx: index(
-      "interview_session_user_lifecycle_state_idx"
-    ).on(table.userId, table.lifecycleState),
-    deadlineRoomCleanupIdx: index(
-      "interview_session_deadline_room_cleanup_idx"
-    ).on(table.deadlineRoomCleanupStatus, table.terminalReason),
-  })
-);
 
 // Shared, database-backed budget for LiveKit reconnect token attempts.
 // The user id comes from Supabase Auth and intentionally has no app_user FK:
@@ -602,14 +446,44 @@ export const sessionQuestion = pgTable(
     questionId: uuid("question_id")
       .references(() => interviewQuestion.id)
       .notNull(),
+    startContractVersion: integer("start_contract_version")
+      .default(0)
+      .notNull(),
+    startAttemptId: uuid("start_attempt_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
-    // Index for looking up questions by session
-    sessionIdx: index("session_question_session_idx").on(table.sessionId),
+    // A stable attempt resolves and persists exactly one question.
+    sessionUnique: uniqueIndex("session_question_session_idx").on(
+      table.sessionId
+    ),
     // Index for looking up which sessions used a question
     questionIdx: index("session_question_question_idx").on(table.questionId),
-    // Unique constraint: one question per session
+    startContractVersionCheck: check(
+      "session_question_start_contract_version_check",
+      sql`${table.startContractVersion} IN (0, 1)`
+    ),
+    startContractShapeCheck: check(
+      "session_question_start_contract_shape_check",
+      sql`(
+        ${table.startContractVersion} = 0 AND
+        ${table.startAttemptId} IS NULL
+      ) OR (
+        ${table.startContractVersion} = 1 AND
+        ${table.startAttemptId} IS NOT NULL AND
+        ${table.sessionId} = ${table.startAttemptId}
+      )`
+    ),
+    sessionAttemptReference: foreignKey({
+      name: "session_question_session_start_attempt_fk",
+      columns: [table.sessionId, table.startAttemptId],
+      foreignColumns: [interviewSession.id, interviewSession.startAttemptId],
+    })
+      .onUpdate("no action")
+      .onDelete("cascade"),
+    stableAttemptUnique: uniqueIndex("session_question_start_attempt_idx")
+      .on(table.startAttemptId)
+      .where(sql`${table.startContractVersion} = 1`),
     sessionQuestionUnique: index("session_question_session_question_idx").on(
       table.sessionId,
       table.questionId

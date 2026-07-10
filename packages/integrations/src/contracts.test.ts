@@ -176,31 +176,22 @@ test("buildInterviewRoomName creates deterministic interview room names for test
   assert.match(name, /^interview-1782600000000-/);
 });
 
-test("LiveKit provider creates room, dispatches agent, and mints token", async () => {
+test("LiveKit provider creates and reconciles one interview room and dispatch", async () => {
   const fixture = createLiveKitStartFixture();
   const calls: string[] = [];
-  const constructorCalls: unknown[] = [];
-  const grants: unknown[] = [];
   const roomInputs: unknown[] = [];
+  const dispatches: Array<{ id: string; room: string; agentName: string }> = [];
   const provider: LiveKitInterviewProvider = createLiveKitInterviewProvider({
-    accessTokenFactory: class {
-      constructor(...args: unknown[]) {
-        constructorCalls.push(args);
-      }
-
-      addGrant(grant: unknown) {
-        grants.push(grant);
-        calls.push("grant");
-      }
-
-      async toJwt() {
-        calls.push("jwt");
-        return "token-1";
-      }
-    },
     agentDispatchClientFactory: () => ({
-      createDispatch: async () => {
+      listDispatch: async () => {
+        calls.push("list-dispatch");
+        return dispatches;
+      },
+      createDispatch: async (roomName, agentName) => {
         calls.push("dispatch");
+        const dispatch = { id: "dispatch-1", room: roomName, agentName };
+        dispatches.push(dispatch);
+        return dispatch;
       },
     }),
     roomServiceClientFactory: () => ({
@@ -208,6 +199,12 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
         roomInputs.push(input);
         calls.push("room");
       },
+      listRooms: async () => [
+        {
+          name: fixture.input.roomName,
+          metadata: JSON.stringify(fixture.input.metadata),
+        },
+      ],
     }),
   });
 
@@ -217,11 +214,15 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
   if (result.ok) {
     assert.deepEqual(result.data, {
       roomName: fixture.input.roomName,
-      token: "token-1",
-      url: fixture.input.env.url,
     });
   }
   assert.deepEqual(calls, ["grant", "jwt", "room", "dispatch"]);
+  assert.deepEqual(calls, [
+    "room",
+    "list-dispatch",
+    "dispatch",
+    "list-dispatch",
+  ]);
   assert.deepEqual(roomInputs, [
     {
       name: fixture.input.roomName,
@@ -231,27 +232,143 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
       departureTimeout: 60,
     },
   ]);
-  assert.deepEqual(constructorCalls, [
+});
+
+test("LiveKit provider reuses the one matching room dispatch", async () => {
+  const fixture = createLiveKitStartFixture();
+  let createDispatchCalls = 0;
+  const provider = createLiveKitInterviewProvider({
+    agentDispatchClientFactory: () => ({
+      listDispatch: async () => [
+        {
+          id: "dispatch-existing",
+          agentName: fixture.input.agentName,
+          room: fixture.input.roomName,
+        },
+      ],
+      createDispatch: async (room, agentName) => {
+        createDispatchCalls += 1;
+        return { id: "dispatch-new", room, agentName };
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        throw new Error("room already exists");
+      },
+      listRooms: async () => [
+        {
+          name: fixture.input.roomName,
+          metadata: JSON.stringify(fixture.input.metadata),
+        },
+      ],
+    }),
+  });
+
+  const result = await provider.startInterviewRoom(fixture.input);
+
+  assert.equal(result.ok, true);
+  assert.equal(createDispatchCalls, 0);
+});
+
+test("LiveKit provider fails closed for duplicate or mismatched dispatches", async () => {
+  const fixture = createLiveKitStartFixture();
+  const dispatchCases = [
     [
-      fixture.input.env.apiKey,
-      fixture.input.env.apiSecret,
       {
-        identity: fixture.input.identity,
-        name: fixture.input.participantName,
-        ttl: 300,
+        id: "dispatch-1",
+        agentName: fixture.input.agentName,
+        room: fixture.input.roomName,
+      },
+      {
+        id: "dispatch-2",
+        agentName: fixture.input.agentName,
+        room: fixture.input.roomName,
       },
     ],
-  ]);
-  assert.deepEqual(grants, [
-    {
-      room: fixture.input.roomName,
-      roomJoin: true,
-      canPublish: true,
-      canPublishData: false,
-      canPublishSources: [2],
-      canSubscribe: true,
-    },
-  ]);
+    [
+      {
+        id: "dispatch-1",
+        agentName: "another-agent",
+        room: fixture.input.roomName,
+      },
+    ],
+  ];
+
+  for (const dispatches of dispatchCases) {
+    const provider = createLiveKitInterviewProvider({
+      agentDispatchClientFactory: () => ({
+        listDispatch: async () => dispatches,
+        createDispatch: async (room, agentName) => ({
+          id: "unexpected",
+          room,
+          agentName,
+        }),
+      }),
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        listRooms: async () => [
+          {
+            name: fixture.input.roomName,
+            metadata: JSON.stringify(fixture.input.metadata),
+          },
+        ],
+      }),
+    });
+
+    const result = await provider.startInterviewRoom(fixture.input);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.error.code, "livekit_agent_dispatch_conflict");
+      assert.equal(result.error.retryable, false);
+    }
+  }
+});
+
+test("LiveKit provider verifies dispatch uniqueness after creation", async () => {
+  const fixture = createLiveKitStartFixture();
+  let listCalls = 0;
+  const provider = createLiveKitInterviewProvider({
+    agentDispatchClientFactory: () => ({
+      listDispatch: async () => {
+        listCalls += 1;
+        return listCalls === 1
+          ? []
+          : [
+              {
+                id: "dispatch-1",
+                room: fixture.input.roomName,
+                agentName: fixture.input.agentName,
+              },
+              {
+                id: "dispatch-race",
+                room: fixture.input.roomName,
+                agentName: fixture.input.agentName,
+              },
+            ];
+      },
+      createDispatch: async (room, agentName) => ({
+        id: "dispatch-1",
+        room,
+        agentName,
+      }),
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => undefined,
+      listRooms: async () => [
+        {
+          name: fixture.input.roomName,
+          metadata: JSON.stringify(fixture.input.metadata),
+        },
+      ],
+    }),
+  });
+
+  const result = await provider.startInterviewRoom(fixture.input);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_agent_dispatch_conflict");
+  }
 });
 
 test("LiveKit token signing failure occurs before room or dispatch side effects", async () => {

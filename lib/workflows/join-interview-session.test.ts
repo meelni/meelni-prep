@@ -167,6 +167,36 @@ test("join workflow allows one token-second before the deadline and rejects at t
           config: { duration: 30 },
           databaseNow: new Date("2026-07-09T12:29:59.000Z"),
         }),
+test("join workflow caps tokens to whole remaining seconds and never crosses the deadline", async () => {
+  const session = createSession({
+    startedAt: new Date("2026-07-09T12:00:00.000Z"),
+    config: { duration: 30 },
+  });
+  const issuedTtls: number[] = [];
+  const before = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () => session,
+      now: () => new Date("2026-07-09T12:28:29.001Z"),
+      issueToken: async (input) => {
+        issuedTtls.push(input.ttlSeconds);
+        return {
+          ok: true,
+          provider: "livekit",
+          data: {
+            token: "signed-token",
+            url: input.env.url,
+            roomName: input.roomName,
+          },
+        };
+      },
+    })
+  );
+  const subSecond = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () => session,
+      now: () => new Date("2026-07-09T12:29:59.001Z"),
     })
   );
   const at = await joinInterviewSessionWorkflow(
@@ -182,11 +212,15 @@ test("join workflow allows one token-second before the deadline and rejects at t
   );
 
   assert.equal(before.ok, true);
+  assert.deepEqual(issuedTtls, [90]);
+  assert.equal(subSecond.ok, false);
   assert.equal(at.ok, false);
+  if (!subSecond.ok) assert.equal(subSecond.body.error, "session_not_joinable");
   if (!at.ok) assert.equal(at.body.error, "session_not_joinable");
 });
 
 test("join workflow binds token lifetime to reconnect expiry", async () => {
+test("join workflow caps reconnect tokens to the earlier reconnect deadline", async () => {
   const reconnectDeadlineAt = new Date("2026-07-09T12:20:30.000Z");
   const before = await joinInterviewSessionWorkflow(
     { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
@@ -197,6 +231,15 @@ test("join workflow binds token lifetime to reconnect expiry", async () => {
           reconnectDeadlineAt,
           databaseNow: new Date(reconnectDeadlineAt.getTime() - 1_000),
         }),
+      getSession: async () => session,
+      now: () => new Date(reconnectDeadlineAt.getTime() - 1_001),
+    })
+  );
+  const subSecond = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () => session,
+      now: () => new Date(reconnectDeadlineAt.getTime() - 999),
     })
   );
   const at = await joinInterviewSessionWorkflow(
@@ -216,11 +259,53 @@ test("join workflow binds token lifetime to reconnect expiry", async () => {
     assert.equal(before.body.expiresAt, reconnectDeadlineAt.toISOString());
     assert.equal(before.body.authorizationVersion, 3);
   }
+  assert.equal(subSecond.ok, false);
   assert.equal(at.ok, false);
+  if (!subSecond.ok) assert.equal(subSecond.body.error, "session_not_joinable");
   if (!at.ok) assert.equal(at.body.error, "session_not_joinable");
 });
 
 test("a corrupt reconnect deadline cannot extend credentials past the hard deadline", async () => {
+test("version-one sessions require durable ready provisioning evidence", async () => {
+  const cases: Array<Partial<JoinableInterviewSession>> = [
+    { startContractVersion: 1, provisioningState: "pending" },
+    { startContractVersion: 1, provisioningState: "provisioning" },
+    { startContractVersion: 1, provisioningState: "failed" },
+    {
+      startContractVersion: 1,
+      provisioningState: "ready",
+      provisionedAt: null,
+    },
+    { startContractVersion: 2 },
+  ];
+
+  for (const fields of cases) {
+    const result = await joinInterviewSessionWorkflow(
+      { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+      createDeps({
+        getSession: async () => createSession(fields),
+      })
+    );
+
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.body.error, "session_not_joinable");
+  }
+
+  const ready = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () =>
+        createSession({
+          startContractVersion: 1,
+          provisioningState: "ready",
+          provisionedAt: new Date("2026-07-09T12:00:01.000Z"),
+        }),
+    })
+  );
+  assert.equal(ready.ok, true);
+});
+
+test("version-zero sessions remain joinable without provisioning evidence", async () => {
   const result = await joinInterviewSessionWorkflow(
     { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
     createDeps({
@@ -230,6 +315,9 @@ test("a corrupt reconnect deadline cannot extend credentials past the hard deadl
           lifecycleVersion: 4,
           reconnectDeadlineAt: new Date("2026-07-09T12:31:00.000Z"),
           databaseNow: new Date("2026-07-09T12:29:50.000Z"),
+          startContractVersion: 0,
+          provisioningState: "legacy",
+          provisionedAt: null,
         }),
     })
   );
@@ -329,6 +417,16 @@ test("a token is withheld when database time advances through its exp during sig
     audits.at(-1)?.reason,
     "livekit_token_expiry_invalid_after_authorization"
   );
+});
+
+test("join workflow fails closed on an invalid authorization clock", async () => {
+  const result = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({ now: () => new Date(Number.NaN) })
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.body.error, "session_not_joinable");
 });
 
 test("join workflow rejects sessions without voice-room entitlement", async () => {
