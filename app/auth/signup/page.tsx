@@ -99,7 +99,7 @@ function SignUpContent() {
 
       analytics.track("auth_signup_failed", {
         method: "email",
-        error: errorMessage,
+        error_code: "signup_rejected",
       });
     }
   };

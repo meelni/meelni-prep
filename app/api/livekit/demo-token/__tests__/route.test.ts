@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getLiveKitAgentName: vi.fn(),
   getLiveKitEnvironment: vi.fn(),
   resolvePublicDemoIdentity: vi.fn(),
+  resolveTrustedAnalyticsConsentState: vi.fn(),
   startPublicDemoWorkflow: vi.fn(),
 }));
 
@@ -34,6 +35,11 @@ vi.mock("@/lib/security/public-demo-identity", () => ({
 vi.mock("@/lib/workflows/start-public-demo", () => ({
   getPublicDemoDeploymentScope: () => "preview",
   startPublicDemoWorkflow: mocks.startPublicDemoWorkflow,
+}));
+
+vi.mock("@/lib/analytics/trusted-consent", () => ({
+  resolveTrustedAnalyticsConsentState:
+    mocks.resolveTrustedAnalyticsConsentState,
 }));
 
 import { POST } from "../route";
@@ -65,6 +71,16 @@ describe("POST /api/livekit/demo-token", () => {
       deviceCookie: "signed-device",
       sessionCookie: "signed-session",
       identifiers: { ipHash: "a".repeat(64), deviceHash: "b".repeat(64) },
+    });
+    mocks.resolveTrustedAnalyticsConsentState.mockResolvedValue({
+      consent: {
+        decision: "undecided",
+        policyVersion: null,
+        source: null,
+        decidedAt: null,
+        scope: null,
+      },
+      resolved: true,
     });
   });
 

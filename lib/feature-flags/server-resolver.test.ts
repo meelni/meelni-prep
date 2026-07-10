@@ -24,6 +24,20 @@ describe("server feature gate resolution", () => {
     expect(clientFactory).not.toHaveBeenCalled();
   });
 
+  it("uses the configured default without constructing a client before consent", async () => {
+    const clientFactory = vi.fn();
+    await expect(
+      resolveServerGate({
+        clientFactory,
+        clientKey: "client-test",
+        gateName: "relaunch",
+        networkAllowed: false,
+        user: { userID: "public-launch-state" },
+      })
+    ).resolves.toEqual({ source: "configured-default", value: false });
+    expect(clientFactory).not.toHaveBeenCalled();
+  });
+
   it.each([true, false])("uses a network evaluation of %s", async (value) => {
     const client = createClient("Network", value);
 

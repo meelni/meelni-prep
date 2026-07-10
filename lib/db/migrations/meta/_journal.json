@@ -64,6 +64,13 @@
       "when": 1783641537137,
       "tag": "0008_public_demo_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783654319879,
+      "tag": "0009_explicit_analytics_consent",
+      "breakpoints": true
     }
   ]
 }

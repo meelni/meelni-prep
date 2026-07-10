@@ -296,7 +296,7 @@ export function createCreditLedgerService({
           })
       );
 
-      trackBillingCreditGranted({
+      await trackBillingCreditGranted({
         userId: grant.userId,
         catalogId: grant.catalogId,
         creditSource: grant.source,
@@ -402,7 +402,7 @@ export function createCreditLedgerService({
       );
 
       for (const event of expired) {
-        trackBillingCreditExpired({
+        await trackBillingCreditExpired({
           userId,
           catalogId: event.grant.catalogId,
           creditSource: event.grant.source,
@@ -548,7 +548,7 @@ export function createCreditLedgerService({
         );
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
-          trackBillingNoCredits({
+          await trackBillingNoCredits({
             userId: input.userId,
             credits: requestedCredits,
             balanceAfter: error.availableCredits,
@@ -560,7 +560,7 @@ export function createCreditLedgerService({
       }
 
       for (const event of result.events) {
-        trackBillingCreditReserved({
+        await trackBillingCreditReserved({
           userId: input.userId,
           catalogId: event.grant.catalogId,
           creditSource: event.grant.source,
@@ -745,7 +745,7 @@ export function createCreditLedgerService({
       );
 
       if (outcome.rollover.grant) {
-        trackBillingCreditRolloverCreated({
+        await trackBillingCreditRolloverCreated({
           userId: input.userId,
           catalogId: input.catalogId,
           creditSource: "rollover",
@@ -758,7 +758,7 @@ export function createCreditLedgerService({
           duplicate: outcome.rollover.duplicate,
         });
       }
-      trackBillingCreditGranted({
+      await trackBillingCreditGranted({
         userId: outcome.renewal.grant.userId,
         catalogId: outcome.renewal.grant.catalogId,
         creditSource: outcome.renewal.grant.source,
@@ -1926,7 +1926,7 @@ async function completeReservation({
   };
 }
 
-function trackCompletedReservationEvent({
+async function trackCompletedReservationEvent({
   transactionType,
   userId,
   catalogId,
@@ -1951,11 +1951,11 @@ function trackCompletedReservationEvent({
   };
 
   if (transactionType === "consume") {
-    trackBillingCreditConsumed(input);
+    await trackBillingCreditConsumed(input);
   } else if (transactionType === "release") {
-    trackBillingCreditReleased(input);
+    await trackBillingCreditReleased(input);
   } else if (transactionType === "refund") {
-    trackBillingCreditRefunded(input);
+    await trackBillingCreditRefunded(input);
   }
 }
 

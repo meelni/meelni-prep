@@ -33,26 +33,34 @@ export function StatsCards({
     },
     {
       label: "Avg Score",
-      value: averageScore !== undefined && averageScore !== null ? `${averageScore.toFixed(1)}/10` : "N/A",
+      value:
+        averageScore !== undefined && averageScore !== null
+          ? `${averageScore.toFixed(1)}/10`
+          : "N/A",
       trend: trends?.scoreChange,
     },
     {
       label: "Total Practice",
-      value: totalMinutes !== undefined && totalMinutes !== null ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "0m",
+      value:
+        totalMinutes !== undefined && totalMinutes !== null
+          ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`
+          : "0m",
       trend: trends?.minutesChange,
     },
     {
       label: "Completion Rate",
-      value: completionRate !== undefined && completionRate !== null ? `${Math.round(completionRate)}%` : "0%",
+      value:
+        completionRate !== undefined && completionRate !== null
+          ? `${Math.round(completionRate)}%`
+          : "0%",
       trend: trends?.completionRateChange,
     },
   ];
 
-  const handleStatCardClick = (statLabel: string) => {
-    analytics.track('chart_interacted', {
-      chart_type: 'stats_cards',
-      interaction_type: 'click',
-      data_point: statLabel,
+  const handleStatCardClick = () => {
+    analytics.track("chart_interacted", {
+      chart_type: "stats_cards",
+      interaction_type: "click",
     });
   };
 
@@ -76,7 +84,7 @@ export function StatsCards({
                 />
               ) : null
             }
-            onClick={() => handleStatCardClick(stat.label)}
+            onClick={handleStatCardClick}
           />
         </motion.div>
       ))}

@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Explicit Analytics Consent](2026-07-09-explicit-analytics-consent.md): Keep optional PostHog and Statsig traffic off until versioned browser/account acceptance, with interview content excluded and a fail-closed relaunch fallback.
 - [Live PM Interview Practice Positioning](2026-07-09-live-pm-interview-practice-positioning.md): Position Meelni as live PM interview practice, remove the fitness metaphor, and treat routes, analytics, and progress claims as explicit compatibility contracts.
 - [Bound Public Voice Preview](2026-07-09-bound-public-voice-preview.md): Use a two-minute activation preview with atomic global/IP/device budgets, one-dispatch browser sessions, pseudonymous identity, and agent-authoritative room deletion.
 - [Database Reconciliation And Shared Rate Limits](2026-07-09-reconcile-database-history-and-share-rate-limits.md): Use one forward-only reconciliation migration, test RLS as a contract, and enforce LiveKit reconnect budgets atomically in Postgres.

@@ -23,7 +23,7 @@ import {
 import { ACCOUNT_IDENTITY_LOCK_NAMESPACE } from "../lib/db/account-identity-lock";
 
 import {
-  PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
+  ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
@@ -119,7 +119,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, ANALYTICS_CONSENT_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -169,6 +169,7 @@ async function run() {
       await seedAuthorizationFixtures(upgrade);
       await seedLifecycleBackfillFixtures(upgrade);
       await seedLegacyCreditLedgerIntegrityFixtures(upgrade);
+      await seedLegacyAnalyticsConsentFixtures(upgrade);
       const lifecyclePreview = runPreflight(
         upgradeUrl,
         true,
@@ -181,6 +182,7 @@ async function run() {
       assertLifecycleBackfillCountsMatch(lifecyclePreview!, lifecycleApplied!);
       assertLegacyCreditLedgerIntegrity(lifecycleApplied!);
       assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
+      await verifyLegacyAnalyticsConsentMigration(upgrade);
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl);
@@ -433,6 +435,50 @@ async function seedAuthorizationFixtures(sql: postgres.Sql) {
     )
     ON CONFLICT (id) DO NOTHING
   `;
+}
+
+async function seedLegacyAnalyticsConsentFixtures(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO app_user (id, email)
+    VALUES (${USER_TWO}::uuid, 'migration-user-two@example.invalid')
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO user_settings (user_id, share_anonymous_data)
+    VALUES
+      (${USER_ONE}::uuid, true),
+      (${USER_TWO}::uuid, false)
+    ON CONFLICT (user_id) DO UPDATE
+      SET share_anonymous_data = excluded.share_anonymous_data
+  `;
+}
+
+async function verifyLegacyAnalyticsConsentMigration(sql: postgres.Sql) {
+  const rows = await sql<
+    {
+      analytics_consent: string;
+      analytics_consent_source: string | null;
+      analytics_consent_updated_at: Date | null;
+      analytics_consent_version: number | null;
+      share_anonymous_data: boolean;
+      user_id: string;
+    }[]
+  >`
+    SELECT user_id, share_anonymous_data, analytics_consent,
+      analytics_consent_version, analytics_consent_source,
+      analytics_consent_updated_at
+    FROM user_settings
+    WHERE user_id IN (${USER_ONE}::uuid, ${USER_TWO}::uuid)
+    ORDER BY user_id
+  `;
+  assert.equal(rows.length, 2);
+  for (const row of rows) {
+    assert.equal(row.share_anonymous_data, false);
+    assert.equal(row.analytics_consent, "undecided");
+    assert.equal(row.analytics_consent_version, null);
+    assert.equal(row.analytics_consent_source, null);
+    assert.equal(row.analytics_consent_updated_at, null);
+  }
 }
 
 async function seedLifecycleBackfillFixtures(sql: postgres.Sql) {
@@ -1016,6 +1062,50 @@ async function verifyAtomicSessionCompletion(
   }
 }
 
+async function verifyAnalyticsConsent(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO user_settings (user_id)
+    VALUES (${USER_ONE}::uuid)
+    ON CONFLICT (user_id) DO NOTHING
+  `;
+  const defaults = await sql<
+    {
+      analytics_consent: string;
+      analytics_consent_version: number | null;
+      analytics_consent_source: string | null;
+      analytics_consent_updated_at: Date | null;
+      share_anonymous_data: boolean;
+    }[]
+  >`
+    SELECT analytics_consent, analytics_consent_version,
+      analytics_consent_source, analytics_consent_updated_at,
+      share_anonymous_data
+    FROM user_settings WHERE user_id = ${USER_ONE}::uuid
+  `;
+  assert.deepEqual(defaults[0], {
+    analytics_consent: "undecided",
+    analytics_consent_version: null,
+    analytics_consent_source: null,
+    analytics_consent_updated_at: null,
+    share_anonymous_data: false,
+  });
+
+  await assert.rejects(
+    sql`
+      UPDATE user_settings
+      SET analytics_consent = 'accepted'
+      WHERE user_id = ${USER_ONE}::uuid
+    `
+  );
+  await sql`
+    UPDATE user_settings
+    SET analytics_consent = 'accepted', analytics_consent_version = 1,
+      analytics_consent_source = 'settings',
+      analytics_consent_updated_at = now()
+    WHERE user_id = ${USER_ONE}::uuid
+  `;
+}
+
 function deepEqual(left: unknown, right: unknown): boolean {
   try {
     assert.deepEqual(left, right);
@@ -1038,7 +1128,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 9);
+  assert.equal(await migrationCount(sql), 10);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -1061,6 +1151,7 @@ async function verifyDatabase(sql: postgres.Sql) {
   assert.ok(
     tables.some(({ table_name }) => table_name === "public_demo_session")
   );
+  await verifyAnalyticsConsent(sql);
 
   const lifecycleColumns = await sql<{ column_name: string }[]>`
     SELECT column_name

@@ -144,7 +144,6 @@ export const PROVIDER_ENV_CONTRACTS: Record<
         "client",
         false
       ),
-      env("POSTHOG_SERVER_KEY", "Server-side PostHog key.", "server", false),
       env(
         "NEXT_PUBLIC_POSTHOG_HOST",
         "PostHog ingestion host.",
