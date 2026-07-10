@@ -25,18 +25,31 @@ const CONTRACT_FILES = [
   "lib/dashboard/contracts.ts",
   "lib/dashboard/analytics-contracts.ts",
 ];
-const LEGACY_ROUTE_ALLOWLIST = new Set(["app/dashboard/new-rep/page.tsx"]);
-const LEGACY_IDENTIFIER_ALLOWLIST = new Set([
-  "app/dashboard/new-rep/page.tsx",
+const CUSTOMER_COPY_FILES = [
+  "lib/blog-data.ts",
+  "lib/data/companies.ts",
+  "lib/seo/home-metadata.ts",
+];
+const PUBLIC_CUSTOMER_CONTENT_ROOTS = ["content", "docs/api", "public/docs"];
+const LEGACY_ROUTE_FILE = "app/dashboard/new-rep/page.tsx";
+const LEGACY_ANALYTICS_FILES = new Set([
   "lib/analytics/interview-launch-compat.ts",
   "lib/analytics/types.ts",
 ]);
-const FITNESS_IDENTIFIER_ALLOWLIST = new Set([
-  "app/api/feedback/[sessionId]/route.ts",
-]);
+const LEGACY_ANALYTICS_IDENTIFIERS = [
+  "new_rep_launcher_viewed",
+  "new_rep_recommendation_accepted",
+  "new_rep_recommendation_changed",
+  "new_rep_start_attempted",
+  "new_rep_start_succeeded",
+  "new_rep_start_failed",
+];
 const PROHIBITION_CONTEXT =
-  /\b(?:do not|don't|avoid|instead of|without|must not|cannot|unsupported)\b/i;
+  /\b(?:do not|don't|avoid|instead of|must not|cannot|unsupported)\b/i;
 const MARKDOWN_LIST_ITEM = /^\s*(?:[-+*]|\d+[.)])\s+/;
+const FITNESS_LANGUAGE = /\b(?:gym|rep|reps|workout|workouts|drill|drills)\b/i;
+const UNSUPPORTED_FEEDBACK_TIMING =
+  /\b(?:real[- ]time|instant)\b.{0,30}\bfeedback\b|\bfeedback\b.{0,30}\b(?:real[- ]time|instant)\b/i;
 const FORBIDDEN_CANONICAL_CLAIMS = [
   ["fitness positioning", /PM(?:-focused)? interview gym|live voice reps/i],
   ["legacy launch action", /\bNew Rep\b/i],
@@ -87,6 +100,45 @@ async function markdownFiles(directory) {
   return files;
 }
 
+async function customerContentFiles(directory) {
+  const entries = await readdir(path.join(ROOT, directory), {
+    withFileTypes: true,
+  });
+  const files = [];
+
+  for (const entry of entries) {
+    const relativePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await customerContentFiles(relativePath)));
+    } else if (/\.(?:md|mdx|ya?ml)$/.test(entry.name)) {
+      files.push(relativePath);
+    }
+  }
+
+  return files;
+}
+
+function stripExactCompatibilityIdentifiers(source) {
+  return source
+    .replace(/(["'])drills\1(?=\s*:)/g, '"compatibilityField"')
+    .replace(/\bdrills(?=\s*:)/g, "compatibilityField")
+    .replace(/\.drills\b/g, ".compatibilityField")
+    .replace(/\[\s*(["'])drills\1\s*\]/g, ".compatibilityField");
+}
+
+function stripExactLegacyIdentifiers(file, source) {
+  let sanitized = source;
+  if (file === LEGACY_ROUTE_FILE) {
+    sanitized = sanitized.replace(/\bNewRepPage\b/g, "CompatibilityPage");
+  }
+  if (LEGACY_ANALYTICS_FILES.has(file)) {
+    for (const identifier of LEGACY_ANALYTICS_IDENTIFIERS) {
+      sanitized = sanitized.replaceAll(identifier, "compatibility_event");
+    }
+  }
+  return sanitized;
+}
+
 function findForbiddenCanonicalClaims(source) {
   const violations = [];
   const lines = source.split("\n");
@@ -118,31 +170,31 @@ function hasProhibitionContext(lines, index) {
 
 test("active product surfaces use interview-practice language", async () => {
   const files = [
-    ...(await Promise.all(UI_ROOTS.map(sourceFiles))).flat(),
-    ...CONTRACT_FILES,
+    ...new Set([
+      ...(await Promise.all(UI_ROOTS.map(sourceFiles))).flat(),
+      ...CONTRACT_FILES,
+      ...CUSTOMER_COPY_FILES,
+      ...(
+        await Promise.all(
+          PUBLIC_CUSTOMER_CONTENT_ROOTS.map(customerContentFiles)
+        )
+      ).flat(),
+    ]),
   ];
   const violations = [];
   const forbiddenLanguage = [
-    [
-      "fitness metaphor",
-      /\b(?:gym|rep|reps|workout|workouts|drill|drills)\b/i,
-    ],
+    ["fitness metaphor", FITNESS_LANGUAGE],
     ["legacy navigation", /\bPractice Home\b/i],
     ["unsupported readiness claim", /\breadiness\b|\bInterview-ready\b/i],
+    ["unsupported feedback timing", UNSUPPORTED_FEEDBACK_TIMING],
   ];
 
   for (const file of files) {
-    if (LEGACY_ROUTE_ALLOWLIST.has(file)) continue;
     const source = await readFile(path.join(ROOT, file), "utf8");
+    const customerCopy = stripExactCompatibilityIdentifiers(source);
 
     for (const [label, pattern] of forbiddenLanguage) {
-      if (
-        label === "fitness metaphor" &&
-        FITNESS_IDENTIFIER_ALLOWLIST.has(file)
-      ) {
-        continue;
-      }
-      if (pattern.test(source)) violations.push(`${file}: ${label}`);
+      if (pattern.test(customerCopy)) violations.push(`${file}: ${label}`);
     }
   }
 
@@ -157,12 +209,16 @@ test("the retired launcher route exists only at its compatibility boundary", asy
   const violations = [];
 
   for (const file of files) {
-    if (LEGACY_ROUTE_ALLOWLIST.has(file)) continue;
     const source = await readFile(path.join(ROOT, file), "utf8");
     if (source.includes("/dashboard/new-rep")) violations.push(file);
   }
 
   assert.deepEqual(violations, []);
+  const compatibilityPage = await readFile(
+    path.join(ROOT, LEGACY_ROUTE_FILE),
+    "utf8"
+  );
+  assert.match(compatibilityPage, /InterviewLaunchRedirect/);
 });
 
 test("canonical product guidance no longer defines Meelni as a gym", async () => {
@@ -181,6 +237,48 @@ test("canonical product guidance no longer defines Meelni as a gym", async () =>
   }
 
   assert.deepEqual(violations, []);
+});
+
+test("canonical product strategy guidance uses focused-practice vocabulary", async () => {
+  const files = await markdownFiles(".agents/skills/meelni-product-strategy");
+  const violations = [];
+
+  for (const file of files) {
+    const source = await readFile(path.join(ROOT, file), "utf8");
+    if (FITNESS_LANGUAGE.test(source)) violations.push(file);
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("compatibility fields are ignored without hiding customer-facing copy", () => {
+  assert.doesNotMatch(
+    stripExactCompatibilityIdentifiers(
+      'const response = { "drills": feedback.drills };'
+    ),
+    FITNESS_LANGUAGE
+  );
+  assert.match(
+    stripExactCompatibilityIdentifiers(
+      'console.log("Practice drills", feedback.drills);'
+    ),
+    FITNESS_LANGUAGE
+  );
+});
+
+test("feedback timing guard rejects real-time and instant product claims", () => {
+  assert.match(
+    "Get real-time feedback after every interview.",
+    UNSUPPORTED_FEEDBACK_TIMING
+  );
+  assert.match(
+    "Instant feedback on your PM answer.",
+    UNSUPPORTED_FEEDBACK_TIMING
+  );
+  assert.doesNotMatch(
+    "Review feedback after your completed interview.",
+    UNSUPPORTED_FEEDBACK_TIMING
+  );
 });
 
 test("guidance detector rejects canonical claims but permits explicit prohibitions", () => {
@@ -244,13 +342,17 @@ test("legacy rep identifiers remain bounded to explicit compatibility files", as
   const legacyIdentifier = /new[-_]rep|NewRep|newRep/;
 
   for (const file of files) {
-    if (LEGACY_IDENTIFIER_ALLOWLIST.has(file)) continue;
     const source = await readFile(path.join(ROOT, file), "utf8");
+    const sanitized = stripExactLegacyIdentifiers(file, source);
 
-    if (legacyIdentifier.test(`${file}\n${source}`)) violations.push(file);
+    if (legacyIdentifier.test(sanitized)) violations.push(file);
   }
 
   assert.deepEqual(violations, []);
+  assert.deepEqual(
+    files.filter((file) => file.includes("new-rep")),
+    [LEGACY_ROUTE_FILE]
+  );
 });
 
 test("the live hero and metadata consume the positioning contract", async () => {

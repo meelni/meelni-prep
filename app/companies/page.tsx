@@ -198,7 +198,7 @@ export default function CompaniesPage() {
           className="mt-20"
           mark="M"
           title="Ready to practice?"
-          description="Put your knowledge into action with Meelni's AI interview coach. Get real-time feedback and improve faster than solo practice."
+          description="Put your knowledge into action in a live mock interview, then review feedback from your completed session."
           action={
             <Button asChild size="lg" variant="glow">
               <Link href="/dashboard/new-interview">
