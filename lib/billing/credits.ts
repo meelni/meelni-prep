@@ -1,7 +1,4 @@
-import {
-  BILLING_CATALOG,
-  type BillingCatalogId,
-} from "@meelni/core";
+import { BILLING_CATALOG, type BillingCatalogId } from "@meelni/core";
 import {
   trackBillingCreditConsumed,
   trackBillingCreditExpired,
@@ -121,7 +118,9 @@ export interface CreditLedgerStore {
   createAllocation(
     input: Omit<LedgerReservationAllocation, "id" | "createdAt">
   ): Promise<LedgerReservationAllocation>;
-  listAllocations(reservationId: string): Promise<LedgerReservationAllocation[]>;
+  listAllocations(
+    reservationId: string
+  ): Promise<LedgerReservationAllocation[]>;
   createTransaction(
     input: Omit<LedgerCreditTransaction, "id" | "createdAt">
   ): Promise<LedgerCreditTransaction>;
@@ -154,6 +153,10 @@ export interface GrantCreditsInput {
 
 export interface GrantCreditsResult {
   grant: LedgerCreditGrant;
+}
+
+export function getTrialGrantIdempotencyKey(userId: string): string {
+  return `trial:${userId}`;
 }
 
 export interface ExpireCreditsResult {
@@ -205,22 +208,6 @@ export function createCreditLedgerService({
       const existing = await store.findGrantByIdempotencyKey(
         input.idempotencyKey
       );
-
-      if (existing) {
-        trackBillingCreditGranted({
-          userId: input.userId,
-          catalogId: existing.catalogId,
-          creditSource: existing.source,
-          credits: existing.originalCredits,
-          balanceAfter: existing.remainingCredits,
-          idempotencyKey: input.idempotencyKey,
-          sourceId: input.sourceId,
-          grantId: existing.id,
-          duplicate: true,
-        });
-        return { grant: existing };
-      }
-
       const catalogItem = BILLING_CATALOG[input.catalogId];
       const issuedAt = now();
       const includedCredits =
@@ -229,44 +216,51 @@ export function createCreditLedgerService({
         input.expiresAt === undefined
           ? addDaysOrNull(issuedAt, catalogItem.expiresAfterDays)
           : input.expiresAt;
-      const grant = await store.createGrant({
-        userId: input.userId,
-        catalogId: input.catalogId,
-        source: input.source,
-        sourceId: input.sourceId ?? null,
-        idempotencyKey: input.idempotencyKey,
-        originalCredits: includedCredits,
-        remainingCredits: includedCredits,
-        reservedCredits: 0,
-        expiresAt,
-        rolloverEligible:
-          input.rolloverEligible ??
-          (catalogItem.kind === "subscription" && includedCredits > 0),
-        rolloverSourceGrantId: input.rolloverSourceGrantId ?? null,
-        metadata: input.metadata ?? null,
-      });
+      const grant =
+        existing ??
+        (await store.createGrant({
+          userId: input.userId,
+          catalogId: input.catalogId,
+          source: input.source,
+          sourceId: input.sourceId ?? null,
+          idempotencyKey: input.idempotencyKey,
+          originalCredits: includedCredits,
+          remainingCredits: includedCredits,
+          reservedCredits: 0,
+          expiresAt,
+          rolloverEligible:
+            input.rolloverEligible ??
+            (catalogItem.kind === "subscription" && includedCredits > 0),
+          rolloverSourceGrantId: input.rolloverSourceGrantId ?? null,
+          metadata: input.metadata ?? null,
+        }));
 
-      await store.createTransaction({
-        userId: input.userId,
+      assertGrantMatchesRequest(grant, input);
+
+      const transaction = await store.createTransaction({
+        userId: grant.userId,
         grantId: grant.id,
         reservationId: null,
         type: "grant",
-        credits: includedCredits,
+        credits: grant.originalCredits,
         idempotencyKey: `${input.idempotencyKey}:grant`,
-        sourceId: input.sourceId ?? null,
-        balanceAfter: grant.remainingCredits,
-        metadata: input.metadata ?? null,
+        sourceId: grant.sourceId,
+        balanceAfter: grant.originalCredits,
+        metadata: grant.metadata,
       });
 
+      assertGrantTransactionMatchesGrant(transaction, grant);
+
       trackBillingCreditGranted({
-        userId: input.userId,
-        catalogId: input.catalogId,
-        creditSource: input.source,
-        credits: includedCredits,
+        userId: grant.userId,
+        catalogId: grant.catalogId,
+        creditSource: grant.source,
+        credits: grant.originalCredits,
         balanceAfter: grant.remainingCredits,
         idempotencyKey: input.idempotencyKey,
-        sourceId: input.sourceId,
+        sourceId: grant.sourceId,
         grantId: grant.id,
+        duplicate: existing !== null,
       });
 
       return { grant };
@@ -274,8 +268,8 @@ export function createCreditLedgerService({
 
     async getCreditBalance(userId: string): Promise<CreditBalance> {
       const currentTime = now();
-      const activeGrants = (await store.listUserGrants(userId)).filter((grant) =>
-        isGrantActive(grant, currentTime)
+      const activeGrants = (await store.listUserGrants(userId)).filter(
+        (grant) => isGrantActive(grant, currentTime)
       );
       const availableCredits = sumBy(
         activeGrants,
@@ -289,7 +283,8 @@ export function createCreditLedgerService({
       const expiringCredits = nextCreditExpiresAt
         ? sumBy(
             activeGrants.filter(
-              (grant) => grant.expiresAt?.getTime() === nextCreditExpiresAt.getTime()
+              (grant) =>
+                grant.expiresAt?.getTime() === nextCreditExpiresAt.getTime()
             ),
             (grant) => grant.remainingCredits
           )
@@ -347,7 +342,9 @@ export function createCreditLedgerService({
       return { expiredCredits };
     },
 
-    async reserveCredit(input: ReserveCreditInput): Promise<ReserveCreditResult> {
+    async reserveCredit(
+      input: ReserveCreditInput
+    ): Promise<ReserveCreditResult> {
       const existing = await store.findReservationByKey(input.reservationKey);
       if (existing) {
         return {
@@ -616,6 +613,36 @@ export function createCreditLedgerService({
   };
 }
 
+function assertGrantMatchesRequest(
+  grant: LedgerCreditGrant,
+  input: GrantCreditsInput
+): void {
+  if (
+    grant.userId !== input.userId ||
+    grant.catalogId !== input.catalogId ||
+    grant.source !== input.source
+  ) {
+    throw new Error("credit_grant_idempotency_conflict");
+  }
+}
+
+function assertGrantTransactionMatchesGrant(
+  transaction: LedgerCreditTransaction,
+  grant: LedgerCreditGrant
+): void {
+  if (
+    transaction.userId !== grant.userId ||
+    transaction.grantId !== grant.id ||
+    transaction.reservationId !== null ||
+    transaction.type !== "grant" ||
+    transaction.credits !== grant.originalCredits ||
+    transaction.sourceId !== grant.sourceId ||
+    transaction.balanceAfter !== grant.originalCredits
+  ) {
+    throw new Error("credit_transaction_idempotency_conflict");
+  }
+}
+
 export function createMemoryCreditLedgerStore(): CreditLedgerStore {
   let nextId = 1;
   const grants: LedgerCreditGrant[] = [];
@@ -674,9 +701,7 @@ export function createMemoryCreditLedgerStore(): CreditLedgerStore {
     },
 
     async listUserGrants(userId) {
-      return grants
-        .filter((grant) => grant.userId === userId)
-        .map(cloneGrant);
+      return grants.filter((grant) => grant.userId === userId).map(cloneGrant);
     },
 
     async updateGrantBalances(grantId, balances) {
@@ -799,9 +824,8 @@ async function completeReservation({
     credits: number;
   }): Pick<LedgerCreditGrant, "remainingCredits" | "reservedCredits">;
 }): Promise<CompleteReservationResult> {
-  const existingTransaction = await store.findTransactionByIdempotencyKey(
-    idempotencyKey
-  );
+  const existingTransaction =
+    await store.findTransactionByIdempotencyKey(idempotencyKey);
   const reservation = await store.findReservationByKey(reservationKey);
 
   if (!reservation) {
@@ -822,7 +846,9 @@ async function completeReservation({
   const userGrants = await store.listUserGrants(reservation.userId);
 
   for (const allocation of allocations) {
-    const grant = userGrants.find((candidate) => candidate.id === allocation.grantId);
+    const grant = userGrants.find(
+      (candidate) => candidate.id === allocation.grantId
+    );
     if (!grant) {
       throw new Error(`Credit grant ${allocation.grantId} was not found`);
     }

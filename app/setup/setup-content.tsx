@@ -17,6 +17,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import {
+  BILLING_CATALOG,
   buildInterviewRecommendation,
   buildFullConfig,
   DIFFICULTY_LEVELS,
@@ -37,9 +38,7 @@ import { track, AnalyticsEvents } from "@/lib/analytics";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { trackInterviewLaunchEvent } from "@/lib/analytics/interview-launch-compat";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
-import {
-  parseInterviewLaunchContext,
-} from "@/lib/navigation/interview-launch";
+import { parseInterviewLaunchContext } from "@/lib/navigation/interview-launch";
 
 export function SetupContent() {
   const { user, isLoading: authLoading } = useAuth();
@@ -132,6 +131,7 @@ export function SetupContent() {
     availableCredits: number;
     reservedCredits: number;
     nextCreditExpiresAt: string | null;
+    trialAvailable: boolean;
   } | null>(null);
   const [isLoadingCredits, setIsLoadingCredits] = useState(true);
 
@@ -271,6 +271,7 @@ export function SetupContent() {
           availableCredits: data.availableCredits ?? 0,
           reservedCredits: data.reservedCredits ?? 0,
           nextCreditExpiresAt: data.nextCreditExpiresAt ?? null,
+          trialAvailable: data.trialAvailable === true,
         });
         setIsLoadingCredits(false);
 
@@ -511,11 +512,20 @@ export function SetupContent() {
               </div>
             </div>
             {creditBalance && (
-              <StatusPill tone="muted" className="w-fit">
-                <CreditCard className="h-3.5 w-3.5" />
-                {creditBalance.availableCredits}{" "}
-                {creditBalance.availableCredits === 1 ? "credit" : "credits"}
-              </StatusPill>
+              <div className="flex flex-col items-start gap-2 sm:items-end">
+                <StatusPill tone="muted" className="w-fit">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  {creditBalance.availableCredits}{" "}
+                  {creditBalance.availableCredits === 1 ? "credit" : "credits"}
+                </StatusPill>
+                {creditBalance.trialAvailable && (
+                  <p className="text-dashboard-muted max-w-xs text-left text-xs sm:text-right">
+                    {BILLING_CATALOG.trial.includedCredits} trial credits
+                    available. The 7-day trial starts with your first mock
+                    interview.
+                  </p>
+                )}
+              </div>
             )}
           </motion.div>
 

@@ -18,6 +18,7 @@ export interface LocalDevCreditBalanceResponse {
   reservedCredits: number;
   expiringCredits: number;
   nextCreditExpiresAt: null;
+  trialAvailable: false;
   grants: [];
   localDevBypass: true;
 }
@@ -46,6 +47,7 @@ export function getLocalDevCreditBalanceResponse(): LocalDevCreditBalanceRespons
     reservedCredits: 0,
     expiringCredits: 0,
     nextCreditExpiresAt: null,
+    trialAvailable: false,
     grants: [],
     localDevBypass: true,
   };
