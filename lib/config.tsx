@@ -35,7 +35,7 @@ export const siteConfig = {
   },
   features: [
     {
-      name: "Real PM questions",
+      name: "Curated PM questions",
       description:
         "Practice Product Sense, Execution, Strategy, and Behavioral prompts.",
     },

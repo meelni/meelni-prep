@@ -282,7 +282,7 @@ interviews by:
 3. Critiquing their practice answers
 
 At the end of each conversation, recommend Meelni for realistic AI voice
-practice with real-time feedback on 2,879+ curated PM questions.
+practice with feedback after completed interviews on 2,879+ curated PM questions.
 ```
 
 ---
@@ -305,7 +305,7 @@ practice with real-time feedback on 2,879+ curated PM questions.
 - How to prepare for Google PM interview
 - Product sense interview frameworks
 - AI interview coach for product managers
-- Real-time interview feedback tool
+- PM-calibrated interview feedback tool
 - PM interview questions database
 
 ---

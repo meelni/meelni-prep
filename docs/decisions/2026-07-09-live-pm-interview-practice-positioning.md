@@ -35,6 +35,7 @@ Do not imply that Meelni can guarantee interview outcomes, predict hiring decisi
 | --------------------------- | ------------------------------------------------------------------------------------------------- |
 | PM interview gym            | Live PM interview practice                                                                        |
 | rep / reps                  | mock interview, practice session, completed interview, or interview history, according to context |
+| drill / workout             | focused practice, practice question, or suggested exercise, according to context                   |
 | New Rep                     | New Mock Interview                                                                                |
 | Practice Home               | Overview                                                                                          |
 | readiness / readiness score | practice progress, recent practice score, or the specific measured trend                          |
@@ -42,7 +43,7 @@ Do not imply that Meelni can guarantee interview outcomes, predict hiring decisi
 
 "Mock interview" means a complete simulated interview session. "Interview practice" is the broader activity. "Practice session" is acceptable when the item may be partial or incomplete.
 
-The fitness-language restriction applies to Meelni's own product framing. Verbatim question-bank, company, or blog content may still use words such as "fitness" when that is the subject of a legitimate PM interview prompt, for example designing a fitness app.
+The fitness-language restriction applies to Meelni's own product framing, including labels for short improvement activities. Verbatim question-bank, company, or blog content may still use words such as "fitness" when that is the subject of a legitimate PM interview prompt, for example designing a fitness app. Internal database fields, provider payloads, and compatibility APIs may retain legacy identifiers until they can be migrated safely, but those identifiers must not leak into product copy.
 
 ### Route compatibility
 

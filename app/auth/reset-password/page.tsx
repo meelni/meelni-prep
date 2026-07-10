@@ -1,22 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-import { AuthCard, AuthMessage, AuthShell } from "@/components/auth/auth-shell";
+import {
+  AuthCard,
+  AuthInitializationStatus,
+  AuthMessage,
+  AuthShell,
+} from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
+import { parseAuthHandoffContext } from "@/lib/auth/auth-handoff";
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const authHandoff = parseAuthHandoffContext(searchParams);
   const supabase = createClient();
 
   const handleUpdatePassword = async (event: React.FormEvent) => {
@@ -48,7 +56,7 @@ export default function ResetPasswordPage() {
       setIsSubmitting(false);
 
       setTimeout(() => {
-        router.push("/auth/signin");
+        router.push(authHandoff.redirectTo);
       }, 2000);
     } catch (err) {
       console.error("Password update error:", err);
@@ -62,7 +70,10 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <AuthShell backLabel="Back to home" onBack={() => router.push("/")}>
+    <AuthShell
+      backLabel="Back"
+      onBack={() => router.push(authHandoff.cancelTo)}
+    >
       <AuthCard
         icon="key"
         title="Set new password"
@@ -70,7 +81,7 @@ export default function ResetPasswordPage() {
       >
         {success ? (
           <AuthMessage tone="success" title="Password updated!">
-            Your password has been updated successfully. Redirecting to sign in.
+            Your password has been updated successfully. Returning to continue.
           </AuthMessage>
         ) : (
           <>
@@ -112,7 +123,7 @@ export default function ResetPasswordPage() {
               >
                 {isSubmitting ? (
                   <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />
                     <span>Updating password...</span>
                   </span>
                 ) : (
@@ -126,5 +137,13 @@ export default function ResetPasswordPage() {
         )}
       </AuthCard>
     </AuthShell>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<AuthInitializationStatus />}>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }

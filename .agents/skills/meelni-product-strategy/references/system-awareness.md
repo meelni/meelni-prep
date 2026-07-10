@@ -9,7 +9,7 @@ Product Compass should understand Meelni's product and system constraints at the
 - Public SEO and question/company pages should convert users into selected-question practice.
 - Authenticated practice flows include setup, interview, transcript, feedback, history, analytics, questions, settings, and billing.
 - Live voice interviews depend on LiveKit room metadata, token generation, transcript events, and the Python agent runtime.
-- Feedback depends on transcript quality, rubrics, evaluation generation, drills, and user insights.
+- Feedback depends on transcript quality, rubrics, evaluation generation, focused-practice recommendations, and user insights.
 - Monetization currently routes through Stripe, subscriptions, and usage limits.
 - Target architecture is incremental: root Next.js app now, future `apps/web`, packages for core, agent, integrations, and test fixtures.
 - Workflow modules should hold cross-layer behavior; routes should stay thin.
