@@ -4,18 +4,21 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { analytics } from "@/lib/analytics/analytics-service";
-import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
+import {
+  buildAuthCallbackHref,
+  type AuthHandoffContext,
+} from "@/lib/auth/auth-handoff";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
-  signInWithGoogle: (redirectTo?: string) => Promise<void>;
+  signInWithGoogle: (handoff?: Partial<AuthHandoffContext>) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (
     email: string,
     password: string,
-    redirectTo?: string
+    handoff?: Partial<AuthHandoffContext>
   ) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -117,19 +120,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [supabase]);
 
-  const signInWithGoogle = async (redirectTo?: string) => {
-    // Store redirect destination in session storage before OAuth redirect
-    if (redirectTo) {
-      sessionStorage.setItem(
-        "auth_redirect_to",
-        getSafeInternalRedirect(redirectTo) ?? "/dashboard"
-      );
-    }
-
+  const signInWithGoogle = async (handoff?: Partial<AuthHandoffContext>) => {
+    const callbackHref = buildAuthCallbackHref(handoff ?? {});
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: new URL(callbackHref, window.location.origin).toString(),
       },
     });
 
@@ -154,11 +150,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUpWithEmail = async (
     email: string,
     password: string,
-    redirectTo?: string
+    handoff?: Partial<AuthHandoffContext>
   ) => {
-    const safeRedirectTo = getSafeInternalRedirect(redirectTo) ?? "/dashboard";
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", safeRedirectTo);
+    const callbackUrl = new URL(
+      buildAuthCallbackHref(handoff ?? {}),
+      window.location.origin
+    );
 
     const { error } = await supabase.auth.signUp({
       email,

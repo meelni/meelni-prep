@@ -16,7 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { analytics } from "@/lib/analytics/analytics-service";
-import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
+import {
+  AUTH_SIGNIN_PATH,
+  buildAuthPageHref,
+  parseAuthHandoffContext,
+} from "@/lib/auth/auth-handoff";
 
 function AuthLoadingState() {
   return (
@@ -41,7 +45,8 @@ function SignUpContent() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = getSafeInternalRedirect(searchParams.get("redirectTo"))!;
+  const authHandoff = parseAuthHandoffContext(searchParams);
+  const { redirectTo, cancelTo } = authHandoff;
 
   useEffect(() => {
     analytics.track("auth_signup_started", {
@@ -60,7 +65,7 @@ function SignUpContent() {
     setError(null);
 
     try {
-      await signInWithGoogle(redirectTo);
+      await signInWithGoogle(authHandoff);
     } catch (err) {
       console.error("Sign in error:", err);
       setError("Failed to sign in. Please try again.");
@@ -87,7 +92,7 @@ function SignUpContent() {
     }
 
     try {
-      await signUpWithEmail(email, password, redirectTo);
+      await signUpWithEmail(email, password, authHandoff);
       setSuccess(true);
       setIsSigningUp(false);
     } catch (err) {
@@ -111,7 +116,7 @@ function SignUpContent() {
   }
 
   return (
-    <AuthShell backLabel="Back to home" onBack={() => router.push("/")}>
+    <AuthShell backLabel="Back" onBack={() => router.push(cancelTo)}>
       <AuthCard
         title="Create your account"
         description="Start practicing for your PM interviews"
@@ -125,9 +130,7 @@ function SignUpContent() {
             <Button
               type="button"
               onClick={() =>
-                router.push(
-                  `/auth/signin?redirectTo=${encodeURIComponent(redirectTo)}`
-                )
+                router.push(buildAuthPageHref(AUTH_SIGNIN_PATH, authHandoff))
               }
               className="h-auto w-full rounded-xl px-6 py-3 font-semibold"
             >
@@ -216,9 +219,7 @@ function SignUpContent() {
                 type="button"
                 variant="link"
                 onClick={() =>
-                  router.push(
-                    `/auth/signin?redirectTo=${encodeURIComponent(redirectTo)}`
-                  )
+                  router.push(buildAuthPageHref(AUTH_SIGNIN_PATH, authHandoff))
                 }
                 className="h-auto p-0 font-medium"
               >

@@ -25,6 +25,10 @@ import {
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { usePostHog } from "posthog-js/react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/app/providers/auth-provider";
+import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
+import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
 
 interface Question {
   id: string;
@@ -78,6 +82,10 @@ const QUESTIONS_PER_PAGE = 20;
 
 export default function ExplorePage() {
   const posthog = usePostHog();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { user, isLoading: authLoading } = useAuth();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -185,7 +193,21 @@ export default function ExplorePage() {
       page: currentPage,
     });
 
-    // Show sign-in modal
+    if (authLoading) {
+      return;
+    }
+
+    if (user) {
+      router.push(
+        buildQuestionInterviewHref(
+          question.id,
+          buildInternalRequestDestination(pathname, searchParams.toString())
+        )
+      );
+      return;
+    }
+
+    // Show sign-in modal for signed-out candidates.
     setSelectedQuestion(question);
     setSignInModalOpen(true);
   };
