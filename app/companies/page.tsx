@@ -157,7 +157,7 @@ export default function CompaniesPage() {
                     {company.name}
                   </h2>
                   <p className="text-muted-foreground line-clamp-3 text-sm leading-relaxed">
-                    Illustrative PM practice questions associated with
+                    Illustrative PM practice questions associated with{" "}
                     {company.name}.
                   </p>
                 </div>

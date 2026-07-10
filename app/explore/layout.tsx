@@ -37,10 +37,6 @@ export const metadata: Metadata = {
     "how to prepare for PM interview",
     "product manager interview practice",
     "mock PM interview questions",
-    "real PM interview questions",
-    "actual interview questions from google",
-    "what questions are asked in PM interviews",
-    "common PM interview questions",
     "PM interview question bank",
     "free PM interview questions",
 

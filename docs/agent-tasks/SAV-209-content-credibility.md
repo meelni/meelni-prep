@@ -17,7 +17,7 @@
 - Project: Meelni Relaunch Readiness.
 - Parent slice issue: SAV-169.
 - Child deliverable issue: SAV-209.
-- Current Linear state: In Progress.
+- Current Linear state: In Review.
 
 ## Scope
 
@@ -49,4 +49,4 @@
 - Risk level: Medium because indexed content and metadata change.
 - Backward compatibility: Existing company URLs remain; unsupported content becomes narrower or unpublished.
 - Metrics/events to watch: Explore impressions, company-page conversion, 404s for unpublished posts.
-- Follow-up slice: Source or delete quarantined legacy company data after branch convergence.
+- Follow-up slice: Source or delete quarantined legacy company data after SAV-207 and SAV-234 branch convergence.
