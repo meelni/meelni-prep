@@ -61,7 +61,7 @@
     "test:workflows": "tsx --test lib/workflows/*.test.ts lib/db/*.test.ts lib/question-sync/*.test.ts lib/security/*.test.ts lib/supabase/*.test.ts lib/auth/*.test.ts lib/navigation/*.test.ts lib/analytics/*.test.ts lib/utils/*.test.ts",
     "test:api": "vitest run app/api/interview/end/__tests__/route.test.ts app/api/feedback/[sessionId]/route.test.ts app/api/session/transcript/route.test.ts",
     "test:billing": "tsx --test lib/billing/*.test.ts",
-    "test:calibration": "tsx --test lib/evaluation/calibration.test.ts lib/evaluation/calibration-approval.test.ts packages/test-fixtures/src/evaluation-calibration.test.ts",
+    "test:calibration": "tsx --test lib/evaluation/calibration.test.ts lib/evaluation/calibration-approval.test.ts lib/evaluation/calibration-cli.test.ts packages/test-fixtures/src/evaluation-calibration.test.ts",
     "test:packages": "tsx --test scripts/package-entrypoints.test.ts",
     "test:quality": "node --test scripts/quality-scripts.test.mjs",
     "auth:doctor": "node scripts/auth-doctor.mjs",

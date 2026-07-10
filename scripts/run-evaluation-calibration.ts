@@ -9,6 +9,7 @@ import {
 } from "@/lib/evaluation/calibration";
 import { getFeedbackEvaluationModel } from "@/lib/evaluation/model-config";
 import { generateFeedback } from "@/lib/evaluation/scorer";
+import { getCalibrationCliExitCode } from "@/lib/evaluation/calibration-cli";
 
 const LIVE_ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL";
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
@@ -74,26 +75,7 @@ async function main() {
   }
   process.stdout.write(serialized);
 
-  if (
-    executionKind === "live_provider" &&
-    report.gate.liveProviderAcceptance !== "passed"
-  ) {
-    process.exitCode = 1;
-  }
-  if (
-    executionKind === "deterministic_self_test" &&
-    report.gate.deterministicHarness !== "passed"
-  ) {
-    process.exitCode = 1;
-  }
-  if (
-    executionKind === "preflight" &&
-    (report.corpus.expectedStateMismatches > 0 ||
-      report.corpus.invalidEvidenceAnchors > 0 ||
-      report.metrics.insufficientHandlingRate !== 1)
-  ) {
-    process.exitCode = 1;
-  }
+  process.exitCode = getCalibrationCliExitCode(executionKind, report);
 }
 
 function parseArgs(argv: string[]): {

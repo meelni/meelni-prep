@@ -79,7 +79,9 @@ The command also requires `OPENAI_API_KEY`. Never paste a key into chat,
 documentation, Linear, or a report. The acknowledgement is deliberately exact
 so an ambient boolean cannot accidentally enable paid calibration.
 
-The CLI exits nonzero when the live report misses any acceptance threshold.
+The live CLI exits zero only when the combined `launchAcceptance` gate is
+`passed`. A provider-quality pass still exits nonzero when adjudication approval
+is missing, stale, incomplete, or contains `changes_required` decisions.
 Review the report's model and all five version fields before accepting it as
 evidence. Store approved launch evidence in the release record without adding
 secrets or provider responses containing sensitive data.
