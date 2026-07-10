@@ -30,9 +30,10 @@ def _parse_canonical_timestamp(value: object) -> datetime | None:
         return None
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        canonical = _iso_timestamp(parsed.timestamp())
     except ValueError:
         return None
-    return parsed if _iso_timestamp(parsed.timestamp()) == value else None
+    return parsed if canonical == value else None
 
 
 def _is_safe_positive_integer(value: object) -> bool:

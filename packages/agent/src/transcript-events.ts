@@ -53,6 +53,7 @@ function parseTimestamp(value: unknown): number | null {
 
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) &&
+    timestamp > 0 &&
     new Date(timestamp).toISOString() === value
     ? timestamp
     : null;

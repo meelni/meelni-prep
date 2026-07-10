@@ -79,6 +79,25 @@
       }
     },
     {
+      "name": "pre-epoch timestamp",
+      "event": {
+        "contract_version": 2,
+        "event_id": "event-golden-1",
+        "writer_id": "writer-golden-1",
+        "sequence": 1,
+        "session_id": "session-golden-1",
+        "room_name": "room-golden-1",
+        "speaker": "user",
+        "text": "A measured answer.",
+        "is_final": true,
+        "started_at": "1969-12-31T23:59:58.000Z",
+        "ended_at": "1969-12-31T23:59:59.000Z",
+        "audio_duration_ms": 1000,
+        "section": "product_sense",
+        "delivery_state": "delivered"
+      }
+    },
+    {
       "name": "fractional duration",
       "event": {
         "contract_version": 2,
