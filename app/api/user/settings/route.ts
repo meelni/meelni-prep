@@ -18,7 +18,6 @@ const settingsSchema = z.object({
   sessionCompletionEmail: z.boolean().optional(),
   feedbackReadyEmail: z.boolean().optional(),
   weeklyProgressReport: z.boolean().optional(),
-  shareAnonymousData: z.boolean().optional(),
   saveTranscripts: z.boolean().optional(),
   theme: z.enum(["light", "dark", "system"]).optional(),
 });
@@ -70,7 +69,6 @@ export async function GET() {
       sessionCompletionEmail: setting.sessionCompletionEmail,
       feedbackReadyEmail: setting.feedbackReadyEmail,
       weeklyProgressReport: setting.weeklyProgressReport,
-      shareAnonymousData: setting.shareAnonymousData,
       saveTranscripts: setting.saveTranscripts,
       theme: setting.theme,
     };
@@ -151,8 +149,6 @@ export async function PUT(request: NextRequest) {
       dbSettings.feedbackReadyEmail = settings.feedbackReadyEmail;
     if (settings.weeklyProgressReport !== undefined)
       dbSettings.weeklyProgressReport = settings.weeklyProgressReport;
-    if (settings.shareAnonymousData !== undefined)
-      dbSettings.shareAnonymousData = settings.shareAnonymousData;
     if (settings.saveTranscripts !== undefined)
       dbSettings.saveTranscripts = settings.saveTranscripts;
     if (settings.theme !== undefined) dbSettings.theme = settings.theme;

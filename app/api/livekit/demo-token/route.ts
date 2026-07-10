@@ -22,6 +22,8 @@ import {
   getPublicDemoDeploymentScope,
   startPublicDemoWorkflow,
 } from "@/lib/workflows/start-public-demo";
+import { resolveTrustedAnalyticsConsentState } from "@/lib/analytics/trusted-consent";
+import { ANALYTICS_CONSENT_COOKIE } from "@/lib/analytics/consent-contract";
 
 export async function POST(req: NextRequest) {
   if (!(await isPublicDemoEnabled())) {
@@ -86,6 +88,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const trustedConsent = await resolveTrustedAnalyticsConsentState(
+    req.cookies.get(ANALYTICS_CONSENT_COOKIE)?.value
+  );
   const result = await startPublicDemoWorkflow({
     sessionId: identity.sessionId,
     participantIdentity: identity.participantIdentity,
@@ -94,6 +99,9 @@ export async function POST(req: NextRequest) {
     deploymentScope: getPublicDemoDeploymentScope(),
     agentName: agentName.data,
     env: livekitEnv.data,
+    analyticsConsent: trustedConsent.resolved
+      ? trustedConsent.consent
+      : undefined,
   });
 
   const response = noStore(

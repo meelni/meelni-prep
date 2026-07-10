@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/app/providers/auth-provider";
+import { useAnalyticsConsent } from "@/app/providers/analytics-consent-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -658,6 +659,15 @@ function DataPrivacyPane({
   saveState,
 }: SettingsPaneProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const {
+    decision: analyticsDecision,
+    error: analyticsError,
+    accountSyncPending,
+    retryAccountSync,
+    savingDecision,
+    setConsent: setAnalyticsConsent,
+  } = useAnalyticsConsent();
+  const analyticsSaving = savingDecision !== null;
 
   const handleDeleteAccount = async () => {
     setDeleteError(null);
@@ -700,14 +710,62 @@ function DataPrivacyPane({
         checked={settings.saveTranscripts}
         onCheckedChange={(saveTranscripts) => onChange({ saveTranscripts })}
       />
-      <SettingsSwitchRow
-        title="Share anonymous product data"
-        description="Help improve Meelni with de-identified usage patterns."
-        checked={settings.shareAnonymousData}
-        onCheckedChange={(shareAnonymousData) =>
-          onChange({ shareAnonymousData })
-        }
-      />
+      <div className="border-dashboard-panel-border flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="text-dashboard-foreground text-sm font-medium">
+            Optional product analytics
+          </div>
+          <p className="text-dashboard-muted max-w-xl text-sm">
+            {analyticsDecision === "accepted"
+              ? "Allowed. Meelni may send minimized usage events to PostHog and Statsig."
+              : analyticsDecision === "declined"
+                ? "Off. Optional analytics providers do not initialize."
+                : "Not decided. Optional analytics remain off."}
+          </p>
+          <p className="text-dashboard-muted text-xs">
+            Interview audio, transcripts, questions, and answers are never
+            included.
+          </p>
+          {analyticsError && (
+            <p className="text-destructive text-xs" role="alert">
+              {analyticsError}
+            </p>
+          )}
+          {accountSyncPending && (
+            <Button
+              type="button"
+              size="sm"
+              variant="link"
+              className="h-auto px-0 text-xs"
+              disabled={analyticsSaving}
+              onClick={() => void retryAccountSync()}
+            >
+              {savingDecision === "declined"
+                ? "Retrying account sync..."
+                : "Retry account sync"}
+            </Button>
+          )}
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={analyticsSaving || analyticsDecision === "declined"}
+            onClick={() => void setAnalyticsConsent("declined", "settings")}
+          >
+            {savingDecision === "declined" ? "Turning off..." : "Turn off"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={analyticsSaving || analyticsDecision === "accepted"}
+            onClick={() => void setAnalyticsConsent("accepted", "settings")}
+          >
+            {savingDecision === "accepted" ? "Enabling..." : "Allow"}
+          </Button>
+        </div>
+      </div>
 
       {deleteError && (
         <InlineNotice

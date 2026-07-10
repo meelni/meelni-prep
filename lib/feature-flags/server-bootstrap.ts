@@ -4,6 +4,8 @@ import { connection } from "next/server";
 import { getStatsigConfig } from "./config";
 import { FEATURE_GATES } from "./gates";
 import { resolveServerGate } from "./server-resolver";
+import { effectiveAnalyticsDecision } from "@/lib/analytics/consent-contract";
+import { getTrustedServerAnalyticsConsentState } from "@/lib/analytics/trusted-consent";
 
 export interface FeatureFlagBootstrap {
   source: "statsig" | "configured-default";
@@ -18,14 +20,18 @@ export const getFeatureFlagBootstrap = cache(
       ? undefined
       : config.apiUrl;
     const gateName = FEATURE_GATES.meelniReactivationAccess;
+    const consentState = await getTrustedServerAnalyticsConsentState();
+    const cookieStore = await cookies();
     const localOverride =
       process.env.NODE_ENV === "development"
-        ? (await cookies()).get(
-            `meelni_feature_flag_${encodeURIComponent(gateName)}`
-          )?.value
+        ? cookieStore.get(`meelni_feature_flag_${encodeURIComponent(gateName)}`)
+            ?.value
         : undefined;
     const fallbackValue =
       process.env.MEELNI_REACTIVATION_DEFAULT?.trim().toLowerCase() === "true";
+    const networkAllowed =
+      consentState.resolved &&
+      effectiveAnalyticsDecision(consentState.consent) === "accepted";
     const resolution =
       localOverride === "on" || localOverride === "off"
         ? {
@@ -37,6 +43,7 @@ export const getFeatureFlagBootstrap = cache(
             clientKey: config.clientKey,
             fallbackValue,
             gateName,
+            networkAllowed,
             user: { userID: "public-launch-state" },
           });
 

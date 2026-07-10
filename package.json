@@ -59,7 +59,7 @@
     "test:local": "node --test scripts/*.test.mjs",
     "test:fixtures": "tsx --test packages/test-fixtures/src/*.test.ts",
     "test:workflows": "tsx --test lib/workflows/*.test.ts lib/db/*.test.ts lib/question-sync/*.test.ts lib/security/*.test.ts lib/supabase/*.test.ts lib/auth/*.test.ts lib/navigation/*.test.ts lib/analytics/*.test.ts",
-    "test:api": "vitest run app/api/interview/end/__tests__/route.test.ts app/api/feedback/[sessionId]/route.test.ts app/api/livekit/token/__tests__/token-generation.test.ts app/api/livekit/demo-token/__tests__/route.test.ts app/api/livekit/demo-token/ack/route.test.ts",
+    "test:api": "vitest run app/api/analytics/consent/route.test.ts app/api/interview/end/__tests__/route.test.ts app/api/feedback/[sessionId]/route.test.ts app/api/livekit/token/__tests__/token-generation.test.ts app/api/livekit/demo-token/__tests__/route.test.ts app/api/livekit/demo-token/ack/route.test.ts",
     "test:billing": "tsx --test lib/billing/*.test.ts",
     "test:packages": "tsx --test scripts/package-entrypoints.test.ts",
     "test:quality": "node --test scripts/quality-scripts.test.mjs",
