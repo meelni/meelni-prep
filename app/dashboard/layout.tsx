@@ -6,7 +6,6 @@ import { useEffect } from "react";
 import { DashboardLayout as DashboardLayoutComponent } from "@/components/dashboard/layout/dashboard-layout";
 import { DashboardLoading } from "@/components/dashboard/loading";
 import { useSessions } from "@/lib/api/queries";
-import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
 
 export default function DashboardLayout({
   children,
@@ -17,15 +16,6 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-
-  // Check for pending redirect from OAuth (e.g., from explore page)
-  useEffect(() => {
-    const pendingRedirect = sessionStorage.getItem("auth_redirect_to");
-    if (pendingRedirect) {
-      sessionStorage.removeItem("auth_redirect_to");
-      router.push(getSafeInternalRedirect(pendingRedirect) ?? "/dashboard");
-    }
-  }, [router]);
 
   // Redirect to signin if not authenticated
   useEffect(() => {

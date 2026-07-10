@@ -8,6 +8,7 @@ import { useAuth } from "@/app/providers/auth-provider";
 import {
   AuthCard,
   AuthDivider,
+  AuthInitializationStatus,
   AuthMessage,
   AuthShell,
   GoogleAuthButton,
@@ -16,15 +17,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { analytics } from "@/lib/analytics/analytics-service";
-import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
-
-function AuthLoadingState() {
-  return (
-    <div className="bg-background flex min-h-screen items-center justify-center">
-      <Loader2 className="text-primary h-8 w-8 animate-spin" />
-    </div>
-  );
-}
+import {
+  AUTH_SIGNUP_PATH,
+  AUTH_FORGOT_PASSWORD_PATH,
+  buildAuthPageHref,
+  getAuthFailureMessage,
+  parseAuthHandoffContext,
+} from "@/lib/auth/auth-handoff";
 
 function SignInContent() {
   const {
@@ -34,12 +33,15 @@ function SignInContent() {
     isLoading: authLoading,
   } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const [error, setError] = useState<string | null>(() =>
+    getAuthFailureMessage(searchParams)
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const redirectTo = getSafeInternalRedirect(searchParams.get("redirectTo"))!;
+  const authHandoff = parseAuthHandoffContext(searchParams);
+  const { redirectTo, cancelTo } = authHandoff;
 
   useEffect(() => {
     analytics.track("auth_signin_started", {
@@ -58,7 +60,7 @@ function SignInContent() {
     setError(null);
 
     try {
-      await signInWithGoogle(redirectTo);
+      await signInWithGoogle(authHandoff);
     } catch (err) {
       console.error("Sign in error:", err);
       setError("Failed to sign in. Please try again.");
@@ -91,11 +93,11 @@ function SignInContent() {
   };
 
   if (authLoading || user) {
-    return <AuthLoadingState />;
+    return <AuthInitializationStatus />;
   }
 
   return (
-    <AuthShell backLabel="Back to home" onBack={() => router.push("/")}>
+    <AuthShell backLabel="Back" onBack={() => router.push(cancelTo)}>
       <AuthCard
         title="Welcome to Meelni"
         description="Save your progress and track improvement over time"
@@ -122,7 +124,11 @@ function SignInContent() {
               <Button
                 type="button"
                 variant="link"
-                onClick={() => router.push("/auth/forgot-password")}
+                onClick={() =>
+                  router.push(
+                    buildAuthPageHref(AUTH_FORGOT_PASSWORD_PATH, authHandoff)
+                  )
+                }
                 className="h-auto p-0 text-xs"
               >
                 Forgot password?
@@ -146,7 +152,7 @@ function SignInContent() {
           >
             {isSigningIn ? (
               <span className="flex items-center justify-center gap-2">
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />
                 <span>Signing in...</span>
               </span>
             ) : (
@@ -173,9 +179,7 @@ function SignInContent() {
             type="button"
             variant="link"
             onClick={() =>
-              router.push(
-                `/auth/signup?redirectTo=${encodeURIComponent(redirectTo)}`
-              )
+              router.push(buildAuthPageHref(AUTH_SIGNUP_PATH, authHandoff))
             }
             className="h-auto p-0 font-medium"
           >
@@ -189,7 +193,7 @@ function SignInContent() {
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={<AuthLoadingState />}>
+    <Suspense fallback={<AuthInitializationStatus />}>
       <SignInContent />
     </Suspense>
   );
