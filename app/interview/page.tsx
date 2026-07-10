@@ -763,8 +763,8 @@ function DeadlineReachedOverlay() {
           Saving your interview
         </AppSurfaceTitle>
         <AppSurfaceDescription className="text-sm">
-          Your response is secure. We’re closing the room and preparing your
-          feedback now.
+          We’re closing the room and finalizing the interview activity received
+          so far before preparing feedback.
         </AppSurfaceDescription>
       </AppSurface>
     </div>
