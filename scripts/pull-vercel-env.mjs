@@ -528,7 +528,9 @@ function assertEnvironmentMarker(env, environment) {
 function upsert(env, key, value) {
   const line = `${key}=${formatEnvValue(value)}`;
   const pattern = new RegExp(`^${escapeRegExp(key)}=.*$`, "m");
-  return pattern.test(env) ? env.replace(pattern, line) : `${line}\n${env}`;
+  return pattern.test(env)
+    ? env.replace(pattern, () => line)
+    : `${line}\n${env}`;
 }
 
 function upsertRaw(env, key, rawValue) {
@@ -618,7 +620,7 @@ function validateProductionStripeMode(env) {
     env,
     "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
   );
-  if (secretKey && !/^sk_live_[A-Za-z0-9]+$/.test(secretKey)) {
+  if (secretKey && !/^(?:sk|rk)_live_[A-Za-z0-9]+$/.test(secretKey)) {
     throw new Error(
       "Vercel production STRIPE_SECRET_KEY is not a valid live-mode key. The existing file was kept."
     );

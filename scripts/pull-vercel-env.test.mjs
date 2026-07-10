@@ -40,6 +40,17 @@ test("normalizeEnvValue only strips matched quote pairs", () => {
   );
 });
 
+test("public defaults containing replacement tokens are written literally", () => {
+  const posthogHost = "https://example.com/ingest?$capture=$&";
+  const env = buildRefreshedEnv({
+    defaults: { NEXT_PUBLIC_POSTHOG_HOST: posthogHost },
+    environment: "preview",
+    pulledText: scopedEnv(previewRef, { NEXT_PUBLIC_POSTHOG_HOST: '""' }),
+  });
+
+  assert.equal(readEnvValue(env, "NEXT_PUBLIC_POSTHOG_HOST"), posthogHost);
+});
+
 test("blank encrypted values preserve existing Preview secrets", () => {
   const env = buildRefreshedEnv({
     defaults: {},
@@ -566,6 +577,20 @@ test("Production rejects loopback application URLs and Stripe test keys", () => 
     () => validateRefreshedEnv(restrictedTestKey, "production"),
     /valid live-mode key/
   );
+});
+
+test("Production accepts a least-privilege restricted live Stripe key", () => {
+  const restrictedLive = scopedEnv(
+    productionRef,
+    {
+      NEXT_PUBLIC_APP_URL: "https://meelni.com",
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_live_example",
+      STRIPE_SECRET_KEY: "rk_live_example",
+    },
+    "production"
+  );
+
+  assert.doesNotThrow(() => validateRefreshedEnv(restrictedLive, "production"));
 });
 
 test("symlink targets are rejected", async (t) => {
