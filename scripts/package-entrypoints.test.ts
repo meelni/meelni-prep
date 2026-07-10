@@ -52,7 +52,19 @@ test("workspace package entrypoints expose named contracts", () => {
     "product_sense"
   );
   assert.equal(
-    createTranscriptEvent({ speaker: "user", text: "Hi" }).speaker,
+    createTranscriptEvent({
+      event_id: "event-1",
+      sequence: 1,
+      session_id: "session-1",
+      room_name: "room-1",
+      speaker: "user",
+      text: "Hi",
+      started_at: "2026-07-10T05:00:00.000Z",
+      ended_at: "2026-07-10T05:00:01.000Z",
+      audio_duration_ms: 1000,
+      section: "prompt",
+      delivery_state: "delivered",
+    }).speaker,
     "user"
   );
   assert.match(

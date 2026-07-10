@@ -10,14 +10,19 @@ import { analytics } from "@/lib/analytics/analytics-service";
 import { parseTranscriptEvent } from "@meelni/agent";
 
 export interface TranscriptTurn {
+  eventId?: string;
+  sequence?: number;
+  sessionId?: string;
+  roomName?: string;
   speaker: "user" | "interviewer";
   text: string;
   timestamp: Date;
   startedAt: Date;
   endedAt: Date;
-  audioMs: number;
-  latencyMs: number;
-  section: string | null;
+  audioMs?: number;
+  latencyMs?: number;
+  section?: string;
+  deliveryState?: "delivered" | "partially_delivered";
 }
 
 interface LiveKitRoomWrapperProps {
@@ -75,6 +80,8 @@ export function LiveKitRoomWrapper({
       }}
     >
       <RoomContent
+        roomName={roomName}
+        sessionId={sessionId}
         onTranscriptUpdate={onTranscriptUpdate}
         onAgentStateChange={onAgentStateChange}
       >
@@ -85,12 +92,16 @@ export function LiveKitRoomWrapper({
 }
 
 interface RoomContentProps {
+  roomName: string;
+  sessionId: string;
   onTranscriptUpdate: (turn: TranscriptTurn) => void;
   onAgentStateChange: (state: string) => void;
   children: React.ReactNode;
 }
 
 function RoomContent({
+  roomName,
+  sessionId,
   onTranscriptUpdate,
   onAgentStateChange,
   children,
@@ -119,19 +130,48 @@ function RoomContent({
           return;
         }
 
+        if (
+          "contract_version" in transcriptData &&
+          (transcriptData.session_id !== sessionId ||
+            transcriptData.room_name !== roomName)
+        ) {
+          console.warn(
+            "[Transcript] Ignoring event with mismatched correlation"
+          );
+          return;
+        }
+
         console.log("[Transcript] Received:", transcriptData);
 
-        // Convert to TranscriptTurn format
-        const turn: TranscriptTurn = {
-          speaker: transcriptData.speaker === "user" ? "user" : "interviewer",
-          text: transcriptData.text,
-          timestamp: new Date(transcriptData.timestamp * 1000), // Convert from seconds to ms
-          startedAt: new Date(transcriptData.timestamp * 1000),
-          endedAt: new Date(transcriptData.timestamp * 1000),
-          audioMs: 0, // TODO: Calculate actual audio duration
-          latencyMs: 0, // TODO: Calculate actual latency
-          section: null, // TODO: Add section tracking
-        };
+        const isLegacyEvent = !("contract_version" in transcriptData);
+        const legacyTimestamp = isLegacyEvent
+          ? new Date(transcriptData.timestamp * 1000)
+          : null;
+
+        // Legacy v1 packets remain readable during a rolling deployment, but
+        // missing duration/section fields stay absent instead of being invented.
+        const turn: TranscriptTurn = isLegacyEvent
+          ? {
+              speaker: transcriptData.speaker,
+              text: transcriptData.text,
+              timestamp: legacyTimestamp!,
+              startedAt: legacyTimestamp!,
+              endedAt: legacyTimestamp!,
+            }
+          : {
+              eventId: transcriptData.event_id,
+              sequence: transcriptData.sequence,
+              sessionId: transcriptData.session_id,
+              roomName: transcriptData.room_name,
+              speaker: transcriptData.speaker,
+              text: transcriptData.text,
+              timestamp: new Date(transcriptData.started_at),
+              startedAt: new Date(transcriptData.started_at),
+              endedAt: new Date(transcriptData.ended_at),
+              audioMs: transcriptData.audio_duration_ms,
+              section: transcriptData.section,
+              deliveryState: transcriptData.delivery_state,
+            };
 
         // Call the parent callback to save to database
         onTranscriptUpdate(turn);
@@ -139,7 +179,7 @@ function RoomContent({
         console.error("[Transcript] Failed to parse transcript data:", error);
       }
     }
-  }, [message, onTranscriptUpdate]);
+  }, [message, onTranscriptUpdate, roomName, sessionId]);
 
   return <>{children}</>;
 }

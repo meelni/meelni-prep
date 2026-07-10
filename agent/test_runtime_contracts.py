@@ -145,18 +145,66 @@ class RuntimeContractTests(unittest.TestCase):
 
     def test_create_transcript_event_matches_frontend_contract(self):
         event = create_transcript_event(
+            event_id="transcript-event-1",
+            sequence=1,
+            session_id="session-1",
+            room_name="interview-room-1",
             speaker="interviewer",
             text="Let's start with the product goal.",
-            timestamp=1782600000,
+            started_at=1782600000,
+            ended_at=1782600008,
+            audio_duration_ms=8000,
+            section="prompt",
         )
 
         self.assertEqual(TRANSCRIPT_DATA_TOPIC, "transcript")
         self.assertEqual(event, {
+            "contract_version": 2,
+            "event_id": "transcript-event-1",
+            "sequence": 1,
+            "session_id": "session-1",
+            "room_name": "interview-room-1",
             "speaker": "interviewer",
             "text": "Let's start with the product goal.",
-            "timestamp": 1782600000,
             "is_final": True,
+            "started_at": "2026-06-27T22:40:00.000Z",
+            "ended_at": "2026-06-27T22:40:08.000Z",
+            "audio_duration_ms": 8000,
+            "section": "prompt",
+            "delivery_state": "delivered",
         })
+
+    def test_create_transcript_event_rejects_incomplete_timing(self):
+        with self.assertRaisesRegex(ValueError, "positive duration"):
+            create_transcript_event(
+                event_id="transcript-event-1",
+                sequence=1,
+                session_id="session-1",
+                room_name="interview-room-1",
+                speaker="user",
+                text="A response.",
+                started_at=1782600000,
+                ended_at=1782600000,
+                audio_duration_ms=0,
+                section="response",
+            )
+
+    def test_create_transcript_event_marks_partial_delivery(self):
+        event = create_transcript_event(
+            event_id="transcript-event-partial",
+            sequence=2,
+            session_id="session-1",
+            room_name="interview-room-1",
+            speaker="interviewer",
+            text="A heard fragment.",
+            started_at=1782600000,
+            ended_at=1782600002,
+            audio_duration_ms=2000,
+            section="follow_up",
+            delivery_state="partially_delivered",
+        )
+
+        self.assertEqual(event["delivery_state"], "partially_delivered")
 
     def test_runtime_lifecycle_event_matches_typescript_contract(self):
         event = create_runtime_event(
