@@ -1,11 +1,11 @@
 ---
 name: meelni-feedback-evaluation
-description: Work on Meelni feedback, scoring, PM interview rubrics, transcript evaluation, drills, insights, feedback polling, skipped/partial feedback states, or dashboard analytics.
+description: Work on Meelni feedback, scoring, PM interview rubrics, transcript evaluation, practice exercises, insights, feedback polling, skipped/partial feedback states, or dashboard analytics.
 ---
 
 # Meelni Feedback Evaluation
 
-Use this skill for scoring, rubric prompts, post-session feedback, drills, insights, and evaluation reliability. Treat evaluation as core product behavior: feedback must be useful, evidence-grounded, calibrated, and honest about uncertainty.
+Use this skill for scoring, rubric prompts, post-session feedback, practice exercises, insights, and evaluation reliability. Treat evaluation as core product behavior: feedback must be useful, evidence-grounded, calibrated, and honest about uncertainty.
 
 ## Read First
 
@@ -35,7 +35,7 @@ Use this skill for scoring, rubric prompts, post-session feedback, drills, insig
 - Feedback should help a PM candidate improve their next interview, not just summarize the transcript.
 - Scores must map to the interview type and rubric dimension, not a generic communication score.
 - Strengths and gaps should cite transcript evidence when available.
-- Drills should target the weakest actionable dimension and be doable in a short practice loop.
+- Practice exercises should target the weakest actionable dimension and be doable in a short practice loop.
 - Short, failed, abandoned, or low-signal sessions should not produce fake precision.
 
 ### Data And State Integrity
@@ -50,7 +50,8 @@ Use this skill for scoring, rubric prompts, post-session feedback, drills, insig
 
 - Rubric prompts should constrain the evaluator to PM interview behavior and the supplied transcript.
 - Do not let model/provider tuning become an end-user control unless product strategy accepted it.
-- Avoid prompt changes that silently alter scoring scale, status behavior, or drill selection without fixtures.
+- Avoid prompt changes that silently alter scoring scale, status behavior, or practice-exercise selection without fixtures.
+- Preserve `drills` only where it is an existing API, database, or provider compatibility key; translate it to practice-exercise language before it reaches user-facing copy or product guidance.
 - If using transcript excerpts, keep privacy and redaction expectations explicit.
 
 ### Fixtures And Regression Tests
@@ -64,7 +65,7 @@ Use this skill for scoring, rubric prompts, post-session feedback, drills, insig
 
 - Feedback should cite evidence from the transcript when possible.
 - Scores should be calibrated per interview type.
-- Drills should map to the weakest dimensions.
+- Practice exercises should map to the weakest dimensions.
 - Short or failed sessions should produce helpful states, not fake precision.
 
 ## Output
@@ -73,20 +74,24 @@ Use:
 
 ```markdown
 ## Evaluation Impact
+
 - Interview type/state:
 - User-facing behavior:
 - Data/status behavior:
 
 ## Quality Gates
+
 - Calibration:
 - Evidence:
 - Failure states:
 - Fixtures/tests:
 
 ## Validation
+
 - Commands:
 - Manual checks:
 
 ## Risks
+
 - ...
 ```

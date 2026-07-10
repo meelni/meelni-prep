@@ -3,10 +3,20 @@ import test from "node:test";
 
 import {
   FIXTURE_CLOCK,
+  createAccountDataExportFixture,
   createDashboardProgressFixtures,
   createLiveKitStartFixture,
   createProductSenseInterviewFixture,
 } from "./index";
+
+test("account export fixture is versioned and contains no provider payloads", () => {
+  const fixture = createAccountDataExportFixture();
+
+  assert.equal(fixture.schemaVersion, "1.0.0");
+  assert.equal(fixture.account.id, "fixture-account-user-1");
+  assert.equal(JSON.stringify(fixture).includes("stripeEventId"), false);
+  assert.equal(JSON.stringify(fixture).includes("serviceRoleKey"), false);
+});
 
 test("dashboard progress fixtures cover zero, one, many, and every feedback state", () => {
   const fixtures = createDashboardProgressFixtures();

@@ -45,7 +45,7 @@ For trials and pricing, tie the decision to activation moments:
 
 - first mock interview completed
 - first feedback viewed
-- first targeted drill started
+- first focused-practice activity started
 - first return session
 - first paid-intent signal
 

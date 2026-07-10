@@ -151,7 +151,7 @@ export function FeedbackPartial({
             {[
               "Detailed competency breakdown across 5 dimensions",
               "Comprehensive analysis of framework usage",
-              "Personalized practice drills based on weak areas",
+              "Personalized exercises based on weak areas",
               "Trend analysis and performance tracking over time",
             ].map((item) => (
               <FeedbackActionItem
