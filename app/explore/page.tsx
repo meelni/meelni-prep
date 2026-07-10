@@ -29,6 +29,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/providers/auth-provider";
 import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
 import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
+import { resolveQuestionEntryAction } from "@/lib/navigation/question-auth-entry";
 
 interface Question {
   id: string;
@@ -193,11 +194,16 @@ export default function ExplorePage() {
       page: currentPage,
     });
 
-    if (authLoading) {
+    const entryAction = resolveQuestionEntryAction({
+      authLoading,
+      isAuthenticated: Boolean(user),
+    });
+
+    if (entryAction === "wait") {
       return;
     }
 
-    if (user) {
+    if (entryAction === "launch") {
       router.push(
         buildQuestionInterviewHref(
           question.id,
@@ -361,8 +367,14 @@ export default function ExplorePage() {
                     type="button"
                     variant="ghost"
                     onClick={() => handleQuestionClick(question)}
+                    disabled={authLoading}
+                    aria-busy={authLoading}
                     className="hover:text-foreground h-auto w-full flex-col items-stretch justify-start rounded-lg p-0 text-left hover:bg-transparent"
-                    aria-label={`Practice question: ${question.questionText}`}
+                    aria-label={
+                      authLoading
+                        ? "Checking sign-in status before opening this question"
+                        : `Practice question: ${question.questionText}`
+                    }
                   >
                     {/* Metadata */}
                     <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -475,7 +487,9 @@ export default function ExplorePage() {
 
       {/* Live region for accessibility */}
       <div role="status" aria-live="polite" className="sr-only">
-        Showing {paginatedQuestions.length} of {totalQuestions} questions
+        {authLoading
+          ? "Checking sign-in status. Question actions will be available shortly."
+          : `Showing ${paginatedQuestions.length} of ${totalQuestions} questions`}
       </div>
     </>
   );

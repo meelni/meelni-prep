@@ -4,7 +4,7 @@ import { AccountDeletionPendingError, upsertUser } from "@/lib/db/users";
 import { buildSafeInternalRedirectUrl } from "@/lib/auth/safe-redirect";
 import {
   buildAuthFailureHref,
-  resolveAuthCallbackDestination,
+  resolveAuthCallbackAction,
 } from "@/lib/auth/auth-handoff";
 
 export async function GET(request: Request) {
@@ -13,18 +13,30 @@ export async function GET(request: Request) {
   const origin = requestUrl.origin;
   const next = requestUrl.searchParams.get("next");
   const cancelTo = requestUrl.searchParams.get("cancelTo");
+  const callbackAction = resolveAuthCallbackAction(requestUrl.searchParams);
 
-  if (!code) {
+  if (callbackAction.type === "cancel") {
     return NextResponse.redirect(
-      buildSafeInternalRedirectUrl(
-        origin,
-        resolveAuthCallbackDestination(requestUrl.searchParams),
-        "/"
+      buildSafeInternalRedirectUrl(origin, callbackAction.destination, "/")
+    );
+  }
+
+  if (callbackAction.type === "failure" || !code) {
+    return NextResponse.redirect(
+      new URL(
+        buildAuthFailureHref(
+          {
+            redirectTo: next ?? undefined,
+            cancelTo: cancelTo ?? undefined,
+          },
+          "auth_callback_failed"
+        ),
+        origin
       )
     );
   }
 
-  if (code) {
+  if (callbackAction.type === "success") {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
@@ -58,7 +70,16 @@ export async function GET(request: Request) {
         if (error instanceof AccountDeletionPendingError) {
           await supabase.auth.signOut();
           return NextResponse.redirect(
-            `${origin}/auth/signin?error=account_deletion_pending`
+            new URL(
+              buildAuthFailureHref(
+                {
+                  redirectTo: next ?? undefined,
+                  cancelTo: cancelTo ?? undefined,
+                },
+                "account_deletion_pending"
+              ),
+              origin
+            )
           );
         }
         console.error("Error upserting user:", error);
@@ -68,9 +89,6 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.redirect(
-    buildSafeInternalRedirectUrl(
-      origin,
-      resolveAuthCallbackDestination(requestUrl.searchParams)
-    )
+    buildSafeInternalRedirectUrl(origin, callbackAction.destination)
   );
 }

@@ -114,6 +114,8 @@ function AuthMessage({ children, title, tone }: AuthMessageProps) {
 
   return (
     <motion.div
+      role={isSuccess ? "status" : "alert"}
+      aria-live={isSuccess ? "polite" : "assertive"}
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(

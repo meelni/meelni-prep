@@ -5,8 +5,22 @@ export const AUTH_SIGNUP_PATH = "/auth/signup";
 export const AUTH_CALLBACK_PATH = "/auth/callback";
 export const DEFAULT_AUTH_CANCEL_DESTINATION = "/";
 
+export const AUTH_FAILURE_MESSAGES = {
+  auth_failed: "We couldn't complete sign-in. Please try again.",
+  auth_callback_failed:
+    "The sign-in link could not be completed. Please start again.",
+  account_deletion_pending:
+    "This account is pending deletion and cannot be used to sign in.",
+} as const;
+
 type AuthPagePath = typeof AUTH_SIGNIN_PATH | typeof AUTH_SIGNUP_PATH;
 type SearchParamsReader = Pick<URLSearchParams, "get">;
+export type AuthFailureCode = keyof typeof AUTH_FAILURE_MESSAGES;
+
+export type AuthCallbackAction =
+  | { type: "success"; destination: string }
+  | { type: "cancel"; destination: string }
+  | { type: "failure"; code: AuthFailureCode };
 
 export interface AuthHandoffContext {
   redirectTo: string;
@@ -63,26 +77,52 @@ export function buildAuthCallbackHref(
 }
 
 export function buildAuthFailureHref(
-  handoff: Partial<AuthHandoffContext>
+  handoff: Partial<AuthHandoffContext>,
+  code: AuthFailureCode = "auth_failed"
 ): string {
   const url = new URL(
     buildAuthPageHref(AUTH_SIGNIN_PATH, handoff),
     "https://meelni.local"
   );
-  url.searchParams.set("error", "auth_failed");
+  url.searchParams.set("error", code);
   return `${url.pathname}${url.search}`;
 }
 
-export function resolveAuthCallbackDestination(
+export function getAuthFailureMessage(
   searchParams: SearchParamsReader
-): string {
-  const hasAuthorizationCode = Boolean(searchParams.get("code"));
+): string | null {
+  const code = searchParams.get("error");
+  return code && code in AUTH_FAILURE_MESSAGES
+    ? AUTH_FAILURE_MESSAGES[code as AuthFailureCode]
+    : null;
+}
 
-  return hasAuthorizationCode
-    ? normalizeAuthHandoff({
-        redirectTo: searchParams.get("next"),
-      }).redirectTo
-    : normalizeAuthHandoff({
+export function resolveAuthCallbackAction(
+  searchParams: SearchParamsReader
+): AuthCallbackAction {
+  const providerError = searchParams.get("error")?.trim();
+
+  if (providerError === "access_denied") {
+    return {
+      type: "cancel",
+      destination: normalizeAuthHandoff({
         cancelTo: searchParams.get("cancelTo"),
-      }).cancelTo;
+      }).cancelTo,
+    };
+  }
+
+  if (providerError) {
+    return { type: "failure", code: "auth_callback_failed" };
+  }
+
+  if (searchParams.get("code")) {
+    return {
+      type: "success",
+      destination: normalizeAuthHandoff({
+        redirectTo: searchParams.get("next"),
+      }).redirectTo,
+    };
+  }
+
+  return { type: "failure", code: "auth_callback_failed" };
 }

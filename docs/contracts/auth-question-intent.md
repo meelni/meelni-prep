@@ -10,6 +10,8 @@ Both values must pass the shared internal-redirect validator. External URLs, pro
 - successful auth falls back to `/dashboard`;
 - cancellation falls back to `/`.
 
-Auth transitions between sign-in and sign-up preserve both values. Google OAuth includes both values in its callback URL; a callback with no authorization code returns to `cancelTo`, while a successful callback returns to `redirectTo`. Email confirmation carries `redirectTo` so it remains valid across devices.
+Auth transitions between sign-in and sign-up preserve both values. Google OAuth includes both values in its callback URL. An explicit provider cancellation (`access_denied`) returns to `cancelTo`; missing-code and provider callback failures return to sign-in with safe first-party recovery copy, while a successful callback returns to `redirectTo`.
+
+Email confirmation carries both destinations through the same-browser PKCE flow. The confirmation link must be opened in the browser that initiated sign-up because the PKCE verifier is stored there. Cross-device email confirmation requires a separately configured token-hash verification route and is not claimed by this contract.
 
 Query parsing uses the first value for repeated keys, matching `URLSearchParams.get`. Empty or invalid `questionId` values are treated as absent by the launcher. Compatibility routes may preserve raw query strings, but all successful selected-question launches resolve to `/dashboard/new-interview`.
