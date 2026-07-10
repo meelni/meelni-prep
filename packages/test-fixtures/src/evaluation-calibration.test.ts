@@ -43,6 +43,44 @@ test("PM calibration gold set has ten fully synthetic cases per core round", () 
         ({ expectedCompletionState }) => expectedCompletionState === "partial"
       )
     );
+    assert.deepEqual(
+      Object.fromEntries(
+        (["weak", "average", "strong"] as const).map((quality) => [
+          quality,
+          cases.filter(({ expectedQuality }) => expectedQuality === quality)
+            .length,
+        ])
+      ),
+      { weak: 2, average: 2, strong: 4 }
+    );
+
+    for (const dimension of [
+      "structure",
+      "clarity",
+      "insight",
+      "communication",
+      "leadership",
+    ] as const) {
+      assert.ok(
+        cases.some(
+          ({ expectedQuality, scoreBands }) =>
+            expectedQuality === "weak" &&
+            scoreBands !== null &&
+            scoreBands[dimension].maximum <= 5
+        ),
+        `${roundType}:${dimension}:weak`
+      );
+      assert.ok(
+        cases.some(
+          ({ expectedQuality, scoreBands }) =>
+            expectedQuality === "average" &&
+            scoreBands !== null &&
+            scoreBands[dimension].minimum >= 4 &&
+            scoreBands[dimension].maximum <= 7
+        ),
+        `${roundType}:${dimension}:average`
+      );
+    }
   }
 });
 
@@ -66,9 +104,11 @@ test("every gold case carries versioned adjudication and exact local evidence", 
     }
 
     if (fixture.expectedCompletionState === "insufficient") {
+      assert.equal(fixture.expectedQuality, null);
       assert.equal(fixture.scoreBands, null);
       assert.deepEqual(fixture.evidenceAnchors, []);
     } else {
+      assert.ok(fixture.expectedQuality);
       assert.ok(fixture.scoreBands);
       assert.ok(fixture.evidenceAnchors.length >= 2);
     }
