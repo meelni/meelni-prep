@@ -815,7 +815,7 @@ export const companies: Company[] = [
       "Use ChatGPT, GPT-4, and DALL-E extensively - have opinions on improvements",
       "Read OpenAI's blog for latest research and product updates",
       "Understand AI safety concepts and responsible AI deployment",
-      "Practice product sense drills focused on AI-driven products",
+      "Practice product sense questions focused on AI-driven products",
       "Prepare examples of working in ambiguous environments with high autonomy",
       "Research the competitive landscape: Anthropic, Google DeepMind, Meta AI"
     ]

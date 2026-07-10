@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
 import { getFeedbackEvaluationModel } from "./model-config";
+import { normalizePracticeRecommendations } from "@/lib/product-language";
 
 export interface EvaluationResult {
   scores: {
@@ -70,7 +71,7 @@ export async function generateFeedback(
       overall_score,
       strengths: result.strengths || [],
       improvements: result.improvements || [],
-      drills: result.drills || [],
+      drills: normalizePracticeRecommendations(result.drills),
       summary: result.summary || "No summary provided",
     };
   } catch (error) {

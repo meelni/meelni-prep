@@ -2,7 +2,7 @@
  * Get Session Feedback API (with Polling Support)
  *
  * Retrieves the AI-generated feedback for an interview session, supporting
- * real-time status polling. Returns feedback status (pending, processing,
+ * status polling. Returns feedback status (pending, processing,
  * completed, failed, skipped) with estimated time remaining for incomplete
  * feedback. Includes cache headers based on feedback status.
  *
