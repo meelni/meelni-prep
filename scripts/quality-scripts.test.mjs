@@ -49,3 +49,10 @@ test("the default check runs linting, formatting, type checks, and quality gates
 test("security quality gate checks Semgrep through the uvx wrapper", () => {
   assert.equal(scripts["quality:security"], "node scripts/run-semgrep.mjs");
 });
+
+test("live calibration loads the local env file explicitly", () => {
+  assert.equal(
+    scripts["calibration:live"],
+    "tsx --env-file=.env.local scripts/run-evaluation-calibration.ts --mode live"
+  );
+});
