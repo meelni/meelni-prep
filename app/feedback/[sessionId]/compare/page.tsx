@@ -160,11 +160,7 @@ export default function ComparePage() {
         description="Track how this round is changing across repeated practice."
         action={
           <Link href={`/feedback/${sessionId}`}>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
-            >
+            <Button variant="ghost" size="sm">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Feedback
             </Button>
@@ -208,11 +204,7 @@ export default function ComparePage() {
       maxWidth="xl"
       action={
         <Link href={`/feedback/${sessionId}`}>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
-          >
+          <Button variant="ghost" size="sm">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Feedback
           </Button>
