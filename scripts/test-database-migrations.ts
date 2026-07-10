@@ -27,9 +27,9 @@ import {
   CLEAN_0001_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
-  INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
   INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
+  TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -60,6 +60,7 @@ const SESSION_RECONNECT_BACKFILL_LEGACY =
   "a7000000-0000-4000-8000-000000000007";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const SESSION_TRANSCRIPT_TWO = "b1000000-0000-4000-8000-000000000001";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -122,6 +123,7 @@ async function run() {
     await verifyRoomRecoveryFairness(clean, cleanUrl);
     await verifyReconnectTransportOrdering(clean, cleanUrl);
     await verifyAtomicSessionCompletion(clean, cleanUrl);
+    await verifyTranscriptIngest(clean, cleanUrl);
     await verifyAuthorization(clean);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
@@ -133,7 +135,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -214,6 +216,7 @@ async function run() {
       await verifyLifecycleBackfill(upgrade);
       await verifyReconnectCutoffOwnerBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl);
+      await verifyTranscriptIngest(upgrade, upgradeUrl);
       await verifyAuthorization(upgrade);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
       assertLegacyCreditLedgerIntegrity(
@@ -1505,13 +1508,13 @@ async function verifyAtomicSessionCompletion(
                 sessionId: SESSION_ATOMIC_END,
                 actor: { type: "user", userId: USER_ONE },
                 requestedTerminalReason: "user_end",
-                validation,
+                validationOverride: validation,
               }
             : {
                 sessionId: SESSION_ATOMIC_END,
                 actor: { type: "system", source: "hard_deadline" },
                 requestedTerminalReason: "time_limit",
-                validation,
+                validationOverride: validation,
               },
           database
         )
@@ -1634,7 +1637,7 @@ async function verifyAtomicSessionCompletion(
         sessionId: SESSION_REPAIR,
         actor: { type: "user", userId: USER_ONE },
         requestedTerminalReason: "user_end",
-        validation,
+        validationOverride: validation,
       },
       databases[0]!
     );
@@ -1644,6 +1647,169 @@ async function verifyAtomicSessionCompletion(
       assert.equal(repaired.lifecycle.version, 9);
       assert.equal(repaired.lifecycle.terminalReason, "legacy_unknown");
       assert.equal(repaired.feedback.sessionId, SESSION_REPAIR);
+    }
+  } finally {
+    await Promise.all(clients.map((client) => client.end()));
+  }
+}
+
+async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    { createDrizzleTranscriptIngestStore },
+    { finalizeInterviewSession },
+    { createTranscriptEvent },
+    schema,
+  ] = await Promise.all([
+    import("../lib/db/transcripts"),
+    import("../lib/db/end-interview-session"),
+    import("@meelni/agent"),
+    import("../lib/db/schema"),
+  ]);
+
+  await sql`
+    UPDATE interview_session
+    SET livekit_room_name = 'transcript-room-one',
+        lifecycle_state = 'active',
+        activated_at = COALESCE(activated_at, now())
+    WHERE id = ${SESSION_ONE}::uuid
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      livekit_room_name, activated_at
+    ) VALUES (
+      ${SESSION_TRANSCRIPT_TWO}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      'transcript-room-two',
+      now()
+    ) ON CONFLICT (id) DO UPDATE
+      SET livekit_room_name = EXCLUDED.livekit_room_name,
+          lifecycle_state = 'active',
+          activated_at = COALESCE(interview_session.activated_at, now())
+  `;
+
+  const clients = Array.from({ length: 10 }, () =>
+    postgres(databaseUrl, { max: 1, prepare: false })
+  );
+  const stores = clients.map((client) =>
+    createDrizzleTranscriptIngestStore(drizzle(client, { schema }))
+  );
+  const event = createTranscriptEvent({
+    event_id: "migration-writer:message-1",
+    writer_id: "migration-writer",
+    sequence: 1,
+    session_id: SESSION_ONE,
+    room_name: "transcript-room-one",
+    speaker: "user",
+    text: "Identical text must remain distinct when event identity differs.",
+    started_at: "2026-07-10T05:00:00.000Z",
+    ended_at: "2026-07-10T05:00:04.000Z",
+    audio_duration_ms: 4_000,
+    section: "product_sense",
+    delivery_state: "delivered",
+  });
+
+  try {
+    const concurrent = await Promise.all(
+      stores.map((store) => store.persist({ userId: USER_ONE, event }))
+    );
+    assert.equal(
+      concurrent.filter(
+        (result) => result.ok && result.disposition === "created"
+      ).length,
+      1
+    );
+    assert.equal(
+      concurrent.filter(
+        (result) => result.ok && result.disposition === "existing"
+      ).length,
+      9
+    );
+
+    const second = createTranscriptEvent({
+      ...event,
+      event_id: "migration-writer:message-2",
+      sequence: Number.MAX_SAFE_INTEGER,
+      started_at: "2026-07-10T05:00:05.000Z",
+      ended_at: "2026-07-10T05:00:09.000Z",
+    });
+    assert.deepEqual(
+      await stores[0]!
+        .persist({ userId: USER_ONE, event: second })
+        .then((result) => result.ok && result.disposition),
+      "created"
+    );
+
+    const crossSession = createTranscriptEvent({
+      ...event,
+      session_id: SESSION_TRANSCRIPT_TWO,
+      room_name: "transcript-room-two",
+    });
+    assert.deepEqual(
+      await stores[0]!.persist({ userId: USER_ONE, event: crossSession }),
+      { ok: false, reason: "event_conflict" }
+    );
+
+    const sequenceConflict = createTranscriptEvent({
+      ...event,
+      event_id: "migration-writer:other-message",
+    });
+    assert.deepEqual(
+      await stores[0]!.persist({ userId: USER_ONE, event: sequenceConflict }),
+      { ok: false, reason: "writer_sequence_conflict" }
+    );
+
+    const stored = await sql<
+      { event_id: string; text: string; sequence: string }[]
+    >`
+      SELECT event_id, text, sequence::text
+      FROM transcript_turn
+      WHERE session_id = ${SESSION_ONE}::uuid AND event_id IS NOT NULL
+      ORDER BY started_at, writer_id, sequence, event_id, id
+    `;
+    assert.deepEqual(
+      stored.map(({ event_id }) => event_id),
+      ["migration-writer:message-1", "migration-writer:message-2"]
+    );
+    assert.equal(stored[0]?.text, stored[1]?.text);
+    assert.equal(stored[1]?.sequence, String(Number.MAX_SAFE_INTEGER));
+
+    const terminalRaceEvent = createTranscriptEvent({
+      ...event,
+      event_id: "terminal-race-writer:message-1",
+      writer_id: "terminal-race-writer",
+      session_id: SESSION_TRANSCRIPT_TWO,
+      room_name: "transcript-room-two",
+    });
+    const [ingestResult, completionResult] = await Promise.all([
+      stores[0]!.persist({ userId: USER_ONE, event: terminalRaceEvent }),
+      finalizeInterviewSession(
+        {
+          sessionId: SESSION_TRANSCRIPT_TWO,
+          actor: { type: "user", userId: USER_ONE },
+          requestedTerminalReason: "user_end",
+        },
+        drizzle(clients[1]!, { schema })
+      ),
+    ]);
+    assert.equal(completionResult.ok, true);
+    const terminalRaceRows = await sql<{ rows: number }[]>`
+      SELECT count(*)::int AS rows
+      FROM transcript_turn
+      WHERE session_id = ${SESSION_TRANSCRIPT_TWO}::uuid
+    `;
+    const durableRows = terminalRaceRows[0]?.rows ?? 0;
+    assert.ok(
+      (ingestResult.ok && ingestResult.disposition === "created") ||
+        (!ingestResult.ok && ingestResult.reason === "session_closed")
+    );
+    if (completionResult.ok) {
+      assert.equal(completionResult.stats.totalTurns, durableRows);
     }
   } finally {
     await Promise.all(clients.map((client) => client.end()));
@@ -1672,7 +1838,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 10);
+  assert.equal(await migrationCount(sql), 11);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -1796,6 +1962,45 @@ async function verifyDatabase(sql: postgres.Sql) {
     ORDER BY indexname
   `;
   assert.equal(completionIndexes.length, 2);
+
+  const transcriptColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'transcript_turn'
+      AND column_name IN (
+        'contract_version', 'event_id', 'writer_id', 'sequence',
+        'room_name', 'delivery_state'
+      )
+    ORDER BY column_name
+  `;
+  assert.equal(transcriptColumns.length, 6);
+
+  const transcriptConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname IN (
+      'transcript_turn_contract_version_check',
+      'transcript_turn_sequence_check',
+      'transcript_turn_delivery_state_check',
+      'transcript_turn_canonical_identity_check'
+    )
+    ORDER BY conname
+  `;
+  assert.equal(transcriptConstraints.length, 4);
+
+  const transcriptIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'transcript_turn_event_id_idx',
+        'transcript_turn_session_writer_sequence_idx',
+        'transcript_turn_chronological_idx'
+      )
+    ORDER BY indexname
+  `;
+  assert.equal(transcriptIndexes.length, 3);
 
   const tierConstraint = await sql<{ definition: string }[]>`
     SELECT pg_get_constraintdef(oid) AS definition

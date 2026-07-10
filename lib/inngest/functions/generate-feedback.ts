@@ -6,7 +6,7 @@
 import { inngest } from "../client";
 import { db } from "@/lib/db";
 import { feedback, interviewSession, transcriptTurn } from "@/lib/db/schema";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   SessionTier,
   validateSessionCompleteness,
@@ -49,11 +49,16 @@ async function fetchSessionTranscript(
 ): Promise<{ speaker: string; text: string }[]> {
   const turns = await db.query.transcriptTurn.findMany({
     where: eq(transcriptTurn.sessionId, sessionId),
-    orderBy: [desc(transcriptTurn.startedAt)],
+    orderBy: [
+      asc(transcriptTurn.startedAt),
+      asc(transcriptTurn.writerId),
+      asc(transcriptTurn.sequence),
+      asc(transcriptTurn.eventId),
+      asc(transcriptTurn.id),
+    ],
   });
 
   return turns
-    .reverse() // Oldest first
     .filter((turn) => turn.text !== null)
     .map((turn) => ({
       speaker: turn.speaker,
