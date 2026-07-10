@@ -54,6 +54,7 @@ test("workspace package entrypoints expose named contracts", () => {
   assert.equal(
     createTranscriptEvent({
       event_id: "event-1",
+      writer_id: "writer-1",
       sequence: 1,
       session_id: "session-1",
       room_name: "room-1",

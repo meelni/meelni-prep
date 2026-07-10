@@ -5,13 +5,20 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from shared.config import parse_room_metadata
 from shared.runtime_events import create_runtime_event
 from shared.runtime_config import DEFAULT_INTERVIEW_RUNTIME_CONFIG, get_model_config, get_tts_config
-from shared.transcript_events import TRANSCRIPT_DATA_TOPIC, create_transcript_event
+from shared.transcript_events import (
+    TRANSCRIPT_DATA_TOPIC,
+    create_transcript_event,
+    create_transcript_event_from_message,
+    is_transcript_event,
+    publish_transcript_event,
+)
 
 
 class RuntimeContractTests(unittest.TestCase):
@@ -146,6 +153,7 @@ class RuntimeContractTests(unittest.TestCase):
     def test_create_transcript_event_matches_frontend_contract(self):
         event = create_transcript_event(
             event_id="transcript-event-1",
+            writer_id="writer-1",
             sequence=1,
             session_id="session-1",
             room_name="interview-room-1",
@@ -161,6 +169,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(event, {
             "contract_version": 2,
             "event_id": "transcript-event-1",
+            "writer_id": "writer-1",
             "sequence": 1,
             "session_id": "session-1",
             "room_name": "interview-room-1",
@@ -175,9 +184,10 @@ class RuntimeContractTests(unittest.TestCase):
         })
 
     def test_create_transcript_event_rejects_incomplete_timing(self):
-        with self.assertRaisesRegex(ValueError, "positive duration"):
+        with self.assertRaisesRegex(ValueError, "invalid transcript event"):
             create_transcript_event(
                 event_id="transcript-event-1",
+                writer_id="writer-1",
                 sequence=1,
                 session_id="session-1",
                 room_name="interview-room-1",
@@ -192,6 +202,7 @@ class RuntimeContractTests(unittest.TestCase):
     def test_create_transcript_event_marks_partial_delivery(self):
         event = create_transcript_event(
             event_id="transcript-event-partial",
+            writer_id="writer-1",
             sequence=2,
             session_id="session-1",
             room_name="interview-room-1",
@@ -205,6 +216,105 @@ class RuntimeContractTests(unittest.TestCase):
         )
 
         self.assertEqual(event["delivery_state"], "partially_delivered")
+
+    def test_shared_transcript_golden_cases_match_typescript(self):
+        fixture_path = (
+            Path(__file__).parent.parent
+            / "packages"
+            / "test-fixtures"
+            / "transcript-events.json"
+        )
+        cases = json.loads(fixture_path.read_text(encoding="utf-8"))
+        for case in cases["valid"]:
+            self.assertTrue(is_transcript_event(case["event"]), case["name"])
+        for case in cases["invalid"]:
+            self.assertFalse(is_transcript_event(case["event"]), case["name"])
+
+    def test_committed_message_normalizer_uses_writer_scoped_identity_and_timing(self):
+        message = SimpleNamespace(
+            id="message-1",
+            role="user",
+            interrupted=False,
+            text_content="A measured response.",
+            metrics={
+                "started_speaking_at": 1782600000,
+                "stopped_speaking_at": 1782600002.5,
+            },
+        )
+        event = create_transcript_event_from_message(
+            message=message,
+            writer_id="writer-1",
+            sequence=1,
+            session_id="session-1",
+            room_name="room-1",
+            section="product_sense",
+        )
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event["event_id"], "writer-1:message-1")
+        self.assertEqual(event["writer_id"], "writer-1")
+        self.assertEqual(event["audio_duration_ms"], 2500)
+
+    def test_committed_message_normalizer_drops_interrupted_and_unmeasured_items(self):
+        interrupted = SimpleNamespace(
+            id="message-1",
+            role="assistant",
+            interrupted=True,
+            text_content="Generated but not fully heard.",
+            metrics={
+                "started_speaking_at": 1782600000,
+                "stopped_speaking_at": 1782600001,
+            },
+        )
+        unmeasured = SimpleNamespace(
+            id="message-2",
+            role="user",
+            interrupted=False,
+            text_content="Missing timing.",
+            metrics={},
+        )
+
+        for message in (interrupted, unmeasured):
+            self.assertIsNone(
+                create_transcript_event_from_message(
+                    message=message,
+                    writer_id="writer-1",
+                    sequence=1,
+                    session_id="session-1",
+                    room_name="room-1",
+                    section="product_sense",
+                )
+            )
+
+    def test_replacement_writer_scopes_sequence_in_the_same_room(self):
+        message = SimpleNamespace(
+            id="message-1",
+            role="user",
+            interrupted=False,
+            text_content="A response.",
+            metrics={
+                "started_speaking_at": 1782600000,
+                "stopped_speaking_at": 1782600001,
+            },
+        )
+        events = [
+            create_transcript_event_from_message(
+                message=message,
+                writer_id=writer_id,
+                sequence=1,
+                session_id="session-1",
+                room_name="room-1",
+                section="product_sense",
+            )
+            for writer_id in ("writer-a", "writer-b")
+        ]
+
+        self.assertEqual([event["sequence"] for event in events], [1, 1])
+        self.assertEqual(
+            [event["writer_id"] for event in events],
+            ["writer-a", "writer-b"],
+        )
+        self.assertNotEqual(events[0]["event_id"], events[1]["event_id"])
 
     def test_runtime_lifecycle_event_matches_typescript_contract(self):
         event = create_runtime_event(
@@ -226,6 +336,33 @@ class RuntimeContractTests(unittest.TestCase):
                 event_type="provider_failed",
                 occurred_at="2026-07-09T21:00:00.000Z",
             )
+
+
+class TranscriptPublisherTests(unittest.IsolatedAsyncioTestCase):
+    async def test_publish_transcript_event_uses_canonical_topic_once(self):
+        calls = []
+
+        async def publish_data(payload, *, topic):
+            calls.append((json.loads(payload.decode("utf-8")), topic))
+
+        participant = SimpleNamespace(publish_data=publish_data)
+        event = create_transcript_event(
+            event_id="event-1",
+            writer_id="writer-1",
+            sequence=1,
+            session_id="session-1",
+            room_name="room-1",
+            speaker="user",
+            text="Measured.",
+            started_at=1782600000,
+            ended_at=1782600001,
+            audio_duration_ms=1000,
+            section="product_sense",
+        )
+
+        await publish_transcript_event(participant, event)
+
+        self.assertEqual(calls, [(event, TRANSCRIPT_DATA_TOPIC)])
 
 
 if __name__ == "__main__":

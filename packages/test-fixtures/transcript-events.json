@@ -1,0 +1,120 @@
+{
+  "valid": [
+    {
+      "name": "delivered",
+      "event": {
+        "contract_version": 2,
+        "event_id": "event-golden-1",
+        "writer_id": "writer-golden-1",
+        "sequence": 1,
+        "session_id": "session-golden-1",
+        "room_name": "room-golden-1",
+        "speaker": "user",
+        "text": "A measured answer.",
+        "is_final": true,
+        "started_at": "2026-07-10T05:00:00.000Z",
+        "ended_at": "2026-07-10T05:00:02.500Z",
+        "audio_duration_ms": 2500,
+        "section": "product_sense",
+        "delivery_state": "delivered"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "boolean sequence",
+      "event": {
+        "contract_version": 2,
+        "event_id": "event-golden-1",
+        "writer_id": "writer-golden-1",
+        "sequence": true,
+        "session_id": "session-golden-1",
+        "room_name": "room-golden-1",
+        "speaker": "user",
+        "text": "A measured answer.",
+        "is_final": true,
+        "started_at": "2026-07-10T05:00:00.000Z",
+        "ended_at": "2026-07-10T05:00:02.500Z",
+        "audio_duration_ms": 2500,
+        "section": "product_sense",
+        "delivery_state": "delivered"
+      }
+    },
+    {
+      "name": "fractional sequence",
+      "event": {
+        "contract_version": 2,
+        "event_id": "event-golden-1",
+        "writer_id": "writer-golden-1",
+        "sequence": 1.5,
+        "session_id": "session-golden-1",
+        "room_name": "room-golden-1",
+        "speaker": "user",
+        "text": "A measured answer.",
+        "is_final": true,
+        "started_at": "2026-07-10T05:00:00.000Z",
+        "ended_at": "2026-07-10T05:00:02.500Z",
+        "audio_duration_ms": 2500,
+        "section": "product_sense",
+        "delivery_state": "delivered"
+      }
+    },
+    {
+      "name": "noncanonical timestamp",
+      "event": {
+        "contract_version": 2,
+        "event_id": "event-golden-1",
+        "writer_id": "writer-golden-1",
+        "sequence": 1,
+        "session_id": "session-golden-1",
+        "room_name": "room-golden-1",
+        "speaker": "user",
+        "text": "A measured answer.",
+        "is_final": true,
+        "started_at": "2026-07-10 05:00:00Z",
+        "ended_at": "2026-07-10T05:00:02.500Z",
+        "audio_duration_ms": 2500,
+        "section": "product_sense",
+        "delivery_state": "delivered"
+      }
+    },
+    {
+      "name": "fractional duration",
+      "event": {
+        "contract_version": 2,
+        "event_id": "event-golden-1",
+        "writer_id": "writer-golden-1",
+        "sequence": 1,
+        "session_id": "session-golden-1",
+        "room_name": "room-golden-1",
+        "speaker": "user",
+        "text": "A measured answer.",
+        "is_final": true,
+        "started_at": "2026-07-10T05:00:00.000Z",
+        "ended_at": "2026-07-10T05:00:02.500Z",
+        "audio_duration_ms": 2500.5,
+        "section": "product_sense",
+        "delivery_state": "delivered"
+      }
+    },
+    {
+      "name": "missing writer",
+      "event": {
+        "contract_version": 2,
+        "event_id": "event-golden-1",
+        "writer_id": "",
+        "sequence": 1,
+        "session_id": "session-golden-1",
+        "room_name": "room-golden-1",
+        "speaker": "user",
+        "text": "A measured answer.",
+        "is_final": true,
+        "started_at": "2026-07-10T05:00:00.000Z",
+        "ended_at": "2026-07-10T05:00:02.500Z",
+        "audio_duration_ms": 2500,
+        "section": "product_sense",
+        "delivery_state": "delivered"
+      }
+    }
+  ]
+}

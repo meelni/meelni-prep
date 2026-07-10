@@ -1,10 +1,10 @@
 # LiveKit Agents Framework
-livekit-agents
-livekit-plugins-openai
-livekit-plugins-deepgram
-livekit-plugins-cartesia
-livekit-plugins-silero
-livekit-plugins-turn-detector
+livekit-agents==1.6.5
+livekit-plugins-openai==1.6.5
+livekit-plugins-deepgram==1.6.5
+livekit-plugins-cartesia==1.6.5
+livekit-plugins-silero==1.6.5
+livekit-plugins-turn-detector==1.6.5
 
 # Core dependencies
-python-dotenv
+python-dotenv==1.2.2

@@ -272,30 +272,14 @@ function InterviewPageContent() {
       return;
     }
 
-    // Check for duplicates first
-    let isDuplicate = false;
-    setTranscript((prev) => {
-      // Check if this exact text already exists in the last few entries
-      const lastFew = prev.slice(-5); // Check last 5 entries
-      isDuplicate = lastFew.some((t) =>
-        turn.eventId
-          ? t.eventId === turn.eventId
-          : t.text === turn.text && t.speaker === turn.speaker
+    // The LiveKit adapter rejects replayed packet identities before this
+    // callback, so UI and persistence observe the same accepted turn exactly once.
+    setTranscript((prev) => [...prev, turn]);
+
+    if (turn.persistable === false) {
+      console.warn(
+        "[Interview] Displaying legacy transcript packet without invented persistence timing"
       );
-
-      if (isDuplicate) {
-        console.log(
-          "[Interview] Skipping duplicate transcript:",
-          turn.text.substring(0, 50)
-        );
-        return prev; // Don't add duplicate
-      }
-
-      return [...prev, turn];
-    });
-
-    // Skip database save if duplicate
-    if (isDuplicate) {
       return;
     }
 

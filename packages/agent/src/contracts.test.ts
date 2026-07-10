@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import transcriptGoldenCases from "../../test-fixtures/transcript-events.json";
 
 import {
   createLiveKitStartFixture,
@@ -7,9 +8,11 @@ import {
 } from "@meelni/test-fixtures";
 
 import {
+  acceptTranscriptEventOnce,
   buildInterviewRoomMetadata,
   createInterviewRuntimeEvent,
   createTranscriptEvent,
+  getTranscriptEventTiming,
   isTranscriptEvent,
   normalizeInterviewRuntimeConfig,
   normalizeAgentState,
@@ -229,6 +232,47 @@ test("transcript event parsing rejects missing, invented, or inconsistent timing
     ),
     null
   );
+  assert.equal(
+    parseTranscriptEvent(
+      JSON.stringify({ ...fixture, audio_duration_ms: 8000.5 })
+    ),
+    null
+  );
+  assert.equal(
+    parseTranscriptEvent(JSON.stringify({ ...fixture, sequence: 1.5 })),
+    null
+  );
+  assert.equal(
+    parseTranscriptEvent(
+      JSON.stringify({
+        ...fixture,
+        started_at: "2026-06-27 17:30:00Z",
+      })
+    ),
+    null
+  );
+  assert.equal(
+    parseTranscriptEvent(JSON.stringify({ ...fixture, writer_id: "" })),
+    null
+  );
+});
+
+test("transcript replay guard accepts one packet identity exactly once", () => {
+  const accepted = new Set<string>();
+  const event = createLiveKitStartFixture().transcriptEvent;
+
+  assert.equal(acceptTranscriptEventOnce(accepted, event), true);
+  assert.equal(acceptTranscriptEventOnce(accepted, event), false);
+  assert.equal(accepted.size, 1);
+});
+
+test("TypeScript accepts and rejects the shared transcript golden cases", () => {
+  for (const { name, event } of transcriptGoldenCases.valid) {
+    assert.equal(isTranscriptEvent(event), true, name);
+  }
+  for (const { name, event } of transcriptGoldenCases.invalid) {
+    assert.equal(isTranscriptEvent(event), false, name);
+  }
 });
 
 test("transcript contract distinguishes partially delivered interviewer speech", () => {
@@ -258,6 +302,9 @@ test("legacy v1 packets remain identifiable without fabricating v2 fields", () =
     text: "A legacy finalized turn.",
     timestamp: 1782600000,
     is_final: true,
+  });
+  assert.deepEqual(getTranscriptEventTiming(parsed!), {
+    timestampMs: 1782600000000,
   });
 });
 
