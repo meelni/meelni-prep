@@ -1,89 +1,8 @@
 /**
- * Get Session Feedback API (with Polling Support)
- *
- * Retrieves the AI-generated feedback for an interview session, supporting
- * real-time status polling. Returns feedback status (pending, processing,
- * completed, failed, skipped) with estimated time remaining for incomplete
- * feedback. Includes cache headers based on feedback status.
- *
- * @route GET /api/feedback/:sessionId
- * @access Protected (requires Supabase Auth JWT)
- * @authentication Bearer token in Authorization header
- *
- * @param {string} sessionId - UUID of the session (URL parameter)
- *
- * @response {Object} response - Feedback status and data
- * @response.status {string} - Feedback status (pending|processing|completed|failed|skipped)
- * @response.estimatedTimeRemaining {number} - Seconds remaining (if pending/processing)
- * @response.skipReason {string} - Reason for skipping (if skipped)
- * @response.error {string} - Error message (if failed)
- * @response.feedback {Object} - Complete feedback object (if completed)
- *
- * @throws {401} Unauthorized - Missing or invalid authentication token
- * @throws {403} Forbidden - User does not own this session
- * @throws {404} Not Found - Session not found or feedback not initialized
- * @throws {500} Internal Server Error - Database query failed
- *
- * @example
- * // Request
- * GET /api/feedback/550e8400-e29b-41d4-a716-446655440000
- * Headers:
- *   Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
- *
- * // Response (200 OK - Pending)
- * {
- *   "status": "pending",
- *   "estimatedTimeRemaining": 42
- * }
- * Cache-Control: no-cache
- *
- * // Response (200 OK - Processing)
- * {
- *   "status": "processing",
- *   "estimatedTimeRemaining": 25
- * }
- * Cache-Control: no-cache
- *
- * // Response (200 OK - Completed)
- * {
- *   "status": "completed",
- *   "feedback": {
- *     "id": "feedback-abc123",
- *     "sessionId": "550e8400-e29b-41d4-a716-446655440000",
- *     "structureScore": 8,
- *     "clarityScore": 7,
- *     "insightScore": 9,
- *     "communicationScore": 8,
- *     "leadershipScore": 7,
- *     "overallScore": 7.8,
- *     "strengths": ["..."],
- *     "improvements": ["..."],
- *     "drills": ["..."],
- *     "summary": "...",
- *     "rubricVersion": "1.0.0",
- *     "createdAt": "2025-11-05T11:20:00Z"
- *   }
- * }
- * Cache-Control: public, max-age=3600
- *
- * // Response (200 OK - Skipped)
- * {
- *   "status": "skipped",
- *   "skipReason": "Session too short: 2 minutes < 5 minutes minimum"
- * }
- * Cache-Control: public, max-age=300
- *
- * // Response (200 OK - Failed)
- * {
- *   "status": "failed",
- *   "error": "GPT-4 API timeout"
- * }
- * Cache-Control: public, max-age=300
- *
- * // Error Response (404 Not Found)
- * {
- *   "error": "Session not found or access denied"
- * }
+ * Authenticated, owner-scoped feedback polling and recovery API.
+ * Completed rows cross the strict @meelni/core read boundary before response;
+ * lifecycle clients use only the top-level retryable field as recovery truth.
+ * See docs/api/feedback-polling-examples.md for the discriminated contract.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -96,7 +15,10 @@ import {
   isFeedbackGenerationRetryable,
 } from "@/lib/db/feedback-generation-state";
 import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
-import { isInterviewTerminalState } from "@meelni/core";
+import {
+  isInterviewTerminalState,
+  presentCompletedFeedback,
+} from "@meelni/core";
 import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
 
 // Estimated total processing time (seconds)
@@ -226,35 +148,46 @@ export async function GET(
 
     // Case 3: Completed - return full feedback with cache
     if (status === "completed") {
+      const feedbackView = presentCompletedFeedback({
+        id: feedbackRecord.id,
+        sessionId: feedbackRecord.sessionId,
+        structureScore: feedbackRecord.structureScore,
+        clarityScore: feedbackRecord.clarityScore,
+        insightScore: feedbackRecord.insightScore,
+        communicationScore: feedbackRecord.communicationScore,
+        leadershipScore: feedbackRecord.leadershipScore,
+        overallScore: feedbackRecord.overallScore,
+        strengths: feedbackRecord.strengths,
+        improvements: feedbackRecord.improvements,
+        drills: feedbackRecord.drills,
+        summary: feedbackRecord.summary,
+        rubricVersion: feedbackRecord.rubricVersion,
+        schemaVersion: feedbackRecord.schemaVersion,
+        promptVersion: feedbackRecord.promptVersion,
+        modelVersion: feedbackRecord.modelVersion,
+        evaluationState: feedbackRecord.evaluationState,
+        createdAt: feedbackRecord.createdAt,
+      });
+      if (feedbackView.kind === "invalid") {
+        console.error("[feedback.integrity] incompatible completed feedback", {
+          environment:
+            process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
+          release: process.env.VERCEL_GIT_COMMIT_SHA || "unknown",
+          sessionId,
+        });
+      }
       return NextResponse.json(
         {
           status: "completed",
-          feedback: {
-            id: feedbackRecord.id,
-            sessionId: feedbackRecord.sessionId,
-            structureScore: feedbackRecord.structureScore,
-            clarityScore: feedbackRecord.clarityScore,
-            insightScore: feedbackRecord.insightScore,
-            communicationScore: feedbackRecord.communicationScore,
-            leadershipScore: feedbackRecord.leadershipScore,
-            overallScore: feedbackRecord.overallScore
-              ? parseFloat(feedbackRecord.overallScore)
-              : null,
-            strengths: feedbackRecord.strengths as unknown[],
-            improvements: feedbackRecord.improvements as unknown[],
-            drills: feedbackRecord.drills as string[],
-            summary: feedbackRecord.summary,
-            rubricVersion: feedbackRecord.rubricVersion,
-            schemaVersion: feedbackRecord.schemaVersion,
-            promptVersion: feedbackRecord.promptVersion,
-            modelVersion: feedbackRecord.modelVersion,
-            evaluationState: feedbackRecord.evaluationState,
-            createdAt: feedbackRecord.createdAt,
-          },
+          retryable: false,
+          feedback: feedbackView,
         },
         {
           headers: {
-            "Cache-Control": "private, max-age=3600",
+            "Cache-Control":
+              feedbackView.kind === "invalid"
+                ? "private, no-store"
+                : "private, max-age=3600",
           },
         }
       );
@@ -264,14 +197,18 @@ export async function GET(
     if (status === "skipped") {
       // Fetch validation data for edge case components
       const validation = await validateSessionCompleteness(sessionId);
+      const tier =
+        feedbackRecord.completionTier === "abandoned" ||
+        validation.tier === "abandoned"
+          ? "abandoned"
+          : "insufficient";
 
       return NextResponse.json(
         {
           status: "skipped",
-          skipReason:
-            feedbackRecord.statusReason || "Feedback generation was skipped",
-          validation: {
-            tier: validation.tier,
+          retryable: false,
+          details: {
+            tier,
             stats: validation.stats,
             reasons: validation.reasons,
             recommendations: validation.recommendations,
@@ -297,7 +234,7 @@ export async function GET(
       return NextResponse.json(
         {
           status: "failed",
-          error: feedbackRecord.statusReason || "Feedback generation failed",
+          message: "Feedback could not be completed.",
           retryable,
         },
         {
@@ -313,8 +250,8 @@ export async function GET(
       { error: "Invalid feedback status" },
       { status: 500 }
     );
-  } catch (error) {
-    console.error("Error fetching feedback:", error);
+  } catch {
+    console.error("[feedback.api] polling failed");
     return NextResponse.json(
       { error: "Failed to fetch feedback" },
       { status: 500 }
@@ -366,8 +303,8 @@ export async function POST(
       },
       { headers: { "Cache-Control": "private, no-store" } }
     );
-  } catch (error) {
-    console.error("Error retrying feedback dispatch:", error);
+  } catch {
+    console.error("[feedback.api] recovery failed");
     return NextResponse.json(
       {
         error: "feedback_retry_failed",

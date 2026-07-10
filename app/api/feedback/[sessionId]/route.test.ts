@@ -20,6 +20,7 @@ import { NextRequest } from "next/server";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { createClient } from "@/lib/supabase/server";
+import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
 import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
 import { GET, POST } from "./route";
 
@@ -256,7 +257,16 @@ describe("/api/feedback/[sessionId]", () => {
         status: "completed",
         dispatchStatus: "sent",
         dispatchedAt: new Date("2026-07-09T22:00:00.000Z"),
+        structureScore: 8,
+        clarityScore: 7,
+        insightScore: 9,
+        communicationScore: 8,
+        leadershipScore: 7,
         overallScore: "8.0",
+        strengths: ["Clear answer"],
+        improvements: ["State the approach first"],
+        drills: [],
+        summary: "Historical summary",
       }) as never
     );
     const response = await GET(request(), PARAMS);
@@ -276,9 +286,23 @@ describe("/api/feedback/[sessionId]", () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({
         status: "completed",
-        overallScore: "7.8",
+        structureScore: 8,
+        clarityScore: 7,
+        insightScore: 9,
+        communicationScore: 8,
+        leadershipScore: 7,
+        overallScore: "7.9",
         strengths: [finding],
-        improvements: [{ ...finding, dimension: "structure" }],
+        improvements: [
+          {
+            ...finding,
+            dimension: "structure",
+            transcriptRefs: ["writer:2"],
+            evidence: [{ turnRef: "writer:2", quote: "first, I would" }],
+          },
+        ],
+        drills: ["Practice a two-minute prioritization explanation."],
+        summary: "The answer was specific and can become more structured.",
         schemaVersion: "feedback.v2",
         promptVersion: "feedback.prompt.v2",
         modelVersion: "fixture-model-v1",
@@ -291,6 +315,7 @@ describe("/api/feedback/[sessionId]", () => {
     await expect(response.json()).resolves.toMatchObject({
       status: "completed",
       feedback: {
+        kind: "v2",
         strengths: [finding],
         schemaVersion: "feedback.v2",
         promptVersion: "feedback.prompt.v2",
@@ -298,6 +323,107 @@ describe("/api/feedback/[sessionId]", () => {
         rubricVersion: "pm-feedback-rubric.v2",
         evaluationState: "partial",
       },
+    });
+  });
+
+  it("fails closed when a completed row has missing scores", async () => {
+    const integrityLog = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        structureScore: 8,
+        clarityScore: null,
+        insightScore: 9,
+        communicationScore: 8,
+        leadershipScore: 7,
+        overallScore: "8.0",
+        strengths: ["Generic strength"],
+        improvements: ["Generic improvement"],
+        drills: [],
+        summary: "Generic summary",
+        schemaVersion: null,
+        promptVersion: null,
+        modelVersion: null,
+        evaluationState: null,
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    await expect(response.json()).resolves.toEqual({
+      status: "completed",
+      retryable: false,
+      feedback: { kind: "invalid", reason: "incompatible_or_corrupt" },
+    });
+    expect(integrityLog).toHaveBeenCalledWith(
+      "[feedback.integrity] incompatible completed feedback",
+      expect.objectContaining({ sessionId: SESSION_ID })
+    );
+    const metadata = integrityLog.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(Object.keys(metadata).sort()).toEqual([
+      "environment",
+      "release",
+      "sessionId",
+    ]);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    integrityLog.mockRestore();
+  });
+
+  it("returns validated legacy feedback with an explicit historical discriminator", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        structureScore: 8,
+        clarityScore: 7,
+        insightScore: 9,
+        communicationScore: 8,
+        leadershipScore: 7,
+        // Legacy writes accepted a separately model-authored overall score.
+        overallScore: "8.0",
+        strengths: ["Clear explanation"],
+        improvements: ["State the approach first"],
+        drills: [],
+        summary: "Historical summary",
+        schemaVersion: null,
+        promptVersion: null,
+        modelVersion: null,
+        evaluationState: null,
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "completed",
+      feedback: { kind: "legacy", strengths: ["Clear explanation"] },
+    });
+  });
+
+  it("preserves insufficient and abandoned skipped states", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        completionTier: "abandoned",
+      }) as never
+    );
+    vi.mocked(validateSessionCompleteness).mockResolvedValue({
+      tier: "abandoned",
+      stats: {
+        totalTurns: 0,
+        userTurns: 0,
+        totalWords: 0,
+        durationSeconds: 0,
+        substantiveResponses: 0,
+      },
+      reasons: ["No recorded conversation"],
+      recommendations: ["Start a new mock interview"],
+    } as never);
+
+    const response = await GET(request(), PARAMS);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "skipped",
+      retryable: false,
+      details: { tier: "abandoned" },
     });
   });
 });
@@ -338,6 +464,11 @@ function feedbackRecord(overrides: Record<string, unknown> = {}) {
     drills: [],
     summary: null,
     rubricVersion: "1.0.0",
+    schemaVersion: null,
+    promptVersion: null,
+    modelVersion: null,
+    evaluationState: null,
+    completionTier: null,
     createdAt: new Date("2026-07-09T22:00:00.000Z"),
     ...overrides,
   };

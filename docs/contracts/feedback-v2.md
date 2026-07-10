@@ -111,3 +111,35 @@ claim exhaustive adversarial coverage or hiring calibration.
 
 Persistence, event fencing, retries, and insights handoff follow the
 [feedback generation contract](./feedback-generation.md).
+
+## Read and presentation boundary
+
+Persisted completed rows are untrusted input when read back. The canonical
+presenter in `packages/core/src/feedback-view-model.ts` produces exactly one of:
+
+- validated `v2`, with the exact supported version tuple, complete scores,
+  structurally valid findings and evidence, and an overall score that matches
+  the canonical v2 weighting;
+- validated `legacy`, with a completely absent v2 tuple, bounded historical
+  strings, complete in-range scores, and an explicit historical-feedback label;
+- `invalid`, which contains no scores or findings and is shown as unavailable.
+
+Historical feedback keeps the separately model-authored overall score used by
+the legacy writer. It is not reweighted using v2 rules and is never described
+as transcript-grounded or personalized. Missing, out-of-range, or malformed
+legacy data still fails closed.
+
+The API emits a redacted integrity log when a completed row is invalid. The log
+contains only environment, release, and opaque session correlation; it never
+contains findings, transcript text, user identity, or raw persisted payloads.
+
+The v2 finding presentation order is observation, every transcript evidence
+excerpt, then a specific next action. Finding confidence is described as
+evidence strength, not interview readiness. `0.8–1` is strong evidence,
+`0.6–0.79` is moderate evidence, and values below `0.6` are limited evidence.
+
+The read model reserves a nullable, typed next-practice recommendation seam for
+SAV-201. SAV-200 does not rank exercises or add a start action to model-generated
+suggestions. The customer feedback surface hides those stored suggestions until
+SAV-201 supplies the deterministic recommendation contract; finding-level
+`nextStep` remains the actionable guidance in the meantime.

@@ -521,8 +521,8 @@ test("authenticated product routes follow the product container taxonomy", async
     "app/feedback/[sessionId]/compare/page.tsx",
     "utf8"
   );
-  const feedbackLoading = await readFile(
-    "app/feedback/[sessionId]/components/feedback-loading.tsx",
+  const feedbackReview = await readFile(
+    "components/feedback/feedback-review.tsx",
     "utf8"
   );
   const dashboardSections = [
@@ -575,17 +575,17 @@ test("authenticated product routes follow the product container taxonomy", async
     }
   }
 
-  if (!feedbackResultPage.includes("FeedbackReviewShell")) {
-    violations.push("app/feedback/[sessionId]/page.tsx:FeedbackReviewShell");
+  if (!feedbackResultPage.includes("FeedbackReview")) {
+    violations.push("app/feedback/[sessionId]/page.tsx:FeedbackReview");
   }
   if (!feedbackComparePage.includes("FeedbackReviewShell")) {
     violations.push(
       "app/feedback/[sessionId]/compare/page.tsx:FeedbackReviewShell"
     );
   }
-  if (!feedbackLoading.includes("FeedbackStatusPage")) {
+  if (!feedbackReview.includes("FeedbackStatusPage")) {
     violations.push(
-      "app/feedback/[sessionId]/components/feedback-loading.tsx:FeedbackStatusPage"
+      "components/feedback/feedback-review.tsx:FeedbackStatusPage"
     );
   }
 
@@ -1205,7 +1205,6 @@ test("priority chart configs use shared chart tokens instead of literal colors",
     "components/dashboard/charts/score-by-type.tsx",
     "components/dashboard/charts/time-investment.tsx",
     "components/dashboard/charts/competency-breakdown.tsx",
-    "components/feedback/score-breakdown.tsx",
   ];
   const violations = [];
   const literalColor = /color:\s*["']#[0-9A-Fa-f]{3,6}["']/;
@@ -1232,7 +1231,6 @@ test("dashboard charts use named height utilities", async () => {
     "components/dashboard/charts/score-by-type.tsx",
     "components/dashboard/charts/time-investment.tsx",
     "components/dashboard/charts/type-distribution.tsx",
-    "components/feedback/score-breakdown.tsx",
   ];
   const violations = [];
   const requiredUtilities = [
@@ -1520,7 +1518,7 @@ test("interview runtime indicators use semantic status tokens", async () => {
   ];
   const messageFiles = [
     "app/interview/components/transcript-panel.tsx",
-    "app/feedback/[sessionId]/page.tsx",
+    "components/feedback/feedback-transcript.tsx",
   ];
   const rawStatusUtility =
     /\b(?:bg|text|border|shadow|hover:bg|hover:text|hover:border)-(?:blue|purple|green|red|amber|orange)-\d+(?:\/\d+)?\b/;
@@ -2398,58 +2396,35 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
 
   const expectations = [
     {
-      file: "components/feedback/feedback-display.tsx",
+      file: "components/feedback/feedback-review.tsx",
       requiredImports: [
-        "FeedbackSectionCard",
-        "FeedbackScoreCard",
-        "FeedbackStateCard",
+        "CompletedV2Review",
+        "CompletedLegacyReview",
+        "FeedbackLifecycleStatus",
+        "toFeedbackViewState",
       ],
     },
     {
-      file: "components/feedback/score-breakdown.tsx",
-      requiredImports: ["FeedbackSectionCard"],
+      file: "components/feedback/feedback-completed-review.tsx",
+      requiredImports: [
+        "FeedbackReviewShell",
+        "FeedbackSectionCard",
+        "FeedbackFindingCard",
+        "FeedbackScoreSummary",
+        "FeedbackTranscriptSection",
+      ],
     },
     {
-      file: "components/feedback/strengths-list.tsx",
-      requiredImports: ["FeedbackSectionCard"],
-    },
-    {
-      file: "components/feedback/improvements-list.tsx",
-      requiredImports: ["FeedbackSectionCard"],
-    },
-    {
-      file: "components/feedback/drill-list.tsx",
-      requiredImports: ["FeedbackSectionCard"],
-    },
-    {
-      file: "components/feedback/transcript-viewer.tsx",
-      requiredImports: ["FeedbackSectionCard", "FeedbackStateCard"],
-    },
-    {
-      file: "components/feedback/feedback-partial.tsx",
+      file: "components/feedback/feedback-lifecycle-status.tsx",
       requiredImports: [
         "FeedbackStatusPage",
+        "FeedbackReviewShell",
         "FeedbackSectionCard",
-        "FeedbackMetricCard",
-        "FeedbackActionItem",
       ],
     },
     {
-      file: "components/feedback/feedback-insufficient.tsx",
-      requiredImports: [
-        "FeedbackStatusPage",
-        "FeedbackSectionCard",
-        "FeedbackMetricCard",
-        "FeedbackActionItem",
-      ],
-    },
-    {
-      file: "components/feedback/feedback-abandoned.tsx",
-      requiredImports: [
-        "FeedbackStatusPage",
-        "FeedbackSectionCard",
-        "FeedbackActionItem",
-      ],
+      file: "components/feedback/feedback-finding-card.tsx",
+      requiredImports: ["StatusPill", "Button"],
     },
     {
       file: "components/feedback/attempt-comparison.tsx",
@@ -2463,28 +2438,6 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
         "FeedbackStateCard",
         "FeedbackStatusPage",
         "SelectableCard",
-      ],
-    },
-    {
-      file: "app/feedback/[sessionId]/page.tsx",
-      requiredImports: [
-        "FeedbackReviewShell",
-        "FeedbackStatusPage",
-        "FeedbackSectionCard",
-        "FeedbackScoreCard",
-        "FeedbackActionItem",
-      ],
-    },
-    {
-      file: "components/feedback/rubric-section.tsx",
-      requiredImports: ["FeedbackSectionCard"],
-    },
-    {
-      file: "app/feedback/[sessionId]/components/feedback-loading.tsx",
-      requiredImports: [
-        "FeedbackStatusPage",
-        "FeedbackSectionCard",
-        "FeedbackActionItem",
       ],
     },
   ];
@@ -2502,9 +2455,9 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
     }
     if (
       [
-        "app/feedback/[sessionId]/page.tsx",
         "app/feedback/[sessionId]/compare/page.tsx",
-        "app/feedback/[sessionId]/components/feedback-loading.tsx",
+        "components/feedback/feedback-completed-review.tsx",
+        "components/feedback/feedback-lifecycle-status.tsx",
       ].includes(file) &&
       content.includes("<button")
     ) {
@@ -2512,9 +2465,9 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
     }
     if (
       [
-        "app/feedback/[sessionId]/page.tsx",
         "app/feedback/[sessionId]/compare/page.tsx",
-        "app/feedback/[sessionId]/components/feedback-loading.tsx",
+        "components/feedback/feedback-completed-review.tsx",
+        "components/feedback/feedback-lifecycle-status.tsx",
       ].includes(file) &&
       (content.includes("container mx-auto") ||
         content.includes("bg-background min-h-screen") ||
@@ -2557,8 +2510,11 @@ test("feedback surface tones use semantic status tokens", async () => {
 
 test("feedback result indicators use semantic status tokens", async () => {
   const files = [
-    "app/feedback/[sessionId]/page.tsx",
-    "components/feedback/feedback-display.tsx",
+    "components/feedback/feedback-surface.tsx",
+    "components/feedback/feedback-review.tsx",
+    "components/feedback/feedback-completed-review.tsx",
+    "components/feedback/feedback-lifecycle-status.tsx",
+    "components/feedback/feedback-finding-card.tsx",
     "components/feedback/attempt-comparison.tsx",
   ];
   const rawStatusUtility =
