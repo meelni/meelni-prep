@@ -33,6 +33,17 @@ Concurrent recovery calls are safe: preparation is conditional, dispatch claim i
 - Transcript evidence is normalized through the Feedback v2 trust boundary before evaluation.
 - Insights are requested only after the completion compare-and-set applies. The insights event ID is stable for the session and generation event, so replay does not create a second update.
 - A terminal session missing its feedback row can be repaired through the interview-completion workflow before dispatch.
+- A session already in `ending` may use the same repair path so finalization and feedback dispatch do not depend on a second interview-end action.
+- A pending account-deletion tombstone blocks repair, evaluation, terminal writes, and downstream insights. Recovery reports the session as unavailable rather than recreating work.
+- Recovery requires the completion tier committed during interview finalization. Missing legacy evidence is a non-retryable failure; it is never promoted to `full` by default.
+
+## Client recovery contract
+
+`GET /api/feedback/:sessionId` owns retry truth through its top-level `retryable` field. Feedback clients do not infer recovery from nested dispatch state. Missing feedback is retryable for `ending` and terminal sessions; active sessions remain `session_not_ended` and non-retryable.
+
+Each mounted feedback client may automatically invoke authenticated `POST` recovery once when top-level `retryable` is true. Concurrent polls share that attempt, then continue within a 30-poll, three-second interval budget. A failed automatic attempt becomes an explicit user recovery action rather than an unbounded POST loop.
+
+Deadline-ended interviews whose room cleanup has not been acknowledged return `settling` with `retryable: false`. Clients poll that state only with `GET`; neither automatic nor manual recovery can dispatch feedback until cleanup settles.
 
 ## Compatibility
 
