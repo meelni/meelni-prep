@@ -559,4 +559,50 @@ test("runtime lifecycle events reject unknown versions and malformed failures", 
       }),
     /Invalid interview runtime lifecycle event/
   );
+
+  assert.throws(
+    () =>
+      createInterviewRuntimeEvent({
+        event_id: "runtime-event-3",
+        session_id: "session-1",
+        type: "provider_failed",
+        occurred_at: "2026-07-09T21:00:00.000Z",
+        failure: {
+          reason: "provider_failure",
+          code: "Provider stack: secret",
+          retryable: false,
+        },
+      }),
+    /Invalid interview runtime lifecycle event/
+  );
+});
+
+test("runtime lifecycle events reject provider payload leakage", () => {
+  const valid = {
+    contract_version: 1,
+    event_id: "provider-failure:session-1:llm_provider_failed",
+    session_id: "session-1",
+    type: "provider_failed",
+    occurred_at: "2026-07-10T12:00:00.000Z",
+    runtime_ref: { provider: "livekit", id: "interview-session-1" },
+    failure: {
+      reason: "provider_failure",
+      code: "llm_provider_failed",
+      retryable: false,
+    },
+  } as const;
+
+  for (const leaked of [
+    { ...valid, provider_payload: "raw-provider-payload" },
+    {
+      ...valid,
+      runtime_ref: { ...valid.runtime_ref, provider_token: "secret-token" },
+    },
+    {
+      ...valid,
+      failure: { ...valid.failure, raw_error: "provider stack and secret" },
+    },
+  ]) {
+    assert.equal(parseInterviewRuntimeEvent(JSON.stringify(leaked)), null);
+  }
 });

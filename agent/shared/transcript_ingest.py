@@ -16,6 +16,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from .transcript_events import MAX_SAFE_INTEGER, is_transcript_event
+from .runtime_events import is_runtime_event
 
 INGEST_KEY_CONTEXT = b"meelni/transcript-ingest/v1"
 TIMESTAMP_HEADER = "x-meelni-timestamp"
@@ -36,7 +37,9 @@ Transport = Callable[[str, bytes, Mapping[str, str]], Awaitable["IngestResponse"
 Publisher = Callable[[Dict[str, object]], Awaitable[None]]
 Sleep = Callable[[float], Awaitable[None]]
 Now = Callable[[], float]
-ItemKind = Literal["transcript", "interruption_marker", "runtime_settlement"]
+ItemKind = Literal[
+    "transcript", "interruption_marker", "runtime_settlement", "runtime_event"
+]
 ItemState = Literal["pending", "persisted", "complete", "permanent"]
 
 
@@ -436,6 +439,16 @@ class TranscriptIngestQueue:
             event_id=f"runtime-settlement:{session_id}",
             kind="runtime_settlement",
             envelope={"sessionId": session_id, "settlement": settlement},
+        )
+
+    def enqueue_runtime_event(self, event: Dict[str, object]) -> bool:
+        if not is_runtime_event(event) or event.get("type") != "provider_failed":
+            raise TranscriptIngestError("invalid runtime lifecycle event")
+        session_id = str(event["session_id"])
+        return self._enqueue(
+            event_id=str(event["event_id"]),
+            kind="runtime_event",
+            envelope={"sessionId": session_id, "runtimeEvent": event},
         )
 
     def _require_open(self) -> None:

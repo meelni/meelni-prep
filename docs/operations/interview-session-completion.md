@@ -65,6 +65,9 @@ Alert on:
 - duplicate Inngest event identities;
 - feedback pending/processing age above the product latency target;
 - non-2xx end-session responses.
+- terminal version-1 sessions with missing credit policy evidence;
+- provider/integrity faults whose reservation is not refunded;
+- user-fault sessions whose consumed reservation was unexpectedly refunded.
 
 ## Rollback
 

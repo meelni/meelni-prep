@@ -5,6 +5,7 @@ import {
   isInterviewTerminalState,
   projectLegacyInterviewSessionStatus,
   type InterviewLifecycleState,
+  type InterviewBillingFault,
   type InterviewTerminalReason,
 } from "@meelni/core";
 
@@ -117,6 +118,7 @@ export async function finalizeInterviewSession(
     if (!stored) return { ok: false, reason: "not_found" } as const;
 
     let validation = input.validationOverride;
+    let hasIntegrityFault = false;
     if (!validation) {
       const [turns, interruptionCounts, settlements] = await Promise.all([
         tx
@@ -141,11 +143,15 @@ export async function finalizeInterviewSession(
       const baseValidation = validateSessionStats(
         calculateSessionStatsFromTurns(turns)
       );
+      const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
+      const runtimeSettlementState =
+        (settlements[0]?.state as "settled" | "degraded" | undefined) ?? null;
+      hasIntegrityFault =
+        unavailableInterruptions > 0 || runtimeSettlementState !== "settled";
       validation = applyTranscriptIntegrityValidation({
         baseValidation,
-        interruptionCount: interruptionCounts[0]?.value ?? 0,
-        runtimeSettlementState:
-          (settlements[0]?.state as "settled" | "degraded" | undefined) ?? null,
+        interruptionCount: unavailableInterruptions,
+        runtimeSettlementState,
       });
     }
 
@@ -155,6 +161,8 @@ export async function finalizeInterviewSession(
     let activatedAt = stored.activatedAt;
     let endingAt = stored.endingAt;
     let endedAt = stored.endedAt;
+    let billingFault = stored.billingFault;
+    let billingFaultCode = stored.billingFaultCode;
     const wasTerminal = isInterviewTerminalState(state);
     const hardDeadlineOwnsCleanup =
       !wasTerminal &&
@@ -205,7 +213,8 @@ export async function finalizeInterviewSession(
 
     const advance = async (
       nextState: InterviewLifecycleState,
-      reason: InterviewTerminalReason | null
+      reason: InterviewTerminalReason | null,
+      requestedBillingFault: InterviewBillingFault
     ) => {
       if (!canTransitionInterviewLifecycle(state, nextState)) {
         throw new Error(
@@ -226,6 +235,16 @@ export async function finalizeInterviewSession(
           lifecycleState: nextState,
           lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 1`,
           terminalReason: reason,
+          billingFault: sql`CASE
+            WHEN ${interviewSession.startContractVersion} = 1
+            THEN COALESCE(${interviewSession.billingFault}, ${requestedBillingFault})
+            ELSE ${interviewSession.billingFault}
+          END`,
+          billingFaultCode: sql`CASE
+            WHEN ${interviewSession.startContractVersion} = 1
+            THEN COALESCE(${interviewSession.billingFaultCode}, ${billingFaultCode ?? reason})
+            ELSE ${interviewSession.billingFaultCode}
+          END`,
           status: projectLegacyInterviewSessionStatus({
             state: nextState,
             terminalReason: reason,
@@ -268,6 +287,8 @@ export async function finalizeInterviewSession(
           terminalReason: interviewSession.terminalReason,
           activatedAt: interviewSession.activatedAt,
           endedAt: interviewSession.endedAt,
+          billingFault: interviewSession.billingFault,
+          billingFaultCode: interviewSession.billingFaultCode,
         });
 
       if (!updated[0]) {
@@ -279,6 +300,8 @@ export async function finalizeInterviewSession(
       activatedAt = nextActivatedAt;
       endingAt = nextEndingAt;
       endedAt = nextEndedAt;
+      billingFault = updated[0].billingFault;
+      billingFaultCode = updated[0].billingFaultCode;
     };
 
     if (!wasTerminal) {
@@ -287,19 +310,35 @@ export async function finalizeInterviewSession(
           validation,
           input.requestedTerminalReason
         );
-        await advance("ending", requestedReason);
+        const requestedFault = hasIntegrityFault ? "integrity" : "user";
+        billingFaultCode ??=
+          requestedFault === "integrity"
+            ? "transcript_integrity_unavailable"
+            : requestedReason;
+        await advance("ending", requestedReason, requestedFault);
       }
 
       if (state === "ending") {
         if (!terminalReason) {
           throw new Error("Ending interview is missing its terminal reason");
         }
+        if (!billingFault) {
+          billingFault = hasIntegrityFault
+            ? "integrity"
+            : terminalReason === "provider_failure"
+              ? "provider"
+              : "user";
+          billingFaultCode = hasIntegrityFault
+            ? "transcript_integrity_unavailable"
+            : terminalReason;
+        }
         await advance(
           deriveInterviewTerminalState({
             reason: terminalReason,
             activated: activatedAt !== null,
           }),
-          terminalReason
+          terminalReason,
+          billingFault
         );
       }
     }

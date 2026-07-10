@@ -1,4 +1,7 @@
-import type { InterviewTerminalReason } from "@meelni/core";
+import {
+  isSafeInterviewBillingFaultCode,
+  type InterviewTerminalReason,
+} from "@meelni/core";
 
 export const INTERVIEW_RUNTIME_EVENT_CONTRACT_VERSION = 1 as const;
 export const INTERVIEW_RUNTIME_EVENT_TOPIC = "interview.lifecycle.v1";
@@ -57,6 +60,19 @@ export function isInterviewRuntimeEvent(
   value: unknown
 ): value is InterviewRuntimeEvent {
   if (!isRecord(value)) return false;
+  if (
+    !hasOnlyKeys(value, [
+      "contract_version",
+      "event_id",
+      "session_id",
+      "type",
+      "occurred_at",
+      "runtime_ref",
+      "failure",
+    ])
+  ) {
+    return false;
+  }
 
   if (
     value.contract_version !== INTERVIEW_RUNTIME_EVENT_CONTRACT_VERSION ||
@@ -71,6 +87,7 @@ export function isInterviewRuntimeEvent(
   if (
     value.runtime_ref !== undefined &&
     (!isRecord(value.runtime_ref) ||
+      !hasOnlyKeys(value.runtime_ref, ["provider", "id"]) ||
       !isNonEmptyString(value.runtime_ref.provider) ||
       !isNonEmptyString(value.runtime_ref.id))
   ) {
@@ -80,8 +97,9 @@ export function isInterviewRuntimeEvent(
   if (value.type === "provider_failed") {
     return (
       isRecord(value.failure) &&
+      hasOnlyKeys(value.failure, ["reason", "code", "retryable"]) &&
       value.failure.reason === "provider_failure" &&
-      isNonEmptyString(value.failure.code) &&
+      isSafeInterviewBillingFaultCode(value.failure.code) &&
       typeof value.failure.retryable === "boolean"
     );
   }
@@ -116,4 +134,12 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowedKeys: readonly string[]
+): boolean {
+  const allowed = new Set(allowedKeys);
+  return Object.keys(value).every((key) => allowed.has(key));
 }

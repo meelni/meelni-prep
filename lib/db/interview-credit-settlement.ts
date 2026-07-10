@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import {
   withDrizzleCreditLedgerUserTransaction,
@@ -52,6 +52,17 @@ export function createDrizzleInterviewCreditSettlementStore(
               activatedAt: interviewSession.activatedAt,
               usableAt: interviewSession.usableAt,
               usableTranscriptEventId: interviewSession.usableTranscriptEventId,
+              billingFault: interviewSession.billingFault,
+              billingFaultCode: interviewSession.billingFaultCode,
+              creditPolicyVersion: interviewSession.creditPolicyVersion,
+              creditSettlementAction:
+                interviewSession.creditSettlementAction,
+              creditSettlementReason:
+                interviewSession.creditSettlementReason,
+              creditSettlementIdempotencyKey:
+                interviewSession.creditSettlementIdempotencyKey,
+              creditSettledAt: interviewSession.creditSettledAt,
+              creditMakeGoodGrantId: interviewSession.creditMakeGoodGrantId,
             })
             .from(interviewSession)
             .where(
@@ -100,6 +111,7 @@ export function createDrizzleInterviewCreditSettlementStore(
                 reservationKey: input.reservationKey,
                 idempotencyKey: input.idempotencyKey,
                 action: input.action,
+                currentTime: input.now,
               });
               const reservation = outcome.reservation;
               if (
@@ -119,7 +131,31 @@ export function createDrizzleInterviewCreditSettlementStore(
                 sessionId: reservation.sessionId,
                 reservationId: reservation.id,
                 grantId: outcome.firstGrant?.id,
+                makeGoodGrantId: outcome.makeGoodGrant?.id,
               } satisfies InterviewCreditSettlementEvidence;
+            },
+            async getReservation(reservationKey) {
+              const reservation =
+                await ledger.findReservationByKeyForUpdate(reservationKey);
+              if (
+                !reservation ||
+                reservation.userId !== userId ||
+                reservation.sessionId !== sessionId ||
+                reservation.startContractVersion !== 1 ||
+                reservation.startAttemptId !== sessionId ||
+                !["active", "consumed", "released", "refunded"].includes(
+                  reservation.status
+                )
+              ) {
+                throw new Error("interview_start_credit_correlation_invalid");
+              }
+              return {
+                status: reservation.status as
+                  | "active"
+                  | "consumed"
+                  | "released"
+                  | "refunded",
+              };
             },
             async markUsable({ eventId, usableAt }) {
               const updated = await transaction
@@ -139,6 +175,35 @@ export function createDrizzleInterviewCreditSettlementStore(
                 .returning({ id: interviewSession.id });
               if (!updated[0]) {
                 throw new Error("interview_usable_evidence_write_failed");
+              }
+            },
+            async recordPolicySettlement(input) {
+              const updated = await transaction
+                .update(interviewSession)
+                .set({
+                  creditPolicyVersion: input.policyVersion,
+                  creditSettlementAction: input.action,
+                  creditSettlementReason: input.reason,
+                  creditSettlementIdempotencyKey: input.idempotencyKey,
+                  creditSettledAt: input.settledAt,
+                  creditMakeGoodGrantId: input.makeGoodGrantId,
+                })
+                .where(
+                  and(
+                    eq(interviewSession.id, sessionId),
+                    eq(interviewSession.userId, userId),
+                    eq(interviewSession.startContractVersion, 1),
+                    inArray(interviewSession.lifecycleState, [
+                      "completed",
+                      "abandoned",
+                      "failed",
+                    ]),
+                    isNull(interviewSession.creditSettledAt)
+                  )
+                )
+                .returning({ id: interviewSession.id });
+              if (!updated[0]) {
+                throw new Error("interview_credit_settlement_evidence_write_failed");
               }
             },
           });

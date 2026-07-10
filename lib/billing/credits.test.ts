@@ -5,6 +5,7 @@ import {
   createCreditLedgerService,
   createMemoryCreditLedgerStore,
   type CreditLedgerTransaction,
+  settleReservationInTransaction,
   type CreditLedgerStore,
 } from "./credits";
 
@@ -781,6 +782,55 @@ test("asynchronous analytics rejection is contained after settlement", async () 
   } finally {
     console.error = log;
   }
+});
+
+test("provider refund creates one usable make-good when the source grant expired", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const issued = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-06-29T00:00:00.000Z"),
+  });
+  await issued.grantCredits({
+    userId: "user-1",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: "checkout:expired-refund",
+  });
+  await issued.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:expired-refund",
+    sessionId: "550e8400-e29b-41d4-a716-446655440000",
+  });
+  await issued.consumeReservation({
+    reservationKey: "session:expired-refund",
+    idempotencyKey: "consume:session:expired-refund",
+  });
+
+  const refund = () =>
+    store.withUserTransaction("user-1", (transaction) =>
+      settleReservationInTransaction({
+        store: transaction,
+        expectedUserId: "user-1",
+        reservationKey: "session:expired-refund",
+        idempotencyKey:
+          "refund:interview-credit-recovery.v1:session:expired-refund",
+        action: "refund",
+        currentTime: new Date("2026-08-01T00:00:00.000Z"),
+      })
+    );
+  const first = await refund();
+  const replay = await refund();
+
+  assert.equal(first.makeGoodGrant?.id, replay.makeGoodGrant?.id);
+  assert.equal(first.makeGoodGrant?.source, "refund");
+  assert.equal(first.makeGoodGrant?.expiresAt, null);
+  const grants = await store.listUserGrants("user-1");
+  assert.equal(grants.filter((grant) => grant.source === "refund").length, 1);
+  assert.equal(
+    (await createCreditLedgerService({ store }).getCreditBalance("user-1"))
+      .availableCredits,
+    1
+  );
 });
 
 test("subscription renewal respects the rollover cap and 60 day expiration", async () => {

@@ -87,12 +87,30 @@ export function createDrizzleInterviewSessionLifecycleStore(
         state: input.nextState,
         terminalReason: input.terminalReason ?? null,
       });
+      const billingFault =
+        input.terminalReason === "provider_failure" ? "provider" : "user";
+      const billingFaultCode = input.terminalReason ?? null;
       const rows = await database
         .update(interviewSession)
         .set({
           lifecycleState: input.nextState,
           lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 1`,
           terminalReason: input.terminalReason ?? null,
+          ...(input.nextState === "ending" ||
+          isInterviewTerminalState(input.nextState)
+            ? {
+                billingFault: sql`CASE
+                  WHEN ${interviewSession.startContractVersion} = 1
+                  THEN COALESCE(${interviewSession.billingFault}, ${billingFault})
+                  ELSE ${interviewSession.billingFault}
+                END`,
+                billingFaultCode: sql`CASE
+                  WHEN ${interviewSession.startContractVersion} = 1
+                  THEN COALESCE(${interviewSession.billingFaultCode}, ${billingFaultCode})
+                  ELSE ${interviewSession.billingFaultCode}
+                END`,
+              }
+            : {}),
           status: legacyStatus,
           lastTransitionAt: transitionedAt,
           ...(input.nextState === "active"

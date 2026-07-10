@@ -10,6 +10,14 @@ vi.mock("@/lib/db/transcripts", () => ({
     persist: vi.fn(),
   })),
 }));
+vi.mock("@/lib/db/interview-runtime-events", () => ({
+  createDrizzleInterviewRuntimeFailureStore: vi.fn(() => ({
+    persistProviderFailure: vi.fn(),
+  })),
+}));
+vi.mock("@/lib/db/interview-credit-settlement", () => ({
+  convergeDrizzleInterviewCreditSettlement: vi.fn(),
+}));
 vi.mock("@/lib/workflows/ingest-transcript-event", () => ({
   ingestTranscriptEvent: vi.fn(),
 }));
@@ -19,11 +27,15 @@ vi.mock("@/lib/workflows/ingest-transcript-interruption-marker", () => ({
 vi.mock("@/lib/workflows/ingest-transcript-runtime-settlement", () => ({
   ingestTranscriptRuntimeSettlement: vi.fn(),
 }));
+vi.mock("@/lib/workflows/ingest-interview-runtime-event", () => ({
+  ingestInterviewRuntimeEvent: vi.fn(),
+}));
 
 import { signRuntimeTranscriptBody } from "@/lib/security/transcript-ingest-authorization";
 import { ingestTranscriptEvent } from "@/lib/workflows/ingest-transcript-event";
 import { ingestTranscriptInterruptionMarker } from "@/lib/workflows/ingest-transcript-interruption-marker";
 import { ingestTranscriptRuntimeSettlement } from "@/lib/workflows/ingest-transcript-runtime-settlement";
+import { ingestInterviewRuntimeEvent } from "@/lib/workflows/ingest-interview-runtime-event";
 import { POST } from "./route";
 
 const SECRET = "livekit-secret-with-at-least-thirty-two-characters";
@@ -235,6 +247,33 @@ describe("POST /api/internal/transcript", () => {
       disposition: "created",
       kind: "settlement",
     });
+  });
+
+  it("routes provider-neutral runtime failure evidence", async () => {
+    vi.mocked(ingestInterviewRuntimeEvent).mockResolvedValue({
+      ok: true,
+      disposition: "created",
+      sessionId: SESSION_ID,
+      creditDisposition: "released",
+    });
+    const response = await POST(
+      request({
+        sessionId: SESSION_ID,
+        runtimeEvent: { type: "provider_failed" },
+      })
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      success: true,
+      disposition: "created",
+      kind: "runtime_event",
+    });
+    expect(ingestInterviewRuntimeEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestSessionId: SESSION_ID,
+        event: { type: "provider_failed" },
+      })
+    );
   });
 
   it("rejects ambiguous envelopes and maps integrity failures", async () => {

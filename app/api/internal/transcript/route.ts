@@ -6,10 +6,13 @@ import {
   createDrizzleTranscriptInterruptionMarkerStore,
   createDrizzleTranscriptRuntimeSettlementStore,
 } from "@/lib/db/transcripts";
+import { createDrizzleInterviewRuntimeFailureStore } from "@/lib/db/interview-runtime-events";
+import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
 import { authorizeRuntimeTranscriptRequest } from "@/lib/security/transcript-ingest-authorization";
 import { ingestTranscriptEvent } from "@/lib/workflows/ingest-transcript-event";
 import { ingestTranscriptInterruptionMarker } from "@/lib/workflows/ingest-transcript-interruption-marker";
 import { ingestTranscriptRuntimeSettlement } from "@/lib/workflows/ingest-transcript-runtime-settlement";
+import { ingestInterviewRuntimeEvent } from "@/lib/workflows/ingest-interview-runtime-event";
 
 const RuntimeTranscriptRequestSchema = z
   .object({
@@ -17,10 +20,16 @@ const RuntimeTranscriptRequestSchema = z
     event: z.unknown().optional(),
     interruptionMarker: z.unknown().optional(),
     settlement: z.unknown().optional(),
+    runtimeEvent: z.unknown().optional(),
   })
   .refine(
     (body) =>
-      [body.event, body.interruptionMarker, body.settlement].filter(
+      [
+        body.event,
+        body.interruptionMarker,
+        body.settlement,
+        body.runtimeEvent,
+      ].filter(
         (value) => value !== undefined
       ).length === 1,
     "exactly one runtime transcript payload is required"
@@ -102,6 +111,16 @@ export async function POST(req: NextRequest) {
       return mapIngestResult(result, "marker");
     }
 
+    if (parsed.data.runtimeEvent !== undefined) {
+      const result = await ingestInterviewRuntimeEvent({
+        requestSessionId: parsed.data.sessionId,
+        event: parsed.data.runtimeEvent,
+        store: createDrizzleInterviewRuntimeFailureStore(),
+        settleCredit: convergeDrizzleInterviewCreditSettlement,
+      });
+      return mapIngestResult(result, "runtime_event");
+    }
+
     const result = await ingestTranscriptRuntimeSettlement({
       requestSessionId: parsed.data.sessionId,
       settlement: parsed.data.settlement,
@@ -120,8 +139,9 @@ function mapIngestResult(
   result:
     | Awaited<ReturnType<typeof ingestTranscriptEvent>>
     | Awaited<ReturnType<typeof ingestTranscriptInterruptionMarker>>
-    | Awaited<ReturnType<typeof ingestTranscriptRuntimeSettlement>>,
-  kind: "turn" | "marker" | "settlement"
+    | Awaited<ReturnType<typeof ingestTranscriptRuntimeSettlement>>
+    | Awaited<ReturnType<typeof ingestInterviewRuntimeEvent>>,
+  kind: "turn" | "marker" | "settlement" | "runtime_event"
 ) {
   if (result.ok) {
     return response(
@@ -141,7 +161,8 @@ function mapIngestResult(
     result.reason === "writer_sequence_conflict" ||
     result.reason === "writer_order_conflict" ||
     result.reason === "runtime_settled" ||
-    result.reason === "session_closed"
+    result.reason === "session_closed" ||
+    result.reason === "room_mismatch"
   ) {
     return response({ error: "runtime_transcript_identity_conflict" }, 409);
   }
