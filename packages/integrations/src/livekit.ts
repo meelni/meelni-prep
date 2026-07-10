@@ -21,6 +21,8 @@ export interface LiveKitEnvironment {
 export type LiveKitAgentKind = "interview" | "demo";
 
 const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
+export const PUBLIC_DEMO_DURATION_SECONDS = 2 * 60;
+export const PUBLIC_DEMO_PARTICIPANT_TOKEN_TTL_SECONDS = 150;
 
 export interface StartInterviewRoomInput {
   agentName: string;
@@ -55,6 +57,33 @@ export interface LiveKitInterviewProvider {
   startInterviewRoom(
     input: StartInterviewRoomInput
   ): Promise<ProviderResult<StartedInterviewRoom>>;
+}
+
+export interface StartPublicDemoRoomInput {
+  agentName: string;
+  identity: string;
+  roomName: string;
+  metadata: unknown;
+  env: LiveKitEnvironment;
+}
+
+export interface IssuePublicDemoTokenInput {
+  identity: string;
+  roomName: string;
+  env: LiveKitEnvironment;
+}
+
+export interface LiveKitPublicDemoProvider {
+  startPublicDemoRoom(
+    input: StartPublicDemoRoomInput
+  ): Promise<ProviderResult<StartedInterviewRoom>>;
+  issuePublicDemoToken(
+    input: IssuePublicDemoTokenInput
+  ): Promise<ProviderResult<StartedInterviewRoom>>;
+  deletePublicDemoRoom(
+    roomName: string,
+    env: LiveKitEnvironment
+  ): Promise<void>;
 }
 
 export interface LiveKitProviderDependencies {
@@ -96,8 +125,13 @@ interface RoomServiceClientLike {
     name: string;
     metadata: string;
     emptyTimeout: number;
+    departureTimeout?: number;
     maxParticipants: number;
   }): Promise<unknown>;
+  deleteRoom?(roomName: string): Promise<void>;
+  listParticipants?(
+    roomName: string
+  ): Promise<Array<{ identity?: string; kind?: number }>>;
 }
 
 type RoomServiceClientFactory = (
@@ -235,6 +269,155 @@ export function createLiveKitInterviewProvider({
         url: input.env.url,
       });
     },
+  };
+}
+
+export function createLiveKitPublicDemoProvider({
+  accessTokenFactory = AccessToken,
+  agentDispatchClientFactory = (url, apiKey, apiSecret) =>
+    new AgentDispatchClient(url, apiKey, apiSecret),
+  roomServiceClientFactory = (url, apiKey, apiSecret) =>
+    new RoomServiceClient(url, apiKey, apiSecret),
+}: LiveKitProviderDependencies = {}): LiveKitPublicDemoProvider {
+  async function mintToken(
+    input: IssuePublicDemoTokenInput
+  ): Promise<ProviderResult<StartedInterviewRoom>> {
+    try {
+      const token = new accessTokenFactory(
+        input.env.apiKey,
+        input.env.apiSecret,
+        {
+          identity: input.identity,
+          name: "Demo participant",
+          ttl: PUBLIC_DEMO_PARTICIPANT_TOKEN_TTL_SECONDS,
+        }
+      );
+      token.addGrant({
+        room: input.roomName,
+        roomJoin: true,
+        canPublish: true,
+        canPublishData: false,
+        canPublishSources: [TrackSource.MICROPHONE],
+        canSubscribe: true,
+      });
+      return providerSuccess("livekit", {
+        roomName: input.roomName,
+        token: await token.toJwt(),
+        url: input.env.url,
+      });
+    } catch (error) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_token_issue_failed",
+        message: getErrorMessage(error),
+        retryable: true,
+        cause: error,
+      });
+    }
+  }
+
+  async function deleteRoom(
+    roomName: string,
+    env: LiveKitEnvironment
+  ): Promise<void> {
+    const roomClient = roomServiceClientFactory(
+      env.url,
+      env.apiKey,
+      env.apiSecret
+    );
+    if (!roomClient.deleteRoom) {
+      throw new Error("LiveKit room deletion is unavailable");
+    }
+    await roomClient.deleteRoom(roomName);
+  }
+
+  return {
+    async startPublicDemoRoom(input) {
+      const roomClient = roomServiceClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
+      const dispatchClient = agentDispatchClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
+      let roomCreated = false;
+
+      try {
+        await roomClient.createRoom({
+          name: input.roomName,
+          metadata: JSON.stringify(input.metadata),
+          emptyTimeout: 30,
+          departureTimeout: 5,
+          maxParticipants: 2,
+        });
+        roomCreated = true;
+        await dispatchClient.createDispatch(input.roomName, input.agentName);
+
+        const token = await mintToken(input);
+        if (!token.ok) throw token.error;
+        return token;
+      } catch (error) {
+        if (roomCreated && roomClient.deleteRoom) {
+          try {
+            await roomClient.deleteRoom(input.roomName);
+          } catch {
+            return providerFailure("livekit", {
+              code: "livekit_demo_cleanup_failed",
+              message: "Demo provider cleanup failed.",
+              retryable: true,
+              cause: error,
+            });
+          }
+        }
+        return providerFailure("livekit", {
+          code: "livekit_demo_start_failed",
+          message: getErrorMessage(error),
+          retryable: true,
+          cause: error,
+        });
+      }
+    },
+    async issuePublicDemoToken(input) {
+      const roomClient = roomServiceClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
+      if (!roomClient.listParticipants) {
+        return providerFailure("livekit", {
+          code: "livekit_demo_room_verify_failed",
+          message: "Demo room verification is unavailable.",
+          retryable: true,
+        });
+      }
+
+      try {
+        const participants = await roomClient.listParticipants(input.roomName);
+        const hasRemoteAgent = participants.some(
+          (participant) =>
+            participant.kind === 4 || participant.identity !== input.identity
+        );
+        if (!hasRemoteAgent) {
+          return providerFailure("livekit", {
+            code: "livekit_demo_room_not_ready",
+            message: "The existing demo room has no remote agent participant.",
+            retryable: true,
+          });
+        }
+      } catch (error) {
+        return providerFailure("livekit", {
+          code: "livekit_demo_room_verify_failed",
+          message: getErrorMessage(error),
+          retryable: true,
+          cause: error,
+        });
+      }
+
+      return mintToken(input);
+    },
+    deletePublicDemoRoom: deleteRoom,
   };
 }
 

@@ -10,7 +10,7 @@ import {
 test("launch context parses canonical and compatibility round parameters", () => {
   const canonical = parseInterviewLaunchContext(
     new URLSearchParams(
-      "questionId=question-1&interview_type=strategy&roundType=behavioral&difficulty=advanced&focus=pricing&company=Stripe&returnTo=%2Fexplore%3Fcompany%3DStripe"
+      "questionId=question-1&interview_type=strategy&roundType=behavioral&difficulty=advanced&focus=pricing&company=Stripe&returnTo=%2Fexplore%3Fcompany%3DStripe&source=voice_demo"
     )
   );
 
@@ -21,6 +21,7 @@ test("launch context parses canonical and compatibility round parameters", () =>
     focus: "pricing",
     company: "Stripe",
     returnTo: "/explore?company=Stripe",
+    entrySource: "voice_demo",
   });
 
   assert.equal(
@@ -40,6 +41,7 @@ test("launch context rejects invalid enums and external return URLs", () => {
   assert.equal(context.roundType, null);
   assert.equal(context.difficulty, null);
   assert.equal(context.returnTo, null);
+  assert.equal(context.entrySource, null);
 });
 
 test("canonical href preserves the complete query string", () => {

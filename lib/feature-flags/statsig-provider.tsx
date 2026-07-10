@@ -10,7 +10,6 @@ import {
   useState,
 } from "react";
 import { StatsigClient, type StatsigUser } from "@statsig/js-client";
-import { StatsigSessionReplayPlugin } from "@statsig/session-replay";
 import { StatsigAutoCapturePlugin } from "@statsig/web-analytics";
 import { useAuth } from "@/app/providers/auth-provider";
 import { getOrCreateStatsigAnonymousId } from "./anonymous-id";
@@ -119,10 +118,9 @@ export function StatsigProvider({
                     api: statsigConfig.apiUrl,
                   }
                 : undefined,
-              plugins: [
-                new StatsigSessionReplayPlugin(),
-                new StatsigAutoCapturePlugin(),
-              ],
+              // Session replay is intentionally absent: voice and interview
+              // surfaces render transcript text that must not be recorded.
+              plugins: [new StatsigAutoCapturePlugin()],
             }
           );
 

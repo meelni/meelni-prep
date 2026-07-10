@@ -11,6 +11,7 @@ import {
   deleteAccount,
   recoverAccountDeletions,
 } from "@/lib/inngest/functions/delete-account";
+import { prunePublicDemo } from "@/lib/inngest/functions/prune-public-demo";
 
 /**
  * Serve Inngest functions via Next.js API route
@@ -32,5 +33,6 @@ export const { GET, POST, PUT } = serve({
     updateUserInsights, // P2-003: User insights aggregation
     deleteAccount, // Durable cross-provider account deletion
     recoverAccountDeletions, // Requeues persisted outbox/tombstone work
+    prunePublicDemo, // Removes expired pseudonymous preview limiter data
   ],
 });

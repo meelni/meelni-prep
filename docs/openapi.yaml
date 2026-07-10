@@ -481,23 +481,16 @@ paths:
     post:
       tags:
         - LiveKit
-      summary: Generate demo token
-      description: Generates LiveKit tokens for 60-second demo sessions with Cloud agent
+      summary: Start or reconnect a voice preview
+      description: Reserves a bounded two-minute LiveKit voice preview and dispatches at most one Cloud agent per signed browser session
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
-              required:
-                - participantName
-              properties:
-                participantName:
-                  type: string
-                  description: Participant display name
-                  default: Guest
-            example:
-              participantName: "Guest"
+              additionalProperties: false
+            example: {}
       responses:
         "200":
           description: Demo token generated successfully
@@ -508,18 +501,62 @@ paths:
                 properties:
                   token:
                     type: string
-                    description: JWT access token (2 min TTL)
+                    description: Short-lived, microphone-only JWT access token
                   url:
                     type: string
                     format: uri
                     description: LiveKit server WebSocket URL
-                  roomName:
+                  durationSeconds:
+                    type: integer
+                    enum: [120]
+                  recoveryReceipt:
                     type: string
-                    description: Generated demo room name
+                    format: uuid
+                    description: Opaque claim receipt present only when issuing a same-room recovery token; acknowledge after LiveKit connects
+        "403":
+          description: Cross-site request denied
+        "404":
+          description: Public relaunch gate is disabled
+        "409":
+          description: The same browser session is already being provisioned
+        "415":
+          description: Request must use application/json
+        "429":
+          description: The global, IP, device, or browser-session preview budget is exhausted; retry according to Retry-After
+        "503":
+          description: Shared abuse authorization or the LiveKit preview service is temporarily unavailable
+
+  /api/livekit/demo-token/ack:
+    post:
+      tags:
+        - LiveKit
+      summary: Acknowledge a connected voice-preview recovery
+      description: Finalizes the single recovery allowance only after the first-party browser connects to LiveKit; stale, mismatched, and repeated receipts are safe no-ops
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [receipt]
+              additionalProperties: false
+              properties:
+                receipt:
+                  type: string
+                  format: uuid
+      responses:
+        "204":
+          description: Acknowledgement accepted or safely ignored
         "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
+          description: Receipt is malformed
+        "403":
+          description: Cross-site request denied
+        "404":
+          description: Public relaunch gate is disabled
+        "415":
+          description: Request must use application/json
+        "503":
+          description: Shared authorization is temporarily unavailable
 
   /api/cartesia/voices:
     get:

@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build",
+  "buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then npm run validate:env:deployed; fi && npm run build",
   "framework": "nextjs",
   "regions": ["iad1"],
   "crons": [

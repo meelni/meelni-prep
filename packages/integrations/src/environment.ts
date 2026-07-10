@@ -75,6 +75,12 @@ export const PROVIDER_ENV_CONTRACTS: Record<
     ],
     optional: [
       env(
+        "DEMO_ABUSE_HMAC_SECRET",
+        "Server-side HMAC secret for signed public-preview identity and abuse controls.",
+        "server",
+        false
+      ),
+      env(
         "LIVEKIT_INTERVIEW_AGENT_NAME",
         "LiveKit dispatch name for the full interview agent.",
         "server",

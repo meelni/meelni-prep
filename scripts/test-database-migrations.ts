@@ -18,7 +18,7 @@ import postgres from "postgres";
 import { buildStripeDeletionSubjects } from "../lib/billing/stripe-privacy";
 
 import {
-  ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
+  PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
@@ -106,14 +106,12 @@ async function run() {
     assertZeroCreditLedgerIntegrity(
       runPreflight(cleanUrl, true, "reconciled")!
     );
+    await verifyPublicDemoLimits(clean, cleanUrl);
 
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -1032,7 +1030,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 8);
+  assert.equal(await migrationCount(sql), 9);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -1040,7 +1038,7 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 23);
+  assert.equal(tables.length, 25);
   assert.ok(
     tables.some(
       ({ table_name }) => table_name === "livekit_reconnect_rate_limit"
@@ -1048,6 +1046,12 @@ async function verifyDatabase(sql: postgres.Sql) {
   );
   assert.ok(
     tables.some(({ table_name }) => table_name === "account_deletion_request")
+  );
+  assert.ok(
+    tables.some(({ table_name }) => table_name === "public_demo_rate_limit")
+  );
+  assert.ok(
+    tables.some(({ table_name }) => table_name === "public_demo_session")
   );
 
   const lifecycleColumns = await sql<{ column_name: string }[]>`
@@ -1116,6 +1120,30 @@ async function verifyDatabase(sql: postgres.Sql) {
   `;
   assert.equal(completionIndexes.length, 2);
 
+  const demoColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'public_demo_session'
+      AND column_name IN (
+        'active_expires_at', 'recovery_claim_token', 'recovery_claimed_at',
+        'recovery_ack_token'
+      )
+    ORDER BY column_name
+  `;
+  assert.equal(demoColumns.length, 4);
+
+  const demoConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname IN (
+      'public_demo_session_expiry_order_check',
+      'public_demo_session_recovery_claim_check'
+    )
+    ORDER BY conname
+  `;
+  assert.equal(demoConstraints.length, 2);
+
   const tierConstraint = await sql<{ definition: string }[]>`
     SELECT pg_get_constraintdef(oid) AS definition
     FROM pg_constraint
@@ -1158,7 +1186,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 23);
+  assert.equal(rls.length, 25);
   assert.ok(rls.every((table) => table.enabled));
 
   const unsafePolicies = await sql<{ count: number }[]>`
@@ -1238,6 +1266,72 @@ async function verifyDatabase(sql: postgres.Sql) {
     anon_limiter_insert: false,
     service_limiter_execute: true,
   });
+
+  const demoPrivileges = await sql<
+    {
+      anon_table_select: boolean;
+      auth_reserve_execute: boolean;
+      auth_table_select: boolean;
+      auth_finalize_execute: boolean;
+      service_complete_execute: boolean;
+      service_fail_recovery_execute: boolean;
+      service_finalize_execute: boolean;
+      service_reserve_execute: boolean;
+      service_rollback_execute: boolean;
+    }[]
+  >`
+    SELECT
+      has_table_privilege('anon', 'public.public_demo_session', 'SELECT')
+        AS anon_table_select,
+      has_table_privilege('authenticated', 'public.public_demo_rate_limit', 'SELECT')
+        AS auth_table_select,
+      has_function_privilege(
+        'authenticated',
+        'public.reserve_public_demo_session(uuid,text,text,text)',
+        'EXECUTE'
+      ) AS auth_reserve_execute,
+      has_function_privilege(
+        'service_role',
+        'public.reserve_public_demo_session(uuid,text,text,text)',
+        'EXECUTE'
+      ) AS service_reserve_execute,
+      has_function_privilege(
+        'service_role',
+        'public.complete_public_demo_session(uuid,text,text)',
+        'EXECUTE'
+      ) AS service_complete_execute,
+      has_function_privilege(
+        'authenticated',
+        'public.finalize_public_demo_recovery_token(uuid,uuid)',
+        'EXECUTE'
+      ) AS auth_finalize_execute,
+      has_function_privilege(
+        'service_role',
+        'public.finalize_public_demo_recovery_token(uuid,uuid)',
+        'EXECUTE'
+      ) AS service_finalize_execute,
+      has_function_privilege(
+        'service_role',
+        'public.fail_public_demo_recovery_session(uuid,uuid,text)',
+        'EXECUTE'
+      ) AS service_fail_recovery_execute,
+      has_function_privilege(
+        'service_role',
+        'public.rollback_public_demo_recovery_token(uuid,uuid)',
+        'EXECUTE'
+      ) AS service_rollback_execute
+  `;
+  assert.deepEqual(demoPrivileges[0], {
+    anon_table_select: false,
+    auth_finalize_execute: false,
+    auth_reserve_execute: false,
+    auth_table_select: false,
+    service_complete_execute: true,
+    service_fail_recovery_execute: true,
+    service_finalize_execute: true,
+    service_reserve_execute: true,
+    service_rollback_execute: true,
+  });
 }
 
 async function verifyAuthorization(sql: postgres.Sql) {
@@ -1273,6 +1367,26 @@ async function verifyAuthorization(sql: postgres.Sql) {
         "anon",
         (tx) =>
           tx`INSERT INTO livekit_reconnect_rate_limit (user_id) VALUES (${USER_TWO}::uuid)`
+      ),
+    /permission denied/
+  );
+  await assert.rejects(
+    () => asRole(sql, "anon", (tx) => tx`SELECT * FROM public_demo_session`),
+    /permission denied/
+  );
+  await assert.rejects(
+    () =>
+      asRole(
+        sql,
+        "authenticated",
+        (tx) => tx`
+          SELECT * FROM public.reserve_public_demo_session(
+            ${demoSessionId(999)}::uuid,
+            'production',
+            ${demoHash(999)},
+            ${demoHash(1000)}
+          )
+        `
       ),
     /permission denied/
   );
@@ -1797,6 +1911,528 @@ async function verifyAtomicCreditLedger(
   }
 }
 
+async function verifyPublicDemoLimits(sql: postgres.Sql, url: string) {
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+
+  const sessionId = demoSessionId(1);
+  const first = await reserveDemo(sql, {
+    sessionId,
+    scope: "production",
+    ipHash: demoHash(1),
+    deviceHash: demoHash(2),
+  });
+  assert.equal(first.decision, "provision");
+  assert.equal(
+    (
+      await sql<{ completed: boolean }[]>`
+        SELECT public.complete_public_demo_session(
+          ${sessionId}::uuid, 'ready', NULL
+        ) AS completed
+      `
+    )[0]?.completed,
+    true
+  );
+  assert.deepEqual(
+    (
+      await sql<{ active_seconds: number; tombstone_seconds: number }[]>`
+        SELECT
+          EXTRACT(EPOCH FROM (active_expires_at - created_at))::int
+            AS active_seconds,
+          EXTRACT(EPOCH FROM (expires_at - created_at))::int
+            AS tombstone_seconds
+        FROM public_demo_session WHERE id = ${sessionId}::uuid
+      `
+    )[0],
+    { active_seconds: 420, tombstone_seconds: 900 }
+  );
+
+  const recoveryClaims = await reserveDemoIndependently(
+    url,
+    Array.from({ length: 12 }, () => ({
+      sessionId,
+      scope: "production" as const,
+      ipHash: demoHash(1),
+      deviceHash: demoHash(2),
+    }))
+  );
+  assert.equal(
+    recoveryClaims.filter(({ decision }) => decision === "issue_token").length,
+    1
+  );
+  assert.equal(
+    recoveryClaims.filter(({ decision }) => decision === "provisioning").length,
+    11
+  );
+  const claimToken = recoveryClaims.find(
+    ({ decision }) => decision === "issue_token"
+  )?.recovery_claim_token;
+  assert.ok(claimToken);
+  assert.equal(
+    (
+      await sql<{ token_issues: number }[]>`
+        SELECT token_issues FROM public_demo_session
+        WHERE id = ${sessionId}::uuid
+      `
+    )[0]?.token_issues,
+    1
+  );
+  assert.equal(
+    (
+      await sql<{ completed: boolean }[]>`
+        SELECT public.rollback_public_demo_recovery_token(
+          ${sessionId}::uuid,
+          'ffffffff-ffff-4fff-8fff-ffffffffffff'::uuid
+        ) AS completed
+      `
+    )[0]?.completed,
+    false
+  );
+  await sql`
+    UPDATE public_demo_session
+    SET recovery_claimed_at = clock_timestamp() - interval '31 seconds'
+    WHERE id = ${sessionId}::uuid
+      AND recovery_claim_token = ${claimToken}::uuid
+  `;
+  const staleReclaimed = await reserveDemo(sql, {
+    sessionId,
+    scope: "production",
+    ipHash: demoHash(1),
+    deviceHash: demoHash(2),
+  });
+  assert.equal(staleReclaimed.decision, "issue_token");
+  assert.ok(staleReclaimed.recovery_claim_token);
+  assert.notEqual(staleReclaimed.recovery_claim_token, claimToken);
+  assert.equal(
+    (
+      await sql<{ completed: boolean }[]>`
+        SELECT public.rollback_public_demo_recovery_token(
+          ${sessionId}::uuid, ${claimToken}::uuid
+        ) AS completed
+      `
+    )[0]?.completed,
+    false
+  );
+  assert.equal(
+    (
+      await sql<{ completed: boolean }[]>`
+        SELECT public.rollback_public_demo_recovery_token(
+          ${sessionId}::uuid, ${staleReclaimed.recovery_claim_token}::uuid
+        ) AS completed
+      `
+    )[0]?.completed,
+    true
+  );
+  const reclaimed = await reserveDemo(sql, {
+    sessionId,
+    scope: "production",
+    ipHash: demoHash(1),
+    deviceHash: demoHash(2),
+  });
+  assert.equal(reclaimed.decision, "issue_token");
+  assert.ok(reclaimed.recovery_claim_token);
+  assert.notEqual(reclaimed.recovery_claim_token, claimToken);
+  assert.equal(
+    (
+      await sql<{ completed: boolean }[]>`
+        SELECT public.finalize_public_demo_recovery_token(
+          ${sessionId}::uuid, ${reclaimed.recovery_claim_token}::uuid
+        ) AS completed
+      `
+    )[0]?.completed,
+    true
+  );
+  assert.equal(
+    (
+      await sql<{ completed: boolean }[]>`
+        SELECT public.finalize_public_demo_recovery_token(
+          ${sessionId}::uuid, ${reclaimed.recovery_claim_token}::uuid
+        ) AS completed
+      `
+    )[0]?.completed,
+    true
+  );
+  assert.equal(
+    (
+      await sql<{ completed: boolean }[]>`
+        SELECT public.finalize_public_demo_recovery_token(
+          ${sessionId}::uuid,
+          'ffffffff-ffff-4fff-8fff-ffffffffffff'::uuid
+        ) AS completed
+      `
+    )[0]?.completed,
+    false
+  );
+  assert.deepEqual(
+    (
+      await sql<
+        {
+          token_issues: number;
+          claim_cleared: boolean;
+          ack_matches: boolean;
+        }[]
+      >`
+        SELECT token_issues,
+          recovery_claim_token IS NULL AND recovery_claimed_at IS NULL
+            AS claim_cleared,
+          recovery_ack_token = ${reclaimed.recovery_claim_token}::uuid
+            AS ack_matches
+        FROM public_demo_session WHERE id = ${sessionId}::uuid
+      `
+    )[0],
+    { token_issues: 2, claim_cleared: true, ack_matches: true }
+  );
+  const exhaustedSession = await reserveDemo(sql, {
+    sessionId,
+    scope: "production",
+    ipHash: demoHash(1),
+    deviceHash: demoHash(2),
+  });
+  assert.equal(exhaustedSession.decision, "rate_limited");
+  assert.equal(exhaustedSession.limiting_scope, "session");
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+  const missingRoomSession = demoSessionId(5);
+  const missingRoomDevice = demoHash(6);
+  const missingRoomInput = {
+    sessionId: missingRoomSession,
+    scope: "production" as const,
+    ipHash: demoHash(5),
+    deviceHash: missingRoomDevice,
+  };
+  assert.equal(
+    (await reserveDemo(sql, missingRoomInput)).decision,
+    "provision"
+  );
+  assert.equal(
+    (
+      await sql<{ completed: boolean }[]>`
+        SELECT public.complete_public_demo_session(
+          ${missingRoomSession}::uuid, 'ready', NULL
+        ) AS completed
+      `
+    )[0]?.completed,
+    true
+  );
+  const missingRoomClaim = await reserveDemo(sql, missingRoomInput);
+  assert.equal(missingRoomClaim.decision, "issue_token");
+  assert.ok(missingRoomClaim.recovery_claim_token);
+  assert.equal(
+    (
+      await sql<{ completed: boolean }[]>`
+        SELECT public.fail_public_demo_recovery_session(
+          ${missingRoomSession}::uuid,
+          ${missingRoomClaim.recovery_claim_token}::uuid,
+          'livekit_demo_room_not_ready'
+        ) AS completed
+      `
+    )[0]?.completed,
+    true
+  );
+  assert.deepEqual(
+    (
+      await sql<
+        {
+          status: string;
+          failure_code: string | null;
+          active_expired: boolean;
+          claim_cleared: boolean;
+        }[]
+      >`
+        SELECT status, failure_code,
+          active_expires_at <= clock_timestamp() AS active_expired,
+          recovery_claim_token IS NULL AS claim_cleared
+        FROM public_demo_session WHERE id = ${missingRoomSession}::uuid
+      `
+    )[0],
+    {
+      status: "failed",
+      failure_code: "livekit_demo_room_not_ready",
+      active_expired: true,
+      claim_cleared: true,
+    }
+  );
+  assert.equal(
+    (
+      await reserveDemo(sql, {
+        ...missingRoomInput,
+        sessionId: demoSessionId(7),
+      })
+    ).decision,
+    "provision"
+  );
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+  const sharedIp = demoHash(10);
+  const burst = await reserveDemoIndependently(
+    url,
+    Array.from({ length: 12 }, (_, offset) => ({
+      sessionId: demoSessionId(10 + offset),
+      scope: "production" as const,
+      ipHash: sharedIp,
+      deviceHash: demoHash(110 + offset),
+    }))
+  );
+  assert.equal(
+    burst.filter((decision) => decision.decision === "provision").length,
+    3
+  );
+  assert.equal(
+    burst.filter(
+      ({ decision, limiting_scope }) =>
+        decision === "rate_limited" && limiting_scope === "ip"
+    ).length,
+    9
+  );
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+  const sharedDevice = demoHash(500);
+  const deviceContention = await reserveDemoIndependently(
+    url,
+    Array.from({ length: 12 }, (_, offset) => ({
+      sessionId: demoSessionId(500 + offset),
+      scope: "production" as const,
+      ipHash: demoHash(600 + offset),
+      deviceHash: sharedDevice,
+    }))
+  );
+  assert.equal(
+    deviceContention.filter(({ decision }) => decision === "provision").length,
+    1
+  );
+  assert.equal(
+    deviceContention.filter(
+      ({ decision, limiting_scope }) =>
+        decision === "rate_limited" && limiting_scope === "device"
+    ).length,
+    11
+  );
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+  const global = await reserveDemoIndependently(
+    url,
+    Array.from({ length: 40 }, (_, offset) => ({
+      sessionId: demoSessionId(1000 + offset),
+      scope: "preview" as const,
+      ipHash: demoHash(1200 + offset),
+      deviceHash: demoHash(1400 + offset),
+    }))
+  );
+  assert.equal(
+    global.filter((decision) => decision.decision === "provision").length,
+    20
+  );
+  assert.equal(
+    global.filter(
+      ({ decision, limiting_scope }) =>
+        decision === "rate_limited" && limiting_scope === "global"
+    ).length,
+    20
+  );
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+  const concurrentSession = demoSessionId(900);
+  const concurrent = await reserveDemoIndependently(
+    url,
+    Array.from({ length: 20 }, () => ({
+      sessionId: concurrentSession,
+      scope: "production",
+      ipHash: demoHash(901),
+      deviceHash: demoHash(902),
+    }))
+  );
+  assert.equal(
+    concurrent.filter((decision) => decision.decision === "provision").length,
+    1
+  );
+  assert.equal(
+    concurrent.filter((decision) => decision.decision === "provisioning")
+      .length,
+    19
+  );
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+  const tombstoneSession = demoSessionId(2000);
+  const tombstoneInput = {
+    sessionId: tombstoneSession,
+    scope: "production" as const,
+    ipHash: demoHash(2001),
+    deviceHash: demoHash(2002),
+  };
+  assert.equal((await reserveDemo(sql, tombstoneInput)).decision, "provision");
+  await sql`
+    UPDATE public_demo_session
+    SET active_expires_at = clock_timestamp() - interval '1 second',
+      expires_at = clock_timestamp() + interval '8 minutes'
+    WHERE id = ${tombstoneSession}::uuid
+  `;
+  const tombstoned = await reserveDemo(sql, tombstoneInput);
+  assert.equal(tombstoned.decision, "rate_limited");
+  assert.equal(tombstoned.limiting_scope, "session");
+  assert.equal(
+    (
+      await sql<{ count: number }[]>`
+        SELECT count(*)::int AS count FROM public_demo_session
+        WHERE id = ${tombstoneSession}::uuid
+      `
+    )[0]?.count,
+    1
+  );
+  await sql`
+    UPDATE public_demo_session
+    SET active_expires_at = clock_timestamp() - interval '2 seconds',
+      expires_at = clock_timestamp() - interval '1 second'
+    WHERE id = ${tombstoneSession}::uuid
+  `;
+  assert.equal((await reserveDemo(sql, tombstoneInput)).decision, "provision");
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+  const productionGlobal = [];
+  for (let offset = 0; offset < 101; offset += 1) {
+    productionGlobal.push(
+      await reserveDemo(sql, {
+        sessionId: demoSessionId(3000 + offset),
+        scope: "production",
+        ipHash: demoHash(3200 + offset),
+        deviceHash: demoHash(3400 + offset),
+      })
+    );
+  }
+  assert.equal(
+    productionGlobal.filter(({ decision }) => decision === "provision").length,
+    100
+  );
+  assert.equal(
+    productionGlobal.filter(
+      ({ decision, limiting_scope }) =>
+        decision === "rate_limited" && limiting_scope === "global"
+    ).length,
+    1
+  );
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+  const dailyDevice = demoHash(5000);
+  for (let offset = 0; offset < 2; offset += 1) {
+    const dailySession = demoSessionId(5000 + offset);
+    assert.equal(
+      (
+        await reserveDemo(sql, {
+          sessionId: dailySession,
+          scope: "production",
+          ipHash: demoHash(5100 + offset),
+          deviceHash: dailyDevice,
+        })
+      ).decision,
+      "provision"
+    );
+    assert.equal(
+      (
+        await sql<{ completed: boolean }[]>`
+          SELECT public.complete_public_demo_session(
+            ${dailySession}::uuid, 'failed', 'test_failure'
+          ) AS completed
+        `
+      )[0]?.completed,
+      true
+    );
+  }
+  const deviceDailyLimited = await reserveDemo(sql, {
+    sessionId: demoSessionId(5002),
+    scope: "production",
+    ipHash: demoHash(5102),
+    deviceHash: dailyDevice,
+  });
+  assert.equal(deviceDailyLimited.decision, "rate_limited");
+  assert.equal(deviceDailyLimited.limiting_scope, "device");
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+  const dailyIp = demoHash(6000);
+  await sql`
+    INSERT INTO public_demo_rate_limit (
+      deployment_scope, scope, identifier_hash, accepted_at
+    ) VALUES (
+      'production', 'ip', ${dailyIp},
+      ARRAY(
+        SELECT clock_timestamp() - interval '11 minutes'
+        FROM generate_series(1, 20)
+      )
+    )
+  `;
+  const ipDailyLimited = await reserveDemo(sql, {
+    sessionId: demoSessionId(6000),
+    scope: "production",
+    ipHash: dailyIp,
+    deviceHash: demoHash(6001),
+  });
+  assert.equal(ipDailyLimited.decision, "rate_limited");
+  assert.equal(ipDailyLimited.limiting_scope, "ip");
+}
+
+interface DemoReservationRow {
+  decision: string;
+  limiting_scope: string | null;
+  retry_after_seconds: number;
+  recovery_claim_token: string | null;
+}
+
+async function reserveDemo(
+  sql: postgres.Sql,
+  input: {
+    sessionId: string;
+    scope: "production" | "preview" | "development";
+    ipHash: string;
+    deviceHash: string;
+  }
+): Promise<DemoReservationRow> {
+  const rows = await sql<DemoReservationRow[]>`
+    SELECT decision, limiting_scope, retry_after_seconds,
+      recovery_claim_token
+    FROM public.reserve_public_demo_session(
+      ${input.sessionId}::uuid,
+      ${input.scope},
+      ${input.ipHash},
+      ${input.deviceHash}
+    )
+  `;
+  assert.ok(rows[0]);
+  return rows[0];
+}
+
+async function reserveDemoIndependently(
+  url: string,
+  inputs: Array<{
+    sessionId: string;
+    scope: "production" | "preview" | "development";
+    ipHash: string;
+    deviceHash: string;
+  }>
+): Promise<DemoReservationRow[]> {
+  const clients = inputs.map(() =>
+    postgres(url, { max: 1, prepare: false, idle_timeout: 5 })
+  );
+  try {
+    await Promise.all(
+      clients.map((client) =>
+        client.unsafe("SET statement_timeout = '15s'; SET lock_timeout = '10s'")
+      )
+    );
+    return await Promise.all(
+      inputs.map((input, index) => reserveDemo(clients[index]!, input))
+    );
+  } finally {
+    await Promise.all(clients.map((client) => client.end()));
+  }
+}
+
 async function seedCreditTestUser(
   sql: postgres.Sql,
   userId: string,
@@ -1844,6 +2480,14 @@ function rejected<T>(results: PromiseSettledResult<T>[]) {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function demoHash(value: number): string {
+  return value.toString(16).padStart(64, "0");
+}
+
+function demoSessionId(value: number): string {
+  return `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 }
 
 async function verifyDeletionTombstone(sql: postgres.Sql) {

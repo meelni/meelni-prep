@@ -40,7 +40,9 @@ function initializePostHog() {
     ip: !clientConfig.privacy.anonymizeIp,
 
     // Session Recording
-    disable_session_recording: !clientConfig.sessionRecording.enabled,
+    // Keep replay disabled even if a future config change accidentally enables
+    // sampling; live voice/interview transcripts must never enter recordings.
+    disable_session_recording: true,
     session_recording: {
       maskAllInputs: clientConfig.sessionRecording.maskTextInputs,
       recordCrossOriginIframes: false,
