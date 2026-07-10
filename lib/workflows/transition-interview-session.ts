@@ -58,6 +58,11 @@ export async function transitionInterviewSessionWorkflow(
 
   const finalizingStoredClaim =
     current.state === "ending" && isInterviewTerminalState(input.to);
+  const atomicProviderStartFailure =
+    current.activatedAt === null &&
+    (current.state === "created" || current.state === "connecting") &&
+    input.to === "failed" &&
+    input.terminalReason === "provider_failure";
   if (current.state === "ending" && !finalizingStoredClaim) {
     return { ok: false, disposition: "conflict", lifecycle: current };
   }
@@ -73,12 +78,14 @@ export async function transitionInterviewSessionWorkflow(
     ? current.terminalReason
     : (input.terminalReason ?? null);
 
-  const validation = validateInterviewLifecycleTransition({
-    from: current.state,
-    to: input.to,
-    terminalReason,
-    activated: current.activatedAt !== null,
-  });
+  const validation = atomicProviderStartFailure
+    ? validateAtomicProviderStartFailure(current.state, terminalReason)
+    : validateInterviewLifecycleTransition({
+        from: current.state,
+        to: input.to,
+        terminalReason,
+        activated: current.activatedAt !== null,
+      });
   if (!validation.ok) {
     return {
       ok: false,
@@ -94,18 +101,28 @@ export async function transitionInterviewSessionWorkflow(
     expectedVersion: current.version,
     transitionedAt: deps.now(),
   };
-  const result =
-    input.to === "ending" || isInterviewTerminalState(input.to)
-      ? await deps.lifecycleStore.compareAndSet({
-          ...base,
-          nextState: input.to,
-          terminalReason: terminalReason!,
-        })
-      : await deps.lifecycleStore.compareAndSet({
-          ...base,
-          nextState: input.to,
-          terminalReason: null,
-        });
+  let result;
+  if (input.to === "ending" || isInterviewTerminalState(input.to)) {
+    if (terminalReason === null) {
+      return {
+        ok: false,
+        disposition: "rejected",
+        code: "terminal_reason_required",
+        lifecycle: current,
+      };
+    }
+    result = await deps.lifecycleStore.compareAndSet({
+      ...base,
+      nextState: input.to,
+      terminalReason,
+    });
+  } else {
+    result = await deps.lifecycleStore.compareAndSet({
+      ...base,
+      nextState: input.to,
+      terminalReason: null,
+    });
+  }
 
   if (result.applied) {
     return { ok: true, disposition: "applied", lifecycle: result.current };
@@ -126,6 +143,26 @@ export async function transitionInterviewSessionWorkflow(
     disposition: "conflict",
     lifecycle: result.current,
   };
+}
+
+function validateAtomicProviderStartFailure(
+  from: InterviewLifecycleState,
+  terminalReason: InterviewTerminalReason | null
+): ReturnType<typeof validateInterviewLifecycleTransition> {
+  const claim = validateInterviewLifecycleTransition({
+    from,
+    to: "ending",
+    terminalReason,
+    activated: false,
+  });
+  if (!claim.ok) return claim;
+
+  return validateInterviewLifecycleTransition({
+    from: "ending",
+    to: "failed",
+    terminalReason,
+    activated: false,
+  });
 }
 
 export function createTransitionInterviewSessionDeps(): TransitionInterviewSessionDeps {

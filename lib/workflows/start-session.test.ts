@@ -293,7 +293,6 @@ test("startInterviewSessionWorkflow maps retryable LiveKit failures to service u
   assert.deepEqual(calls, [
     "transition:connecting",
     "startInterviewRoom",
-    "transition:ending",
     "transition:failed",
     "release:release:interview-start:fixture-user-1:interview-1782600000000-i00000",
   ]);
@@ -344,7 +343,7 @@ test("provider failure releases credit even when lifecycle persistence fails", a
 
   assert.deepEqual(calls, [
     "transition:connecting",
-    "transition:ending",
+    "transition:failed",
     "release",
   ]);
 });
@@ -409,7 +408,8 @@ function createTransitionResult(
       legacyStatus:
         input.to === "failed" ? ("error" as const) : ("in_progress" as const),
       activatedAt: null,
-      endingAt: input.to === "ending" ? now : null,
+      endingAt:
+        input.to === "ending" || input.to === "failed" ? now : null,
       lastTransitionAt: now,
       endedAt: input.to === "failed" ? now : null,
     },
@@ -444,7 +444,10 @@ function createStatefulLifecycleHarness() {
         version: current.version + 1,
         terminalReason: input.terminalReason ?? null,
         legacyStatus: input.nextState === "failed" ? "error" : "in_progress",
-        endingAt: input.nextState === "ending" ? now : current.endingAt,
+        endingAt:
+          input.nextState === "ending" || input.nextState === "failed"
+            ? now
+            : current.endingAt,
         endedAt: input.nextState === "failed" ? now : current.endedAt,
         lastTransitionAt: now,
       };
