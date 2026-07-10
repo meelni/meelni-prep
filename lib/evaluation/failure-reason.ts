@@ -4,7 +4,13 @@ const MISSING_OPENAI_KEY_REASON =
 export function getEvaluationFailureReason(error: unknown): string {
   const messages = collectErrorMessages(error);
 
-  if (messages.some((message) => message.includes("OPENAI_API_KEY"))) {
+  if (
+    messages.some(
+      (message) =>
+        message.includes("OPENAI_API_KEY") ||
+        message === "feedback_evaluation_key_missing"
+    )
+  ) {
     return MISSING_OPENAI_KEY_REASON;
   }
 
@@ -12,7 +18,8 @@ export function getEvaluationFailureReason(error: unknown): string {
     messages.some(
       (message) =>
         message.includes("401") ||
-        message.toLowerCase().includes("invalid api key")
+        message.toLowerCase().includes("invalid api key") ||
+        message === "feedback_evaluation_auth_failed"
     )
   ) {
     return "OpenAI API key was rejected. Rotate OPENAI_API_KEY and retry feedback generation.";

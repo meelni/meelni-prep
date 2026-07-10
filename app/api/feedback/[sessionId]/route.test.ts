@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/db/sessions", () => ({
   getSessionById: vi.fn(),
-  isSessionOwnedByUser: vi.fn(),
 }));
 vi.mock("@/lib/db/feedback", () => ({
   getFeedbackBySessionId: vi.fn(),
@@ -18,19 +17,20 @@ vi.mock("@/lib/workflows/end-interview-session", () => ({
 import { NextRequest } from "next/server";
 
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
-import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import { getSessionById } from "@/lib/db/sessions";
 import { createClient } from "@/lib/supabase/server";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 import { GET, POST } from "./route";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const USER_ID = "11111111-1111-4111-8111-111111111111";
 const PARAMS = { params: Promise.resolve({ sessionId: SESSION_ID }) };
 
 describe("/api/feedback/[sessionId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAuth({ id: "user-1" });
-    vi.mocked(isSessionOwnedByUser).mockResolvedValue(true);
+    mockAuth({ id: USER_ID });
+    vi.mocked(getSessionById).mockResolvedValue(sessionRecord() as never);
   });
 
   it("rejects unauthenticated polling", async () => {
@@ -40,16 +40,18 @@ describe("/api/feedback/[sessionId]", () => {
   });
 
   it("does not reveal a cross-user session", async () => {
-    vi.mocked(isSessionOwnedByUser).mockResolvedValue(false);
+    vi.mocked(getSessionById).mockResolvedValue(
+      sessionRecord({ userId: "22222222-2222-4222-8222-222222222222" }) as never
+    );
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(404);
   });
 
   it("returns a typed recoverable state for terminal-without-feedback", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);
-    vi.mocked(getSessionById).mockResolvedValue({
-      lifecycleState: "completed",
-    } as never);
+    vi.mocked(getSessionById).mockResolvedValue(
+      sessionRecord({ lifecycleState: "completed" }) as never
+    );
 
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(200);
@@ -120,9 +122,9 @@ describe("/api/feedback/[sessionId]", () => {
   });
 
   it("retries the stored event identity without turning dispatch failure into 500", async () => {
-    vi.mocked(getSessionById).mockResolvedValue({
-      lifecycleState: "completed",
-    } as never);
+    vi.mocked(getSessionById).mockResolvedValue(
+      sessionRecord({ lifecycleState: "completed" }) as never
+    );
     vi.mocked(endInterviewSessionWorkflow).mockResolvedValue({
       ok: true,
       completion: {
@@ -151,9 +153,9 @@ describe("/api/feedback/[sessionId]", () => {
   });
 
   it("returns a queued state after redispatching failed generation", async () => {
-    vi.mocked(getSessionById).mockResolvedValue({
-      lifecycleState: "completed",
-    } as never);
+    vi.mocked(getSessionById).mockResolvedValue(
+      sessionRecord({ lifecycleState: "completed" }) as never
+    );
     vi.mocked(endInterviewSessionWorkflow).mockResolvedValue({
       ok: true,
       completion: {
@@ -185,9 +187,9 @@ describe("/api/feedback/[sessionId]", () => {
   });
 
   it("never turns an active interview into a feedback retry", async () => {
-    vi.mocked(getSessionById).mockResolvedValue({
-      lifecycleState: "active",
-    } as never);
+    vi.mocked(getSessionById).mockResolvedValue(
+      sessionRecord({ lifecycleState: "active" }) as never
+    );
     const response = await POST(request("POST"), PARAMS);
     expect(response.status).toBe(409);
     expect(endInterviewSessionWorkflow).not.toHaveBeenCalled();
@@ -241,6 +243,15 @@ function feedbackRecord(overrides: Record<string, unknown> = {}) {
     summary: null,
     rubricVersion: "1.0.0",
     createdAt: new Date("2026-07-09T22:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function sessionRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: SESSION_ID,
+    userId: USER_ID,
+    lifecycleState: "active",
     ...overrides,
   };
 }

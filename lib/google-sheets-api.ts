@@ -18,7 +18,6 @@ export type { SheetRow } from "./google-sheets-client";
 function getGoogleSheetsClient() {
   // Method 1: Simple API Key (easiest, for public/link-shareable sheets)
   if (process.env.GOOGLE_SHEETS_API_KEY) {
-    console.log("🔑 Using API Key authentication");
     return google.sheets({
       version: "v4",
       auth: process.env.GOOGLE_SHEETS_API_KEY,
@@ -30,7 +29,6 @@ function getGoogleSheetsClient() {
 
   // Try Base64 encoded credentials (easier for Vercel)
   if (process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64) {
-    console.log("🔐 Using Service Account (base64) authentication");
     const decoded = Buffer.from(
       process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64,
       "base64"
@@ -39,7 +37,6 @@ function getGoogleSheetsClient() {
   }
   // Try Direct JSON string
   else if (process.env.GOOGLE_SHEETS_CREDENTIALS) {
-    console.log("🔐 Using Service Account (JSON) authentication");
     credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
   }
   // Try Individual fields (legacy)
@@ -47,7 +44,6 @@ function getGoogleSheetsClient() {
     process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
     process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
   ) {
-    console.log("🔐 Using Service Account (email+key) authentication");
     credentials = {
       client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(
@@ -86,8 +82,6 @@ export async function fetchSheetViaAPI(
   range: string = "Sheet1"
 ): Promise<SheetRow[]> {
   try {
-    console.log("📥 Fetching configured Google Sheets API source");
-
     const sheets = getGoogleSheetsClient();
 
     // Fetch data
@@ -99,17 +93,12 @@ export async function fetchSheetViaAPI(
     const rows = response.data.values;
 
     if (!rows || rows.length === 0) {
-      console.log("⚠️  No data found in sheet");
       return [];
     }
-
-    console.log(`✅ Fetched ${rows.length} rows from sheet`);
 
     // Parse rows
     return parseSheetValues(rows);
   } catch (error) {
-    console.error("❌ Google Sheets API fetch failed");
-
     if (error instanceof Error) {
       // Provide helpful error messages
       if (error.message.includes("permission")) {
@@ -155,14 +144,6 @@ function parseSheetValues(values: unknown[][]): SheetRow[] {
     h.includes("interview type")
   );
 
-  console.log("📋 Column mapping:", {
-    timestamp: timestampIdx,
-    company: companyIdx,
-    question: questionIdx,
-    type: typeIdx,
-    interviewType: interviewTypeIdx,
-  });
-
   // Parse data rows
   const rows: SheetRow[] = [];
 
@@ -196,7 +177,6 @@ function parseSheetValues(values: unknown[][]): SheetRow[] {
     });
   }
 
-  console.log(`✅ Parsed ${rows.length} valid question rows`);
   return rows;
 }
 

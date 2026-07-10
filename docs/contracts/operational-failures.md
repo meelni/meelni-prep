@@ -28,12 +28,16 @@ Allowed operations are `auth_callback`, `interview_token`, `interview_start`, `i
 
 The event is constructed from a closed schema. Callers cannot attach an exception, stack, message, arbitrary context, provider payload, user ID, email, transcript, token, room credential, payment identifier, or secret.
 
-- `errorCode` is a bounded snake_case classification owned by Meelni.
+- `errorCode` must be a member of the versioned
+  `OPERATIONAL_FAILURE_ERROR_CODES` catalog. Unknown, dynamic, and merely
+  snake_case values fail before serialization.
 - `requestId` accepts only a bounded Vercel-style opaque identifier.
 - `correlationId` accepts only a branded interview-session correlation value.
-- The correlation factory requires a discriminated `interview_session` source;
-  a raw string or Supabase user reference is not a valid typed input. The
-  factory also validates the session ID as a UUID at runtime.
+- The correlation factory requires an ownership-validated interview-session
+  record plus the authenticated user ID. It verifies the stored owner matches
+  the authenticated user and rejects a session ID equal to either user ID. Raw
+  request UUIDs, structurally relabeled Supabase user references, and
+  pre-ownership failures therefore cannot become correlations.
 - `environment` is an enum.
 - `release` is a truncated validated Git commit SHA.
 - invalid optional values become `null` rather than being normalized or logged.
@@ -41,10 +45,11 @@ The event is constructed from a closed schema. Callers cannot attach an exceptio
 Raw provider error text may still be used transiently to choose an internal classification, but it must not enter this event or an HTTP response.
 
 Launch-critical instrumented boundaries must not write directly to the console.
-This rule includes the start/join workflows invoked by the route boundary, not
-only the route file. Failure telemetry across that call graph goes through this
-closed schema so a future log drain cannot accidentally receive provider
-identifiers, question text, raw errors, or user data.
+This rule covers the recursively resolved local call graph, including provider,
+evaluation, question-selection, billing-analytics, and source-preparation
+callees rather than only route/workflow wrappers. Failure telemetry across that
+graph goes through this closed schema so a future log drain cannot accidentally
+receive provider identifiers, question text, raw errors, or user data.
 
 Stripe webhook idempotency storage retains the provider event ID, event type,
 one-way subject fingerprint, status, attempt count, and timestamps. New rows

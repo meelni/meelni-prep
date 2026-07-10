@@ -93,16 +93,14 @@ export const generateFeedback = inngest.createFunction(
     onFailure: async ({ event, step }) => {
       const failedEvent = event.data.event;
       const sessionId = String(failedEvent.data?.sessionId ?? "");
+      const userId = String(failedEvent.data?.userId ?? "");
       const eventId = String(failedEvent.id ?? "");
       reportOperationalFailure({
         operation: "feedback_queue",
         errorCode: "feedback_dispatch_exhausted",
         severity: "critical",
         retryable: false,
-        correlationId: readInterviewSessionCorrelationId({
-          kind: "interview_session",
-          sessionId,
-        }),
+        correlationId: await readOwnedSessionCorrelationId(sessionId, userId),
       });
       if (!sessionId || !eventId) return;
       await step.run("mark-feedback-generation-exhausted", async () => {
@@ -376,3 +374,26 @@ export const generateFeedback = inngest.createFunction(
     };
   }
 );
+
+async function readOwnedSessionCorrelationId(
+  sessionId: string,
+  authenticatedUserId: string
+) {
+  try {
+    const session = await db.query.interviewSession.findFirst({
+      where: and(
+        eq(interviewSession.id, sessionId),
+        eq(interviewSession.userId, authenticatedUserId)
+      ),
+    });
+    return session
+      ? readInterviewSessionCorrelationId({
+          kind: "owned_interview_session",
+          session,
+          authenticatedUserId,
+        })
+      : null;
+  } catch {
+    return null;
+  }
+}

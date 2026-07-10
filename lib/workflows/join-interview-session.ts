@@ -71,6 +71,7 @@ export type JoinInterviewSessionResult =
       status: number;
       body: { error: string; message?: string };
       retryAfterSeconds?: number;
+      ownedSession?: Pick<JoinableInterviewSession, "id" | "userId">;
     };
 
 export async function joinInterviewSessionWorkflow(
@@ -185,6 +186,7 @@ export async function joinInterviewSessionWorkflow(
       ok: false,
       status: tokenResult.error.retryable ? 503 : 500,
       body: { error: "livekit_token_unavailable" },
+      ownedSession: { id: session.id, userId: session.userId },
     };
   }
 

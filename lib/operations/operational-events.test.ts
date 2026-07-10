@@ -8,6 +8,7 @@ import {
 } from "./operational-events";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const USER_ID = "11111111-1111-4111-8111-111111111111";
 
 test("operational failures contain only the bounded alert contract", () => {
   const writes: string[] = [];
@@ -17,8 +18,9 @@ test("operational failures contain only the bounded alert contract", () => {
     })
   );
   const correlationId = readInterviewSessionCorrelationId({
-    kind: "interview_session",
-    sessionId: SESSION_ID,
+    kind: "owned_interview_session",
+    session: { id: SESSION_ID, userId: USER_ID },
+    authenticatedUserId: USER_ID,
   });
   const event = reportOperationalFailure(
     {
@@ -75,8 +77,9 @@ test("untrusted identifiers and environment values fail closed", () => {
     })
   );
   const correlationId = readInterviewSessionCorrelationId({
-    kind: "interview_session",
-    sessionId: "cus_secret",
+    kind: "owned_interview_session",
+    session: { id: "cus_secret", userId: USER_ID },
+    authenticatedUserId: USER_ID,
   });
   const event = reportOperationalFailure(
     {
@@ -102,13 +105,21 @@ test("untrusted identifiers and environment values fail closed", () => {
   assert.equal(event.correlationId, null);
 });
 
-test("arbitrary error messages cannot enter the structured event", () => {
+test("unknown and secret-shaped error codes cannot enter the structured event", () => {
+  if (false) {
+    reportOperationalFailure({
+      operation: "auth_callback",
+      // @ts-expect-error Unknown error codes are excluded from the contract.
+      errorCode: "sk_live_secret_key",
+      retryable: false,
+    });
+  }
   assert.throws(
     () =>
       reportOperationalFailure(
         {
           operation: "auth_callback",
-          errorCode: "user@example.com token=secret",
+          errorCode: "sk_live_secret_key" as never,
           retryable: false,
         },
         {
@@ -117,7 +128,7 @@ test("arbitrary error messages cannot enter the structured event", () => {
           write: () => {},
         }
       ),
-    /bounded snake_case/
+    /versioned contract/
   );
 });
 
@@ -129,15 +140,17 @@ test("request and interview-session correlation helpers accept only domain-owned
   assert.equal(readOperationalRequestId(request), "iad1::safe-request");
   assert.equal(
     readInterviewSessionCorrelationId({
-      kind: "interview_session",
-      sessionId: SESSION_ID,
+      kind: "owned_interview_session",
+      session: { id: SESSION_ID, userId: USER_ID },
+      authenticatedUserId: USER_ID,
     }),
     SESSION_ID
   );
   assert.equal(
     readInterviewSessionCorrelationId({
-      kind: "interview_session",
-      sessionId: "user@example.com",
+      kind: "owned_interview_session",
+      session: { id: "user@example.com", userId: USER_ID },
+      authenticatedUserId: USER_ID,
     }),
     null
   );
@@ -146,6 +159,22 @@ test("request and interview-session correlation helpers accept only domain-owned
       kind: "supabase_user",
       userId: SESSION_ID,
     } as never),
+    null
+  );
+  assert.equal(
+    readInterviewSessionCorrelationId({
+      kind: "owned_interview_session",
+      session: { id: USER_ID, userId: USER_ID },
+      authenticatedUserId: USER_ID,
+    }),
+    null
+  );
+  assert.equal(
+    readInterviewSessionCorrelationId({
+      kind: "owned_interview_session",
+      session: { id: SESSION_ID, userId: USER_ID },
+      authenticatedUserId: "22222222-2222-4222-8222-222222222222",
+    }),
     null
   );
 });
@@ -161,6 +190,11 @@ test("Supabase user references cannot enter the typed session factory", () => {
     readInterviewSessionCorrelationId(userReference);
     // @ts-expect-error A raw UUID string has no interview-session provenance.
     readInterviewSessionCorrelationId(userReference.userId);
+    readInterviewSessionCorrelationId({
+      // @ts-expect-error A caller cannot relabel an unowned request UUID.
+      kind: "interview_session",
+      sessionId: userReference.userId,
+    });
   }
 
   assert.equal(userReference.userId, SESSION_ID);

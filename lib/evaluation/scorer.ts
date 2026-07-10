@@ -74,9 +74,19 @@ export async function generateFeedback(
       summary: result.summary || "No summary provided",
     };
   } catch (error) {
-    console.error("Error generating feedback:", error);
-    throw new Error("Failed to generate feedback", { cause: error });
+    throw new Error(classifyEvaluationFailure(error));
   }
+}
+
+function classifyEvaluationFailure(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (message.includes("openai_api_key")) {
+    return "feedback_evaluation_key_missing";
+  }
+  if (message.includes("401") || message.includes("invalid api key")) {
+    return "feedback_evaluation_auth_failed";
+  }
+  return "feedback_evaluation_failed";
 }
 
 /**

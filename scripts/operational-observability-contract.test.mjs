@@ -16,11 +16,9 @@ const CRITICAL_BOUNDARIES = [
   ["lib/inngest/functions/delete-account.ts", "account_deletion"],
 ];
 
-const CRITICAL_CALL_GRAPH_FILES = [
+const CRITICAL_CALL_GRAPH_ROOTS = [
   ...CRITICAL_BOUNDARIES.map(([file]) => file),
   "app/api/feedback/generate/route.ts",
-  "lib/workflows/start-session.ts",
-  "lib/workflows/join-interview-session.ts",
 ];
 
 test("every launch-critical boundary emits the closed operational contract", async () => {
@@ -40,16 +38,37 @@ test("every launch-critical boundary emits the closed operational contract", asy
 
 test("instrumented boundaries cannot bypass the redacted reporter with console output", async () => {
   const violations = [];
+  const callGraphFiles = await collectLocalCallGraph(CRITICAL_CALL_GRAPH_ROOTS);
+  for (const expected of [
+    "lib/analytics/posthog-server.ts",
+    "lib/db/questions.ts",
+    "lib/evaluation/scorer.ts",
+    "lib/google-sheets-api.ts",
+    "lib/google-sheets-client.ts",
+    "scripts/sync-questions-from-sheet.ts",
+  ]) {
+    assert.equal(
+      callGraphFiles.includes(expected),
+      true,
+      `critical call graph omitted ${expected}`
+    );
+  }
 
-  for (const file of CRITICAL_CALL_GRAPH_FILES) {
+  for (const file of callGraphFiles) {
     const source = await readFile(path.join(ROOT, file), "utf8");
-    const sourceWithoutClosedOutcomeAudit =
+    const sourceWithoutApprovedSinks = stripComments(
       file === "lib/workflows/sync-question-bank.ts"
         ? source.replace("console.info(JSON.stringify(event));", "")
-        : source;
+        : file === "lib/operations/operational-events.ts"
+          ? source.replace(
+              "write: (serialized) => console.error(serialized),",
+              ""
+            )
+          : source
+    );
     if (
       /console\.(?:error|warn|log|info|debug)\s*\(/.test(
-        sourceWithoutClosedOutcomeAudit
+        sourceWithoutApprovedSinks
       )
     )
       violations.push(file);
@@ -79,8 +98,61 @@ test("the operational contract cannot accept arbitrary context or error objects"
   assert.doesNotMatch(source, /context\s*[?:]/);
   assert.doesNotMatch(source, /error\s*[?:]\s*unknown/);
   assert.doesNotMatch(source, /stack\s*[?:]/);
-  assert.match(source, /SAFE_CODE_PATTERN/);
+  assert.match(source, /OPERATIONAL_FAILURE_ERROR_CODES/);
+  assert.match(source, /OPERATIONAL_FAILURE_ERROR_CODE_SET/);
   assert.match(source, /UUID_PATTERN/);
   assert.doesNotMatch(source, /readOpaqueCorrelationId/);
   assert.match(source, /InterviewSessionCorrelationSource/);
 });
+
+async function collectLocalCallGraph(entryFiles) {
+  const visited = new Set();
+  const queue = [...entryFiles];
+
+  while (queue.length > 0) {
+    const file = queue.shift();
+    if (!file || visited.has(file)) continue;
+    visited.add(file);
+    const source = await readFile(path.join(ROOT, file), "utf8");
+    const importPattern = /(?:from\s+|import\s*\(\s*)["']([^"']+)["']/g;
+    for (const match of source.matchAll(importPattern)) {
+      const resolved = await resolveLocalImport(file, match[1]);
+      if (resolved && !visited.has(resolved)) queue.push(resolved);
+    }
+  }
+
+  return [...visited].sort();
+}
+
+function stripComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+async function resolveLocalImport(importer, specifier) {
+  let unresolved;
+  if (specifier.startsWith("@/")) {
+    unresolved = specifier.slice(2);
+  } else if (specifier.startsWith(".")) {
+    unresolved = path.normalize(path.join(path.dirname(importer), specifier));
+  } else {
+    return null;
+  }
+
+  for (const candidate of [
+    unresolved,
+    `${unresolved}.ts`,
+    `${unresolved}.tsx`,
+    path.join(unresolved, "index.ts"),
+    path.join(unresolved, "index.tsx"),
+  ]) {
+    try {
+      await readFile(path.join(ROOT, candidate), "utf8");
+      return candidate;
+    } catch {
+      // Try the next local TypeScript resolution candidate.
+    }
+  }
+  return null;
+}

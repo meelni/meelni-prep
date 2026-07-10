@@ -14,7 +14,11 @@ Filter Runtime Logs for:
 "event":"meelni_operational_failure"
 ```
 
-Then group by `environment`, `release`, `operation`, and `errorCode`. Use `requestId` to correlate a single Vercel invocation and `correlationId` to correlate an interview/session without exposing its transcript or owner.
+Then group by `environment`, `release`, `operation`, and `errorCode`. Use
+`requestId` to correlate a single Vercel invocation. `correlationId` is present
+only after a stored interview session is authenticated as owned by the caller;
+pre-lookup configuration, rate-limit, authorization, and malformed-request
+failures deliberately omit it.
 
 On plans without Drains, use the Vercel deployment Logs view or a bounded CLI query:
 

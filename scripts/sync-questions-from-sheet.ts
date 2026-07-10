@@ -436,17 +436,6 @@ export async function prepareQuestionSyncSource(): Promise<PreparedQuestionSync>
   const { questions, duplicates } =
     deduplicateQuestionSyncSource(validatedQuestions);
 
-  console.info(
-    "question_sync_source",
-    JSON.stringify({
-      sourceRows: sheetRows.length,
-      validRows: validatedQuestions.length,
-      uniqueRows: questions.length,
-      invalidRows,
-      duplicateRows: duplicates,
-    })
-  );
-
   return {
     questions,
     sourceRows: sheetRows.length,
@@ -470,10 +459,8 @@ async function fetchSheetData(): Promise<SheetRow[]> {
       process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY);
 
   if (csvUrl) {
-    console.log("📡 Using Method A: Fetching from CSV URL");
     return await fetchSheetAsCSV(csvUrl);
   } else if (sheetId && hasGoogleSheetsCredentials) {
-    console.log("📡 Using Method B: Fetching via Google Sheets API");
     return await fetchSheetViaAPI(sheetId, sheetName);
   } else {
     throw new Error(
