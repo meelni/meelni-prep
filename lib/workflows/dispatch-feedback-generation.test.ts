@@ -5,13 +5,16 @@ import type {
   FeedbackDispatchRecord,
   FeedbackDispatchStore,
 } from "@/lib/db/feedback-dispatch";
+import { feedbackGenerationEventId } from "@/lib/db/feedback-event-id";
 import {
   dispatchFeedbackGenerationWorkflow,
   type DispatchFeedbackGenerationDeps,
 } from "./dispatch-feedback-generation";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
-const EVENT_ID = `feedback/generate.requested:${SESSION_ID}`;
+const INITIAL_EVENT_ID = feedbackGenerationEventId(SESSION_ID, 0);
+const EVENT_ID = feedbackGenerationEventId(SESSION_ID, 1);
+const RETRY_EVENT_ID = feedbackGenerationEventId(SESSION_ID, 2);
 const NOW = new Date("2026-07-09T22:00:00.000Z");
 
 test("concurrent dispatch attempts accept one claim and one send", async () => {
@@ -44,7 +47,7 @@ test("concurrent dispatch attempts accept one claim and one send", async () => {
   assert.equal((await store.get(SESSION_ID))?.status, "sent");
 });
 
-test("failed send remains retryable and reuses the event identity", async () => {
+test("failed send remains retryable with a unique event identity per attempt", async () => {
   const store = createMemoryStore();
   const sentIds: string[] = [];
   const failed = await dispatchFeedbackGenerationWorkflow(
@@ -64,7 +67,7 @@ test("failed send remains retryable and reuses the event identity", async () => 
     })
   );
   assert.equal(retried.disposition, "sent");
-  assert.deepEqual(sentIds, [EVENT_ID, EVENT_ID]);
+  assert.deepEqual(sentIds, [EVENT_ID, RETRY_EVENT_ID]);
   assert.equal((await store.get(SESSION_ID))?.attempts, 2);
 });
 
@@ -111,7 +114,7 @@ test("a stale sender reports the newer fenced claim instead of sent", async () =
 });
 
 test("a corrupt claim without an event identity fails immediately", async () => {
-  const store = createMemoryStore({ eventId: null });
+  const store = createMemoryStore({ eventId: null }, false);
   let sends = 0;
 
   const result = await dispatchFeedbackGenerationWorkflow(
@@ -135,11 +138,12 @@ function createDeps(
 }
 
 function createMemoryStore(
-  overrides: Partial<FeedbackDispatchRecord> = {}
+  overrides: Partial<FeedbackDispatchRecord> = {},
+  assignAttemptEventId = true
 ): FeedbackDispatchStore {
   let current: FeedbackDispatchRecord = {
     sessionId: SESSION_ID,
-    eventId: EVENT_ID,
+    eventId: INITIAL_EVENT_ID,
     status: "pending",
     attempts: 0,
     claimedAt: null,
@@ -161,6 +165,9 @@ function createMemoryStore(
         ...current,
         status: "sending",
         attempts: current.attempts + 1,
+        eventId: assignAttemptEventId
+          ? feedbackGenerationEventId(SESSION_ID, current.attempts + 1)
+          : current.eventId,
         claimedAt: now,
       };
       return { ...current };

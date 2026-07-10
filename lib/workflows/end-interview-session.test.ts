@@ -199,7 +199,7 @@ function feedbackRecordBase(): typeof feedbackTable.$inferSelect {
     completionStats: validation().stats,
     completionRecommendations: [],
     dispatchStatus: "pending" as const,
-    dispatchEventId: `feedback/generate.requested:${SESSION_ID}`,
+    dispatchEventId: `feedback/generate.requested:${SESSION_ID}:0`,
     dispatchAttempts: 0,
     dispatchClaimedAt: null,
     dispatchedAt: null,
@@ -213,7 +213,7 @@ function sentDispatch(): DispatchFeedbackGenerationResult {
     disposition: "sent",
     dispatch: {
       sessionId: SESSION_ID,
-      eventId: `feedback/generate.requested:${SESSION_ID}`,
+      eventId: `feedback/generate.requested:${SESSION_ID}:1`,
       status: "sent",
       attempts: 1,
       claimedAt: new Date("2026-07-09T22:00:00.000Z"),
