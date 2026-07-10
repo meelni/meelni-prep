@@ -44,9 +44,10 @@ test("remote migrations require explicit env selection and confirmation", () => 
     getDatabaseCommandPolicy({
       command: "migrate",
       databaseUrl: remote,
-      envFile: ".env.production.local",
+      envFile: ".env.local",
       allowRemoteMigration: true,
       environment: "preview",
+      expectedEnvironment: "preview",
       productionProjectRef: productionRef,
     }).allowed,
     true
@@ -60,6 +61,7 @@ test("migrations reject transaction pooler connections", () => {
     envFile: ".env.production.local",
     allowRemoteMigration: true,
     environment: "preview",
+    expectedEnvironment: "preview",
     productionProjectRef: productionRef,
   });
   assert.equal(policy.allowed, false);
@@ -70,9 +72,10 @@ test("migrations allow explicitly selected session pooler connections", () => {
   const policy = getDatabaseCommandPolicy({
     command: "migrate",
     databaseUrl: sessionPooler,
-    envFile: ".env.production.local",
+    envFile: ".env.local",
     allowRemoteMigration: true,
     environment: "preview",
+    expectedEnvironment: "preview",
     productionProjectRef: productionRef,
   });
   assert.equal(policy.allowed, true);
@@ -83,6 +86,7 @@ test("migrations allow explicitly selected session pooler connections", () => {
     envFile: ".env.production.local",
     allowRemoteMigration: true,
     environment: "production",
+    expectedEnvironment: "production",
     productionProjectRef: productionRef,
   });
   assert.equal(productionPolicy.allowed, true);
@@ -96,6 +100,7 @@ test("remote migrations fail closed on missing or mismatched environment identit
     envFile: ".env.local",
     allowRemoteMigration: true,
     environment: "preview",
+    expectedEnvironment: "preview",
   });
   assert.equal(missingDeclaration.allowed, false);
   assert.match(
@@ -109,6 +114,7 @@ test("remote migrations fail closed on missing or mismatched environment identit
     envFile: ".env.local",
     allowRemoteMigration: true,
     environment: "preview",
+    expectedEnvironment: "preview",
     productionProjectRef: productionRef,
   });
   assert.equal(previewTargetsProduction.allowed, false);
@@ -120,10 +126,26 @@ test("remote migrations fail closed on missing or mismatched environment identit
     envFile: ".env.production.local",
     allowRemoteMigration: true,
     environment: "production",
+    expectedEnvironment: "production",
     productionProjectRef: productionRef,
   });
   assert.equal(productionTargetsPreview.allowed, false);
   assert.match(productionTargetsPreview.reason, /Production database target/);
+});
+
+test("remote migrations bind the canonical env file to its expected environment", () => {
+  const policy = getDatabaseCommandPolicy({
+    command: "migrate",
+    databaseUrl: databaseUrl(productionRef, 5432),
+    envFile: ".env.local",
+    allowRemoteMigration: true,
+    environment: "production",
+    expectedEnvironment: "preview",
+    productionProjectRef: productionRef,
+    vercelEnvironment: "preview",
+  });
+  assert.equal(policy.allowed, false);
+  assert.match(policy.reason, /does not match expected preview/);
 });
 
 test("a missing explicit env file fails closed despite an ambient database URL", () => {
@@ -185,16 +207,84 @@ test("the selected env file supplies remote migration identity", async () => {
       [new URL("./database-command.mjs", import.meta.url).pathname, "migrate"],
       {
         encoding: "utf8",
+        cwd: directory,
         env: {
           ...process.env,
           DATABASE_URL: local,
           MEELNI_ALLOW_REMOTE_MIGRATION: "1",
-          MEELNI_ENV_FILE: envFile,
+          MEELNI_ENV_FILE: ".env.local",
         },
       }
     );
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Preview database target matches/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the Preview migration alias rejects a Production-marked env file", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "meelni-db-file-marker-"));
+  await writeFile(
+    join(directory, ".env.local"),
+    [
+      `DATABASE_URL=${databaseUrl(productionRef, 5432)}`,
+      "MEELNI_ENV_PULL_ENVIRONMENT=production",
+      `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF=${productionRef}`,
+      "VERCEL_ENV=production",
+      "",
+    ].join("\n")
+  );
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [new URL("./database-command.mjs", import.meta.url).pathname, "migrate"],
+      {
+        cwd: directory,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          MEELNI_ALLOW_REMOTE_MIGRATION: "1",
+          MEELNI_ENV_FILE: ".env.local",
+        },
+      }
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /does not match expected preview/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a selected env file cannot persist remote migration authorization", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "meelni-db-allow-flag-"));
+  await writeFile(
+    join(directory, ".env.production.local"),
+    [
+      `DATABASE_URL=${databaseUrl(productionRef, 5432)}`,
+      "MEELNI_ALLOW_REMOTE_MIGRATION=1",
+      "MEELNI_ENV_PULL_ENVIRONMENT=production",
+      `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF=${productionRef}`,
+      "VERCEL_ENV=production",
+      "",
+    ].join("\n")
+  );
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [new URL("./database-command.mjs", import.meta.url).pathname, "migrate"],
+      {
+        cwd: directory,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          MEELNI_ALLOW_REMOTE_MIGRATION: undefined,
+          MEELNI_ENV_FILE: ".env.production.local",
+        },
+      }
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /MEELNI_ALLOW_REMOTE_MIGRATION=1/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
