@@ -134,7 +134,11 @@ export async function GET(
 
     if (!feedbackRecord) {
       const session = await getSessionById(sessionId);
-      if (session && isInterviewTerminalState(session.lifecycleState)) {
+      if (
+        session &&
+        (session.lifecycleState === "ending" ||
+          isInterviewTerminalState(session.lifecycleState))
+      ) {
         return NextResponse.json(
           {
             status: "missing",

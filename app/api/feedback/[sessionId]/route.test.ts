@@ -60,6 +60,34 @@ describe("/api/feedback/[sessionId]", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
+  it("returns a recoverable state while ending still needs feedback finalization", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "ending",
+    } as never);
+
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "missing",
+      retryable: true,
+    });
+  });
+
+  it("keeps active sessions non-retryable when feedback is missing", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "active",
+    } as never);
+
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "session_not_ended",
+      retryable: false,
+    });
+  });
+
   it("reports failed dispatch as pending and retryable", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({ dispatchStatus: "failed" }) as never
