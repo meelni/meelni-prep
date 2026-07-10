@@ -8,10 +8,8 @@ import {
   type QuestionListFilter,
   type QuestionListStore,
 } from "@/lib/db/questions";
-import {
-  getQuestionSyncSafetyError,
-  mapQuestionType,
-} from "@/scripts/sync-questions-from-sheet";
+import { mapQuestionType } from "@/scripts/sync-questions-from-sheet";
+import { getQuestionSyncSafetyError } from "@/lib/question-sync/safety";
 import { parseIntegerParam } from "@/app/api/questions/route";
 
 const records: QuestionBankRecord[] = [

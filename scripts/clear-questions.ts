@@ -1,28 +1,9 @@
 /**
- * Clear all questions from the database
- * Use this before re-syncing to get fresh data with all fields
+ * Retired: destructive clear-and-reinsert is not a supported sync procedure.
+ * Question sync converges active state atomically without deleting provenance.
  */
 
-// Load environment variables from .env.local
-import { config } from "dotenv";
-import { resolve } from "path";
-config({ path: resolve(process.cwd(), ".env.local") });
-
-import { db } from "@/lib/db";
-import { interviewQuestion } from "@/lib/db/schema";
-
-async function clearQuestions() {
-  console.log("\n🗑️  Clearing all questions from database...\n");
-
-  try {
-    await db.delete(interviewQuestion);
-    console.log("✅ All questions cleared successfully");
-    console.log("\n💡 Now run: npm run sync:questions\n");
-    process.exit(0);
-  } catch (error) {
-    console.error("❌ Error clearing questions:", error);
-    process.exit(1);
-  }
-}
-
-clearQuestions();
+console.error(
+  "clear-questions is retired; use docs/operations/question-sync.md."
+);
+process.exitCode = 1;
