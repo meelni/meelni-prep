@@ -2,7 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { type RefObject, useEffect, useState } from "react";
 import { Icons } from "@/components/icons";
 import { AuthMessage } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ interface QuestionSignInModalProps {
   onClose: () => void;
   questionText: string;
   questionId: string;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 export function QuestionSignInModal({
@@ -34,6 +35,7 @@ export function QuestionSignInModal({
   onClose,
   questionText,
   questionId,
+  returnFocusRef,
 }: QuestionSignInModalProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -83,7 +85,14 @@ export function QuestionSignInModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="bg-background/95 max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto rounded-2xl p-6 shadow-2xl sm:p-8">
+      <DialogContent
+        className="bg-background/95 max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto rounded-2xl p-6 shadow-2xl sm:p-8"
+        onCloseAutoFocus={(event) => {
+          if (!returnFocusRef?.current) return;
+          event.preventDefault();
+          returnFocusRef.current.focus();
+        }}
+      >
         <DialogHeader className="mb-2 text-center sm:text-center">
           <DialogTitle className="text-foreground text-2xl font-semibold">
             Ready to practice?
@@ -116,7 +125,7 @@ export function QuestionSignInModal({
                   aria-hidden="true"
                 />
               ) : (
-                <Icons.google className="h-5 w-5" />
+                <Icons.google className="h-5 w-5" aria-hidden="true" />
               )}
               <span>
                 {isStartingGoogle
