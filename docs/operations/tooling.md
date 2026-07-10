@@ -13,13 +13,85 @@ This installs Node dependencies, creates `.context/npm-cache`, ensures `.env.loc
 When `.env.local` is missing required runtime values or still contains placeholders from `.env.example`, setup attempts to self-heal by using the authenticated Vercel CLI:
 
 ```bash
-npx vercel@latest link --yes --project meelni
+npx vercel@55.0.0 link --yes --project meelni
 npm run env:pull
 ```
 
 If the Vercel CLI is not logged in, setup keeps going but prints the recovery command. Set `MEELNI_SKIP_ENV_PULL=1` only when you intentionally want to keep the current local env file unchanged.
 
 If an older `agent/venv` uses symlinked Python binaries, setup recreates it with copied binaries. The venv is generated and gitignored, so this is safe and keeps `npm run build` compatible with a normal local setup.
+
+### Environment refresh safety
+
+`npm run env:pull` and `npm run env:pull:preview` pull only Vercel Preview into
+`.env.local`. `npm run env:pull:production` pulls only Vercel Production into
+`.env.production.local`. The command rejects swapped filenames, symlinked
+targets, concurrent refreshes, and Supabase database/public project mismatches.
+It pulls into a private temporary file, validates the result, and atomically
+replaces the destination with mode `0600`; a failed pull leaves the existing
+file unchanged.
+
+Vercel can return a present but blank value for an encrypted secret. In that
+case the refresh preserves a usable value already present in the same
+environment file only when that file is already marked for the requested
+environment. Public Supabase URL and anon-key values always come from the
+current scoped pull and are never restored from an older file. The refresh
+also requires the Supabase, LiveKit, and OpenAI values needed by local runtime;
+Production must supply its own application URL. It never borrows database,
+Supabase, Stripe, or provider credentials from Development or Production, and
+a key absent from Vercel is treated as removed rather than silently
+resurrected.
+
+For a fresh unmarked file, a restored database connection is adopted only when
+its Supabase project matches the public project returned by the current scoped
+Vercel pull. This provides a safe first-run recovery path without allowing a
+Production database to seed Preview. Production additionally rejects
+non-HTTPS/loopback application URLs and Stripe test-mode keys.
+
+That database match authorizes only the database and a separately verifiable
+Supabase service-role token. It never authorizes unrelated provider values. If
+you intentionally restored multiple values from the matching Preview provider
+dashboards into a fresh unmarked file, review their environment/mode and run
+the explicit one-time adoption command:
+
+```bash
+npm run env:adopt:preview
+```
+
+Production adoption is a separate explicit command and should be used only
+after checking live Stripe mode, provider accounts, and the public app URL:
+
+```bash
+npm run env:adopt:production
+```
+
+Both commands still require the restored database project to match the current
+scoped Vercel public Supabase project before any unrelated value is accepted.
+
+The Vercel CLI version used by the refresh is pinned in the script. A live lock
+prevents concurrent refreshes, and a lock owned by a dead process is recovered
+automatically. If a malformed lock file remains after an interrupted manual
+edit, remove only `.env.local.lock` or `.env.production.local.lock` after
+confirming no refresh process is running.
+
+If `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, or another server-only secret is
+missing locally, restore the value directly from the matching provider
+dashboard into the gitignored environment file, or rotate it and update the
+same Vercel environment. Never paste the value into chat, Linear, documentation,
+or a tracked file. Then rerun the scoped pull and the read-only check:
+
+```bash
+npm run env:pull:preview
+npm run db:preflight:preview
+```
+
+For Production, keep the relaunch gate paused and select the Production file
+explicitly:
+
+```bash
+npm run env:pull:production
+npm run db:preflight:production
+```
 
 ## Doctor
 

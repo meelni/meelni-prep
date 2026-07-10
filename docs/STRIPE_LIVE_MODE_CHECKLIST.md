@@ -9,11 +9,11 @@ Use this checklist when moving Meelni's credit-based billing catalog from test m
 
 Create or confirm these live-mode products and prices in the Stripe Dashboard.
 
-| Catalog ID | Product | Price | Mode | App env var |
-| --- | --- | ---: | --- | --- |
-| `interview_pass` | Meelni Interview Pass | $9 one-time | Checkout `payment` | `STRIPE_INTERVIEW_PASS_PRICE_ID` |
-| `starter` | Meelni Starter | $19/month | Checkout `subscription` | `STRIPE_STARTER_MONTHLY_PRICE_ID` |
-| `pro` | Meelni Pro | $49/month | Checkout `subscription` | `STRIPE_PRO_MONTHLY_PRICE_ID` |
+| Catalog ID       | Product               |       Price | Mode                    | App env var                       |
+| ---------------- | --------------------- | ----------: | ----------------------- | --------------------------------- |
+| `interview_pass` | Meelni Interview Pass | $9 one-time | Checkout `payment`      | `STRIPE_INTERVIEW_PASS_PRICE_ID`  |
+| `starter`        | Meelni Starter        |   $19/month | Checkout `subscription` | `STRIPE_STARTER_MONTHLY_PRICE_ID` |
+| `pro`            | Meelni Pro            |   $49/month | Checkout `subscription` | `STRIPE_PRO_MONTHLY_PRICE_ID`     |
 
 Recommended Stripe metadata:
 
@@ -29,17 +29,24 @@ You can create or reuse the catalog with:
 
 ```bash
 npm run stripe:setup-catalog -- --dry-run
-STRIPE_SECRET_KEY=sk_live_... npm run stripe:setup-catalog -- --confirm-live
+STRIPE_SECRET_KEY=rk_live_... npm run stripe:setup-catalog -- --confirm-live
 ```
 
 For local or preview test mode, omit `--confirm-live` and use an `sk_test_...` key.
+
+Prefer a least-privilege `rk_live_` key for the deployed application. Review
+the integration's Stripe Workbench request log, grant only the API permissions
+those calls require, and validate the equivalent restricted key in test mode
+before cutover. Use a separate temporary restricted key for catalog
+administration if it needs broader Product or Price write access, then revoke
+it after setup.
 
 ## Environment Variables
 
 Configure these in Vercel for Production:
 
 ```bash
-STRIPE_SECRET_KEY=sk_live_...
+STRIPE_SECRET_KEY=rk_live_...
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_INTERVIEW_PASS_PRICE_ID=price_...

@@ -18,57 +18,50 @@ Before deploying, ensure you have:
 
 ## Step-by-Step Deployment
 
-### Step 1: Install Vercel CLI
+### Step 1: Authenticate with the pinned Vercel CLI
 
 ```bash
-npm install -g vercel
+npx vercel@55.0.0 login
 ```
 
-### Step 2: Login to Vercel
+### Step 2: Link and verify the Meelni project
 
 ```bash
-vercel login
+npx vercel@55.0.0 link --yes --project meelni
+npx vercel@55.0.0 env ls
 ```
 
-This will open your browser for authentication.
+Confirm the CLI reports the `meelni/meelni` project before continuing. Do not
+pass a Production secret in a CLI argument.
 
-### Step 3: Deploy to Vercel
+### Step 3: Validate and deploy through the reviewed workflow
 
-#### Option A: Automated Deployment (Recommended)
+Run the same local gates used by CI:
 
 ```bash
-# From project root
-./scripts/deploy.sh
+npm run check:ci
+npm run build
 ```
 
-This script will:
-- ✅ Run build checks
-- ✅ Validate TypeScript
-- ✅ Run linter
-- ✅ Deploy to Vercel production
-
-#### Option B: Manual Deployment
-
-```bash
-# 1. Link your project (first time only)
-vercel link
-
-# 2. Deploy to production
-vercel --prod
-```
+Merge the reviewed change through Git and promote the resulting Vercel
+deployment from the `meelni/meelni` project. The retired local deployment
+script and bare `vercel --prod` path are not approved because they did not prove
+the linked project/account before mutating Production.
 
 ### Step 4: Configure Environment Variables
 
 After the first deployment, you need to add environment variables in the Vercel Dashboard.
 
-**Quick method** (recommended):
-```bash
-./scripts/setup-vercel-env.sh
-```
+Add each variable to the intended environment in the Vercel Dashboard. Do not
+copy `.env.local` wholesale into Production: local files normally contain
+Preview or test credentials. Use the provider dashboard as the source of truth
+for server-only secrets and select Preview, Development, or Production
+explicitly for every value.
 
-Then visit Vercel Dashboard → Settings → Environment Variables and enable "Preview" and "Development" for all `NEXT_PUBLIC_*` variables.
-
-**Manual method**: Add each variable individually in the Vercel Dashboard.
+After configuration, use `npm run env:pull:preview` or
+`npm run env:pull:production` to verify the intended environment locally. The
+pull command refuses cross-environment filenames and Supabase project
+mismatches.
 
 **Required Variables** (minimum):
 | Variable | Source | Notes |
@@ -87,6 +80,7 @@ See [Environment Variables Reference](./environment-variables.md) for the comple
 ### Step 5: Update OAuth Redirect URLs
 
 **Google Cloud Console**:
+
 1. Go to **APIs & Services** → **Credentials**
 2. Edit your **OAuth 2.0 Client**
 3. Add to **Authorized redirect URIs**:
@@ -94,33 +88,36 @@ See [Environment Variables Reference](./environment-variables.md) for the comple
    - `https://[your-supabase-project].supabase.co/auth/v1/callback`
 
 **Supabase Dashboard**:
+
 1. Go to **Authentication** → **URL Configuration**
 2. Set **Site URL**: `https://your-project.vercel.app`
 3. Add **Redirect URLs**: `https://your-project.vercel.app/**`
 
 ### Step 6: Redeploy with Environment Variables
 
-```bash
-vercel --prod
-```
-
-This ensures all environment variables are loaded.
+Redeploy or promote the reviewed commit from the Vercel `meelni/meelni`
+dashboard after confirming the Production environment variable names and
+targets. Keep the relaunch feature flag off until post-deployment verification
+passes.
 
 ## Post-Deployment Verification
 
 Visit your Vercel URL (`https://your-project.vercel.app`) and test:
 
 ### ✅ Basic Functionality
+
 1. **Landing page loads** - Main page renders correctly
 2. **Demo modal works** - "Talk to Meelni" button opens demo
 3. **Demo agent responds** - Voice conversation works
 
 ### ✅ Authentication
+
 4. **Sign in with Google** - OAuth flow completes
 5. **Dashboard loads** - Shows your name from Google profile
 6. **Sign out works** - Can log out successfully
 
 ### ✅ Interview Flow
+
 7. **Start mock interview** - Button navigates to setup page
 8. **Setup page renders** - Configuration options display
 9. **LiveKit connection** - Agent joins and speaks
@@ -131,6 +128,7 @@ Visit your Vercel URL (`https://your-project.vercel.app`) and test:
 ### Build Fails
 
 Test locally first:
+
 ```bash
 npm run build
 npm run typecheck
@@ -138,6 +136,7 @@ npm run lint
 ```
 
 Common issues:
+
 - Missing dependencies: `npm install`
 - TypeScript errors: Fix type issues
 - Lint errors: Run `npm run lint --fix`
@@ -146,12 +145,13 @@ Common issues:
 
 1. Check variables are set in **Vercel Dashboard** → **Settings** → **Environment Variables**
 2. Ensure `NEXT_PUBLIC_*` variables are enabled for all environments (Production, Preview, Development)
-3. Redeploy: `vercel --prod`
+3. Redeploy the reviewed commit from the `meelni/meelni` Vercel project
 
 **Verification**:
+
 ```bash
 # Check which variables are set
-vercel env ls
+npx vercel@55.0.0 env ls
 ```
 
 ### OAuth Authentication Fails
@@ -159,6 +159,7 @@ vercel env ls
 **Symptoms**: "redirect_uri_mismatch" error or OAuth doesn't complete
 
 **Solutions**:
+
 1. Verify redirect URLs in **Google Cloud Console** match your deployment URL exactly
 2. Check **Supabase Auth** settings have correct site URL
 3. Ensure email confirmation is disabled (or emails are being sent)
@@ -169,6 +170,7 @@ vercel env ls
 **Symptoms**: Agent doesn't join room, voice doesn't work
 
 **Solutions**:
+
 1. Verify `NEXT_PUBLIC_LIVEKIT_URL` is set correctly (starts with `wss://`)
 2. Check agents are running: `lk agent status`
 3. View agent logs: `lk agent logs`
@@ -179,22 +181,21 @@ vercel env ls
 **Symptoms**: 500 errors, database queries fail
 
 **Solutions**:
+
 1. Verify `DATABASE_URL` is correct (check Supabase dashboard)
-2. Ensure database schema is deployed: `npx drizzle-kit push`
+2. Verify the deployed schema with `npm run db:preflight:production`
 3. Check Supabase project isn't paused (free tier pauses after inactivity)
 4. Verify RLS policies are correct (if getting permission errors)
 
 ## Updating Your Deployment
 
 ### Frontend Changes
-Push to your Git repository's main branch - Vercel auto-deploys.
 
-Or manually redeploy:
-```bash
-vercel --prod
-```
+Merge through the reviewed Git workflow, then verify or promote the resulting
+deployment in the `meelni/meelni` Vercel project.
 
 ### Agent Changes
+
 ```bash
 cd agent
 lk agent deploy
@@ -203,11 +204,10 @@ lk agent deploy
 See `agent/DEPLOYMENT.md` for details.
 
 ### Database Schema Changes
-```bash
-npx drizzle-kit push
-```
 
-This syncs schema changes to Supabase.
+Use the guarded migration rehearsal and rollout in
+[`docs/operations/database-migrations.md`](../operations/database-migrations.md).
+Never run `drizzle-kit push` against Preview or Production.
 
 ## Monitoring Your Deployment
 
@@ -219,17 +219,20 @@ This syncs schema changes to Supabase.
 ## Rollback Procedures
 
 ### Rollback Frontend
+
 1. Go to **Vercel Dashboard** → **Deployments**
 2. Find previous successful deployment
 3. Click **"..."** → **Redeploy**
 
 ### Rollback Agents
+
 ```bash
 cd agent
 lk agent rollback
 ```
 
 ### Rollback Database
+
 Database schema rollbacks are manual - restore from Supabase backup if needed.
 
 ## Next Steps
