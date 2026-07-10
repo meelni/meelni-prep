@@ -45,10 +45,38 @@ export function isAlreadyDeletedProviderError(error: unknown): boolean {
 export function accountDeletionFailureCode(error: unknown): string {
   if (error && typeof error === "object" && "code" in error) {
     const code = String(error.code);
+    if (
+      code === "stripe_provider_error" ||
+      code === "auth_provider_error" ||
+      code === "account_deletion_step_failed" ||
+      code === "account_deletion_state_update_failed" ||
+      code === "account_deletion_tombstone_missing"
+    ) {
+      return code;
+    }
     if (code.startsWith("stripe")) return "stripe_provider_error";
     if (code.startsWith("auth") || code === "unexpected_failure") {
       return "auth_provider_error";
     }
   }
   return "account_deletion_step_failed";
+}
+
+export function safeAccountDeletionError(
+  error: unknown,
+  fallbackCode?: string
+): Error & { code: string } {
+  const code = fallbackCode ?? accountDeletionFailureCode(error);
+  return Object.assign(new Error("Account deletion step failed"), { code });
+}
+
+export async function runSafeAccountDeletionStep<T>(
+  operation: () => Promise<T>,
+  fallbackCode?: string
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    throw safeAccountDeletionError(error, fallbackCode);
+  }
 }

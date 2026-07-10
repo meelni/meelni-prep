@@ -16,6 +16,8 @@ import {
   accountDeletionFailureCode,
   deleteAccountWorkflow,
   isAlreadyDeletedProviderError,
+  runSafeAccountDeletionStep,
+  safeAccountDeletionError,
 } from "@/lib/workflows/delete-account";
 
 export const deleteAccount = inngest.createFunction(
@@ -29,57 +31,79 @@ export const deleteAccount = inngest.createFunction(
   async ({ event, step }) => {
     const userId = String(event.data.userId);
     // Keep raw provider IDs out of persisted Inngest step output/history.
-    const request = await getAccountDeletionRequest(userId);
-    if (!request) throw new Error("Account deletion tombstone is missing");
+    let request: Awaited<ReturnType<typeof getAccountDeletionRequest>>;
+    try {
+      request = await getAccountDeletionRequest(userId);
+    } catch (error) {
+      throw safeAccountDeletionError(error);
+    }
+    if (!request) {
+      throw safeAccountDeletionError(
+        null,
+        "account_deletion_tombstone_missing"
+      );
+    }
     if (request.status === "completed") return { status: "completed" };
 
     await step.run("mark-processing", () =>
-      markAccountDeletionProcessing(userId)
+      runSafeAccountDeletionStep(
+        () => markAccountDeletionProcessing(userId),
+        "account_deletion_state_update_failed"
+      )
     );
 
     try {
       await step.run("delete-account-providers-and-data", () =>
-        deleteAccountWorkflow(request, {
-          cancelSubscription: async (subscriptionId) => {
-            const stripe = createStripeClient();
-            try {
-              await stripe.subscriptions.cancel(subscriptionId, {
-                prorate: true,
-              });
-            } catch (error) {
-              if (!isAlreadyDeletedProviderError(error)) {
-                throw safeProviderError("stripe_provider_error");
-              }
-            }
-          },
-          deleteCustomer: async (customerId) => {
-            const stripe = createStripeClient();
-            try {
-              await stripe.customers.del(customerId);
-            } catch (error) {
-              if (!isAlreadyDeletedProviderError(error)) {
-                throw safeProviderError("stripe_provider_error");
-              }
-            }
-          },
-          redactProviderLogs: redactStripeEventLogs,
-          deleteApplicationData: deleteUserApplicationData,
-          deleteAuthUser: async (targetUserId) => {
-            const { error } =
-              await createAdminClient().auth.admin.deleteUser(targetUserId);
-            if (error && !isAlreadyDeletedProviderError(error)) {
-              throw safeProviderError("auth_provider_error");
-            }
-          },
-          markCompleted: markAccountDeletionCompleted,
-        })
+        runSafeAccountDeletionStep(
+          () =>
+            deleteAccountWorkflow(request, {
+              cancelSubscription: async (subscriptionId) => {
+                const stripe = createStripeClient();
+                try {
+                  await stripe.subscriptions.cancel(subscriptionId, {
+                    prorate: true,
+                  });
+                } catch (error) {
+                  if (!isAlreadyDeletedProviderError(error)) {
+                    throw safeProviderError("stripe_provider_error");
+                  }
+                }
+              },
+              deleteCustomer: async (customerId) => {
+                const stripe = createStripeClient();
+                try {
+                  await stripe.customers.del(customerId);
+                } catch (error) {
+                  if (!isAlreadyDeletedProviderError(error)) {
+                    throw safeProviderError("stripe_provider_error");
+                  }
+                }
+              },
+              redactProviderLogs: redactStripeEventLogs,
+              deleteApplicationData: deleteUserApplicationData,
+              deleteAuthUser: async (targetUserId) => {
+                const { error } =
+                  await createAdminClient().auth.admin.deleteUser(targetUserId);
+                if (error && !isAlreadyDeletedProviderError(error)) {
+                  throw safeProviderError("auth_provider_error");
+                }
+              },
+              markCompleted: markAccountDeletionCompleted,
+            }),
+          undefined
+        )
       );
     } catch (error) {
-      await markAccountDeletionFailed(
-        userId,
-        accountDeletionFailureCode(error)
-      );
-      throw error;
+      const failureCode = accountDeletionFailureCode(error);
+      try {
+        await markAccountDeletionFailed(userId, failureCode);
+      } catch {
+        throw safeAccountDeletionError(
+          null,
+          "account_deletion_state_update_failed"
+        );
+      }
+      throw safeAccountDeletionError(error, failureCode);
     }
 
     return { status: "completed" };

@@ -6,6 +6,8 @@ import type { AccountDeletionRecord } from "@/lib/db/account-deletions";
 import {
   deleteAccountWorkflow,
   isAlreadyDeletedProviderError,
+  runSafeAccountDeletionStep,
+  safeAccountDeletionError,
   type DeleteAccountWorkflowDeps,
 } from "./delete-account";
 
@@ -81,6 +83,46 @@ test("completed deletion and missing provider records are idempotent", async () 
   );
   assert.equal(isAlreadyDeletedProviderError({ code: "user_not_found" }), true);
   assert.equal(isAlreadyDeletedProviderError({ status: 404 }), true);
+});
+
+test("deletion failures are reduced to a stable code without raw details", () => {
+  const safe = safeAccountDeletionError(
+    Object.assign(new Error("postgresql://secret-host transcript text"), {
+      query: "delete from interview_session",
+    })
+  );
+  assert.equal(safe.code, "account_deletion_step_failed");
+  assert.equal(safe.message, "Account deletion step failed");
+  assert.equal(JSON.stringify(safe).includes("secret-host"), false);
+  assert.equal("cause" in safe, false);
+});
+
+test("deletion preserves accepted provider failure categories", () => {
+  assert.equal(
+    safeAccountDeletionError(
+      Object.assign(new Error("raw provider message"), {
+        code: "stripe_provider_error",
+      })
+    ).code,
+    "stripe_provider_error"
+  );
+});
+
+test("the Inngest step boundary never rethrows raw application errors", async () => {
+  await assert.rejects(
+    () =>
+      runSafeAccountDeletionStep(async () => {
+        throw new Error("postgresql://secret-host user transcript");
+      }),
+    (error: unknown) => {
+      assert.equal(
+        (error as { code?: string }).code,
+        "account_deletion_step_failed"
+      );
+      assert.equal(JSON.stringify(error).includes("secret-host"), false);
+      return true;
+    }
+  );
 });
 
 function createDeps(calls: string[]): DeleteAccountWorkflowDeps {

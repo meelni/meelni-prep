@@ -1,0 +1,139 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  checkoutSessionAuthenticatedUserId,
+  obtainCheckoutSessionUnlessDeleting,
+  reconcileDeletedCheckoutSession,
+} from "./account-deletion-guard";
+
+test("checkout never calls the provider when deletion is already durable", async () => {
+  let providerCalls = 0;
+  const result = await obtainCheckoutSessionUnlessDeleting({
+    hasDeletionTombstone: async () => true,
+    obtainSession: async () => {
+      providerCalls += 1;
+      return { id: "cs_test_blocked", url: "https://checkout.invalid" };
+    },
+    expireSession: async () => {
+      providerCalls += 1;
+    },
+  });
+
+  assert.deepEqual(result, { allowed: false, stage: "before_provider" });
+  assert.equal(providerCalls, 0);
+});
+
+test("checkout expires a session when deletion wins the provider race", async () => {
+  const tombstones = [false, true];
+  const expired: Array<{ id: string; key: string }> = [];
+  const result = await obtainCheckoutSessionUnlessDeleting({
+    hasDeletionTombstone: async () => tombstones.shift() ?? true,
+    obtainSession: async () => ({
+      id: "cs_test_race",
+      url: "https://checkout.invalid",
+    }),
+    expireSession: async (id, key) => {
+      expired.push({ id, key });
+    },
+  });
+
+  assert.deepEqual(result, { allowed: false, stage: "after_provider" });
+  assert.equal(expired.length, 1);
+  assert.equal(expired[0]?.id, "cs_test_race");
+  assert.match(expired[0]?.key ?? "", /^account-deletion:expire:[a-f0-9]{64}$/);
+});
+
+test("checkout fulfillment requires matching authenticated correlation", () => {
+  assert.equal(
+    checkoutSessionAuthenticatedUserId({
+      client_reference_id: "user-1",
+      metadata: { userId: "user-1" },
+    }),
+    "user-1"
+  );
+  assert.equal(
+    checkoutSessionAuthenticatedUserId({
+      client_reference_id: "user-2",
+      metadata: { userId: "user-1" },
+    }),
+    null
+  );
+  assert.equal(
+    checkoutSessionAuthenticatedUserId({
+      client_reference_id: null,
+      metadata: { userId: "user-1" },
+    }),
+    null
+  );
+});
+
+test("completed deleted subscription checkout is canceled and refunded idempotently", async () => {
+  const calls: Array<{ operation: string; key: string }> = [];
+  const result = await reconcileDeletedCheckoutSession(
+    {
+      id: "cs_test_complete",
+      status: "complete",
+      payment_status: "paid",
+      payment_intent: null,
+      invoice: "in_test_complete",
+      subscription: "sub_test_complete",
+    },
+    {
+      expireCheckout: async () =>
+        assert.fail("completed session must not expire"),
+      cancelSubscription: async (_id, key) => {
+        calls.push({ operation: "cancel", key });
+      },
+      loadInvoicePayment: async () => ({
+        kind: "payment_intent",
+        providerId: "pi_test_complete",
+      }),
+      refundPayment: async (_payment, key) => {
+        calls.push({ operation: "refund", key });
+      },
+    }
+  );
+
+  assert.deepEqual(result, {
+    status: "reconciled",
+    subscriptionCanceled: true,
+    paymentRefunded: true,
+  });
+  assert.deepEqual(
+    calls.map(({ operation }) => operation),
+    ["cancel", "refund"]
+  );
+  assert.notEqual(calls[0]?.key, calls[1]?.key);
+  assert.equal(JSON.stringify(calls).includes("cs_test_complete"), false);
+});
+
+test("paid deleted checkout without a refundable reference fails visibly and safely", async () => {
+  await assert.rejects(
+    () =>
+      reconcileDeletedCheckoutSession(
+        {
+          id: "cs_test_manual",
+          status: "complete",
+          payment_status: "paid",
+          payment_intent: null,
+          invoice: null,
+          subscription: null,
+        },
+        {
+          expireCheckout: async () => undefined,
+          cancelSubscription: async () => undefined,
+          loadInvoicePayment: async () => null,
+          refundPayment: async () => undefined,
+        }
+      ),
+    (error: unknown) => {
+      assert.equal(
+        (error as { code?: string }).code,
+        "deleted_checkout_manual_reconciliation_required"
+      );
+      assert.equal(JSON.stringify(error).includes("cs_test_manual"), false);
+      return true;
+    }
+  );
+});

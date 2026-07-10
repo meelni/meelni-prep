@@ -30,11 +30,13 @@
 
 - In scope: Stable export contract, authenticated server-generated JSON export,
   explicit provider/internal-field exclusions, recent-auth deletion gate,
-  confirmation dialog, queued/retry/error UI, behavior/API/UI tests, fixtures,
-  contract and operations docs.
-- Out of scope: Changing the durable tombstone schema or provider deletion
-  ordering, copying or deleting shared-environment data, creating test accounts,
-  legal retention-policy invention, and enabling the relaunch flag.
+  confirmation dialog, queued/retry/error UI, dependent-row deletion ordering,
+  Checkout/deletion concurrency barriers and reconciliation, safe job-history
+  failures, accessible async notices, behavior/API/UI tests, fixtures, contract
+  and operations docs.
+- Out of scope: Copying or deleting shared-environment data, creating test
+  accounts, legal retention-policy invention, enabling the relaunch flag, or
+  claiming provider cancellation/refund completion without evidence.
 - Assumptions: `user.last_sign_in_at` returned by server-side Supabase
   `getUser()` is the available server-verifiable authentication freshness signal.
 
@@ -52,8 +54,9 @@
 - Likely package/workflow files: `@meelni/core` account-privacy contract,
   account-export database adapter, export workflow, deletion request helpers.
 - Data/provider dependencies: Supabase Auth user verification, Postgres reads,
-  existing Inngest/Supabase Admin/Stripe deletion workflow. No provider writes
-  are required for implementation or validation.
+  existing Inngest/Supabase Admin/Stripe deletion workflow, Checkout creation,
+  and webhook fulfillment. Implementation and automated validation use mocks
+  and local PostgreSQL only; no remote provider writes are required.
 - Docs/decisions to update: Account privacy contract, export/deletion runbooks,
   contract index. The accepted durable-deletion decision remains authoritative.
 
@@ -65,7 +68,10 @@
   provider mutation.
 - Fixtures or regression tests needed: Versioned account export fixture,
   nested sensitive-field redaction, cross-user exclusion, stale-auth deletion,
-  delayed queue retry, redacted failures, and UI action states.
+  delayed queue retry, populated insights/session deletion, pre/post-Checkout
+  tombstone races, event-order-independent Checkout/subscription/invoice
+  reconciliation, lost-202/session expiry, redacted job failures, and accessible
+  UI action states.
 
 ## Rollout
 

@@ -3,18 +3,16 @@ import { NextRequest } from "next/server";
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/db/account-deletions", () => ({
-  loadAccountDeletionSubjects: vi.fn(),
   markAccountDeletionFailed: vi.fn(),
-  requestAccountDeletion: vi.fn(),
+  requestAccountDeletionWithCurrentSubjects: vi.fn(),
 }));
 vi.mock("@/lib/inngest/client", () => ({
   inngest: { send: vi.fn() },
 }));
 
 import {
-  loadAccountDeletionSubjects,
   markAccountDeletionFailed,
-  requestAccountDeletion,
+  requestAccountDeletionWithCurrentSubjects,
 } from "@/lib/db/account-deletions";
 import { inngest } from "@/lib/inngest/client";
 import { createClient } from "@/lib/supabase/server";
@@ -30,21 +28,21 @@ describe("/api/user/delete", () => {
     const response = await DELETE();
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST");
-    expect(requestAccountDeletion).not.toHaveBeenCalled();
+    expect(requestAccountDeletionWithCurrentSubjects).not.toHaveBeenCalled();
   });
 
   it("requires exact confirmation before authentication or persistence", async () => {
     const response = await POST(requestWith({ confirmation: "delete" }));
     expect(response.status).toBe(400);
     expect(createClient).not.toHaveBeenCalled();
-    expect(requestAccountDeletion).not.toHaveBeenCalled();
+    expect(requestAccountDeletionWithCurrentSubjects).not.toHaveBeenCalled();
   });
 
   it("requires an authenticated account", async () => {
     vi.mocked(createClient).mockResolvedValue(clientFor(null) as never);
     const response = await POST(requestWith({ confirmation: "DELETE" }));
     expect(response.status).toBe(401);
-    expect(loadAccountDeletionSubjects).not.toHaveBeenCalled();
+    expect(requestAccountDeletionWithCurrentSubjects).not.toHaveBeenCalled();
   });
 
   it("redacts authentication provider failures", async () => {
@@ -75,7 +73,7 @@ describe("/api/user/delete", () => {
     expect(response.status).toBe(409);
     expect(body.error).toBe("reauthentication_required");
     expect(body.reauthenticateAt).toContain("/auth/signin");
-    expect(loadAccountDeletionSubjects).not.toHaveBeenCalled();
+    expect(requestAccountDeletionWithCurrentSubjects).not.toHaveBeenCalled();
   });
 
   it("persists and queues deletion without claiming provider completion", async () => {
@@ -84,8 +82,9 @@ describe("/api/user/delete", () => {
       last_sign_in_at: RECENT_SIGN_IN,
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
-    vi.mocked(loadAccountDeletionSubjects).mockResolvedValue([]);
-    vi.mocked(requestAccountDeletion).mockResolvedValue({} as never);
+    vi.mocked(requestAccountDeletionWithCurrentSubjects).mockResolvedValue(
+      {} as never
+    );
     vi.mocked(inngest.send).mockResolvedValue({} as never);
 
     const response = await POST(requestWith({ confirmation: "DELETE" }));
@@ -97,6 +96,9 @@ describe("/api/user/delete", () => {
       message: "Deletion request saved. Account cleanup is in progress.",
     });
     expect(body).not.toHaveProperty("success");
+    expect(requestAccountDeletionWithCurrentSubjects).toHaveBeenCalledWith(
+      "user-one"
+    );
     expect(client.auth.signOut).toHaveBeenCalled();
   });
 
@@ -107,8 +109,9 @@ describe("/api/user/delete", () => {
       last_sign_in_at: RECENT_SIGN_IN,
     });
     vi.mocked(createClient).mockResolvedValue(client as never);
-    vi.mocked(loadAccountDeletionSubjects).mockResolvedValue([]);
-    vi.mocked(requestAccountDeletion).mockResolvedValue({} as never);
+    vi.mocked(requestAccountDeletionWithCurrentSubjects).mockResolvedValue(
+      {} as never
+    );
     vi.mocked(inngest.send).mockRejectedValue(
       new Error("provider secret should not escape")
     );
@@ -131,7 +134,7 @@ describe("/api/user/delete", () => {
     vi.mocked(createClient).mockResolvedValue(
       clientFor({ id: "user-one", last_sign_in_at: RECENT_SIGN_IN }) as never
     );
-    vi.mocked(loadAccountDeletionSubjects).mockRejectedValue(
+    vi.mocked(requestAccountDeletionWithCurrentSubjects).mockRejectedValue(
       new Error("postgresql://secret-host")
     );
 

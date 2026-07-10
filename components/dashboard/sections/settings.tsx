@@ -2,13 +2,7 @@
 
 import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import {
-  AlertTriangle,
-  ArrowUpRight,
-  CheckCircle2,
-  Loader2,
-  Trash2,
-} from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Loader2, Trash2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/app/providers/auth-provider";
@@ -37,6 +31,7 @@ import {
   DashboardSidebarNavItem,
 } from "@/components/dashboard/dashboard-surface";
 import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
+import { SettingsNotice } from "@/components/dashboard/settings-notice";
 import {
   SETTINGS_CATEGORY_LABELS,
   SETTINGS_CATEGORY_ORDER,
@@ -270,7 +265,7 @@ export const SettingsSection = memo(function SettingsSection() {
 
         <section className="min-w-0 flex-1 px-6 py-6 sm:px-8 lg:px-9 lg:py-8">
           {loadState === "error" && (
-            <InlineNotice
+            <SettingsNotice
               tone="warning"
               title="Using default settings"
               description="Saved settings could not be loaded. Changes you save from here will still use the supported settings API."
@@ -570,7 +565,7 @@ function PlanCreditsPane({
       description="Current access and PM interview credit balance."
     >
       {billingState === "error" && (
-        <InlineNotice
+        <SettingsNotice
           tone="warning"
           title="Billing summary unavailable"
           description="The billing endpoints did not respond. Use the billing portal or pricing page if you need to make account changes."
@@ -602,7 +597,7 @@ function PlanCreditsPane({
       <SettingsGroup label="Billing actions">
         {portalState === "error" && (
           <div className="py-4">
-            <InlineNotice
+            <SettingsNotice
               tone="warning"
               title="Billing portal unavailable"
               description="The portal could not be opened for this account. Pricing is still available if you need to add credits."
@@ -688,9 +683,12 @@ function DataPrivacyPane({
   onReauthenticate: (path: string) => Promise<void>;
 }) {
   const [exportState, setExportState] = useState<
-    "idle" | "loading" | "success" | "error"
+    "idle" | "loading" | "success" | "reauthentication_required" | "error"
   >("idle");
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportReauthenticateAt, setExportReauthenticateAt] = useState<
+    string | null
+  >(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [deleteState, setDeleteState] = useState<
@@ -702,10 +700,14 @@ function DataPrivacyPane({
   const handleAccountExport = async () => {
     setExportState("loading");
     setExportMessage(null);
+    setExportReauthenticateAt(null);
     const result = await requestAccountExport();
     if (!result.ok) {
-      setExportState("error");
+      setExportState(result.state);
       setExportMessage(result.error);
+      if (result.state === "reauthentication_required") {
+        setExportReauthenticateAt(result.reauthenticateAt);
+      }
       return;
     }
 
@@ -758,13 +760,46 @@ function DataPrivacyPane({
       />
 
       {exportMessage && (
-        <InlineNotice
+        <SettingsNotice
           title={
-            exportState === "success" ? "Export prepared" : "Export failed"
+            exportState === "success"
+              ? "Export prepared"
+              : exportState === "reauthentication_required"
+                ? "Sign in again"
+                : "Export failed"
           }
           description={exportMessage}
           tone={exportState === "success" ? "success" : "warning"}
+          announce={exportState === "success" ? "polite" : "assertive"}
+          focusOnMount={exportState === "reauthentication_required"}
+          action={
+            exportState === "reauthentication_required" &&
+            exportReauthenticateAt ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await onReauthenticate(exportReauthenticateAt);
+                  } catch {
+                    setExportState("error");
+                    setExportMessage(
+                      "We could not sign you out for reauthentication. Please try again."
+                    );
+                  }
+                }}
+              >
+                Sign in again
+              </Button>
+            ) : undefined
+          }
         />
+      )}
+
+      {exportState === "loading" && (
+        <span className="sr-only" role="status" aria-live="polite">
+          Preparing your account data export.
+        </span>
       )}
 
       <SettingsGroup label="Account data">
@@ -809,7 +844,7 @@ function DataPrivacyPane({
 
           {(deleteState === "requested" ||
             deleteState === "retry_scheduled") && (
-            <InlineNotice
+            <SettingsNotice
               title={
                 deleteState === "requested"
                   ? "Deletion request saved"
@@ -820,28 +855,34 @@ function DataPrivacyPane({
                 "Your request is durable and cleanup will continue in the background."
               }
               tone={deleteState === "requested" ? "success" : "warning"}
+              announce="polite"
+              focusOnMount
             />
           )}
 
           {deleteState === "reauthentication_required" && (
-            <InlineNotice
+            <SettingsNotice
               title="Sign in again"
               description={
                 deleteMessage ??
                 "For your security, account deletion requires a recent sign-in."
               }
               tone="warning"
+              announce="assertive"
+              focusOnMount
             />
           )}
 
           {deleteState === "error" && (
-            <InlineNotice
+            <SettingsNotice
               title="Deletion request not saved"
               description={
                 deleteMessage ??
                 "We could not save the request. Review your connection and try again."
               }
               tone="warning"
+              announce="assertive"
+              focusOnMount
             />
           )}
 
@@ -865,6 +906,11 @@ function DataPrivacyPane({
             )}
 
           <DialogFooter className="gap-2 sm:space-x-0">
+            {deleteState === "submitting" && (
+              <span className="sr-only" role="status" aria-live="polite">
+                Saving your account deletion request.
+              </span>
+            )}
             {deleteState === "requested" ||
             deleteState === "retry_scheduled" ? (
               <Button
@@ -1183,43 +1229,6 @@ function SummaryTile({
         {value}
       </p>
       <p className="text-dashboard-muted mt-1 text-sm">{description}</p>
-    </div>
-  );
-}
-
-function InlineNotice({
-  title,
-  description,
-  tone = "default",
-}: {
-  title: string;
-  description: string;
-  tone?: "default" | "warning" | "success";
-}) {
-  const NoticeIcon = tone === "success" ? CheckCircle2 : AlertTriangle;
-  return (
-    <div
-      className={cn(
-        "border-dashboard-panel-border bg-dashboard-muted/10 mb-6 flex gap-3 rounded-lg border p-4",
-        tone === "warning" && "border-warning/30 bg-warning/10",
-        tone === "success" && "border-success/30 bg-success/10"
-      )}
-    >
-      <NoticeIcon
-        className={cn(
-          "mt-0.5 h-4 w-4 shrink-0",
-          tone === "warning" && "text-warning",
-          tone === "success" && "text-success",
-          tone === "default" && "text-dashboard-muted"
-        )}
-        aria-hidden="true"
-      />
-      <div>
-        <p className="text-dashboard-foreground text-sm font-bold">{title}</p>
-        <p className="text-dashboard-muted mt-1 text-sm leading-5">
-          {description}
-        </p>
-      </div>
     </div>
   );
 }

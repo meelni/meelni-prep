@@ -61,10 +61,66 @@ After persistence:
   initial enqueue failed; the recovery workflow owns automatic retry.
 - A non-202 failure means the request was not confirmed as durable and the UI
   must offer a retry without claiming deletion.
+- A later HTTP `401 account_deletion_pending` is also durable-request truth. It
+  can occur when the original 202 response was lost after tombstone commit; the
+  UI must show cleanup pending rather than claim that the request was not saved.
+- An ordinary HTTP 401 for export or deletion is an expired/absent session and
+  must offer a safe sign-in path back to Data & privacy.
 
 The unconfirmed `DELETE` method returns `405`. Provider/admin error details are
 never returned to the client or stored in the tombstone; only stable categories
 are persisted.
+
+Application cleanup removes `user_insights` before its referenced interview
+session because `user_insights.last_session_id` is a `NO ACTION` foreign key.
+The account-deletion job normalizes provider, redaction, and application errors
+inside the Inngest step boundary so raw database/provider messages do not enter
+job history; the tombstone and job retain only a stable failure code.
+
+## Checkout and deletion concurrency
+
+Checkout is bound to the server-verified user in both
+`client_reference_id` and metadata. A durable deletion tombstone blocks provider
+Checkout calls. Because a database check cannot be atomic with Stripe, the app
+checks again after acquiring a Checkout Session; when deletion won that race,
+the URL is withheld and the session is expired with a deterministic idempotency
+key. New sessions also request an approximately 31-minute expiry, one minute
+above Stripe's documented minimum so request latency cannot invalidate it. That
+expiry narrows exposure but is not treated as a guarantee against completion.
+
+The deletion request locks the local user row before taking its subscription
+and customer-mapping snapshot and committing the tombstone. Billing fulfillment
+uses the same lock, so a local mapping/subscription either commits before the
+snapshot or is denied after the tombstone; it cannot commit into the gap.
+
+Webhook fulfillment independently requires matching client-reference and
+metadata user IDs. Credit and subscription writes serialize with deletion on
+the local user row and fail closed when a tombstone exists. A completed Checkout
+that arrives after deletion receives no credit, subscription entitlement, or
+customer mapping. Its event payload is redacted; known late customer and
+subscription subjects are folded into the tombstone as temporary cleanup IDs or
+completed-tombstone fingerprints.
+
+For a late completed Checkout, Meelni attempts deterministic reconciliation:
+
+- expire it when it is still open;
+- cancel a created subscription;
+- refund a directly referenced PaymentIntent/charge or the paid payment exposed
+  by the initial invoice.
+
+Stripe does not guarantee that Checkout, subscription, and invoice webhooks
+arrive in a useful order. A deleted account's `customer.subscription.created`
+or `.updated` event therefore cancels its subscription independently, and an
+`invoice.payment_succeeded` event independently cancels the referenced
+subscription and refunds its paid PaymentIntent/charge. These paths share
+provider-object-derived idempotency keys with Checkout reconciliation, so no
+path relies on another event arriving first.
+
+Provider deletion, cancellation, and refunds are not transactional with local
+deletion. When Stripe does not expose a refundable reference, or a provider
+operation fails, the webhook event remains failed with a stable reconciliation
+code for retry/operator review. Meelni does not mark the event processed, grant
+an entitlement, or claim a refund occurred.
 
 ## Retention boundary
 

@@ -13,9 +13,18 @@ export type AccountDeletionResult =
 
 export type AccountExportResult =
   | { ok: true; file: Blob; filename: string }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      state: "reauthentication_required";
+      error: string;
+      reauthenticateAt: string;
+    }
+  | { ok: false; state: "error"; error: string };
 
 type DashboardFetch = (input: string, init?: RequestInit) => Promise<Response>;
+
+const PRIVACY_REAUTHENTICATION_PATH =
+  "/auth/signin?redirectTo=%2Fdashboard%2Fsettings%3Fsection%3Ddata-privacy";
 
 export function shouldShowSettingsLoading(loadState: SettingsLoadState) {
   return loadState === "idle" || loadState === "loading";
@@ -39,15 +48,30 @@ export async function requestAccountDeletion(
     };
 
     if (response.status === 409 && body.error === "reauthentication_required") {
-      const fallback =
-        "/auth/signin?redirectTo=%2Fdashboard%2Fsettings%3Fsection%3Ddata-privacy";
       return {
         state: "reauthentication_required",
         message: body.message ?? "Sign in again before deleting your account.",
         reauthenticateAt: getSafeInternalRedirect(
           body.reauthenticateAt,
-          fallback
+          PRIVACY_REAUTHENTICATION_PATH
         )!,
+      };
+    }
+
+    if (response.status === 401 && body.error === "account_deletion_pending") {
+      return {
+        state: "requested",
+        message:
+          "Your deletion request was already saved. Account cleanup is continuing in the background.",
+      };
+    }
+
+    if (response.status === 401) {
+      return {
+        state: "reauthentication_required",
+        message:
+          body.message ?? "Your session expired. Sign in again to continue.",
+        reauthenticateAt: PRIVACY_REAUTHENTICATION_PATH,
       };
     }
 
@@ -93,10 +117,22 @@ export async function requestAccountExport(
     const response = await fetcher("/api/user/export", { method: "GET" });
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
         message?: string;
       };
+      if (response.status === 401) {
+        return {
+          ok: false,
+          state: "reauthentication_required",
+          error:
+            body.message ??
+            "Your session expired. Sign in again to export your data.",
+          reauthenticateAt: PRIVACY_REAUTHENTICATION_PATH,
+        };
+      }
       return {
         ok: false,
+        state: "error",
         error:
           body.message ?? "We could not prepare your export. Please try again.",
       };
@@ -110,6 +146,7 @@ export async function requestAccountExport(
   } catch {
     return {
       ok: false,
+      state: "error",
       error: "We could not reach Meelni. Check your connection and try again.",
     };
   }

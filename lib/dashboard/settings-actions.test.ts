@@ -60,6 +60,35 @@ test("account deletion exposes an actionable reauthentication state", async () =
   });
 });
 
+test("account deletion treats a lost 202 followed by tombstone denial as durable", async () => {
+  const result = await requestAccountDeletion("DELETE", async () =>
+    Response.json({ error: "account_deletion_pending" }, { status: 401 })
+  );
+
+  assert.deepEqual(result, {
+    state: "requested",
+    message:
+      "Your deletion request was already saved. Account cleanup is continuing in the background.",
+  });
+});
+
+test("account deletion maps an expired session to sign-in recovery", async () => {
+  const result = await requestAccountDeletion("DELETE", async () =>
+    Response.json(
+      { error: "unauthorized", message: "Sign in to delete your account." },
+      { status: 401 }
+    )
+  );
+
+  assert.equal(result.state, "reauthentication_required");
+  if (result.state === "reauthentication_required") {
+    assert.equal(
+      result.reauthenticateAt,
+      "/auth/signin?redirectTo=%2Fdashboard%2Fsettings%3Fsection%3Ddata-privacy"
+    );
+  }
+});
+
 test("account deletion rejects an external reauthentication destination", async () => {
   const result = await requestAccountDeletion("DELETE", async () =>
     Response.json(
@@ -133,5 +162,26 @@ test("account export rejects unsafe filenames and reports failures", async () =>
   );
 
   assert.equal(fallback.ok && fallback.filename, "meelni-account-data.json");
-  assert.deepEqual(failure, { ok: false, error: "Export unavailable" });
+  assert.deepEqual(failure, {
+    ok: false,
+    state: "error",
+    error: "Export unavailable",
+  });
+});
+
+test("account export maps an expired session to sign-in recovery", async () => {
+  const result = await requestAccountExport(async () =>
+    Response.json(
+      { error: "unauthorized", message: "Sign in to export account data." },
+      { status: 401 }
+    )
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    state: "reauthentication_required",
+    error: "Sign in to export account data.",
+    reauthenticateAt:
+      "/auth/signin?redirectTo=%2Fdashboard%2Fsettings%3Fsection%3Ddata-privacy",
+  });
 });
