@@ -68,6 +68,11 @@ test("presents strict full and partial v2 feedback without score coercion", () =
     "completed-full"
   );
 
+  assert.equal(
+    presentCompletedFeedback(completed({ overallScore: "7.900" })).kind,
+    "v2"
+  );
+
   const partial = presentCompletedFeedback(
     completed({ evaluationState: "partial" })
   );
@@ -91,6 +96,10 @@ test("rejects malformed evidence, unsupported versions, absent scores, and overa
     completed({ strengths: [{ ...finding, evidence: null }] }),
     completed({ strengths: [{ ...finding, confidence: 1.2 }] }),
     completed({ strengths: [{ ...finding, unexpected: true }] }),
+    completed({ overallScore: " 7.9" }),
+    completed({ overallScore: "+7.9" }),
+    completed({ overallScore: "7.9e0" }),
+    completed({ overallScore: "07.9" }),
   ];
 
   for (const candidate of cases) {
@@ -155,6 +164,7 @@ test("fails closed when any persisted v2 string or collection exceeds its field 
     completed({ sessionId: long(257) }),
     completed({ modelVersion: long(257) }),
     completed({ summary: long(4_001) }),
+    completed({ overallScore: `${"0".repeat(31)}.0` }),
     completed({ drills: [long(2_001)] }),
     completed({ strengths: [{ ...finding, observation: long(2_001) }] }),
     completed({ strengths: [{ ...finding, nextStep: long(2_001) }] }),
@@ -200,6 +210,7 @@ test("fails closed when any persisted historical string or collection exceeds it
   const cases = [
     legacy({ rubricVersion: long(257) }),
     legacy({ summary: long(4_001) }),
+    legacy({ overallScore: `${"0".repeat(31)}.0` }),
     legacy({ drills: [long(2_001)] }),
     legacy({ strengths: [long(4_001)] }),
     legacy({ strengths: [{ text: long(4_001) }] }),
