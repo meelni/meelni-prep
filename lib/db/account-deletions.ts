@@ -17,6 +17,7 @@ import {
   stripeEventLog,
   stripeCustomerMapping,
   transcriptTurn,
+  userInsights,
   userSettings,
 } from "./schema";
 
@@ -196,6 +197,8 @@ export async function deleteUserApplicationData(userId: string) {
       .select({ id: interviewSession.id })
       .from(interviewSession)
       .where(eq(interviewSession.userId, userId));
+
+    await tx.delete(userInsights).where(eq(userInsights.userId, userId));
 
     for (const { id: sessionId } of sessions) {
       await tx.delete(feedback).where(eq(feedback.sessionId, sessionId));

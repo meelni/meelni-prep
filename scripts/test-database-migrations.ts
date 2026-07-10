@@ -43,6 +43,7 @@ const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const CONTACT_DELETE_USER = "12121212-1212-4212-8212-121212121212";
+const CONTACT_DELETE_SESSION = "15151515-1515-4515-8515-151515151515";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -1782,16 +1783,55 @@ async function verifyDurableContactSubmission(
         'Unlinked request',
         'This request must not be deleted by matching email text.')
     `;
+    await sql`
+      INSERT INTO interview_session (id, user_id, round_type, mode)
+      VALUES (
+        ${CONTACT_DELETE_SESSION}::uuid,
+        ${CONTACT_DELETE_USER}::uuid,
+        'product_sense',
+        'text'
+      )
+    `;
+    await sql`
+      INSERT INTO user_insights (
+        user_id, overall_stats, by_interview_type, by_difficulty, trends,
+        competency_breakdown, last_session_id
+      ) VALUES (
+        ${CONTACT_DELETE_USER}::uuid,
+        '{}'::jsonb,
+        '{}'::jsonb,
+        '{}'::jsonb,
+        '{}'::jsonb,
+        '{}'::jsonb,
+        ${CONTACT_DELETE_SESSION}::uuid
+      )
+    `;
     await deleteUserApplicationData(CONTACT_DELETE_USER);
-    const [privacyDeletion] = await sql<{ linked: number; unlinked: number }[]>`
+    const [privacyDeletion] = await sql<
+      {
+        insights: number;
+        linked: number;
+        sessions: number;
+        unlinked: number;
+      }[]
+    >`
       SELECT
+        (SELECT count(*)::int FROM user_insights
+          WHERE user_id = ${CONTACT_DELETE_USER}::uuid) AS insights,
         count(*) FILTER (WHERE user_id = ${CONTACT_DELETE_USER}::uuid)::int AS linked,
         count(*) FILTER (
           WHERE idempotency_key = '14141414-1414-4414-8414-141414141414'::uuid
-        )::int AS unlinked
+        )::int AS unlinked,
+        (SELECT count(*)::int FROM interview_session
+          WHERE id = ${CONTACT_DELETE_SESSION}::uuid) AS sessions
       FROM contact_submission
     `;
-    assert.deepEqual(privacyDeletion, { linked: 0, unlinked: 1 });
+    assert.deepEqual(privacyDeletion, {
+      insights: 0,
+      linked: 0,
+      sessions: 0,
+      unlinked: 1,
+    });
   } finally {
     await Promise.all(clients.map((client) => client.end()));
   }

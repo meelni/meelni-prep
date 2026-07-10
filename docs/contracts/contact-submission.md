@@ -27,7 +27,7 @@ The route is a thin adapter: parse the request, require a UUID idempotency key, 
 | 429  | `rate_limited`                                 | yes                  | No submission committed; `Retry-After` and `retryAfterSeconds` agree.                                                |
 | 503  | `storage_unavailable`                          | yes                  | Trusted identity, security configuration, limiter, transaction, or storage could not be proven. No success is shown. |
 
-Network retries reuse the same key while the payload is unchanged. Editing any field clears the browser's key. The database takes a transaction-scoped advisory lock for that key before replay checks and budget consumption, so concurrent replays create one row and consume each budget once.
+Network retries reuse the same key while the payload is unchanged. Editing any field clears the browser's key. The database serializes accepted-submission work for that key, so concurrent replays create one row. Every request consumes one attempt-budget unit; accepted-submission budgets are consumed only by the request that creates the row.
 
 ## Persistence and triage
 
