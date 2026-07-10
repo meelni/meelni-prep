@@ -7,6 +7,34 @@ vi.mock("@/lib/db/sessions", () => ({
 }));
 vi.mock("@/lib/db/feedback", () => ({
   getFeedbackBySessionId: vi.fn(),
+  hasValidFeedbackLifecycleFields: vi.fn((record: Record<string, unknown>) => {
+    const statuses = new Set<unknown>([
+      "pending",
+      "processing",
+      "completed",
+      "failed",
+      "skipped",
+    ]);
+    const tiers = new Set<unknown>([
+      null,
+      "full",
+      "partial",
+      "insufficient",
+      "abandoned",
+    ]);
+    const dispatchStatuses = new Set<unknown>([
+      "not_required",
+      "pending",
+      "sending",
+      "sent",
+      "failed",
+    ]);
+    return (
+      statuses.has(record.status) &&
+      tiers.has(record.completionTier) &&
+      dispatchStatuses.has(record.dispatchStatus)
+    );
+  }),
 }));
 vi.mock("@/lib/db/transcripts", () => ({
   getFeedbackEvidenceTurns: vi.fn(),
@@ -65,6 +93,25 @@ describe("/api/feedback/[sessionId]", () => {
     expect(getFeedbackBySessionId).not.toHaveBeenCalled();
     expect(getFeedbackEvidenceTurns).not.toHaveBeenCalled();
   });
+
+  it.each(["status", "completionTier", "dispatchStatus"])(
+    "fails closed for an oversized %s sentinel",
+    async (field) => {
+      vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+        feedbackRecord({ [field]: "x".repeat(33) }) as never
+      );
+
+      const response = await GET(request(), PARAMS);
+
+      expect(response.status).toBe(500);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      await expect(response.json()).resolves.toEqual({
+        error: "Invalid feedback state",
+      });
+      expect(getFeedbackEvidenceTurns).not.toHaveBeenCalled();
+      expect(validateSessionCompleteness).not.toHaveBeenCalled();
+    }
+  );
 
   it("returns a typed recoverable state for terminal-without-feedback", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);

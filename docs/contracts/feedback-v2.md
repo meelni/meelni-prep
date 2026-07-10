@@ -167,5 +167,8 @@ unsigned decimal notation before range validation. Oversized or malformed
 values fail closed as `invalid` rather than reaching the API response.
 The database read uses explicit projections and one-character-over-limit
 sentinels for numeric text, summaries, versions, findings JSON, and stored
-practice suggestions. JSON is decoded only after that bounded projection, so a
-corrupt row cannot force unbounded database-to-application materialization.
+practice suggestions. Lifecycle status, completion tier, and dispatch status
+are independently capped at 32 characters and must match their exact known
+enums before the route branches. JSON is decoded only after the bounded
+projection, so a corrupt row cannot force unbounded database-to-application
+materialization.
