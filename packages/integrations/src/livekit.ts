@@ -51,6 +51,16 @@ export interface IssuedInterviewParticipantToken {
   url: string;
 }
 
+export interface TerminateInterviewRoomInput {
+  roomName: string;
+  env: LiveKitEnvironment;
+}
+
+export interface TerminatedInterviewRoom {
+  roomName: string;
+  disposition: "deleted" | "already_absent";
+}
+
 export interface LiveKitInterviewProvider {
   startInterviewRoom(
     input: StartInterviewRoomInput
@@ -98,6 +108,7 @@ interface RoomServiceClientLike {
     emptyTimeout: number;
     maxParticipants: number;
   }): Promise<unknown>;
+  deleteRoom?(roomName: string): Promise<void>;
 }
 
 type RoomServiceClientFactory = (
@@ -275,6 +286,61 @@ export async function issueInterviewParticipantToken(
       cause: error,
     });
   }
+}
+
+export async function terminateInterviewRoom(
+  input: TerminateInterviewRoomInput,
+  {
+    roomServiceClientFactory = (url, apiKey, apiSecret) =>
+      new RoomServiceClient(url, apiKey, apiSecret),
+  }: LiveKitProviderDependencies = {}
+): Promise<ProviderResult<TerminatedInterviewRoom>> {
+  const roomClient = roomServiceClientFactory(
+    input.env.url,
+    input.env.apiKey,
+    input.env.apiSecret
+  );
+
+  if (!roomClient.deleteRoom) {
+    return providerFailure("livekit", {
+      code: "livekit_room_delete_unsupported",
+      message: "The LiveKit room adapter cannot delete rooms.",
+      retryable: false,
+    });
+  }
+
+  try {
+    await roomClient.deleteRoom(input.roomName);
+    return providerSuccess("livekit", {
+      roomName: input.roomName,
+      disposition: "deleted",
+    });
+  } catch (error) {
+    if (isLiveKitNotFoundError(error)) {
+      return providerSuccess("livekit", {
+        roomName: input.roomName,
+        disposition: "already_absent",
+      });
+    }
+
+    return providerFailure("livekit", {
+      code: "livekit_room_delete_failed",
+      message: getErrorMessage(error),
+      retryable: true,
+      cause: error,
+    });
+  }
+}
+
+function isLiveKitNotFoundError(error: unknown): boolean {
+  if (error && typeof error === "object") {
+    const code = "code" in error ? String(error.code).toLowerCase() : "";
+    const status = "status" in error ? Number(error.status) : undefined;
+    if (code === "not_found" || status === 404) return true;
+  }
+
+  const message = getErrorMessage(error).toLowerCase();
+  return message.includes("not found") || message.includes("does not exist");
 }
 
 function getErrorMessage(error: unknown): string {

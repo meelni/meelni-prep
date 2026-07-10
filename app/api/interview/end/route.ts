@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { checkAndAwardAchievements } from "@/lib/achievements";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import { createClient } from "@/lib/supabase/server";
-import { updateStreak } from "@/lib/streaks";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -45,20 +43,14 @@ export async function POST(req: NextRequest) {
 
     const result = await endInterviewSessionWorkflow({
       sessionId,
-      userId: user.id,
+      actor: { type: "user", userId: user.id },
+      requestedTerminalReason: "user_end",
     });
     if (!result.ok) {
       return NextResponse.json(
         { error: "session_not_found", message: "Session not found." },
         { status: 404 }
       );
-    }
-
-    if (
-      result.completion.disposition === "applied" &&
-      result.completion.lifecycle.state === "completed"
-    ) {
-      await updateCompletionMotivation(user.id);
     }
 
     const dispatchStatus =
@@ -141,17 +133,4 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
   );
-}
-
-async function updateCompletionMotivation(userId: string) {
-  try {
-    await updateStreak(userId);
-  } catch (error) {
-    console.error("Failed to update completion streak:", error);
-  }
-  try {
-    await checkAndAwardAchievements(userId);
-  } catch (error) {
-    console.error("Failed to update completion achievements:", error);
-  }
 }

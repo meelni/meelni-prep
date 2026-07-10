@@ -22,6 +22,7 @@ import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  AppSurface,
   AppSurfaceDescription,
   AppSurfaceHeader,
   AppSurfaceTitle,
@@ -29,12 +30,21 @@ import {
 } from "@/components/ui/app-surface";
 import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
 import { analytics } from "@/lib/analytics/analytics-service";
-import { shouldAnalyzeNudges, type HintMode } from "@meelni/core";
+import {
+  deriveInterviewDeadlineAt,
+  normalizeInterviewDurationMinutes,
+  serializeInterviewDeadlineAt,
+  shouldAnalyzeNudges,
+  type HintMode,
+} from "@meelni/core";
+
+const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 
 interface InterviewSession {
   id: string;
   livekit_room_name: string;
   started_at: string;
+  deadline_at: string;
   config: {
     duration?: number;
     difficulty?: string;
@@ -53,6 +63,7 @@ interface PersistedInterviewSession {
   id: string;
   livekitRoomName: string | null;
   startedAt: string;
+  lifecycleState?: string | null;
   roundType?: string | null;
   mode?: string | null;
   config?:
@@ -103,7 +114,9 @@ function InterviewPageContent() {
     "idle" | "listening" | "thinking" | "speaking"
   >("idle");
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [deadlineReached, setDeadlineReached] = useState(false);
   const initializedRef = useRef(false);
+  const deadlineReachedRef = useRef(false);
   const activeSessionId = session?.id ?? sessionId ?? "";
 
   useEffect(() => {
@@ -155,6 +168,7 @@ function InterviewPageContent() {
         id: data.sessionId,
         livekit_room_name: data.roomName,
         started_at: new Date().toISOString(),
+        deadline_at: data.deadlineAt,
         config: {
           ...data.config,
           roundType,
@@ -372,31 +386,75 @@ function InterviewPageContent() {
     }
   }, []);
 
-  // Auto-end session after configured duration
+  const handleDeadlineReached = useCallback(() => {
+    if (deadlineReachedRef.current) return;
+    deadlineReachedRef.current = true;
+    setDeadlineReached(true);
+    setShowEndModal(false);
+    setEndSessionError(null);
+    setCurrentNudge(null);
+    setIsMuted(true);
+    analytics.track("interview_deadline_reached", {
+      session_id: activeSessionId,
+      interview_type: session?.config?.roundType,
+    });
+  }, [activeSessionId, session?.config?.roundType]);
+
+  // The client only reflects the deadline. The server workflow owns completion
+  // and room termination, including when this tab is hidden or killed.
   useEffect(() => {
-    if (!session?.started_at || !session?.config?.duration) return;
+    if (!deadlineReached || !activeSessionId) return;
 
-    const durationMs = session.config.duration * 60 * 1000; // Convert minutes to ms
-    const startTime = new Date(session.started_at).getTime();
-    const endTime = startTime + durationMs;
-    const now = Date.now();
-    const remaining = endTime - now;
+    let cancelled = false;
+    let pollInFlight = false;
+    let pollTimer: number | undefined;
 
-    if (remaining <= 0) {
-      // Duration already passed
-      return;
-    }
+    const pollTerminalTruth = async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
+      try {
+        const response = await fetch(`/api/session/${activeSessionId}`, {
+          cache: "no-store",
+        });
+        if (response.ok) {
+          const payload = (await response.json()) as {
+            session?: { lifecycleState?: string | null };
+          };
+          if (
+            payload.session?.lifecycleState &&
+            TERMINAL_SESSION_STATES.has(payload.session.lifecycleState)
+          ) {
+            router.replace(`/feedback/${activeSessionId}/loading`);
+            return;
+          }
+        }
+      } catch (pollError) {
+        console.warn("[Interview] Waiting for deadline completion:", pollError);
+      } finally {
+        pollInFlight = false;
+      }
 
-    // Set timer to auto-end session
-    const timer = setTimeout(() => {
-      console.log(
-        `[Interview] Auto-ending session after ${session.config.duration} minutes`
-      );
-      setShowEndModal(true);
-    }, remaining);
+      if (!cancelled) {
+        if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+        pollTimer = window.setTimeout(pollTerminalTruth, 1000);
+      }
+    };
 
-    return () => clearTimeout(timer);
-  }, [session]);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+        void pollTerminalTruth();
+      }
+    };
+
+    void pollTerminalTruth();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      cancelled = true;
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeSessionId, deadlineReached, router]);
 
   const handleEndSession = async () => {
     if (!activeSessionId) {
@@ -514,6 +572,8 @@ function InterviewPageContent() {
         isMuted={isMuted}
         hintMode={hintMode}
         transcriptSaveErrors={transcriptSaveErrors}
+        deadlineReached={deadlineReached}
+        onDeadlineReached={handleDeadlineReached}
         onHintModeChange={(mode) => {
           setHintMode(mode);
           analytics.track("hint_mode_changed", {
@@ -531,10 +591,12 @@ function InterviewPageContent() {
             new_state: newMutedState ? "muted" : "unmuted",
           });
         }}
-        onEndSession={() => setShowEndModal(true)}
+        onEndSession={() => {
+          if (!deadlineReached) setShowEndModal(true);
+        }}
       />
       <NudgeOverlay
-        nudge={currentNudge}
+        nudge={deadlineReached ? null : currentNudge}
         onDismiss={() => {
           if (currentNudge) {
             analytics.track("hint_dismissed", {
@@ -547,7 +609,7 @@ function InterviewPageContent() {
         }}
       />
       <EndSessionModal
-        isOpen={showEndModal}
+        isOpen={showEndModal && !deadlineReached}
         isLoading={isEndingSession}
         error={endSessionError}
         onClose={() => {
@@ -556,6 +618,7 @@ function InterviewPageContent() {
         }}
         onConfirm={handleEndSession}
       />
+      {deadlineReached && <DeadlineReachedOverlay />}
     </LiveKitRoomWrapper>
   );
 }
@@ -567,6 +630,8 @@ interface InterviewRoomContentProps {
   isMuted: boolean;
   hintMode: HintMode;
   transcriptSaveErrors: number;
+  deadlineReached: boolean;
+  onDeadlineReached: () => void;
   onHintModeChange: (mode: HintMode) => void;
   onToggleMute: () => void;
   onEndSession: () => void;
@@ -579,6 +644,8 @@ function InterviewRoomContent({
   isMuted,
   hintMode,
   transcriptSaveErrors,
+  deadlineReached,
+  onDeadlineReached,
   onHintModeChange,
   onToggleMute,
   onEndSession,
@@ -587,11 +654,9 @@ function InterviewRoomContent({
 
   useEffect(() => {
     if (localParticipant) {
-      localParticipant.setMicrophoneEnabled(!isMuted);
+      localParticipant.setMicrophoneEnabled(!isMuted && !deadlineReached);
     }
-  }, [isMuted, localParticipant]);
-
-  const estimatedDuration = session.config?.duration || 30;
+  }, [deadlineReached, isMuted, localParticipant]);
 
   const roundLabel = session.config?.roundType
     ? session.config.roundType
@@ -610,8 +675,8 @@ function InterviewRoomContent({
             <ConnectionIndicator />
           </div>
           <TimerDisplay
-            startedAt={new Date(session.started_at)}
-            estimatedDuration={estimatedDuration}
+            deadlineAt={session.deadline_at}
+            onDeadlineReached={onDeadlineReached}
           />
         </div>
       </header>
@@ -642,13 +707,15 @@ function InterviewRoomContent({
           </div>
 
           <div className="sticky bottom-4 z-30 mt-6">
-            <InterviewControls
-              isMuted={isMuted}
-              hintMode={hintMode}
-              onHintModeChange={onHintModeChange}
-              onToggleMute={onToggleMute}
-              onEndSession={onEndSession}
-            />
+            {!deadlineReached && (
+              <InterviewControls
+                isMuted={isMuted}
+                hintMode={hintMode}
+                onHintModeChange={onHintModeChange}
+                onToggleMute={onToggleMute}
+                onEndSession={onEndSession}
+              />
+            )}
           </div>
         </section>
 
@@ -676,18 +743,52 @@ function InterviewRoomContent({
   );
 }
 
+function DeadlineReachedOverlay() {
+  return (
+    <div
+      className="bg-overlay/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      role="status"
+      aria-live="assertive"
+    >
+      <AppSurface
+        variant="panel"
+        size="lg"
+        className="w-full max-w-md text-center shadow-xl"
+      >
+        <Loader2 className="text-primary mx-auto mb-4 h-8 w-8 animate-spin" />
+        <StatusPill tone="warning" className="mb-3">
+          Time is up
+        </StatusPill>
+        <AppSurfaceTitle className="mb-2">
+          Saving your interview
+        </AppSurfaceTitle>
+        <AppSurfaceDescription className="text-sm">
+          Your response is secure. We’re closing the room and preparing your
+          feedback now.
+        </AppSurfaceDescription>
+      </AppSurface>
+    </div>
+  );
+}
+
 function normalizePersistedSession(
   session: PersistedInterviewSession
 ): InterviewSession {
+  const config = session.config || {};
+  const deadlineAt = deriveInterviewDeadlineAt({
+    startedAt: new Date(session.startedAt),
+    durationMinutes: normalizeInterviewDurationMinutes(config.duration),
+  });
   return {
     id: session.id,
     livekit_room_name: session.livekitRoomName || "",
     started_at: session.startedAt,
+    deadline_at: serializeInterviewDeadlineAt(deadlineAt),
     config: {
-      ...(session.config || {}),
-      roundType: session.roundType || session.config?.roundType || undefined,
-      mode: session.mode || session.config?.mode || undefined,
-      difficulty: session.config?.difficulty || undefined,
+      ...config,
+      roundType: session.roundType || config.roundType || undefined,
+      mode: session.mode || config.mode || undefined,
+      difficulty: config.difficulty || undefined,
     },
     question: null,
   };

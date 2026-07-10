@@ -25,6 +25,7 @@ from shared.runtime_config import (
 from shared.session_deadline import (
     DeadlineEnforcer,
     cancel_deadline_watchdog,
+    is_deadline_reached,
     normalize_duration_minutes,
     parse_deadline_at,
     watch_session_deadline,
@@ -475,6 +476,19 @@ class TranscriptPublisherTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SessionDeadlineWatchdogTests(unittest.IsolatedAsyncioTestCase):
+    def test_deadline_boundary_rejects_runtime_before_start(self):
+        deadline = datetime(2026, 7, 9, 21, 30, tzinfo=timezone.utc)
+
+        self.assertFalse(
+            is_deadline_reached(
+                deadline,
+                now=lambda: datetime(
+                    2026, 7, 9, 21, 29, 59, 999999, tzinfo=timezone.utc
+                ),
+            )
+        )
+        self.assertTrue(is_deadline_reached(deadline, now=lambda: deadline))
+
     async def test_already_expired_deadline_closes_and_terminates_without_sleep(self):
         calls = []
 
