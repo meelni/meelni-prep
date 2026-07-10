@@ -8,6 +8,7 @@ import {
   buildFeedbackReadQuery,
   decodeBoundedFeedbackReadRow,
   FEEDBACK_DB_READ_LIMITS,
+  hasValidFeedbackLifecycleFields,
   type BoundedFeedbackReadRow,
 } from "./feedback";
 
@@ -29,15 +30,32 @@ test("feedback read query projects and bounds persisted presenter fields", async
     "prompt_version",
     "model_version",
     "evaluation_state",
+    "status",
+    "completion_tier",
+    "dispatch_status",
     "dispatch_event_id",
   ]) {
     assert.match(query.sql, new RegExp(`left\\(\\"${column}\\"`));
   }
   assert.doesNotMatch(query.sql, /select \*/i);
-  assert.equal(query.params.at(-1), 1);
-  assert.ok(query.params.includes(FEEDBACK_DB_READ_LIMITS.findingsJson + 1));
-  assert.ok(query.params.includes(FEEDBACK_DB_READ_LIMITS.drillsJson + 1));
-  assert.ok(query.params.includes(FEEDBACK_DB_READ_LIMITS.summary + 1));
+  assert.deepEqual(query.params, [
+    FEEDBACK_DB_READ_LIMITS.numericString + 1,
+    FEEDBACK_DB_READ_LIMITS.findingsJson + 1,
+    FEEDBACK_DB_READ_LIMITS.findingsJson + 1,
+    FEEDBACK_DB_READ_LIMITS.drillsJson + 1,
+    FEEDBACK_DB_READ_LIMITS.summary + 1,
+    FEEDBACK_DB_READ_LIMITS.version + 1,
+    FEEDBACK_DB_READ_LIMITS.version + 1,
+    FEEDBACK_DB_READ_LIMITS.version + 1,
+    FEEDBACK_DB_READ_LIMITS.version + 1,
+    FEEDBACK_DB_READ_LIMITS.version + 1,
+    FEEDBACK_DB_READ_LIMITS.lifecycleStatus + 1,
+    FEEDBACK_DB_READ_LIMITS.completionTier + 1,
+    FEEDBACK_DB_READ_LIMITS.dispatchStatus + 1,
+    FEEDBACK_DB_READ_LIMITS.dispatchEventId + 1,
+    "session-x",
+    1,
+  ]);
 
   await client.end();
 });
@@ -88,4 +106,27 @@ test("bounded feedback rows decode valid JSON but preserve oversize sentinels", 
     ).kind,
     "invalid"
   );
+});
+
+test("oversized lifecycle field sentinels fail closed", () => {
+  const valid = {
+    status: "completed",
+    completionTier: "full",
+    dispatchStatus: "sent",
+  };
+  assert.equal(hasValidFeedbackLifecycleFields(valid), true);
+
+  for (const [field, limit] of [
+    ["status", FEEDBACK_DB_READ_LIMITS.lifecycleStatus],
+    ["completionTier", FEEDBACK_DB_READ_LIMITS.completionTier],
+    ["dispatchStatus", FEEDBACK_DB_READ_LIMITS.dispatchStatus],
+  ] as const) {
+    assert.equal(
+      hasValidFeedbackLifecycleFields({
+        ...valid,
+        [field]: "x".repeat(limit + 1),
+      }),
+      false
+    );
+  }
 });

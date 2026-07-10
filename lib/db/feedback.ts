@@ -5,6 +5,9 @@ import { feedback } from "./schema";
 
 export const FEEDBACK_DB_READ_LIMITS = {
   numericString: 32,
+  lifecycleStatus: 32,
+  completionTier: 32,
+  dispatchStatus: 32,
   summary: 4_000,
   version: 256,
   dispatchEventId: 256,
@@ -12,6 +15,8 @@ export const FEEDBACK_DB_READ_LIMITS = {
   findingsJson: 1_000_000,
   drillsJson: 64_000,
 } as const;
+
+type FeedbackRow = typeof feedback.$inferSelect;
 
 /**
  * Read only fields consumed by the lifecycle route. Persisted text and JSON
@@ -62,10 +67,16 @@ export function buildFeedbackReadQuery(
         string | null
       >`left(${feedback.evaluationState}, ${FEEDBACK_DB_READ_LIMITS.version + 1})`,
       createdAt: feedback.createdAt,
-      status: feedback.status,
+      status: sql<
+        FeedbackRow["status"]
+      >`left(${feedback.status}, ${FEEDBACK_DB_READ_LIMITS.lifecycleStatus + 1})`,
       processingStartedAt: feedback.processingStartedAt,
-      completionTier: feedback.completionTier,
-      dispatchStatus: feedback.dispatchStatus,
+      completionTier: sql<
+        FeedbackRow["completionTier"]
+      >`left(${feedback.completionTier}, ${FEEDBACK_DB_READ_LIMITS.completionTier + 1})`,
+      dispatchStatus: sql<
+        FeedbackRow["dispatchStatus"]
+      >`left(${feedback.dispatchStatus}, ${FEEDBACK_DB_READ_LIMITS.dispatchStatus + 1})`,
       dispatchEventId: sql<
         string | null
       >`left(${feedback.dispatchEventId}, ${FEEDBACK_DB_READ_LIMITS.dispatchEventId + 1})`,
@@ -94,6 +105,27 @@ export function decodeBoundedFeedbackReadRow(row: BoundedFeedbackReadRow) {
     ),
     drills: decodeBoundedJson(drillsJson, FEEDBACK_DB_READ_LIMITS.drillsJson),
   };
+}
+
+export function hasValidFeedbackLifecycleFields(record: {
+  status: unknown;
+  completionTier: unknown;
+  dispatchStatus: unknown;
+}): boolean {
+  return (
+    typeof record.status === "string" &&
+    ["pending", "processing", "completed", "failed", "skipped"].includes(
+      record.status
+    ) &&
+    (record.completionTier === null ||
+      ["full", "partial", "insufficient", "abandoned"].includes(
+        record.completionTier as string
+      )) &&
+    typeof record.dispatchStatus === "string" &&
+    ["not_required", "pending", "sending", "sent", "failed"].includes(
+      record.dispatchStatus
+    )
+  );
 }
 
 /** Get an owner-checked session's bounded feedback lifecycle record. */

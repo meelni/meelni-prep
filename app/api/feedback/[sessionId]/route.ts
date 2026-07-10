@@ -8,7 +8,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
-import { getFeedbackBySessionId } from "@/lib/db/feedback";
+import {
+  getFeedbackBySessionId,
+  hasValidFeedbackLifecycleFields,
+} from "@/lib/db/feedback";
 import { getFeedbackEvidenceTurns } from "@/lib/db/transcripts";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import {
@@ -79,6 +82,22 @@ export async function GET(
         },
         {
           status: 409,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
+    }
+
+    if (!hasValidFeedbackLifecycleFields(feedbackRecord)) {
+      console.error("[feedback.integrity] invalid lifecycle fields", {
+        environment:
+          process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
+        release: process.env.VERCEL_GIT_COMMIT_SHA || "unknown",
+        sessionId,
+      });
+      return NextResponse.json(
+        { error: "Invalid feedback state" },
+        {
+          status: 500,
           headers: { "Cache-Control": "private, no-store" },
         }
       );
