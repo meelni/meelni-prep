@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 
 import type Stripe from "stripe";
 
+export const REDACTED_STRIPE_EVENT_PAYLOAD = "{}";
+export const STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE =
+  "stripe_webhook_processing_failed";
+
 export interface StripeDeletionSubject {
   kind: "customer" | "subscription";
   providerId: string | null;

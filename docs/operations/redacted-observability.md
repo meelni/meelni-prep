@@ -30,11 +30,17 @@ Never paste complete logs into tickets. Record counts, error codes, release, env
 | ----------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `severity=critical` in Production                     | Page on the first event during relaunch                  | Inspect the release and operation; disable the relaunch flag if the golden path is affected. |
 | `feedback_dispatch_exhausted`                         | Page on the first event                                  | Preserve the failed lifecycle row; do not regenerate manually without the dispatch runbook.  |
-| `stripe_webhook_failed`                               | Page on the first event                                  | Check Stripe delivery status and the redacted durable event row before retrying.             |
+| `stripe_webhook_failed`                               | Page on the first event                                  | Check Stripe delivery status and the redacted idempotency row before retrying.               |
 | `question_sync_failed` or `question_sync_unavailable` | Alert after 2 consecutive scheduled runs                 | Keep the existing public corpus; do not run an unguarded manual mutation.                    |
 | `auth_code_exchange_failed`                           | Alert on a sustained increase, not a single cancellation | Verify provider callback configuration without logging codes or user data.                   |
 
 Tune thresholds only after isolated Preview and early Production evidence. A zero-history threshold is an operational starting point, not a product SLO.
+
+Stripe idempotency rows contain no provider payload or raw exception text for
+new deliveries. Operators can use event type, status, attempts, timestamps,
+and the one-way subject fingerprint; Stripe remains the source for delivery
+payload details. Migration `0008_redact_stripe_event_observability` scrubs
+existing rows; account deletion keeps a legacy-row redaction fallback.
 
 ## Controlled Preview rehearsal
 

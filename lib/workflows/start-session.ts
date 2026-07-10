@@ -240,7 +240,6 @@ export async function startInterviewSessionWorkflow(
   });
 
   if (!livekitResult.ok) {
-    console.error("LiveKit interview start error:", livekitResult.error);
     await terminalizeProviderFailureAndRelease(
       session.id,
       reservationKey,
@@ -258,8 +257,7 @@ export async function startInterviewSessionWorkflow(
       reservationKey,
       idempotencyKey: `consume:${reservationKey}`,
     });
-  } catch (error) {
-    console.error("Credit consume error:", getErrorMessage(error));
+  } catch {
     await safelyTerminalizeProviderFailureAndRelease(
       session.id,
       reservationKey,
@@ -332,8 +330,7 @@ async function ensureTrialGrantForStart(
   try {
     await deps.ensureTrialGrant(userId);
     return { ok: true };
-  } catch (error) {
-    console.error("Trial credit grant error:", getErrorMessage(error));
+  } catch {
     return {
       ok: false,
       status: 503,
@@ -385,11 +382,8 @@ async function safelyTerminalizeProviderFailureAndRelease(
 ): Promise<void> {
   try {
     await terminalizeProviderFailureAndRelease(sessionId, reservationKey, deps);
-  } catch (error) {
-    console.error(
-      "Session cleanup after credit consume failure error:",
-      getErrorMessage(error)
-    );
+  } catch {
+    // The caller reports the closed start failure; cleanup remains best effort.
   }
 }
 
@@ -459,7 +453,6 @@ async function reserveInterviewCredit({
       };
     }
 
-    console.error("Credit reservation error:", getErrorMessage(error));
     return {
       ok: false,
       status: 503,
@@ -481,8 +474,8 @@ async function releaseInterviewCredit(
       reservationKey,
       idempotencyKey: `release:${reservationKey}`,
     });
-  } catch (error) {
-    console.error("Credit release error:", getErrorMessage(error));
+  } catch {
+    // The caller reports the closed start failure; release remains best effort.
   }
 }
 
@@ -511,7 +504,6 @@ async function selectQuestion({
       };
     }
 
-    logQuestion("Using pre-selected question", question);
     return { ok: true, value: question };
   }
 
@@ -525,20 +517,12 @@ async function selectQuestion({
     const errorMsg = `No questions available for interview type "${roundType}" (looks for: "${typesList}")${
       recentDays ? ` from the last ${recentDays} days` : ""
     }. Try selecting "All Questions" or a different interview type.`;
-    console.warn(`[Session Start] ${errorMsg}`);
-
     return {
       ok: false,
       status: 404,
       body: { error: errorMsg },
     };
   }
-
-  logQuestion("Random question selected", question, {
-    user_selected_round_type: roundType,
-    mapped_db_types: dbQuestionTypes.join(", "),
-    total_available_types: dbQuestionTypes.length,
-  });
 
   return { ok: true, value: question };
 }
@@ -555,28 +539,10 @@ function getRecentDays(config: Record<string, unknown>): number | undefined {
     : undefined;
 }
 
-function logQuestion(
-  message: string,
-  question: QuestionBankRecord,
-  extra: Record<string, unknown> = {}
-) {
-  console.log(`[Session Start] ${message}:`, {
-    id: question.id,
-    type: question.questionType,
-    company: question.company,
-    text_preview: `${question.questionText.substring(0, 100)}...`,
-    ...extra,
-  });
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function isInsufficientCreditsError(error: unknown): boolean {
   return error instanceof Error && error.message === "insufficient_credits";
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

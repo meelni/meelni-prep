@@ -96,9 +96,9 @@ async function run(url: string, environmentIdentity: string) {
         FROM drizzle.__drizzle_migrations
         ORDER BY created_at
       `;
-      if (![2, 6, 7, 8].includes(migrations.length)) {
+      if (![2, 6, 7, 8, 9].includes(migrations.length)) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, or 8 atomic-completion migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, or 9 redacted-observability migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -365,7 +365,7 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 8
+          migrations.length >= 8
             ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
             : migrations.length === 7
               ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT

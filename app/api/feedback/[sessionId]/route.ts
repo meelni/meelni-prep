@@ -95,10 +95,10 @@ import { validateSessionCompleteness } from "@/lib/evaluation/session-validator"
 import { isInterviewTerminalState } from "@meelni/core";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 import {
-  readOpaqueCorrelationId,
+  readInterviewSessionCorrelationId,
   readOperationalRequestId,
   reportOperationalFailure,
-  type SessionCorrelationId,
+  type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
 
 // Estimated total processing time (seconds)
@@ -108,7 +108,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  let correlationId: SessionCorrelationId | null = null;
+  let correlationId: InterviewSessionCorrelationId | null = null;
   try {
     // Verify authentication
     const supabase = await createClient();
@@ -122,7 +122,10 @@ export async function GET(
     }
 
     const { sessionId } = await params;
-    correlationId = readOpaqueCorrelationId(sessionId);
+    correlationId = readInterviewSessionCorrelationId({
+      kind: "interview_session",
+      sessionId,
+    });
 
     // Verify user owns the session
     const isOwner = await isSessionOwnedByUser(sessionId, user.id);
@@ -319,7 +322,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  let correlationId: SessionCorrelationId | null = null;
+  let correlationId: InterviewSessionCorrelationId | null = null;
   try {
     const supabase = await createClient();
     const {
@@ -331,7 +334,10 @@ export async function POST(
     }
 
     const { sessionId } = await params;
-    correlationId = readOpaqueCorrelationId(sessionId);
+    correlationId = readInterviewSessionCorrelationId({
+      kind: "interview_session",
+      sessionId,
+    });
     const isOwner = await isSessionOwnedByUser(sessionId, user.id);
     if (!isOwner) {
       return NextResponse.json(

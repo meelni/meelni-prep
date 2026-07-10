@@ -415,10 +415,10 @@ export const stripeEventLog = pgTable(
     stripeEventId: text("stripe_event_id").unique().notNull(),
     eventType: text("event_type").notNull(),
     subjectFingerprint: text("subject_fingerprint"),
-    payload: text("payload").notNull(), // JSON stringified
+    payload: text("payload").notNull(), // Redacted sentinel; legacy rows may contain JSON
     status: text("status").notNull().default("pending"), // 'pending', 'processed', 'failed'
     attempts: integer("attempts").default(0).notNull(),
-    lastError: text("last_error"),
+    lastError: text("last_error"), // Stable code only; legacy rows may contain text
     processedAt: timestamp("processed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

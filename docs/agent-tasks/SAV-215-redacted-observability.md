@@ -17,7 +17,7 @@
 - Project: Meelni Relaunch Readiness.
 - Parent slice issue: SAV-171.
 - Child deliverable issue: SAV-215.
-- Current Linear state: In Progress.
+- Current Linear state: In Review.
 
 ## Scope
 
@@ -35,14 +35,17 @@
 
 - Likely app files: Critical auth, LiveKit token, session start/end, feedback, Stripe webhook, and cron boundaries.
 - Likely package/workflow files: Operational-event helper and Inngest failure hooks.
-- Data or provider dependencies: None for implementation; isolated Preview and an approved alert destination for rehearsal.
+- Data or provider dependencies: Forward-only Stripe event-log redaction
+  migration; isolated Preview and an approved alert destination for rehearsal.
 - Docs/decisions to update: Operational event contract and runbook.
 
 ## Validation
 
 - Required commands: Unit and route tests, `npm run check:ci`, `npm run build`, Semgrep.
 - Optional/manual checks: Controlled Preview failure and alert receipt after SAV-226.
-- Fixtures or regression tests needed: PII/secret rejection and every critical operation wired to the closed reporter.
+- Fixtures or regression tests needed: PII/secret rejection, typed user/session
+  misuse, returned token 5xx outcomes, invoked-workflow console bypasses, Stripe
+  durable redaction, and every critical operation wired to the closed reporter.
 
 ## Rollout
 
@@ -50,3 +53,6 @@
 - Backward compatibility: Existing HTTP and workflow responses remain stable except raw feedback-generation error details are removed.
 - Metrics/events to watch: Error volume by environment/release/operation/code; no payload sampling.
 - Follow-up slice: Choose alert delivery/retention and complete Preview rehearsal.
+- Open launch gate: SAV-226 isolation, an approved operator/destination, and a
+  controlled Preview receipt rehearsal remain required. Code and hosted build
+  checks do not prove alert readiness.

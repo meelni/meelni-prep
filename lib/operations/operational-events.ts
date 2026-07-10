@@ -15,14 +15,19 @@ export type OperationalFailureOperation =
 export type OperationalFailureSeverity = "warning" | "error" | "critical";
 
 declare const operationalRequestIdBrand: unique symbol;
-declare const sessionCorrelationIdBrand: unique symbol;
+declare const interviewSessionCorrelationIdBrand: unique symbol;
 
 export type OperationalRequestId = string & {
   readonly [operationalRequestIdBrand]: true;
 };
-export type SessionCorrelationId = string & {
-  readonly [sessionCorrelationIdBrand]: true;
+export type InterviewSessionCorrelationId = string & {
+  readonly [interviewSessionCorrelationIdBrand]: true;
 };
+
+export interface InterviewSessionCorrelationSource {
+  readonly kind: "interview_session";
+  readonly sessionId: unknown;
+}
 
 export interface OperationalFailureInput {
   operation: OperationalFailureOperation;
@@ -30,7 +35,7 @@ export interface OperationalFailureInput {
   severity?: OperationalFailureSeverity;
   retryable: boolean;
   requestId?: OperationalRequestId | null;
-  correlationId?: SessionCorrelationId | null;
+  correlationId?: InterviewSessionCorrelationId | null;
 }
 
 export interface OperationalFailureEvent {
@@ -109,11 +114,13 @@ export function readOperationalRequestId(
   return sanitizeRequestId(request.headers.get("x-vercel-id"));
 }
 
-export function readOpaqueCorrelationId(
-  value: unknown
-): SessionCorrelationId | null {
-  return typeof value === "string" && UUID_PATTERN.test(value)
-    ? (value as SessionCorrelationId)
+export function readInterviewSessionCorrelationId(
+  source: InterviewSessionCorrelationSource
+): InterviewSessionCorrelationId | null {
+  return source?.kind === "interview_session" &&
+    typeof source.sessionId === "string" &&
+    UUID_PATTERN.test(source.sessionId)
+    ? (source.sessionId as InterviewSessionCorrelationId)
     : null;
 }
 
@@ -149,7 +156,7 @@ function sanitizeRequestId(
 }
 
 function sanitizeCorrelationId(
-  value: SessionCorrelationId | null | undefined
+  value: InterviewSessionCorrelationId | null | undefined
 ): string | null {
   return value && UUID_PATTERN.test(value) ? value : null;
 }

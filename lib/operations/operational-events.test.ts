@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  readOpaqueCorrelationId,
+  readInterviewSessionCorrelationId,
   readOperationalRequestId,
   reportOperationalFailure,
 } from "./operational-events";
@@ -16,7 +16,10 @@ test("operational failures contain only the bounded alert contract", () => {
       headers: { "x-vercel-id": "sfo1::request-123" },
     })
   );
-  const correlationId = readOpaqueCorrelationId(SESSION_ID);
+  const correlationId = readInterviewSessionCorrelationId({
+    kind: "interview_session",
+    sessionId: SESSION_ID,
+  });
   const event = reportOperationalFailure(
     {
       operation: "interview_start",
@@ -71,7 +74,10 @@ test("untrusted identifiers and environment values fail closed", () => {
       headers: { "x-vercel-id": "customer@example.com" },
     })
   );
-  const correlationId = readOpaqueCorrelationId("cus_secret");
+  const correlationId = readInterviewSessionCorrelationId({
+    kind: "interview_session",
+    sessionId: "cus_secret",
+  });
   const event = reportOperationalFailure(
     {
       operation: "stripe_webhook",
@@ -115,12 +121,47 @@ test("arbitrary error messages cannot enter the structured event", () => {
   );
 });
 
-test("request and correlation helpers accept only opaque safe identifiers", () => {
+test("request and interview-session correlation helpers accept only domain-owned identifiers", () => {
   const request = new Request("https://meelni.test", {
     headers: { "x-vercel-id": "iad1::safe-request" },
   });
 
   assert.equal(readOperationalRequestId(request), "iad1::safe-request");
-  assert.equal(readOpaqueCorrelationId(SESSION_ID), SESSION_ID);
-  assert.equal(readOpaqueCorrelationId("user@example.com"), null);
+  assert.equal(
+    readInterviewSessionCorrelationId({
+      kind: "interview_session",
+      sessionId: SESSION_ID,
+    }),
+    SESSION_ID
+  );
+  assert.equal(
+    readInterviewSessionCorrelationId({
+      kind: "interview_session",
+      sessionId: "user@example.com",
+    }),
+    null
+  );
+  assert.equal(
+    readInterviewSessionCorrelationId({
+      kind: "supabase_user",
+      userId: SESSION_ID,
+    } as never),
+    null
+  );
+});
+
+test("Supabase user references cannot enter the typed session factory", () => {
+  const userReference = {
+    kind: "supabase_user" as const,
+    userId: SESSION_ID,
+  };
+
+  if (false) {
+    // @ts-expect-error A user reference is not an interview-session source.
+    readInterviewSessionCorrelationId(userReference);
+    // @ts-expect-error A raw UUID string has no interview-session provenance.
+    readInterviewSessionCorrelationId(userReference.userId);
+  }
+
+  assert.equal(userReference.userId, SESSION_ID);
 });
