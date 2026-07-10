@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Orb } from "@/components/ui/orb";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,12 @@ import {
   FeedbackStatusPage,
 } from "@/components/feedback/feedback-surface";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import {
+  createFeedbackPollBudget,
+  createFeedbackRecoveryCoordinator,
+} from "@/lib/utils/feedback-client-recovery";
+
+const MAX_POLLS = 30;
 
 interface Stage {
   label: string;
@@ -39,6 +45,30 @@ interface FeedbackLoadingProps {
   sessionId: string;
 }
 
+interface FeedbackStatusResponse {
+  status: string;
+  retryable?: boolean;
+  estimatedTimeRemaining?: number;
+  feedback?: unknown;
+  error?: string;
+  message?: string;
+}
+
+async function requestFeedbackRecovery(
+  sessionId: string
+): Promise<FeedbackStatusResponse> {
+  const response = await fetch(`/api/feedback/${sessionId}`, {
+    method: "POST",
+  });
+  const data = (await response
+    .json()
+    .catch(() => null)) as FeedbackStatusResponse | null;
+  if (!response.ok || !data) {
+    throw new Error(data?.message || "Failed to queue feedback. Try again.");
+  }
+  return data;
+}
+
 export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
   const router = useRouter();
   const [progress, setProgress] = useState(0);
@@ -51,14 +81,17 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
   const [retryMode, setRetryMode] = useState<"dispatch" | "poll" | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [, setPollCount] = useState(0);
-
-  const MAX_POLLS = 30; // 30 polls * 3s = 90s timeout
+  const recoveryCoordinator = useRef(createFeedbackRecoveryCoordinator());
+  const pollBudget = useRef(createFeedbackPollBudget(MAX_POLLS));
+  const pollInFlight = useRef(false);
 
   // Polling effect - useCallback without dependencies that change on every poll
   const pollFeedback = useCallback(async () => {
+    if (pollInFlight.current) return;
+    pollInFlight.current = true;
     try {
       const res = await fetch(`/api/feedback/${sessionId}`);
-      const data = await res.json();
+      const data = (await res.json()) as FeedbackStatusResponse;
 
       if (!res.ok) {
         throw new Error(
@@ -66,11 +99,44 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
         );
       }
 
-      if (data.status === "missing" || data.dispatch?.retryable) {
+      if (data.retryable === true) {
+        try {
+          const recovery = await recoveryCoordinator.current.attempt(data, () =>
+            requestFeedbackRecovery(sessionId)
+          );
+          if (recovery.disposition === "recovered") {
+            pollBudget.current.reset();
+            setPollCount(0);
+            setRetryMode(null);
+            setError(null);
+            if (recovery.value.status === "completed") {
+              router.replace(`/feedback/${sessionId}`);
+            } else if (recovery.value.status === "skipped") {
+              setStatus("skipped");
+            } else {
+              setStatus(
+                recovery.value.status === "settling"
+                  ? "settling"
+                  : recovery.value.status === "processing"
+                    ? "processing"
+                    : "pending"
+              );
+            }
+            return;
+          }
+        } catch (recoveryError) {
+          setError(
+            recoveryError instanceof Error
+              ? recoveryError.message
+              : "Feedback could not be queued. Please try again."
+          );
+        }
         setStatus("failed");
         setRetryMode("dispatch");
         setError(
-          data.message ||
+          (current) =>
+            current ??
+            data.message ??
             "Your interview is saved, but feedback still needs to be queued."
         );
         return;
@@ -79,7 +145,6 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       if (data.status === "settling") {
         setStatus("settling");
         setError(null);
-        return;
       }
 
       if (data.status === "completed" && data.feedback) {
@@ -112,26 +177,26 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
         return;
       }
 
-      // Only update state if still processing
-      setStatus(data.status);
+      if (data.status === "pending" || data.status === "processing") {
+        setStatus(data.status);
+      }
 
-      // Update poll count, check timeout, and update progress
+      if (!pollBudget.current.consume()) {
+        setStatus("failed");
+        setRetryMode("poll");
+        setError(
+          "Feedback generation timed out after 90 seconds. Please try again."
+        );
+        return;
+      }
+
+      // Update poll count, check timeout, and update progress.
       setPollCount((prevCount) => {
         const newCount = prevCount + 1;
 
         console.log(
           `[FeedbackLoading] Polling feedback status (attempt ${newCount}/${MAX_POLLS})`
         );
-        // Check for timeout
-        if (newCount >= MAX_POLLS) {
-          console.error("[FeedbackLoading] Timeout reached after 90 seconds");
-          setStatus("failed");
-          setRetryMode("poll");
-          setError(
-            "Feedback generation timed out after 90 seconds. Please try again."
-          );
-        }
-
         // Update progress
         const elapsed = (newCount - 1) * 3; // Time elapsed before this poll
         const estimatedTotal = 60;
@@ -155,6 +220,8 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
           ? err.message
           : "Could not check feedback status. Please try again."
       );
+    } finally {
+      pollInFlight.current = false;
     }
   }, [sessionId, router]);
 
@@ -216,6 +283,7 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       setRetryMode(null);
       setStatus("pending");
       setPollCount(0);
+      pollBudget.current.reset();
       return;
     }
     if (retryMode !== "dispatch") return;
@@ -224,16 +292,7 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/feedback/${sessionId}`, {
-        method: "POST",
-      });
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          data?.message || "Failed to queue feedback. Please try again."
-        );
-      }
+      const data = await requestFeedbackRecovery(sessionId);
       if (data?.status === "failed") {
         setRetryMode(null);
         throw new Error(
@@ -244,6 +303,7 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       setRetryMode(null);
       setStatus("pending");
       setPollCount(0);
+      pollBudget.current.reset();
       setProgress(0);
       setCurrentStage(0);
       setMessageIndex(0);
