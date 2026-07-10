@@ -52,34 +52,28 @@ export function buildAnalyticsCompetencies(
 }
 
 export function buildAnalyticsEvidence({
-  completedSessions,
   focusAreaLabel,
   focusAreaScore,
   focusAreaDescription,
   progressDeltaLabel,
 }: {
-  completedSessions: number;
   focusAreaLabel: string;
   focusAreaScore: number | null;
   focusAreaDescription: string;
   progressDeltaLabel: string;
 }): AnalyticsEvidenceItem[] {
-  if (completedSessions <= 0 || focusAreaScore === null) {
+  if (focusAreaScore === null) {
     return [];
   }
 
   return [
     {
       title: "Current bottleneck",
-      description: `${focusAreaLabel} is the lowest recent signal across ${completedSessions} completed interviews. ${focusAreaDescription}`,
+      description: `${focusAreaLabel} is the lowest scored dimension in the latest completed feedback. ${focusAreaDescription}`,
     },
     {
       title: "Score trend",
-      description:
-        progressDeltaLabel === "new" ||
-        progressDeltaLabel === "Needs more interviews"
-          ? "The trend will become more specific as more scored interviews are completed."
-          : `Recent scored interviews changed by ${progressDeltaLabel}.`,
+      description: `Recent scored interviews: ${progressDeltaLabel}.`,
     },
   ];
 }

@@ -51,12 +51,16 @@ export const OverviewSection = memo(function OverviewSection({
             <h2 className="font-display text-dashboard-foreground text-3xl leading-[1.08] font-semibold sm:text-4xl">
               {summary.isNewUser
                 ? "Your first PM mock interview starts here."
-                : "Today's highest-leverage interview"}
+                : summary.progress.state === "empty"
+                  ? "Your next scored interview starts here."
+                  : "Suggested next interview"}
             </h2>
             <p className="text-dashboard-muted max-w-2xl text-base leading-7">
               {summary.isNewUser
                 ? "Start with one real Product Sense answer out loud. Meelni will turn the result into your next practice plan."
-                : "A focused next action based on your recent PM interview feedback, not a dashboard you have to interpret."}
+                : summary.progress.state === "empty"
+                  ? "Your interview history is saved. Complete scored feedback before Meelni names a progress trend or focus area."
+                  : "A focused next action based on your recent PM interview feedback, not a dashboard you have to interpret."}
             </p>
           </div>
         </section>
@@ -100,17 +104,19 @@ export const OverviewSection = memo(function OverviewSection({
 
             <aside className="border-dashboard-panel-border border-t py-6 sm:py-7 lg:border-t-0 lg:border-l lg:pl-8">
               <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                Recent practice score
+                {summary.progress.label}
               </p>
               <div className="text-dashboard-muted mt-5 font-mono text-5xl leading-none font-semibold sm:text-6xl">
-                {summary.progress.score}
-                <span className="text-dashboard-muted/60">/100</span>
+                {summary.progress.score?.toFixed(1) ?? "—"}
+                <span className="text-dashboard-muted/60">/10</span>
               </div>
               <div className="bg-dashboard-muted/15 mt-5 h-2 overflow-hidden rounded-full">
-                <div
-                  className="bg-primary h-full rounded-full"
-                  style={{ width: `${summary.progress.score}%` }}
-                />
+                {summary.progress.score !== null && (
+                  <div
+                    className="bg-primary h-full rounded-full"
+                    style={{ width: `${summary.progress.score * 10}%` }}
+                  />
+                )}
               </div>
               <p className="text-dashboard-muted mt-5 text-sm leading-6">
                 {summary.progress.description}
@@ -122,15 +128,19 @@ export const OverviewSection = memo(function OverviewSection({
         <section className="border-dashboard-panel-border grid border-b py-6 md:grid-cols-3">
           <InfoPanel
             eyebrow="Progress signal"
-            title={String(summary.progress.score)}
+            title={summary.progress.score?.toFixed(1) ?? "—"}
             meta={summary.progress.deltaLabel}
             rows={[
               [
-                "Best signal",
-                summary.lastFeedback ? "Structure" : "First interview",
+                "Scored interviews",
+                String(summary.progress.scoredInterviewCount),
               ],
-              ["Focus area", summary.focusArea.label],
+              [
+                "Focus area",
+                summary.focusArea?.label || "Needs scored dimensions",
+              ],
             ]}
+            showSignalIcon={summary.progress.score !== null}
           />
           <div className="border-dashboard-panel-border mt-7 border-t pt-7 md:mt-0 md:border-t-0 md:border-l md:px-7 md:pt-0">
             <div className="flex items-center justify-between gap-4">
@@ -227,7 +237,10 @@ export const OverviewSection = memo(function OverviewSection({
             </p>
             <ProgressSignalBars
               bars={summary.progressSignal.bars}
-              className="mt-8 h-28"
+              className={cn(
+                "mt-8 h-28",
+                summary.progressSignal.bars.length === 0 && "hidden"
+              )}
             />
             <p className="text-dashboard-muted mt-6 text-sm leading-6">
               {summary.progressSignal.description}
@@ -265,11 +278,13 @@ function InfoPanel({
   title,
   meta,
   rows,
+  showSignalIcon,
 }: {
   eyebrow: string;
   title: string;
   meta: string;
   rows: Array<[string, string]>;
+  showSignalIcon: boolean;
 }) {
   return (
     <div className="md:pr-7">
@@ -283,10 +298,12 @@ function InfoPanel({
         <span className="text-dashboard-foreground font-mono text-5xl leading-none font-semibold">
           {title}
         </span>
-        <CheckCircle2
-          className="text-primary mb-2 h-5 w-5"
-          aria-hidden="true"
-        />
+        {showSignalIcon && (
+          <CheckCircle2
+            className="text-primary mb-2 h-5 w-5"
+            aria-hidden="true"
+          />
+        )}
       </div>
       <div className="mt-5 space-y-3">
         {rows.map(([label, value]) => (

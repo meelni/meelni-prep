@@ -13,11 +13,14 @@ import {
   computeCreditEntitlements,
   type CreditEntitlementState,
   getBillingCatalogItem,
+  getCompletedFeedbackScore,
   getDefaultDuration,
   buildInterviewRecommendation,
   isValidRoundType,
   mapQuestionTypeToRoundType,
   shouldAnalyzeNudges,
+  isCompletedScoredFeedback,
+  parseRubricScore,
   validateScores,
 } from "./index";
 
@@ -180,6 +183,39 @@ test("evaluation score helpers stay PM-rubric compatible", () => {
     }),
     true
   );
+});
+
+test("progress evidence requires completed feedback with a valid 0-10 score", () => {
+  assert.equal(
+    getCompletedFeedbackScore({ status: "completed", overallScore: "7.4" }),
+    7.4
+  );
+  assert.equal(
+    isCompletedScoredFeedback({ status: "completed", overallScore: 0 }),
+    true
+  );
+
+  for (const status of ["pending", "processing", "failed", "skipped", null]) {
+    assert.equal(
+      getCompletedFeedbackScore({ status, overallScore: "8.1" }),
+      null
+    );
+  }
+
+  assert.equal(
+    getCompletedFeedbackScore({ status: "completed", overallScore: null }),
+    null
+  );
+  assert.equal(
+    getCompletedFeedbackScore({ status: "completed", overallScore: "NaN" }),
+    null
+  );
+  assert.equal(
+    getCompletedFeedbackScore({ status: "completed", overallScore: "   " }),
+    null
+  );
+  assert.equal(parseRubricScore(-0.1), null);
+  assert.equal(parseRubricScore(10.1), null);
 });
 
 test("session and question payload contracts are available from core", () => {
