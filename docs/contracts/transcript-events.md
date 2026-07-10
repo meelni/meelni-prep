@@ -134,3 +134,12 @@ evidence available when they acquire the same lock.
 The browser remains a temporary authenticated transport bridge and cannot make
 a packet durable until the server acknowledges it. SAV-193 owns removal of raw
 browser persistence and the longer-term server-side ingest trust boundary.
+
+### HTTP envelope failures
+
+The authenticated transcript endpoint treats an empty body, truncated JSON,
+or an aborted body read as an invalid request envelope. It returns HTTP 400
+with `invalid_transcript_event`, does not invoke durable ingest, and does not
+log the JSON parser exception. Authentication still runs first, so an
+unauthenticated malformed request remains HTTP 401. Provider, database, and
+unexpected workflow failures keep their existing redacted error handling.
