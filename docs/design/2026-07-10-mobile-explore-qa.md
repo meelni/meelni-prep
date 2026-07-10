@@ -62,7 +62,8 @@ viewport, document scroll width equaled client width.
 - Loading keeps the complete Explore shell and uses structural row skeletons.
 - Fetch failures have an explicit retry path and never present an empty result
   as success.
-- JSON-LD is emitted only after a successful non-empty response.
+- JSON-LD is emitted only after a successful validated response. A verified
+  empty collection emits truthful zero-item schema; an outage emits no schema.
 - Unverified `askedAt` freshness remains absent from the visible question rows.
 - Structured data contains ItemList, BreadcrumbList, WebPage, CollectionPage,
   and a minimal Dataset grounded in visible question text and the API total.
