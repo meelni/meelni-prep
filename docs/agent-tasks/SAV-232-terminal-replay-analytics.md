@@ -17,7 +17,7 @@
 - Project: Meelni
 - Parent slice issue: SAV-191
 - Child deliverable issue: SAV-232
-- Current Linear state: In Progress
+- Current Linear state: In Review
 
 ## Scope
 
