@@ -348,6 +348,48 @@ test("provider failure releases credit even when lifecycle persistence fails", a
   ]);
 });
 
+test("credit consume failure returns a retryable response and releases credit when lifecycle persistence also fails", async () => {
+  const calls: string[] = [];
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: { roundType: "product_sense" },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      consumeReservation: async () => {
+        calls.push("consume");
+        throw new Error("credit ledger unavailable");
+      },
+      transitionLifecycle: async (input) => {
+        calls.push(`transition:${input.to}`);
+        if (input.to === "connecting") return createTransitionResult(input);
+        return {
+          ok: false,
+          disposition: "conflict",
+          lifecycle: createTransitionResult(input).lifecycle,
+        };
+      },
+      releaseReservation: async () => {
+        calls.push("release");
+      },
+    })
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.status, 503);
+    assert.equal(result.body.error, "service_unavailable");
+  }
+  assert.deepEqual(calls, [
+    "transition:connecting",
+    "consume",
+    "transition:failed",
+    "release",
+  ]);
+});
+
 function createDeps(
   overrides: Partial<StartInterviewSessionDeps> = {}
 ): StartInterviewSessionDeps {
