@@ -20,3 +20,22 @@ export function resolvePublicQuestionAvailability(
 
   return { hasVerifiedCount: true, totalQuestions };
 }
+
+export function getExploreResultsAnnouncement({
+  authLoading,
+  availability,
+  visibleQuestions,
+}: {
+  authLoading: boolean;
+  availability: PublicQuestionAvailability;
+  visibleQuestions: number;
+}): string {
+  if (authLoading) {
+    return "Checking sign-in status. Question actions will be available shortly.";
+  }
+  if (availability.totalQuestions === null) {
+    return "Questions are temporarily unavailable.";
+  }
+
+  return `Showing ${visibleQuestions} of ${availability.totalQuestions} questions`;
+}
