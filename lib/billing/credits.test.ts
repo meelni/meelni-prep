@@ -233,6 +233,45 @@ test("exact terminal replays do not emit duplicate settlement analytics", async 
   ]);
 });
 
+test("analytics failure cannot turn a committed settlement into a workflow failure", async () => {
+  const log = console.error;
+  console.error = () => {};
+  try {
+    const ledger = createCreditLedgerService({
+      store: createMemoryCreditLedgerStore(),
+      now: () => new Date("2026-06-29T00:00:00.000Z"),
+      trackTerminalSettlement: () => {
+        throw new Error("private analytics provider failure");
+      },
+    });
+    await ledger.grantCredits({
+      userId: "user-analytics-failure",
+      catalogId: "trial",
+      source: "trial",
+      idempotencyKey: "trial:user-analytics-failure",
+    });
+    await ledger.reserveCredit({
+      userId: "user-analytics-failure",
+      reservationKey: "session:analytics-failure",
+    });
+
+    const settled = await ledger.consumeReservation({
+      reservationKey: "session:analytics-failure",
+      idempotencyKey: "consume:analytics-failure",
+    });
+    const replay = await ledger.consumeReservation({
+      reservationKey: "session:analytics-failure",
+      idempotencyKey: "consume:analytics-failure",
+    });
+
+    assert.equal(settled.reservation.status, "consumed");
+    assert.equal(settled.duplicate, false);
+    assert.equal(replay.duplicate, true);
+  } finally {
+    console.error = log;
+  }
+});
+
 test("subscription renewal respects the rollover cap and 60 day expiration", async () => {
   const store = createMemoryCreditLedgerStore();
   const renewedAt = new Date();
