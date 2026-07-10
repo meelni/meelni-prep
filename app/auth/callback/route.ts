@@ -2,20 +2,54 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { AccountDeletionPendingError, upsertUser } from "@/lib/db/users";
 import { buildSafeInternalRedirectUrl } from "@/lib/auth/safe-redirect";
+import {
+  buildAuthFailureHref,
+  resolveAuthCallbackAction,
+} from "@/lib/auth/auth-handoff";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const origin = requestUrl.origin;
   const next = requestUrl.searchParams.get("next");
+  const cancelTo = requestUrl.searchParams.get("cancelTo");
+  const callbackAction = resolveAuthCallbackAction(requestUrl.searchParams);
 
-  if (code) {
+  if (callbackAction.type === "cancel") {
+    return NextResponse.redirect(
+      buildSafeInternalRedirectUrl(origin, callbackAction.destination, "/")
+    );
+  }
+
+  if (callbackAction.type === "failure" || !code) {
+    return NextResponse.redirect(
+      new URL(
+        buildAuthFailureHref(
+          {
+            redirectTo: next ?? undefined,
+            cancelTo: cancelTo ?? undefined,
+          },
+          "auth_callback_failed"
+        ),
+        origin
+      )
+    );
+  }
+
+  if (callbackAction.type === "success") {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
       console.error("Error exchanging code for session:", error);
-      return NextResponse.redirect(`${origin}/auth/signin?error=auth_failed`);
+      const retryUrl = new URL(
+        buildAuthFailureHref({
+          redirectTo: next ?? undefined,
+          cancelTo: cancelTo ?? undefined,
+        }),
+        origin
+      );
+      return NextResponse.redirect(retryUrl);
     }
 
     // Get the authenticated user
@@ -36,7 +70,16 @@ export async function GET(request: Request) {
         if (error instanceof AccountDeletionPendingError) {
           await supabase.auth.signOut();
           return NextResponse.redirect(
-            `${origin}/auth/signin?error=account_deletion_pending`
+            new URL(
+              buildAuthFailureHref(
+                {
+                  redirectTo: next ?? undefined,
+                  cancelTo: cancelTo ?? undefined,
+                },
+                "account_deletion_pending"
+              ),
+              origin
+            )
           );
         }
         console.error("Error upserting user:", error);
@@ -45,7 +88,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // Google OAuth without `next` still uses the existing sessionStorage handoff.
-  // Email confirmation carries a validated `next` so it also survives a new device.
-  return NextResponse.redirect(buildSafeInternalRedirectUrl(origin, next));
+  return NextResponse.redirect(
+    buildSafeInternalRedirectUrl(origin, callbackAction.destination)
+  );
 }

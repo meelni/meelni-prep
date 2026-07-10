@@ -4,20 +4,28 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { analytics } from "@/lib/analytics/analytics-service";
-import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
+import {
+  buildAuthCallbackHref,
+  buildPasswordResetCallbackHref,
+  type AuthHandoffContext,
+} from "@/lib/auth/auth-handoff";
+import { resolveAuthInitializationWithin } from "@/lib/auth/auth-initialization";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
-  signInWithGoogle: (redirectTo?: string) => Promise<void>;
+  signInWithGoogle: (handoff?: Partial<AuthHandoffContext>) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (
     email: string,
     password: string,
-    redirectTo?: string
+    handoff?: Partial<AuthHandoffContext>
   ) => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
+  resetPassword: (
+    email: string,
+    handoff?: Partial<AuthHandoffContext>
+  ) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -27,31 +35,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const supabase = createClient();
+  // A browser auth client owns subscriptions and in-flight session recovery.
+  // Keep one instance for this provider lifetime so state-driven renders do
+  // not restart initialization or duplicate auth listeners.
+  const [supabase] = useState(createClient);
 
   useEffect(() => {
+    let active = true;
+
+    const applySession = (nextSession: Session | null) => {
+      if (!active) return;
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+
+      if (nextSession?.user) {
+        const provider = nextSession.user.app_metadata.provider;
+        analytics.identify(nextSession.user.id, {
+          email_domain: nextSession.user.email?.split("@")[1],
+          signup_method: provider === "google" ? "google" : "email",
+          created_at: nextSession.user.created_at,
+        });
+      }
+    };
+
     // Get initial session
     const getInitialSession = async () => {
+      const sessionRequest = supabase.auth.getSession();
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        // Identify user if session exists
-        if (session?.user) {
-          const provider = session.user.app_metadata.provider;
-          analytics.identify(session.user.id, {
-            email_domain: session.user.email?.split("@")[1],
-            signup_method: provider === "google" ? "google" : "email",
-            created_at: session.user.created_at,
-          });
+        const result = await resolveAuthInitializationWithin(sessionRequest);
+        if (result.status === "ready") {
+          applySession(result.value.data.session);
+        } else {
+          console.error("[auth] initial session check timed out");
+          void sessionRequest.then(
+            ({ data }) => applySession(data.session),
+            () => console.error("[auth] delayed session check failed")
+          );
         }
       } catch (error) {
         console.error("Error fetching session:", error);
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
 
@@ -114,22 +138,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, [supabase]);
 
-  const signInWithGoogle = async (redirectTo?: string) => {
-    // Store redirect destination in session storage before OAuth redirect
-    if (redirectTo) {
-      sessionStorage.setItem(
-        "auth_redirect_to",
-        getSafeInternalRedirect(redirectTo) ?? "/dashboard"
-      );
-    }
-
+  const signInWithGoogle = async (handoff?: Partial<AuthHandoffContext>) => {
+    const callbackHref = buildAuthCallbackHref(handoff ?? {});
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: new URL(callbackHref, window.location.origin).toString(),
       },
     });
 
@@ -154,11 +174,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUpWithEmail = async (
     email: string,
     password: string,
-    redirectTo?: string
+    handoff?: Partial<AuthHandoffContext>
   ) => {
-    const safeRedirectTo = getSafeInternalRedirect(redirectTo) ?? "/dashboard";
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", safeRedirectTo);
+    const callbackUrl = new URL(
+      buildAuthCallbackHref(handoff ?? {}),
+      window.location.origin
+    );
 
     const { error } = await supabase.auth.signUp({
       email,
@@ -174,9 +195,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const resetPassword = async (email: string) => {
+  const resetPassword = async (
+    email: string,
+    handoff?: Partial<AuthHandoffContext>
+  ) => {
+    const resetHref = buildPasswordResetCallbackHref(handoff ?? {});
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
+      redirectTo: new URL(resetHref, window.location.origin).toString(),
     });
 
     if (error) {
