@@ -6,7 +6,7 @@ Status: implemented locally for SAV-182; shared-environment rollout not performe
 
 `stored` means one normalized request was committed to `contact_submission` and can be retrieved by its receipt. It does not mean an email was sent, delivered, read, or answered. The public UI must not claim provider delivery or a response-time SLA.
 
-The route is a thin adapter: parse the request, require a UUID idempotency key, validate and normalize fields, derive rate-limit identities at the trusted edge, invoke the workflow, and map the result to HTTP.
+The route is a thin adapter: parse the request, require a UUID idempotency key, validate and normalize fields, derive rate-limit identities at the trusted edge, consume the durable attempt budget before any authentication-provider lookup, invoke the workflow, and map the result to HTTP.
 
 ## Request
 

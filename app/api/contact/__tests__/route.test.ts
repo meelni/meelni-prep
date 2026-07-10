@@ -1,18 +1,24 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createContactRateLimitIdentities, submitContactRequest } = vi.hoisted(
-  () => ({
-    createContactRateLimitIdentities: vi.fn(),
-    submitContactRequest: vi.fn(),
-  })
-);
+const {
+  consumeContactSubmissionAttemptBudget,
+  createContactRateLimitIdentities,
+  resolveAuthenticatedContactUserId,
+  submitContactRequest,
+} = vi.hoisted(() => ({
+  consumeContactSubmissionAttemptBudget: vi.fn(),
+  createContactRateLimitIdentities: vi.fn(),
+  resolveAuthenticatedContactUserId: vi.fn(),
+  submitContactRequest: vi.fn(),
+}));
 
 vi.mock("@/lib/db/contact-submissions", () => ({
+  consumeContactSubmissionAttemptBudget,
   createDrizzleContactSubmissionStore: () => ({}),
 }));
 vi.mock("@/lib/contact/authenticated-submitter", () => ({
-  resolveAuthenticatedContactUserId: () => null,
+  resolveAuthenticatedContactUserId,
 }));
 vi.mock("@/lib/security/contact-rate-limit-identity", () => ({
   createContactRateLimitIdentities,
@@ -34,7 +40,14 @@ const validBody = {
 describe("POST /api/contact", () => {
   beforeEach(() => {
     submitContactRequest.mockReset();
+    consumeContactSubmissionAttemptBudget.mockReset();
     createContactRateLimitIdentities.mockReset();
+    resolveAuthenticatedContactUserId.mockReset();
+    consumeContactSubmissionAttemptBudget.mockResolvedValue({
+      allowed: true,
+      retryAfterSeconds: 0,
+    });
+    resolveAuthenticatedContactUserId.mockResolvedValue(null);
     createContactRateLimitIdentities.mockReturnValue({
       attempt: "d".repeat(64),
       client: "a".repeat(64),
@@ -100,6 +113,45 @@ describe("POST /api/contact", () => {
     expect(warning).toHaveBeenCalledWith("contact_submission_rejected", {
       code: "rate_limited",
     });
+  });
+
+  it("consumes the attempt budget before resolving authentication", async () => {
+    const order: string[] = [];
+    consumeContactSubmissionAttemptBudget.mockImplementation(async () => {
+      order.push("attempt");
+      return { allowed: true, retryAfterSeconds: 0 };
+    });
+    resolveAuthenticatedContactUserId.mockImplementation(async () => {
+      order.push("auth");
+      return null;
+    });
+    submitContactRequest.mockImplementation(async () => {
+      order.push("storage");
+      return {
+        ok: true,
+        state: "stored",
+        receiptId: "11111111-1111-4111-8111-111111111111",
+        duplicate: false,
+      };
+    });
+
+    await POST(request(validBody));
+
+    expect(order).toEqual(["attempt", "auth", "storage"]);
+  });
+
+  it("rejects an exhausted attempt budget before auth or storage", async () => {
+    consumeContactSubmissionAttemptBudget.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 29,
+    });
+
+    const response = await POST(request(validBody));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("29");
+    expect(resolveAuthenticatedContactUserId).not.toHaveBeenCalled();
+    expect(submitContactRequest).not.toHaveBeenCalled();
   });
 
   it("does not call storage for invalid input or a missing idempotency key", async () => {
