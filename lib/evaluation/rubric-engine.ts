@@ -1,7 +1,7 @@
-import type {
-  FeedbackEvaluationState,
-  FeedbackTranscriptTurn,
-  FeedbackV2Result,
+import {
+  prepareFeedbackTranscript,
+  type FeedbackEvaluationState,
+  type FeedbackV2Result,
 } from "@meelni/core";
 import { generateFeedback } from "./scorer";
 import { validateSessionCompleteness } from "./session-validator";
@@ -24,32 +24,24 @@ export async function evaluateSession(
     throw new Error("Session is not eligible for feedback");
   }
 
-  const transcript = (await getSessionTranscript(sessionId))
-    .filter(
-      (
-        turn
-      ): turn is typeof turn & {
-        eventId: string;
-        text: string;
-        speaker: "user" | "interviewer";
-      } =>
-        turn.contractVersion === 2 &&
-        turn.eventId !== null &&
-        turn.text !== null &&
-        (turn.speaker === "user" || turn.speaker === "interviewer")
-    )
-    .map<FeedbackTranscriptTurn>((turn) => ({
-      eventId: turn.eventId,
-      speaker: turn.speaker,
-      text: turn.text,
-    }));
-  if (transcript.length === 0) {
-    throw new Error("Cannot evaluate session with empty canonical transcript");
+  const prepared = prepareFeedbackTranscript(
+    await getSessionTranscript(sessionId),
+    { requireContractV2: true }
+  );
+  if (!prepared.eligible || prepared.transcript.length === 0) {
+    throw new Error(
+      prepared.reasons[0] ||
+        "Cannot evaluate session without trustworthy transcript evidence"
+    );
   }
 
   return {
     sessionId,
-    ...(await generateFeedback(session.roundType, transcript, validation.tier)),
+    ...(await generateFeedback(
+      session.roundType,
+      prepared.transcript,
+      validation.tier
+    )),
   };
 }
 

@@ -14,7 +14,11 @@ import {
 import { generateFeedback as generateFeedbackWithGPT4 } from "@/lib/evaluation/scorer";
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import { resolveFeedbackGenerationEligibility } from "@/lib/workflows/feedback-generation-evidence";
-import type { FeedbackTranscriptTurn, FeedbackV2Result } from "@meelni/core";
+import {
+  prepareFeedbackTranscript,
+  type FeedbackV2Result,
+  type PreparedFeedbackTranscript,
+} from "@meelni/core";
 
 /**
  * Feedback generation event payload
@@ -47,7 +51,7 @@ async function fetchSessionData(sessionId: string) {
  */
 async function fetchSessionTranscript(
   sessionId: string
-): Promise<FeedbackTranscriptTurn[]> {
+): Promise<PreparedFeedbackTranscript> {
   const turns = await db.query.transcriptTurn.findMany({
     where: eq(transcriptTurn.sessionId, sessionId),
     orderBy: [
@@ -59,25 +63,7 @@ async function fetchSessionTranscript(
     ],
   });
 
-  return turns
-    .filter(
-      (
-        turn
-      ): turn is typeof turn & {
-        eventId: string;
-        text: string;
-        speaker: "user" | "interviewer";
-      } =>
-        turn.contractVersion === 2 &&
-        turn.eventId !== null &&
-        turn.text !== null &&
-        (turn.speaker === "user" || turn.speaker === "interviewer")
-    )
-    .map((turn) => ({
-      eventId: turn.eventId,
-      speaker: turn.speaker,
-      text: turn.text,
-    }));
+  return prepareFeedbackTranscript(turns, { requireContractV2: true });
 }
 
 /**
@@ -285,24 +271,31 @@ export const generateFeedback = inngest.createFunction(
       return await fetchSessionData(sessionId);
     });
 
-    const transcript = await step.run("fetch-transcript", async () => {
+    const transcriptEvidence = await step.run("fetch-transcript", async () => {
       return await fetchSessionTranscript(sessionId);
     });
 
-    if (!transcript || transcript.length === 0) {
-      await step.run("mark-failed-no-transcript", async () => {
+    if (
+      !transcriptEvidence.eligible ||
+      transcriptEvidence.transcript.length === 0
+    ) {
+      const reason =
+        transcriptEvidence.reasons[0] || "No usable transcript evidence found";
+      await step.run("mark-skipped-untrusted-transcript", async () => {
         await db
           .update(feedback)
           .set({
-            status: "failed",
-            statusReason: "No transcript data found",
+            status: "skipped",
+            statusReason: reason,
+            completionTier: "insufficient",
           })
           .where(eq(feedback.sessionId, sessionId));
       });
 
       return {
-        status: "failed",
-        reason: "No transcript data",
+        status: "skipped",
+        reason,
+        tier: "insufficient",
       };
     }
 
@@ -321,7 +314,7 @@ export const generateFeedback = inngest.createFunction(
       // Call the real GPT-4 evaluation service
       const result = await generateFeedbackWithGPT4(
         sessionData.roundType || "product_sense",
-        transcript,
+        transcriptEvidence.transcript,
         evaluationTier
       );
 

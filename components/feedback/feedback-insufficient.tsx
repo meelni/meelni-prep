@@ -46,8 +46,8 @@ export function FeedbackInsufficient({
     <FeedbackStatusPage
       tone="warning"
       icon={<AlertCircle className="h-8 w-8" />}
-      title="Session Too Short for Feedback"
-      description="We need more data to provide meaningful feedback"
+      title="Not enough reliable evidence for feedback"
+      description="We only score sessions with enough trustworthy user speech."
       actions={
         <>
           <Button

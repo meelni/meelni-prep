@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import {
   canTransitionInterviewLifecycle,
   deriveInterviewTerminalState,
@@ -9,8 +9,7 @@ import {
 } from "@meelni/core";
 
 import {
-  calculateSessionStatsFromTurns,
-  validateSessionStats,
+  calculateValidatedSessionFromTurns,
   type SessionValidation,
 } from "@/lib/evaluation/session-validator";
 import { feedbackGenerationEventId } from "./feedback-event-id";
@@ -103,18 +102,25 @@ export async function finalizeInterviewSession(
 
     const validation =
       input.validationOverride ??
-      validateSessionStats(
-        calculateSessionStatsFromTurns(
-          await tx
-            .select({
-              speaker: transcriptTurn.speaker,
-              text: transcriptTurn.text,
-              startedAt: transcriptTurn.startedAt,
-              endedAt: transcriptTurn.endedAt,
-            })
-            .from(transcriptTurn)
-            .where(eq(transcriptTurn.sessionId, input.sessionId))
-        )
+      calculateValidatedSessionFromTurns(
+        await tx
+          .select({
+            contractVersion: transcriptTurn.contractVersion,
+            eventId: transcriptTurn.eventId,
+            speaker: transcriptTurn.speaker,
+            text: transcriptTurn.text,
+            startedAt: transcriptTurn.startedAt,
+            endedAt: transcriptTurn.endedAt,
+          })
+          .from(transcriptTurn)
+          .where(eq(transcriptTurn.sessionId, input.sessionId))
+          .orderBy(
+            asc(transcriptTurn.startedAt),
+            asc(transcriptTurn.writerId),
+            asc(transcriptTurn.sequence),
+            asc(transcriptTurn.eventId),
+            asc(transcriptTurn.id)
+          )
       );
 
     let state = stored.lifecycleState;
