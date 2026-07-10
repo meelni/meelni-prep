@@ -27,6 +27,8 @@ export interface UpdateTranscriptTurnInput {
 export type PersistedTranscriptTurn = typeof transcriptTurn.$inferSelect;
 export type TranscriptPersistenceDatabase = Pick<typeof db, "transaction">;
 const MAX_CANONICAL_TURNS_PER_SESSION = 1_000;
+const MAX_FEEDBACK_EVIDENCE_EVENT_ID_LENGTH = 256;
+const MAX_FEEDBACK_EVIDENCE_TEXT_LENGTH = 20_000;
 
 export function createDrizzleTranscriptIngestStore(
   database: TranscriptPersistenceDatabase = db
@@ -271,11 +273,20 @@ export async function getSessionTranscript(sessionId: string) {
  * feedback evidence at the authenticated read boundary.
  */
 export async function getFeedbackEvidenceTurns(sessionId: string) {
-  return db
+  return buildFeedbackEvidenceTurnsQuery(db, sessionId);
+}
+
+export function buildFeedbackEvidenceTurnsQuery(
+  database: Pick<typeof db, "select">,
+  sessionId: string
+) {
+  return database
     .select({
-      eventId: transcriptTurn.eventId,
+      // Read one character beyond each contract limit so the core parser can
+      // reject oversized persisted values without first materializing them.
+      eventId: sql<string | null>`left(${transcriptTurn.eventId}, ${MAX_FEEDBACK_EVIDENCE_EVENT_ID_LENGTH + 1})`,
       speaker: transcriptTurn.speaker,
-      text: transcriptTurn.text,
+      text: sql<string | null>`left(${transcriptTurn.text}, ${MAX_FEEDBACK_EVIDENCE_TEXT_LENGTH + 1})`,
       contractVersion: transcriptTurn.contractVersion,
     })
     .from(transcriptTurn)
@@ -291,7 +302,10 @@ export async function getFeedbackEvidenceTurns(sessionId: string) {
       asc(transcriptTurn.sequence),
       asc(transcriptTurn.eventId),
       asc(transcriptTurn.id)
-    );
+    )
+    // Likewise, fetch one row beyond the accepted session capacity so a
+    // corrupt legacy session fails closed with bounded database and app work.
+    .limit(MAX_CANONICAL_TURNS_PER_SESSION + 1);
 }
 
 /**
