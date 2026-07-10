@@ -32,6 +32,10 @@ import {
   generateFeedbackWorkflow,
   type GenerateFeedbackWorkflowDeps,
 } from "@/lib/workflows/generate-feedback";
+import {
+  getEvaluationAdjudicationHashes,
+  parseEvaluationAdjudicationApproval,
+} from "./calibration-approval";
 
 export type CalibrationExecutionKind =
   | "preflight"
@@ -54,6 +58,7 @@ export interface CalibrationRunOptions {
   modelVersion: string | null;
   repetitions?: number;
   now?: Date;
+  adjudicationApproval?: unknown;
 }
 
 export interface CalibrationFailure {
@@ -70,7 +75,7 @@ export interface CalibrationFailure {
 }
 
 export interface EvaluationCalibrationReport {
-  contractVersion: "evaluation-calibration-report.v2";
+  contractVersion: "evaluation-calibration-report.v3";
   generatedAt: string;
   execution: {
     kind: CalibrationExecutionKind;
@@ -90,6 +95,8 @@ export interface EvaluationCalibrationReport {
     schema: typeof FEEDBACK_SCHEMA_VERSION;
     prompt: typeof FEEDBACK_PROMPT_VERSION;
     rubric: typeof FEEDBACK_RUBRIC_VERSION;
+    candidateArtifactHash: string;
+    corpusHash: string;
   };
   corpus: {
     totalCases: number;
@@ -98,6 +105,7 @@ export interface EvaluationCalibrationReport {
     casesByRound: Record<string, number>;
     scoredCasesByQuality: Record<CalibrationQuality, number>;
     pendingAdjudicationSignoffs: number;
+    insufficientFixturesRequireScoredAdjudicationApproval: false;
     expectedStateMismatches: number;
     invalidEvidenceAnchors: number;
   };
@@ -116,6 +124,17 @@ export interface EvaluationCalibrationReport {
     modelVersionMatchRate: number | null;
     evaluatorCalls: number;
     providerEvaluationCalls: number;
+  };
+  adjudication: {
+    approvalProvided: boolean;
+    requiredScoredCases: 32;
+    approvedCases: number;
+    changesRequiredCases: number;
+    reviewer: null | {
+      identity: string;
+      role: "product_owner" | "pm_reviewer";
+      reviewedAt: string;
+    };
   };
   thresholds: typeof EVALUATION_CALIBRATION_THRESHOLDS;
   gate: {
@@ -170,6 +189,11 @@ export async function runEvaluationCalibration(
   options: CalibrationRunOptions
 ): Promise<EvaluationCalibrationReport> {
   const now = options.now ?? new Date();
+  const approval =
+    options.adjudicationApproval === undefined
+      ? null
+      : parseEvaluationAdjudicationApproval(options.adjudicationApproval);
+  const adjudicationHashes = getEvaluationAdjudicationHashes();
   const repetitions =
     options.executionKind === "preflight"
       ? 0
@@ -476,14 +500,18 @@ export async function runEvaluationCalibration(
       EVALUATION_CALIBRATION_THRESHOLDS.modelVersionMatchRate;
   const executionPassed = corpusPassed && evaluatedThresholdsPassed;
   const liveProvider = options.executionKind === "live_provider";
-  const pendingAdjudicationSignoffs = evaluationCalibrationCases.filter(
-    ({ adjudicationSignoff }) =>
-      adjudicationSignoff !== "product_owner_pm_approved"
-  ).length;
+  const approvedCases =
+    approval?.decisions.filter(({ decision }) => decision === "approved")
+      .length ?? 0;
+  const changesRequiredCases =
+    approval?.decisions.filter(
+      ({ decision }) => decision === "changes_required"
+    ).length ?? 0;
+  const pendingAdjudicationSignoffs = 32 - approvedCases;
   const adjudicationPassed = pendingAdjudicationSignoffs === 0;
 
   return {
-    contractVersion: "evaluation-calibration-report.v2",
+    contractVersion: "evaluation-calibration-report.v3",
     generatedAt: now.toISOString(),
     execution: {
       kind: options.executionKind,
@@ -505,6 +533,7 @@ export async function runEvaluationCalibration(
       schema: FEEDBACK_SCHEMA_VERSION,
       prompt: FEEDBACK_PROMPT_VERSION,
       rubric: FEEDBACK_RUBRIC_VERSION,
+      ...adjudicationHashes,
     },
     corpus: {
       totalCases: evaluationCalibrationCases.length,
@@ -526,12 +555,25 @@ export async function runEvaluationCalibration(
         ])
       ) as Record<CalibrationQuality, number>,
       pendingAdjudicationSignoffs,
+      insufficientFixturesRequireScoredAdjudicationApproval: false,
       expectedStateMismatches: failures.filter(
         ({ code }) => code === "expected_state_mismatch"
       ).length,
       invalidEvidenceAnchors,
     },
     metrics,
+    adjudication: {
+      approvalProvided: approval !== null,
+      requiredScoredCases: 32,
+      approvedCases,
+      changesRequiredCases,
+      reviewer: approval
+        ? {
+            ...approval.reviewer,
+            reviewedAt: approval.reviewedAt,
+          }
+        : null,
+    },
     thresholds: EVALUATION_CALIBRATION_THRESHOLDS,
     gate: {
       deterministicHarness:

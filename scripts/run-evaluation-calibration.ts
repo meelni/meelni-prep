@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import {
@@ -32,6 +32,9 @@ async function main() {
   }
   let modelVersion: string | null = null;
   let evaluator;
+  const adjudicationApproval = args.approval
+    ? JSON.parse(await readFile(resolve(process.cwd(), args.approval), "utf8"))
+    : undefined;
 
   if (executionKind === "deterministic_self_test") {
     modelVersion = SELF_TEST_MODEL;
@@ -61,6 +64,7 @@ async function main() {
     evaluator,
     modelVersion,
     repetitions,
+    adjudicationApproval,
   });
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
   if (args.output) {
@@ -96,10 +100,12 @@ function parseArgs(argv: string[]): {
   mode: "preflight" | "self-test" | "live";
   output?: string;
   repetitions?: number;
+  approval?: string;
 } {
   let mode: "preflight" | "self-test" | "live" = "preflight";
   let output: string | undefined;
   let repetitions: number | undefined;
+  let approval: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -117,11 +123,14 @@ function parseArgs(argv: string[]): {
       if (!Number.isInteger(repetitions) || repetitions < 1) {
         throw new Error("--repetitions must be a positive integer");
       }
+    } else if (argument === "--approval") {
+      approval = argv[++index];
+      if (!approval) throw new Error("--approval requires a path");
     } else {
       throw new Error(`Unknown calibration argument: ${argument}`);
     }
   }
-  return { mode, output, repetitions };
+  return { mode, output, repetitions, approval };
 }
 
 function modeToExecutionKind(

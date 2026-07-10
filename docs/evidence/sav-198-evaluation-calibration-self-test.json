@@ -1,6 +1,6 @@
 {
-  "contractVersion": "evaluation-calibration-report.v2",
-  "generatedAt": "2026-07-10T16:59:43.501Z",
+  "contractVersion": "evaluation-calibration-report.v3",
+  "generatedAt": "2026-07-10T17:25:17.087Z",
   "execution": {
     "kind": "deterministic_self_test",
     "modelVersion": "deterministic-calibration-self-test.v1",
@@ -17,7 +17,9 @@
     "adjudication": "pm-gold-adjudication-candidates.v3",
     "schema": "feedback.v2",
     "prompt": "feedback.prompt.v2",
-    "rubric": "pm-feedback-rubric.v2"
+    "rubric": "pm-feedback-rubric.v2",
+    "candidateArtifactHash": "5ce31602857c9d0a260f8c784beb9ecd2fa545cc2faa6889f62bd33aa10f2c67",
+    "corpusHash": "f31999ba2c0aab9bfaf5d4af76d2cf70d0b90558f6de9f5d09570d14b55d132b"
   },
   "corpus": {
     "totalCases": 40,
@@ -34,7 +36,8 @@
       "average": 8,
       "strong": 16
     },
-    "pendingAdjudicationSignoffs": 40,
+    "pendingAdjudicationSignoffs": 32,
+    "insufficientFixturesRequireScoredAdjudicationApproval": false,
     "expectedStateMismatches": 0,
     "invalidEvidenceAnchors": 0
   },
@@ -64,6 +67,13 @@
     "modelVersionMatchRate": 1,
     "evaluatorCalls": 96,
     "providerEvaluationCalls": 0
+  },
+  "adjudication": {
+    "approvalProvided": false,
+    "requiredScoredCases": 32,
+    "approvedCases": 0,
+    "changesRequiredCases": 0,
+    "reviewer": null
   },
   "thresholds": {
     "evidenceValidityRate": 1,

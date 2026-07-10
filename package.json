@@ -68,7 +68,7 @@
     "test:auth-ui": "tsx --test components/auth/*.test.tsx app/setup/components/*.test.tsx && vitest run components/explore/question-signin-modal.test.tsx app/auth/*.test.tsx app/setup/use-selected-question-intent.test.tsx",
     "test:billing": "tsx --test lib/billing/*.test.ts",
     "test:operations": "tsx --test lib/operations/*.test.ts && node --test scripts/check-service-health.test.mjs",
-    "test:calibration": "tsx --test lib/evaluation/calibration.test.ts packages/test-fixtures/src/evaluation-calibration.test.ts",
+    "test:calibration": "tsx --test lib/evaluation/calibration.test.ts lib/evaluation/calibration-approval.test.ts packages/test-fixtures/src/evaluation-calibration.test.ts",
     "test:packages": "tsx --test scripts/package-entrypoints.test.ts",
     "test:quality": "node --test scripts/quality-scripts.test.mjs",
     "test:stack": "node --test scripts/check-stacked-pr*.test.mjs scripts/check-migration-collisions*.test.mjs",
