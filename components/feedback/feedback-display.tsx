@@ -76,7 +76,9 @@ export function FeedbackDisplay({
   const improvements = Array.isArray(feedback.improvements)
     ? feedback.improvements
     : [];
-  const drills = Array.isArray(feedback.drills) ? feedback.drills : [];
+  const recommendations = Array.isArray(feedback.drills)
+    ? feedback.drills
+    : [];
 
   return (
     <div className="space-y-6">
@@ -181,15 +183,15 @@ export function FeedbackDisplay({
         </FeedbackSectionCard>
       )}
 
-      {/* Practice Drills */}
-      {drills.length > 0 && (
+      {/* Focused practice recommendations */}
+      {recommendations.length > 0 && (
         <FeedbackSectionCard
-          title="Recommended Drills"
+          title="Practice Recommendations"
           icon={<Target className="h-5 w-5" />}
           tone="info"
         >
           <ul className="space-y-3">
-            {drills.map((drill, index) => (
+            {recommendations.map((recommendation, index) => (
               <motion.li
                 key={index}
                 initial={{ opacity: 0, y: 10 }}
@@ -198,7 +200,7 @@ export function FeedbackDisplay({
                 className="flex items-start gap-3"
               >
                 <div className="bg-info mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full" />
-                <p className="text-foreground text-sm">{drill}</p>
+                <p className="text-foreground text-sm">{recommendation}</p>
               </motion.li>
             ))}
           </ul>

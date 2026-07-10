@@ -10,40 +10,41 @@ interface DrillListProps {
   drills: (DrillSuggestion | string)[];
 }
 
-export function DrillList({ drills }: DrillListProps) {
-  if (drills.length === 0) {
+export function DrillList({ drills: recommendations }: DrillListProps) {
+  if (recommendations.length === 0) {
     return null;
   }
 
-  const handleDrillClick = (drill: DrillSuggestion | string) => {
-    const title = typeof drill === "string" ? drill : drill.title;
-    // Placeholder for future drill navigation
-    console.log("Starting drill:", title);
+  const handleRecommendationClick = (recommendation: DrillSuggestion | string) => {
+    const title =
+      typeof recommendation === "string" ? recommendation : recommendation.title;
+    // Placeholder for future focused-practice navigation
+    console.log("Starting focused practice:", title);
     alert(
-      `Practice drill "${title}" is coming soon! This will navigate you to a focused practice session.`
+      `Practice recommendation "${title}" is coming soon! This will navigate you to a focused practice session.`
     );
   };
 
   return (
     <FeedbackSectionCard
-      title="Recommended Practice Drills"
+      title="Practice Recommendations"
       description="Targeted exercises to improve your weakest areas"
       icon={<Dumbbell className="h-5 w-5" />}
       tone="info"
       contentClassName="space-y-3"
     >
-      {drills.map((drill, index) => {
+      {recommendations.map((recommendation, index) => {
         // Handle both string array and object array formats
-        const isString = typeof drill === "string";
-        const title = isString ? drill : drill.title;
-        const description = isString ? null : drill.description;
-        const tips = isString ? null : drill.tips;
+        const isString = typeof recommendation === "string";
+        const title = isString ? recommendation : recommendation.title;
+        const description = isString ? null : recommendation.description;
+        const tips = isString ? null : recommendation.tips;
 
         return (
           <div
             key={index}
             className="group border-border/50 hover:border-primary/30 cursor-pointer rounded-lg border p-4 transition-all duration-300"
-            onClick={() => handleDrillClick(drill)}
+            onClick={() => handleRecommendationClick(recommendation)}
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 space-y-3">
@@ -53,7 +54,7 @@ export function DrillList({ drills }: DrillListProps) {
                       variant="default"
                       className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"
                     >
-                      Drill {index + 1}
+                      Exercise {index + 1}
                     </Badge>
                   </div>
                   <h3 className="font-display text-foreground group-hover:text-primary text-base font-light transition-colors">
@@ -93,7 +94,7 @@ export function DrillList({ drills }: DrillListProps) {
                 className="opacity-0 transition-opacity duration-300 group-hover:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDrillClick(drill);
+                  handleRecommendationClick(recommendation);
                 }}
               >
                 <span className="text-xs">Start</span>
