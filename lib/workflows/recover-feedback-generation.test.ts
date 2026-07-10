@@ -128,6 +128,24 @@ test("a terminal session missing feedback is repaired before dispatch", async ()
   assert.equal(dispatches.length, 1);
 });
 
+test("an ending session repairs missing feedback before dispatch", async () => {
+  const store = new RecoveryStore(null);
+  const dispatches: string[] = [];
+  const deps = dependencies(store, dispatches, "ending");
+  let repairs = 0;
+  deps.repairMissing = async () => {
+    repairs += 1;
+    store.current = record();
+    return true;
+  };
+
+  const result = await recoverFeedbackGenerationWorkflow(input(), deps);
+
+  assert.equal(result.ok && result.status, "pending");
+  assert.equal(repairs, 1);
+  assert.equal(dispatches.length, 1);
+});
+
 test("legacy failed work without a durable identity stays closed", async () => {
   const store = new RecoveryStore(
     record({
@@ -187,7 +205,8 @@ test("missing completion tier is never promoted to full", async () => {
 
 function dependencies(
   store: RecoveryStore,
-  dispatched: string[]
+  dispatched: string[],
+  lifecycleState: "ending" | "completed" = "completed"
 ): RecoverFeedbackGenerationDeps {
   return {
     store,
@@ -195,7 +214,7 @@ function dependencies(
     isDeletionPending: async () => false,
     getSession: async () => ({
       userId: USER_ID,
-      lifecycleState: "completed",
+      lifecycleState,
       terminalReason: "user_end",
       deadlineRoomCleanupStatus: null,
     }),

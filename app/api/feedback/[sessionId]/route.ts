@@ -100,7 +100,6 @@ import {
   hasInterviewDeadlineRoomCleanupClaim,
   isInterviewDeadlineRoomCleanupAcknowledged,
 } from "@/lib/db/session-deadlines";
-import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
 
@@ -139,8 +138,28 @@ export async function GET(
     // Get feedback
     const feedbackRecord = await getFeedbackBySessionId(sessionId);
 
+    if (
+      session &&
+      hasInterviewDeadlineRoomCleanupClaim(session) &&
+      !isInterviewDeadlineRoomCleanupAcknowledged(session)
+    ) {
+      return NextResponse.json(
+        {
+          status: "settling",
+          retryable: false,
+          message:
+            "The interview is saved and its room is still being closed safely.",
+        },
+        { headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
+
     if (!feedbackRecord) {
-      if (session && isInterviewTerminalState(session.lifecycleState)) {
+      if (
+        session &&
+        (session.lifecycleState === "ending" ||
+          isInterviewTerminalState(session.lifecycleState))
+      ) {
         return NextResponse.json(
           {
             status: "missing",
@@ -160,22 +179,6 @@ export async function GET(
           status: 409,
           headers: { "Cache-Control": "private, no-store" },
         }
-      );
-    }
-
-    if (
-      session &&
-      hasInterviewDeadlineRoomCleanupClaim(session) &&
-      !isInterviewDeadlineRoomCleanupAcknowledged(session)
-    ) {
-      return NextResponse.json(
-        {
-          status: "settling",
-          retryable: false,
-          message:
-            "The interview is saved and its room is still being closed safely.",
-        },
-        { headers: { "Cache-Control": "private, no-store" } }
       );
     }
 
