@@ -86,6 +86,10 @@ The workflow compares the requested state/reason with the stored outcome, valida
 
 1. An equivalent replay returns `idempotent` with the stored state and does not increment the version.
 2. The first valid terminal claim moves the row to `ending`, stores its reason, activation fact, and version, and becomes the only outcome allowed to finalize.
+   A provider failure before activation is the sole folded case: the workflow
+   validates the virtual `connecting → ending → failed` path and persists the
+   claim and terminal result in one compare-and-set write because there is no
+   transcript or statistics drain to preserve.
 3. A concurrent incompatible claim returns `conflict` with the stored winner. It cannot overwrite the reason or terminal state.
 4. An invalid edge returns `invalid_transition` and changes nothing.
 5. Finalization must derive the terminal state from the stored reason and activation fact; it cannot accept a caller-selected contradiction.

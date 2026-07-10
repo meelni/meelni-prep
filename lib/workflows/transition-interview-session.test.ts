@@ -46,6 +46,74 @@ test("workflow rejects invalid edges before persistence", async () => {
   assert.equal(writes, 0);
 });
 
+test("workflow atomically folds an inactive provider-start failure into one terminal write", async () => {
+  let writes = 0;
+  const current = createLifecycle({ state: "connecting", version: 2 });
+  const store = createMemoryStore(current, () => {
+    writes += 1;
+  });
+
+  const result = await transitionInterviewSessionWorkflow(
+    {
+      sessionId: SESSION_ID,
+      to: "failed",
+      terminalReason: "provider_failure",
+    },
+    createDeps(store)
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.disposition, "applied");
+  assert.equal(result.lifecycle?.state, "failed");
+  assert.equal(result.lifecycle?.terminalReason, "provider_failure");
+  assert.equal(writes, 1);
+});
+
+test("workflow does not fold an activated provider failure past the drain state", async () => {
+  let writes = 0;
+  const current = createLifecycle({
+    state: "active",
+    version: 3,
+    activatedAt: NOW,
+  });
+  const store = createMemoryStore(current, () => {
+    writes += 1;
+  });
+
+  const result = await transitionInterviewSessionWorkflow(
+    {
+      sessionId: SESSION_ID,
+      to: "failed",
+      terminalReason: "provider_failure",
+    },
+    createDeps(store)
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.disposition, "rejected");
+  assert.equal(writes, 0);
+});
+
+test("workflow rejects a corrupt ending row without a terminal reason", async () => {
+  const current = createLifecycle({
+    state: "ending",
+    version: 3,
+    terminalReason: null,
+    endingAt: NOW,
+  });
+
+  const result = await transitionInterviewSessionWorkflow(
+    { sessionId: SESSION_ID, to: "failed" },
+    createDeps(createMemoryStore(current))
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.disposition, "rejected");
+  if (result.disposition === "rejected") {
+    assert.equal(result.code, "terminal_reason_required");
+  }
+});
+
 test("equivalent concurrent transitions converge idempotently", async () => {
   const winning = createLifecycle({ state: "connecting", version: 2 });
   const store = createConflictStore(winning);

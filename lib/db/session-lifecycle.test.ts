@@ -70,7 +70,34 @@ test("terminal compareAndSet projects compatibility status and end timestamp", a
   assert.equal(result.current.legacyStatus, "too_short");
   assert.equal(fake.capturedSet.status, "too_short");
   assert.ok(fake.capturedSet.endedAt);
+  assert.ok(fake.capturedSet.endingAt);
   assert.equal("activatedAt" in fake.capturedSet, false);
+});
+
+test("an atomic provider-start failure records both ending and terminal timestamps", async () => {
+  const updated = lifecycleRow({
+    lifecycleState: "failed",
+    lifecycleVersion: 3,
+    terminalReason: "provider_failure",
+    status: "error",
+    endingAt: TRANSITIONED_AT,
+    endedAt: TRANSITIONED_AT,
+  });
+  const fake = createFakeDatabase({ updateRows: [updated] });
+  const store = createDrizzleInterviewSessionLifecycleStore(fake.database);
+
+  const result = await store.compareAndSet({
+    sessionId: updated.id,
+    expectedState: "connecting",
+    expectedVersion: 2,
+    nextState: "failed",
+    terminalReason: "provider_failure",
+    transitionedAt: TRANSITIONED_AT,
+  });
+
+  assert.equal(result.applied, true);
+  assert.ok(fake.capturedSet.endingAt);
+  assert.ok(fake.capturedSet.endedAt);
 });
 
 test("a lost compareAndSet returns the stored winner", async () => {

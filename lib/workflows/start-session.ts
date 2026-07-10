@@ -322,10 +322,6 @@ async function terminalizeProviderFailure(
   deps: StartInterviewSessionDeps
 ): Promise<void> {
   await requireLifecycleTransition(
-    { sessionId, to: "ending", terminalReason: "provider_failure" },
-    deps
-  );
-  await requireLifecycleTransition(
     { sessionId, to: "failed", terminalReason: "provider_failure" },
     deps
   );

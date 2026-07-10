@@ -107,6 +107,7 @@ export function createDrizzleInterviewSessionLifecycleStore(
             : {}),
           ...(isInterviewTerminalState(input.nextState)
             ? {
+                endingAt: sql`COALESCE(${interviewSession.endingAt}, ${transitionedAt})`,
                 endedAt: sql`COALESCE(${interviewSession.endedAt}, ${transitionedAt})`,
               }
             : {}),
