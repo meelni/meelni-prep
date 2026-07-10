@@ -9,6 +9,7 @@ Good candidates:
 - [LiveKit room metadata](./livekit-room-metadata.md);
 - transcript events;
 - feedback status and response shapes;
+- [dashboard progress evidence](./dashboard-progress.md);
 - [question-bank records, taxonomy, and pagination](./question-bank.md);
 - subscription entitlement and usage quota states;
 - analytics event schemas.

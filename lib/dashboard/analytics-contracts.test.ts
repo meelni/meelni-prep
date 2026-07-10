@@ -50,7 +50,7 @@ test("analytics evidence is derived from current dashboard summary", () => {
 
   assert.equal(evidence.length, 2);
   assert.match(evidence[0]?.description ?? "", /Metrics depth/);
-  assert.match(evidence[0]?.description ?? "", /4 completed interviews/);
+  assert.match(evidence[0]?.description ?? "", /latest completed feedback/);
   assert.doesNotMatch(
     evidence.map((item) => item.description).join(" "),
     /consistently state users|Only one strategy interview/

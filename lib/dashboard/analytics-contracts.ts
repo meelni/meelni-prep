@@ -71,7 +71,7 @@ export function buildAnalyticsEvidence({
   return [
     {
       title: "Current bottleneck",
-      description: `${focusAreaLabel} is the lowest recent signal across ${completedSessions} completed interviews. ${focusAreaDescription}`,
+      description: `${focusAreaLabel} is the lowest scored dimension in the latest completed feedback. ${focusAreaDescription}`,
     },
     {
       title: "Score trend",

@@ -3,9 +3,26 @@ import test from "node:test";
 
 import {
   FIXTURE_CLOCK,
+  createDashboardProgressFixtures,
   createLiveKitStartFixture,
   createProductSenseInterviewFixture,
 } from "./index";
+
+test("dashboard progress fixtures cover zero, one, many, and every feedback state", () => {
+  const fixtures = createDashboardProgressFixtures();
+
+  assert.equal(fixtures.zero.length, 0);
+  assert.equal(fixtures.one.length, 1);
+  assert.equal(fixtures.many.length, 3);
+  assert.deepEqual(
+    fixtures.everyFeedbackStatus.map((session) => session.feedback?.status),
+    ["pending", "processing", "failed", "skipped", "completed", "completed"]
+  );
+  assert.equal(
+    fixtures.everyFeedbackStatus.at(-1)?.feedback?.overallScore,
+    "6.2"
+  );
+});
 
 test("product sense fixture exposes a complete interview regression scenario", () => {
   const fixture = createProductSenseInterviewFixture();

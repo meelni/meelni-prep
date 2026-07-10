@@ -47,7 +47,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const [selectedRound, setSelectedRound] =
     useState<(typeof ROUND_FILTERS)[number]>("All rounds");
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<"best" | "recent" | "company">("best");
+  const [sortBy, setSortBy] = useState<"recent" | "company">("recent");
   const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<
     Set<string>
   >(new Set());
@@ -127,7 +127,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
         if (sortBy === "recent") {
           return getTime(b.askedAt) - getTime(a.askedAt);
         }
-        return getFitScore(b) - getFitScore(a);
+        return getTime(b.askedAt) - getTime(a.askedAt);
       });
   }, [questions, debouncedSearchQuery, selectedCompany, sortBy]);
 
@@ -183,14 +183,14 @@ export const QuestionsSection = memo(function QuestionsSection() {
       <div className="mx-auto flex w-full max-w-6xl flex-col">
         {recommendedQuestion && (
           <section className="border-dashboard-panel-border flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-center">
-            <Pill tone="primary">Recommended</Pill>
+            <Pill tone="primary">Start here</Pill>
             <div className="min-w-0 flex-1">
               <h2 className="text-dashboard-foreground text-lg font-semibold">
                 {recommendedQuestion.questionText}
               </h2>
               <p className="text-dashboard-muted mt-1 text-sm">
-                {formatRoundType(recommendedQuestion.questionType)} ·
-                metric-depth fit
+                {formatRoundType(recommendedQuestion.questionType)} · Real PM
+                interview question
               </p>
             </div>
             <div className="flex gap-2">
@@ -307,13 +307,10 @@ export const QuestionsSection = memo(function QuestionsSection() {
                 <select
                   value={sortBy}
                   onChange={(event) =>
-                    setSortBy(
-                      event.target.value as "best" | "recent" | "company"
-                    )
+                    setSortBy(event.target.value as "recent" | "company")
                   }
                   className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground rounded-md border px-3 py-2"
                 >
-                  <option value="best">Best fit</option>
                   <option value="recent">Recent</option>
                   <option value="company">Company</option>
                 </select>
@@ -322,8 +319,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
             <div className="overflow-x-auto">
               <div className="min-w-[760px]">
-                <div className="border-dashboard-panel-border text-dashboard-muted grid grid-cols-[88px_140px_140px_1fr_92px] gap-4 border-b py-3 text-xs font-bold tracking-[0.2em] uppercase">
-                  <span>Fit</span>
+                <div className="border-dashboard-panel-border text-dashboard-muted grid grid-cols-[140px_140px_1fr_92px] gap-4 border-b py-3 text-xs font-bold tracking-[0.2em] uppercase">
                   <span>Company</span>
                   <span>Round</span>
                   <span>Question</span>
@@ -333,11 +329,8 @@ export const QuestionsSection = memo(function QuestionsSection() {
                   {filteredQuestions.slice(0, 12).map((question) => (
                     <div
                       key={question.id}
-                      className="grid grid-cols-[88px_140px_140px_1fr_92px] gap-4 py-4 text-sm"
+                      className="grid grid-cols-[140px_140px_1fr_92px] gap-4 py-4 text-sm"
                     >
-                      <span className="text-primary font-mono font-semibold">
-                        {getFitScore(question)}%
-                      </span>
                       <span className="text-dashboard-foreground font-semibold">
                         {question.company || "Meelni"}
                       </span>
@@ -455,12 +448,6 @@ function normalizeRoundType(roundType: string) {
   if (roundType === "Strategy") return "strategy";
   if (roundType === "Behavioral") return "behavioral";
   return roundType;
-}
-
-function getFitScore(question: DashboardQuestionInput) {
-  const base = question.questionType === "product_sense" ? 92 : 78;
-  const companyBoost = question.company ? question.company.length % 9 : 0;
-  return Math.max(58, Math.min(96, base - companyBoost));
 }
 
 function getTime(date: Date | string | null | undefined) {

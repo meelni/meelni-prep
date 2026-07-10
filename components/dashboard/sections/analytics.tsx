@@ -60,22 +60,17 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
     () => buildDashboardPracticeSummary(sessions as DashboardSessionInput[]),
     [sessions]
   );
-  const completedSessions =
-    insights?.overall?.completedSessions ??
-    insights?.overall?.completed_sessions ??
-    sessions.filter((session) => session.feedback?.overallScore).length;
-  const trend =
-    insights?.trends?.improvementTrend ||
-    insights?.trends?.improvement_trend ||
-    "stable";
+  const completedSessions = practiceSummary.progress.scoredInterviewCount;
   const competencies = buildAnalyticsCompetencies(insights);
-  const evidence = buildAnalyticsEvidence({
-    completedSessions,
-    focusAreaLabel: practiceSummary.focusArea.label,
-    focusAreaScore: practiceSummary.focusArea.score,
-    focusAreaDescription: practiceSummary.focusArea.description,
-    progressDeltaLabel: practiceSummary.progress.deltaLabel,
-  });
+  const evidence = practiceSummary.focusArea
+    ? buildAnalyticsEvidence({
+        completedSessions,
+        focusAreaLabel: practiceSummary.focusArea.label,
+        focusAreaScore: practiceSummary.focusArea.score,
+        focusAreaDescription: practiceSummary.focusArea.description,
+        progressDeltaLabel: practiceSummary.progress.deltaLabel,
+      })
+    : [];
 
   if (loading) {
     return (
@@ -99,12 +94,13 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
     );
   }
 
-  if (completedSessions < 3) {
+  if (completedSessions < 2) {
+    const remainingInterviews = 2 - completedSessions;
     return (
       <DashboardPage label="Analytics">
         <EmptyAnalyticsState
-          title="Your score trend needs a few more interviews"
-          description={`Complete ${Math.max(1, 3 - completedSessions)} more PM mock interview${3 - completedSessions === 1 ? "" : "s"} to see a more reliable trend and bottleneck diagnosis.`}
+          title="Complete more scored interviews to compare progress"
+          description={`Complete ${remainingInterviews} more PM mock interview${remainingInterviews === 1 ? "" : "s"} to compare observed scores and show dimension summaries here.`}
           action={
             <Button asChild>
               <Link href="/dashboard/new-interview">Start mock interview</Link>
@@ -121,19 +117,20 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
         <section className="border-dashboard-panel-border grid gap-6 border-b pb-6 lg:grid-cols-[150px_1fr_auto] lg:items-center">
           <div>
             <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Recent practice score
+              {practiceSummary.progress.label}
             </p>
             <p className="text-dashboard-foreground font-mono text-5xl font-semibold">
-              {practiceSummary.progress.score}
+              {practiceSummary.progress.score?.toFixed(1) ?? "—"}
+              <span className="text-dashboard-muted text-xl">/10</span>
             </p>
           </div>
           <div className="max-w-3xl">
             <h2 className="text-dashboard-foreground text-xl font-semibold">
-              {getDiagnosis(practiceSummary.focusArea.label)}
+              {getDiagnosis(practiceSummary.focusArea?.label)}
             </h2>
             <p className="text-dashboard-muted mt-2 text-sm leading-6">
-              Your next interview should force user outcome, business outcome,
-              guardrail, and time horizon before solution ideas.
+              {practiceSummary.focusArea?.description ||
+                "Review completed feedback and choose one concrete improvement before the next interview."}
             </p>
           </div>
           <Button asChild>
@@ -183,11 +180,6 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
                   Score trend
                 </p>
                 <span className="text-primary text-sm font-semibold">
-                  {trend === "improving"
-                    ? "Improving"
-                    : trend === "declining"
-                      ? "Needs attention"
-                      : "Stable"}{" "}
                   {practiceSummary.progress.deltaLabel}
                 </span>
               </div>
@@ -205,10 +197,13 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
                 Next target
               </p>
               <h3 className="text-dashboard-foreground mt-4 text-xl font-semibold">
-                Open with {practiceSummary.focusArea.label.toLowerCase()}
+                {practiceSummary.focusArea
+                  ? `Practice ${practiceSummary.focusArea.label.toLowerCase()}`
+                  : "Review completed feedback"}
               </h3>
               <p className="text-dashboard-muted mt-3 text-sm leading-6">
-                {practiceSummary.focusArea.description}
+                {practiceSummary.focusArea?.description ||
+                  "No dimension-level practice target is available yet."}
               </p>
             </div>
 
@@ -271,9 +266,8 @@ function Evidence({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function getDiagnosis(focusLabel: string) {
-  if (focusLabel === "Metrics depth") {
-    return "Structure is strong. Metrics depth is the next area to improve.";
-  }
-  return `${focusLabel} is the clearest opportunity in recent interviews.`;
+function getDiagnosis(focusLabel: string | undefined) {
+  return focusLabel
+    ? `${focusLabel} is the lowest scored dimension in recent completed feedback.`
+    : "Recent feedback does not include a dimension-level practice target yet.";
 }
