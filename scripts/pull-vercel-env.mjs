@@ -21,7 +21,8 @@ import { parse as parseDotenv } from "dotenv";
 import {
   inferDatabaseProjectRef,
   inferSupabaseProjectRef,
-} from "./auth-doctor.mjs";
+} from "./supabase-project-ref.mjs";
+import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-guard.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -65,6 +66,7 @@ const REQUIRED_RUNTIME_KEYS = [
   "DATABASE_URL",
   "LIVEKIT_API_KEY",
   "LIVEKIT_API_SECRET",
+  "MEELNI_PRODUCTION_SUPABASE_PROJECT_REF",
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "OPENAI_API_KEY",
@@ -238,6 +240,20 @@ export function validateRefreshedEnv(env, environment) {
   if (!issuerMatchesProject(anonClaims.iss, publicRef)) {
     throw new Error(
       `Vercel ${environment} NEXT_PUBLIC_SUPABASE_ANON_KEY has an unexpected issuer. The existing file was kept.`
+    );
+  }
+
+  const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
+    databaseUrl: readEnvValue(env, "DATABASE_URL"),
+    environment,
+    productionProjectRef: readEnvValue(
+      env,
+      "MEELNI_PRODUCTION_SUPABASE_PROJECT_REF"
+    ),
+  });
+  if (!identityPolicy.allowed) {
+    throw new Error(
+      `Vercel ${environment} environment identity check failed: ${identityPolicy.reason}. The existing file was kept.`
     );
   }
 

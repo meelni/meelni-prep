@@ -23,7 +23,7 @@ import {
 } from "./pull-vercel-env.mjs";
 
 const previewRef = "previewprojectref123";
-const productionRef = "productionproject12";
+const productionRef = "productionproject123";
 
 test("normalizeEnvValue only strips matched quote pairs", () => {
   assert.equal(
@@ -193,6 +193,50 @@ test("database and public Supabase project mismatch is rejected", () => {
   );
 });
 
+test("Preview rejects the declared Production Supabase project", () => {
+  assert.throws(
+    () => validateRefreshedEnv(scopedEnv(productionRef), "preview"),
+    /Preview database target matches the declared Production Supabase project/
+  );
+});
+
+test("Production requires the declared Production Supabase project", () => {
+  assert.throws(
+    () =>
+      validateRefreshedEnv(
+        scopedEnv(
+          previewRef,
+          { NEXT_PUBLIC_APP_URL: "https://meelni.com" },
+          "production"
+        ),
+        "production"
+      ),
+    /Production database target does not match the declared Production Supabase project/
+  );
+});
+
+test("shared environment refreshes require a valid Production project declaration", () => {
+  const missing = scopedEnv(previewRef).replace(
+    /^MEELNI_PRODUCTION_SUPABASE_PROJECT_REF=.*\n/m,
+    ""
+  );
+  assert.throws(
+    () => validateRefreshedEnv(missing, "preview"),
+    /MEELNI_PRODUCTION_SUPABASE_PROJECT_REF/
+  );
+
+  assert.throws(
+    () =>
+      validateRefreshedEnv(
+        scopedEnv(previewRef, {
+          MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: "not-a-project-ref",
+        }),
+        "preview"
+      ),
+    /20-character lowercase Supabase project ref/
+  );
+});
+
 test("a same-project service-role JWT is rejected as a browser anon key", () => {
   const env = scopedEnv(previewRef, {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: anonJwt(previewRef, "service_role"),
@@ -285,6 +329,24 @@ test("failed validation keeps the prior target byte-for-byte", async (t) => {
   );
   assert.equal(await readFile(target, "utf8"), previous);
   assert.equal((await lstat(target)).mode & 0o777, 0o600);
+});
+
+test("Preview identity failure keeps the prior target byte-for-byte", async (t) => {
+  const root = await fixtureRoot(t);
+  const target = resolve(root, ".env.local");
+  const previous = scopedEnv(previewRef);
+  await writeFile(target, previous);
+
+  await assert.rejects(
+    refreshEnvironment({
+      environment: "preview",
+      pull: () => scopedEnv(productionRef),
+      root,
+      target: ".env.local",
+    }),
+    /Preview database target matches the declared Production Supabase project/
+  );
+  assert.equal(await readFile(target, "utf8"), previous);
 });
 
 test("blank pulled public Supabase config never reuses old public values", async (t) => {
@@ -631,6 +693,7 @@ function scopedEnv(ref, overrides = {}, environment = "preview") {
       DATABASE_URL: databaseUrl(ref, "secret"),
       LIVEKIT_API_KEY: "livekit-api-key",
       LIVEKIT_API_SECRET: "livekit-api-secret",
+      MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: productionRef,
       NEXT_PUBLIC_LIVEKIT_URL: "wss://meelni.livekit.cloud",
       NEXT_PUBLIC_SUPABASE_ANON_KEY: anonJwt(ref),
       NEXT_PUBLIC_SUPABASE_URL: `https://${ref}.supabase.co`,

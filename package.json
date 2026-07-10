@@ -44,6 +44,8 @@
     "db:preflight:preview": "MEELNI_ENV_FILE=.env.local npm run db:preflight",
     "db:preflight:production": "MEELNI_ENV_FILE=.env.production.local npm run db:preflight",
     "db:migrate": "node scripts/database-command.mjs migrate",
+    "db:migrate:preview": "MEELNI_ENV_FILE=.env.local npm run db:migrate",
+    "db:migrate:production": "MEELNI_ENV_FILE=.env.production.local npm run db:migrate",
     "db:push": "node scripts/database-command.mjs push",
     "db:studio": "node scripts/database-command.mjs studio",
     "db:check": "drizzle-kit check",

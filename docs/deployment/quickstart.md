@@ -69,6 +69,7 @@ mismatches.
 | `DATABASE_URL` | Supabase | PostgreSQL connection string |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase | Public URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase | Public anon key |
+| `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF` | Supabase | Non-secret Production project ref; use the same value in Preview and Production |
 | `LIVEKIT_API_KEY` | LiveKit | API key |
 | `LIVEKIT_API_SECRET` | LiveKit | API secret |
 | `NEXT_PUBLIC_LIVEKIT_URL` | LiveKit | WebSocket URL (wss://...) |
