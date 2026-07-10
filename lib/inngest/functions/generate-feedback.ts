@@ -44,9 +44,7 @@ async function fetchSessionData(sessionId: string) {
 /**
  * Fetch and format session transcript
  */
-async function fetchSessionTranscript(
-  sessionId: string
-): Promise<{ speaker: string; text: string }[]> {
+async function fetchSessionTranscript(sessionId: string) {
   const turns = await db.query.transcriptTurn.findMany({
     where: eq(transcriptTurn.sessionId, sessionId),
     orderBy: [
@@ -61,8 +59,13 @@ async function fetchSessionTranscript(
   return turns
     .filter((turn) => turn.text !== null)
     .map((turn) => ({
+      eventId: turn.eventId ?? turn.id,
       speaker: turn.speaker,
       text: turn.text!,
+      deliveryState:
+        turn.deliveryState === "partially_delivered"
+          ? ("partially_delivered" as const)
+          : ("delivered" as const),
     }));
 }
 

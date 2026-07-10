@@ -1,5 +1,9 @@
 import OpenAI from "openai";
-import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
+import {
+  EVALUATION_SYSTEM_PROMPT,
+  getEvaluationPrompt,
+  type EvaluationTranscriptTurn,
+} from "./prompts";
 import { getFeedbackEvaluationModel } from "./model-config";
 import { normalizePracticeRecommendations } from "@/lib/product-language";
 
@@ -23,7 +27,7 @@ export interface EvaluationResult {
  */
 export async function generateFeedback(
   roundType: string,
-  transcript: { speaker: string; text: string }[]
+  transcript: EvaluationTranscriptTurn[]
 ): Promise<EvaluationResult> {
   if (transcript.length === 0) {
     throw new Error("Cannot generate feedback for empty transcript");

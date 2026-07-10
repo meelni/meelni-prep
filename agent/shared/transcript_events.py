@@ -129,8 +129,7 @@ def create_transcript_event_from_message(
     role = getattr(message, "role", None)
     if role not in ("user", "assistant"):
         return None
-    if role == "assistant" and getattr(message, "interrupted", False):
-        return None
+    interrupted = role == "assistant" and getattr(message, "interrupted", False) is True
 
     metrics = getattr(message, "metrics", None)
     if not isinstance(metrics, dict):
@@ -164,6 +163,7 @@ def create_transcript_event_from_message(
         ended_at=ended_at,
         audio_duration_ms=round((ended_at - started_at) * 1000),
         section=section,
+        delivery_state="partially_delivered" if interrupted else "delivered",
     )
 
 

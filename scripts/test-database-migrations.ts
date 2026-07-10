@@ -29,7 +29,8 @@ import {
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
-  TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
+  RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT,
+  TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -64,6 +65,8 @@ const SESSION_TRANSCRIPT_TWO = "b1000000-0000-4000-8000-000000000001";
 const SESSION_TRANSCRIPT_DEADLINE = "b2000000-0000-4000-8000-000000000002";
 const SESSION_TRANSCRIPT_DEADLINE_INVALID =
   "b3000000-0000-4000-8000-000000000003";
+const SESSION_TRANSCRIPT_MARKER = "b4000000-0000-4000-8000-000000000004";
+const SESSION_DELETION_MARKER = "b5000000-0000-4000-8000-000000000005";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -138,7 +141,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -211,6 +214,16 @@ async function run() {
       assertLegacyCreditLedgerIntegrity(lifecycleApplied!);
       await seedReconnectCutoffOwnerFixtures(upgrade);
       const countsBefore = await protectedRowCounts(upgrade);
+      const privacyFolder = await createMigrationFolderThrough(11);
+      try {
+        await migrate(drizzle(upgrade), { migrationsFolder: privacyFolder });
+      } finally {
+        await rm(privacyFolder, { recursive: true, force: true });
+      }
+      assert.equal(
+        databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
+        TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+      );
       await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
       const reconnectApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
@@ -1659,7 +1672,11 @@ async function verifyAtomicSessionCompletion(
 async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
   process.env.DATABASE_URL = databaseUrl;
   const [
-    { createDrizzleTranscriptIngestStore },
+    {
+      createDrizzleTranscriptIngestStore,
+      createDrizzleTranscriptInterruptionMarkerStore,
+      createDrizzleTranscriptRuntimeSettlementStore,
+    },
     { finalizeInterviewSession },
     { claimInterviewDeadline },
     { createTranscriptEvent },
@@ -1720,6 +1737,33 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       id, user_id, round_type, mode, status, lifecycle_state,
       livekit_room_name, started_at, activated_at
     ) VALUES (
+      ${SESSION_TRANSCRIPT_MARKER}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      'transcript-marker-room',
+      '2026-07-10T05:00:00.000Z'::timestamptz,
+      now()
+    ) ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO transcript_turn (
+      session_id, speaker, started_at, ended_at, text, audio_ms, section
+    ) VALUES
+      (${SESSION_TRANSCRIPT_MARKER}::uuid, 'interviewer', '2026-07-10T05:00:00Z', '2026-07-10T05:00:05Z', 'Start with the goal.', 5000, 'prompt'),
+      (${SESSION_TRANSCRIPT_MARKER}::uuid, 'user', '2026-07-10T05:00:10Z', '2026-07-10T05:01:30Z', 'I would clarify the goal and identify a specific customer segment before choosing the most important problem.', 80000, 'answer'),
+      (${SESSION_TRANSCRIPT_MARKER}::uuid, 'interviewer', '2026-07-10T05:02:00Z', '2026-07-10T05:02:05Z', 'Continue with the problem.', 5000, 'follow_up'),
+      (${SESSION_TRANSCRIPT_MARKER}::uuid, 'user', '2026-07-10T05:03:00Z', '2026-07-10T05:04:30Z', 'The core problem is fragmented context, so I would prioritize a workflow that reduces repeated coordination and uncertainty.', 90000, 'answer'),
+      (${SESSION_TRANSCRIPT_MARKER}::uuid, 'user', '2026-07-10T05:05:00Z', '2026-07-10T05:06:30Z', 'I would measure task completion and retained weekly use while guarding against low quality engagement and notification fatigue.', 90000, 'answer')
+    ON CONFLICT DO NOTHING
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      livekit_room_name, started_at, activated_at
+    ) VALUES (
       ${SESSION_TRANSCRIPT_TWO}::uuid,
       ${USER_ONE}::uuid,
       'product_sense',
@@ -1742,6 +1786,12 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
   const stores = clients.map((client) =>
     createDrizzleTranscriptIngestStore(drizzle(client, { schema }))
   );
+  const markerStore = createDrizzleTranscriptInterruptionMarkerStore(
+    drizzle(clients[0]!, { schema })
+  );
+  const settlementStore = createDrizzleTranscriptRuntimeSettlementStore(
+    drizzle(clients[0]!, { schema })
+  );
   const event = createTranscriptEvent({
     event_id: "migration-writer:message-1",
     writer_id: "migration-writer",
@@ -1759,7 +1809,12 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
 
   try {
     const concurrent = await Promise.all(
-      stores.map((store) => store.persist({ userId: USER_ONE, event }))
+      stores.map((store) =>
+        store.persist({
+          principal: { kind: "authenticated_user", userId: USER_ONE },
+          event,
+        })
+      )
     );
     assert.equal(
       concurrent.filter(
@@ -1783,7 +1838,10 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
     });
     assert.deepEqual(
       await stores[0]!
-        .persist({ userId: USER_ONE, event: second })
+        .persist({
+          principal: { kind: "authenticated_user", userId: USER_ONE },
+          event: second,
+        })
         .then((result) => result.ok && result.disposition),
       "created"
     );
@@ -1794,7 +1852,10 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       room_name: "transcript-room-two",
     });
     assert.deepEqual(
-      await stores[0]!.persist({ userId: USER_ONE, event: crossSession }),
+      await stores[0]!.persist({
+        principal: { kind: "authenticated_user", userId: USER_ONE },
+        event: crossSession,
+      }),
       { ok: false, reason: "event_conflict" }
     );
 
@@ -1803,7 +1864,10 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       event_id: "migration-writer:other-message",
     });
     assert.deepEqual(
-      await stores[0]!.persist({ userId: USER_ONE, event: sequenceConflict }),
+      await stores[0]!.persist({
+        principal: { kind: "authenticated_user", userId: USER_ONE },
+        event: sequenceConflict,
+      }),
       { ok: false, reason: "writer_sequence_conflict" }
     );
 
@@ -1830,7 +1894,10 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       room_name: "transcript-room-two",
     });
     const [ingestResult, completionResult] = await Promise.all([
-      stores[0]!.persist({ userId: USER_ONE, event: terminalRaceEvent }),
+      stores[0]!.persist({
+        principal: { kind: "authenticated_user", userId: USER_ONE },
+        event: terminalRaceEvent,
+      }),
       finalizeInterviewSession(
         {
           sessionId: SESSION_TRANSCRIPT_TWO,
@@ -2056,6 +2123,113 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       assert.equal(invalidCompletion.lifecycle.version, 4);
       assert.equal(invalidCompletion.feedback.status, "skipped");
     }
+
+    const marker = {
+      contract_version: 1 as const,
+      event_type: "integrity_unavailable" as const,
+      event_id: "migration-writer:speech-unheard:unavailable",
+      writer_id: "migration-marker-writer",
+      sequence: 1,
+      session_id: SESSION_TRANSCRIPT_MARKER,
+      room_name: "transcript-marker-room",
+      speaker: "interviewer" as const,
+      occurred_at: "2026-07-10T05:02:30.000Z",
+      reason: "no_provider_confirmed_prefix" as const,
+    };
+    assert.equal((await markerStore.persist(marker)).ok, true);
+    const markerReplay = await markerStore.persist(marker);
+    assert.equal(markerReplay.ok && markerReplay.disposition, "existing");
+    assert.deepEqual(
+      await markerStore.persist({
+        ...marker,
+        event_id: "migration-writer:pre-session-marker",
+        sequence: 99,
+        occurred_at: "2026-07-10T04:59:59.999Z",
+      }),
+      { ok: false, reason: "event_time_out_of_bounds" }
+    );
+    assert.equal(
+      (
+        await markerStore.persist({
+          ...marker,
+          event_id: "migration-writer:user-unmeasured:unavailable",
+          sequence: 2,
+          speaker: "user",
+          occurred_at: "2026-07-10T05:02:31.000Z",
+          reason: "canonicalization_failed",
+        })
+      ).ok,
+      true
+    );
+    const settlement = {
+      contract_version: 1 as const,
+      event_type: "runtime_settlement" as const,
+      session_id: SESSION_TRANSCRIPT_MARKER,
+      room_name: "transcript-marker-room",
+      writer_id: "migration-marker-writer",
+      state: "degraded" as const,
+      settled_at: "2026-07-10T05:02:32.000Z",
+    };
+    assert.deepEqual(
+      await settlementStore.persist({
+        ...settlement,
+        settled_at: "2026-07-10T05:30:00.001Z",
+      }),
+      { ok: false, reason: "event_time_out_of_bounds" }
+    );
+    assert.equal((await settlementStore.persist(settlement)).ok, true);
+    const settlementReplay = await settlementStore.persist(settlement);
+    assert.equal(
+      settlementReplay.ok && settlementReplay.disposition,
+      "existing"
+    );
+    assert.deepEqual(
+      await markerStore.persist({
+        ...marker,
+        event_id: "migration-writer:post-settlement-marker",
+        sequence: 3,
+        occurred_at: "2026-07-10T05:02:33.000Z",
+      }),
+      { ok: false, reason: "runtime_settled" }
+    );
+    assert.deepEqual(
+      await stores[0]!.persist({
+        principal: { kind: "voice_runtime" },
+        event: createTranscriptEvent({
+          ...event,
+          event_id: "migration-writer:post-settlement-turn",
+          writer_id: "migration-marker-writer",
+          sequence: 4,
+          session_id: SESSION_TRANSCRIPT_MARKER,
+          room_name: "transcript-marker-room",
+          started_at: "2026-07-10T05:02:34.000Z",
+          ended_at: "2026-07-10T05:02:35.000Z",
+          audio_duration_ms: 1_000,
+        }),
+      }),
+      { ok: false, reason: "runtime_settled" }
+    );
+    const markerCompletion = await finalizeInterviewSession(
+      {
+        sessionId: SESSION_TRANSCRIPT_MARKER,
+        actor: { type: "user", userId: USER_ONE },
+        requestedTerminalReason: "user_end",
+      },
+      drizzle(clients[1]!, { schema })
+    );
+    assert.equal(markerCompletion.ok, true);
+    if (markerCompletion.ok) {
+      assert.equal(markerCompletion.lifecycle.state, "abandoned");
+      assert.equal(
+        markerCompletion.lifecycle.terminalReason,
+        "insufficient_signal"
+      );
+      assert.equal(markerCompletion.feedback.status, "skipped");
+      assert.match(
+        markerCompletion.feedback.statusReason ?? "",
+        /Voice runtime reported degraded transcript integrity/
+      );
+    }
   } finally {
     await Promise.all(clients.map((client) => client.end()));
   }
@@ -2096,7 +2270,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 11);
+  assert.equal(await migrationCount(sql), 13);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -2104,7 +2278,17 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 23);
+  assert.equal(tables.length, 25);
+  assert.ok(
+    tables.some(
+      ({ table_name }) => table_name === "transcript_interruption_marker"
+    )
+  );
+  assert.ok(
+    tables.some(
+      ({ table_name }) => table_name === "transcript_runtime_settlement"
+    )
+  );
   assert.ok(
     tables.some(
       ({ table_name }) => table_name === "livekit_reconnect_rate_limit"
@@ -2260,6 +2444,69 @@ async function verifyDatabase(sql: postgres.Sql) {
   `;
   assert.equal(transcriptIndexes.length, 3);
 
+  const markerColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'transcript_interruption_marker'
+    ORDER BY ordinal_position
+  `;
+  assert.equal(markerColumns.length, 11);
+
+  const markerConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname IN (
+      'transcript_interruption_marker_contract_check',
+      'transcript_interruption_marker_speaker_check',
+      'transcript_interruption_marker_sequence_check',
+      'transcript_interruption_marker_reason_check'
+    )
+    ORDER BY conname
+  `;
+  assert.equal(markerConstraints.length, 4);
+
+  const markerIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'transcript_interruption_marker_event_id_idx',
+        'transcript_interruption_marker_session_writer_sequence_idx',
+        'transcript_interruption_marker_session_occurred_at_idx'
+      )
+    ORDER BY indexname
+  `;
+  assert.equal(markerIndexes.length, 3);
+
+  const settlementColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'transcript_runtime_settlement'
+    ORDER BY ordinal_position
+  `;
+  assert.equal(settlementColumns.length, 7);
+
+  const settlementConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname IN (
+      'transcript_runtime_settlement_contract_check',
+      'transcript_runtime_settlement_state_check'
+    )
+    ORDER BY conname
+  `;
+  assert.equal(settlementConstraints.length, 2);
+
+  const settlementIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'transcript_runtime_settlement_room_settled_at_idx'
+  `;
+  assert.equal(settlementIndexes.length, 1);
+
   const tierConstraint = await sql<{ definition: string }[]>`
     SELECT pg_get_constraintdef(oid) AS definition
     FROM pg_constraint
@@ -2302,7 +2549,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 23);
+  assert.equal(rls.length, 25);
   assert.ok(rls.every((table) => table.enabled));
 
   const unsafePolicies = await sql<{ count: number }[]>`
@@ -2325,6 +2572,12 @@ async function verifyDatabase(sql: postgres.Sql) {
       auth_subscription_update: boolean;
       auth_feedback_insert: boolean;
       auth_transcript_insert: boolean;
+      auth_marker_select: boolean;
+      auth_marker_insert: boolean;
+      service_marker_insert: boolean;
+      auth_settlement_select: boolean;
+      auth_settlement_insert: boolean;
+      service_settlement_insert: boolean;
       auth_limiter_execute: boolean;
       auth_limiter_select: boolean;
       auth_limiter_insert: boolean;
@@ -2340,6 +2593,36 @@ async function verifyDatabase(sql: postgres.Sql) {
         AS auth_feedback_insert,
       has_table_privilege('authenticated', 'public.transcript_turn', 'INSERT')
         AS auth_transcript_insert,
+      has_table_privilege(
+        'authenticated',
+        'public.transcript_interruption_marker',
+        'SELECT'
+      ) AS auth_marker_select,
+      has_table_privilege(
+        'authenticated',
+        'public.transcript_interruption_marker',
+        'INSERT'
+      ) AS auth_marker_insert,
+      has_table_privilege(
+        'service_role',
+        'public.transcript_interruption_marker',
+        'INSERT'
+      ) AS service_marker_insert,
+      has_table_privilege(
+        'authenticated',
+        'public.transcript_runtime_settlement',
+        'SELECT'
+      ) AS auth_settlement_select,
+      has_table_privilege(
+        'authenticated',
+        'public.transcript_runtime_settlement',
+        'INSERT'
+      ) AS auth_settlement_insert,
+      has_table_privilege(
+        'service_role',
+        'public.transcript_runtime_settlement',
+        'INSERT'
+      ) AS service_settlement_insert,
       has_function_privilege(
         'authenticated',
         'public.consume_livekit_reconnect_rate_limit(uuid)',
@@ -2375,6 +2658,12 @@ async function verifyDatabase(sql: postgres.Sql) {
     auth_subscription_update: false,
     auth_feedback_insert: false,
     auth_transcript_insert: false,
+    auth_marker_select: false,
+    auth_marker_insert: false,
+    service_marker_insert: true,
+    auth_settlement_select: false,
+    auth_settlement_insert: false,
+    service_settlement_insert: true,
     auth_limiter_execute: false,
     auth_limiter_select: false,
     auth_limiter_insert: false,
@@ -3052,6 +3341,49 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     VALUES (${USER_TWO}::uuid, 'deletion-user@example.invalid')
   `;
   await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      livekit_room_name, activated_at
+    ) VALUES (
+      ${SESSION_DELETION_MARKER}::uuid,
+      ${USER_TWO}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      'deletion-marker-room',
+      now()
+    )
+  `;
+  await sql`
+    INSERT INTO transcript_interruption_marker (
+      session_id, contract_version, event_id, writer_id, sequence,
+      room_name, speaker, occurred_at, reason
+    ) VALUES (
+      ${SESSION_DELETION_MARKER}::uuid,
+      1,
+      'deletion-marker-event',
+      'deletion-marker-writer',
+      1,
+      'deletion-marker-room',
+      'interviewer',
+      now(),
+      'no_provider_confirmed_prefix'
+    )
+  `;
+  await sql`
+    INSERT INTO transcript_runtime_settlement (
+      session_id, contract_version, room_name, writer_id, state, settled_at
+    ) VALUES (
+      ${SESSION_DELETION_MARKER}::uuid,
+      1,
+      'deletion-marker-room',
+      'deletion-marker-writer',
+      'degraded',
+      now()
+    )
+  `;
+  await sql`
     INSERT INTO interview_session (id, user_id, round_type, mode)
     VALUES (
       ${SESSION_DELETION}::uuid,
@@ -3201,6 +3533,8 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       deletion_status: string;
       redacted_payload: string;
       redacted_error: string | null;
+      interruption_markers: number;
+      runtime_settlements: number;
     }[]
   >`
     SELECT
@@ -3218,6 +3552,12 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
         SELECT 1 FROM account_deletion_request
         WHERE user_id = ${USER_TWO}::uuid
       ) AS tombstone_exists,
+      (SELECT count(*)::int FROM transcript_interruption_marker
+        WHERE session_id = ${SESSION_DELETION_MARKER}::uuid)
+        AS interruption_markers,
+      (SELECT count(*)::int FROM transcript_runtime_settlement
+        WHERE session_id = ${SESSION_DELETION_MARKER}::uuid)
+        AS runtime_settlements,
       (SELECT count(*)::int FROM account_deletion_request
         CROSS JOIN LATERAL jsonb_array_elements(stripe_subjects) subject
         WHERE user_id = ${USER_TWO}::uuid
@@ -3237,6 +3577,8 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     interview_session_exists: false,
     user_insights_exists: false,
     tombstone_exists: true,
+    interruption_markers: 0,
+    runtime_settlements: 0,
     raw_provider_ids: 0,
     provider_fingerprints: 5,
     deletion_status: "completed",

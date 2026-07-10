@@ -15,7 +15,13 @@ import {
 } from "@/lib/evaluation/session-validator";
 import { feedbackGenerationEventId } from "./feedback-event-id";
 import { db } from "./index";
-import { feedback, interviewSession, transcriptTurn } from "./schema";
+import {
+  feedback,
+  interviewSession,
+  transcriptInterruptionMarker,
+  transcriptRuntimeSettlement,
+  transcriptTurn,
+} from "./schema";
 
 export type EndInterviewSessionCommand = { sessionId: string } & (
   | {
@@ -105,21 +111,60 @@ export async function finalizeInterviewSession(
     const stored = rows[0];
     if (!stored) return { ok: false, reason: "not_found" } as const;
 
-    const validation =
-      input.validationOverride ??
-      validateSessionStats(
-        calculateSessionStatsFromTurns(
-          await tx
-            .select({
-              speaker: transcriptTurn.speaker,
-              text: transcriptTurn.text,
-              startedAt: transcriptTurn.startedAt,
-              endedAt: transcriptTurn.endedAt,
-            })
-            .from(transcriptTurn)
-            .where(eq(transcriptTurn.sessionId, input.sessionId))
-        )
+    let validation = input.validationOverride;
+    if (!validation) {
+      const [turns, interruptionCounts, settlements] = await Promise.all([
+        tx
+          .select({
+            speaker: transcriptTurn.speaker,
+            text: transcriptTurn.text,
+            startedAt: transcriptTurn.startedAt,
+            endedAt: transcriptTurn.endedAt,
+          })
+          .from(transcriptTurn)
+          .where(eq(transcriptTurn.sessionId, input.sessionId)),
+        tx
+          .select({ value: sql<number>`count(*)::int` })
+          .from(transcriptInterruptionMarker)
+          .where(eq(transcriptInterruptionMarker.sessionId, input.sessionId)),
+        tx
+          .select({ state: transcriptRuntimeSettlement.state })
+          .from(transcriptRuntimeSettlement)
+          .where(eq(transcriptRuntimeSettlement.sessionId, input.sessionId))
+          .limit(1),
+      ]);
+      const baseValidation = validateSessionStats(
+        calculateSessionStatsFromTurns(turns)
       );
+      const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
+      const runtimeSettlementState = settlements[0]?.state;
+      const integrityReasons = [
+        ...(runtimeSettlementState === "settled"
+          ? []
+          : [
+              runtimeSettlementState === "degraded"
+                ? "Voice runtime reported degraded transcript integrity"
+                : "Voice runtime transcript settlement was not confirmed",
+            ]),
+        ...(unavailableInterruptions > 0
+          ? [
+              `Transcript integrity unavailable for ${unavailableInterruptions} turn(s)`,
+            ]
+          : []),
+      ];
+      validation =
+        integrityReasons.length > 0
+          ? {
+              ...baseValidation,
+              isValid: false,
+              reasons: [...integrityReasons, ...baseValidation.reasons],
+              recommendations: [
+                "Retry the interview so every heard turn can be verified",
+                ...baseValidation.recommendations,
+              ],
+            }
+          : baseValidation;
+    }
 
     let state = stored.lifecycleState;
     let version = stored.lifecycleVersion;

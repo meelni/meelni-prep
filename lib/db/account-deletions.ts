@@ -18,6 +18,8 @@ import {
   sessionQuestion,
   stripeEventLog,
   stripeCustomerMapping,
+  transcriptInterruptionMarker,
+  transcriptRuntimeSettlement,
   subscription,
   transcriptTurn,
   userInsights,
@@ -405,6 +407,12 @@ export async function deleteUserApplicationData(userId: string) {
       await tx
         .delete(transcriptTurn)
         .where(eq(transcriptTurn.sessionId, sessionId));
+      await tx
+        .delete(transcriptInterruptionMarker)
+        .where(eq(transcriptInterruptionMarker.sessionId, sessionId));
+      await tx
+        .delete(transcriptRuntimeSettlement)
+        .where(eq(transcriptRuntimeSettlement.sessionId, sessionId));
       await tx
         .delete(sessionQuestion)
         .where(eq(sessionQuestion.sessionId, sessionId));

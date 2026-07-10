@@ -17,6 +17,7 @@ export interface AnalyticsConfig {
     enabled: boolean;
     sampleRate: number; // 0.0 to 1.0 (0% to 100%)
     maskTextInputs: boolean;
+    maskAllText: boolean;
     maskEmails: boolean;
   };
   /** Privacy settings */
@@ -46,6 +47,7 @@ export function getAnalyticsConfig(): AnalyticsConfig {
         enabled: false,
         sampleRate: 0,
         maskTextInputs: true,
+        maskAllText: true,
         maskEmails: true,
       },
       privacy: {
@@ -57,7 +59,8 @@ export function getAnalyticsConfig(): AnalyticsConfig {
   }
 
   const apiKey = process.env.NEXT_PUBLIC_POSTHOG_KEY || "";
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
+  const host =
+    process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
   // Warn if missing API key in production
   if (isProduction && !apiKey) {
@@ -73,6 +76,7 @@ export function getAnalyticsConfig(): AnalyticsConfig {
       enabled: true,
       sampleRate: isProduction ? 0.3 : 1.0, // 30% in prod, 100% in dev
       maskTextInputs: true,
+      maskAllText: true,
       maskEmails: true,
     },
     privacy: {

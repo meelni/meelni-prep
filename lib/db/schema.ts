@@ -346,6 +346,89 @@ export const transcriptTurn = pgTable(
   })
 );
 
+// Runtime-confirmed loss of canonical transcript integrity. This operational
+// evidence is deliberately outside transcript_turn so it cannot become
+// evaluation input.
+export const transcriptInterruptionMarker = pgTable(
+  "transcript_interruption_marker",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .references(() => interviewSession.id)
+      .notNull(),
+    contractVersion: integer("contract_version").notNull(),
+    eventId: text("event_id").notNull(),
+    writerId: text("writer_id").notNull(),
+    sequence: bigint("sequence", { mode: "number" }).notNull(),
+    roomName: text("room_name").notNull(),
+    speaker: text("speaker").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    reason: text("reason").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    contractCheck: check(
+      "transcript_interruption_marker_contract_check",
+      sql`${table.contractVersion} = 1`
+    ),
+    speakerCheck: check(
+      "transcript_interruption_marker_speaker_check",
+      sql`${table.speaker} IN ('user', 'interviewer')`
+    ),
+    sequenceCheck: check(
+      "transcript_interruption_marker_sequence_check",
+      sql`${table.sequence} > 0`
+    ),
+    reasonCheck: check(
+      "transcript_interruption_marker_reason_check",
+      sql`${table.reason} IN ('no_provider_confirmed_prefix', 'canonicalization_failed')`
+    ),
+    eventIdUnique: uniqueIndex(
+      "transcript_interruption_marker_event_id_idx"
+    ).on(table.eventId),
+    sessionWriterSequenceUnique: uniqueIndex(
+      "transcript_interruption_marker_session_writer_sequence_idx"
+    ).on(table.sessionId, table.writerId, table.sequence),
+    sessionOccurredAtIdx: index(
+      "transcript_interruption_marker_session_occurred_at_idx"
+    ).on(table.sessionId, table.occurredAt),
+  })
+);
+
+// Trusted runtime proof that every queued transcript fact reached a terminal
+// persistence outcome before interview completion freezes evaluation evidence.
+export const transcriptRuntimeSettlement = pgTable(
+  "transcript_runtime_settlement",
+  {
+    sessionId: uuid("session_id")
+      .primaryKey()
+      .references(() => interviewSession.id),
+    contractVersion: integer("contract_version").notNull(),
+    roomName: text("room_name").notNull(),
+    writerId: text("writer_id").notNull(),
+    state: text("state").notNull(),
+    settledAt: timestamp("settled_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    contractCheck: check(
+      "transcript_runtime_settlement_contract_check",
+      sql`${table.contractVersion} = 1`
+    ),
+    stateCheck: check(
+      "transcript_runtime_settlement_state_check",
+      sql`${table.state} IN ('settled', 'degraded')`
+    ),
+    roomSettledAtIdx: index(
+      "transcript_runtime_settlement_room_settled_at_idx"
+    ).on(table.roomName, table.settledAt),
+  })
+);
+
 // Feedback / scoring
 export const feedback = pgTable(
   "feedback",
@@ -778,6 +861,11 @@ export const interviewSessionRelations = relations(
       references: [feedback.sessionId],
     }),
     transcriptTurns: many(transcriptTurn),
+    transcriptInterruptionMarkers: many(transcriptInterruptionMarker),
+    transcriptRuntimeSettlement: one(transcriptRuntimeSettlement, {
+      fields: [interviewSession.id],
+      references: [transcriptRuntimeSettlement.sessionId],
+    }),
     sessionQuestions: many(sessionQuestion),
   })
 );
@@ -795,6 +883,26 @@ export const transcriptTurnRelations = relations(transcriptTurn, ({ one }) => ({
     references: [interviewSession.id],
   }),
 }));
+
+export const transcriptInterruptionMarkerRelations = relations(
+  transcriptInterruptionMarker,
+  ({ one }) => ({
+    session: one(interviewSession, {
+      fields: [transcriptInterruptionMarker.sessionId],
+      references: [interviewSession.id],
+    }),
+  })
+);
+
+export const transcriptRuntimeSettlementRelations = relations(
+  transcriptRuntimeSettlement,
+  ({ one }) => ({
+    session: one(interviewSession, {
+      fields: [transcriptRuntimeSettlement.sessionId],
+      references: [interviewSession.id],
+    }),
+  })
+);
 
 export const appUserRelations = relations(appUser, ({ many, one }) => ({
   sessions: many(interviewSession),

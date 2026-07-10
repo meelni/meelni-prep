@@ -1,6 +1,6 @@
 {
-  "id": "d570eb1b-518d-48d0-a76d-b75d63c9cdb1",
-  "prevId": "edd0f69b-fa67-4eb2-95f4-0a2913339713",
+  "id": "662d7cd7-500c-4039-8614-ba31cdf8ee9a",
+  "prevId": "cb042d37-c7b6-4623-97d2-2c99af2cff29",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -155,9 +155,7 @@
         "app_user_email_unique": {
           "name": "app_user_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -253,12 +251,8 @@
           "name": "bookmarked_question_user_id_app_user_id_fk",
           "tableFrom": "bookmarked_question",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -266,12 +260,8 @@
           "name": "bookmarked_question_question_id_interview_question_id_fk",
           "tableFrom": "bookmarked_question",
           "tableTo": "interview_question",
-          "columnsFrom": [
-            "question_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["question_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -461,12 +451,8 @@
           "name": "credit_grant_user_id_app_user_id_fk",
           "tableFrom": "credit_grant",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -476,9 +462,7 @@
         "credit_grant_idempotency_key_unique": {
           "name": "credit_grant_idempotency_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "idempotency_key"
-          ]
+          "columns": ["idempotency_key"]
         }
       },
       "policies": {},
@@ -622,12 +606,8 @@
           "name": "credit_reservation_user_id_app_user_id_fk",
           "tableFrom": "credit_reservation",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -637,9 +617,7 @@
         "credit_reservation_reservation_key_unique": {
           "name": "credit_reservation_reservation_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "reservation_key"
-          ]
+          "columns": ["reservation_key"]
         }
       },
       "policies": {},
@@ -714,12 +692,8 @@
           "name": "credit_reservation_grant_reservation_id_credit_reservation_id_fk",
           "tableFrom": "credit_reservation_grant",
           "tableTo": "credit_reservation",
-          "columnsFrom": [
-            "reservation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["reservation_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -727,12 +701,8 @@
           "name": "credit_reservation_grant_grant_id_credit_grant_id_fk",
           "tableFrom": "credit_reservation_grant",
           "tableTo": "credit_grant",
-          "columnsFrom": [
-            "grant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["grant_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -742,10 +712,7 @@
         "credit_reservation_grant_uniq": {
           "name": "credit_reservation_grant_uniq",
           "nullsNotDistinct": false,
-          "columns": [
-            "reservation_id",
-            "grant_id"
-          ]
+          "columns": ["reservation_id", "grant_id"]
         }
       },
       "policies": {},
@@ -897,12 +864,8 @@
           "name": "credit_transaction_user_id_app_user_id_fk",
           "tableFrom": "credit_transaction",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -910,12 +873,8 @@
           "name": "credit_transaction_grant_id_credit_grant_id_fk",
           "tableFrom": "credit_transaction",
           "tableTo": "credit_grant",
-          "columnsFrom": [
-            "grant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["grant_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -923,12 +882,8 @@
           "name": "credit_transaction_reservation_id_credit_reservation_id_fk",
           "tableFrom": "credit_transaction",
           "tableTo": "credit_reservation",
-          "columnsFrom": [
-            "reservation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["reservation_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -938,9 +893,7 @@
         "credit_transaction_idempotency_key_unique": {
           "name": "credit_transaction_idempotency_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "idempotency_key"
-          ]
+          "columns": ["idempotency_key"]
         }
       },
       "policies": {},
@@ -1193,12 +1146,8 @@
           "name": "feedback_session_id_interview_session_id_fk",
           "tableFrom": "feedback",
           "tableTo": "interview_session",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1208,9 +1157,7 @@
         "feedback_session_id_unique": {
           "name": "feedback_session_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "session_id"
-          ]
+          "columns": ["session_id"]
         }
       },
       "policies": {},
@@ -1491,43 +1438,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "reconnect_deadline_owner": {
-          "name": "reconnect_deadline_owner",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "room_cleanup_pending": {
           "name": "room_cleanup_pending",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "room_cleanup_attempted_at": {
-          "name": "room_cleanup_attempted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "room_provisioning_pending": {
-          "name": "room_provisioning_pending",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "room_provisioning_started_at": {
-          "name": "room_provisioning_started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "presence_reconciled_at": {
-          "name": "presence_reconciled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         },
         "runtime_ready_at": {
           "name": "runtime_ready_at",
@@ -1667,69 +1583,6 @@
           "method": "btree",
           "with": {}
         },
-        "interview_session_presence_reconciliation_idx": {
-          "name": "interview_session_presence_reconciliation_idx",
-          "columns": [
-            {
-              "expression": "lifecycle_state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "presence_reconciled_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "interview_session_room_cleanup_recovery_idx": {
-          "name": "interview_session_room_cleanup_recovery_idx",
-          "columns": [
-            {
-              "expression": "room_cleanup_pending",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "room_cleanup_attempted_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "interview_session_room_provisioning_recovery_idx": {
-          "name": "interview_session_room_provisioning_recovery_idx",
-          "columns": [
-            {
-              "expression": "room_provisioning_pending",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "room_provisioning_started_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "interview_session_user_lifecycle_state_idx": {
           "name": "interview_session_user_lifecycle_state_idx",
           "columns": [
@@ -1757,12 +1610,8 @@
           "name": "interview_session_user_id_app_user_id_fk",
           "tableFrom": "interview_session",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1802,14 +1651,6 @@
         "interview_session_ending_at_state_check": {
           "name": "interview_session_ending_at_state_check",
           "value": "\"interview_session\".\"ending_at\" IS NULL OR \"interview_session\".\"lifecycle_state\" IN ('ending', 'completed', 'abandoned', 'failed')"
-        },
-        "interview_session_room_provisioning_claim_check": {
-          "name": "interview_session_room_provisioning_claim_check",
-          "value": "(\"interview_session\".\"room_provisioning_pending\" AND \"interview_session\".\"room_provisioning_started_at\" IS NOT NULL) OR (NOT \"interview_session\".\"room_provisioning_pending\" AND \"interview_session\".\"room_provisioning_started_at\" IS NULL)"
-        },
-        "interview_session_reconnect_deadline_owner_check": {
-          "name": "interview_session_reconnect_deadline_owner_check",
-          "value": "(\"interview_session\".\"reconnect_deadline_at\" IS NULL AND \"interview_session\".\"reconnect_deadline_owner\" IS NULL) OR (\"interview_session\".\"reconnect_deadline_at\" IS NOT NULL AND \"interview_session\".\"reconnect_deadline_owner\" IN ('reconnect_grace', 'hard_deadline'))"
         }
       },
       "isRLSEnabled": false
@@ -1844,9 +1685,7 @@
       "compositePrimaryKeys": {
         "livekit_reconnect_rate_limit_pkey": {
           "name": "livekit_reconnect_rate_limit_pkey",
-          "columns": [
-            "user_id"
-          ]
+          "columns": ["user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -2024,12 +1863,8 @@
           "name": "payment_history_user_id_app_user_id_fk",
           "tableFrom": "payment_history",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2039,16 +1874,12 @@
         "payment_history_stripe_payment_intent_id_unique": {
           "name": "payment_history_stripe_payment_intent_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "stripe_payment_intent_id"
-          ]
+          "columns": ["stripe_payment_intent_id"]
         },
         "payment_history_stripe_event_id_unique": {
           "name": "payment_history_stripe_event_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "stripe_event_id"
-          ]
+          "columns": ["stripe_event_id"]
         }
       },
       "policies": {},
@@ -2141,12 +1972,8 @@
           "name": "practice_set_user_id_app_user_id_fk",
           "tableFrom": "practice_set",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2246,12 +2073,8 @@
           "name": "practice_set_question_practice_set_id_practice_set_id_fk",
           "tableFrom": "practice_set_question",
           "tableTo": "practice_set",
-          "columnsFrom": [
-            "practice_set_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["practice_set_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2259,12 +2082,8 @@
           "name": "practice_set_question_question_id_interview_question_id_fk",
           "tableFrom": "practice_set_question",
           "tableTo": "interview_question",
-          "columnsFrom": [
-            "question_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["question_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2364,12 +2183,8 @@
           "name": "session_question_session_id_interview_session_id_fk",
           "tableFrom": "session_question",
           "tableTo": "interview_session",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2377,12 +2192,8 @@
           "name": "session_question_question_id_interview_question_id_fk",
           "tableFrom": "session_question",
           "tableTo": "interview_question",
-          "columnsFrom": [
-            "question_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["question_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2467,12 +2278,8 @@
           "name": "stripe_customer_mapping_user_id_app_user_id_fk",
           "tableFrom": "stripe_customer_mapping",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2635,9 +2442,7 @@
         "stripe_event_log_stripe_event_id_unique": {
           "name": "stripe_event_log_stripe_event_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "stripe_event_id"
-          ]
+          "columns": ["stripe_event_id"]
         }
       },
       "policies": {},
@@ -2868,12 +2673,8 @@
           "name": "subscription_user_id_app_user_id_fk",
           "tableFrom": "subscription",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2883,23 +2684,17 @@
         "subscription_user_id_unique": {
           "name": "subscription_user_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id"
-          ]
+          "columns": ["user_id"]
         },
         "subscription_stripe_customer_id_unique": {
           "name": "subscription_stripe_customer_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "stripe_customer_id"
-          ]
+          "columns": ["stripe_customer_id"]
         },
         "subscription_stripe_subscription_id_unique": {
           "name": "subscription_stripe_subscription_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "stripe_subscription_id"
-          ]
+          "columns": ["stripe_subscription_id"]
         }
       },
       "policies": {},
@@ -2915,6 +2710,275 @@
         "subscription_billing_cycle_check": {
           "name": "subscription_billing_cycle_check",
           "value": "\"subscription\".\"billing_cycle\" IS NULL OR \"subscription\".\"billing_cycle\" IN ('monthly', 'annual')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transcript_interruption_marker": {
+      "name": "transcript_interruption_marker",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contract_version": {
+          "name": "contract_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "writer_id": {
+          "name": "writer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "room_name": {
+          "name": "room_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "speaker": {
+          "name": "speaker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "transcript_interruption_marker_event_id_idx": {
+          "name": "transcript_interruption_marker_event_id_idx",
+          "columns": [
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "transcript_interruption_marker_session_writer_sequence_idx": {
+          "name": "transcript_interruption_marker_session_writer_sequence_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "writer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sequence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "transcript_interruption_marker_session_occurred_at_idx": {
+          "name": "transcript_interruption_marker_session_occurred_at_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "transcript_interruption_marker_session_id_interview_session_id_fk": {
+          "name": "transcript_interruption_marker_session_id_interview_session_id_fk",
+          "tableFrom": "transcript_interruption_marker",
+          "tableTo": "interview_session",
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "transcript_interruption_marker_contract_check": {
+          "name": "transcript_interruption_marker_contract_check",
+          "value": "\"transcript_interruption_marker\".\"contract_version\" = 1"
+        },
+        "transcript_interruption_marker_speaker_check": {
+          "name": "transcript_interruption_marker_speaker_check",
+          "value": "\"transcript_interruption_marker\".\"speaker\" IN ('user', 'interviewer')"
+        },
+        "transcript_interruption_marker_sequence_check": {
+          "name": "transcript_interruption_marker_sequence_check",
+          "value": "\"transcript_interruption_marker\".\"sequence\" > 0"
+        },
+        "transcript_interruption_marker_reason_check": {
+          "name": "transcript_interruption_marker_reason_check",
+          "value": "\"transcript_interruption_marker\".\"reason\" IN ('no_provider_confirmed_prefix', 'canonicalization_failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transcript_runtime_settlement": {
+      "name": "transcript_runtime_settlement",
+      "schema": "",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "contract_version": {
+          "name": "contract_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "room_name": {
+          "name": "room_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "writer_id": {
+          "name": "writer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "transcript_runtime_settlement_room_settled_at_idx": {
+          "name": "transcript_runtime_settlement_room_settled_at_idx",
+          "columns": [
+            {
+              "expression": "room_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "settled_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "transcript_runtime_settlement_session_id_interview_session_id_fk": {
+          "name": "transcript_runtime_settlement_session_id_interview_session_id_fk",
+          "tableFrom": "transcript_runtime_settlement",
+          "tableTo": "interview_session",
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "transcript_runtime_settlement_contract_check": {
+          "name": "transcript_runtime_settlement_contract_check",
+          "value": "\"transcript_runtime_settlement\".\"contract_version\" = 1"
+        },
+        "transcript_runtime_settlement_state_check": {
+          "name": "transcript_runtime_settlement_state_check",
+          "value": "\"transcript_runtime_settlement\".\"state\" IN ('settled', 'degraded')"
         }
       },
       "isRLSEnabled": false
@@ -3099,12 +3163,8 @@
           "name": "transcript_turn_session_id_interview_session_id_fk",
           "tableFrom": "transcript_turn",
           "tableTo": "interview_session",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3257,12 +3317,8 @@
           "name": "usage_record_user_id_app_user_id_fk",
           "tableFrom": "usage_record",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3272,10 +3328,7 @@
         "usage_record_user_period_uniq": {
           "name": "usage_record_user_period_uniq",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id",
-            "period_start"
-          ]
+          "columns": ["user_id", "period_start"]
         }
       },
       "policies": {},
@@ -3376,12 +3429,8 @@
           "name": "user_achievement_user_id_app_user_id_fk",
           "tableFrom": "user_achievement",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3504,12 +3553,8 @@
           "name": "user_insights_user_id_app_user_id_fk",
           "tableFrom": "user_insights",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3517,12 +3562,8 @@
           "name": "user_insights_last_session_id_interview_session_id_fk",
           "tableFrom": "user_insights",
           "tableTo": "interview_session",
-          "columnsFrom": [
-            "last_session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["last_session_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3670,12 +3711,8 @@
           "name": "user_settings_user_id_app_user_id_fk",
           "tableFrom": "user_settings",
           "tableTo": "app_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3685,9 +3722,7 @@
         "user_settings_user_id_unique": {
           "name": "user_settings_user_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id"
-          ]
+          "columns": ["user_id"]
         }
       },
       "policies": {},

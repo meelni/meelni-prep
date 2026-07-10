@@ -9,6 +9,7 @@ from shared.runtime_config import (
     normalize_runtime_config,
 )
 from shared.session_deadline import normalize_deadline_at
+from shared.transcript_ingest import validate_internal_ingest_url
 
 logger = logging.getLogger("agent-config")
 
@@ -60,6 +61,9 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         session_id = data.get("session_id")
         if not isinstance(session_id, str) or not session_id.strip():
             raise ValueError("Interview room metadata requires session_id")
+        transcript_ingest_url = validate_internal_ingest_url(
+            data.get("transcript_ingest_url")
+        )
 
         round_type = data.get("round_type")
         if round_type not in {"behavioral", "product_sense", "execution", "strategy"}:
@@ -80,6 +84,7 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         return {
             "contract_version": INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
             "session_id": session_id,
+            "transcript_ingest_url": transcript_ingest_url,
             "deadline_at": normalize_deadline_at(data.get("deadline_at")),
             "round_type": round_type,
             "mode": data.get("mode") if data.get("mode") in {"text", "voice_video"} else None,

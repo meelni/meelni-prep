@@ -228,71 +228,6 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /api/session/transcript:
-    post:
-      tags:
-        - Transcripts
-      summary: Save transcript turns
-      description: Saves conversation transcript turns (single or batch mode)
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              oneOf:
-                - $ref: "#/components/schemas/SingleTranscriptRequest"
-                - $ref: "#/components/schemas/BatchTranscriptRequest"
-            examples:
-              single_turn:
-                value:
-                  sessionId: "550e8400-e29b-41d4-a716-446655440000"
-                  speaker: user
-                  text: "I worked on a mobile checkout feature..."
-                  startedAt: "2025-11-05T10:30:15Z"
-                  endedAt: "2025-11-05T10:31:20Z"
-                  audioMs: 65000
-              batch_turns:
-                value:
-                  sessionId: "550e8400-e29b-41d4-a716-446655440000"
-                  turns:
-                    - speaker: interviewer
-                      text: "Tell me about a product you launched."
-                      startedAt: "2025-11-05T10:30:00Z"
-                      endedAt: "2025-11-05T10:30:08Z"
-                    - speaker: user
-                      text: "I launched a mobile checkout feature..."
-                      startedAt: "2025-11-05T10:30:10Z"
-                      endedAt: "2025-11-05T10:31:15Z"
-      responses:
-        "200":
-          description: Transcript saved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  turn:
-                    $ref: "#/components/schemas/TranscriptTurn"
-                    nullable: true
-                  turns:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/TranscriptTurn"
-                    nullable: true
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-
   /api/session/{sessionId}/transcript:
     get:
       tags:
@@ -325,58 +260,6 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-
-  /api/feedback/generate:
-    post:
-      tags:
-        - Feedback
-      summary: Generate AI feedback
-      description: Analyzes an interview transcript and generates comprehensive feedback using GPT-4 Turbo (idempotent)
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - sessionId
-              properties:
-                sessionId:
-                  type: string
-                  format: uuid
-                  description: UUID of the session to evaluate
-            example:
-              sessionId: "550e8400-e29b-41d4-a716-446655440000"
-      responses:
-        "200":
-          description: Feedback generated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  feedback:
-                    $ref: "#/components/schemas/Feedback"
-                    nullable: true
-                  message:
-                    type: string
-                    nullable: true
-                    example: "Feedback already exists for this session"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
 

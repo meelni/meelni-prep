@@ -61,3 +61,24 @@ The migration adds database checks for tier values, dispatch identity,
 nonnegative attempts, active claims, and sent acknowledgements. See the
 [session completion runbook](./interview-session-completion.md) for Preview
 rehearsal and recovery.
+
+## Reconnect and transcript evidence
+
+`0008_interview_session_reconnect` adds the durable reconnect deadline,
+generation fence, cleanup intent, and shared issuance limiter used by SAV-190.
+
+`0009_reflective_galactus` adds canonical transcript event identity, writer
+sequence, room correlation, delivery state, deterministic ordering, and
+database-enforced idempotency while retaining nullable legacy rows.
+
+`0010_safe_hemingway` adds the service-only
+`transcript_interruption_marker` table. The table contains no transcript text;
+it records a provider-confirmed interruption whose heard prefix was unavailable
+or a committed turn whose canonical measurement failed. RLS and ACLs deny
+browser roles. A marker makes feedback ineligible so incomplete evidence
+cannot be scored as complete.
+
+`0011_runtime-settlement` adds the service-only
+`transcript_runtime_settlement` table. A trusted metadata-only watermark is
+required before terminal completion can mark transcript evidence eligible for
+feedback; missing or degraded settlement fails closed.

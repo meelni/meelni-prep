@@ -2,6 +2,8 @@ import type { AgentState, Speaker } from "@meelni/core";
 
 export const TRANSCRIPT_DATA_TOPIC = "transcript";
 export const TRANSCRIPT_CONTRACT_VERSION = 2 as const;
+export const TRANSCRIPT_INTERRUPTION_MARKER_CONTRACT_VERSION = 1 as const;
+export const TRANSCRIPT_RUNTIME_SETTLEMENT_CONTRACT_VERSION = 1 as const;
 
 export type TranscriptDeliveryState = "delivered" | "partially_delivered";
 
@@ -20,6 +22,29 @@ export interface TranscriptEvent {
   audio_duration_ms: number;
   section: string;
   delivery_state: TranscriptDeliveryState;
+}
+
+export interface TranscriptInterruptionMarker {
+  contract_version: typeof TRANSCRIPT_INTERRUPTION_MARKER_CONTRACT_VERSION;
+  event_type: "integrity_unavailable";
+  event_id: string;
+  writer_id: string;
+  sequence: number;
+  session_id: string;
+  room_name: string;
+  speaker: Speaker;
+  occurred_at: string;
+  reason: "no_provider_confirmed_prefix" | "canonicalization_failed";
+}
+
+export interface TranscriptRuntimeSettlement {
+  contract_version: typeof TRANSCRIPT_RUNTIME_SETTLEMENT_CONTRACT_VERSION;
+  event_type: "runtime_settlement";
+  session_id: string;
+  room_name: string;
+  writer_id: string;
+  state: "settled" | "degraded";
+  settled_at: string;
 }
 
 export interface LegacyTranscriptEvent {
@@ -104,6 +129,75 @@ export function isTranscriptEvent(value: unknown): value is TranscriptEvent {
     isNonEmptyString(candidate.section) &&
     (candidate.delivery_state === "delivered" ||
       candidate.delivery_state === "partially_delivered")
+  );
+}
+
+export function isTranscriptInterruptionMarker(
+  value: unknown
+): value is TranscriptInterruptionMarker {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<TranscriptInterruptionMarker>;
+  const expectedKeys = new Set([
+    "contract_version",
+    "event_type",
+    "event_id",
+    "writer_id",
+    "sequence",
+    "session_id",
+    "room_name",
+    "speaker",
+    "occurred_at",
+    "reason",
+  ]);
+  return (
+    Object.keys(value).length === expectedKeys.size &&
+    Object.keys(value).every((key) => expectedKeys.has(key)) &&
+    candidate.contract_version ===
+      TRANSCRIPT_INTERRUPTION_MARKER_CONTRACT_VERSION &&
+    candidate.event_type === "integrity_unavailable" &&
+    isNonEmptyString(candidate.event_id) &&
+    isNonEmptyString(candidate.writer_id) &&
+    Number.isSafeInteger(candidate.sequence) &&
+    (candidate.sequence ?? 0) > 0 &&
+    isNonEmptyString(candidate.session_id) &&
+    isNonEmptyString(candidate.room_name) &&
+    (candidate.speaker === "user" || candidate.speaker === "interviewer") &&
+    parseTimestamp(candidate.occurred_at) !== null &&
+    (candidate.reason === "no_provider_confirmed_prefix" ||
+      candidate.reason === "canonicalization_failed")
+  );
+}
+
+export function isTranscriptRuntimeSettlement(
+  value: unknown
+): value is TranscriptRuntimeSettlement {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<TranscriptRuntimeSettlement>;
+  const expectedKeys = new Set([
+    "contract_version",
+    "event_type",
+    "session_id",
+    "room_name",
+    "writer_id",
+    "state",
+    "settled_at",
+  ]);
+  return (
+    Object.keys(value).length === expectedKeys.size &&
+    Object.keys(value).every((key) => expectedKeys.has(key)) &&
+    candidate.contract_version ===
+      TRANSCRIPT_RUNTIME_SETTLEMENT_CONTRACT_VERSION &&
+    candidate.event_type === "runtime_settlement" &&
+    isNonEmptyString(candidate.session_id) &&
+    isNonEmptyString(candidate.room_name) &&
+    isNonEmptyString(candidate.writer_id) &&
+    (candidate.state === "settled" || candidate.state === "degraded") &&
+    parseTimestamp(candidate.settled_at) !== null
   );
 }
 

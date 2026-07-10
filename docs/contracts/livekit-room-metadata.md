@@ -11,6 +11,7 @@ Full interview rooms receive JSON metadata with this shape:
 {
   "contract_version": 1,
   "session_id": "uuid",
+  "transcript_ingest_url": "https://meelni.com/api/internal/transcript",
   "deadline_at": "2026-07-09T20:30:00.000Z",
   "round_type": "product_sense",
   "mode": "voice_video",
@@ -57,8 +58,11 @@ environment. Web and voice-agent deployments therefore must use matching
 `MEELNI_INTERVIEW_*` values. No setting in this contract is a credential.
 
 `packages/agent/src/room-metadata.ts` is the TypeScript source of truth for the
-serialized shape. `contract_version` and `session_id` are required. The web
-workflow creates both; consumers must not invent a session ID from a room name.
+serialized shape. `contract_version`, `session_id`, and
+`transcript_ingest_url` are required. The web workflow creates them; consumers
+must not invent a session ID from a room name or derive an ingest host from
+untrusted request headers. The ingest URL must be exact HTTPS with no query or
+fragment; loopback HTTP is allowed only for local development.
 
 `deadline_at`, when present, is an absolute UTC timestamp in canonical
 `YYYY-MM-DDTHH:mm:ss.sssZ` form. An explicitly malformed timestamp fails closed
@@ -85,8 +89,9 @@ API boundaries.
 
 The Python voice runtime rejects an already-expired job before `AgentSession`
 starts. For a future deadline it arms one watchdog after the session starts. At
-or after `deadline_at`, it calls the immediate `AgentSession.aclose()` path
-without draining queued speech, then uses the acknowledged room-service API to
+or after `deadline_at`, it interrupts current playout, persists the exact heard
+prefix or a textless unavailable marker, performs a bounded runtime-outbox
+drain, closes the session, and then uses the acknowledged room-service API to
 terminate the room. Duplicate watchdogs share one enforcement operation. A
 normal session close cancels a watchdog that has not begun enforcement.
 
@@ -153,7 +158,8 @@ using the [versioned transcript event contract](./transcript-events.md). Version
 start/end timing and audio duration, a non-null section, and explicit delivery
 state across TypeScript and Python.
 
-A realtime data packet remains best-effort transport, not durable transcript
-storage. A turn counts as durable lifecycle signal only after the authenticated
-endpoint verifies session/room correlation and acknowledges persistence.
-Reconnect and end workflows must not assume that every packet arrived.
+A realtime data packet is a post-persistence display notification. A turn
+counts as durable lifecycle signal only after the signed runtime endpoint
+verifies session/room correlation and acknowledges persistence. The browser
+hydrates durable server truth after reload/reconnect and never stores raw retry
+payloads.

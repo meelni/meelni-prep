@@ -45,6 +45,7 @@ export interface InterviewRoomQuestion {
 export interface InterviewRoomMetadata {
   contract_version: typeof INTERVIEW_ROOM_METADATA_CONTRACT_VERSION;
   session_id: string;
+  transcript_ingest_url: string;
   deadline_at: string | null;
   round_type: RoundType;
   mode?: InterviewMode;
@@ -67,6 +68,7 @@ export class InterviewRoomMetadataError extends Error {
       | "invalid_json"
       | "unsupported_contract"
       | "missing_session_id"
+      | "invalid_transcript_ingest_url"
       | "invalid_deadline"
       | "invalid_round_type"
   ) {
@@ -173,10 +175,15 @@ export function buildInterviewRoomMetadata(
     throw new InterviewRoomMetadataError("missing_session_id");
   }
 
+  const transcriptIngestUrl = normalizeTranscriptIngestUrl(
+    metadata.transcript_ingest_url
+  );
+
   return {
     ...metadata,
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
     session_id: metadata.session_id,
+    transcript_ingest_url: transcriptIngestUrl,
     deadline_at: normalizeDeadlineAt(metadata.deadline_at),
     config: metadata.config,
     question: metadata.question ? normalizeQuestion(metadata.question) : null,
@@ -213,6 +220,9 @@ export function parseInterviewRoomMetadata(
   return buildInterviewRoomMetadata({
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
     session_id: parsed.session_id,
+    transcript_ingest_url: normalizeTranscriptIngestUrl(
+      parsed.transcript_ingest_url
+    ),
     deadline_at: normalizeDeadlineAt(parsed.deadline_at),
     round_type: parsed.round_type,
     mode:
@@ -298,6 +308,31 @@ function normalizeDeadlineAt(value: unknown): string | null {
   }
 
   throw new InterviewRoomMetadataError("invalid_deadline");
+}
+
+function normalizeTranscriptIngestUrl(value: unknown): string {
+  if (!isNonEmptyString(value)) {
+    throw new InterviewRoomMetadataError("invalid_transcript_ingest_url");
+  }
+  try {
+    const url = new URL(value);
+    const localHttp =
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+    if (
+      (url.protocol !== "https:" && !localHttp) ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/api/internal/transcript" ||
+      url.search ||
+      url.hash
+    ) {
+      throw new Error("invalid runtime transcript URL");
+    }
+    return url.toString();
+  } catch {
+    throw new InterviewRoomMetadataError("invalid_transcript_ingest_url");
+  }
 }
 
 function isRoundType(value: unknown): value is RoundType {

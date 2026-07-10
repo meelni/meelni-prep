@@ -111,6 +111,10 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
           productFixture.session.startedAt.toISOString()
         );
         assert.equal(metadata.deadline_at, "2026-06-27T18:15:00.000Z");
+        assert.equal(
+          metadata.transcript_ingest_url,
+          "https://preview.meelni.test/api/internal/transcript"
+        );
         return {
           ok: true,
           provider: "livekit",
@@ -132,6 +136,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
       },
       env: liveKitFixture.input.env,
       interviewAgentName: liveKitFixture.input.agentName,
+      appBaseUrl: "https://preview.meelni.test",
     },
     deps
   );
