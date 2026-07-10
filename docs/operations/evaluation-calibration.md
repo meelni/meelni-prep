@@ -26,6 +26,18 @@ npm run calibration:self-test -- --output /tmp/meelni-calibration-self-test.json
 These modes make no model or database calls. A green deterministic self-test
 proves only the harness; its live-provider and launch gates remain pending.
 
+Review the agent-authored candidate adjudications separately:
+
+```bash
+npm run calibration:adjudication-manifest -- \
+  --output docs/evidence/sav-198-adjudication-review-manifest.json
+```
+
+The manifest contains the exact strength and improvement evidence, semantic
+behavior, observation, dimension, and next step for all 32 scored cases. A
+product owner or PM reviewer must approve or correct these candidates. Neither
+the deterministic harness nor a live model run counts as signoff.
+
 ## Authorized live-provider run
 
 Do not run this step without explicit authorization for provider spend and
@@ -81,6 +93,8 @@ secrets or provider responses containing sensitive data.
   observed identities are reviewed.
 - Report versions match the code intended for launch.
 - `launchAcceptance` is `passed`; a deterministic `passed` state is not enough.
+- Adjudication acceptance records completed product-owner/PM signoff; candidate
+  status is never treated as ground truth.
 
 If a live run fails, keep the launch gate closed. Inspect case/run/dimension
 failure records, update the evaluator or adjudication deliberately, rerun local

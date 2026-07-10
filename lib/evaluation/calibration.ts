@@ -97,6 +97,7 @@ export interface EvaluationCalibrationReport {
     insufficientCases: number;
     casesByRound: Record<string, number>;
     scoredCasesByQuality: Record<CalibrationQuality, number>;
+    pendingAdjudicationSignoffs: number;
     expectedStateMismatches: number;
     invalidEvidenceAnchors: number;
   };
@@ -119,8 +120,13 @@ export interface EvaluationCalibrationReport {
   thresholds: typeof EVALUATION_CALIBRATION_THRESHOLDS;
   gate: {
     deterministicHarness: "passed" | "failed" | "not_run";
+    adjudicationAcceptance: "passed" | "pending_product_owner_pm_signoff";
     liveProviderAcceptance: "passed" | "failed" | "pending";
-    launchAcceptance: "passed" | "failed" | "pending_live_provider_run";
+    launchAcceptance:
+      | "passed"
+      | "failed"
+      | "pending_live_provider_run"
+      | "pending_adjudication_signoff";
   };
   failures: CalibrationFailure[];
   blockers: string[];
@@ -470,6 +476,11 @@ export async function runEvaluationCalibration(
       EVALUATION_CALIBRATION_THRESHOLDS.modelVersionMatchRate;
   const executionPassed = corpusPassed && evaluatedThresholdsPassed;
   const liveProvider = options.executionKind === "live_provider";
+  const pendingAdjudicationSignoffs = evaluationCalibrationCases.filter(
+    ({ adjudicationSignoff }) =>
+      adjudicationSignoff !== "product_owner_pm_approved"
+  ).length;
+  const adjudicationPassed = pendingAdjudicationSignoffs === 0;
 
   return {
     contractVersion: "evaluation-calibration-report.v2",
@@ -514,6 +525,7 @@ export async function runEvaluationCalibration(
             .length,
         ])
       ) as Record<CalibrationQuality, number>,
+      pendingAdjudicationSignoffs,
       expectedStateMismatches: failures.filter(
         ({ code }) => code === "expected_state_mismatch"
       ).length,
@@ -528,27 +540,40 @@ export async function runEvaluationCalibration(
             ? "passed"
             : "failed"
           : "not_run",
+      adjudicationAcceptance: adjudicationPassed
+        ? "passed"
+        : "pending_product_owner_pm_signoff",
       liveProviderAcceptance: liveProvider
         ? executionPassed
           ? "passed"
           : "failed"
         : "pending",
-      launchAcceptance: liveProvider
-        ? executionPassed
-          ? "passed"
-          : "failed"
-        : "pending_live_provider_run",
+      launchAcceptance:
+        liveProvider && !executionPassed
+          ? "failed"
+          : !adjudicationPassed
+            ? "pending_adjudication_signoff"
+            : liveProvider
+              ? "passed"
+              : "pending_live_provider_run",
     },
     failures,
-    blockers: liveProvider
-      ? executionPassed
-        ? []
-        : [
-            "The live provider calibration did not meet every acceptance threshold.",
+    blockers: [
+      ...(!adjudicationPassed
+        ? [
+            "The agent-authored synthetic adjudication candidates require product-owner/PM review and signoff. Model runs cannot satisfy this gate.",
           ]
-      : [
-          "No authorized live provider calibration has been run. Deterministic evidence proves only the harness and gold-set contract.",
-        ],
+        : []),
+      ...(liveProvider
+        ? executionPassed
+          ? []
+          : [
+              "The live provider calibration did not meet every acceptance threshold.",
+            ]
+        : [
+            "No authorized live provider calibration has been run. Deterministic evidence proves only the harness and candidate-set contract.",
+          ]),
+    ],
   };
 }
 
@@ -583,15 +608,8 @@ export function createDeterministicCalibrationEvaluator(
         rubricVersion: FEEDBACK_RUBRIC_VERSION,
         evaluationState,
         scores,
-        strengths: [
-          fixtureItem(strength, "Keep applying this observed behavior."),
-        ],
-        improvements: [
-          fixtureItem(
-            improvement,
-            "Make the next decision and tradeoff explicit."
-          ),
-        ],
+        strengths: [fixtureItem(strength)],
+        improvements: [fixtureItem(improvement)],
         drills: [
           "Practice one answer with an explicit decision and guardrail.",
         ],
@@ -760,15 +778,14 @@ function calibrationState(tier: SessionTier): CalibrationCompletionState {
 }
 
 function fixtureItem(
-  anchor: EvaluationCalibrationCase["evidenceAnchors"][number],
-  nextStep: string
+  anchor: EvaluationCalibrationCase["evidenceAnchors"][number]
 ) {
   return {
     dimension: anchor.dimension,
-    observation: "The synthetic answer contains an adjudicated PM behavior.",
+    observation: anchor.observation,
     transcriptRefs: [anchor.turnRef],
     evidence: [{ turnRef: anchor.turnRef, quote: anchor.quote }],
-    nextStep,
+    nextStep: anchor.nextStep,
     rubricVersion: FEEDBACK_RUBRIC_VERSION,
     confidence: 0.9,
   };
