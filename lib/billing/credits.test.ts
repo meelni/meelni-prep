@@ -21,8 +21,94 @@ test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", 
   ]) {
     assert.equal(mutation in store, false, mutation);
   }
+  assert.deepEqual(Object.keys(store).sort(), [
+    "findGrantByIdempotencyKey",
+    "findReservationByKey",
+    "findTransactionByIdempotencyKey",
+    "listAllocations",
+    "listSpendableGrants",
+    "listUserGrants",
+    "withUserTransaction",
+  ]);
   assert.equal(typeof store.findReservationByKey, "function");
   assert.equal(typeof store.withUserTransaction, "function");
+});
+
+test("production transaction mutations cannot escape the locked user scope", async () => {
+  let attemptedWrites = 0;
+  const database = {
+    async transaction(
+      work: (transaction: unknown) => Promise<unknown>
+    ): Promise<unknown> {
+      let selectIndex = 0;
+      const transaction = {
+        select() {
+          const rows = selectIndex++ === 0 ? [{ id: "user-1" }] : [];
+          return {
+            from() {
+              return {
+                where() {
+                  return {
+                    limit() {
+                      return Object.assign(Promise.resolve(rows), {
+                        for: async () => rows,
+                      });
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+        insert() {
+          attemptedWrites += 1;
+          throw new Error("unexpected_insert");
+        },
+        update() {
+          attemptedWrites += 1;
+          throw new Error("unexpected_update");
+        },
+      };
+      return work(transaction);
+    },
+  } as never;
+  const store = createDrizzleCreditLedgerStore(database);
+
+  await assert.rejects(
+    store.withUserTransaction("user-1", (transaction) =>
+      transaction.createGrant({
+        userId: "user-2",
+        catalogId: "trial",
+        source: "trial",
+        sourceId: null,
+        idempotencyKey: "trial:user-2",
+        originalCredits: 2,
+        remainingCredits: 2,
+        reservedCredits: 0,
+        expiresAt: null,
+        rolloverEligible: false,
+        rolloverSourceGrantId: null,
+        metadata: null,
+      })
+    ),
+    /credit_ledger_user_scope_mismatch/
+  );
+  await assert.rejects(
+    store.withUserTransaction("user-1", (transaction) =>
+      transaction.updateGrantBalances("grant-owned-by-user-2", {
+        remainingCredits: 0,
+        reservedCredits: 0,
+      })
+    ),
+    /credit_ledger_user_scope_mismatch/
+  );
+  await assert.rejects(
+    store.withUserTransaction("user-1", (transaction) =>
+      transaction.listUserGrantsForUpdate("user-2")
+    ),
+    /credit_ledger_user_scope_mismatch/
+  );
+  assert.equal(attemptedWrites, 0);
 });
 
 test("grantCredits is idempotent and balance ignores expired grants", async () => {
