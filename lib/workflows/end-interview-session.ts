@@ -12,6 +12,7 @@ import {
 import { checkAndAwardAchievements } from "@/lib/achievements";
 import { updateStreak } from "@/lib/streaks";
 import type { SessionValidation } from "@/lib/evaluation/session-validator";
+import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
 
 export type EndInterviewSessionInput = EndInterviewSessionCommand;
 
@@ -20,6 +21,7 @@ export interface EndInterviewSessionDeps {
   finalize(
     input: FinalizeInterviewSessionInput
   ): Promise<FinalizeInterviewSessionResult>;
+  settleCredit(sessionId: string): Promise<unknown>;
   dispatch(input: {
     sessionId: string;
     userId: string;
@@ -58,7 +60,7 @@ export async function settleInterviewSessionWorkflow(
   input: EndInterviewSessionInput,
   deps: Pick<
     EndInterviewSessionDeps,
-    "authorize" | "finalize" | "updateMotivation"
+    "authorize" | "finalize" | "settleCredit" | "updateMotivation"
   > = createEndInterviewSessionDeps()
 ): Promise<SettleInterviewSessionResult> {
   if (!(await deps.authorize(input))) {
@@ -87,7 +89,7 @@ export async function settleInterviewSessionWithValidationWorkflow(
   validation: SessionValidation,
   deps: Pick<
     EndInterviewSessionDeps,
-    "authorize" | "finalize" | "updateMotivation"
+    "authorize" | "finalize" | "settleCredit" | "updateMotivation"
   > = createEndInterviewSessionDeps()
 ): Promise<SettleInterviewSessionResult> {
   if (!(await deps.authorize(input))) {
@@ -98,11 +100,18 @@ export async function settleInterviewSessionWithValidationWorkflow(
 
 async function completeInterviewSession(
   input: EndInterviewSessionInput,
-  deps: Pick<EndInterviewSessionDeps, "finalize" | "updateMotivation">,
+  deps: Pick<
+    EndInterviewSessionDeps,
+    "finalize" | "settleCredit" | "updateMotivation"
+  >,
   validationOverride?: SessionValidation
 ): Promise<SettleInterviewSessionResult> {
   const completion = await deps.finalize({ ...input, validationOverride });
   if (!completion.ok) return completion;
+
+  // Terminal truth is durable at this point. Keep settlement failures visible
+  // so an authoritative caller retries the same idempotent completion.
+  await deps.settleCredit(input.sessionId);
 
   if (
     completion.disposition === "applied" &&
@@ -164,6 +173,7 @@ export function createEndInterviewSessionDeps(): EndInterviewSessionDeps {
   return {
     authorize: authorizeInterviewSessionEnd,
     finalize: finalizeInterviewSession,
+    settleCredit: convergeDrizzleInterviewCreditSettlement,
     dispatch: dispatchFeedbackGenerationWorkflow,
     updateMotivation: updateCompletionMotivation,
   };

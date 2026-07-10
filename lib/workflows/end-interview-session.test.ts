@@ -167,11 +167,48 @@ test("a caller-provided validation snapshot is finalized without revalidation", 
         finalizedValidation = input.validationOverride ?? null;
         return completion();
       },
+test("terminal credit settlement completes before feedback dispatch", async () => {
+  const order: string[] = [];
+  const result = await endInterviewSessionWorkflow(
+    userEndInput(),
+    createDeps({
+      finalize: async () => {
+        order.push("finalize");
+        return completion();
+      },
+      settleCredit: async () => {
+        order.push("settle_credit");
+      },
+      dispatch: async () => {
+        order.push("dispatch_feedback");
+        return sentDispatch();
+      },
     })
   );
 
   assert.equal(result.ok, true);
   assert.equal(finalizedValidation, snapshot);
+  assert.deepEqual(order, ["finalize", "settle_credit", "dispatch_feedback"]);
+});
+
+test("a failed terminal credit settlement stays retryable and blocks dispatch", async () => {
+  let dispatches = 0;
+  await assert.rejects(
+    endInterviewSessionWorkflow(
+      userEndInput(),
+      createDeps({
+        settleCredit: async () => {
+          throw new Error("credit settlement unavailable");
+        },
+        dispatch: async () => {
+          dispatches += 1;
+          return sentDispatch();
+        },
+      })
+    ),
+    /credit settlement unavailable/
+  );
+  assert.equal(dispatches, 0);
 });
 
 test("hard deadline sends a system time-limit command and dispatches for the stored owner", async () => {
@@ -295,6 +332,7 @@ function createDeps(
   return {
     authorize: async () => true,
     finalize: async () => completion(),
+    settleCredit: async () => undefined,
     dispatch: async () => sentDispatch(),
     updateMotivation: async () => undefined,
     ...overrides,

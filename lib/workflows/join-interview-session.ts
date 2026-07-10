@@ -6,7 +6,6 @@ import { getSessionForLiveKitJoin } from "@/lib/db/sessions";
 import { consumeReconnectRateLimit } from "@/lib/db/rate-limits";
 import {
   deriveInterviewDeadlineAt,
-  isInterviewDeadlineReached,
   normalizeInterviewDurationMinutes,
   type InterviewLifecycleState,
 } from "@/lib/internal/core";
@@ -25,6 +24,9 @@ export interface JoinableInterviewSession {
   config: unknown;
   startedAt: Date | null;
   endedAt: Date | null;
+  startContractVersion?: number;
+  provisioningState?: string;
+  provisionedAt?: Date | null;
   status: string;
   lifecycleState: InterviewLifecycleState;
   lifecycleVersion: number;
@@ -159,9 +161,9 @@ export async function joinInterviewSessionWorkflow(
     };
   }
 
-  // Session creation already reserved and consumed one interview credit. The
-  // owned, active voice session is the reconnect entitlement; checking the
-  // user's remaining balance here would reject the credit they just consumed.
+  // Stable session creation already owns one reservation. The ready voice
+  // session is the join entitlement; checking the user's remaining balance
+  // here would reject the credit already bound to this attempt.
   const authorization = deriveJoinAuthorization(session, session.databaseNow);
   if (!authorization) {
     deps.audit({
@@ -321,13 +323,24 @@ function deriveJoinAuthorization(
   ttlSeconds: number;
 } | null {
   if (
+    !isValidDate(now) ||
     session.mode !== "voice_video" ||
     !["connecting", "active", "reconnecting"].includes(
       session.lifecycleState
     ) ||
     session.endedAt ||
     !session.livekitRoomName ||
-    !session.startedAt
+    !isValidDate(session.startedAt)
+  ) {
+    return null;
+  }
+
+  const startContractVersion = session.startContractVersion ?? 0;
+  if (
+    (startContractVersion !== 0 && startContractVersion !== 1) ||
+    (startContractVersion === 1 &&
+      (session.provisioningState !== "ready" ||
+        !isValidDate(session.provisionedAt)))
   ) {
     return null;
   }
@@ -379,6 +392,10 @@ function getSessionDurationMinutes(config: unknown): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isValidDate(value: Date | null | undefined): value is Date {
+  return value instanceof Date && Number.isFinite(value.getTime());
 }
 
 function isUuid(value: string): boolean {

@@ -1512,6 +1512,8 @@ test("partial legacy reservations fail closed instead of guessing balances", asy
     status: "active",
     credits: 1,
     sessionId: null,
+    startContractVersion: 0,
+    startAttemptId: null,
     expiresAt: new Date("2026-07-01T00:00:00.000Z"),
     metadata: null,
   });
@@ -1542,6 +1544,8 @@ test("impossible reserve balance evidence fails closed", async () => {
     status: "active",
     credits: 1,
     sessionId: null,
+    startContractVersion: 0,
+    startAttemptId: null,
     expiresAt: new Date(Date.now() + 30 * 60_000),
     metadata: null,
   });

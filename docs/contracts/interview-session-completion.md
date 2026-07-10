@@ -46,11 +46,23 @@ Equivalent replays return the stored result. An existing terminal reason is immu
 
 ## Durable Signal And Terminal Outcome
 
-A persisted transcript turn is durable evidence that the session became usable. When terminalization sees such evidence before a terminal claim, it may advance a not-yet-active session through the required `active` edge before claiming `ending`.
+Transcript volume never creates canonical activation. Activation comes only
+from the signed LiveKit candidate-and-agent presence workflow.
 
-- Eligible signal plus `user_end` derives `completed` after activation.
-- Ineligible signal claims `insufficient_signal` and derives `abandoned`.
-- An existing `ending` or terminal claim keeps its stored reason and derives only the matching terminal state.
+Version-1 credit usability requires both canonical activation and a persisted,
+non-blank version-2 interviewer turn whose delivery state is `delivered`.
+Partial, interrupted, user, legacy, textless, and integrity-marker records do
+not qualify. The usable marker and credit consumption commit atomically behind
+the owning user lock. A terminal session without usable evidence releases its
+reservation; a usable session retains the charge regardless of user end,
+deadline, abandonment, or feedback-generation outcome.
+
+- Valid completion signal plus `user_end` derives `completed` only when the
+  lifecycle was canonically activated.
+- Ineligible completion signal claims `insufficient_signal` and derives
+  `abandoned`.
+- An existing `ending` or terminal claim keeps its stored reason and derives
+  only the matching terminal state.
 
 The final stats are calculated inside the terminal transaction after it locks
 the same session row used by canonical transcript ingest. Explicit browser end
@@ -63,6 +75,11 @@ transcript snapshot for statistics, feedback eligibility, and outcome. An
 invalid snapshot may versionedly refine only that provisional ending reason to
 `insufficient_signal`; user, provider, reconnect, and terminal reasons are not
 rewritten.
+
+System deadlines settle the durable evidence available when they acquire the
+row. After terminal truth commits, the end workflow converges the version-1
+credit reservation before dispatching feedback; settlement failure stays
+retryable and does not change feedback eligibility.
 
 ## Feedback Result
 

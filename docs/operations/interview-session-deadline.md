@@ -8,6 +8,9 @@ and [Interview Session Completion](../contracts/interview-session-completion.md)
 - LiveKit server URL, API key, and API secret for server-side room deletion.
 - `LIVEKIT_INTERVIEW_AGENT_NAME` for the full interview worker.
 - `INNGEST_EVENT_KEY` so start can receive provider acknowledgement for the scheduled deadline event.
+- A public HTTPS callback origin. `NEXT_PUBLIC_APP_URL` is preferred; Vercel
+  deployments safely derive the current deployment origin from `VERCEL_URL`.
+  Non-development starts fail closed when neither is available.
 - An isolated Preview database identity. Do not rehearse against Production data.
 
 Session start fails closed and removes the room if the deadline event cannot be acknowledged. The user is not given room credentials for an interview without a server-owned deadline.

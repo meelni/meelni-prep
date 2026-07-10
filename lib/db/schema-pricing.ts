@@ -7,12 +7,15 @@ import {
   boolean,
   index,
   unique,
+  uniqueIndex,
   check,
   jsonb,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 import { appUser } from "./schema-core";
+import { interviewSession } from "./schema-session";
 
 /**
  * Phase 0.5A: Pricing & Subscription Tables
@@ -243,6 +246,10 @@ export const creditReservation = pgTable(
     status: text("status").notNull().default("active"),
     credits: integer("credits").default(1).notNull(),
     sessionId: uuid("session_id"),
+    startContractVersion: integer("start_contract_version")
+      .default(0)
+      .notNull(),
+    startAttemptId: uuid("start_attempt_id"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -267,6 +274,42 @@ export const creditReservation = pgTable(
       "credit_reservation_credits_check",
       sql`${table.credits} > 0`
     ),
+    startContractVersionCheck: check(
+      "credit_reservation_start_contract_version_check",
+      sql`${table.startContractVersion} IN (0, 1)`
+    ),
+    startContractShapeCheck: check(
+      "credit_reservation_start_contract_shape_check",
+      sql`(
+        ${table.startContractVersion} = 0 AND
+        ${table.startAttemptId} IS NULL
+      ) OR (
+        ${table.startContractVersion} = 1 AND
+        ${table.sessionId} IS NOT NULL AND
+        ${table.startAttemptId} IS NOT NULL AND
+        ${table.sessionId} = ${table.startAttemptId} AND
+        ${table.reservationKey} =
+          'interview-start:' || ${table.userId}::text || ':' ||
+          ${table.startAttemptId}::text
+      )`
+    ),
+    sessionCorrelationReference: foreignKey({
+      name: "credit_reservation_session_user_start_attempt_fk",
+      columns: [table.sessionId, table.userId, table.startAttemptId],
+      foreignColumns: [
+        interviewSession.id,
+        interviewSession.userId,
+        interviewSession.startAttemptId,
+      ],
+    })
+      .onUpdate("no action")
+      .onDelete("no action"),
+    stableSessionUnique: uniqueIndex("credit_reservation_session_v1_idx")
+      .on(table.sessionId)
+      .where(sql`${table.startContractVersion} = 1`),
+    stableAttemptUnique: uniqueIndex("credit_reservation_start_attempt_idx")
+      .on(table.userId, table.startAttemptId)
+      .where(sql`${table.startContractVersion} = 1`),
   })
 );
 
