@@ -18,11 +18,11 @@ import postgres from "postgres";
 import { buildStripeDeletionSubjects } from "../lib/billing/stripe-privacy";
 
 import {
-  ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
+  INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
@@ -112,7 +112,7 @@ async function run() {
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
     assert.equal(
       cleanFingerprint,
-      ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+      INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
     );
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
@@ -1044,7 +1044,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 8);
+  assert.equal(await migrationCount(sql), 9);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
