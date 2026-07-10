@@ -49,7 +49,8 @@ const envVars: EnvVarConfig[] = [
   },
   {
     name: "DEMO_ABUSE_HMAC_SECRET",
-    required: true,
+    required: false,
+    requiredInProduction: true,
     description:
       "Dedicated 32-byte base64url secret for public voice preview abuse controls",
     pattern: /^[A-Za-z0-9_-]{43}$/,
