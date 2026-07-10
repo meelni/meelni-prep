@@ -5,12 +5,16 @@ import { fileURLToPath } from "node:url";
 
 import { config } from "dotenv";
 
+import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-guard.mjs";
+
 export function getDatabaseCommandPolicy({
   command,
   databaseUrl,
   envFile,
   allowRemoteMigration = false,
   allowRemoteStudio = false,
+  environment,
+  productionProjectRef,
 }) {
   if (!databaseUrl) {
     return { allowed: false, reason: "DATABASE_URL is not configured" };
@@ -57,7 +61,17 @@ export function getDatabaseCommandPolicy({
     };
   }
 
-  return { allowed: true, reason: local ? "local" : "explicit_remote" };
+  if (!local) {
+    const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
+      databaseUrl,
+      environment,
+      productionProjectRef,
+    });
+    if (!identityPolicy.allowed) return identityPolicy;
+    return identityPolicy;
+  }
+
+  return { allowed: true, reason: "local" };
 }
 
 function main() {
@@ -93,9 +107,16 @@ function main() {
     envFile: explicitEnvFile,
     allowRemoteMigration: process.env.MEELNI_ALLOW_REMOTE_MIGRATION === "1",
     allowRemoteStudio: process.env.MEELNI_ALLOW_REMOTE_STUDIO === "1",
+    environment: explicitEnvFile
+      ? loaded.parsed?.MEELNI_ENV_PULL_ENVIRONMENT
+      : process.env.MEELNI_ENV_PULL_ENVIRONMENT,
+    productionProjectRef: explicitEnvFile
+      ? loaded.parsed?.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF
+      : process.env.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF,
   });
   if (!policy.allowed) throw new Error(policy.reason);
 
+  console.info(`Database environment identity: ${policy.reason}`);
   console.info(
     `Database target fingerprint: ${databaseTargetFingerprint(process.env.DATABASE_URL)}`
   );

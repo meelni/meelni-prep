@@ -8,11 +8,11 @@ import test from "node:test";
 import { getDatabaseCommandPolicy } from "./database-command.mjs";
 
 const local = "postgresql://postgres:postgres@127.0.0.1:5432/meelni_test";
-const remote = "postgresql://postgres:secret@db.example.invalid:5432/postgres";
-const pooler =
-  "postgresql://postgres:secret@aws.example.pooler.invalid:6543/postgres";
-const sessionPooler =
-  "postgresql://postgres:secret@aws.example.pooler.invalid:5432/postgres";
+const previewRef = "previewprojectref123";
+const productionRef = "productionproject123";
+const remote = databaseUrl(previewRef, 5432);
+const pooler = databaseUrl(previewRef, 6543);
+const sessionPooler = databaseUrl(previewRef, 5432);
 
 test("database commands allow normal local development", () => {
   for (const command of ["migrate", "push", "studio"]) {
@@ -46,6 +46,8 @@ test("remote migrations require explicit env selection and confirmation", () => 
       databaseUrl: remote,
       envFile: ".env.production.local",
       allowRemoteMigration: true,
+      environment: "preview",
+      productionProjectRef: productionRef,
     }).allowed,
     true
   );
@@ -57,6 +59,8 @@ test("migrations reject transaction pooler connections", () => {
     databaseUrl: pooler,
     envFile: ".env.production.local",
     allowRemoteMigration: true,
+    environment: "preview",
+    productionProjectRef: productionRef,
   });
   assert.equal(policy.allowed, false);
   assert.match(policy.reason, /direct or session/);
@@ -68,8 +72,58 @@ test("migrations allow explicitly selected session pooler connections", () => {
     databaseUrl: sessionPooler,
     envFile: ".env.production.local",
     allowRemoteMigration: true,
+    environment: "preview",
+    productionProjectRef: productionRef,
   });
   assert.equal(policy.allowed, true);
+
+  const productionPolicy = getDatabaseCommandPolicy({
+    command: "migrate",
+    databaseUrl: databaseUrl(productionRef, 5432),
+    envFile: ".env.production.local",
+    allowRemoteMigration: true,
+    environment: "production",
+    productionProjectRef: productionRef,
+  });
+  assert.equal(productionPolicy.allowed, true);
+  assert.equal(productionPolicy.reason, "verified_production");
+});
+
+test("remote migrations fail closed on missing or mismatched environment identity", () => {
+  const missingDeclaration = getDatabaseCommandPolicy({
+    command: "migrate",
+    databaseUrl: remote,
+    envFile: ".env.local",
+    allowRemoteMigration: true,
+    environment: "preview",
+  });
+  assert.equal(missingDeclaration.allowed, false);
+  assert.match(
+    missingDeclaration.reason,
+    /MEELNI_PRODUCTION_SUPABASE_PROJECT_REF/
+  );
+
+  const previewTargetsProduction = getDatabaseCommandPolicy({
+    command: "migrate",
+    databaseUrl: databaseUrl(productionRef, 5432),
+    envFile: ".env.local",
+    allowRemoteMigration: true,
+    environment: "preview",
+    productionProjectRef: productionRef,
+  });
+  assert.equal(previewTargetsProduction.allowed, false);
+  assert.match(previewTargetsProduction.reason, /Preview database target/);
+
+  const productionTargetsPreview = getDatabaseCommandPolicy({
+    command: "migrate",
+    databaseUrl: remote,
+    envFile: ".env.production.local",
+    allowRemoteMigration: true,
+    environment: "production",
+    productionProjectRef: productionRef,
+  });
+  assert.equal(productionTargetsPreview.allowed, false);
+  assert.match(productionTargetsPreview.reason, /Production database target/);
 });
 
 test("a missing explicit env file fails closed despite an ambient database URL", () => {
@@ -112,3 +166,40 @@ test("an explicit env file wins over an ambient database URL", async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("the selected env file supplies remote migration identity", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "meelni-db-identity-"));
+  const envFile = join(directory, ".env.local");
+  await writeFile(
+    envFile,
+    [
+      `DATABASE_URL=${databaseUrl(productionRef, 5432)}`,
+      "MEELNI_ENV_PULL_ENVIRONMENT=preview",
+      `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF=${productionRef}`,
+      "",
+    ].join("\n")
+  );
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [new URL("./database-command.mjs", import.meta.url).pathname, "migrate"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          DATABASE_URL: local,
+          MEELNI_ALLOW_REMOTE_MIGRATION: "1",
+          MEELNI_ENV_FILE: envFile,
+        },
+      }
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Preview database target matches/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+function databaseUrl(ref, port) {
+  return `postgresql://postgres.${ref}:secret@aws-0-us-west-1.pooler.supabase.com:${port}/postgres`;
+}

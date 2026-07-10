@@ -84,6 +84,10 @@ Guidelines:
   `.env.production.local`. The refresh validates Supabase project alignment and
   atomically replaces a private `0600` file. It does not scrape deployed sites
   or borrow values across environments.
+- Configure the non-secret `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF` in both
+  Vercel Preview and Production. Preview refreshes must prove their database
+  project differs from that ref; Production refreshes must prove it matches.
+  Missing or malformed identity metadata blocks the refresh before replacement.
 - Encrypted Vercel values can pull as present-but-blank. A usable value in the
   same existing environment file is preserved. If none exists, restore or
   rotate it from the provider dashboard and update the same Vercel environment;
@@ -157,6 +161,12 @@ Operational notes:
 - If login redirects to `xxx.supabase.co`, local `.env.local` still has placeholder Supabase values.
 - Use `npm run setup:local` or run `npx vercel@55.0.0 link --yes --project meelni` from the worktree, then `npm run env:pull` to refresh local auth envs.
 - Restart `npm run dev:local` after env changes so Next.js serves the updated public Supabase URL.
+- Shared database tooling uses `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF` as a
+  fail-closed identity anchor. `db:preflight:preview` and
+  `db:migrate:preview` require a Preview database ref different from the
+  declared Production ref. Their Production counterparts require an exact
+  match. Loopback PostgreSQL URLs bypass the shared-environment identity check
+  so disposable local migration tests and local development remain usable.
 - Check provider restore coverage without exposing credentials:
 
   ```bash

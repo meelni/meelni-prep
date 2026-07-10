@@ -44,6 +44,21 @@ test("livekit env contract captures server keys and websocket URL alternatives",
   ]);
 });
 
+test("Supabase env contract includes the non-secret Production identity guard", () => {
+  assert.deepEqual(listProviderEnvVars("supabase"), [
+    "DATABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "MEELNI_PRODUCTION_SUPABASE_PROJECT_REF",
+    "SUPABASE_SERVICE_ROLE_KEY",
+  ]);
+  assert.deepEqual(findMissingRequiredEnv("supabase", {}), [
+    "DATABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  ]);
+});
+
 test("missing env detection supports required vars and at-least-one groups", () => {
   const missing = findMissingRequiredEnv("livekit", {
     LIVEKIT_API_KEY: "key",

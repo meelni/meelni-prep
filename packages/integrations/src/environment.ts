@@ -46,6 +46,12 @@ export const PROVIDER_ENV_CONTRACTS: Record<
     ],
     optional: [
       env(
+        "MEELNI_PRODUCTION_SUPABASE_PROJECT_REF",
+        "Non-secret Production Supabase project ref required for shared database operations.",
+        "server",
+        false
+      ),
+      env(
         "SUPABASE_SERVICE_ROLE_KEY",
         "Server-only key for privileged maintenance tasks.",
         "server",
