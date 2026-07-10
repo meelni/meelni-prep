@@ -57,6 +57,13 @@
       "when": 1783636529232,
       "tag": "0007_atomic_session_completion",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783703070490,
+      "tag": "0008_durable_contact_submission",
+      "breakpoints": true
     }
   ]
 }

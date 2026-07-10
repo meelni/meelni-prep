@@ -1,7 +1,21 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { useRef, useState } from "react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Bug,
+  CheckCircle,
+  CreditCard,
+  HelpCircle,
+  Lightbulb,
+  Mail,
+  MessageSquare,
+  Send,
+} from "lucide-react";
+
+import { Icons } from "@/components/icons";
 import {
   MarketingCard,
   MarketingCtaCard,
@@ -22,21 +36,10 @@ import {
   SelectableCardIcon,
 } from "@/components/ui/selectable-card";
 import { Textarea } from "@/components/ui/textarea";
-import { Icons } from "@/components/icons";
-import {
-  Mail,
-  MessageSquare,
-  Send,
-  ArrowLeft,
-  CheckCircle,
-  AlertCircle,
-  CreditCard,
-  HelpCircle,
-  Bug,
-  Lightbulb,
-} from "lucide-react";
-
-type ContactReason = "billing" | "support" | "bug" | "feedback" | "other";
+import type {
+  ContactReason,
+  ContactSubmissionResponse,
+} from "@/lib/contact/contracts";
 
 interface FormData {
   name: string;
@@ -45,6 +48,43 @@ interface FormData {
   subject: string;
   message: string;
 }
+
+interface SubmissionError {
+  title: string;
+  message: string;
+}
+
+const reasons: Array<{
+  value: ContactReason;
+  label: string;
+  icon: React.ReactNode;
+}> = [
+  {
+    value: "billing",
+    label: "Billing & Subscription",
+    icon: <CreditCard className="h-4 w-4" />,
+  },
+  {
+    value: "support",
+    label: "General Support",
+    icon: <HelpCircle className="h-4 w-4" />,
+  },
+  {
+    value: "bug",
+    label: "Report a Bug",
+    icon: <Bug className="h-4 w-4" />,
+  },
+  {
+    value: "feedback",
+    label: "Feature Request",
+    icon: <Lightbulb className="h-4 w-4" />,
+  },
+  {
+    value: "other",
+    label: "Other",
+    icon: <MessageSquare className="h-4 w-4" />,
+  },
+];
 
 export default function ContactPage() {
   const [formData, setFormData] = useState<FormData>({
@@ -55,63 +95,88 @@ export default function ContactPage() {
     message: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [error, setError] = useState<SubmissionError | null>(null);
+  const idempotencyKey = useRef<string | null>(null);
 
-  const reasons: { value: ContactReason; label: string; icon: React.ReactNode }[] = [
-    { value: "billing", label: "Billing & Subscription", icon: <CreditCard className="w-4 h-4" /> },
-    { value: "support", label: "General Support", icon: <HelpCircle className="w-4 h-4" /> },
-    { value: "bug", label: "Report a Bug", icon: <Bug className="w-4 h-4" /> },
-    { value: "feedback", label: "Feature Request", icon: <Lightbulb className="w-4 h-4" /> },
-    { value: "other", label: "Other", icon: <MessageSquare className="w-4 h-4" /> },
-  ];
+  const updateForm = <Key extends keyof FormData>(
+    field: Key,
+    value: FormData[Key]
+  ) => {
+    idempotencyKey.current = null;
+    setError(null);
+    setFormData((current) => ({ ...current, [field]: value }));
+  };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setIsSubmitting(true);
     setError(null);
+
+    if (!idempotencyKey.current) {
+      idempotencyKey.current = crypto.randomUUID();
+    }
 
     try {
       const response = await fetch("/api/contact", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey.current,
         },
         body: JSON.stringify(formData),
       });
+      const result = (await response.json()) as ContactSubmissionResponse;
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to send message");
+      if (response.ok && result.ok && result.state === "stored") {
+        setReceiptId(result.receiptId);
+        return;
       }
 
-      setSubmitted(true);
-    } catch (err) {
-      console.error("Contact form error:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to send message. Please try emailing us directly at support@meelni.com"
-      );
+      if (!result.ok) {
+        if (result.code === "idempotency_conflict") {
+          idempotencyKey.current = null;
+        }
+        setError({
+          title:
+            result.code === "rate_limited"
+              ? "Please wait before trying again"
+              : "Request not saved",
+          message: result.message,
+        });
+        return;
+      }
+
+      setError({
+        title: "Request not saved",
+        message:
+          "We could not confirm that your request was saved. Try again or email support@meelni.com directly.",
+      });
+    } catch {
+      setError({
+        title: "Request not saved",
+        message:
+          "We could not reach the support inbox. Try again or email support@meelni.com directly.",
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (submitted) {
+  if (receiptId) {
     return (
       <MarketingPage className="flex items-center justify-center p-4">
         <MarketingCtaCard
           className="w-full max-w-md"
           tone="success"
           mark={<CheckCircle className="h-8 w-8" />}
-          title="Message Sent"
-          description="Thank you for reaching out. We'll get back to you within 24 hours."
+          title="Request saved"
+          description="Your request is stored in our support inbox. We’ll reply to the email address you provided."
           action={
             <div className="flex w-full flex-col gap-3">
               <Button asChild variant="outline" className="w-full">
                 <Link href="/">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  <ArrowLeft className="mr-2 h-4 w-4" />
                   Return to Home
                 </Link>
               </Button>
@@ -121,10 +186,10 @@ export default function ContactPage() {
             </div>
           }
           footer={
-            formData.reason === "billing"
-              ? "For billing issues, we prioritize responses within 4 hours during business hours."
-              : undefined
+            <span className="font-mono text-xs">Receipt: {receiptId}</span>
           }
+          role="status"
+          aria-live="polite"
         />
       </MarketingPage>
     );
@@ -132,17 +197,18 @@ export default function ContactPage() {
 
   return (
     <MarketingPage>
-      {/* Header */}
-      <header className="border-b border-border/60 bg-background/95 backdrop-blur-lg sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <header className="border-border/60 bg-background/95 sticky top-0 z-50 border-b backdrop-blur-lg">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-x-2">
-              <Icons.logo className="h-6 w-6 text-primary" />
-              <span className="text-xl font-sans font-semibold text-foreground">Meelni</span>
+              <Icons.logo className="text-primary h-6 w-6" />
+              <span className="text-foreground font-sans text-xl font-semibold">
+                Meelni
+              </span>
             </Link>
             <Button asChild variant="ghost" size="sm">
               <Link href="/">
-                <ArrowLeft className="w-4 h-4 mr-2" />
+                <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Home
               </Link>
             </Button>
@@ -150,39 +216,42 @@ export default function ContactPage() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="space-y-8">
-          {/* Page Header */}
           <MarketingHero
             className="mb-0"
             eyebrow={<MarketingEyebrow icon={Mail}>Support</MarketingEyebrow>}
             title="Contact Us"
-            description="Have a question, need help with your subscription, or want to share feedback? We're here to help."
+            description="Have a question, need help with your subscription, or want to share feedback? Send a request or email us directly."
           />
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {/* Contact Form */}
+          <div className="grid gap-8 md:grid-cols-3">
             <AppSurface size="none" className="md:col-span-2">
-              <div className="border-b border-border/60 p-6">
+              <div className="border-border/60 border-b p-6">
                 <AppSurfaceTitle className="font-display font-light">
-                  Send us a message
+                  Send a support request
                 </AppSurfaceTitle>
                 <AppSurfaceDescription className="mt-1 text-sm">
-                  Fill out the form below and we'll get back to you as soon as possible.
+                  We’ll save your request before confirming it was received.
                 </AppSurfaceDescription>
               </div>
               <div className="p-6">
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  {/* Name & Email Row */}
-                  <div className="grid sm:grid-cols-2 gap-4">
+                <form
+                  onSubmit={handleSubmit}
+                  className="space-y-6"
+                  aria-busy={isSubmitting}
+                >
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="name">Name</Label>
                       <Input
                         id="name"
                         value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="Your name"
+                        onChange={(event) =>
+                          updateForm("name", event.target.value)
+                        }
+                        autoComplete="name"
+                        maxLength={100}
                         required
                       />
                     </div>
@@ -192,23 +261,26 @@ export default function ContactPage() {
                         id="email"
                         type="email"
                         value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        placeholder="your@email.com"
+                        onChange={(event) =>
+                          updateForm("email", event.target.value)
+                        }
+                        autoComplete="email"
+                        maxLength={320}
                         required
                       />
                     </div>
                   </div>
 
-                  {/* Reason Selection */}
-                  <div className="space-y-2">
-                    <Label>What can we help you with?</Label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm leading-none font-medium">
+                      What can we help you with?
+                    </legend>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {reasons.map((reason) => (
                         <SelectableCard
                           key={reason.value}
-                          type="button"
                           selected={formData.reason === reason.value}
-                          onClick={() => setFormData({ ...formData, reason: reason.value })}
+                          onClick={() => updateForm("reason", reason.value)}
                           className="flex items-center gap-2 p-3 text-sm"
                         >
                           <SelectableCardIcon
@@ -221,53 +293,73 @@ export default function ContactPage() {
                         </SelectableCard>
                       ))}
                     </div>
-                  </div>
+                  </fieldset>
 
-                  {/* Subject */}
                   <div className="space-y-2">
                     <Label htmlFor="subject">Subject</Label>
                     <Input
                       id="subject"
                       value={formData.subject}
-                      onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                      placeholder="Brief description of your inquiry"
+                      onChange={(event) =>
+                        updateForm("subject", event.target.value)
+                      }
+                      maxLength={200}
                       required
                     />
                   </div>
 
-                  {/* Message */}
                   <div className="space-y-2">
                     <Label htmlFor="message">Message</Label>
                     <Textarea
                       id="message"
                       value={formData.message}
-                      onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                      placeholder="Please provide as much detail as possible..."
+                      onChange={(event) =>
+                        updateForm("message", event.target.value)
+                      }
+                      placeholder="Include the details we’ll need to help."
+                      minLength={10}
+                      maxLength={5000}
                       required
                       rows={6}
-                      className="resize-none"
+                      className="resize-y"
                     />
                   </div>
 
-                  {/* Error Message */}
                   {error && (
-                    <AppSurface className="flex items-start gap-3 border-destructive/20 bg-destructive/5">
-                      <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium text-destructive">Failed to send message</p>
-                        <p className="text-xs text-muted-foreground">{error}</p>
+                    <AppSurface
+                      className="border-destructive/20 bg-destructive/5 flex items-start gap-3"
+                      role="alert"
+                      aria-live="assertive"
+                    >
+                      <AlertCircle className="text-destructive mt-0.5 h-5 w-5 shrink-0" />
+                      <div className="space-y-2">
+                        <p className="text-destructive text-sm font-medium">
+                          {error.title}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          {error.message}
+                        </p>
+                        <a
+                          href="mailto:support@meelni.com"
+                          className="text-primary inline-block text-xs font-medium hover:underline"
+                        >
+                          Email support@meelni.com
+                        </a>
                       </div>
                     </AppSurface>
                   )}
 
-                  {/* Submit Button */}
-                  <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={isSubmitting}
+                  >
                     {isSubmitting ? (
-                      "Sending..."
+                      "Saving request…"
                     ) : (
                       <>
-                        <Send className="w-4 h-4 mr-2" />
-                        Send Message
+                        <Send className="mr-2 h-4 w-4" />
+                        Save request
                       </>
                     )}
                   </Button>
@@ -275,97 +367,69 @@ export default function ContactPage() {
               </div>
             </AppSurface>
 
-            {/* Contact Info Sidebar */}
             <div className="space-y-6">
-              {/* Direct Contact */}
               <MarketingCard className="p-6">
                 <div className="pb-3">
-                  <h2 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-                    Direct Contact
+                  <h2 className="text-muted-foreground font-display text-sm font-light tracking-wider uppercase">
+                    Direct contact
                   </h2>
                 </div>
                 <div className="space-y-4">
-                  <a
-                    href="mailto:support@meelni.com"
-                    className="flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/50 transition-colors group"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Mail className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                        support@meelni.com
-                      </p>
-                      <p className="text-xs text-muted-foreground">General support</p>
-                    </div>
-                  </a>
-                  <a
-                    href="mailto:billing@meelni.com"
-                    className="flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/50 transition-colors group"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <CreditCard className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                        billing@meelni.com
-                      </p>
-                      <p className="text-xs text-muted-foreground">Billing inquiries</p>
-                    </div>
-                  </a>
+                  <ContactEmail
+                    address="support@meelni.com"
+                    label="General support"
+                    icon={<Mail className="h-5 w-5" />}
+                  />
+                  <ContactEmail
+                    address="billing@meelni.com"
+                    label="Billing inquiries"
+                    icon={<CreditCard className="h-5 w-5" />}
+                  />
                 </div>
               </MarketingCard>
 
-              {/* Response Times */}
               <MarketingCard className="p-6">
                 <div className="pb-3">
-                  <h2 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-                    Response Times
+                  <h2 className="text-muted-foreground font-display text-sm font-light tracking-wider uppercase">
+                    What happens next
                   </h2>
                 </div>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Billing Issues</span>
-                    <span className="font-medium text-foreground">&lt; 4 hours</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">General Support</span>
-                    <span className="font-medium text-foreground">&lt; 24 hours</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Feature Requests</span>
-                    <span className="font-medium text-foreground">&lt; 48 hours</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground pt-2 border-t border-border">
-                    Business hours: Mon-Fri, 9am-6pm PST
-                  </p>
-                </div>
+                <ol className="text-muted-foreground space-y-3 text-sm">
+                  <li>Your request is saved with a receipt.</li>
+                  <li>Our support team reviews the details.</li>
+                  <li>We reply to the email address you provide.</li>
+                </ol>
               </MarketingCard>
 
-              {/* Quick Help */}
               <MarketingCard className="p-6">
                 <div className="pb-3">
-                  <h2 className="text-sm font-display font-light text-muted-foreground tracking-wider uppercase">
-                    Quick Help
+                  <h2 className="text-muted-foreground font-display text-sm font-light tracking-wider uppercase">
+                    Quick help
                   </h2>
                 </div>
                 <div className="space-y-2">
                   <Link
                     href="/dashboard?section=settings"
-                    className="block text-sm text-primary hover:underline"
+                    className="text-primary block text-sm hover:underline"
                   >
                     Cancel or modify subscription
                   </Link>
                   <Link
                     href="/dashboard?section=billing"
-                    className="block text-sm text-primary hover:underline"
+                    className="text-primary block text-sm hover:underline"
                   >
                     View billing history
                   </Link>
-                  <Link href="/privacy" className="block text-sm text-primary hover:underline">
+                  <Link
+                    href="/privacy"
+                    className="text-primary block text-sm hover:underline"
+                  >
                     Privacy Policy
                   </Link>
-                  <Link href="/terms" className="block text-sm text-primary hover:underline">
+                  <Link
+                    href="/terms"
+                    className="text-primary block text-sm hover:underline"
+                  >
                     Terms of Service
                   </Link>
                 </div>
@@ -375,5 +439,32 @@ export default function ContactPage() {
         </div>
       </main>
     </MarketingPage>
+  );
+}
+
+function ContactEmail({
+  address,
+  label,
+  icon,
+}: {
+  address: string;
+  label: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <a
+      href={`mailto:${address}`}
+      className="border-border hover:border-primary/50 group flex items-center gap-3 rounded-lg border p-3 transition-colors"
+    >
+      <span className="bg-primary/10 text-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="text-foreground group-hover:text-primary block truncate text-sm font-medium transition-colors">
+          {address}
+        </span>
+        <span className="text-muted-foreground block text-xs">{label}</span>
+      </span>
+    </a>
   );
 }
