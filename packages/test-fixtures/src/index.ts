@@ -17,6 +17,7 @@ export * from "./session-lifecycle";
 export * from "./dashboard-progress";
 export * from "./feedback-v2";
 export * from "./evaluation-validation";
+export * from "./feedback-generation";
 
 export const FIXTURE_CLOCK = {
   startedAt: new Date("2026-06-27T17:30:00.000Z"),

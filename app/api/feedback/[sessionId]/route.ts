@@ -91,9 +91,13 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
+import {
+  isFeedbackGenerationLeaseExpired,
+  isFeedbackGenerationRetryable,
+} from "@/lib/db/feedback-generation-state";
 import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
 import { isInterviewTerminalState } from "@meelni/core";
-import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
+import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
 
 // Estimated total processing time (seconds)
 const ESTIMATED_PROCESSING_TIME = 45;
@@ -158,16 +162,18 @@ export async function GET(
 
     // Case 1: Pending - waiting to start processing
     if (status === "pending") {
+      const retryable = isFeedbackDispatchRetryable({
+        status: feedbackRecord.dispatchStatus,
+        claimedAt: feedbackRecord.dispatchClaimedAt,
+      });
       return NextResponse.json(
         {
           status: "pending",
+          retryable,
           estimatedTimeRemaining: ESTIMATED_PROCESSING_TIME,
           dispatch: {
             status: feedbackRecord.dispatchStatus,
-            retryable: isFeedbackDispatchRetryable({
-              status: feedbackRecord.dispatchStatus,
-              claimedAt: feedbackRecord.dispatchClaimedAt,
-            }),
+            retryable,
           },
         },
         {
@@ -197,6 +203,13 @@ export async function GET(
       return NextResponse.json(
         {
           status: "processing",
+          retryable:
+            feedbackRecord.dispatchStatus !== "not_required" &&
+            feedbackRecord.dispatchEventId !== null &&
+            isFeedbackGenerationLeaseExpired({
+              status,
+              processingStartedAt: feedbackRecord.processingStartedAt,
+            }),
           estimatedTimeRemaining,
         },
         {
@@ -272,11 +285,11 @@ export async function GET(
     if (status === "failed") {
       const retryable =
         feedbackRecord.dispatchStatus !== "not_required" &&
-        (feedbackRecord.dispatchStatus === "sent" ||
-          isFeedbackDispatchRetryable({
-            status: feedbackRecord.dispatchStatus,
-            claimedAt: feedbackRecord.dispatchClaimedAt,
-          }));
+        feedbackRecord.dispatchEventId !== null &&
+        isFeedbackGenerationRetryable({
+          status,
+          processingStartedAt: feedbackRecord.processingStartedAt,
+        });
       return NextResponse.json(
         {
           status: "failed",
@@ -320,20 +333,17 @@ export async function POST(
     }
 
     const { sessionId } = await params;
-    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
-    if (!isOwner) {
+    const result = await recoverFeedbackGenerationWorkflow({
+      sessionId,
+      userId: user.id,
+    });
+    if (!result.ok && result.reason === "not_found") {
       return NextResponse.json(
         { error: "Session not found or access denied" },
         { status: 404 }
       );
     }
-
-    const session = await getSessionById(sessionId);
-    if (
-      !session ||
-      (session.lifecycleState !== "ending" &&
-        !isInterviewTerminalState(session.lifecycleState))
-    ) {
+    if (!result.ok) {
       return NextResponse.json(
         {
           error: "session_not_ended",
@@ -342,36 +352,13 @@ export async function POST(
         { status: 409 }
       );
     }
-
-    const result = await endInterviewSessionWorkflow({
-      sessionId,
-      actor: { type: "user", userId: user.id },
-      requestedTerminalReason: "user_end",
-    });
-    if (!result.ok) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
-
-    const dispatchStatus =
-      result.dispatch?.dispatch?.status ??
-      result.completion.feedback.dispatchStatus;
-    const feedbackStatus =
-      result.completion.feedback.status === "failed" && result.dispatch?.ok
-        ? "pending"
-        : result.completion.feedback.status;
-    const retryable =
-      (feedbackStatus === "pending" || feedbackStatus === "failed") &&
-      isFeedbackDispatchRetryable({
-        status: dispatchStatus,
-        claimedAt:
-          result.dispatch?.dispatch?.claimedAt ??
-          result.completion.feedback.dispatchClaimedAt,
-      });
     return NextResponse.json(
       {
-        status: feedbackStatus,
-        feedbackId: result.completion.feedback.id,
-        dispatch: { status: dispatchStatus, retryable },
+        status: result.status,
+        retryable: result.retryable,
+        dispatch: result.dispatch
+          ? { status: result.dispatch.status, retryable: result.retryable }
+          : null,
       },
       { headers: { "Cache-Control": "private, no-store" } }
     );
