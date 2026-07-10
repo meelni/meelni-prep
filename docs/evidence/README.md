@@ -9,5 +9,7 @@ are local evidence only and deliberately keep live-provider launch acceptance
 pending.
 
 Its adjudication review manifest contains agent-authored synthetic candidates,
-not approved ground truth. Product-owner/PM signoff remains visibly pending and
-cannot be satisfied by a model run.
+not approved ground truth. It carries no approval flag or reviewer identity.
+Product-owner/PM signoff requires a separate validated hash-bound artifact,
+which is intentionally absent while review remains pending and cannot be
+satisfied by a model run.

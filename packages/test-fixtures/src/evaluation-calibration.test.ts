@@ -8,6 +8,7 @@ import {
   buildEvaluationAdjudicationReviewManifest,
   evaluationCalibrationCases,
 } from "./evaluation-calibration";
+import { SCORED_ADJUDICATIONS } from "./evaluation-calibration-adjudications";
 
 test("PM calibration gold set has ten fully synthetic cases per core round", () => {
   assert.equal(evaluationCalibrationCases.length, 40);
@@ -92,10 +93,6 @@ test("every gold case carries versioned adjudication and exact local evidence", 
       fixture.adjudicationProvenance,
       "agent_authored_synthetic_candidate"
     );
-    assert.equal(
-      fixture.adjudicationSignoff,
-      "pending_product_owner_pm_review"
-    );
     assert.equal(fixture.goldSetVersion, EVALUATION_GOLD_SET_VERSION);
     assert.equal(fixture.adjudicationVersion, EVALUATION_ADJUDICATION_VERSION);
     assert.equal(fixture.schemaVersion, "feedback.v2");
@@ -124,13 +121,16 @@ test("every gold case carries versioned adjudication and exact local evidence", 
   }
 });
 
-test("all 32 scored candidates contain semantically supported strength and gap evidence", () => {
+test("all 32 scored candidates use the independent exact-quote adjudication table", () => {
   const scored = evaluationCalibrationCases.filter(
     ({ expectedQuality }) => expectedQuality !== null
   );
   assert.equal(scored.length, 32);
+  assert.equal(Object.keys(SCORED_ADJUDICATIONS).length, 32);
 
   for (const fixture of scored) {
+    const expected = SCORED_ADJUDICATIONS[fixture.id];
+    assert.ok(expected, `${fixture.id}:table entry`);
     const strength = fixture.evidenceAnchors.find(
       ({ kind }) => kind === "strength"
     );
@@ -139,29 +139,57 @@ test("all 32 scored candidates contain semantically supported strength and gap e
     );
     assert.ok(strength, `${fixture.id}:strength`);
     assert.ok(improvement, `${fixture.id}:improvement`);
+    assert.deepEqual(
+      pickSemanticFields(strength),
+      pickExpectedFields(expected.strength)
+    );
+    assert.deepEqual(
+      pickSemanticFields(improvement),
+      pickExpectedFields(expected.improvement)
+    );
 
-    if (strength.behavior === "owned_specific_action") {
-      assert.match(
-        strength.quote,
-        /\bI (scheduled|gathered|restated|shared|modeled|documented)\b/i,
-        `${fixture.id}:owned action`
+    for (const finding of [strength, improvement]) {
+      const turn = fixture.transcript.find(
+        ({ eventId }) => eventId === finding.turnRef
       );
-    } else {
-      assert.equal(strength.behavior, "made_explicit_opening_decision");
-      assert.match(
-        strength.quote,
-        /\bI would (first|choose|define|target|start|focus|prioritize|separate|assign|distinguish|map|anchor|compare)\b/i,
-        `${fixture.id}:opening decision`
+      assert.ok(turn, `${fixture.id}:${finding.turnRef}`);
+      assert.ok(turn.text.includes(finding.quote));
+      assert.equal(finding.quote, finding.quote.trim());
+      assert.ok(
+        finding.quote.length < turn.text.length,
+        `${fixture.id}:minimal`
       );
     }
-    assert.doesNotMatch(strength.observation, /gap|missing/i);
-    assert.ok(strength.nextStep.length >= 20);
+    assert.ok(
+      fixture.transcript.every(
+        ({ text }) => !text.startsWith("A gap in my answer is")
+      ),
+      `${fixture.id}:no self-diagnosis turn`
+    );
+  }
+});
 
-    assert.equal(improvement.behavior, "identified_specific_gap");
-    assert.match(improvement.quote, /^A gap in my answer is .*not /i);
-    assert.match(improvement.observation, /gap unresolved\.$/);
-    assert.ok(improvement.nextStep.length >= 20);
-    assert.notEqual(strength.turnRef, improvement.turnRef);
+test("weak, average, and strong semantics are reviewed in every round", () => {
+  const representatives = [
+    "product_sense:01:caregiver-planning",
+    "product_sense:03:teacher-feedback",
+    "product_sense:08:clinic-followup",
+    "execution:01:merchant-onboarding",
+    "execution:04:mobile-migration",
+    "execution:07:warehouse-pilot",
+    "strategy:02:regional-expansion",
+    "strategy:03:bundling",
+    "strategy:05:education-entry",
+    "behavioral:02:failed-launch",
+    "behavioral:04:customer-escalation",
+    "behavioral:08:ethical-tradeoff",
+  ];
+  for (const id of representatives) {
+    const expected = SCORED_ADJUDICATIONS[id];
+    assert.ok(expected, id);
+    assert.ok(expected.strength.observation.length >= 20);
+    assert.ok(expected.improvement.observation.length >= 20);
+    assert.notEqual(expected.strength.quote, expected.improvement.quote);
   }
 });
 
@@ -169,15 +197,39 @@ test("review manifest keeps human PM signoff visibly pending", () => {
   const manifest = buildEvaluationAdjudicationReviewManifest();
   assert.equal(manifest.contractVersion, "evaluation-adjudication-review.v1");
   assert.equal(manifest.provenance, "agent_authored_synthetic_candidate");
-  assert.equal(manifest.signoff, "pending_product_owner_pm_review");
+  assert.equal(manifest.approvalRequired, true);
   assert.equal(manifest.scoredCaseCount, 32);
   assert.equal(manifest.cases.length, 32);
   assert.ok(
     manifest.cases.every(
-      ({ signoff, strength, improvement }) =>
-        signoff === "pending_product_owner_pm_review" &&
-        strength?.kind === "strength" &&
-        improvement?.kind === "improvement"
+      ({ strength, improvement }) =>
+        strength?.kind === "strength" && improvement?.kind === "improvement"
     )
   );
 });
+
+function pickSemanticFields(finding: {
+  dimension: string;
+  observation: string;
+  quote: string;
+  nextStep: string;
+  turnRef: string;
+}) {
+  return {
+    dimension: finding.dimension,
+    observation: finding.observation,
+    quote: finding.quote,
+    nextStep: finding.nextStep,
+    turnSequence: Number(finding.turnRef.split(":").at(-1)),
+  };
+}
+
+function pickExpectedFields(finding: {
+  dimension: string;
+  observation: string;
+  quote: string;
+  nextStep: string;
+  turnSequence: number;
+}) {
+  return { ...finding };
+}
