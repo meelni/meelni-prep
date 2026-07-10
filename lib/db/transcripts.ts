@@ -267,6 +267,34 @@ export async function getSessionTranscript(sessionId: string) {
 }
 
 /**
+ * Return only the canonical user-turn fields required to verify persisted
+ * feedback evidence at the authenticated read boundary.
+ */
+export async function getFeedbackEvidenceTurns(sessionId: string) {
+  return db
+    .select({
+      eventId: transcriptTurn.eventId,
+      speaker: transcriptTurn.speaker,
+      text: transcriptTurn.text,
+      contractVersion: transcriptTurn.contractVersion,
+    })
+    .from(transcriptTurn)
+    .where(
+      and(
+        eq(transcriptTurn.sessionId, sessionId),
+        eq(transcriptTurn.speaker, "user")
+      )
+    )
+    .orderBy(
+      asc(transcriptTurn.startedAt),
+      asc(transcriptTurn.writerId),
+      asc(transcriptTurn.sequence),
+      asc(transcriptTurn.eventId),
+      asc(transcriptTurn.id)
+    );
+}
+
+/**
  * Get a single transcript turn by ID
  */
 export async function getTranscriptTurnById(turnId: string) {

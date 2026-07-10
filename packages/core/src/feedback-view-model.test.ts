@@ -18,6 +18,20 @@ const finding = {
   rubricVersion: "pm-feedback-rubric.v2",
   confidence: 0.9,
 };
+const evidenceTurns = [
+  {
+    eventId: "writer:1",
+    speaker: "user",
+    text: "I would focus on working parents first.",
+    contractVersion: 2,
+  },
+  {
+    eventId: "writer:2",
+    speaker: "user",
+    text: "First, I would define the goal; first, I would then prioritize.",
+    contractVersion: 2,
+  },
+];
 
 function completed(
   overrides: Partial<PersistedCompletedFeedback> = {}
@@ -52,8 +66,15 @@ function completed(
   };
 }
 
+function present(
+  input: PersistedCompletedFeedback,
+  turns: readonly (typeof evidenceTurns)[number][] = evidenceTurns
+) {
+  return presentCompletedFeedback(input, { evidenceTurns: turns });
+}
+
 test("presents strict full and partial v2 feedback without score coercion", () => {
-  const full = presentCompletedFeedback(completed());
+  const full = present(completed());
   assert.equal(full.kind, "v2");
   if (full.kind !== "v2") return;
   assert.equal(full.scores.overall, 7.9);
@@ -68,14 +89,9 @@ test("presents strict full and partial v2 feedback without score coercion", () =
     "completed-full"
   );
 
-  assert.equal(
-    presentCompletedFeedback(completed({ overallScore: "7.900" })).kind,
-    "v2"
-  );
+  assert.equal(present(completed({ overallScore: "7.900" })).kind, "v2");
 
-  const partial = presentCompletedFeedback(
-    completed({ evaluationState: "partial" })
-  );
+  const partial = present(completed({ evaluationState: "partial" }));
   assert.equal(partial.kind, "v2");
   if (partial.kind !== "v2") return;
   assert.equal(
@@ -103,15 +119,85 @@ test("rejects malformed evidence, unsupported versions, absent scores, and overa
   ];
 
   for (const candidate of cases) {
-    assert.deepEqual(presentCompletedFeedback(candidate), {
+    assert.deepEqual(present(candidate), {
       kind: "invalid",
       reason: "incompatible_or_corrupt",
     });
   }
 });
 
+test("rejects persisted v2 evidence that is not grounded in canonical user turns", () => {
+  const inventedReference = completed({
+    strengths: [
+      {
+        ...finding,
+        transcriptRefs: ["does-not-exist"],
+        evidence: [
+          {
+            turnRef: "does-not-exist",
+            quote: "invented quote",
+          },
+        ],
+        confidence: 0.99,
+      },
+    ],
+  });
+  const inventedQuote = completed({
+    strengths: [
+      {
+        ...finding,
+        evidence: [{ turnRef: "writer:1", quote: "invented quote" }],
+      },
+    ],
+  });
+
+  assert.equal(present(inventedReference).kind, "invalid");
+  assert.equal(present(inventedQuote).kind, "invalid");
+  assert.equal(present(completed(), []).kind, "invalid");
+  assert.equal(
+    present(completed(), [
+      { ...evidenceTurns[0], speaker: "interviewer" },
+      evidenceTurns[1],
+    ]).kind,
+    "invalid"
+  );
+  assert.equal(
+    present(completed(), [
+      { ...evidenceTurns[0], contractVersion: 1 },
+      evidenceTurns[1],
+    ]).kind,
+    "invalid"
+  );
+  assert.equal(
+    present(
+      completed(),
+      Array.from({ length: 1_001 }, (_, index) => ({
+        eventId: `writer:${index}`,
+        speaker: "user",
+        text: `Canonical answer ${index}`,
+        contractVersion: 2,
+      }))
+    ).kind,
+    "invalid"
+  );
+});
+
+test("keeps valid evidence readable when an unrelated semantic replay is excluded", () => {
+  const result = present(completed(), [
+    ...evidenceTurns,
+    {
+      eventId: "writer:3",
+      speaker: "user",
+      text: "I would focus on working parents first!",
+      contractVersion: 2,
+    },
+  ]);
+
+  assert.equal(result.kind, "v2");
+});
+
 test("presents validated legacy feedback only as an explicit historical variant", () => {
-  const legacy = presentCompletedFeedback(
+  const legacy = present(
     completed({
       strengths: ["Clear explanation"],
       improvements: [
@@ -143,7 +229,7 @@ test("presents validated legacy feedback only as an explicit historical variant"
 });
 
 test("fails closed for malformed legacy notes", () => {
-  const malformed = presentCompletedFeedback(
+  const malformed = present(
     completed({
       strengths: [{ dimension: "unknown", text: "Historical note" }],
       improvements: ["State the approach first"],
@@ -155,6 +241,21 @@ test("fails closed for malformed legacy notes", () => {
     })
   );
   assert.equal(malformed.kind, "invalid");
+});
+
+test("rejects historical feedback with an unsupported rubric version", () => {
+  const unsupported = completed({
+    strengths: ["Clear explanation"],
+    improvements: ["State the approach first"],
+    overallScore: "8.0",
+    rubricVersion: "not-a-supported-rubric",
+    schemaVersion: null,
+    promptVersion: null,
+    modelVersion: null,
+    evaluationState: null,
+  });
+
+  assert.equal(present(unsupported).kind, "invalid");
 });
 
 test("fails closed when any persisted v2 string or collection exceeds its field limit", () => {
@@ -189,7 +290,7 @@ test("fails closed when any persisted v2 string or collection exceeds its field 
   ];
 
   for (const candidate of cases) {
-    assert.equal(presentCompletedFeedback(candidate).kind, "invalid");
+    assert.equal(present(candidate).kind, "invalid");
   }
 });
 
@@ -220,14 +321,13 @@ test("fails closed when any persisted historical string or collection exceeds it
   ];
 
   for (const candidate of cases) {
-    assert.equal(presentCompletedFeedback(candidate).kind, "invalid");
+    assert.equal(present(candidate).kind, "invalid");
   }
 });
 
 test("rejects non-canonical createdAt strings instead of normalizing them", () => {
   assert.equal(
-    presentCompletedFeedback(completed({ createdAt: "2026-07-10T12:00:00Z" }))
-      .kind,
+    present(completed({ createdAt: "2026-07-10T12:00:00Z" })).kind,
     "invalid"
   );
 });

@@ -66,6 +66,10 @@
   string limits fail oversized completed feedback closed.
 - Invalid completed rows emit a redacted environment/release/session integrity
   signal and use `private, no-store` caching.
+- Completed v2 reads revalidate every persisted evidence event ID and exact
+  quote against owner-scoped canonical v2 user turns before any finding or
+  confidence label reaches the API; unsupported historical rubric versions
+  fail closed instead of expanding the compatibility boundary.
 - Node 22 validation passed: `npm run test:local`, targeted feedback component
   tests, `npm run check:ci`, `npm run build`, and `npm run verify:agent`.
 - Browser screenshots were not captured because this isolated worktree has no
