@@ -4,12 +4,18 @@ import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
 import { deletedBillingIdempotencyKey } from "@/lib/billing/account-deletion-guard";
 import { ensureStripePaymentFullyRefunded } from "@/lib/billing/stripe-refund-reconciliation";
 import {
+  loadStripeInvoicePaymentAllocations,
+  refundStripeInvoicePaymentAllocations,
+} from "@/lib/billing/stripe-invoice-reconciliation";
+import { buildStripeDeletionSubject } from "@/lib/billing/stripe-privacy";
+import {
   deleteUserApplicationData,
   getAccountDeletionRequest,
   listRecoverableAccountDeletions,
   markAccountDeletionCompleted,
   markAccountDeletionFailed,
   markAccountDeletionProcessing,
+  recordLateStripeDeletionSubjects,
   redactStripeEventLogs,
 } from "@/lib/db/account-deletions";
 import { inngest } from "@/lib/inngest/client";
@@ -86,28 +92,27 @@ export const deleteAccount = inngest.createFunction(
               refundInvoice: async (invoiceId) => {
                 const stripe = createStripeClient();
                 try {
-                  const invoice = await stripe.invoices.retrieve(invoiceId, {
-                    expand: ["payments"],
-                  });
-                  if (invoice.amount_paid <= 0) return;
-                  const payment = invoice.payments?.data.find(
-                    (candidate) => candidate.status === "paid"
-                  )?.payment;
-                  const paymentIntentId = providerId(
-                    payment?.payment_intent ?? null
+                  const invoice = await stripe.invoices.retrieve(invoiceId);
+                  const allocations = await loadStripeInvoicePaymentAllocations(
+                    stripe,
+                    invoice
                   );
-                  const chargeId = providerId(payment?.charge ?? null);
-                  if (paymentIntentId) {
-                    await refundStripePayment(
-                      stripe,
-                      "payment_intent",
-                      paymentIntentId
+                  const subjects = allocations.map((allocation) => {
+                    const subject = buildStripeDeletionSubject(
+                      allocation.kind,
+                      allocation.providerId
                     );
-                  } else if (chargeId) {
-                    await refundStripePayment(stripe, "charge", chargeId);
-                  } else {
-                    throw safeProviderError("stripe_provider_error");
-                  }
+                    if (!subject) {
+                      throw safeProviderError("stripe_provider_error");
+                    }
+                    return subject;
+                  });
+                  await recordLateStripeDeletionSubjects(userId, subjects);
+                  await refundStripeInvoicePaymentAllocations(
+                    stripe,
+                    allocations
+                  );
+                  return subjects.map(({ fingerprint }) => fingerprint);
                 } catch (error) {
                   if (
                     error &&
@@ -232,9 +237,4 @@ async function refundStripePayment(
     providerIdValue,
     deletedBillingIdempotencyKey(providerIdValue, "refund")
   );
-}
-
-function providerId(value: string | { id: string } | null | undefined) {
-  if (!value) return null;
-  return typeof value === "string" ? value : value.id;
 }

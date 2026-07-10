@@ -13,7 +13,17 @@ import { and, eq } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
-import { ensureStripePaymentFullyRefunded } from "@/lib/billing/stripe-refund-reconciliation";
+import {
+  ensureStripeInvoicePaymentAllocationRefunded,
+  ensureStripePaymentFullyRefunded,
+} from "@/lib/billing/stripe-refund-reconciliation";
+import { loadStripeInvoicePaymentAllocations } from "@/lib/billing/stripe-invoice-reconciliation";
+import {
+  getMappedStripeCustomerUserId,
+  resolveAuthoritativeStripeUserId,
+  stripeSubjectOwnerMismatch,
+  type StripeCheckoutCorrelation,
+} from "@/lib/billing/stripe-customer-ownership";
 import {
   buildStripeDeletionSubject,
   buildStripeDeletionSubjects,
@@ -78,16 +88,32 @@ export async function POST(req: NextRequest) {
     }
 
     const subject = getStripeEventSubject(event);
-    const eventUserId = stripeEventMetadataUserId(event);
+    const metadataUserId = stripeEventMetadataUserId(event);
+    const checkoutCorrelation = getCheckoutCorrelation(event, metadataUserId);
+    const eventUserId =
+      event.type === "checkout.session.completed"
+        ? checkoutSessionAuthenticatedUserId(
+            event.data.object as Stripe.Checkout.Session
+          )
+        : metadataUserId;
     const subjectDeletionRequest = subject.fingerprint
       ? await getAccountDeletionRequestByStripeFingerprint(subject.fingerprint)
       : undefined;
-    const userDeletionTombstone = eventUserId
-      ? await hasAccountDeletionTombstone(eventUserId)
+    const mappedUserId = await getMappedStripeCustomerUserId(
+      subject.customerId
+    );
+    const authoritativeUserId = resolveAuthoritativeStripeUserId({
+      checkoutCorrelation,
+      eventUserId,
+      mappedUserId,
+      tombstoneUserId: subjectDeletionRequest?.userId ?? null,
+    });
+    const userDeletionTombstone = authoritativeUserId
+      ? await hasAccountDeletionTombstone(authoritativeUserId)
       : false;
     const deletionUserId =
       subjectDeletionRequest?.userId ??
-      (userDeletionTombstone ? eventUserId : null);
+      (userDeletionTombstone ? authoritativeUserId : null);
     const deletionTombstone = Boolean(
       subjectDeletionRequest || userDeletionTombstone
     );
@@ -358,21 +384,14 @@ async function getUserIdFromStripe(
   customerId: string,
   fallbackMetadata?: string
 ): Promise<string> {
-  // First try: metadata (fast path)
-  if (fallbackMetadata) {
-    return fallbackMetadata;
-  }
-
-  // Second try: stripe_customer_mapping table (CRITICAL FALLBACK)
-  const mapping = await db
-    .select()
-    .from(stripeCustomerMapping)
-    .where(eq(stripeCustomerMapping.stripeCustomerId, customerId))
-    .limit(1);
-
-  if (mapping.length > 0) {
-    return mapping[0].userId;
-  }
+  const mappedUserId = await getMappedStripeCustomerUserId(customerId);
+  const userId = resolveAuthoritativeStripeUserId({
+    checkoutCorrelation: "not_applicable",
+    eventUserId: fallbackMetadata ?? null,
+    mappedUserId,
+    tombstoneUserId: null,
+  });
+  if (userId) return userId;
 
   throw new Error(`Cannot find userId for Stripe customer ${customerId}`);
 }
@@ -959,8 +978,10 @@ async function reconcileCheckoutForDeletedAccount(
       cancelSubscription: async (subscriptionId, idempotencyKey) => {
         await cancelDeletedSubscription(stripe, subscriptionId, idempotencyKey);
       },
-      loadInvoicePayment: (invoiceId) =>
-        loadPaidInvoicePayment(stripe, invoiceId),
+      loadInvoicePayments: async (invoiceId) => {
+        const invoice = await stripe.invoices.retrieve(invoiceId);
+        return loadStripeInvoicePaymentAllocations(stripe, invoice);
+      },
       refundPayment: async (payment, idempotencyKey) => {
         await refundDeletedPayment(stripe, payment, idempotencyKey);
       },
@@ -982,6 +1003,8 @@ async function reconcileCheckoutForDeletedAccount(
 }
 
 type DeletedPaymentReference = {
+  allocationAmount?: number;
+  allocationFingerprint?: string;
   kind: "payment_intent" | "charge";
   providerId: string;
 };
@@ -1034,9 +1057,7 @@ async function reconcileStripeEventForDeletedAccount(
             "deleted_subscription_manual_reconciliation_required"
           );
         }
-        const invoice = await stripe.invoices.retrieve(latestInvoiceId, {
-          expand: ["payments"],
-        });
+        const invoice = await stripe.invoices.retrieve(latestInvoiceId);
         if (
           !Number.isSafeInteger(invoice.amount_paid) ||
           invoice.amount_paid < 0
@@ -1045,30 +1066,28 @@ async function reconcileStripeEventForDeletedAccount(
             "deleted_subscription_manual_reconciliation_required"
           );
         }
+        const payments = await loadStripeInvoicePaymentAllocations(
+          stripe,
+          invoice
+        );
         if (invoice.amount_paid > 0) {
-          const payment = getPaidInvoicePayment(invoice);
-          if (!payment) {
-            throw deletedBillingError(
-              "deleted_subscription_manual_reconciliation_required"
-            );
-          }
           const paymentSubjects = await recordAndRedactLateSubjects(
             userId,
             null,
             null,
-            compactSubjects([
-              buildStripeDeletionSubject(payment.kind, payment.providerId),
-            ])
+            compactSubjects(
+              payments.map((payment) =>
+                buildStripeDeletionSubject(payment.kind, payment.providerId)
+              )
+            )
           );
           reconciledSubjects = dedupeSubjects([
             ...reconciledSubjects,
             ...paymentSubjects,
           ]);
-          await refundDeletedPayment(
-            stripe,
-            payment,
-            deletedBillingIdempotencyKey(payment.providerId, "refund")
-          );
+          for (const payment of payments) {
+            await refundDeletedPayment(stripe, payment);
+          }
         }
       }
       await cleanupDeletedCustomer(
@@ -1081,7 +1100,8 @@ async function reconcileStripeEventForDeletedAccount(
       if (userId) await markLateStripeReconciliationFailed(userId);
       throw normalizeDeletedBillingError(
         error,
-        "deleted_subscription_reconciliation_failed"
+        "deleted_subscription_reconciliation_failed",
+        "deleted_subscription_manual_reconciliation_required"
       );
     }
     return "deleted_subscription_reconciled";
@@ -1091,21 +1111,31 @@ async function reconcileStripeEventForDeletedAccount(
     const invoice = event.data.object as Stripe.Invoice;
     const subscriptionId = getInvoiceSubscriptionId(invoice);
     const customerId = getStripeCustomerId(invoice.customer);
-    const suppliedPayment = getPaidInvoicePayment(invoice);
-    const lateSubjects = await recordAndRedactLateSubjects(
+    const initialSubjects = await recordAndRedactLateSubjects(
       userId,
       subscriptionId,
       customerId,
-      compactSubjects([
-        suppliedPayment
-          ? buildStripeDeletionSubject(
-              suppliedPayment.kind,
-              suppliedPayment.providerId
-            )
-          : buildStripeDeletionSubject("invoice", invoice.id),
-      ])
+      compactSubjects([buildStripeDeletionSubject("invoice", invoice.id)])
     );
     try {
+      const payments = await loadStripeInvoicePaymentAllocations(
+        stripe,
+        invoice
+      );
+      const paymentSubjects = await recordAndRedactLateSubjects(
+        userId,
+        null,
+        null,
+        compactSubjects(
+          payments.map((payment) =>
+            buildStripeDeletionSubject(payment.kind, payment.providerId)
+          )
+        )
+      );
+      const lateSubjects = dedupeSubjects([
+        ...initialSubjects,
+        ...paymentSubjects,
+      ]);
       if (subscriptionId) {
         await cancelDeletedSubscription(
           stripe,
@@ -1115,19 +1145,9 @@ async function reconcileStripeEventForDeletedAccount(
       }
 
       if (invoice.amount_paid > 0) {
-        const payment =
-          suppliedPayment ??
-          (await loadPaidInvoicePayment(stripe, invoice.id, invoice));
-        if (!payment) {
-          throw deletedBillingError(
-            "deleted_invoice_manual_reconciliation_required"
-          );
+        for (const payment of payments) {
+          await refundDeletedPayment(stripe, payment);
         }
-        await refundDeletedPayment(
-          stripe,
-          payment,
-          deletedBillingIdempotencyKey(payment.providerId, "refund")
-        );
       }
       await cleanupDeletedCustomer(
         stripe,
@@ -1139,7 +1159,8 @@ async function reconcileStripeEventForDeletedAccount(
       if (userId) await markLateStripeReconciliationFailed(userId);
       throw normalizeDeletedBillingError(
         error,
-        "deleted_invoice_reconciliation_failed"
+        "deleted_invoice_reconciliation_failed",
+        "deleted_invoice_manual_reconciliation_required"
       );
     }
     return "deleted_invoice_reconciled";
@@ -1234,45 +1255,31 @@ async function cancelDeletedSubscription(
   }
 }
 
-async function loadPaidInvoicePayment(
-  stripe: Stripe,
-  invoiceId: string,
-  suppliedInvoice?: Stripe.Invoice
-): Promise<DeletedPaymentReference | null> {
-  const suppliedPayment = getPaidInvoicePayment(suppliedInvoice);
-  if (suppliedPayment) return suppliedPayment;
-  const invoice = await stripe.invoices.retrieve(invoiceId, {
-    expand: ["payments"],
-  });
-  return getPaidInvoicePayment(invoice);
-}
-
-function getPaidInvoicePayment(
-  invoice?: Pick<Stripe.Invoice, "payments">
-): DeletedPaymentReference | null {
-  const paidPayment = invoice?.payments?.data.find(
-    (payment) => payment.status === "paid"
-  );
-  const paymentIntentId = getProviderId(
-    paidPayment?.payment.payment_intent ?? null
-  );
-  if (paymentIntentId) {
-    return { kind: "payment_intent", providerId: paymentIntentId };
-  }
-  const chargeId = getProviderId(paidPayment?.payment.charge ?? null);
-  return chargeId ? { kind: "charge", providerId: chargeId } : null;
-}
-
 async function refundDeletedPayment(
   stripe: Stripe,
   payment: DeletedPaymentReference,
-  idempotencyKey: string
+  idempotencyKey?: string
 ) {
+  if (
+    payment.allocationAmount !== undefined &&
+    payment.allocationFingerprint !== undefined
+  ) {
+    await ensureStripeInvoicePaymentAllocationRefunded(stripe, {
+      allocationAmount: payment.allocationAmount,
+      allocationFingerprint: payment.allocationFingerprint,
+      kind: payment.kind,
+      providerId: payment.providerId,
+      baseIdempotencyKey:
+        idempotencyKey ??
+        `account-deletion:invoice-payment-refund:${payment.allocationFingerprint}`,
+    });
+    return;
+  }
   await ensureStripePaymentFullyRefunded(
     stripe,
     payment.kind,
     payment.providerId,
-    idempotencyKey
+    idempotencyKey ?? deletedBillingIdempotencyKey(payment.providerId, "refund")
   );
 }
 
@@ -1333,7 +1340,11 @@ function deletedBillingError(code: string): Error & { code: string } {
   });
 }
 
-function normalizeDeletedBillingError(error: unknown, fallbackCode: string) {
+function normalizeDeletedBillingError(
+  error: unknown,
+  fallbackCode: string,
+  manualCode?: string
+) {
   if (
     error &&
     typeof error === "object" &&
@@ -1342,10 +1353,31 @@ function normalizeDeletedBillingError(error: unknown, fallbackCode: string) {
   ) {
     return error;
   }
+  if (
+    manualCode &&
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    String(error.code).startsWith("stripe_invoice_payment_")
+  ) {
+    return deletedBillingError(manualCode);
+  }
   return deletedBillingError(fallbackCode);
 }
 
 function getProviderId(value: string | { id: string } | null | undefined) {
   if (!value) return null;
   return typeof value === "string" ? value : value.id;
+}
+
+function getCheckoutCorrelation(
+  event: Stripe.Event,
+  metadataUserId: string | null
+): StripeCheckoutCorrelation {
+  if (event.type !== "checkout.session.completed") return "not_applicable";
+  const session = event.data.object as Stripe.Checkout.Session;
+  const correlatedUserId = checkoutSessionAuthenticatedUserId(session);
+  if (!metadataUserId && !session.client_reference_id) return "not_applicable";
+  if (!correlatedUserId) throw stripeSubjectOwnerMismatch();
+  return "valid";
 }

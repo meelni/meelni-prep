@@ -6,7 +6,11 @@ export type StripeRefundEvidence = {
   id: string;
   amount: number;
   status: string;
+  metadata?: Record<string, string>;
 };
+
+const DELETION_ALLOCATION_METADATA_KEY =
+  "meelni_deletion_invoice_payment_fingerprint";
 
 export function summarizeStripeRefunds(
   chargeAmount: number,
@@ -102,6 +106,115 @@ export async function ensureStripePaymentFullyRefunded(
   );
 }
 
+export async function ensureStripeInvoicePaymentAllocationRefunded(
+  stripe: Stripe,
+  input: {
+    allocationAmount: number;
+    allocationFingerprint: string;
+    kind: "charge" | "payment_intent";
+    providerId: string;
+    baseIdempotencyKey: string;
+  }
+) {
+  assertProviderAmount(input.allocationAmount);
+  if (
+    input.allocationAmount === 0 ||
+    !/^[a-f0-9]{64}$/.test(input.allocationFingerprint)
+  ) {
+    throw stripeRefundStateError("stripe_refund_incomplete");
+  }
+  const charge = await loadStripePaymentCharge(
+    stripe,
+    input.kind,
+    input.providerId
+  );
+  if (input.allocationAmount > charge.amount) {
+    throw stripeRefundStateError("stripe_refund_incomplete");
+  }
+
+  const initialRefunds = await listStripeChargeRefunds(stripe, charge.id);
+  const globalState = summarizeStripeRefunds(charge.amount, initialRefunds);
+  if (globalState.fullySucceeded) return;
+  if (globalState.hasUnresolvedRefund) {
+    throw stripeRefundStateError("stripe_refund_pending");
+  }
+
+  const allocationCoversCharge = input.allocationAmount === charge.amount;
+  const allocationRefunds = allocationCoversCharge
+    ? initialRefunds
+    : refundsForAllocation(initialRefunds, input.allocationFingerprint);
+  const allocationState = summarizeStripeRefunds(
+    input.allocationAmount,
+    allocationRefunds
+  );
+  if (allocationState.fullySucceeded) return;
+
+  const ambiguousSucceededAmount = initialRefunds
+    .filter(
+      ({ status, metadata }) =>
+        status === "succeeded" && !metadata?.[DELETION_ALLOCATION_METADATA_KEY]
+    )
+    .reduce((total, { amount }) => total + amount, 0);
+  if (!allocationCoversCharge && ambiguousSucceededAmount > 0) {
+    // A partial untagged refund cannot be attributed to this invoice allocation.
+    // Stop rather than over-refund another allocation or count ambiguous proof.
+    throw stripeRefundStateError("stripe_refund_incomplete");
+  }
+
+  const remainingAmount =
+    input.allocationAmount - allocationState.succeededAmount;
+  if (globalState.succeededAmount > charge.amount - remainingAmount) {
+    throw stripeRefundStateError("stripe_refund_incomplete");
+  }
+  let createdRefund: Stripe.Refund | undefined;
+  let createError: unknown;
+  try {
+    createdRefund = await stripe.refunds.create(
+      {
+        ...(input.kind === "payment_intent"
+          ? { payment_intent: input.providerId }
+          : { charge: input.providerId }),
+        amount: remainingAmount,
+        reason: "requested_by_customer",
+        metadata: {
+          [DELETION_ALLOCATION_METADATA_KEY]: input.allocationFingerprint,
+        },
+      },
+      {
+        idempotencyKey: stripeRefundAttemptIdempotencyKey(
+          input.baseIdempotencyKey,
+          allocationRefunds
+        ),
+      }
+    );
+  } catch (error) {
+    createError = error;
+  }
+
+  const listedRefunds = await listStripeChargeRefunds(stripe, charge.id);
+  const finalRefunds = createdRefund
+    ? mergeStripeRefundEvidence(listedRefunds, [
+        toRefundEvidence(createdRefund),
+      ])
+    : listedRefunds;
+  const finalGlobalState = summarizeStripeRefunds(charge.amount, finalRefunds);
+  if (finalGlobalState.fullySucceeded) return;
+  const finalAllocationState = summarizeStripeRefunds(
+    input.allocationAmount,
+    allocationCoversCharge
+      ? finalRefunds
+      : refundsForAllocation(finalRefunds, input.allocationFingerprint)
+  );
+  if (finalAllocationState.fullySucceeded) return;
+  if (createError) throw createError;
+  throw stripeRefundStateError(
+    finalGlobalState.hasUnresolvedRefund ||
+      finalAllocationState.hasUnresolvedRefund
+      ? "stripe_refund_pending"
+      : "stripe_refund_incomplete"
+  );
+}
+
 async function loadStripePaymentCharge(
   stripe: Stripe,
   kind: "charge" | "payment_intent",
@@ -148,15 +261,26 @@ async function listStripeChargeRefunds(stripe: Stripe, chargeId: string) {
 }
 
 function toRefundEvidence(
-  refund: Pick<Stripe.Refund, "id" | "amount" | "status">
+  refund: Pick<Stripe.Refund, "id" | "amount" | "status" | "metadata">
 ): StripeRefundEvidence {
   const evidence = {
     id: refund.id,
     amount: refund.amount,
     status: refund.status ?? "unknown",
+    metadata: refund.metadata ?? undefined,
   };
   assertRefundEvidence(evidence);
   return evidence;
+}
+
+function refundsForAllocation(
+  refunds: StripeRefundEvidence[],
+  allocationFingerprint: string
+) {
+  return refunds.filter(
+    ({ metadata }) =>
+      metadata?.[DELETION_ALLOCATION_METADATA_KEY] === allocationFingerprint
+  );
 }
 
 function mergeStripeRefundEvidence(

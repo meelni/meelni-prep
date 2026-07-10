@@ -2,7 +2,7 @@ import type { AccountDeletionRecord } from "@/lib/db/account-deletions";
 
 export interface DeleteAccountWorkflowDeps {
   cancelSubscription(subscriptionId: string): Promise<void>;
-  refundInvoice(invoiceId: string): Promise<void>;
+  refundInvoice(invoiceId: string): Promise<string[]>;
   refundPayment(
     kind: "charge" | "payment_intent",
     providerId: string
@@ -35,6 +35,9 @@ export async function deleteAccountWorkflow(
     (subject): subject is typeof subject & { providerId: string } =>
       subject.providerId !== null
   );
+  const processedFingerprints = new Set(
+    request.stripeSubjects.map(({ fingerprint }) => fingerprint)
+  );
   for (const subject of pendingSubjects) {
     if (subject.kind === "subscription") {
       await deps.cancelSubscription(subject.providerId);
@@ -47,7 +50,9 @@ export async function deleteAccountWorkflow(
   }
   for (const subject of pendingSubjects) {
     if (subject.kind === "invoice") {
-      await deps.refundInvoice(subject.providerId);
+      for (const fingerprint of await deps.refundInvoice(subject.providerId)) {
+        processedFingerprints.add(fingerprint);
+      }
     }
   }
   // Customer deletion is deliberately last: cancellation and every known
@@ -57,10 +62,7 @@ export async function deleteAccountWorkflow(
       await deps.deleteCustomer(subject.providerId);
     }
   }
-  await deps.markCompleted(
-    request.userId,
-    request.stripeSubjects.map(({ fingerprint }) => fingerprint)
-  );
+  await deps.markCompleted(request.userId, [...processedFingerprints]);
   return { alreadyCompleted: false };
 }
 

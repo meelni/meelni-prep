@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   retrievePaymentIntent: vi.fn(),
   refund: vi.fn(),
   listRefunds: vi.fn(),
+  listInvoicePayments: vi.fn(),
   grantCredits: vi.fn(),
   insertValues: [] as Array<Record<string, unknown>>,
   updateSets: [] as Array<Record<string, unknown>>,
@@ -23,6 +24,7 @@ vi.mock("stripe", () => ({
     customers = { del: state.deleteCustomer };
     charges = { retrieve: state.retrieveCharge };
     invoices = { retrieve: state.retrieveInvoice };
+    invoicePayments = { list: state.listInvoicePayments };
     paymentIntents = { retrieve: state.retrievePaymentIntent };
     refunds = { create: state.refund, list: state.listRefunds };
   },
@@ -72,6 +74,18 @@ vi.mock("@/lib/billing/credits", () => ({
 vi.mock("@/lib/billing/credit-ledger-store", () => ({
   createDrizzleCreditLedgerStore: vi.fn(() => ({})),
 }));
+vi.mock("@/lib/billing/stripe-customer-ownership", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/lib/billing/stripe-customer-ownership")
+    >();
+  return {
+    ...actual,
+    getMappedStripeCustomerUserId: vi
+      .fn()
+      .mockResolvedValue("11111111-1111-4111-8111-111111111111"),
+  };
+});
 
 import {
   clearLateStripeDeletionSubjects,
@@ -80,6 +94,7 @@ import {
   markLateStripeReconciliationFailed,
   recordLateStripeDeletionSubjects,
 } from "@/lib/db/account-deletions";
+import { getMappedStripeCustomerUserId } from "@/lib/billing/stripe-customer-ownership";
 import { POST } from "./route";
 
 describe("Stripe webhook account-deletion fulfillment barrier", () => {
@@ -101,14 +116,32 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
     state.retrieveInvoice.mockResolvedValue({
       id: "in_test_deleted_subscription",
       amount_paid: 0,
-      payments: { data: [] },
+      currency: "usd",
     });
-    state.refund.mockResolvedValue({
-      id: "re_test",
-      amount: 2_900,
-      status: "succeeded",
+    state.refund.mockImplementation(async (input: Record<string, unknown>) => {
+      return {
+        id: "re_test",
+        amount: input.amount ?? 2_900,
+        status: "succeeded",
+        metadata: input.metadata ?? {},
+      };
     });
     state.listRefunds.mockResolvedValue({ data: [], has_more: false });
+    state.listInvoicePayments.mockImplementation(
+      async (params: Record<string, unknown>) =>
+        String(params.invoice).includes("subscription")
+          ? { data: [], has_more: false }
+          : {
+              data: [
+                invoicePayment({
+                  id: "inpay_test_deleted_invoice",
+                  amount: 2_900,
+                  paymentIntentId: "pi_test_deleted_invoice",
+                }),
+              ],
+              has_more: false,
+            }
+    );
     state.retrievePaymentIntent.mockResolvedValue({
       id: "pi_test",
       latest_charge: {
@@ -121,6 +154,9 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
     state.grantCredits.mockResolvedValue({ grant: { id: "grant_test" } });
     vi.mocked(getAccountDeletionRequestByStripeFingerprint).mockResolvedValue(
       undefined
+    );
+    vi.mocked(getMappedStripeCustomerUserId).mockResolvedValue(
+      "11111111-1111-4111-8111-111111111111"
     );
   });
 
@@ -141,6 +177,37 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
     expect(state.updateSets).toContainEqual(
       expect.objectContaining({ status: "processed", payload: "{}" })
     );
+  });
+
+  it("rejects a genuine checkout whose metadata and client reference disagree", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(true);
+    state.event = checkoutEvent();
+    const object = state.event.data as { object: Record<string, unknown> };
+    object.object.client_reference_id = "22222222-2222-4222-8222-222222222222";
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect(state.cancel).not.toHaveBeenCalled();
+    expect(state.refund).not.toHaveBeenCalled();
+    expect(state.deleteCustomer).not.toHaveBeenCalled();
+    expect(recordLateStripeDeletionSubjects).not.toHaveBeenCalled();
+  });
+
+  it("rejects metadata that conflicts with the authoritative customer mapping", async () => {
+    vi.mocked(getMappedStripeCustomerUserId).mockResolvedValue(
+      "22222222-2222-4222-8222-222222222222"
+    );
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(true);
+    state.event = subscriptionEvent();
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect(state.cancel).not.toHaveBeenCalled();
+    expect(state.refund).not.toHaveBeenCalled();
+    expect(state.deleteCustomer).not.toHaveBeenCalled();
+    expect(recordLateStripeDeletionSubjects).not.toHaveBeenCalled();
   });
 
   it("rechecks immediately before fulfillment and redacts a newly tombstoned event", async () => {
@@ -203,14 +270,17 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
     state.retrieveInvoice.mockResolvedValue({
       id: "in_test_deleted_subscription",
       amount_paid: 2_900,
-      payments: {
-        data: [
-          {
-            status: "paid",
-            payment: { payment_intent: "pi_test_deleted_subscription" },
-          },
-        ],
-      },
+      currency: "usd",
+    });
+    state.listInvoicePayments.mockResolvedValue({
+      data: [
+        invoicePayment({
+          id: "inpay_test_deleted_subscription",
+          amount: 2_900,
+          paymentIntentId: "pi_test_deleted_subscription",
+        }),
+      ],
+      has_more: false,
     });
 
     const calls: string[] = [];
@@ -289,9 +359,59 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
     );
   });
 
+  it("refunds every paid invoice allocation before customer deletion", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(true);
+    state.event = invoiceEvent();
+    state.listInvoicePayments.mockResolvedValue({
+      data: [
+        invoicePayment({
+          id: "inpay_first",
+          amount: 1_000,
+          paymentIntentId: "pi_test_deleted_invoice",
+        }),
+        invoicePayment({
+          id: "inpay_second",
+          amount: 1_900,
+          chargeId: "ch_test_deleted_invoice",
+        }),
+      ],
+      has_more: false,
+    });
+    const calls: string[] = [];
+    state.refund.mockImplementation(async (input: Record<string, unknown>) => {
+      calls.push(`refund:${input.amount}`);
+      return {
+        id: `re_${input.amount}`,
+        amount: input.amount,
+        status: "succeeded",
+        metadata: input.metadata,
+      };
+    });
+    state.deleteCustomer.mockImplementation(async () => {
+      calls.push("customer");
+      return { id: "cus_test_deleted_invoice", deleted: true };
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(calls).toEqual(["refund:1000", "refund:1900", "customer"]);
+    expect(recordLateStripeDeletionSubjects).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      expect.arrayContaining([
+        expect.objectContaining({ providerId: "pi_test_deleted_invoice" }),
+        expect.objectContaining({ providerId: "ch_test_deleted_invoice" }),
+      ])
+    );
+  });
+
   it("keeps a paid deleted invoice failed when no refundable payment is available", async () => {
     vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(true);
     state.event = invoiceEvent({ payments: { data: [] } });
+    state.listInvoicePayments.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
 
     const response = await POST(request());
 
@@ -305,6 +425,34 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
         lastError: "deleted_invoice_manual_reconciliation_required",
       })
     );
+  });
+
+  it("fails closed on a paid PaymentRecord allocation", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(true);
+    state.event = invoiceEvent();
+    state.listInvoicePayments.mockResolvedValue({
+      data: [
+        {
+          ...invoicePayment({
+            id: "inpay_record",
+            amount: 2_900,
+            paymentIntentId: "pi_unused",
+          }),
+          payment: {
+            type: "payment_record",
+            payment_record: "pyr_test",
+          },
+        },
+      ],
+      has_more: false,
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect(state.refund).not.toHaveBeenCalled();
+    expect(state.deleteCustomer).not.toHaveBeenCalled();
+    expect(clearLateStripeDeletionSubjects).not.toHaveBeenCalled();
   });
 
   it("retains late provider references when customer cleanup fails, then clears them on retry", async () => {
@@ -409,6 +557,16 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
           },
         ],
       },
+    });
+    state.listInvoicePayments.mockResolvedValue({
+      data: [
+        invoicePayment({
+          id: "inpay_test_deleted_invoice",
+          amount: 2_900,
+          chargeId: "ch_test_deleted_invoice",
+        }),
+      ],
+      has_more: false,
     });
     state.refund.mockRejectedValue(
       Object.assign(new Error("already refunded"), {
@@ -642,6 +800,7 @@ function invoiceEvent(overrides: Record<string, unknown> = {}) {
         id: "in_test_deleted",
         object: "invoice",
         amount_paid: 2_900,
+        currency: "usd",
         customer: "cus_test_deleted_invoice",
         metadata: {},
         parent: {
@@ -666,5 +825,29 @@ function invoiceEvent(overrides: Record<string, unknown> = {}) {
         ...overrides,
       },
     },
+  };
+}
+
+function invoicePayment(input: {
+  amount: number;
+  chargeId?: string;
+  id: string;
+  paymentIntentId?: string;
+}) {
+  return {
+    id: input.id,
+    object: "invoice_payment",
+    amount_paid: input.amount,
+    amount_requested: input.amount,
+    created: 1_788_000_000,
+    currency: "usd",
+    invoice: "in_test",
+    is_default: false,
+    livemode: false,
+    payment: input.paymentIntentId
+      ? { type: "payment_intent", payment_intent: input.paymentIntentId }
+      : { type: "charge", charge: input.chargeId },
+    status: "paid",
+    status_transitions: { canceled_at: null, paid_at: 1_788_000_000 },
   };
 }
