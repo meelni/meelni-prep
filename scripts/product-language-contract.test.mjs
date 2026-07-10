@@ -56,7 +56,7 @@ const FITNESS_LANGUAGE = /\b(?:gym|rep|reps|workout|workouts|drill|drills)\b/i;
 const UNSUPPORTED_FEEDBACK_TIMING =
   /\b(?:real[- ]time|instant|immediate)\b.{0,30}\bfeedback\b|\bfeedback\b.{0,30}\b(?:real[- ]time|instant|immediate)\b/i;
 const UNSUPPORTED_QUANTIFIED_LATENCY =
-  /\b(?:takes?|ready in|complete[sd]? in)\b.{0,30}\b(?:less than|under|within|about|around)?\s*(?:a|an|\d+)\s*(?:seconds?|minutes?)\b/i;
+  /\b(?:takes?|ready|arrives?|complete[sd]?|done)\b.{0,24}\b(?:in|within|under|less than|about|around)?\s*(?:a|an|\d+)\s*(?:seconds?|minutes?|secs?|mins?)\b|\bexpect\b.{0,30}\b(?:feedback|review|analysis)\b.{0,20}\b(?:in|within|under|less than|about|around)\s*(?:a|an|\d+)\s*(?:seconds?|minutes?|secs?|mins?)\b|\b(?:usually|typically)?\s*(?:in|within|under|less than|about|around)\s*(?:a|an|\d+)\s*(?:seconds?|minutes?|secs?|mins?)\s*(?:for|until)\s*(?:feedback|review|analysis)\b/i;
 const UNSUPPORTED_OUTCOME_PROMISE =
   /\b(?:ace|crush|master)\b.{0,40}\binterviews?\b|\bland\b.{0,30}\b(?:offers?|dream role)\b|\binterviews?\b.{0,40}\b(?:ace|crush|master)\b/i;
 const FORBIDDEN_CANONICAL_CLAIMS = [
@@ -257,7 +257,7 @@ test("generated feedback copy uses focused-practice language", async () => {
     const source = await readFile(path.join(ROOT, file), "utf8");
     const generatedCopy = stringLiteralContent(source);
 
-    if (FITNESS_LANGUAGE.test(generatedCopy)) {
+    if (findGuidancePatternViolations(generatedCopy, FITNESS_LANGUAGE).length) {
       violations.push(`${file}: fitness metaphor`);
     }
     if (UNSUPPORTED_FEEDBACK_TIMING.test(generatedCopy)) {
@@ -439,14 +439,16 @@ test("feedback timing guard rejects real-time, instant, and immediate product cl
 });
 
 test("feedback timing guard rejects unsupported quantified latency promises", () => {
-  assert.match(
+  for (const claim of [
     "This usually takes less than a minute.",
-    UNSUPPORTED_QUANTIFIED_LATENCY
-  );
-  assert.match(
     "Your review will be ready in 30 seconds.",
-    UNSUPPORTED_QUANTIFIED_LATENCY
-  );
+    "Expect feedback in under a minute.",
+    "Your feedback arrives within 30 seconds.",
+    "Usually under a minute for feedback.",
+    "Your review should be done in 30 seconds.",
+  ]) {
+    assert.match(claim, UNSUPPORTED_QUANTIFIED_LATENCY);
+  }
   assert.doesNotMatch(
     "You can leave this page and return when your review is ready.",
     UNSUPPORTED_QUANTIFIED_LATENCY
