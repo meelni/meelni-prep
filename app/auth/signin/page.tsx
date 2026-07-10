@@ -19,6 +19,7 @@ import { analytics } from "@/lib/analytics/analytics-service";
 import {
   AUTH_SIGNUP_PATH,
   buildAuthPageHref,
+  getAuthFailureMessage,
   parseAuthHandoffContext,
 } from "@/lib/auth/auth-handoff";
 
@@ -38,11 +39,13 @@ function SignInContent() {
     isLoading: authLoading,
   } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const [error, setError] = useState<string | null>(() =>
+    getAuthFailureMessage(searchParams)
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const router = useRouter();
-  const searchParams = useSearchParams();
   const authHandoff = parseAuthHandoffContext(searchParams);
   const { redirectTo, cancelTo } = authHandoff;
 

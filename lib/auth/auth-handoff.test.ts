@@ -7,8 +7,9 @@ import {
   buildAuthCallbackHref,
   buildAuthFailureHref,
   buildAuthPageHref,
+  getAuthFailureMessage,
   parseAuthHandoffContext,
-  resolveAuthCallbackDestination,
+  resolveAuthCallbackAction,
 } from "./auth-handoff";
 
 test("auth pages preserve independent success and cancellation destinations", () => {
@@ -66,36 +67,70 @@ test("auth handoff handles direct, empty, and repeated query values", () => {
   );
 });
 
-test("OAuth callback success and cancellation resolve independently", () => {
-  assert.equal(
-    resolveAuthCallbackDestination(
+test("OAuth callback success and explicit cancellation resolve independently", () => {
+  assert.deepEqual(
+    resolveAuthCallbackAction(
       new URLSearchParams(
         "code=oauth-code&next=%2Fdashboard%2Fnew-interview%3FquestionId%3Dquestion-1&cancelTo=%2Fexplore"
       )
     ),
-    "/dashboard/new-interview?questionId=question-1"
+    {
+      type: "success",
+      destination: "/dashboard/new-interview?questionId=question-1",
+    }
   );
-  assert.equal(
-    resolveAuthCallbackDestination(
+  assert.deepEqual(
+    resolveAuthCallbackAction(
       new URLSearchParams("error=access_denied&cancelTo=%2Fexplore%3Fpage%3D2")
     ),
-    "/explore?page=2"
+    { type: "cancel", destination: "/explore?page=2" }
   );
-  assert.equal(
-    resolveAuthCallbackDestination(
+  assert.deepEqual(
+    resolveAuthCallbackAction(
       new URLSearchParams(
         "error=access_denied&cancelTo=https%3A%2F%2Fevil.example"
       )
     ),
-    "/"
+    { type: "cancel", destination: "/" }
   );
-  assert.equal(
-    resolveAuthCallbackDestination(
+  assert.deepEqual(
+    resolveAuthCallbackAction(
       new URLSearchParams(
         "code=oauth-code&next=https%3A%2F%2Fevil.example&cancelTo=%2Fexplore"
       )
     ),
-    "/dashboard"
+    { type: "success", destination: "/dashboard" }
+  );
+});
+
+test("callback failures and missing codes use safe first-party recovery", () => {
+  for (const query of [
+    "",
+    "error=server_error&error_description=untrusted+provider+detail",
+    "error=access_denied&code=ambiguous-code",
+  ]) {
+    const action = resolveAuthCallbackAction(new URLSearchParams(query));
+    if (query.startsWith("error=access_denied")) {
+      assert.deepEqual(action, { type: "cancel", destination: "/" });
+    } else {
+      assert.deepEqual(action, {
+        type: "failure",
+        code: "auth_callback_failed",
+      });
+    }
+  }
+
+  assert.equal(
+    getAuthFailureMessage(new URLSearchParams("error=auth_callback_failed")),
+    "The sign-in link could not be completed. Please start again."
+  );
+  assert.equal(
+    getAuthFailureMessage(
+      new URLSearchParams(
+        "error=server_error&error_description=untrusted+provider+detail"
+      )
+    ),
+    null
   );
 });
 

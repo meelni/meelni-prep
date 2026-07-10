@@ -21,9 +21,9 @@
 
 ## Scope
 
-- In scope: Safe post-auth and cancellation destinations; Google OAuth, email sign-in, email sign-up, and auth-page transitions; direct/repeated/invalid query regression coverage; responsive browser verification.
+- In scope: Safe post-auth and cancellation destinations; Google OAuth, email sign-in, same-browser PKCE email sign-up confirmation, and auth-page transitions; direct/repeated/invalid query regression coverage; responsive browser verification.
 - Out of scope: Provider configuration, database writes, feature flags, question-bank redesign, SAV-206.
-- Assumptions: `/dashboard/new-interview` remains the canonical launcher and `/explore` remains the public question-bank route.
+- Assumptions: `/dashboard/new-interview` remains the canonical launcher, `/explore` remains the public question-bank route, and cross-device email confirmation remains out of scope until a token-hash verification route and provider email template are configured together.
 
 ## Product Lens
 
