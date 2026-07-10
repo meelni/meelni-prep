@@ -8,7 +8,8 @@ const catalog = [
   {
     catalogId: "interview_pass",
     productName: "Meelni Interview Pass",
-    description: "One credit for one full Meelni interview. Expires after 30 days.",
+    description:
+      "One credit for one full Meelni interview. Expires after 30 days.",
     lookupKey: "meelni_interview_pass_usd",
     envName: "STRIPE_INTERVIEW_PASS_PRICE_ID",
     unitAmount: 900,
@@ -17,7 +18,8 @@ const catalog = [
   {
     catalogId: "starter",
     productName: "Meelni Starter",
-    description: "Four Meelni interview credits per month with rollover capped at four credits.",
+    description:
+      "Four Meelni interview credits per month with rollover capped at four credits.",
     lookupKey: "meelni_starter_monthly_usd",
     envName: "STRIPE_STARTER_MONTHLY_PRICE_ID",
     unitAmount: 1900,
@@ -26,7 +28,8 @@ const catalog = [
   {
     catalogId: "pro",
     productName: "Meelni Pro",
-    description: "Twelve Meelni interview credits per month with rollover capped at twelve credits.",
+    description:
+      "Twelve Meelni interview credits per month with rollover capped at twelve credits.",
     lookupKey: "meelni_pro_monthly_usd",
     envName: "STRIPE_PRO_MONTHLY_PRICE_ID",
     unitAmount: 4900,
@@ -45,11 +48,15 @@ if (dryRun) {
 
 const secretKey = process.env.STRIPE_SECRET_KEY;
 if (!secretKey) {
-  fail("Missing STRIPE_SECRET_KEY. Export a test or live Stripe secret key before running this script.");
+  fail(
+    "Missing STRIPE_SECRET_KEY. Export a test or live Stripe secret key before running this script."
+  );
 }
 
-if (secretKey.startsWith("sk_live_") && !confirmLive) {
-  fail("Live key detected. Re-run with --confirm-live after reviewing docs/STRIPE_LIVE_MODE_CHECKLIST.md.");
+if (/^(?:sk|rk)_live_/.test(secretKey) && !confirmLive) {
+  fail(
+    "Live key detected. Re-run with --confirm-live after reviewing docs/STRIPE_LIVE_MODE_CHECKLIST.md."
+  );
 }
 
 const stripe = new Stripe(secretKey, {
@@ -133,7 +140,9 @@ function assertPriceMatchesCatalog(price, item) {
   }
 
   if (mismatches.length > 0) {
-    fail(`Existing price ${price.id} for ${item.lookupKey} does not match the catalog: ${mismatches.join(", ")}`);
+    fail(
+      `Existing price ${price.id} for ${item.lookupKey} does not match the catalog: ${mismatches.join(", ")}`
+    );
   }
 }
 
@@ -149,8 +158,12 @@ function printCatalogPlan() {
   console.log("Stripe credit catalog plan:\n");
   for (const item of catalog) {
     const amount = `$${(item.unitAmount / 100).toFixed(2)}`;
-    const cadence = item.recurring ? `/${item.recurring.interval}` : " one-time";
-    console.log(`- ${item.catalogId}: ${item.productName}, ${amount}${cadence}, lookup_key=${item.lookupKey}, env=${item.envName}`);
+    const cadence = item.recurring
+      ? `/${item.recurring.interval}`
+      : " one-time";
+    console.log(
+      `- ${item.catalogId}: ${item.productName}, ${amount}${cadence}, lookup_key=${item.lookupKey}, env=${item.envName}`
+    );
   }
 }
 
