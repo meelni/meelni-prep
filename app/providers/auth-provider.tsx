@@ -4,13 +4,13 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { scrubRetiredTranscriptBrowserStorage } from "@/lib/privacy/transcript-browser-storage";
 import {
   buildAuthCallbackHref,
   buildPasswordResetCallbackHref,
   type AuthHandoffContext,
 } from "@/lib/auth/auth-handoff";
 import { resolveAuthInitializationWithin } from "@/lib/auth/auth-initialization";
-import { clearTranscriptQueueStorage } from "@/lib/utils/transcript-queue";
 
 interface AuthContextType {
   user: User | null;
@@ -42,23 +42,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [supabase] = useState(createClient);
 
   useEffect(() => {
+    scrubRetiredTranscriptBrowserStorage();
     let active = true;
-    let observedOwnerId: string | null | undefined;
-
-    const protectTranscriptQueueForSession = (nextSession: Session | null) => {
-      const nextOwnerId = nextSession?.user.id ?? null;
-      if (
-        nextOwnerId === null ||
-        (observedOwnerId !== undefined && observedOwnerId !== nextOwnerId)
-      ) {
-        clearTranscriptQueueStorage();
-      }
-      observedOwnerId = nextOwnerId;
-    };
 
     const applySession = (nextSession: Session | null) => {
       if (!active) return;
-      protectTranscriptQueueForSession(nextSession);
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
 
@@ -71,7 +59,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
       }
     };
-
     // Get initial session
     const getInitialSession = async () => {
       const sessionRequest = supabase.auth.getSession();
@@ -99,7 +86,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      protectTranscriptQueueForSession(session);
       setSession(session);
       setUser(session?.user ?? null);
       setIsLoading(false);
@@ -148,6 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Non-blocking - don't fail login if sync fails
           });
       } else if (event === "SIGNED_OUT") {
+        scrubRetiredTranscriptBrowserStorage();
         analytics.track("auth_signout_completed", {});
         analytics.reset();
       }
@@ -226,6 +213,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    scrubRetiredTranscriptBrowserStorage();
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("Error signing out:", error);
@@ -235,7 +223,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Track sign out and reset analytics
     analytics.track("auth_signout_completed", {});
     analytics.reset();
-    clearTranscriptQueueStorage();
 
     setUser(null);
     setSession(null);

@@ -80,6 +80,7 @@ export interface StartInterviewSessionInput {
   body: StartInterviewSessionBody;
   env: LiveKitEnvironment;
   interviewAgentName: string;
+  appBaseUrl?: string;
 }
 
 export interface StartInterviewSessionDeps {
@@ -258,6 +259,11 @@ export async function startInterviewSessionWorkflow(
 
   const roomMetadata = buildInterviewRoomMetadata({
     session_id: session.id,
+    transcript_ingest_url: buildTranscriptIngestUrl(
+      input.appBaseUrl ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        "http://localhost:3000"
+    ),
     round_type: resolvedRoundType,
     mode,
     deadline_at: serializeInterviewDeadlineAt(deadlineAt),
@@ -391,6 +397,14 @@ export async function startInterviewSessionWorkflow(
         : null,
     },
   };
+}
+
+function buildTranscriptIngestUrl(appBaseUrl: string): string {
+  try {
+    return new URL("/api/internal/transcript", appBaseUrl).toString();
+  } catch {
+    throw new Error("Application URL is invalid for runtime transcript ingest");
+  }
 }
 
 export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {

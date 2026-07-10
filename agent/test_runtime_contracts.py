@@ -2,6 +2,8 @@
 """Runtime contract tests for the LiveKit interview agent."""
 
 import asyncio
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -30,6 +32,25 @@ from shared.session_deadline import (
     parse_deadline_at,
     watch_session_deadline,
 )
+from shared.transcript_ingest import (
+    INGEST_KEY_CONTEXT,
+    SIGNATURE_HEADER,
+    TIMESTAMP_HEADER,
+    IngestResponse,
+    TranscriptIngestIdentityConflict,
+    TranscriptIngestQueue,
+    TranscriptIngestQueueFull,
+    TranscriptIngestQueueSealed,
+    canonical_json_bytes,
+    create_interruption_marker,
+    create_runtime_settlement,
+    derive_ingest_signing_key,
+    is_interruption_marker,
+    is_runtime_settlement,
+    is_retryable_status,
+    sign_ingest_body,
+    validate_internal_ingest_url,
+)
 from shared.transcript_events import (
     TRANSCRIPT_DATA_TOPIC,
     create_transcript_event,
@@ -48,10 +69,24 @@ class RuntimeContractTests(unittest.TestCase):
             source,
         )
 
+    def test_voice_runtimes_disable_livekit_observability_recording(self):
+        for relative_path in ("interview/agent.py", "demo/agent.py"):
+            with self.subTest(relative_path=relative_path):
+                source = (Path(__file__).parent / relative_path).read_text()
+                self.assertIn("record=False", source)
+
+    def test_interview_settlement_stops_input_and_commits_active_user_speech(self):
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+
+        self.assertIn("session.input.set_audio_enabled(False)", source)
+        self.assertIn("session.commit_user_turn(", source)
+        self.assertIn("skip_reply=True", source)
+
     def test_parse_room_metadata_accepts_production_question_shape(self):
         metadata = parse_room_metadata(json.dumps({
             "contract_version": 1,
             "session_id": "session-1",
+            "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
             "deadline_at": "2026-07-09T21:30:00.000Z",
             "round_type": "product_sense",
             "question": {
@@ -77,6 +112,7 @@ class RuntimeContractTests(unittest.TestCase):
         metadata = parse_room_metadata(json.dumps({
             "contract_version": 1,
             "session_id": "session-legacy",
+            "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
             "round_type": "strategy",
             "question": {
                 "question_id": "legacy-question-1",
@@ -105,6 +141,7 @@ class RuntimeContractTests(unittest.TestCase):
                     parse_room_metadata(json.dumps({
                         "contract_version": 1,
                         "session_id": "session-invalid-deadline",
+                        "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
                         "deadline_at": deadline_at,
                         "round_type": "product_sense",
                         "config": {},
@@ -204,6 +241,7 @@ class RuntimeContractTests(unittest.TestCase):
         metadata = parse_room_metadata(json.dumps({
             "contract_version": 1,
             "session_id": "session-invalid-config",
+            "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
             "round_type": "product_sense",
             "mode": "video_only",
             "question": {
@@ -238,6 +276,7 @@ class RuntimeContractTests(unittest.TestCase):
         malformed = parse_room_metadata(json.dumps({
             "contract_version": 1,
             "session_id": "session-malformed-containers",
+            "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
             "round_type": "product_sense",
             "config": ["not", "an", "object"],
             "question": {"id": 42, "text": 99, "type": True, "company": None},
@@ -373,15 +412,15 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(event["writer_id"], "writer-1")
         self.assertEqual(event["audio_duration_ms"], 2500)
 
-    def test_committed_message_normalizer_drops_interrupted_and_unmeasured_items(self):
-        interrupted = SimpleNamespace(
-            id="message-1",
+    def test_interrupted_message_normalizer_drops_zero_heard_and_unmeasured_items(self):
+        zero_heard = SimpleNamespace(
+            id="message-zero",
             role="assistant",
             interrupted=True,
-            text_content="Generated but not fully heard.",
+            text_content="",
             metrics={
                 "started_speaking_at": 1782600000,
-                "stopped_speaking_at": 1782600001,
+                "stopped_speaking_at": 1782600000,
             },
         )
         unmeasured = SimpleNamespace(
@@ -392,7 +431,7 @@ class RuntimeContractTests(unittest.TestCase):
             metrics={},
         )
 
-        for message in (interrupted, unmeasured):
+        for message in (zero_heard, unmeasured):
             self.assertIsNone(
                 create_transcript_event_from_message(
                     message=message,
@@ -403,6 +442,56 @@ class RuntimeContractTests(unittest.TestCase):
                     section="product_sense",
                 )
             )
+
+    def test_interrupted_message_normalizer_marks_provider_confirmed_mid_prefix_partial(self):
+        interrupted = SimpleNamespace(
+            id="message-mid",
+            role="assistant",
+            interrupted=True,
+            text_content="The provider-confirmed heard prefix.",
+            metrics={
+                "started_speaking_at": 1782600000,
+                "stopped_speaking_at": 1782600001.25,
+            },
+        )
+
+        event = create_transcript_event_from_message(
+            message=interrupted,
+            writer_id="writer-1",
+            sequence=2,
+            session_id="session-1",
+            room_name="room-1",
+            section="product_sense",
+        )
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event["text"], "The provider-confirmed heard prefix.")
+        self.assertEqual(event["audio_duration_ms"], 1250)
+        self.assertEqual(event["delivery_state"], "partially_delivered")
+
+    def test_completed_assistant_message_normalizer_remains_delivered(self):
+        completed = SimpleNamespace(
+            id="message-complete",
+            role="assistant",
+            interrupted=False,
+            text_content="The fully delivered response.",
+            metrics={
+                "started_speaking_at": 1782600000,
+                "stopped_speaking_at": 1782600002,
+            },
+        )
+
+        event = create_transcript_event_from_message(
+            message=completed,
+            writer_id="writer-1",
+            sequence=3,
+            session_id="session-1",
+            room_name="room-1",
+            section="product_sense",
+        )
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event["delivery_state"], "delivered")
 
     def test_replacement_writer_scopes_sequence_in_the_same_room(self):
         message = SimpleNamespace(
@@ -481,6 +570,438 @@ class TranscriptPublisherTests(unittest.IsolatedAsyncioTestCase):
         await publish_transcript_event(participant, event)
 
         self.assertEqual(calls, [(event, TRANSCRIPT_DATA_TOPIC)])
+
+
+class TranscriptIngestPrimitiveTests(unittest.TestCase):
+    def test_signing_uses_domain_separated_key_and_exact_compact_body(self):
+        envelope = {
+            "sessionId": "session-1",
+            "event": {"speaker": "user", "text": "Café"},
+        }
+        body = canonical_json_bytes(envelope)
+        timestamp = 1783650000
+        key = derive_ingest_signing_key("livekit-secret")
+
+        expected_key = hmac.new(
+            b"livekit-secret",
+            b"meelni/transcript-ingest/v1",
+            hashlib.sha256,
+        ).digest()
+        expected_signature = hmac.new(
+            expected_key,
+            str(timestamp).encode("ascii") + b"." + body,
+            hashlib.sha256,
+        ).hexdigest()
+
+        self.assertEqual(INGEST_KEY_CONTEXT, b"meelni/transcript-ingest/v1")
+        self.assertEqual(
+            body,
+            b'{"event":{"speaker":"user","text":"Caf\xc3\xa9"},"sessionId":"session-1"}',
+        )
+        self.assertEqual(key, expected_key)
+        self.assertEqual(sign_ingest_body(key, timestamp, body), expected_signature)
+        self.assertRegex(expected_signature, r"^[0-9a-f]{64}$")
+
+    def test_internal_ingest_url_requires_https_except_loopback(self):
+        for url in (
+            "https://meelni.com/api/internal/transcript",
+            "http://localhost:3000/api/internal/transcript",
+            "http://127.0.0.1:3000/api/internal/transcript",
+            "http://[::1]:3000/api/internal/transcript",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(validate_internal_ingest_url(url), url)
+
+        for url in (
+            "http://meelni.com/api/internal/transcript",
+            "https://user:password@meelni.com/api/internal/transcript",
+            "https://meelni.com/api/internal/transcript?secret=value",
+            "https://meelni.com/api/internal/other",
+            "//meelni.com/api/internal/transcript",
+        ):
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(ValueError, "transcript ingest URL"):
+                    validate_internal_ingest_url(url)
+
+    def test_interruption_marker_is_strict_no_text_payload(self):
+        marker = create_interruption_marker(
+            event_id="writer-1:message-zero:unavailable",
+            writer_id="writer-1",
+            sequence=1,
+            session_id="session-1",
+            room_name="room-1",
+            occurred_at=1783650000,
+        )
+
+        self.assertTrue(is_interruption_marker(marker))
+        self.assertNotIn("text", marker)
+        self.assertNotIn("is_final", marker)
+        self.assertFalse(is_transcript_event(marker))
+        self.assertFalse(is_interruption_marker({**marker, "text": "unheard"}))
+
+        user_failure = create_interruption_marker(
+            event_id="writer-1:user-message:unavailable",
+            writer_id="writer-1",
+            sequence=2,
+            session_id="session-1",
+            room_name="room-1",
+            speaker="user",
+            reason="canonicalization_failed",
+            occurred_at=1783650001,
+        )
+        self.assertTrue(is_interruption_marker(user_failure))
+        self.assertEqual(user_failure["event_type"], "integrity_unavailable")
+        self.assertEqual(user_failure["speaker"], "user")
+
+    def test_retryable_statuses_match_ingest_policy(self):
+        for status in (408, 425, 429, 500, 503, 599):
+            with self.subTest(status=status):
+                self.assertTrue(is_retryable_status(status))
+        for status in (400, 401, 404, 409, 499):
+            with self.subTest(status=status):
+                self.assertFalse(is_retryable_status(status))
+
+    def test_runtime_settlement_is_strict_metadata_only_evidence(self):
+        settlement = create_runtime_settlement(
+            session_id="session-1",
+            room_name="room-1",
+            writer_id="writer-1",
+            state="settled",
+            settled_at=1783650000,
+        )
+        self.assertTrue(is_runtime_settlement(settlement))
+        self.assertFalse(
+            is_runtime_settlement({**settlement, "text": "must be rejected"})
+        )
+
+
+class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
+    def make_event(self, *, event_id="writer-1:message-1", sequence=1, text="Measured."):
+        return create_transcript_event(
+            event_id=event_id,
+            writer_id="writer-1",
+            sequence=sequence,
+            session_id="session-1",
+            room_name="room-1",
+            speaker="user",
+            text=text,
+            started_at=1782600000 + sequence,
+            ended_at=1782600001 + sequence,
+            audio_duration_ms=1000,
+            section="product_sense",
+        )
+
+    async def test_persists_signed_envelope_before_publishing_transcript(self):
+        calls = []
+
+        async def transport(url, body, headers):
+            calls.append(("transport", url, body, dict(headers)))
+            return IngestResponse(201)
+
+        async def publisher(event):
+            calls.append(("publish", event))
+
+        event = self.make_event()
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+            now=lambda: 1783650000,
+        )
+        self.assertTrue(queue.enqueue_transcript(event))
+
+        result = await queue.flush(0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual([call[0] for call in calls], ["transport", "publish"])
+        _, url, body, headers = calls[0]
+        self.assertEqual(url, "https://meelni.com/api/internal/transcript")
+        self.assertEqual(json.loads(body), {"sessionId": "session-1", "event": event})
+        self.assertEqual(headers[TIMESTAMP_HEADER], "1783650000")
+        expected_signature = sign_ingest_body(
+            derive_ingest_signing_key("livekit-secret"),
+            1783650000,
+            body,
+        )
+        self.assertEqual(headers[SIGNATURE_HEADER], expected_signature)
+        self.assertEqual(calls[1], ("publish", event))
+
+    async def test_integrity_marker_uses_separate_envelope_and_is_never_published(self):
+        bodies = []
+        published = []
+
+        async def transport(_url, body, _headers):
+            bodies.append(json.loads(body))
+            return IngestResponse(200)
+
+        async def publisher(event):
+            published.append(event)
+
+        marker = create_interruption_marker(
+            event_id="writer-1:message-zero:unavailable",
+            writer_id="writer-1",
+            sequence=1,
+            session_id="session-1",
+            room_name="room-1",
+            occurred_at=1783650000,
+        )
+        queue = TranscriptIngestQueue(
+            ingest_url="http://localhost:3000/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        queue.enqueue_interruption_marker(marker)
+
+        result = await queue.flush(0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(
+            bodies,
+            [{"sessionId": "session-1", "interruptionMarker": marker}],
+        )
+        self.assertEqual(published, [])
+
+    async def test_runtime_settlement_persists_without_room_publication(self):
+        bodies = []
+        published = []
+
+        async def transport(_url, body, _headers):
+            bodies.append(json.loads(body))
+            return IngestResponse(200)
+
+        async def publisher(event):
+            published.append(event)
+
+        settlement = create_runtime_settlement(
+            session_id="session-1",
+            room_name="room-1",
+            writer_id="writer-1",
+            state="degraded",
+            settled_at=1783650000,
+        )
+        queue = TranscriptIngestQueue(
+            ingest_url="http://localhost:3000/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        queue.seal_and_enqueue_runtime_settlement(settlement)
+
+        with self.assertRaises(TranscriptIngestQueueSealed):
+            queue.enqueue_transcript(self.make_event())
+
+        result = await queue.flush(0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(
+            bodies,
+            [{"sessionId": "session-1", "settlement": settlement}],
+        )
+        self.assertEqual(published, [])
+
+    async def test_network_and_retryable_http_failures_retry_without_dropping(self):
+        outcomes = [
+            OSError("network down"),
+            IngestResponse(408),
+            IngestResponse(425),
+            IngestResponse(429),
+            IngestResponse(503),
+            IngestResponse(200),
+        ]
+        sleeps = []
+        published = []
+
+        async def transport(_url, _body, _headers):
+            outcome = outcomes.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+        async def publisher(event):
+            published.append(event)
+
+        async def sleep(delay):
+            sleeps.append(delay)
+
+        event = self.make_event()
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+            retry_delay_seconds=0.125,
+            sleep=sleep,
+        )
+        queue.enqueue_transcript(event)
+
+        result = await queue.flush(0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(sleeps, [0.125] * 5)
+        self.assertEqual(published, [event])
+
+    async def test_retrying_first_item_does_not_starve_later_persistence(self):
+        attempts = {}
+        published = []
+
+        async def transport(_url, body, _headers):
+            event_id = json.loads(body)["event"]["event_id"]
+            attempts[event_id] = attempts.get(event_id, 0) + 1
+            if event_id.endswith("message-1") and attempts[event_id] == 1:
+                return IngestResponse(503)
+            return IngestResponse(200)
+
+        async def publisher(event):
+            published.append(event["event_id"])
+
+        async def sleep(_delay):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+            sleep=sleep,
+        )
+        first = self.make_event()
+        second = self.make_event(event_id="writer-1:message-2", sequence=2)
+        queue.enqueue_transcript(first)
+        queue.enqueue_transcript(second)
+
+        result = await queue.flush(0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(published, [second["event_id"], first["event_id"]])
+        self.assertEqual(attempts, {first["event_id"]: 2, second["event_id"]: 1})
+
+    async def test_permanent_http_failure_is_retained_and_blocks_settlement(self):
+        published = []
+
+        async def transport(_url, _body, _headers):
+            return IngestResponse(409)
+
+        async def publisher(event):
+            published.append(event)
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        queue.enqueue_transcript(self.make_event())
+
+        result = await queue.flush(0.5)
+
+        self.assertFalse(result.settled)
+        self.assertEqual(result.permanent, 1)
+        self.assertEqual(published, [])
+        self.assertEqual(queue.permanent_failures[0].status, 409)
+        self.assertEqual(queue.permanent_failures[0].reason, "permanent_http_409")
+
+    async def test_publish_retry_does_not_repeat_successful_server_persistence(self):
+        transport_calls = 0
+        publisher_calls = 0
+        sleeps = []
+
+        async def transport(_url, _body, _headers):
+            nonlocal transport_calls
+            transport_calls += 1
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            nonlocal publisher_calls
+            publisher_calls += 1
+            if publisher_calls == 1:
+                raise OSError("room temporarily unavailable")
+
+        async def sleep(delay):
+            sleeps.append(delay)
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+            sleep=sleep,
+        )
+        queue.enqueue_transcript(self.make_event())
+
+        result = await queue.flush(0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(transport_calls, 1)
+        self.assertEqual(publisher_calls, 2)
+        self.assertEqual(sleeps, [0.25])
+
+    async def test_queue_is_bounded_idempotent_and_freezes_enqueued_content(self):
+        bodies = []
+        published = []
+
+        async def transport(_url, body, _headers):
+            bodies.append(json.loads(body))
+            return IngestResponse(200)
+
+        async def publisher(event):
+            published.append(event)
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+            max_size=1,
+        )
+        event = self.make_event()
+        self.assertTrue(queue.enqueue_transcript(event))
+        self.assertFalse(queue.enqueue_transcript(event))
+
+        with self.assertRaises(TranscriptIngestIdentityConflict):
+            queue.enqueue_transcript({**event, "text": "Identity conflict."})
+        with self.assertRaises(TranscriptIngestQueueFull):
+            queue.enqueue_transcript(
+                self.make_event(event_id="writer-1:message-2", sequence=2)
+            )
+
+        event["text"] = "Mutation after enqueue."
+        result = await queue.flush(0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(bodies[0]["event"]["text"], "Measured.")
+        self.assertEqual(published[0]["text"], "Measured.")
+
+    async def test_flush_timeout_keeps_retryable_item_pending(self):
+        sleep_started = asyncio.Event()
+        never_wake = asyncio.Event()
+
+        async def transport(_url, _body, _headers):
+            return IngestResponse(503)
+
+        async def publisher(_event):
+            self.fail("retryable persistence must not publish")
+
+        async def sleep(_delay):
+            sleep_started.set()
+            await never_wake.wait()
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+            sleep=sleep,
+        )
+        queue.enqueue_transcript(self.make_event())
+
+        result = await queue.flush(0.01)
+
+        self.assertTrue(sleep_started.is_set())
+        self.assertTrue(result.timed_out)
+        self.assertEqual(result.pending, 1)
+        self.assertFalse(result.settled)
 
 
 class SessionDeadlineWatchdogTests(unittest.IsolatedAsyncioTestCase):

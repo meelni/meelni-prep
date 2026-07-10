@@ -43,6 +43,7 @@ function initializePostHog() {
     disable_session_recording: !clientConfig.sessionRecording.enabled,
     session_recording: {
       maskAllInputs: clientConfig.sessionRecording.maskTextInputs,
+      maskTextSelector: clientConfig.sessionRecording.maskAllText ? "*" : null,
       recordCrossOriginIframes: false,
     },
 

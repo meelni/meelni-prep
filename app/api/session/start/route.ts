@@ -154,6 +154,7 @@ export async function POST(req: NextRequest) {
       body,
       env: livekitEnv.data,
       interviewAgentName: interviewAgentName.data,
+      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || "",
     });
 
     if (!result.ok) {

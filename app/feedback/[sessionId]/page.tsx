@@ -543,7 +543,7 @@ export default function FeedbackPage() {
                   No transcript available for this session
                 </p>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-4" data-ph-no-capture>
                   {transcriptData.map((turn) => (
                     <div
                       key={turn.id}

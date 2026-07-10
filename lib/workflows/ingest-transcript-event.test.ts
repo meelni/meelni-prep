@@ -7,6 +7,7 @@ import {
   compareTranscriptOrdering,
   ingestTranscriptEvent,
   isTranscriptEventWithinSessionWindow,
+  isTimestampWithinSessionWindow,
   type TranscriptIngestStore,
 } from "./ingest-transcript-event";
 
@@ -105,6 +106,19 @@ test("canonical timing must stay inside the server-owned session window", () => 
     ),
     false
   );
+  assert.equal(
+    isTimestampWithinSessionWindow("2026-07-10T05:00:00.000Z", window),
+    true
+  );
+  assert.equal(
+    isTimestampWithinSessionWindow("2026-07-10T05:30:00.000Z", window),
+    true
+  );
+  assert.equal(
+    isTimestampWithinSessionWindow("2026-07-10T05:30:00.001Z", window),
+    false
+  );
+  assert.equal(isTimestampWithinSessionWindow("not-a-date", window), false);
 });
 
 test("same-writer timestamp inversions fail instead of violating sequence order", async () => {
@@ -138,13 +152,13 @@ test("malformed and mismatched-session events fail before persistence", async ()
   const store = createMemoryStore();
   const malformed = await ingestTranscriptEvent({
     requestSessionId: SESSION_ID,
-    userId: USER_ID,
+    principal: { kind: "authenticated_user", userId: USER_ID },
     event: { ...transcriptEvent(), is_final: false },
     store,
   });
   const mismatched = await ingestTranscriptEvent({
     requestSessionId: OTHER_SESSION_ID,
-    userId: USER_ID,
+    principal: { kind: "authenticated_user", userId: USER_ID },
     event: transcriptEvent(),
     store,
   });
@@ -158,7 +172,7 @@ test("ownership and room correlation fail without exposing session existence", a
   const store = createMemoryStore();
   const wrongUser = await ingestTranscriptEvent({
     requestSessionId: SESSION_ID,
-    userId: "other-user",
+    principal: { kind: "authenticated_user", userId: "other-user" },
     event: transcriptEvent(),
     store,
   });
@@ -178,7 +192,7 @@ test("event IDs are globally unique and writer sequence collisions fail closed",
 
   const crossSession = await ingestTranscriptEvent({
     requestSessionId: OTHER_SESSION_ID,
-    userId: USER_ID,
+    principal: { kind: "authenticated_user", userId: USER_ID },
     event: transcriptEvent({
       session_id: OTHER_SESSION_ID,
       room_name: "other-session-room",
@@ -243,7 +257,7 @@ type MemoryStore = ReturnType<typeof createMemoryStore>;
 function ingest(store: MemoryStore, event: TranscriptEvent) {
   return ingestTranscriptEvent({
     requestSessionId: SESSION_ID,
-    userId: USER_ID,
+    principal: { kind: "authenticated_user", userId: USER_ID },
     event,
     store,
   });
@@ -273,9 +287,13 @@ function createMemoryStore() {
   } = {
     events,
     sessions,
-    async persist({ userId, event }) {
+    async persist({ principal, event }) {
       const session = sessions.get(event.session_id);
-      if (!session || session.userId !== userId) {
+      if (
+        !session ||
+        (principal.kind === "authenticated_user" &&
+          session.userId !== principal.userId)
+      ) {
         return { ok: false, reason: "not_found" };
       }
       if (session.roomName !== event.room_name) {

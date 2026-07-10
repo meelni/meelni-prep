@@ -42,6 +42,7 @@ export type PersistTranscriptEventResult<TTurn> =
         | "event_conflict"
         | "writer_sequence_conflict"
         | "writer_order_conflict"
+        | "runtime_settled"
         | "event_time_out_of_bounds"
         | "session_closed"
         | "session_capacity_exceeded";
@@ -49,7 +50,9 @@ export type PersistTranscriptEventResult<TTurn> =
 
 export interface TranscriptIngestStore<TTurn> {
   persist(input: {
-    userId: string;
+    principal:
+      | { kind: "authenticated_user"; userId: string }
+      | { kind: "voice_runtime" };
     event: TranscriptEvent;
   }): Promise<PersistTranscriptEventResult<TTurn>>;
 }
@@ -63,7 +66,9 @@ export type IngestTranscriptEventResult<TTurn> =
 
 export async function ingestTranscriptEvent<TTurn>(input: {
   requestSessionId: string;
-  userId: string;
+  principal:
+    | { kind: "authenticated_user"; userId: string }
+    | { kind: "voice_runtime" };
   event: unknown;
   store: TranscriptIngestStore<TTurn>;
 }): Promise<IngestTranscriptEventResult<TTurn>> {
@@ -75,7 +80,10 @@ export async function ingestTranscriptEvent<TTurn>(input: {
     return { ok: false, reason: "session_mismatch" };
   }
 
-  return input.store.persist({ userId: input.userId, event: input.event });
+  return input.store.persist({
+    principal: input.principal,
+    event: input.event,
+  });
 }
 
 export function isPersistableTranscriptEvent(
@@ -100,7 +108,24 @@ export function isTranscriptEventWithinSessionWindow(
   const eventStartedAt = Date.parse(event.started_at);
   const eventEndedAt = Date.parse(event.ended_at);
   return (
-    eventStartedAt >= window.startedAt.getTime() &&
-    eventEndedAt <= window.deadlineAt.getTime()
+    isTimestampWithinSessionWindow(eventStartedAt, window) &&
+    isTimestampWithinSessionWindow(eventEndedAt, window)
+  );
+}
+
+export function isTimestampWithinSessionWindow(
+  timestamp: string | number | Date,
+  window: { startedAt: Date; deadlineAt: Date }
+): boolean {
+  const value =
+    timestamp instanceof Date
+      ? timestamp.getTime()
+      : typeof timestamp === "number"
+        ? timestamp
+        : Date.parse(timestamp);
+  return (
+    Number.isFinite(value) &&
+    value >= window.startedAt.getTime() &&
+    value <= window.deadlineAt.getTime()
   );
 }

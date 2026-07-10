@@ -352,7 +352,8 @@ async def entrypoint(ctx: JobContext):
     # NEW: Pass demo_agent instance to session
     await session.start(
         agent=demo_agent,
-        room=ctx.room
+        room=ctx.room,
+        record=False,
     )
 
     logger.info("Demo agent started successfully")
