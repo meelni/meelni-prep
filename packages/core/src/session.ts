@@ -1,4 +1,8 @@
 import type { RoundType } from "./interview";
+import type {
+  InterviewLifecycleState,
+  InterviewTerminalReason,
+} from "./session-lifecycle";
 
 export type Speaker = "user" | "interviewer";
 
@@ -42,9 +46,20 @@ export interface SessionMetadata {
   roundType: RoundType;
   mode: InterviewMode;
   persona?: string;
+  runtimeRef?: {
+    provider: string;
+    id: string;
+  };
+  /** @deprecated Use runtimeRef outside provider adapters. */
   livekitRoomName?: string;
   config?: SessionConfig;
+  lifecycleState: InterviewLifecycleState;
+  lifecycleVersion: number;
+  terminalReason?: InterviewTerminalReason;
   startedAt: Date;
+  activatedAt?: Date;
+  endingAt?: Date;
+  lastTransitionAt: Date;
   endedAt?: Date;
 }
 

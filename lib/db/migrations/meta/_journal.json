@@ -43,6 +43,13 @@
       "when": 1783628977972,
       "tag": "0005_multi_subject_account_deletion",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783633880678,
+      "tag": "0006_interview_session_lifecycle",
+      "breakpoints": true
     }
   ]
 }

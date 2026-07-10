@@ -31,3 +31,19 @@ The journaled `0003_durable_account_deletion`,
 `0004_stripe_deletion_privacy`, and `0005_multi_subject_account_deletion` are
 new relaunch migrations and are unrelated to the retired, unjournaled files
 with overlapping numeric prefixes.
+
+## Canonical interview lifecycle
+
+`0006_interview_session_lifecycle` additively introduces the canonical session
+state, optimistic-concurrency version, terminal reason, and transition
+timestamps while retaining the legacy `status` column as a compatibility
+projection. Its backfill preserves only facts the historical row can prove:
+generic completed, abandoned, and error outcomes use `legacy_unknown`; only
+legacy `too_short` proves `insufficient_signal`. It never fabricates an
+activation timestamp or a user/provider cause. An `in_progress` row with only
+`ended_at` is treated as an ambiguous interrupted write and becomes
+`abandoned/legacy_unknown`, not a successful completion.
+
+The migration is a launch prerequisite for SAV-187 and its dependent runtime
+reliability slices. Rehearse both the clean chain and the six-migration upgrade
+path with `npm run test:database-migrations` before applying it remotely.

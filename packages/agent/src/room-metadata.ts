@@ -2,6 +2,8 @@ import type { HintMode, InterviewMode, RoundType } from "@meelni/core";
 
 export type InterviewFeedbackMode = "real_time" | "end_only" | "silent";
 
+export const INTERVIEW_ROOM_METADATA_CONTRACT_VERSION = 1 as const;
+
 export interface InterviewRuntimeConfig {
   difficulty: string;
   voice: string;
@@ -27,11 +29,33 @@ export interface InterviewRoomQuestion {
 }
 
 export interface InterviewRoomMetadata {
-  session_id?: string;
+  contract_version: typeof INTERVIEW_ROOM_METADATA_CONTRACT_VERSION;
+  session_id: string;
   round_type: RoundType;
   mode?: InterviewMode;
   config: InterviewRuntimeConfig;
   question: InterviewRoomQuestion | null;
+}
+
+export type InterviewRoomMetadataInput = Omit<
+  InterviewRoomMetadata,
+  "contract_version"
+> & {
+  contract_version?: typeof INTERVIEW_ROOM_METADATA_CONTRACT_VERSION;
+};
+
+export class InterviewRoomMetadataError extends Error {
+  constructor(
+    public readonly code:
+      | "missing_metadata"
+      | "invalid_json"
+      | "unsupported_contract"
+      | "missing_session_id"
+      | "invalid_round_type"
+  ) {
+    super(`Invalid interview room metadata: ${code}`);
+    this.name = "InterviewRoomMetadataError";
+  }
 }
 
 export const DEFAULT_INTERVIEW_RUNTIME_CONFIG: InterviewRuntimeConfig = {
@@ -59,10 +83,16 @@ const ALLOWED_RUNTIME_MODELS = {
 } as const;
 
 export function buildInterviewRoomMetadata(
-  metadata: InterviewRoomMetadata
+  metadata: InterviewRoomMetadataInput
 ): InterviewRoomMetadata {
+  if (!isNonEmptyString(metadata.session_id)) {
+    throw new InterviewRoomMetadataError("missing_session_id");
+  }
+
   return {
     ...metadata,
+    contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
+    session_id: metadata.session_id,
     config: metadata.config,
     question: metadata.question ? normalizeQuestion(metadata.question) : null,
   };
@@ -72,36 +102,44 @@ export function parseInterviewRoomMetadata(
   rawMetadata: string | null | undefined
 ): InterviewRoomMetadata {
   if (!rawMetadata) {
-    return getFallbackInterviewRoomMetadata();
+    throw new InterviewRoomMetadataError("missing_metadata");
   }
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(rawMetadata) as Partial<InterviewRoomMetadata>;
-
-    return buildInterviewRoomMetadata({
-      session_id:
-        typeof parsed.session_id === "string" ? parsed.session_id : undefined,
-      round_type: isRoundType(parsed.round_type)
-        ? parsed.round_type
-        : "product_sense",
-      mode:
-        parsed.mode === "text" || parsed.mode === "voice_video"
-          ? parsed.mode
-          : undefined,
-      config: normalizeInterviewRuntimeConfig(parsed.config),
-      question: parsed.question ? normalizeQuestion(parsed.question) : null,
-    });
+    parsed = JSON.parse(rawMetadata);
   } catch {
-    return getFallbackInterviewRoomMetadata();
+    throw new InterviewRoomMetadataError("invalid_json");
   }
-}
 
-export function getFallbackInterviewRoomMetadata(): InterviewRoomMetadata {
-  return {
-    round_type: "product_sense",
-    question: null,
-    config: { ...DEFAULT_INTERVIEW_RUNTIME_CONFIG },
-  };
+  if (!isRecord(parsed)) {
+    throw new InterviewRoomMetadataError("invalid_json");
+  }
+  if (parsed.contract_version !== INTERVIEW_ROOM_METADATA_CONTRACT_VERSION) {
+    throw new InterviewRoomMetadataError("unsupported_contract");
+  }
+  if (!isNonEmptyString(parsed.session_id)) {
+    throw new InterviewRoomMetadataError("missing_session_id");
+  }
+  if (!isRoundType(parsed.round_type)) {
+    throw new InterviewRoomMetadataError("invalid_round_type");
+  }
+
+  return buildInterviewRoomMetadata({
+    contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
+    session_id: parsed.session_id,
+    round_type: parsed.round_type,
+    mode:
+      parsed.mode === "text" || parsed.mode === "voice_video"
+        ? parsed.mode
+        : undefined,
+    config: normalizeInterviewRuntimeConfig(
+      isRecord(parsed.config) ? parsed.config : undefined
+    ),
+    question: isRecord(parsed.question)
+      ? normalizeQuestion(parsed.question)
+      : null,
+  });
 }
 
 export function normalizeInterviewRuntimeConfig(
@@ -118,6 +156,18 @@ export function normalizeInterviewRuntimeConfig(
       config?.voice,
       DEFAULT_INTERVIEW_RUNTIME_CONFIG.voice
     ),
+    speed: numberOrDefault(
+      config?.speed,
+      DEFAULT_INTERVIEW_RUNTIME_CONFIG.speed!
+    ),
+    emotion: stringOrDefault(
+      config?.emotion,
+      DEFAULT_INTERVIEW_RUNTIME_CONFIG.emotion!
+    ),
+    volume: numberOrDefault(
+      config?.volume,
+      DEFAULT_INTERVIEW_RUNTIME_CONFIG.volume!
+    ),
     duration: numberOrDefault(
       config?.duration,
       DEFAULT_INTERVIEW_RUNTIME_CONFIG.duration
@@ -128,6 +178,10 @@ export function normalizeInterviewRuntimeConfig(
     hintMode: isHintMode(config?.hintMode)
       ? config.hintMode
       : DEFAULT_INTERVIEW_RUNTIME_CONFIG.hintMode,
+    persona:
+      typeof config?.persona === "string" || config?.persona === null
+        ? config.persona
+        : DEFAULT_INTERVIEW_RUNTIME_CONFIG.persona,
     stt_model: modelOrDefault(
       config?.stt_model,
       DEFAULT_INTERVIEW_RUNTIME_CONFIG.stt_model,
@@ -154,7 +208,12 @@ function normalizeQuestion(
     text: stringOrDefault(question.text, ""),
     company: typeof question.company === "string" ? question.company : null,
     type: stringOrDefault(question.type, ""),
-    ...(question.askedAt === undefined ? {} : { askedAt: question.askedAt }),
+    ...(typeof question.askedAt === "string" || question.askedAt === null
+      ? { askedAt: question.askedAt }
+      : question.askedAt instanceof Date &&
+          Number.isFinite(question.askedAt.getTime())
+        ? { askedAt: question.askedAt.toISOString() }
+        : {}),
   };
 }
 
@@ -198,4 +257,12 @@ function compactObject<T extends Record<string, unknown>>(
   return Object.fromEntries(
     Object.entries(value).filter(([, entry]) => entry !== undefined)
   ) as Partial<T>;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

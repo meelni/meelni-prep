@@ -52,7 +52,7 @@
     "test:python-agent": "python3 -m unittest agent/test_runtime_contracts.py",
     "test:local": "node --test scripts/*.test.mjs",
     "test:fixtures": "tsx --test packages/test-fixtures/src/*.test.ts",
-    "test:workflows": "tsx --test lib/workflows/*.test.ts lib/supabase/*.test.ts lib/auth/*.test.ts lib/navigation/*.test.ts lib/analytics/*.test.ts",
+    "test:workflows": "tsx --test lib/workflows/*.test.ts lib/db/*.test.ts lib/supabase/*.test.ts lib/auth/*.test.ts lib/navigation/*.test.ts lib/analytics/*.test.ts",
     "test:billing": "tsx --test lib/billing/*.test.ts",
     "test:packages": "tsx --test scripts/package-entrypoints.test.ts",
     "test:quality": "node --test scripts/quality-scripts.test.mjs",

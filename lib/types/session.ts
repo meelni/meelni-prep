@@ -5,7 +5,11 @@
  */
 export {
   type AgentState,
+  type InterviewLifecycleState,
   type InterviewMode,
+  type InterviewTerminalOutcome,
+  type InterviewTerminalReason,
+  type InterviewTerminalState,
   type QueuedTranscriptSave,
   type RoundType,
   type SessionConfig,
@@ -19,5 +23,5 @@ export {
   type TranscriptSaveResult,
   type TranscriptStats,
   type TranscriptTurn,
-  type TranscriptTurnInput
+  type TranscriptTurnInput,
 } from "@meelni/core";

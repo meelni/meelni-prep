@@ -4,6 +4,7 @@ import {
 } from "@/lib/internal/integrations";
 import { getSessionForLiveKitJoin } from "@/lib/db/sessions";
 import { consumeReconnectRateLimit } from "@/lib/db/rate-limits";
+import type { InterviewLifecycleState } from "@/lib/internal/core";
 
 const DEFAULT_SESSION_DURATION_MINUTES = 30;
 const MAX_SESSION_DURATION_MINUTES = 60;
@@ -23,6 +24,7 @@ export interface JoinableInterviewSession {
   startedAt: Date | null;
   endedAt: Date | null;
   status: string;
+  lifecycleState: InterviewLifecycleState;
 }
 
 export interface JoinInterviewSessionInput {
@@ -241,7 +243,9 @@ function isJoinableSession(
 ): boolean {
   if (
     session.mode !== "voice_video" ||
-    session.status !== "in_progress" ||
+    !["connecting", "active", "reconnecting"].includes(
+      session.lifecycleState
+    ) ||
     session.endedAt ||
     !session.livekitRoomName ||
     !session.startedAt
