@@ -2181,6 +2181,10 @@ test("explore question surfaces use shared form and action primitives", async ()
   const missingExports = checkboxSource.includes("Checkbox")
     ? []
     : ["components/ui/checkbox.tsx:Checkbox"];
+  const structuredData = await readFile(
+    "components/explore/structured-data.tsx",
+    "utf8"
+  );
 
   const expectations = [
     {
@@ -2195,7 +2199,16 @@ test("explore question surfaces use shared form and action primitives", async ()
     {
       file: "components/explore/question-signin-modal.tsx",
       requiredImports: ["@/components/ui/button", "@/components/ui/dialog"],
-      bannedPatterns: ["<button"],
+      bannedPatterns: [
+        "<button",
+        'document.addEventListener("keydown"',
+        "document.body.style.overflow",
+      ],
+    },
+    {
+      file: "components/explore/explore-question-list-item.tsx",
+      requiredImports: ["@/components/ui/button"],
+      bannedPatterns: ["<button", "opacity-0"],
     },
     {
       file: "components/explore/conversion-cta.tsx",
@@ -2230,6 +2243,59 @@ test("explore question surfaces use shared form and action primitives", async ()
     if (file === "app/explore/page.tsx" && !content.includes("top-header")) {
       violations.push(`${file}:top-header`);
     }
+    if (
+      file === "components/explore/explore-question-list-item.tsx" &&
+      (!content.includes("Practice question") ||
+        !content.includes("whitespace-normal") ||
+        !content.includes("min-w-0") ||
+        content.includes('itemProp="author"') ||
+        content.includes('itemProp="dateCreated"'))
+    ) {
+      violations.push(`${file}:mobile-practice-affordance`);
+    }
+    if (
+      file === "components/explore/question-signin-modal.tsx" &&
+      (!content.includes('closeClassName="flex h-11 w-11') ||
+        !content.includes("max-h-[calc(100dvh_-_2rem)]") ||
+        !content.includes("w-[calc(100%_-_2rem)]") ||
+        !content.includes("onCloseAutoFocus"))
+    ) {
+      violations.push(`${file}:mobile-dialog-bounds`);
+    }
+    if (
+      file === "app/explore/page.tsx" &&
+      (!content.includes('aria-label="Question pages"') ||
+        !content.includes('aria-label="Loading questions"') ||
+        !content.includes('className="min-h-11 pl-10"') ||
+        !content.includes('className="min-h-11 w-full rounded-lg'))
+    ) {
+      violations.push(`${file}:responsive-list-states`);
+    }
+    if (
+      file === "app/explore/page.tsx" &&
+      !content.includes("publicAvailability.totalQuestions !== null")
+    ) {
+      violations.push(`${file}:truthful-structured-data-gate`);
+    }
+    if (
+      file === "app/explore/page.tsx" &&
+      content.includes("query: debouncedSearchQuery")
+    ) {
+      violations.push(`${file}:raw-search-analytics`);
+    }
+  }
+
+  if (
+    structuredData.includes('"@type": "FAQPage"') ||
+    structuredData.includes("acceptedAnswer") ||
+    structuredData.includes("dateModified: new Date()") ||
+    structuredData.includes("datePublished") ||
+    structuredData.includes("primaryImageOfPage") ||
+    structuredData.includes('"@type": "DataDownload"') ||
+    structuredData.includes("temporalCoverage") ||
+    structuredData.includes("spatialCoverage")
+  ) {
+    violations.push("components/explore/structured-data.tsx:invented-schema");
   }
 
   assert.deepEqual([...missingExports, ...violations], []);
