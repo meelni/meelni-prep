@@ -11,8 +11,8 @@ vi.mock("@/lib/db/feedback", () => ({
 vi.mock("@/lib/evaluation/session-validator", () => ({
   validateSessionCompleteness: vi.fn(),
 }));
-vi.mock("@/lib/workflows/end-interview-session", () => ({
-  endInterviewSessionWorkflow: vi.fn(),
+vi.mock("@/lib/workflows/recover-feedback-generation", () => ({
+  recoverFeedbackGenerationWorkflow: vi.fn(),
 }));
 
 import { NextRequest } from "next/server";
@@ -20,7 +20,7 @@ import { NextRequest } from "next/server";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { createClient } from "@/lib/supabase/server";
-import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
+import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
 import { GET, POST } from "./route";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -119,26 +119,61 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
-  it("retries the stored event identity without turning dispatch failure into 500", async () => {
-    vi.mocked(getSessionById).mockResolvedValue({
-      lifecycleState: "completed",
-    } as never);
-    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue({
+  it("offers recovery only after the processing lease expires", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "processing",
+        processingStartedAt: new Date(Date.now() - 6 * 60 * 1000),
+      }) as never
+    );
+    const staleResponse = await GET(request(), PARAMS);
+    await expect(staleResponse.json()).resolves.toMatchObject({
+      status: "processing",
+      retryable: true,
+    });
+
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "processing",
+        processingStartedAt: new Date(),
+      }) as never
+    );
+    const activeResponse = await GET(request(), PARAMS);
+    await expect(activeResponse.json()).resolves.toMatchObject({
+      status: "processing",
+      retryable: false,
+    });
+  });
+
+  it("fails closed for a legacy failed row without an event identity", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "failed",
+        dispatchEventId: null,
+        dispatchStatus: "not_required",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "failed",
+      retryable: false,
+    });
+  });
+
+  it("returns retryable dispatch failure without turning recovery into 500", async () => {
+    vi.mocked(recoverFeedbackGenerationWorkflow).mockResolvedValue({
       ok: true,
-      completion: {
-        feedback: feedbackRecord({ dispatchStatus: "failed" }),
-      },
+      status: "pending",
+      disposition: "dispatch_failed",
+      retryable: true,
       dispatch: {
-        ok: false,
-        disposition: "failed",
-        dispatch: {
-          sessionId: SESSION_ID,
-          eventId: `feedback/generate.requested:${SESSION_ID}:2`,
-          status: "failed",
-          attempts: 2,
-          claimedAt: new Date("2026-07-09T22:00:00.000Z"),
-          dispatchedAt: null,
-        },
+        sessionId: SESSION_ID,
+        eventId: `feedback/generate.requested:${SESSION_ID}:2`,
+        status: "failed",
+        attempts: 2,
+        claimedAt: new Date("2026-07-09T22:00:00.000Z"),
+        dispatchedAt: null,
       },
     } as never);
 
@@ -151,28 +186,18 @@ describe("/api/feedback/[sessionId]", () => {
   });
 
   it("returns a queued state after redispatching failed generation", async () => {
-    vi.mocked(getSessionById).mockResolvedValue({
-      lifecycleState: "completed",
-    } as never);
-    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue({
+    vi.mocked(recoverFeedbackGenerationWorkflow).mockResolvedValue({
       ok: true,
-      completion: {
-        feedback: feedbackRecord({
-          status: "failed",
-          dispatchStatus: "sent",
-        }),
-      },
+      status: "pending",
+      disposition: "queued",
+      retryable: false,
       dispatch: {
-        ok: true,
-        disposition: "sent",
-        dispatch: {
-          sessionId: SESSION_ID,
-          eventId: `feedback/generate.requested:${SESSION_ID}:2`,
-          status: "sent",
-          attempts: 2,
-          claimedAt: new Date("2026-07-09T22:00:00.000Z"),
-          dispatchedAt: new Date("2026-07-09T22:00:01.000Z"),
-        },
+        sessionId: SESSION_ID,
+        eventId: `feedback/generate.requested:${SESSION_ID}:2`,
+        status: "sent",
+        attempts: 2,
+        claimedAt: new Date("2026-07-09T22:00:00.000Z"),
+        dispatchedAt: new Date("2026-07-09T22:00:01.000Z"),
       },
     } as never);
 
@@ -185,12 +210,16 @@ describe("/api/feedback/[sessionId]", () => {
   });
 
   it("never turns an active interview into a feedback retry", async () => {
-    vi.mocked(getSessionById).mockResolvedValue({
-      lifecycleState: "active",
-    } as never);
+    vi.mocked(recoverFeedbackGenerationWorkflow).mockResolvedValue({
+      ok: false,
+      reason: "session_not_ended",
+    });
     const response = await POST(request("POST"), PARAMS);
     expect(response.status).toBe(409);
-    expect(endInterviewSessionWorkflow).not.toHaveBeenCalled();
+    expect(recoverFeedbackGenerationWorkflow).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      userId: "user-1",
+    });
   });
 
   it("keeps authenticated completed feedback out of shared caches", async () => {
@@ -266,6 +295,9 @@ function feedbackRecord(overrides: Record<string, unknown> = {}) {
     status: "pending",
     statusReason: null,
     dispatchStatus: "sent",
+    dispatchEventId: `feedback/generate.requested:${SESSION_ID}:1`,
+    dispatchClaimedAt: new Date("2026-07-09T22:00:00.000Z"),
+    dispatchedAt: new Date("2026-07-09T22:00:01.000Z"),
     processingStartedAt: null,
     structureScore: null,
     clarityScore: null,
