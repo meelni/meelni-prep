@@ -13,6 +13,7 @@ import {
   INTEGRATION_PROVIDERS,
   isProviderFailure,
   issueInterviewParticipantToken,
+  receiveLiveKitParticipantWebhook,
   listProviderEnvVars,
   providerFailure,
   providerSuccess,
@@ -178,6 +179,7 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
   const calls: string[] = [];
   const constructorCalls: unknown[] = [];
   const grants: unknown[] = [];
+  const roomInputs: unknown[] = [];
   const provider: LiveKitInterviewProvider = createLiveKitInterviewProvider({
     accessTokenFactory: class {
       constructor(...args: unknown[]) {
@@ -200,7 +202,8 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
       },
     }),
     roomServiceClientFactory: () => ({
-      createRoom: async () => {
+      createRoom: async (input) => {
+        roomInputs.push(input);
         calls.push("room");
       },
     }),
@@ -217,6 +220,15 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
     });
   }
   assert.deepEqual(calls, ["room", "dispatch", "grant", "jwt"]);
+  assert.deepEqual(roomInputs, [
+    {
+      name: fixture.input.roomName,
+      metadata: JSON.stringify(fixture.input.metadata),
+      emptyTimeout: 3600,
+      maxParticipants: 2,
+      departureTimeout: 60,
+    },
+  ]);
   assert.deepEqual(constructorCalls, [
     [
       fixture.input.env.apiKey,
@@ -238,6 +250,105 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
       canSubscribe: true,
     },
   ]);
+});
+
+test("LiveKit participant webhooks normalize signed provider correlation", async () => {
+  const result = await receiveLiveKitParticipantWebhook(
+    {
+      body: "signed-body",
+      authorization: "Bearer signed",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      receive: async (body, authorization) => {
+        assert.equal(body, "signed-body");
+        assert.equal(authorization, "Bearer signed");
+        return {
+          id: "event-1",
+          event: "participant_joined",
+          createdAt: BigInt(1783670400),
+          room: { name: "interview-room" },
+          participant: {
+            identity: "candidate-id",
+            joinedAtMs: BigInt(1783670400123),
+            kind: 0,
+          },
+        };
+      },
+    }
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.deepEqual(result.data, {
+      eventId: "event-1",
+      eventName: "participant_joined",
+      roomName: "interview-room",
+      participantIdentity: "candidate-id",
+      participantKind: 0,
+      occurredAt: new Date(1783670400123),
+    });
+  }
+});
+
+test("LiveKit participant webhook signature failures are rejected", async () => {
+  const result = await receiveLiveKitParticipantWebhook(
+    {
+      body: "tampered",
+      authorization: null,
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      receive: async () => {
+        throw new Error("invalid signature");
+      },
+    }
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_webhook_signature_invalid");
+  }
+});
+
+test("LiveKit leave ordering stays after the participant join within one provider second", async () => {
+  const result = await receiveLiveKitParticipantWebhook(
+    {
+      body: "signed-body",
+      authorization: "Bearer signed",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      receive: async () => ({
+        id: "event-left",
+        event: "participant_left",
+        createdAt: BigInt(1783670400),
+        room: { name: "interview-room" },
+        participant: {
+          identity: "candidate-id",
+          joinedAtMs: BigInt(1783670400500),
+          kind: 0,
+        },
+      }),
+    }
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.data?.occurredAt.getTime(), 1783670400501);
+  }
 });
 
 test("LiveKit reconnect tokens use a short TTL and the authorized room grant", async () => {

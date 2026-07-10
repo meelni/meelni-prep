@@ -19,6 +19,7 @@ import {
   endInterviewSessionWorkflow,
   type EndInterviewSessionResult,
 } from "./end-interview-session";
+import { createDrizzleInterviewReconnectStore } from "@/lib/db/session-reconnects";
 
 export interface EnforceInterviewDeadlineInput {
   sessionId: string;
@@ -33,6 +34,7 @@ export interface EnforceInterviewDeadlineDeps {
     roomName: string;
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<TerminatedInterviewRoom>>;
+  markRoomCleanupComplete(sessionId: string): Promise<void>;
   now(): Date;
 }
 
@@ -110,10 +112,13 @@ export async function enforceInterviewDeadlineWorkflow(
     });
   }
 
+  await deps.markRoomCleanupComplete(input.sessionId);
+
   return { ok: true, disposition: "enforced", completion, room };
 }
 
 export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDeps {
+  const reconnectStore = createDrizzleInterviewReconnectStore();
   return {
     getSession: getInterviewDeadlineSession,
     endSession: (sessionId) =>
@@ -123,6 +128,8 @@ export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDe
         requestedTerminalReason: "time_limit",
       }),
     terminateRoom: terminateInterviewRoom,
+    markRoomCleanupComplete: (sessionId) =>
+      reconnectStore.markRoomCleanupComplete({ sessionId }),
     now: () => new Date(),
   };
 }

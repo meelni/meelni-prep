@@ -177,6 +177,32 @@ test("join workflow allows one millisecond before the deadline and rejects at th
   if (!at.ok) assert.equal(at.body.error, "session_not_joinable");
 });
 
+test("join workflow allows 1ms before reconnect expiry and rejects at expiry", async () => {
+  const reconnectDeadlineAt = new Date("2026-07-09T12:20:30.000Z");
+  const session = createSession({
+    lifecycleState: "reconnecting",
+    reconnectDeadlineAt,
+  });
+  const before = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () => session,
+      now: () => new Date(reconnectDeadlineAt.getTime() - 1),
+    })
+  );
+  const at = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () => session,
+      now: () => reconnectDeadlineAt,
+    })
+  );
+
+  assert.equal(before.ok, true);
+  assert.equal(at.ok, false);
+  if (!at.ok) assert.equal(at.body.error, "session_not_joinable");
+});
+
 test("join workflow rejects sessions without voice-room entitlement", async () => {
   for (const session of [
     createSession({ mode: "text" }),

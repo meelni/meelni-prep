@@ -21,6 +21,7 @@ export interface LiveKitEnvironment {
 export type LiveKitAgentKind = "interview" | "demo";
 
 const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
+export const INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS = 60;
 
 export interface StartInterviewRoomInput {
   agentName: string;
@@ -107,6 +108,7 @@ interface RoomServiceClientLike {
     metadata: string;
     emptyTimeout: number;
     maxParticipants: number;
+    departureTimeout: number;
   }): Promise<unknown>;
   deleteRoom?(roomName: string): Promise<void>;
 }
@@ -197,6 +199,7 @@ export function createLiveKitInterviewProvider({
           metadata: JSON.stringify(input.metadata),
           emptyTimeout: 3600,
           maxParticipants: 2,
+          departureTimeout: INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS,
         });
       } catch (error) {
         const message = getErrorMessage(error);
