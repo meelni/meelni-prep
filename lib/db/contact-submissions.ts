@@ -35,18 +35,6 @@ export function createDrizzleContactSubmissionStore(
   return {
     async accept(input) {
       try {
-        const attemptDecision = await consumeContactRateLimit(
-          database,
-          input.rateLimitIdentities.attempt,
-          CLIENT_ATTEMPTS_PER_HOUR
-        );
-        if (!attemptDecision.allowed) {
-          return {
-            disposition: "rate_limited",
-            retryAfterSeconds: attemptDecision.retryAfterSeconds,
-          };
-        }
-
         return await database.transaction(async (transaction) => {
           await transaction.execute(sql`
             SELECT pg_advisory_xact_lock(
@@ -123,6 +111,17 @@ export function createDrizzleContactSubmissionStore(
       }
     },
   };
+}
+
+export async function consumeContactSubmissionAttemptBudget(
+  identityHash: string,
+  database: ContactSubmissionDatabase = db
+): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+  return consumeContactRateLimit(
+    database,
+    identityHash,
+    CLIENT_ATTEMPTS_PER_HOUR
+  );
 }
 
 function submissionMatches(
