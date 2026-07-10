@@ -188,7 +188,7 @@ test("runtime config normalizes invalid cross-runtime values consistently", () =
   assert.equal(malformedContainers.question?.type, "");
 });
 
-test("transcript event parsing normalizes timestamps and speakers", () => {
+test("transcript event parsing preserves the complete cross-runtime contract", () => {
   const liveKitFixture = createLiveKitStartFixture();
   const event = createTranscriptEvent(liveKitFixture.transcriptEvent);
 
@@ -197,7 +197,68 @@ test("transcript event parsing normalizes timestamps and speakers", () => {
   const parsed = parseTranscriptEvent(JSON.stringify(event));
 
   assert.equal(parsed?.speaker, "interviewer");
-  assert.equal(parsed?.timestamp, 1782600000);
+  assert.equal("contract_version" in parsed!, true);
+  assert.equal("event_id" in parsed! && parsed.event_id, "transcript-event-1");
+  assert.equal(
+    "audio_duration_ms" in parsed! && parsed.audio_duration_ms,
+    8000
+  );
+  assert.equal("section" in parsed! && parsed.section, "prompt");
+});
+
+test("transcript event parsing rejects missing, invented, or inconsistent timing", () => {
+  const fixture = createLiveKitStartFixture().transcriptEvent;
+
+  assert.equal(
+    parseTranscriptEvent(JSON.stringify({ ...fixture, audio_duration_ms: 0 })),
+    null
+  );
+  assert.equal(
+    parseTranscriptEvent(JSON.stringify({ ...fixture, section: null })),
+    null
+  );
+  assert.equal(
+    parseTranscriptEvent(
+      JSON.stringify({ ...fixture, ended_at: fixture.started_at })
+    ),
+    null
+  );
+  assert.equal(
+    parseTranscriptEvent(
+      JSON.stringify({ ...fixture, audio_duration_ms: 7998 })
+    ),
+    null
+  );
+});
+
+test("transcript contract distinguishes partially delivered interviewer speech", () => {
+  const fixture = createLiveKitStartFixture().transcriptEvent;
+  const parsed = parseTranscriptEvent(
+    JSON.stringify({ ...fixture, delivery_state: "partially_delivered" })
+  );
+
+  assert.equal(
+    parsed && "delivery_state" in parsed ? parsed.delivery_state : null,
+    "partially_delivered"
+  );
+});
+
+test("legacy v1 packets remain identifiable without fabricating v2 fields", () => {
+  const parsed = parseTranscriptEvent(
+    JSON.stringify({
+      speaker: "user",
+      text: "A legacy finalized turn.",
+      timestamp: 1782600000,
+      is_final: true,
+    })
+  );
+
+  assert.deepEqual(parsed, {
+    speaker: "user",
+    text: "A legacy finalized turn.",
+    timestamp: 1782600000,
+    is_final: true,
+  });
 });
 
 test("normalizeAgentState maps unknown voice assistant states to idle", () => {

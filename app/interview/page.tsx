@@ -277,8 +277,10 @@ function InterviewPageContent() {
     setTranscript((prev) => {
       // Check if this exact text already exists in the last few entries
       const lastFew = prev.slice(-5); // Check last 5 entries
-      isDuplicate = lastFew.some(
-        (t) => t.text === turn.text && t.speaker === turn.speaker
+      isDuplicate = lastFew.some((t) =>
+        turn.eventId
+          ? t.eventId === turn.eventId
+          : t.text === turn.text && t.speaker === turn.speaker
       );
 
       if (isDuplicate) {

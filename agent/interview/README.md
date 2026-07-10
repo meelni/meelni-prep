@@ -154,10 +154,10 @@ tts_model = config.get("tts_model", "elevenlabs/eleven_turbo_v2_5:...")
 
 ## Event Handlers
 
-The agent registers event handlers for:
-
-- `UserInputTranscribedEvent` - Publishes final user speech to the transcript data topic
-- `SpeechCreatedEvent` - Publishes delivered, non-interrupted agent speech to the transcript data topic
+The agent publishes committed user and interviewer `ConversationItemAddedEvent`
+messages to the transcript data topic. Runtime speaking metrics supply measured
+start/end timing. Interrupted interviewer playout remains excluded until the
+partial-delivery policy and heard-text handling land in SAV-193.
 
 These handlers do not write Supabase directly. `components/interview/livekit-room.tsx`
 normalizes their data packets and the browser persists them through the

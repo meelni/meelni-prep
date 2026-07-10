@@ -3,23 +3,25 @@ Meelni Interview Agent
 Handles real-time voice interviews with LiveKit inference platform
 """
 
+import asyncio
 import json
 import logging
 import os
 import sys
+from itertools import count
 from pathlib import Path
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
     AgentSession,
     AutoSubscribe,
+    ConversationItemAddedEvent,
     JobContext,
     JobProcess,
     WorkerOptions,
     cli,
-    UserInputTranscribedEvent,
-    SpeechCreatedEvent,
 )
+from livekit.agents.llm import ChatMessage
 from livekit.plugins import silero, cartesia
 from livekit.plugins.turn_detector.english import EnglishModel
 
@@ -99,6 +101,8 @@ async def entrypoint(ctx: JobContext):
     round_type = metadata["round_type"]
     config = metadata["config"]
     question = metadata.get("question")  # NEW: Extract question from metadata
+    session_id = metadata["session_id"]
+    room_name = ctx.room.name
 
     logger.info(f"Room: {ctx.room.name}")
     logger.info(f"Round Type: {round_type}")
@@ -155,99 +159,60 @@ async def entrypoint(ctx: JobContext):
     )
 
     # Subscribe to transcript events for real-time capture
-    @session.on("user_input_transcribed")
-    def on_user_transcript(event: UserInputTranscribedEvent):
-        """Capture user speech transcript and publish to frontend"""
-        if event.is_final:  # Only publish final transcripts, not interim
-            transcript_data = create_transcript_event(
-                speaker="user",
-                text=event.transcript,
-                timestamp=event.created_at,
-                is_final=event.is_final,
+    transcript_sequence = count(1)
+
+    @session.on("conversation_item_added")
+    def on_conversation_item_added(event: ConversationItemAddedEvent):
+        """Publish committed voice turns with runtime-measured playout timing."""
+        item = event.item
+        if not isinstance(item, ChatMessage) or item.role not in ("user", "assistant"):
+            return
+        if item.role == "assistant" and item.interrupted:
+            logger.info(
+                "[Transcript] Deferring interrupted interviewer turn to partial-delivery rollout"
             )
+            return
 
-            # Publish via LiveKit data track
-            logger.info(f"[Transcript] User: {event.transcript[:50]}...")
-
-            # Schedule async operation safely using ensure_future
-            import asyncio
-            asyncio.ensure_future(
-                ctx.room.local_participant.publish_data(
-                    json.dumps(transcript_data).encode("utf-8"),
-                    topic=TRANSCRIPT_DATA_TOPIC
-                )
+        text = item.text_content
+        started_at = item.metrics.get("started_speaking_at")
+        ended_at = item.metrics.get("stopped_speaking_at")
+        if not text or started_at is None or ended_at is None or ended_at <= started_at:
+            logger.warning(
+                "[Transcript] Dropping committed turn without text and measured positive timing"
             )
+            return
 
-    @session.on("speech_created")
-    def on_agent_speech(event: SpeechCreatedEvent):
-        """Capture agent speech transcript when created"""
-        # The speech_handle contains chat_items which have the agent's responses
-        speech_handle = event.speech_handle
+        audio_duration_ms = round((ended_at - started_at) * 1000)
+        speaker = "user" if item.role == "user" else "interviewer"
+        transcript_data = create_transcript_event(
+            event_id=f"{room_name}:{item.id}",
+            sequence=next(transcript_sequence),
+            session_id=session_id,
+            room_name=room_name,
+            speaker=speaker,
+            text=text,
+            started_at=started_at,
+            ended_at=ended_at,
+            audio_duration_ms=audio_duration_ms,
+            section=round_type,
+            delivery_state="delivered",
+        )
 
-        # Add a callback to get the full text when speech is done
-        def on_speech_done(handle):
-            try:
-                # Only send transcript if speech was actually delivered (not interrupted)
-                # Check if the speech was cancelled/interrupted
-                if hasattr(handle, 'interrupted') and handle.interrupted:
-                    logger.info("[Transcript] Agent speech interrupted - not sending to transcript")
-                    return
+        logger.info(f"[Transcript] {speaker}: {text[:50]}...")
 
-                # Additional check: verify speech_duration indicates actual delivery
-                # If speech_duration is 0 or very small, it was likely interrupted
-                if hasattr(handle, 'speech_duration'):
-                    duration = getattr(handle, 'speech_duration', 0)
-                    if duration < 0.1:  # Less than 100ms means not actually spoken
-                        logger.info(f"[Transcript] Agent speech too short ({duration}s) - likely interrupted")
-                        return
-
-                # Extract text from chat items
-                agent_text = ""
-                for chat_item in handle.chat_items:
-                    if hasattr(chat_item, 'content'):
-                        # Content might be a string or a list of content items
-                        content = chat_item.content
-                        if isinstance(content, str):
-                            agent_text += content + " "
-                        elif isinstance(content, list):
-                            # If it's a list, concatenate all string items
-                            for item in content:
-                                if isinstance(item, str):
-                                    agent_text += item + " "
-                                elif hasattr(item, 'text'):
-                                    agent_text += item.text + " "
-
-                if agent_text.strip():
-                    transcript_data = create_transcript_event(
-                        speaker="interviewer",
-                        text=agent_text.strip(),
-                        timestamp=event.created_at,
-                    )
-
-                    logger.info(f"[Transcript] Agent: {agent_text[:50].strip()}...")
-
-                    # Schedule async operation safely using ensure_future
-                    import asyncio
-                    asyncio.ensure_future(
-                        ctx.room.local_participant.publish_data(
-                            json.dumps(transcript_data).encode("utf-8"),
-                            topic=TRANSCRIPT_DATA_TOPIC
-                        )
-                    )
-            except Exception as e:
-                logger.error(f"Error extracting agent transcript: {e}")
-
-        speech_handle.add_done_callback(on_speech_done)
+        asyncio.ensure_future(
+            ctx.room.local_participant.publish_data(
+                json.dumps(transcript_data).encode("utf-8"),
+                topic=TRANSCRIPT_DATA_TOPIC,
+            )
+        )
 
     logger.info("Transcript event handlers registered successfully")
 
     # Start session and wait for it to be fully ready
     # Note: Do NOT call session.say() before session.start() completes!
     # Calling say() on an uninitialized session breaks the TTS pipeline
-    await session.start(
-        agent=InterviewAgent(instructions=instructions),
-        room=ctx.room
-    )
+    await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.room)
 
     logger.info(f"Voice agent started successfully - {round_type} interview with {config['difficulty']} difficulty")
 

@@ -98,27 +98,13 @@ Rules:
 
 ## Transcript Events
 
-Agents publish final transcript turns to LiveKit data topic `transcript`:
+Agents publish finalized transcript turns to LiveKit data topic `transcript`
+using the [versioned transcript event contract](./transcript-events.md). Version
+2 requires stable identity, sequence, session/room correlation, measured
+start/end timing and audio duration, a non-null section, and explicit delivery
+state across TypeScript and Python.
 
-```json
-{
-  "speaker": "user",
-  "text": "I would start by clarifying the goal.",
-  "timestamp": 1782600000,
-  "is_final": true
-}
-```
-
-Rules:
-
-- `speaker` is `user` or `interviewer`.
-- `timestamp` is epoch seconds.
-- The app only persists valid parsed events.
-- Partial STT events should not be persisted as final turns.
-- Interrupted or undelivered agent speech should not be published as transcript.
-- A realtime data packet is best-effort transport, not durable transcript
-  storage. The browser currently persists accepted events through the
-  authenticated transcript endpoint and retry queue.
-- A turn counts as durable lifecycle signal only after persistence succeeds.
-- Data-packet delivery can miss a temporarily disconnected receiver; reconnect
-  and end workflows must not assume that receiving every packet is guaranteed.
+A realtime data packet remains best-effort transport, not durable transcript
+storage. A turn counts as durable lifecycle signal only after persistence
+succeeds. Data-packet delivery can miss a temporarily disconnected receiver;
+reconnect and end workflows must not assume that every packet arrived.
