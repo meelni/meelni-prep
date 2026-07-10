@@ -310,14 +310,6 @@ export default function FeedbackPage() {
             : "Generating Feedback"
         }
         description="Our AI is analyzing your interview performance..."
-        actions={
-          feedbackData.estimatedTimeRemaining !== undefined && (
-            <p className="text-muted-foreground text-sm">
-              Estimated time remaining: {feedbackData.estimatedTimeRemaining}{" "}
-              seconds
-            </p>
-          )
-        }
       />
     );
   }
@@ -495,7 +487,7 @@ export default function FeedbackPage() {
           </FeedbackSectionCard>
         )}
 
-        {/* Practice Drills */}
+        {/* Focused practice recommendations */}
         {feedback.drills && feedback.drills.length > 0 && (
           <FeedbackSectionCard
             title="Practice Recommendations"
@@ -503,13 +495,13 @@ export default function FeedbackPage() {
             tone="info"
           >
             <ul className="space-y-3">
-              {feedback.drills.map((drill, index) => (
+              {feedback.drills.map((recommendation, index) => (
                 <FeedbackActionItem
                   key={index}
                   icon={<Target className="h-5 w-5" />}
                   tone="info"
                 >
-                  {drill}
+                  {recommendation}
                 </FeedbackActionItem>
               ))}
             </ul>

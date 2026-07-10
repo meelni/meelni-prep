@@ -144,6 +144,174 @@ test("release and refund restore credits exactly once", async () => {
   assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 1);
 });
 
+test("exact terminal replays do not emit duplicate settlement analytics", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const terminalEvents: Array<{
+    transactionType: "consume" | "release" | "refund";
+    idempotencyKey: string;
+  }> = [];
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-06-29T00:00:00.000Z"),
+    trackTerminalSettlement: ({ transactionType, idempotencyKey }) => {
+      terminalEvents.push({ transactionType, idempotencyKey });
+    },
+  });
+  await ledger.grantCredits({
+    userId: "user-analytics",
+    catalogId: "trial",
+    source: "trial",
+    idempotencyKey: "trial:user-analytics",
+  });
+
+  await ledger.reserveCredit({
+    userId: "user-analytics",
+    reservationKey: "session:consume-analytics",
+  });
+  const consumed = await ledger.consumeReservation({
+    reservationKey: "session:consume-analytics",
+    idempotencyKey: "consume:analytics",
+  });
+  const consumedReplay = await ledger.consumeReservation({
+    reservationKey: "session:consume-analytics",
+    idempotencyKey: "consume:analytics",
+  });
+
+  await ledger.reserveCredit({
+    userId: "user-analytics",
+    reservationKey: "session:release-analytics",
+  });
+  const released = await ledger.releaseReservation({
+    reservationKey: "session:release-analytics",
+    idempotencyKey: "release:analytics",
+  });
+  const releasedReplay = await ledger.releaseReservation({
+    reservationKey: "session:release-analytics",
+    idempotencyKey: "release:analytics",
+  });
+
+  await ledger.reserveCredit({
+    userId: "user-analytics",
+    reservationKey: "session:refund-analytics",
+  });
+  await ledger.consumeReservation({
+    reservationKey: "session:refund-analytics",
+    idempotencyKey: "consume:refund-analytics",
+  });
+  const refunded = await ledger.refundReservation({
+    reservationKey: "session:refund-analytics",
+    idempotencyKey: "refund:analytics",
+  });
+  const refundedReplay = await ledger.refundReservation({
+    reservationKey: "session:refund-analytics",
+    idempotencyKey: "refund:analytics",
+  });
+
+  assert.equal(consumed.duplicate, false);
+  assert.equal(consumedReplay.duplicate, true);
+  assert.equal(released.duplicate, false);
+  assert.equal(releasedReplay.duplicate, true);
+  assert.equal(refunded.duplicate, false);
+  assert.equal(refundedReplay.duplicate, true);
+  assert.deepEqual(terminalEvents, [
+    {
+      transactionType: "consume",
+      idempotencyKey: "consume:analytics",
+    },
+    {
+      transactionType: "release",
+      idempotencyKey: "release:analytics",
+    },
+    {
+      transactionType: "consume",
+      idempotencyKey: "consume:refund-analytics",
+    },
+    {
+      transactionType: "refund",
+      idempotencyKey: "refund:analytics",
+    },
+  ]);
+});
+
+test("analytics failure cannot turn a committed settlement into a workflow failure", async () => {
+  const log = console.error;
+  console.error = () => {};
+  try {
+    const ledger = createCreditLedgerService({
+      store: createMemoryCreditLedgerStore(),
+      now: () => new Date("2026-06-29T00:00:00.000Z"),
+      trackTerminalSettlement: () => {
+        throw new Error("private analytics provider failure");
+      },
+    });
+    await ledger.grantCredits({
+      userId: "user-analytics-failure",
+      catalogId: "trial",
+      source: "trial",
+      idempotencyKey: "trial:user-analytics-failure",
+    });
+    await ledger.reserveCredit({
+      userId: "user-analytics-failure",
+      reservationKey: "session:analytics-failure",
+    });
+
+    const settled = await ledger.consumeReservation({
+      reservationKey: "session:analytics-failure",
+      idempotencyKey: "consume:analytics-failure",
+    });
+    const replay = await ledger.consumeReservation({
+      reservationKey: "session:analytics-failure",
+      idempotencyKey: "consume:analytics-failure",
+    });
+
+    assert.equal(settled.reservation.status, "consumed");
+    assert.equal(settled.duplicate, false);
+    assert.equal(replay.duplicate, true);
+  } finally {
+    console.error = log;
+  }
+});
+
+test("asynchronous analytics rejection is contained after settlement", async () => {
+  const log = console.error;
+  let failureLogs = 0;
+  console.error = (message?: unknown) => {
+    if (message === "billing_terminal_settlement_analytics_failed") {
+      failureLogs += 1;
+    }
+  };
+  try {
+    const ledger = createCreditLedgerService({
+      store: createMemoryCreditLedgerStore(),
+      now: () => new Date("2026-06-29T00:00:00.000Z"),
+      trackTerminalSettlement: async () => {
+        throw new Error("private asynchronous analytics failure");
+      },
+    });
+    await ledger.grantCredits({
+      userId: "user-async-analytics-failure",
+      catalogId: "trial",
+      source: "trial",
+      idempotencyKey: "trial:user-async-analytics-failure",
+    });
+    await ledger.reserveCredit({
+      userId: "user-async-analytics-failure",
+      reservationKey: "session:async-analytics-failure",
+    });
+
+    const settled = await ledger.consumeReservation({
+      reservationKey: "session:async-analytics-failure",
+      idempotencyKey: "consume:async-analytics-failure",
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(settled.reservation.status, "consumed");
+    assert.equal(failureLogs, 1);
+  } finally {
+    console.error = log;
+  }
+});
+
 test("subscription renewal respects the rollover cap and 60 day expiration", async () => {
   const store = createMemoryCreditLedgerStore();
   const renewedAt = new Date();

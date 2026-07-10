@@ -41,6 +41,7 @@ test("instrumented boundaries cannot bypass the redacted reporter with console o
   const callGraphFiles = await collectLocalCallGraph(CRITICAL_CALL_GRAPH_ROOTS);
   for (const expected of [
     "lib/analytics/posthog-server.ts",
+    "lib/billing/credits.ts",
     "lib/db/questions.ts",
     "lib/evaluation/scorer.ts",
     "lib/google-sheets-api.ts",
@@ -59,6 +60,11 @@ test("instrumented boundaries cannot bypass the redacted reporter with console o
     const sourceWithoutApprovedSinks = stripComments(
       file === "lib/workflows/sync-question-bank.ts"
         ? source.replace("console.info(JSON.stringify(event));", "")
+        : file === "lib/billing/credits.ts"
+          ? source.replaceAll(
+              'console.error("billing_terminal_settlement_analytics_failed");',
+              ""
+            )
         : file === "lib/operations/operational-events.ts"
           ? source.replace(
               "write: (serialized) => console.error(serialized),",

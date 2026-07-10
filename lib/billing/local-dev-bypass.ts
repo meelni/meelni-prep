@@ -86,11 +86,18 @@ export function createLocalDevCreditLedgerService({
   ): CompleteReservationResult {
     const existing = completedReservations.get(input.idempotencyKey);
     if (existing) {
-      return existing;
+      if (
+        existing.reservation.reservationKey !== input.reservationKey ||
+        existing.reservation.status !== status
+      ) {
+        throw new Error("credit_transaction_idempotency_conflict");
+      }
+      return { ...existing, duplicate: true };
     }
 
     const timestamp = now();
     const result = {
+      duplicate: false,
       reservation: {
         id: `local-dev:${input.reservationKey}`,
         userId: "local-dev-user",

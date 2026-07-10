@@ -85,12 +85,13 @@ const MODE_OPTIONS = [
   {
     id: "mock_interview" as const,
     title: "Mock Interview",
-    description: "Full realistic interview experience with comprehensive feedback",
+    description:
+      "Full realistic interview experience with comprehensive feedback",
   },
   {
     id: "practice" as const,
     title: "Quick Practice",
-    description: "Faster, focused practice with immediate feedback",
+    description: "Focused practice with feedback after you finish",
   },
   {
     id: "learning" as const,
@@ -175,7 +176,9 @@ export function SetupModal({
     }
   };
 
-  const selectInterviewType = (type: NonNullable<InterviewConfig["roundType"]>) => {
+  const selectInterviewType = (
+    type: NonNullable<InterviewConfig["roundType"]>
+  ) => {
     updateConfig({ roundType: type });
   };
 
@@ -183,7 +186,9 @@ export function SetupModal({
     updateConfig({ mode });
   };
 
-  const updateVoiceSettings = (updates: Partial<InterviewConfig["voiceSettings"]>) => {
+  const updateVoiceSettings = (
+    updates: Partial<InterviewConfig["voiceSettings"]>
+  ) => {
     updateConfig({
       voiceSettings: { ...config.voiceSettings, ...updates },
     });
@@ -203,7 +208,7 @@ export function SetupModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-overlay/50 backdrop-blur-sm"
+        className="bg-overlay/50 absolute inset-0 backdrop-blur-sm"
         onClick={onClose}
       />
 
@@ -213,15 +218,15 @@ export function SetupModal({
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-        className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-[600px] max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-card border-border relative flex max-h-[90vh] w-full max-w-[600px] flex-col overflow-hidden rounded-xl border shadow-2xl"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border">
+        <div className="border-border flex items-center justify-between border-b p-6">
           <div className="space-y-1">
             <h2 id="setup-modal-title" className="text-xl font-semibold">
               Setup Your Interview
             </h2>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Configure your practice session
             </p>
           </div>
@@ -232,7 +237,7 @@ export function SetupModal({
             onClick={onClose}
             aria-label="Close modal"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </Button>
         </div>
 
@@ -275,15 +280,15 @@ export function SetupModal({
 
                 {/* Divider */}
                 <div className="flex items-center gap-3 py-2">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                  <div className="bg-border h-px flex-1" />
+                  <span className="text-muted-foreground text-xs tracking-wide uppercase">
                     Or customize
                   </span>
-                  <div className="flex-1 h-px bg-border" />
+                  <div className="bg-border h-px flex-1" />
                 </div>
 
                 {/* Interview Type Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {INTERVIEW_TYPES.map((type) => {
                     const isSelected = config.roundType === type.id;
                     return (
@@ -296,30 +301,35 @@ export function SetupModal({
                           y: -2,
                           scale: 1.01,
                           boxShadow: isSelected
-                            ? '0 8px 30px color-mix(in oklab, var(--primary) 25%, transparent)'
-                            : '0 4px 20px rgb(0 0 0 / 0.1)',
+                            ? "0 8px 30px color-mix(in oklab, var(--primary) 25%, transparent)"
+                            : "0 4px 20px rgb(0 0 0 / 0.1)",
                         }}
                         whileTap={{ scale: 0.98, y: 0 }}
                         transition={{
-                          type: 'spring',
+                          type: "spring",
                           stiffness: 400,
                           damping: 30,
                         }}
-                        animate={isSelected ? {
-                          boxShadow: '0 4px 20px color-mix(in oklab, var(--primary) 15%, transparent)',
-                        } : {}}
+                        animate={
+                          isSelected
+                            ? {
+                                boxShadow:
+                                  "0 4px 20px color-mix(in oklab, var(--primary) 15%, transparent)",
+                              }
+                            : {}
+                        }
                       >
                         {/* Selection Glow Effect */}
                         {isSelected && (
                           <motion.div
-                            className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/10 to-primary/0"
+                            className="from-primary/0 via-primary/10 to-primary/0 absolute inset-0 bg-gradient-to-r"
                             animate={{
-                              x: ['-100%', '100%'],
+                              x: ["-100%", "100%"],
                             }}
                             transition={{
                               duration: 2,
                               repeat: Infinity,
-                              ease: 'linear',
+                              ease: "linear",
                             }}
                           />
                         )}
@@ -330,18 +340,20 @@ export function SetupModal({
                               scale: 1.05,
                             }}
                             transition={{
-                              type: 'spring',
+                              type: "spring",
                               stiffness: 400,
                               damping: 25,
                             }}
                           >
                             <SelectableCardIcon selected={isSelected}>
-                              <type.icon className="w-5 h-5" />
+                              <type.icon className="h-5 w-5" />
                             </SelectableCardIcon>
                           </motion.div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-sm mb-1">{type.title}</h3>
-                            <p className="text-xs text-muted-foreground leading-relaxed">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="mb-1 text-sm font-semibold">
+                              {type.title}
+                            </h3>
+                            <p className="text-muted-foreground text-xs leading-relaxed">
                               {type.description}
                             </p>
                           </div>
@@ -382,9 +394,11 @@ export function SetupModal({
                 }}
                 className="space-y-3"
               >
-                <div className="space-y-2 mb-4">
-                  <h3 className="text-lg font-semibold">Choose Interview Mode</h3>
-                  <p className="text-sm text-muted-foreground">
+                <div className="mb-4 space-y-2">
+                  <h3 className="text-lg font-semibold">
+                    Choose Interview Mode
+                  </h3>
+                  <p className="text-muted-foreground text-sm">
                     Select how you want to practice
                   </p>
                 </div>
@@ -401,30 +415,35 @@ export function SetupModal({
                         y: -2,
                         scale: 1.005,
                         boxShadow: isSelected
-                          ? '0 6px 25px color-mix(in oklab, var(--primary) 20%, transparent)'
-                          : '0 4px 15px rgb(0 0 0 / 0.08)',
+                          ? "0 6px 25px color-mix(in oklab, var(--primary) 20%, transparent)"
+                          : "0 4px 15px rgb(0 0 0 / 0.08)",
                       }}
                       whileTap={{ scale: 0.99, y: 0 }}
                       transition={{
-                        type: 'spring',
+                        type: "spring",
                         stiffness: 400,
                         damping: 30,
                       }}
-                      animate={isSelected ? {
-                        boxShadow: '0 4px 15px color-mix(in oklab, var(--primary) 12%, transparent)',
-                      } : {}}
+                      animate={
+                        isSelected
+                          ? {
+                              boxShadow:
+                                "0 4px 15px color-mix(in oklab, var(--primary) 12%, transparent)",
+                            }
+                          : {}
+                      }
                     >
                       {/* Selection Glow */}
                       {isSelected && (
                         <motion.div
-                          className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/8 to-primary/0"
+                          className="from-primary/0 via-primary/8 to-primary/0 absolute inset-0 bg-gradient-to-r"
                           animate={{
-                            x: ['-100%', '100%'],
+                            x: ["-100%", "100%"],
                           }}
                           transition={{
                             duration: 2,
                             repeat: Infinity,
-                            ease: 'linear',
+                            ease: "linear",
                           }}
                         />
                       )}
@@ -434,8 +453,12 @@ export function SetupModal({
                           {isSelected && <SelectableCardCheck size="sm" />}
                         </div>
                         <div className="flex-1">
-                          <h4 className="font-semibold text-sm mb-0.5">{mode.title}</h4>
-                          <p className="text-xs text-muted-foreground">{mode.description}</p>
+                          <h4 className="mb-0.5 text-sm font-semibold">
+                            {mode.title}
+                          </h4>
+                          <p className="text-muted-foreground text-xs">
+                            {mode.description}
+                          </p>
                         </div>
                       </div>
                     </MotionSelectableCard>
@@ -472,7 +495,7 @@ export function SetupModal({
               >
                 <div className="space-y-2">
                   <h3 className="text-lg font-semibold">Voice Settings</h3>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground text-sm">
                     Customize the interviewer's voice (optional)
                   </p>
                 </div>
@@ -486,17 +509,21 @@ export function SetupModal({
                 >
                   <div className="flex items-center gap-3">
                     <motion.div
-                      animate={showAdvancedSettings ? {
-                        rotate: [0, -10, 10, 0],
-                      } : {}}
+                      animate={
+                        showAdvancedSettings
+                          ? {
+                              rotate: [0, -10, 10, 0],
+                            }
+                          : {}
+                      }
                       transition={{
                         duration: 0.5,
                         ease: [0.34, 1.56, 0.64, 1],
                       }}
                     >
-                      <Mic className="w-5 h-5 text-muted-foreground" />
+                      <Mic className="text-muted-foreground h-5 w-5" />
                     </motion.div>
-                    <span className="font-medium text-sm">
+                    <span className="text-sm font-medium">
                       {showAdvancedSettings ? "Hide" : "Show"} Advanced Settings
                     </span>
                   </div>
@@ -505,12 +532,12 @@ export function SetupModal({
                       rotate: showAdvancedSettings ? 180 : 0,
                     }}
                     transition={{
-                      type: 'spring',
+                      type: "spring",
                       stiffness: 300,
                       damping: 25,
                     }}
                   >
-                    <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                    <ChevronDown className="text-muted-foreground h-5 w-5" />
                   </motion.div>
                 </Button>
 
@@ -525,7 +552,7 @@ export function SetupModal({
                     >
                       {/* Speed Slider */}
                       <div className="space-y-2">
-                        <label className="text-sm font-medium flex items-center justify-between">
+                        <label className="flex items-center justify-between text-sm font-medium">
                           <span>Speech Speed</span>
                           <span className="text-muted-foreground">
                             {config.voiceSettings?.speed.toFixed(1)}x
@@ -538,11 +565,13 @@ export function SetupModal({
                           step="0.1"
                           value={config.voiceSettings?.speed || 1.0}
                           onChange={(e) =>
-                            updateVoiceSettings({ speed: parseFloat(e.target.value) })
+                            updateVoiceSettings({
+                              speed: parseFloat(e.target.value),
+                            })
                           }
-                          className="h-2 w-full cursor-pointer rounded-full border-0 bg-muted p-0 accent-primary"
+                          className="bg-muted accent-primary h-2 w-full cursor-pointer rounded-full border-0 p-0"
                         />
-                        <div className="flex justify-between text-xs text-muted-foreground">
+                        <div className="text-muted-foreground flex justify-between text-xs">
                           <span>Slower</span>
                           <span>Faster</span>
                         </div>
@@ -550,7 +579,9 @@ export function SetupModal({
 
                       {/* Emotion Dropdown */}
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">Voice Emotion</label>
+                        <label className="text-sm font-medium">
+                          Voice Emotion
+                        </label>
                         <Select
                           value={config.voiceSettings?.emotion || "confident"}
                           onValueChange={(emotion) =>
@@ -578,9 +609,10 @@ export function SetupModal({
 
                 {/* Default Settings Note */}
                 {!showAdvancedSettings && (
-                  <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
-                    <p className="text-xs text-muted-foreground">
-                      Using default settings: Tessa voice at 1.0x speed with confident tone
+                  <div className="bg-muted/50 border-border/50 rounded-lg border p-3">
+                    <p className="text-muted-foreground text-xs">
+                      Using default settings: Tessa voice at 1.0x speed with
+                      confident tone
                     </p>
                   </div>
                 )}
@@ -590,10 +622,10 @@ export function SetupModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-3 p-6 border-t border-border">
+        <div className="border-border flex items-center gap-3 border-t p-6">
           {step > 1 && (
             <Button variant="outline" onClick={handleBack} className="flex-1">
-              <ArrowLeft className="w-4 h-4 mr-2" />
+              <ArrowLeft className="mr-2 h-4 w-4" />
               Back
             </Button>
           )}
@@ -604,8 +636,8 @@ export function SetupModal({
             variant="glow"
           >
             {step === 3 ? "Start Interview" : "Next"}
-            {step < 3 && <ArrowRight className="w-4 h-4 ml-2" />}
-            {step === 3 && <Zap className="w-4 h-4 ml-2" />}
+            {step < 3 && <ArrowRight className="ml-2 h-4 w-4" />}
+            {step === 3 && <Zap className="ml-2 h-4 w-4" />}
           </Button>
         </div>
       </motion.div>
