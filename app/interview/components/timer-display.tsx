@@ -1,91 +1,90 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Clock } from "lucide-react";
 import { motion } from "framer-motion";
+import { parseInterviewDeadlineAt } from "@meelni/core";
+import {
+  formatInterviewTime,
+  getRemainingSeconds,
+} from "@/lib/interview/deadline-view";
 
 interface TimerDisplayProps {
-  startedAt: Date | string;
-  estimatedDuration: number; // minutes
+  deadlineAt: string;
+  onDeadlineReached: () => void;
 }
 
 export function TimerDisplay({
-  startedAt,
-  estimatedDuration,
+  deadlineAt,
+  onDeadlineReached,
 }: TimerDisplayProps) {
-  const [elapsed, setElapsed] = useState(0);
-  // Convert to stable timestamp - handle both Date and string safely
-  const startTime = useMemo(() => {
-    try {
-      let timestamp;
-      if (typeof startedAt === "string") {
-        timestamp = new Date(startedAt).getTime();
-      } else if (startedAt instanceof Date) {
-        timestamp = startedAt.getTime();
-      } else {
-        timestamp = Date.now();
-      }
-
-      // Validate the timestamp is a valid number
-      if (isNaN(timestamp)) {
-        console.error("Invalid timestamp from startedAt:", startedAt);
-        return Date.now();
-      }
-
-      return timestamp;
-    } catch (error) {
-      console.error("Error parsing startedAt:", startedAt, error);
-      return Date.now();
-    }
-  }, [startedAt]);
+  const parsedDeadline = useMemo(
+    () => parseInterviewDeadlineAt(deadlineAt),
+    [deadlineAt]
+  );
+  const [remainingSeconds, setRemainingSeconds] = useState(() =>
+    getRemainingSeconds(parsedDeadline, new Date())
+  );
+  const callbackRef = useRef(onDeadlineReached);
+  const notifiedRef = useRef(false);
+  callbackRef.current = onDeadlineReached;
 
   useEffect(() => {
-    // Validate startTime is a valid number
-    if (isNaN(startTime) || !isFinite(startTime)) {
-      console.error("Invalid startTime in timer:", startTime);
-      setElapsed(0);
+    notifiedRef.current = false;
+    if (!parsedDeadline) {
+      console.error("Invalid interview deadline:", deadlineAt);
+      setRemainingSeconds(null);
       return;
     }
 
-    // Calculate initial elapsed time
-    const initialElapsed = Math.floor((Date.now() - startTime) / 1000);
-    setElapsed(Math.max(0, initialElapsed)); // Ensure non-negative
+    const update = () => {
+      const remaining = getRemainingSeconds(parsedDeadline, new Date());
+      setRemainingSeconds(remaining);
+      if (remaining === 0 && !notifiedRef.current) {
+        notifiedRef.current = true;
+        callbackRef.current();
+      }
+    };
 
-    // Update every second
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const newElapsed = Math.floor((now - startTime) / 1000);
-      setElapsed(Math.max(0, newElapsed)); // Ensure non-negative
-    }, 1000);
+    update();
+    const interval = window.setInterval(update, 250);
 
-    return () => clearInterval(interval);
-  }, [startTime]);
+    return () => window.clearInterval(interval);
+  }, [deadlineAt, parsedDeadline]);
 
-  const formatTime = (seconds: number): string => {
-    // Handle invalid seconds
-    if (isNaN(seconds) || !isFinite(seconds)) {
-      return "00:00";
-    }
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs
-      .toString()
-      .padStart(2, "0")}`;
-  };
+  const isUrgent = remainingSeconds !== null && remainingSeconds <= 60;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
+      role="timer"
+      aria-label={
+        remainingSeconds === null
+          ? "Interview time remaining unavailable"
+          : `${formatInterviewTime(remainingSeconds)} remaining in interview`
+      }
       className="bg-muted/50 border-border/50 flex items-center gap-2 rounded-lg border px-3 py-1.5"
     >
-      <Clock className="text-muted-foreground h-3.5 w-3.5" />
-      <span className="text-foreground font-mono text-sm">
-        {formatTime(elapsed)}
+      <Clock
+        className={
+          isUrgent
+            ? "text-warning h-3.5 w-3.5"
+            : "text-muted-foreground h-3.5 w-3.5"
+        }
+      />
+      <span
+        className={
+          isUrgent
+            ? "text-warning font-mono text-sm"
+            : "text-foreground font-mono text-sm"
+        }
+      >
+        {remainingSeconds === null
+          ? "--:--"
+          : formatInterviewTime(remainingSeconds)}
       </span>
-      <span className="text-muted-foreground text-sm">
-        / {estimatedDuration} min
-      </span>
+      <span className="text-muted-foreground text-sm">remaining</span>
     </motion.div>
   );
 }

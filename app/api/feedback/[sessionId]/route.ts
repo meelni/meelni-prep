@@ -341,7 +341,8 @@ export async function POST(
 
     const result = await endInterviewSessionWorkflow({
       sessionId,
-      userId: user.id,
+      actor: { type: "user", userId: user.id },
+      requestedTerminalReason: "user_end",
     });
     if (!result.ok) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });

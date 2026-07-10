@@ -878,13 +878,21 @@ async function verifyAtomicSessionCompletion(
 
   try {
     const results = await Promise.all(
-      databases.map((database) =>
+      databases.map((database, index) =>
         finalizeInterviewSession(
-          {
-            sessionId: SESSION_ATOMIC_END,
-            userId: USER_ONE,
-            validation,
-          },
+          index % 2 === 0
+            ? {
+                sessionId: SESSION_ATOMIC_END,
+                actor: { type: "user", userId: USER_ONE },
+                requestedTerminalReason: "user_end",
+                validation,
+              }
+            : {
+                sessionId: SESSION_ATOMIC_END,
+                actor: { type: "system", source: "hard_deadline" },
+                requestedTerminalReason: "time_limit",
+                validation,
+              },
           database
         )
       )
@@ -908,7 +916,10 @@ async function verifyAtomicSessionCompletion(
     );
     assert.equal(signatures[0]?.state, "completed");
     assert.equal(signatures[0]?.version, 3);
-    assert.equal(signatures[0]?.reason, "user_end");
+    assert.ok(
+      signatures[0]?.reason === "user_end" ||
+        signatures[0]?.reason === "time_limit"
+    );
 
     const feedbackRows = await sql<
       { rows: number; event_ids: number; dispatch_attempts: number }[]
@@ -1001,7 +1012,8 @@ async function verifyAtomicSessionCompletion(
     const repaired = await finalizeInterviewSession(
       {
         sessionId: SESSION_REPAIR,
-        userId: USER_ONE,
+        actor: { type: "user", userId: USER_ONE },
+        requestedTerminalReason: "user_end",
         validation,
       },
       databases[0]!

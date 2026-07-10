@@ -4,11 +4,13 @@ import {
 } from "@/lib/internal/integrations";
 import { getSessionForLiveKitJoin } from "@/lib/db/sessions";
 import { consumeReconnectRateLimit } from "@/lib/db/rate-limits";
-import type { InterviewLifecycleState } from "@/lib/internal/core";
+import {
+  deriveInterviewDeadlineAt,
+  isInterviewDeadlineReached,
+  normalizeInterviewDurationMinutes,
+  type InterviewLifecycleState,
+} from "@/lib/internal/core";
 
-const DEFAULT_SESSION_DURATION_MINUTES = 30;
-const MAX_SESSION_DURATION_MINUTES = 60;
-const RECONNECT_GRACE_MINUTES = 10;
 const PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
 
 export interface JoinInterviewUser {
@@ -254,26 +256,17 @@ function isJoinableSession(
   }
 
   const durationMinutes = getSessionDurationMinutes(session.config);
-  const expiresAt =
-    session.startedAt.getTime() +
-    (durationMinutes + RECONNECT_GRACE_MINUTES) * 60 * 1000;
+  const deadlineAt = deriveInterviewDeadlineAt({
+    startedAt: session.startedAt,
+    durationMinutes,
+  });
 
-  return now.getTime() <= expiresAt;
+  return !isInterviewDeadlineReached({ deadlineAt, now });
 }
 
 function getSessionDurationMinutes(config: unknown): number {
-  if (!isRecord(config)) {
-    return DEFAULT_SESSION_DURATION_MINUTES;
-  }
-
-  const duration = config.duration;
-  if (typeof duration !== "number" || !Number.isFinite(duration)) {
-    return DEFAULT_SESSION_DURATION_MINUTES;
-  }
-
-  return Math.min(
-    MAX_SESSION_DURATION_MINUTES,
-    Math.max(1, Math.round(duration))
+  return normalizeInterviewDurationMinutes(
+    isRecord(config) ? config.duration : undefined
   );
 }
 

@@ -11,6 +11,7 @@ from itertools import count
 from pathlib import Path
 from uuid import uuid4
 from dotenv import load_dotenv
+from livekit import api
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -33,6 +34,7 @@ from shared.runtime_config import get_model_config, get_tts_config
 from shared.session_deadline import (
     DeadlineEnforcer,
     cancel_deadline_watchdog,
+    is_deadline_reached,
     parse_deadline_at,
     watch_session_deadline,
 )
@@ -70,6 +72,18 @@ def get_required_env(name: str) -> str:
     if not value or not value.strip():
         raise RuntimeError(f"Missing required environment variable: {name}")
     return value.strip()
+
+
+async def terminate_livekit_room(ctx: JobContext, room_name: str) -> None:
+    """Delete the room through the acknowledged API and tolerate replays."""
+    try:
+        await ctx.api.room.delete_room(api.DeleteRoomRequest(room=room_name))
+    except Exception as error:
+        message = str(error).lower()
+        if "not found" in message or "does not exist" in message:
+            logger.info("Interview room was already terminated at the deadline")
+            return
+        raise
 
 
 class InterviewAgent(Agent):
@@ -113,6 +127,16 @@ async def entrypoint(ctx: JobContext):
     session_id = metadata["session_id"]
     deadline_at = parse_deadline_at(metadata["deadline_at"])
     room_name = ctx.room.name
+
+    if deadline_at is not None and is_deadline_reached(deadline_at):
+        logger.warning(
+            "Rejecting interview runtime because its hard deadline has already passed"
+        )
+        try:
+            await terminate_livekit_room(ctx, room_name)
+        finally:
+            ctx.shutdown("interview deadline already reached")
+        return
 
     logger.info(f"Room: {ctx.room.name}")
     logger.info(f"Round Type: {round_type}")
@@ -232,14 +256,7 @@ async def entrypoint(ctx: JobContext):
     deadline_task: asyncio.Task[bool] | None = None
 
     async def terminate_room() -> None:
-        try:
-            await ctx.delete_room()
-        except Exception as error:
-            message = str(error).lower()
-            if "not found" in message or "does not exist" in message:
-                logger.info("Interview room was already terminated at the deadline")
-                return
-            raise
+        await terminate_livekit_room(ctx, room_name)
 
     if deadline_at is not None:
         deadline_task = asyncio.create_task(

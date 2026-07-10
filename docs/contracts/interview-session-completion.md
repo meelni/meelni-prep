@@ -8,17 +8,21 @@ The session lifecycle remains the source of terminal truth. Feedback and Inngest
 
 ## End Command
 
-`POST /api/interview/end` accepts an authenticated `sessionId`. Ownership is checked inside the terminalization transaction.
+`POST /api/interview/end` accepts an authenticated `sessionId`. Ownership is
+checked before transcript validation and rechecked inside the terminalization
+transaction. System `time_limit` authority is available only to the internal
+deadline consumer; actor and requested reason are one discriminated command.
 
 The workflow:
 
-1. calculates feedback eligibility from durable transcript turns;
-2. locks the session row;
-3. preserves an existing terminal result or advances a nonterminal session through valid lifecycle edges;
-4. records final statistics;
-5. creates the unique feedback row if it is missing;
-6. stores a deterministic feedback event ID when feedback is eligible;
-7. commits all database state before attempting provider dispatch.
+1. authorizes the command without reading transcript content;
+2. calculates feedback eligibility from durable transcript turns;
+3. locks the session row and rechecks authority;
+4. preserves an existing terminal result or advances a nonterminal session through valid lifecycle edges;
+5. records final statistics;
+6. creates the unique feedback row if it is missing;
+7. stores a deterministic feedback event ID when feedback is eligible;
+8. commits all database state before attempting provider dispatch.
 
 Equivalent replays return the stored result. An existing terminal reason is immutable. A historical terminal session without feedback is repaired by creating the missing feedback result; its lifecycle is not reopened.
 

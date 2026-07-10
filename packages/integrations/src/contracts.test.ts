@@ -16,6 +16,7 @@ import {
   listProviderEnvVars,
   providerFailure,
   providerSuccess,
+  terminateInterviewRoom,
   type LiveKitInterviewProvider,
 } from "./index";
 
@@ -293,4 +294,83 @@ test("LiveKit reconnect tokens use a short TTL and the authorized room grant", a
       canSubscribe: true,
     },
   ]);
+});
+
+test("LiveKit room termination deletes once and treats missing rooms as success", async () => {
+  const deleted: string[] = [];
+  const env = {
+    apiKey: "key",
+    apiSecret: "secret",
+    url: "wss://test.livekit.cloud",
+  };
+  const deletedResult = await terminateInterviewRoom(
+    { roomName: "interview-deadline-room", env },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        deleteRoom: async (roomName) => {
+          deleted.push(roomName);
+        },
+      }),
+    }
+  );
+  const absentResult = await terminateInterviewRoom(
+    { roomName: "interview-deadline-room", env },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        deleteRoom: async () => {
+          throw Object.assign(new Error("room not found"), {
+            code: "not_found",
+            status: 404,
+          });
+        },
+      }),
+    }
+  );
+
+  assert.deepEqual(deleted, ["interview-deadline-room"]);
+  assert.deepEqual(deletedResult, {
+    ok: true,
+    provider: "livekit",
+    data: {
+      roomName: "interview-deadline-room",
+      disposition: "deleted",
+    },
+  });
+  assert.deepEqual(absentResult, {
+    ok: true,
+    provider: "livekit",
+    data: {
+      roomName: "interview-deadline-room",
+      disposition: "already_absent",
+    },
+  });
+});
+
+test("LiveKit room termination normalizes retryable provider failures", async () => {
+  const result = await terminateInterviewRoom(
+    {
+      roomName: "interview-deadline-room",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        deleteRoom: async () => {
+          throw new Error("provider unavailable");
+        },
+      }),
+    }
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_room_delete_failed");
+    assert.equal(result.error.retryable, true);
+  }
 });
