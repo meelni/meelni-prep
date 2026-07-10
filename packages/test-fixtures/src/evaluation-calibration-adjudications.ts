@@ -21,7 +21,7 @@ export const SCORED_ADJUDICATIONS: Readonly<
       1,
       "define the intended user outcome",
       "insight",
-      "Names an intended user outcome before ideation.",
+      "Recognizes that an intended user outcome should be defined before ideation.",
       "Specify the outcome and then narrow to one user segment."
     ),
     finding(
@@ -37,7 +37,7 @@ export const SCORED_ADJUDICATIONS: Readonly<
       1,
       "define the intended user outcome",
       "insight",
-      "Names an intended user outcome before ideation.",
+      "Recognizes that an intended user outcome should be defined before ideation.",
       "Make the outcome concrete for one accessibility need."
     ),
     finding(
