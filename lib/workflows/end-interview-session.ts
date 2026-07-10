@@ -6,10 +6,6 @@ import {
   type FinalizeInterviewSessionResult,
 } from "@/lib/db/end-interview-session";
 import {
-  validateSessionCompleteness,
-  type SessionValidation,
-} from "@/lib/evaluation/session-validator";
-import {
   dispatchFeedbackGenerationWorkflow,
   type DispatchFeedbackGenerationResult,
 } from "./dispatch-feedback-generation";
@@ -20,7 +16,6 @@ export type EndInterviewSessionInput = EndInterviewSessionCommand;
 
 export interface EndInterviewSessionDeps {
   authorize(input: EndInterviewSessionInput): Promise<boolean>;
-  validate(sessionId: string): Promise<SessionValidation>;
   finalize(
     input: FinalizeInterviewSessionInput
   ): Promise<FinalizeInterviewSessionResult>;
@@ -48,8 +43,7 @@ export async function endInterviewSessionWorkflow(
     return { ok: false, reason: "not_found" };
   }
 
-  const validation = await deps.validate(input.sessionId);
-  const completion = await deps.finalize({ ...input, validation });
+  const completion = await deps.finalize(input);
   if (!completion.ok) return completion;
 
   const shouldDispatch =
@@ -97,7 +91,6 @@ export async function endInterviewSessionWorkflow(
 export function createEndInterviewSessionDeps(): EndInterviewSessionDeps {
   return {
     authorize: authorizeInterviewSessionEnd,
-    validate: validateSessionCompleteness,
     finalize: finalizeInterviewSession,
     dispatch: dispatchFeedbackGenerationWorkflow,
     updateMotivation: updateCompletionMotivation,

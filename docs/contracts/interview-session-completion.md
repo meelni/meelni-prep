@@ -34,7 +34,13 @@ A persisted transcript turn is durable evidence that the session became usable. 
 - Ineligible signal claims `insufficient_signal` and derives `abandoned`.
 - An existing `ending` or terminal claim keeps its stored reason and derives only the matching terminal state.
 
-The final stats are the durable turns available to this slice. Transcript drain, cutoff identity, and late-turn policy remain owned by SAV-194.
+The final stats are calculated inside the terminal transaction after it locks
+the same session row used by canonical transcript ingest. Explicit browser end
+first performs a bounded in-flight/retry flush. Ingests that acquired the row
+first become visible to terminal validation; once terminal truth commits, new
+distinct events are closed while equivalent event-ID replays stay idempotent.
+System deadlines settle the durable evidence available when they acquire the
+row.
 
 ## Feedback Result
 

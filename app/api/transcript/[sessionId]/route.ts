@@ -29,16 +29,19 @@ export async function GET(
     });
 
     if (!session) {
-      return NextResponse.json(
-        { error: "Session not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
     // Fetch transcript turns ordered by time
     const turns = await db.query.transcriptTurn.findMany({
       where: eq(transcriptTurn.sessionId, sessionId),
-      orderBy: [asc(transcriptTurn.startedAt)],
+      orderBy: [
+        asc(transcriptTurn.startedAt),
+        asc(transcriptTurn.writerId),
+        asc(transcriptTurn.sequence),
+        asc(transcriptTurn.eventId),
+        asc(transcriptTurn.id),
+      ],
     });
 
     return NextResponse.json({ turns });

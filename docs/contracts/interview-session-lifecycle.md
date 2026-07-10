@@ -104,10 +104,15 @@ This first-valid-claim rule makes concurrent end, deadline, disconnect, and prov
 
 - Only normalized final transcript events are eligible for durable persistence.
 - Realtime data delivery is not durable storage. A transcript turn counts only after authenticated persistence acknowledges it.
-- `ending` is the bounded drain phase for accepted transcript writes and statistics. Terminalization uses the durable turns available at that boundary.
+- `ending` is the bounded settlement boundary for transcript writes and
+  statistics. Canonical ingest and terminalization serialize on the session
+  row; the terminal transaction calculates eligibility from the durable turns
+  visible after acquiring that lock.
 - Feedback status (`pending`, `processing`, `completed`, `failed`, `skipped`) is a separate workflow. It never substitutes for session lifecycle state.
 - A completed session can have pending or failed feedback. An abandoned session can have skipped feedback. Those combinations are not lifecycle contradictions.
-- Transcript ordering and idempotency are governed by the transcript-ingest contract tracked in SAV-194; lifecycle code must not invent a second transcript identity rule.
+- Transcript ordering and idempotency are governed by the implemented SAV-194
+  transcript-ingest contract; lifecycle code must not invent a second
+  transcript identity rule.
 
 ## Room Metadata And Correlation
 
