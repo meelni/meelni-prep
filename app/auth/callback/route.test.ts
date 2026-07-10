@@ -41,6 +41,29 @@ describe("GET /auth/callback", () => {
     expect(createClient).not.toHaveBeenCalled();
   });
 
+  it.each([
+    "signup_disabled",
+    "user_banned",
+    "provider_email_needs_verification",
+  ])(
+    "does not misclassify coded access denial as cancellation (%s)",
+    async (errorCode) => {
+      const response = await GET(
+        request(
+          `error=access_denied&error_code=${errorCode}&error_description=untrusted&cancelTo=%2Fexplore`
+        )
+      );
+      const location = new URL(response.headers.get("location")!);
+
+      expect(location.pathname).toBe("/auth/signin");
+      expect(location.searchParams.get("error")).toBe("auth_callback_failed");
+      expect(location.searchParams.get("error_code")).toBeNull();
+      expect(location.searchParams.get("error_description")).toBeNull();
+      expect(location.searchParams.get("cancelTo")).toBe("/explore");
+      expect(createClient).not.toHaveBeenCalled();
+    }
+  );
+
   it.each(["", "error=server_error&error_description=untrusted+detail"])(
     "routes missing-code and provider failures to safe recovery (%s)",
     async (query) => {

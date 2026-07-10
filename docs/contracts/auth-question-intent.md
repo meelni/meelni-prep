@@ -10,8 +10,23 @@ Both values must pass the shared internal-redirect validator. External URLs, pro
 - successful auth falls back to `/dashboard`;
 - cancellation falls back to `/`.
 
-Auth transitions between sign-in and sign-up preserve both values. Google OAuth includes both values in its callback URL. An explicit provider cancellation (`access_denied`) returns to `cancelTo`; missing-code and provider callback failures return to sign-in with safe first-party recovery copy, while a successful callback returns to `redirectTo`.
+Auth transitions between sign-in, sign-up, forgot password, and reset password
+preserve both values. Google OAuth includes both values in its callback URL. A
+bare provider denial (`access_denied` without a provider `error_code` or auth
+code) returns to `cancelTo`. Coded access denials, missing-code responses, and
+provider callback failures return to sign-in with safe first-party recovery
+copy; provider descriptions are never reflected. A successful callback returns
+to `redirectTo`.
 
-Email confirmation carries both destinations through the same-browser PKCE flow. The confirmation link must be opened in the browser that initiated sign-up because the PKCE verifier is stored there. Cross-device email confirmation requires a separately configured token-hash verification route and is not claimed by this contract.
+Email confirmation and password recovery carry both destinations through the
+same-browser PKCE flow. The email link must be opened in the browser that
+initiated the request because the PKCE verifier is stored there. Cross-device
+email confirmation or recovery requires a separately configured token-hash
+verification route and is not claimed by this contract.
+
+Auth initialization releases blocking UI after ten seconds if the initial
+session lookup has not settled. A delayed successful lookup may still restore
+the session. While initialization is active, auth pages use one labeled live
+status whose animation stops under reduced-motion preferences.
 
 Query parsing uses the first value for repeated keys, matching `URLSearchParams.get`. Empty or invalid `questionId` values are treated as absent by the launcher. Compatibility routes may preserve raw query strings, but all successful selected-question launches resolve to `/dashboard/new-interview`.

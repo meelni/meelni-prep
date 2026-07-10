@@ -8,6 +8,7 @@ import { useAuth } from "@/app/providers/auth-provider";
 import {
   AuthCard,
   AuthDivider,
+  AuthInitializationStatus,
   AuthMessage,
   AuthShell,
   GoogleAuthButton,
@@ -18,18 +19,11 @@ import { Label } from "@/components/ui/label";
 import { analytics } from "@/lib/analytics/analytics-service";
 import {
   AUTH_SIGNUP_PATH,
+  AUTH_FORGOT_PASSWORD_PATH,
   buildAuthPageHref,
   getAuthFailureMessage,
   parseAuthHandoffContext,
 } from "@/lib/auth/auth-handoff";
-
-function AuthLoadingState() {
-  return (
-    <div className="bg-background flex min-h-screen items-center justify-center">
-      <Loader2 className="text-primary h-8 w-8 animate-spin" />
-    </div>
-  );
-}
 
 function SignInContent() {
   const {
@@ -99,7 +93,7 @@ function SignInContent() {
   };
 
   if (authLoading || user) {
-    return <AuthLoadingState />;
+    return <AuthInitializationStatus />;
   }
 
   return (
@@ -130,7 +124,11 @@ function SignInContent() {
               <Button
                 type="button"
                 variant="link"
-                onClick={() => router.push("/auth/forgot-password")}
+                onClick={() =>
+                  router.push(
+                    buildAuthPageHref(AUTH_FORGOT_PASSWORD_PATH, authHandoff)
+                  )
+                }
                 className="h-auto p-0 text-xs"
               >
                 Forgot password?
@@ -154,7 +152,7 @@ function SignInContent() {
           >
             {isSigningIn ? (
               <span className="flex items-center justify-center gap-2">
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />
                 <span>Signing in...</span>
               </span>
             ) : (
@@ -195,7 +193,7 @@ function SignInContent() {
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={<AuthLoadingState />}>
+    <Suspense fallback={<AuthInitializationStatus />}>
       <SignInContent />
     </Suspense>
   );

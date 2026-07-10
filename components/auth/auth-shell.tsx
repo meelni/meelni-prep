@@ -15,6 +15,27 @@ interface AuthShellProps {
   onBack?: () => void;
 }
 
+function AuthInitializationStatus({
+  message = "Checking your sign-in status",
+}: {
+  message?: string;
+}) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      className="bg-background flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center"
+    >
+      <Loader2
+        className="text-primary h-8 w-8 animate-spin motion-reduce:animate-none"
+        aria-hidden="true"
+      />
+      <p className="text-muted-foreground text-sm">{message}</p>
+    </div>
+  );
+}
+
 function AuthShell({ children, backLabel, onBack }: AuthShellProps) {
   return (
     <div className="from-background via-background to-primary/5 flex min-h-screen items-center justify-center bg-gradient-to-br px-4 py-8">
@@ -189,4 +210,11 @@ function GoogleAuthButton({
   );
 }
 
-export { AuthShell, AuthCard, AuthDivider, AuthMessage, GoogleAuthButton };
+export {
+  AuthShell,
+  AuthCard,
+  AuthDivider,
+  AuthMessage,
+  AuthInitializationStatus,
+  GoogleAuthButton,
+};
