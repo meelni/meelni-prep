@@ -16,6 +16,14 @@ const STRIPE_DELETION_SUBJECT_KINDS = new Set<StripeDeletionSubject["kind"]>([
   "subscription",
 ]);
 
+const STRIPE_PROVIDER_PREFIX: Record<StripeDeletionSubject["kind"], string> = {
+  charge: "ch_",
+  customer: "cus_",
+  invoice: "in_",
+  payment_intent: "pi_",
+  subscription: "sub_",
+};
+
 export function normalizeStripeDeletionSubjects(
   value: unknown
 ): StripeDeletionSubject[] {
@@ -37,7 +45,10 @@ export function normalizeStripeDeletionSubjects(
       typeof fingerprint !== "string" ||
       !/^[a-f0-9]{64}$/.test(fingerprint) ||
       (typeof providerId === "string" &&
-        fingerprintStripeSubject(providerId) !== fingerprint)
+        (fingerprintStripeSubject(providerId) !== fingerprint ||
+          !providerId.startsWith(
+            STRIPE_PROVIDER_PREFIX[kind as StripeDeletionSubject["kind"]]
+          )))
     ) {
       throw invalidDeletionSubjects();
     }

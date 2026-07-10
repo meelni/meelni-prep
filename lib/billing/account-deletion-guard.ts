@@ -166,6 +166,7 @@ export function checkoutReconciliationErrorCode(error: unknown) {
       code === "deleted_checkout_reconciliation_failed" ||
       code === "deleted_checkout_manual_reconciliation_required" ||
       code === "deleted_subscription_reconciliation_failed" ||
+      code === "deleted_subscription_manual_reconciliation_required" ||
       code === "deleted_invoice_reconciliation_failed" ||
       code === "deleted_invoice_manual_reconciliation_required" ||
       code === "deleted_customer_cleanup_failed" ||

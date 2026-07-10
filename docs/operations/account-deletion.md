@@ -75,8 +75,11 @@ failed, or processing records stale for at least fifteen minutes.
   mapping is created; the event payload is `{}`; and subscription cancellation
   plus refundable payment reversal are attempted idempotently.
 - Replay `customer.subscription.created` or `.updated` without a Checkout
-  event. Confirm the subscription is canceled with no local entitlement or raw
-  event payload retained.
+  event. For creation, confirm the initial invoice and paid payment are retained
+  and reconciled before customer deletion. Missing initial-invoice evidence
+  must retain the customer and fail for recovery. For update, confirm the
+  subscription is canceled with no local entitlement or raw event payload
+  retained.
 - Replay `invoice.payment_succeeded` without a Checkout event. Confirm the
   referenced subscription is canceled, the paid PaymentIntent/charge is
   refunded, and the event payload remains `{}`. Checkout, subscription, and
@@ -97,6 +100,12 @@ failed, or processing records stale for at least fifteen minutes.
 - Seed a malformed subject kind/value in a disposable database and confirm the
   deletion read fails closed with a stable error; it must not complete after
   silently dropping the corrupt reference.
+- Seed a validly fingerprinted subject whose kind does not match its provider
+  prefix (for example, a `sub_` ID labeled as a customer) and confirm parsing
+  fails closed before any provider call.
+- Hold the account identity lock while a callback upsert races deletion intent;
+  commit the tombstone and local-user removal, then confirm the waiting upsert
+  is denied and cannot recreate `app_user`.
 - Manually model a partially refunded PaymentIntent and charge, then replay the
   event. Confirm Stripe is asked to refund the remaining amount, provider state
   is retrieved, and customer cleanup proceeds only after the total is fully

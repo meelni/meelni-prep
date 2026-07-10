@@ -6,6 +6,7 @@ import {
   payloadContainsProviderIdentifier,
   type StripeDeletionSubject,
 } from "@/lib/billing/stripe-privacy";
+import { lockAccountIdentity } from "@/lib/db/account-identity-lock";
 
 import { db } from "./index";
 import {
@@ -41,6 +42,7 @@ export async function requestAccountDeletion(input: {
   stripeSubjects: StripeDeletionSubject[];
 }): Promise<AccountDeletionRecord> {
   const record = await db.transaction(async (tx) => {
+    await lockAccountIdentity(tx, input.userId);
     // Serialize deletion intent with credit-ledger fulfillment. The ledger
     // locks the same app_user row before checking this tombstone, so either a
     // grant commits before deletion intent or it fails closed afterward.
@@ -78,6 +80,7 @@ export async function requestAccountDeletionWithCurrentSubjects(
   userId: string
 ): Promise<AccountDeletionRecord> {
   const record = await db.transaction(async (tx) => {
+    await lockAccountIdentity(tx, userId);
     await tx
       .select({ id: appUser.id })
       .from(appUser)

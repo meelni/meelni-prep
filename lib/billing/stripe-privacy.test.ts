@@ -110,6 +110,13 @@ test("deletion subject parsing preserves legacy and financial recovery kinds", (
         fingerprint: fingerprintStripeSubject("cus_other"),
       },
     ],
+    [
+      {
+        kind: "customer",
+        providerId: "sub_wrong_kind",
+        fingerprint: fingerprintStripeSubject("sub_wrong_kind"),
+      },
+    ],
   ]) {
     assert.throws(
       () => normalizeStripeDeletionSubjects(corrupt),
