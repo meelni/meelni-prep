@@ -12,7 +12,7 @@ Use this skill when a Meelni UI task needs an external design-audit lens, a seco
 1. Load `meelni-ui-design-system` first. Meelni route taxonomy, primitives, tokens, and product behavior remain authoritative.
 2. Read `references/external-design-lenses.md`.
 3. Classify the surface:
-   - Product UI: dashboard, New Rep, interview room, feedback, auth, settings, billing, tools.
+   - Product UI: dashboard, New Mock Interview, interview room, feedback, auth, settings, billing, tools.
    - Public/content UI: landing, pricing, blog, company, docs, SEO, legal, contact.
 4. Pick the smallest useful lens:
    - Impeccable: structured product/brand audit, technical quality checks, detector pilot.
