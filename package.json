@@ -70,7 +70,7 @@
     "test:feedback": "tsx --env-file=.env.local scripts/test-feedback-generation.ts",
     "calibration:preflight": "tsx scripts/run-evaluation-calibration.ts --mode preflight",
     "calibration:self-test": "tsx scripts/run-evaluation-calibration.ts --mode self-test",
-    "calibration:live": "tsx scripts/run-evaluation-calibration.ts --mode live",
+    "calibration:live": "tsx --env-file=.env.local scripts/run-evaluation-calibration.ts --mode live",
     "validate:skills": "node scripts/validate-skills.mjs",
     "validate:env": "tsx --env-file=.env.local scripts/validate-env.ts",
     "verify:agent": "node scripts/verify-agent.mjs",

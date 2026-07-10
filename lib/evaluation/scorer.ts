@@ -58,10 +58,12 @@ export async function generateFeedback(
       });
     }
 
+    // Preserve the model identity reported by the provider, which may resolve a
+    // configured alias to a dated snapshot.
     return parseFeedbackV2(unknownResponse, {
       transcript: prepared.transcript,
       evaluationState,
-      modelVersion,
+      modelVersion: completion.model,
     });
   } catch (error) {
     console.error("Error generating feedback:", error);
