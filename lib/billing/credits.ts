@@ -89,10 +89,7 @@ export interface LedgerCreditTransaction {
   createdAt: Date;
 }
 
-export interface CreditLedgerOperations {
-  createGrant(
-    input: Omit<LedgerCreditGrant, "id" | "createdAt" | "updatedAt">
-  ): Promise<LedgerCreditGrant>;
+export interface CreditLedgerReadStore {
   findGrantByIdempotencyKey(
     idempotencyKey: string
   ): Promise<LedgerCreditGrant | null>;
@@ -101,6 +98,18 @@ export interface CreditLedgerOperations {
   ): Promise<LedgerCreditTransaction | null>;
   listSpendableGrants(userId: string, now: Date): Promise<LedgerCreditGrant[]>;
   listUserGrants(userId: string): Promise<LedgerCreditGrant[]>;
+  findReservationByKey(
+    reservationKey: string
+  ): Promise<LedgerCreditReservation | null>;
+  listAllocations(
+    reservationId: string
+  ): Promise<LedgerReservationAllocation[]>;
+}
+
+export interface CreditLedgerMutationStore {
+  createGrant(
+    input: Omit<LedgerCreditGrant, "id" | "createdAt" | "updatedAt">
+  ): Promise<LedgerCreditGrant>;
   updateGrantBalances(
     grantId: string,
     balances: Pick<LedgerCreditGrant, "remainingCredits" | "reservedCredits">
@@ -108,9 +117,6 @@ export interface CreditLedgerOperations {
   createReservation(
     input: Omit<LedgerCreditReservation, "id" | "createdAt" | "updatedAt">
   ): Promise<LedgerCreditReservation>;
-  findReservationByKey(
-    reservationKey: string
-  ): Promise<LedgerCreditReservation | null>;
   updateReservationStatus(
     reservationId: string,
     status: CreditReservationStatus
@@ -118,15 +124,14 @@ export interface CreditLedgerOperations {
   createAllocation(
     input: Omit<LedgerReservationAllocation, "id" | "createdAt">
   ): Promise<LedgerReservationAllocation>;
-  listAllocations(
-    reservationId: string
-  ): Promise<LedgerReservationAllocation[]>;
   createTransaction(
     input: Omit<LedgerCreditTransaction, "id" | "createdAt">
   ): Promise<LedgerCreditTransaction>;
 }
 
-export interface CreditLedgerTransaction extends CreditLedgerOperations {
+export interface CreditLedgerTransaction
+  extends CreditLedgerReadStore,
+    CreditLedgerMutationStore {
   findGrantByIdempotencyKeyForUpdate(
     idempotencyKey: string
   ): Promise<LedgerCreditGrant | null>;
@@ -152,12 +157,16 @@ export interface CreditLedgerTransaction extends CreditLedgerOperations {
   ): Promise<LedgerCreditTransaction[]>;
 }
 
-export interface CreditLedgerStore extends CreditLedgerOperations {
+export interface CreditLedgerStore extends CreditLedgerReadStore {
   withUserTransaction<T>(
     userId: string,
     work: (transaction: CreditLedgerTransaction) => Promise<T>
   ): Promise<T>;
 }
+
+export interface CreditLedgerTestStore
+  extends CreditLedgerStore,
+    CreditLedgerTransaction {}
 
 export interface CreditBalance {
   availableCredits: number;
@@ -1458,7 +1467,8 @@ async function assertOrphanRolloverDebitsApplied(
   }
 }
 
-export function createMemoryCreditLedgerStore(): CreditLedgerStore {
+/** In-memory fault-injection adapter for billing tests; never use in app code. */
+export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
   let nextId = 1;
   let grants: LedgerCreditGrant[] = [];
   let reservations: LedgerCreditReservation[] = [];
@@ -1470,7 +1480,7 @@ export function createMemoryCreditLedgerStore(): CreditLedgerStore {
     return `${prefix}-${nextId++}`;
   }
 
-  const store: CreditLedgerStore & CreditLedgerTransaction = {
+  const store: CreditLedgerTestStore = {
     async withUserTransaction(_userId, work) {
       const previous = transactionTail;
       let release = () => {};

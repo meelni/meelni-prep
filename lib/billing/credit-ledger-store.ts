@@ -38,10 +38,16 @@ type CreditTransactionRow = typeof creditTransaction.$inferSelect;
 export function createDrizzleCreditLedgerStore(
   database: CreditLedgerDatabase = db
 ): CreditLedgerStore {
-  const operations = createDrizzleCreditLedgerOperations(database);
+  const operations = createDrizzleCreditLedgerTransaction(database);
 
   return {
-    ...operations,
+    findGrantByIdempotencyKey: operations.findGrantByIdempotencyKey,
+    findTransactionByIdempotencyKey:
+      operations.findTransactionByIdempotencyKey,
+    listSpendableGrants: operations.listSpendableGrants,
+    listUserGrants: operations.listUserGrants,
+    findReservationByKey: operations.findReservationByKey,
+    listAllocations: operations.listAllocations,
     async withUserTransaction(userId, work) {
       return database.transaction(async (transaction) => {
         const users = await transaction
@@ -52,13 +58,13 @@ export function createDrizzleCreditLedgerStore(
           .for("update");
         if (!users[0]) throw new Error("credit_ledger_user_not_found");
 
-        return work(createDrizzleCreditLedgerOperations(transaction));
+        return work(createDrizzleCreditLedgerTransaction(transaction));
       });
     },
   };
 }
 
-function createDrizzleCreditLedgerOperations(
+function createDrizzleCreditLedgerTransaction(
   database: CreditLedgerExecutor
 ): CreditLedgerTransaction {
   const store: CreditLedgerTransaction = {

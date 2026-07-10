@@ -10,10 +10,19 @@ import {
 test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", () => {
   const store = createDrizzleCreditLedgerStore();
 
-  assert.equal(typeof store.createGrant, "function");
   assert.equal("reserveCredit" in store, false);
-  assert.equal(typeof store.createReservation, "function");
-  assert.equal(typeof store.createTransaction, "function");
+  for (const mutation of [
+    "createGrant",
+    "updateGrantBalances",
+    "createReservation",
+    "updateReservationStatus",
+    "createAllocation",
+    "createTransaction",
+  ]) {
+    assert.equal(mutation in store, false, mutation);
+  }
+  assert.equal(typeof store.findReservationByKey, "function");
+  assert.equal(typeof store.withUserTransaction, "function");
 });
 
 test("grantCredits is idempotent and balance ignores expired grants", async () => {
