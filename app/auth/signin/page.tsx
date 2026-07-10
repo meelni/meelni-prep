@@ -85,7 +85,7 @@ function SignInContent() {
 
       analytics.track("auth_signin_failed", {
         method: "email",
-        error: errorMessage,
+        error_code: "credentials_rejected",
       });
     }
   };

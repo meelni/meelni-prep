@@ -69,7 +69,6 @@ export function SessionList({ sessions, onSessionClick }: SessionListProps) {
           // Track session details click
           const sessionFeedback = session.feedback;
           analytics.track("session_details_clicked", {
-            session_id: session.id,
             interview_type: session.roundType,
             session_age_days: Math.floor(sessionAge),
             has_feedback: !!(

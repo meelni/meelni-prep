@@ -170,7 +170,11 @@ Set `MEELNI_DISABLE_LOCAL_CREDIT_BYPASS=1` in `.env.local` to test the real cred
 
 ## Relaunch Gate Fallback
 
-The public relaunch gate is resolved on the server with a non-identifying operational Statsig user and disabled event logging. `MEELNI_REACTIVATION_DEFAULT` is the explicit provider-outage fallback: keep it `false` before relaunch and change it to `true` only as part of the rehearsed launch flip. Rollback changes the Statsig gate and this fallback together so a Statsig outage cannot invert the intended public state.
+The public relaunch gate uses Statsig network evaluation only after current analytics acceptance. Undecided and declined visitors use `MEELNI_REACTIVATION_DEFAULT` without constructing a Statsig client. Keep it `false` before relaunch and change it to `true` only as part of the rehearsed launch flip. Because declined users cannot receive a Statsig-only rollback, changing the fallback requires a Vercel environment update and redeploy; use a separate strictly necessary configuration provider if an instant consent-independent kill switch becomes mandatory.
+
+Set `ANALYTICS_PSEUDONYM_KEY` independently in Preview and Production to at least 32 cryptographically random characters. Treat rotation as an analytics identity reset. Do not reuse Supabase, Stripe, LiveKit, or PostHog credentials. Missing or short values fail closed for authenticated identification and consent-aware billing events.
+
+PostHog ingestion uses `NEXT_PUBLIC_POSTHOG_KEY` (`phc_`) on both browser and server. Personal `phx_` keys are management credentials and must not be configured as capture keys. Preview verification should seed representative old `ph_*_posthog` storage/cookies, confirm their one-time removal before opt-in, and inspect final outbound payloads for query strings, referrers, campaign fields, device/session IDs, or unexpected person properties.
 
 In local development, the feature-flag menu stores an on/off cookie and reloads the page so the server-rendered body, metadata, and client controls use the same state.
 
@@ -209,7 +213,7 @@ rerun TypeScript/Python golden contract fixtures before deployment.
 
 ## Database Migration Verification
 
-The Drizzle migration chain must support both an empty database and the
+The ten-entry Drizzle migration chain must support both an empty database and the
 pre-relaunch Supabase schema that was partially created outside the journal.
 CI starts a pinned PostgreSQL 17 service and runs:
 

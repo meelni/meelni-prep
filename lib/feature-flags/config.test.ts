@@ -53,7 +53,7 @@ describe("Statsig feature flag config", () => {
 });
 
 describe("Statsig user mapping", () => {
-  it("uses the Supabase user id and non-PII custom traits for signed-in users", () => {
+  it("uses only the consent-created anonymous id for signed-in users", () => {
     const user = buildStatsigUser({
       anonymousId: "anon-123",
       user: {
@@ -67,13 +67,9 @@ describe("Statsig user mapping", () => {
     });
 
     expect(user).toEqual({
-      userID: "user-123",
+      userID: "anon-123",
       custom: {
-        anonymous_id: "anon-123",
-        created_at: "2026-06-01T12:00:00.000Z",
-        email_domain: "example.com",
-        local_dev_id: "anon-123",
-        signup_method: "google",
+        logged_in: true,
       },
     });
   });
@@ -87,8 +83,6 @@ describe("Statsig user mapping", () => {
     expect(user).toEqual({
       userID: "anon-123",
       custom: {
-        anonymous_id: "anon-123",
-        local_dev_id: "anon-123",
         logged_in: false,
       },
     });

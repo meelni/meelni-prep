@@ -13,6 +13,9 @@ import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Toaster } from "sonner";
 import { PRODUCT_LANGUAGE } from "@/lib/product-language";
+import { AnalyticsConsentProvider } from "@/app/providers/analytics-consent-provider";
+import { AnalyticsIdentityBridge } from "@/app/providers/analytics-identity-bridge";
+import { getTrustedServerAnalyticsConsentState } from "@/lib/analytics/trusted-consent";
 
 // Using Outfit as a free alternative to Everett - similar elegant, geometric feel
 const outfit = Outfit({
@@ -81,35 +84,43 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const featureFlagBootstrap = await getFeatureFlagBootstrap();
+  const trustedConsent = await getTrustedServerAnalyticsConsentState();
 
   return (
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${outfit.variable} ${publicSans.variable} ${commitMono.variable} antialiased`}
       >
-        <PostHogProvider>
-          <AnalyticsPageview />
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <ErrorBoundary>
-              <QueryProvider>
-                <AuthProvider>
-                  <StatsigProvider
-                    initialGateValues={featureFlagBootstrap.values}
-                  >
-                    {children}
-                    <Toaster position="top-right" duration={3000} />
-                    <CookieConsentBanner />
-                  </StatsigProvider>
-                </AuthProvider>
-              </QueryProvider>
-            </ErrorBoundary>
-          </ThemeProvider>
-        </PostHogProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <ErrorBoundary>
+            <QueryProvider>
+              <AuthProvider>
+                <AnalyticsConsentProvider
+                  initialAnalyticsPseudonym={trustedConsent.analyticsPseudonym}
+                  initialConsent={trustedConsent.consent}
+                  initialResolvedForSubject={trustedConsent.subjectKey}
+                >
+                  <PostHogProvider>
+                    <AnalyticsIdentityBridge />
+                    <AnalyticsPageview />
+                    <StatsigProvider
+                      initialGateValues={featureFlagBootstrap.values}
+                    >
+                      {children}
+                      <Toaster position="top-right" duration={3000} />
+                      <CookieConsentBanner />
+                    </StatsigProvider>
+                  </PostHogProvider>
+                </AnalyticsConsentProvider>
+              </AuthProvider>
+            </QueryProvider>
+          </ErrorBoundary>
+        </ThemeProvider>
       </body>
     </html>
   );

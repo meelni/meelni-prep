@@ -72,7 +72,6 @@ export function LiveKitRoomWrapper({
               : "poor";
 
         analytics.track("livekit_connection_established", {
-          session_id: sessionId,
           connection_time_ms: connectionTime,
           region: url.includes("livekit.cloud") ? "cloud" : "self-hosted",
           connection_quality: connectionQuality,
