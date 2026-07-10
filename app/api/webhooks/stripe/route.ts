@@ -365,7 +365,7 @@ export async function POST(req: NextRequest) {
         .set({
           status: "failed",
           payload: REDACTED_STRIPE_EVENT_PAYLOAD,
-          lastError: safeStripeWebhookErrorCode(error),
+          lastError: STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE,
         })
         .where(eq(stripeEventLog.stripeEventId, event.id));
 
@@ -1335,23 +1335,6 @@ function isAccountDeletionPendingError(error: unknown) {
       error.message === "credit_ledger_user_not_found" ||
       error.message === "billing_user_not_found")
   );
-}
-
-function safeStripeWebhookErrorCode(error: unknown) {
-  if (isAccountDeletionPendingError(error)) return "account_deletion_pending";
-  if (error && typeof error === "object" && "code" in error) {
-    const reconciliationCode = checkoutReconciliationErrorCode(error);
-    if (
-      String(error.code).startsWith("deleted_checkout_") ||
-      String(error.code).startsWith("deleted_subscription_") ||
-      String(error.code).startsWith("deleted_invoice_") ||
-      String(error.code) === "deleted_customer_cleanup_failed" ||
-      String(error.code) === "deleted_billing_reconciliation_failed"
-    ) {
-      return reconciliationCode;
-    }
-  }
-  return "stripe_webhook_processing_failed";
 }
 
 function isDeletedBillingReconciliationEvent(type: Stripe.Event.Type) {
