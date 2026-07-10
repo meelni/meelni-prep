@@ -113,7 +113,7 @@ Approved proof points:
 - Live voice mock interviews with follow-up questions.
 - PM-calibrated feedback, transcripts, and practice history after completed interviews.
 
-Claims require evidence. Do not promise real-time perfection, guaranteed job outcomes, interviewer-equivalent scoring, or a validated readiness score. If latency, evaluation agreement, or user-outcome targets are adopted later, document the measurement method and baseline before using them in marketing.
+Claims require evidence. Do not promise real-time perfection. Do not promise guaranteed job outcomes or interviewer-equivalent scoring. Do not claim a validated readiness score. If latency, evaluation agreement, or user-outcome targets are adopted later, document the measurement method and baseline before using them in marketing.
 
 ## Billing Direction
 
@@ -156,7 +156,7 @@ Use observed session and feedback data as product-quality signals. Do not relabe
 
 These ideas are not shipped relaunch promises:
 
-- More targeted drills and learning material tied to actual answers.
+- More targeted practice and learning material tied to actual answers.
 - Deeper company- and round-specific practice paths.
 - AI and agent product-management practice tracks.
 - Validated progress models based on longitudinal evidence.

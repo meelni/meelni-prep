@@ -333,7 +333,7 @@ export default async function BlogPost({
           className="mt-20 text-left"
           mark="M"
           title="Ready to practice with AI?"
-          description="Put these frameworks into action with Meelni's AI interview coach. Get real-time feedback and improve faster than solo practice."
+          description="Put these frameworks into action in a live mock interview, then review feedback from your completed session."
           action={
             <Button asChild size="lg" variant="glow">
               <Link href="/dashboard/new-interview">

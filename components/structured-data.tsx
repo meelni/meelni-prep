@@ -15,7 +15,7 @@ export function StructuredData() {
         name: "What is Meelni?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Meelni is an AI-powered interview coach that helps you practice product management interviews through natural voice conversations. It provides real-time feedback on Product Sense, Behavioral, Execution, and Strategy questions.",
+          text: "Meelni is an AI-powered interview coach that helps you practice product management interviews through natural voice conversations. After a completed interview, it provides PM-calibrated feedback on Product Sense, Behavioral, Execution, and Strategy answers.",
         },
       },
       {
@@ -47,7 +47,7 @@ export function StructuredData() {
         name: "How is Meelni different from other interview prep tools?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Unlike traditional interview prep platforms, Meelni offers natural voice conversations (not just text), real-time interruptions and follow-ups like a real interviewer, instant feedback on your frameworks and structure, and a massive question bank of 2,879+ curated PM questions with continuous updates.",
+          text: "Unlike traditional interview prep platforms, Meelni offers natural voice conversations, live follow-up questions, evidence-linked feedback after completed interviews, and a large question bank of curated PM questions.",
         },
       },
       {
@@ -63,7 +63,7 @@ export function StructuredData() {
         name: "What kind of feedback do I get after an interview?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "After each interview, you receive comprehensive feedback including scores on structure, clarity, insight, and communication, specific strengths and areas for improvement, framework usage analysis, and suggested practice drills. All sessions are saved with full transcripts in your dashboard.",
+          text: "After a completed interview, Meelni provides scores on structure, clarity, insight, and communication, evidence-linked strengths and areas for improvement, and suggested focused practice. Completed sessions and their transcripts are available from your dashboard.",
         },
       },
       {
@@ -82,7 +82,7 @@ export function StructuredData() {
     "@type": "Organization",
     name: "Meelni",
     description:
-      "AI-powered mock interview coach for product managers. Practice PM interviews with natural voice conversations and get real-time feedback.",
+      "AI-powered mock interview coach for product managers. Practice PM interviews with natural voice conversations and review feedback after completed interviews.",
     url: "https://meelni.com",
     logo: "https://meelni.com/logo.png",
     sameAs: ["https://twitter.com/trymeelni"],
@@ -106,7 +106,7 @@ export function StructuredData() {
       ratingCount: "127",
     },
     description:
-      "Practice product management interviews with AI-powered voice coaching. Master Product Sense, Behavioral, Execution & Strategy interviews with real-time feedback on 2,879+ curated questions.",
+      "Practice Product Sense, Behavioral, Execution, and Strategy interviews with AI-powered voice coaching and completed-interview feedback.",
   };
 
   return (
