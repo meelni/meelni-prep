@@ -31,6 +31,9 @@ const LEGACY_IDENTIFIER_ALLOWLIST = new Set([
   "lib/analytics/interview-launch-compat.ts",
   "lib/analytics/types.ts",
 ]);
+const FITNESS_IDENTIFIER_ALLOWLIST = new Set([
+  "app/api/feedback/[sessionId]/route.ts",
+]);
 const PROHIBITION_CONTEXT =
   /\b(?:do not|don't|avoid|instead of|without|must not|cannot|unsupported)\b/i;
 const MARKDOWN_LIST_ITEM = /^\s*(?:[-+*]|\d+[.)])\s+/;
@@ -120,7 +123,10 @@ test("active product surfaces use interview-practice language", async () => {
   ];
   const violations = [];
   const forbiddenLanguage = [
-    ["fitness metaphor", /\b(?:gym|rep|reps)\b/i],
+    [
+      "fitness metaphor",
+      /\b(?:gym|rep|reps|workout|workouts|drill|drills)\b/i,
+    ],
     ["legacy navigation", /\bPractice Home\b/i],
     ["unsupported readiness claim", /\breadiness\b|\bInterview-ready\b/i],
   ];
@@ -130,6 +136,12 @@ test("active product surfaces use interview-practice language", async () => {
     const source = await readFile(path.join(ROOT, file), "utf8");
 
     for (const [label, pattern] of forbiddenLanguage) {
+      if (
+        label === "fitness metaphor" &&
+        FITNESS_IDENTIFIER_ALLOWLIST.has(file)
+      ) {
+        continue;
+      }
       if (pattern.test(source)) violations.push(`${file}: ${label}`);
     }
   }

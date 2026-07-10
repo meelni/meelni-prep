@@ -63,7 +63,7 @@ export function StructuredData() {
         name: "What kind of feedback do I get after an interview?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "After each interview, you receive comprehensive feedback including scores on structure, clarity, insight, and communication, specific strengths and areas for improvement, framework usage analysis, and suggested practice drills. All sessions are saved with full transcripts in your dashboard.",
+          text: "After a completed interview, Meelni provides scores on structure, clarity, insight, and communication, evidence-linked strengths and areas for improvement, and suggested focused practice. Completed sessions and their transcripts are available from your dashboard.",
         },
       },
       {

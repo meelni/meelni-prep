@@ -21,13 +21,22 @@ export const PRODUCT_LEXICON = {
   individualActivity: "practice session",
   completedItem: "completed interview",
   collection: "interview history",
+  focusedActivity: "focused practice",
   launchAction: "New Mock Interview",
   dashboardHome: "Overview",
   measuredTrend: "practice progress",
 } as const;
 
 export const PRODUCT_LANGUAGE_GUARDRAILS = {
-  avoidFitnessMetaphors: ["gym", "rep", "reps"],
+  avoidFitnessMetaphors: [
+    "gym",
+    "rep",
+    "reps",
+    "workout",
+    "workouts",
+    "drill",
+    "drills",
+  ],
   avoidUnsupportedOutcomeClaims: [
     "interview ready",
     "interview-ready",
@@ -35,6 +44,6 @@ export const PRODUCT_LANGUAGE_GUARDRAILS = {
   ],
   exceptions: [
     "Verbatim interview-question content may legitimately discuss fitness products.",
-    "Documented legacy route and analytics identifiers may retain rep terminology temporarily for compatibility.",
+    "Documented legacy route, analytics, database, and provider identifiers may retain fitness terminology temporarily for compatibility.",
   ],
 } as const;
