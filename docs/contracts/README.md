@@ -10,6 +10,7 @@ Good candidates:
 - [LiveKit room metadata](./livekit-room-metadata.md);
 - [versioned transcript events](./transcript-events.md);
 - [feedback v2 evidence and response shape](./feedback-v2.md);
+- [feedback generation state, event fencing, and retry recovery](./feedback-generation.md);
 - [dashboard progress evidence](./dashboard-progress.md);
 - [question-bank records, taxonomy, and pagination](./question-bank.md);
 - [service health and readiness](./service-health.md);
