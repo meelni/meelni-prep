@@ -11,5 +11,6 @@ Good candidates:
 - feedback status and response shapes;
 - [dashboard progress evidence](./dashboard-progress.md);
 - [question-bank records, taxonomy, and pagination](./question-bank.md);
+- [service health and readiness](./service-health.md);
 - subscription entitlement and usage quota states;
 - analytics event schemas.
