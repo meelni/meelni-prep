@@ -1,6 +1,7 @@
 import { db } from "./index";
 import { feedback } from "./schema";
 import { eq } from "drizzle-orm";
+import type { FeedbackEvaluationState, FeedbackV2Item } from "@meelni/core";
 
 export interface CreateFeedbackInput {
   sessionId: string;
@@ -10,10 +11,15 @@ export interface CreateFeedbackInput {
   communicationScore: number;
   leadershipScore: number;
   overallScore: number;
-  strengths: string[];
-  improvements: string[];
+  strengths: string[] | FeedbackV2Item[];
+  improvements: string[] | FeedbackV2Item[];
   drills: string[];
   summary: string;
+  schemaVersion?: string;
+  promptVersion?: string;
+  modelVersion?: string;
+  rubricVersion?: string;
+  evaluationState?: FeedbackEvaluationState;
 }
 
 /**
@@ -34,6 +40,11 @@ export async function createFeedback(input: CreateFeedbackInput) {
       improvements: input.improvements,
       drills: input.drills,
       summary: input.summary,
+      schemaVersion: input.schemaVersion,
+      promptVersion: input.promptVersion,
+      modelVersion: input.modelVersion,
+      rubricVersion: input.rubricVersion,
+      evaluationState: input.evaluationState,
       status: "completed",
       createdAt: new Date(),
     })
@@ -113,16 +124,33 @@ export async function updateFeedback(
   const [updated] = await db
     .update(feedback)
     .set({
-      ...(input.structureScore !== undefined && { structureScore: input.structureScore }),
-      ...(input.clarityScore !== undefined && { clarityScore: input.clarityScore }),
-      ...(input.insightScore !== undefined && { insightScore: input.insightScore }),
-      ...(input.communicationScore !== undefined && { communicationScore: input.communicationScore }),
-      ...(input.leadershipScore !== undefined && { leadershipScore: input.leadershipScore }),
-      ...(input.overallScore !== undefined && { overallScore: input.overallScore.toString() }),
+      ...(input.structureScore !== undefined && {
+        structureScore: input.structureScore,
+      }),
+      ...(input.clarityScore !== undefined && {
+        clarityScore: input.clarityScore,
+      }),
+      ...(input.insightScore !== undefined && {
+        insightScore: input.insightScore,
+      }),
+      ...(input.communicationScore !== undefined && {
+        communicationScore: input.communicationScore,
+      }),
+      ...(input.leadershipScore !== undefined && {
+        leadershipScore: input.leadershipScore,
+      }),
+      ...(input.overallScore !== undefined && {
+        overallScore: input.overallScore.toString(),
+      }),
       ...(input.strengths && { strengths: input.strengths }),
       ...(input.improvements && { improvements: input.improvements }),
       ...(input.drills && { drills: input.drills }),
       ...(input.summary && { summary: input.summary }),
+      ...(input.schemaVersion && { schemaVersion: input.schemaVersion }),
+      ...(input.promptVersion && { promptVersion: input.promptVersion }),
+      ...(input.modelVersion && { modelVersion: input.modelVersion }),
+      ...(input.rubricVersion && { rubricVersion: input.rubricVersion }),
+      ...(input.evaluationState && { evaluationState: input.evaluationState }),
     })
     .where(eq(feedback.sessionId, sessionId))
     .returning();

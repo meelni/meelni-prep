@@ -8,7 +8,7 @@ Good candidates:
 - [interview session completion and feedback dispatch](./interview-session-completion.md);
 - [LiveKit room metadata](./livekit-room-metadata.md);
 - [versioned transcript events](./transcript-events.md);
-- feedback status and response shapes;
+- [feedback v2 evidence and response shape](./feedback-v2.md);
 - [dashboard progress evidence](./dashboard-progress.md);
 - [question-bank records, taxonomy, and pagination](./question-bank.md);
 - subscription entitlement and usage quota states;

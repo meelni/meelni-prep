@@ -223,11 +223,15 @@ export async function GET(
             overallScore: feedbackRecord.overallScore
               ? parseFloat(feedbackRecord.overallScore)
               : null,
-            strengths: feedbackRecord.strengths as string[],
-            improvements: feedbackRecord.improvements as string[],
+            strengths: feedbackRecord.strengths as unknown[],
+            improvements: feedbackRecord.improvements as unknown[],
             drills: feedbackRecord.drills as string[],
             summary: feedbackRecord.summary,
             rubricVersion: feedbackRecord.rubricVersion,
+            schemaVersion: feedbackRecord.schemaVersion,
+            promptVersion: feedbackRecord.promptVersion,
+            modelVersion: feedbackRecord.modelVersion,
+            evaluationState: feedbackRecord.evaluationState,
             createdAt: feedbackRecord.createdAt,
           },
         },

@@ -334,6 +334,10 @@ export const feedback = pgTable(
     status: text("status").default("pending").notNull(),
     statusReason: text("status_reason"),
     rubricVersion: text("rubric_version").default("1.0.0").notNull(),
+    schemaVersion: text("schema_version"),
+    promptVersion: text("prompt_version"),
+    modelVersion: text("model_version"),
+    evaluationState: text("evaluation_state").$type<"full" | "partial">(),
     processingStartedAt: timestamp("processing_started_at", {
       withTimezone: true,
     }),
@@ -390,6 +394,25 @@ export const feedback = pgTable(
     completionTierCheck: check(
       "feedback_completion_tier_check",
       sql`${table.completionTier} IS NULL OR ${table.completionTier} IN ('full', 'partial', 'insufficient', 'abandoned')`
+    ),
+    feedbackVersionTupleCheck: check(
+      "feedback_version_tuple_check",
+      sql`(
+        ${table.schemaVersion} IS NULL AND
+        ${table.promptVersion} IS NULL AND
+        ${table.modelVersion} IS NULL AND
+        ${table.evaluationState} IS NULL
+      ) OR (
+        ${table.schemaVersion} IS NOT NULL AND
+        ${table.promptVersion} IS NOT NULL AND
+        ${table.modelVersion} IS NOT NULL AND
+        ${table.evaluationState} IS NOT NULL AND
+        ${table.schemaVersion} = 'feedback.v2' AND
+        ${table.promptVersion} = 'feedback.prompt.v2' AND
+        length(trim(${table.modelVersion})) > 0 AND
+        ${table.rubricVersion} = 'pm-feedback-rubric.v2' AND
+        ${table.evaluationState} IN ('full', 'partial')
+      )`
     ),
     dispatchEventRequiredCheck: check(
       "feedback_dispatch_event_required_check",
