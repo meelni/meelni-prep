@@ -22,7 +22,7 @@ No calibration path connects to the application database.
 ## Gold-set contract
 
 `packages/test-fixtures/src/evaluation-calibration.ts` owns
-`pm-gold-set.v1` and `pm-gold-adjudication.v1`. The first version contains 40
+`pm-gold-set.v2` and `pm-gold-adjudication.v2`. This version contains 40
 fully synthetic cases:
 
 - 10 Product Sense;
@@ -30,10 +30,12 @@ fully synthetic cases:
 - 10 Strategy;
 - 10 Behavioral.
 
-Each round contains eight scored cases and two insufficient cases. The scored
-cases cover full and partial completion states. The negative cases cover both
-short and low-signal transcripts and must be skipped before evaluator
-invocation.
+Each round contains eight scored cases and two insufficient cases. Its scored
+cases include two weak, two average, and four strong but still sufficient
+answers. Every dimension therefore has weak, average, and strong adjudicated
+bands in every round. The cases cover full and partial completion states. The
+negative cases cover both short and low-signal transcripts and must be skipped
+before evaluator invocation.
 
 Every case records:
 
@@ -51,12 +53,15 @@ baseline.
 
 ## Report contract
 
-Every command emits `evaluation-calibration-report.v1` JSON with:
+Every command emits `evaluation-calibration-report.v2` JSON with:
 
 - execution kind, evaluator model, repetition count, and paid-provider status;
 - gold-set, adjudication, schema, prompt, and rubric versions;
 - corpus counts and preflight failures;
 - evidence, insufficient-session, score-band, and repeated-run metrics;
+- score-band agreement broken out by dimension, round, and completion state;
+- configured expected model identity and the model identities observed in
+  evaluator results;
 - the thresholds used for that report;
 - separate deterministic, live-provider, and launch gate states;
 - case-level failure codes and unresolved blockers.
@@ -71,13 +76,32 @@ The acceptance thresholds are:
 | ----------------------------------------------- | --------------: |
 | Valid evidence against exact transcript text    |            100% |
 | Insufficient sessions skipped before evaluation |            100% |
-| Dimension scores inside adjudicated bands       |    at least 80% |
+| All dimension scores inside adjudicated bands   |    at least 80% |
+| Each individual dimension inside its bands      |    at least 80% |
+| Each round inside its bands                     |    at least 75% |
+| Each completion state inside its bands          |    at least 75% |
 | Repeated-run range for every dimension          | at most 1 point |
-| Repetitions per scored case                     |      at least 3 |
+| Evaluator model identity matches expectation    |            100% |
+| Repetitions per scored case                     |       exactly 3 |
+| Maximum provider calls                          |              96 |
 
 Adjudicated evidence-anchor agreement is also required at 100%. It is reported
 separately from basic evidence validity so a provider cannot pass merely by
-citing some valid but irrelevant transcript text.
+citing some valid but irrelevant transcript text. Per-dimension floors prevent
+a scorer from sacrificing one entire rubric dimension while passing the pooled
+80% boundary. Round and completion-state floors expose localized regressions.
+
+Every out-of-band score records case, run, dimension, actual score, and expected
+band. Every unstable dimension records case, run, dimension, actual score, and
+observed range. Model mismatches record both configured expectation and observed
+result identity.
+
+For live runs, `execution.modelVersion` is the configured expected model and
+`modelVersionBasis` says `configured_provider_model`; that value alone is not
+provider proof. The OpenAI adapter records the API response's `model` value on
+each validated output, and the report lists those values in
+`observedModelVersions`. Acceptance requires every observed value to match the
+configured expectation. Deterministic runs use an explicit local identifier.
 
 ## Gate semantics
 
@@ -91,3 +115,7 @@ acceptance. A deterministic report must retain
 `launchAcceptance: pending_live_provider_run`, even when every harness metric
 is perfect. A live execution that misses any threshold must fail rather than
 downgrade itself to a self-test.
+
+The evaluated modes accept exactly three repetitions. The run budget is
+validated before evaluator work and rejects any plan above 96 calls, so a CLI
+typo cannot create unbounded provider spend.

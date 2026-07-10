@@ -21,8 +21,8 @@
 
 ## Scope
 
-- In scope: at least 40 synthetic PM transcripts, adjudicated completion states, exact evidence anchors, dimension score bands, a repeatable workflow-backed calibration harness, machine-readable reports, and operator docs.
-- Out of scope: customer transcripts, remote database writes, paid provider calls without explicit authorization, provider/model changes, and launch-readiness claims from deterministic fixtures.
+- In scope: at least 40 synthetic PM transcripts spanning weak, average, and strong sufficient answers; adjudicated completion states; exact evidence anchors; dimension score bands; model provenance; a bounded workflow-backed calibration harness; machine-readable reports; and operator docs.
+- Out of scope: customer transcripts, remote database writes, paid provider calls without explicit authorization, model tuning, and launch-readiness claims from deterministic fixtures.
 - Assumptions: the SAV-196 canonical transcript validator and SAV-197 generation workflow remain the production boundaries under test.
 
 ## Technical Plan
@@ -36,8 +36,8 @@
 ## Validation
 
 - Required commands: calibration preflight/self-test, fixture/core/workflow tests, `npm run check:ci`, `npm run build`, and `npm run verify:agent` when the local environment permits it.
-- Fixtures: 10 Product Sense, 10 Execution, 10 Strategy, and 10 Behavioral cases; every round includes full, partial, short, and low-signal cases.
-- Acceptance thresholds: 100% exact evidence validity and insufficient handling, at least 80% of dimension scores inside adjudicated bands, and maximum repeated-run dimension range of 1.
+- Fixtures: 10 Product Sense, 10 Execution, 10 Strategy, and 10 Behavioral cases; every round includes weak, average, and strong sufficient answers plus full, partial, short, and low-signal states.
+- Acceptance thresholds: 100% exact evidence validity, insufficient handling, and model identity; at least 80% pooled and per-dimension score agreement; at least 75% per-round and per-state agreement; maximum repeated-run dimension range of 1; and exactly three runs within a 96-call cap.
 
 ## Rollout
 

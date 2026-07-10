@@ -6,16 +6,22 @@ import {
   type FeedbackV2Scores,
 } from "@meelni/core";
 
-export const EVALUATION_GOLD_SET_VERSION = "pm-gold-set.v1" as const;
+export const EVALUATION_GOLD_SET_VERSION = "pm-gold-set.v2" as const;
 export const EVALUATION_ADJUDICATION_VERSION =
-  "pm-gold-adjudication.v1" as const;
+  "pm-gold-adjudication.v2" as const;
 
 export const EVALUATION_CALIBRATION_THRESHOLDS = {
   evidenceValidityRate: 1,
   insufficientHandlingRate: 1,
   scoreBandAgreementRate: 0.8,
+  minimumDimensionScoreBandAgreementRate: 0.8,
+  minimumRoundScoreBandAgreementRate: 0.75,
+  minimumStateScoreBandAgreementRate: 0.75,
   maximumRepeatedRunScoreRange: 1,
+  modelVersionMatchRate: 1,
   minimumProviderRuns: 3,
+  maximumProviderRuns: 3,
+  maximumProviderCalls: 96,
 } as const;
 
 export const CALIBRATION_ROUND_TYPES = [
@@ -27,6 +33,7 @@ export const CALIBRATION_ROUND_TYPES = [
 
 export type CalibrationRoundType = (typeof CALIBRATION_ROUND_TYPES)[number];
 export type CalibrationCompletionState = "full" | "partial" | "insufficient";
+export type CalibrationQuality = "weak" | "average" | "strong";
 
 export interface CalibrationTranscriptTurn {
   contractVersion: 2;
@@ -65,6 +72,7 @@ export interface EvaluationCalibrationCase {
   promptVersion: typeof FEEDBACK_PROMPT_VERSION;
   rubricVersion: typeof FEEDBACK_RUBRIC_VERSION;
   expectedCompletionState: CalibrationCompletionState;
+  expectedQuality: CalibrationQuality | null;
   scoreBands: CalibrationScoreBands | null;
   evidenceAnchors: CalibrationEvidenceAnchor[];
   transcript: CalibrationTranscriptTurn[];
@@ -477,21 +485,30 @@ function buildScoredCase(
 ): EvaluationCalibrationCase {
   const id = `${roundType}:${String(index + 1).padStart(2, "0")}:${caseSeed.slug}`;
   const expectedCompletionState = index === 7 ? "full" : "partial";
+  const expectedQuality = qualityForIndex(index);
+  const profiledAnswers = answersForQuality(
+    roundType,
+    caseSeed,
+    expectedQuality
+  );
   const answers =
     expectedCompletionState === "full"
-      ? [...caseSeed.answers, ...fullSessionExtensions(caseSeed)]
-      : [...caseSeed.answers];
+      ? [...profiledAnswers, ...fullSessionExtensions(caseSeed)]
+      : [...profiledAnswers];
   const transcript = buildConversation(id, answers, expectedCompletionState);
   const firstUser = transcript.find((turn) => turn.eventId === `${id}:user:1`)!;
   const thirdUser = transcript.find((turn) => turn.eventId === `${id}:user:3`)!;
 
   return baseCase({
     id,
-    title: caseSeed.title,
+    title: `${caseSeed.title} (${expectedQuality})`,
     roundType,
     expectedCompletionState,
+    expectedQuality,
     transcript,
-    scoreBands: toBands(caseSeed.scores),
+    scoreBands: toBands(
+      scoresForQuality(caseSeed.scores, expectedQuality, index)
+    ),
     evidenceAnchors: [
       {
         dimension: caseSeed.evidenceDimensions[0],
@@ -518,6 +535,7 @@ function buildShortCase(
     title: "Short session negative",
     roundType,
     expectedCompletionState: "insufficient",
+    expectedQuality: null,
     scoreBands: null,
     evidenceAnchors: [],
     transcript: timedTurns(id, [
@@ -536,6 +554,7 @@ function buildLowSignalCase(
     title: "Low-signal session negative",
     roundType,
     expectedCompletionState: "insufficient",
+    expectedQuality: null,
     scoreBands: null,
     evidenceAnchors: [],
     transcript: timedTurns(id, [
@@ -556,6 +575,7 @@ function baseCase(
     | "title"
     | "roundType"
     | "expectedCompletionState"
+    | "expectedQuality"
     | "scoreBands"
     | "evidenceAnchors"
     | "transcript"
@@ -570,6 +590,86 @@ function baseCase(
     promptVersion: FEEDBACK_PROMPT_VERSION,
     rubricVersion: FEEDBACK_RUBRIC_VERSION,
   };
+}
+
+function qualityForIndex(index: number): CalibrationQuality {
+  if (index <= 1) return "weak";
+  if (index <= 3) return "average";
+  return "strong";
+}
+
+function scoresForQuality(
+  strongScores: FeedbackV2Scores,
+  quality: CalibrationQuality,
+  index: number
+): FeedbackV2Scores {
+  if (quality === "weak") {
+    return index % 2 === 0 ? scores(3, 4, 3, 4, 3) : scores(4, 3, 4, 3, 4);
+  }
+  if (quality === "average") {
+    return index % 2 === 0 ? scores(5, 6, 5, 6, 5) : scores(6, 5, 6, 5, 6);
+  }
+  return strongScores;
+}
+
+function answersForQuality(
+  roundType: CalibrationRoundType,
+  caseSeed: ScoredSeed,
+  quality: CalibrationQuality
+): readonly [string, string, string] {
+  if (quality === "strong") return caseSeed.answers;
+
+  const weak: Record<CalibrationRoundType, readonly [string, string, string]> =
+    {
+      product_sense: [
+        `For ${caseSeed.title}, I would start by brainstorming features for everyone instead of choosing a user segment first.`,
+        "I would probably build the easiest idea and ask users whether they like it, but I have not defined the underlying problem or tradeoff.",
+        "I would watch general usage after launch; I have not selected an outcome metric, guardrail, or decision threshold.",
+      ],
+      execution: [
+        `For ${caseSeed.title}, I would ask the team to move quickly, although I have not defined the goal, owner, or ordered milestones.`,
+        "I would work on several pieces at once and handle dependencies when they appear rather than prioritize by risk.",
+        "I would call the launch successful if it ships; I have not set a measurable outcome, guardrail, or rollback condition.",
+      ],
+      strategy: [
+        `For ${caseSeed.title}, I think the market is attractive, but I have not sized a segment or explained why it matters now.`,
+        "I would copy the most visible competitor feature and decide the business model later without comparing strategic alternatives.",
+        "I would recommend entering because growth seems possible, although I have not named a risk, trigger, or evidence that would change the decision.",
+      ],
+      behavioral: [
+        `In the ${caseSeed.title} situation, the team had a difficult problem and I was involved, but I cannot clearly separate my responsibility from the group's.`,
+        "We talked about it and eventually chose an approach; I have not described my specific action, influence, or tradeoff.",
+        "The outcome was generally positive, but I do not have a concrete result and my learning is only that communication matters.",
+      ],
+    };
+  if (quality === "weak") return weak[roundType];
+
+  const average: Record<
+    CalibrationRoundType,
+    readonly [string, string, string]
+  > = {
+    product_sense: [
+      `For ${caseSeed.title}, I would choose one broad user group and confirm its main pain point before selecting a solution.`,
+      "I would test one simple concept first, though my segmentation and comparison with alternatives are still fairly surface level.",
+      "I would track repeat use and one satisfaction measure, but I have not made the guardrail or launch threshold precise.",
+    ],
+    execution: [
+      `For ${caseSeed.title}, I would define a launch goal, identify the main workstreams, and give each one an owner.`,
+      "I would prioritize the highest-user-impact item first, although my dependency analysis and rollback plan need more detail.",
+      "I would track adoption and defects after a staged release, but I have not specified exact thresholds for continuing or stopping.",
+    ],
+    strategy: [
+      `For ${caseSeed.title}, I would compare customer demand, competitor strength, and our right to win before choosing a direction.`,
+      "I see two plausible options and would favor the lower-investment entry, though the market sizing and economic assumptions remain rough.",
+      "I would validate demand with a pilot and revisit the recommendation, but I have not set a precise trigger for expansion or exit.",
+    ],
+    behavioral: [
+      `In the ${caseSeed.title} example, I owned one part of a team problem and needed to align two stakeholders with different priorities.`,
+      "I gathered their concerns, proposed a compromise, and followed up, although the hardest tradeoff and my personal influence are not fully clear.",
+      "The team completed the work with a better relationship, but the result is only loosely measured and my reflection could be more specific.",
+    ],
+  };
+  return average[roundType];
 }
 
 function buildConversation(

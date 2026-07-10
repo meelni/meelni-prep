@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import {
   createDeterministicCalibrationEvaluator,
   runEvaluationCalibration,
+  validateCalibrationRunBudget,
   type CalibrationExecutionKind,
 } from "@/lib/evaluation/calibration";
 import { getFeedbackEvaluationModel } from "@/lib/evaluation/model-config";
@@ -26,6 +27,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const executionKind = modeToExecutionKind(args.mode);
   const repetitions = args.repetitions ?? 3;
+  if (executionKind !== "preflight") {
+    validateCalibrationRunBudget(repetitions);
+  }
   let modelVersion: string | null = null;
   let evaluator;
 
