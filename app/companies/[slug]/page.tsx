@@ -7,6 +7,7 @@ import {
   MarketingArticleHeader,
   MarketingCtaCard,
   MarketingEyebrow,
+  MarketingMetaRow,
   MarketingPage,
 } from "@/components/marketing/marketing-surface";
 import {
@@ -189,6 +190,18 @@ export default function CompanyDetailPage() {
                 cycle. Confirm the current stages and timing with your
                 recruiter.
               </p>
+              <MarketingMetaRow
+                className="border-t-0 pt-0 text-sm"
+                items={[
+                  {
+                    icon: MessageSquare,
+                    label: `${company.questionCategories.reduce(
+                      (count, category) => count + category.questions.length,
+                      0
+                    )} illustrative practice questions`,
+                  },
+                ]}
+              />
             </div>
           }
         />
