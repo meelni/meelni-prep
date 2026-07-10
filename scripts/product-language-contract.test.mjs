@@ -5,15 +5,45 @@ import test from "node:test";
 
 const ROOT = process.cwd();
 const UI_ROOTS = ["app", "components"];
+const ACTIVE_GUIDANCE_ROOTS = [
+  ".agents/skills/meelni-product-strategy",
+  ".agents/skills/meelni-design-review-orchestrator",
+];
+const ACTIVE_GUIDANCE_FILES = [
+  "AGENTS.md",
+  "DESIGN.md",
+  ".claude/PRD.md",
+  "openspec/config.yaml",
+  "docs/operations/skills.md",
+  "docs/SEO_QUICK_WINS.md",
+];
+const SUPERSEDED_GUIDANCE_FILES = [
+  "docs/superpowers/plans/2026-07-08-realistic-pm-rep.md",
+];
 const CONTRACT_FILES = [
   "lib/config.tsx",
   "lib/dashboard/contracts.ts",
   "lib/dashboard/analytics-contracts.ts",
 ];
-const LEGACY_ROUTE_ALLOWLIST = new Set([
+const LEGACY_ROUTE_ALLOWLIST = new Set(["app/dashboard/new-rep/page.tsx"]);
+const LEGACY_IDENTIFIER_ALLOWLIST = new Set([
   "app/dashboard/new-rep/page.tsx",
-  "lib/navigation/interview-launch.ts",
+  "lib/analytics/interview-launch-compat.ts",
+  "lib/analytics/types.ts",
 ]);
+const PROHIBITION_CONTEXT =
+  /\b(?:do not|don't|avoid|instead of|without|must not|cannot|unsupported)\b/i;
+const MARKDOWN_LIST_ITEM = /^\s*(?:[-+*]|\d+[.)])\s+/;
+const FORBIDDEN_CANONICAL_CLAIMS = [
+  ["fitness positioning", /PM(?:-focused)? interview gym|live voice reps/i],
+  ["legacy launch action", /\bNew Rep\b/i],
+  ["legacy dashboard label", /\bPractice Home\b/i],
+  [
+    "unsupported readiness claim",
+    /\binterview[- ]ready\b|\breadiness score\b|\bInterview Readiness Quiz\b/i,
+  ],
+  ["unsupported readiness percentage", /\b\d+% ready for PM interviews\b/i],
+];
 
 async function sourceFiles(directory) {
   const entries = await readdir(path.join(ROOT, directory), {
@@ -34,6 +64,53 @@ async function sourceFiles(directory) {
   }
 
   return files;
+}
+
+async function markdownFiles(directory) {
+  const entries = await readdir(path.join(ROOT, directory), {
+    withFileTypes: true,
+  });
+  const files = [];
+
+  for (const entry of entries) {
+    const relativePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await markdownFiles(relativePath)));
+    } else if (/\.md$/.test(entry.name)) {
+      files.push(relativePath);
+    }
+  }
+
+  return files;
+}
+
+function findForbiddenCanonicalClaims(source) {
+  const violations = [];
+  const lines = source.split("\n");
+
+  for (const [index, line] of lines.entries()) {
+    for (const [label, pattern] of FORBIDDEN_CANONICAL_CLAIMS) {
+      if (pattern.test(line) && !hasProhibitionContext(lines, index)) {
+        violations.push({ line: index + 1, label });
+      }
+    }
+  }
+
+  return violations;
+}
+
+function hasProhibitionContext(lines, index) {
+  if (PROHIBITION_CONTEXT.test(lines[index])) return true;
+  if (!MARKDOWN_LIST_ITEM.test(lines[index])) return false;
+
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const previousLine = lines[cursor];
+    if (!previousLine.trim()) return false;
+    if (PROHIBITION_CONTEXT.test(previousLine)) return true;
+    if (!MARKDOWN_LIST_ITEM.test(previousLine)) return false;
+  }
+
+  return false;
 }
 
 test("active product surfaces use interview-practice language", async () => {
@@ -78,19 +155,87 @@ test("the retired launcher route exists only at its compatibility boundary", asy
 
 test("canonical product guidance no longer defines Meelni as a gym", async () => {
   const files = [
-    "AGENTS.md",
-    "DESIGN.md",
-    "openspec/config.yaml",
-    ".agents/skills/meelni-product-strategy/references/meelni-product-model.md",
-    ".agents/skills/meelni-product-strategy/references/product-lenses.md",
+    ...ACTIVE_GUIDANCE_FILES,
+    ...(await Promise.all(ACTIVE_GUIDANCE_ROOTS.map(markdownFiles))).flat(),
   ];
   const violations = [];
 
   for (const file of files) {
     const source = await readFile(path.join(ROOT, file), "utf8");
-    if (/PM(?:-focused)? interview gym|live voice reps/i.test(source)) {
-      violations.push(file);
+
+    for (const violation of findForbiddenCanonicalClaims(source)) {
+      violations.push(`${file}:${violation.line}: ${violation.label}`);
     }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("guidance detector rejects canonical claims but permits explicit prohibitions", () => {
+  assert.deepEqual(
+    findForbiddenCanonicalClaims(
+      [
+        "Meelni is a PM interview gym.",
+        "Start a New Rep.",
+        "Candidates are interview-ready after three sessions.",
+      ].join("\n")
+    ),
+    [
+      { line: 1, label: "fitness positioning" },
+      { line: 2, label: "legacy launch action" },
+      { line: 3, label: "unsupported readiness claim" },
+    ]
+  );
+
+  assert.deepEqual(
+    findForbiddenCanonicalClaims(
+      "Do not call Meelni a PM interview gym, use New Rep, or claim an interview readiness score."
+    ),
+    []
+  );
+
+  assert.deepEqual(
+    findForbiddenCanonicalClaims(
+      [
+        "Do not use these legacy terms:",
+        "- PM interview gym",
+        "- New Rep",
+        "- interview readiness score",
+      ].join("\n")
+    ),
+    []
+  );
+});
+
+test("superseded guidance is explicit and points to the accepted product contract", async () => {
+  for (const file of SUPERSEDED_GUIDANCE_FILES) {
+    const source = await readFile(path.join(ROOT, file), "utf8");
+
+    assert.match(source, /\*\*Superseded on 2026-07-09\. Do not execute\.\*\*/);
+    assert.match(source, /\.claude\/PRD\.md/);
+    assert.match(
+      source,
+      /2026-07-09-live-pm-interview-practice-positioning\.md/
+    );
+  }
+});
+
+test("legacy rep identifiers remain bounded to explicit compatibility files", async () => {
+  const files = [
+    ...(
+      await Promise.all(
+        ["app", "components", "lib", "packages"].map(sourceFiles)
+      )
+    ).flat(),
+  ];
+  const violations = [];
+  const legacyIdentifier = /new[-_]rep|NewRep|newRep/;
+
+  for (const file of files) {
+    if (LEGACY_IDENTIFIER_ALLOWLIST.has(file)) continue;
+    const source = await readFile(path.join(ROOT, file), "utf8");
+
+    if (legacyIdentifier.test(`${file}\n${source}`)) violations.push(file);
   }
 
   assert.deepEqual(violations, []);

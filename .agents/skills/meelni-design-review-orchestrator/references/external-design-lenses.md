@@ -64,7 +64,7 @@ Use for:
 Avoid for:
 
 - Dashboard workspace.
-- New Rep flow.
+- New Mock Interview flow.
 - Live interview room.
 - Feedback review.
 - Authenticated settings, billing, or data-heavy product tools.
@@ -80,7 +80,7 @@ Important conflict notes:
 | Surface | Primary lens | Secondary lens | Notes |
 | --- | --- | --- | --- |
 | Dashboard | Meelni + Impeccable product | ui-skills accessibility/motion | Keep dense, calm, repeated-task UI. |
-| New Rep | Meelni + Impeccable product | ui-skills accessibility | Optimize activation and decision clarity. |
+| New Mock Interview | Meelni + Impeccable product | ui-skills accessibility | Optimize activation and decision clarity. |
 | Interview room | Meelni only, with ui-skills motion/a11y | Impeccable audit | Focused runtime; avoid external visual novelty. |
 | Feedback review | Meelni + Impeccable product | ui-skills accessibility | Prioritize trust, hierarchy, and comparison clarity. |
 | Auth | Meelni + Impeccable product | ui-skills accessibility | Calm account flow, no marketing detours. |

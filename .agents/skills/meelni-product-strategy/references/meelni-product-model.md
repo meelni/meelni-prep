@@ -20,7 +20,7 @@ The restart direction is not generic mock interviews. The wedge is PM-specific d
 
 Meelni helps PM candidates get better through repeated realistic mock interviews.
 
-The strongest version of the product turns one practice session into the next obvious action: a better question, a targeted drill, a clearer weakness, a sharper answer, or a confidence signal that the user is interview-ready.
+The strongest version of the product turns one practice session into the next obvious action: a better question, a targeted drill, a clearer weakness, a sharper answer, or a clearer view of evidence-grounded practice progress.
 
 ## Why Meelni Can Be Different
 
