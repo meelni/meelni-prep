@@ -64,7 +64,6 @@ because elapsed time is not workflow-stage truth.
         "confidence": 0.8
       }
     ],
-    "suggestedExercises": [],
     "summary": "A grounded summary.",
     "schemaVersion": "feedback.v2",
     "promptVersion": "feedback.prompt.v2",

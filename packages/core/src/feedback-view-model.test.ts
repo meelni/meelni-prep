@@ -58,6 +58,7 @@ test("presents strict full and partial v2 feedback without score coercion", () =
   if (full.kind !== "v2") return;
   assert.equal(full.scores.overall, 7.9);
   assert.equal(full.nextPracticeRecommendation, null);
+  assert.equal("suggestedExercises" in full, false);
   assert.equal(
     toFeedbackViewState({
       status: "completed",
@@ -121,6 +122,7 @@ test("presents validated legacy feedback only as an explicit historical variant"
   if (legacy.kind !== "legacy") return;
   assert.equal(legacy.scores.overall, 8);
   assert.deepEqual(legacy.improvements, ["State the approach first"]);
+  assert.equal("suggestedExercises" in legacy, false);
   assert.equal(
     toFeedbackViewState({
       status: "completed",
@@ -144,6 +146,71 @@ test("fails closed for malformed legacy notes", () => {
     })
   );
   assert.equal(malformed.kind, "invalid");
+});
+
+test("fails closed when any persisted v2 string or collection exceeds its field limit", () => {
+  const long = (length: number) => "x".repeat(length);
+  const cases: PersistedCompletedFeedback[] = [
+    completed({ id: long(257) }),
+    completed({ sessionId: long(257) }),
+    completed({ modelVersion: long(257) }),
+    completed({ summary: long(4_001) }),
+    completed({ drills: [long(2_001)] }),
+    completed({ strengths: [{ ...finding, observation: long(2_001) }] }),
+    completed({ strengths: [{ ...finding, nextStep: long(2_001) }] }),
+    completed({
+      strengths: [
+        {
+          ...finding,
+          transcriptRefs: [long(257)],
+          evidence: [{ turnRef: long(257), quote: "evidence" }],
+        },
+      ],
+    }),
+    completed({
+      strengths: [
+        {
+          ...finding,
+          evidence: [{ turnRef: "writer:1", quote: long(4_001) }],
+        },
+      ],
+    }),
+    completed({ strengths: Array.from({ length: 6 }, () => finding) }),
+  ];
+
+  for (const candidate of cases) {
+    assert.equal(presentCompletedFeedback(candidate).kind, "invalid");
+  }
+});
+
+test("fails closed when any persisted historical string or collection exceeds its field limit", () => {
+  const long = (length: number) => "x".repeat(length);
+  const legacy = (overrides: Partial<PersistedCompletedFeedback>) =>
+    completed({
+      strengths: ["Clear explanation"],
+      improvements: ["State the approach first"],
+      overallScore: "8.0",
+      rubricVersion: "1.0.0",
+      schemaVersion: null,
+      promptVersion: null,
+      modelVersion: null,
+      evaluationState: null,
+      ...overrides,
+    });
+  const cases = [
+    legacy({ rubricVersion: long(257) }),
+    legacy({ summary: long(4_001) }),
+    legacy({ drills: [long(2_001)] }),
+    legacy({ strengths: [long(4_001)] }),
+    legacy({ strengths: [{ text: long(4_001) }] }),
+    legacy({ strengths: [{ text: "note", evidence_quote: long(4_001) }] }),
+    legacy({ strengths: [{ text: "note", example: long(4_001) }] }),
+    legacy({ strengths: Array.from({ length: 11 }, () => "note") }),
+  ];
+
+  for (const candidate of cases) {
+    assert.equal(presentCompletedFeedback(candidate).kind, "invalid");
+  }
 });
 
 test("rejects non-canonical createdAt strings instead of normalizing them", () => {

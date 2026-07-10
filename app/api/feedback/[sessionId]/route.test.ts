@@ -312,7 +312,8 @@ describe("/api/feedback/[sessionId]", () => {
     );
 
     const response = await GET(request(), PARAMS);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       status: "completed",
       feedback: {
         kind: "v2",
@@ -324,6 +325,7 @@ describe("/api/feedback/[sessionId]", () => {
         evaluationState: "partial",
       },
     });
+    expect(body.feedback).not.toHaveProperty("suggestedExercises");
   });
 
   it("fails closed when a completed row has missing scores", async () => {
@@ -393,10 +395,12 @@ describe("/api/feedback/[sessionId]", () => {
     );
 
     const response = await GET(request(), PARAMS);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       status: "completed",
       feedback: { kind: "legacy", strengths: ["Clear explanation"] },
     });
+    expect(body.feedback).not.toHaveProperty("suggestedExercises");
   });
 
   it("preserves insufficient and abandoned skipped states", async () => {

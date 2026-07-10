@@ -120,8 +120,9 @@ presenter in `packages/core/src/feedback-view-model.ts` produces exactly one of:
 - validated `v2`, with the exact supported version tuple, complete scores,
   structurally valid findings and evidence, and an overall score that matches
   the canonical v2 weighting;
-- validated `legacy`, with a completely absent v2 tuple, bounded historical
-  strings, complete in-range scores, and an explicit historical-feedback label;
+- validated `legacy`, with a completely absent v2 tuple, explicitly bounded
+  historical strings, complete in-range scores, and an explicit
+  historical-feedback label;
 - `invalid`, which contains no scores or findings and is shown as unavailable.
 
 Historical feedback keeps the separately model-authored overall score used by
@@ -139,7 +140,14 @@ evidence strength, not interview readiness. `0.8–1` is strong evidence,
 `0.6–0.79` is moderate evidence, and values below `0.6` are limited evidence.
 
 The read model reserves a nullable, typed next-practice recommendation seam for
-SAV-201. SAV-200 does not rank exercises or add a start action to model-generated
-suggestions. The customer feedback surface hides those stored suggestions until
-SAV-201 supplies the deterministic recommendation contract; finding-level
-`nextStep` remains the actionable guidance in the meantime.
+SAV-201. SAV-200 validates stored model-authored exercise strings as untrusted
+persisted data, but excludes them entirely from the customer/API read model.
+They cannot be ranked, rendered, or acted on until SAV-201 supplies the
+deterministic recommendation contract; finding-level `nextStep` remains the
+actionable guidance in the meantime.
+
+All persisted strings crossing the read boundary have explicit field-specific
+limits. Identifiers and model/rubric versions are limited to 256 characters;
+summaries to 4,000; observations and next actions to 2,000; evidence quotes and
+historical notes to 4,000; and stored-but-hidden exercise strings to 2,000.
+Oversized values fail closed as `invalid` rather than reaching the API response.

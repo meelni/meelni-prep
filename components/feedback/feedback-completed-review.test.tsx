@@ -27,14 +27,13 @@ const finding = {
   confidence: 0.9,
 };
 
-test("completed v2 review hides technical version and unranked model exercises", () => {
+test("completed v2 review hides technical version metadata", () => {
   const feedback: FeedbackV2View = {
     kind: "v2",
     id: "feedback-1",
     sessionId: "session-1",
     scores,
     summary: "Grounded summary",
-    suggestedExercises: ["Start this workout drill"],
     strengths: [finding],
     improvements: [{ ...finding, dimension: "structure" }],
     schemaVersion: "feedback.v2",
@@ -52,17 +51,15 @@ test("completed v2 review hides technical version and unranked model exercises",
   assert.match(html, /Transcript evidence/);
   assert.match(html, /Next action/);
   assert.doesNotMatch(html, /Feedback v2/);
-  assert.doesNotMatch(html, /workout drill/);
 });
 
-test("legacy review stays historical and hides stored model exercises", () => {
+test("legacy review stays explicitly historical", () => {
   const feedback: FeedbackLegacyView = {
     kind: "legacy",
     id: "feedback-legacy",
     sessionId: "session-legacy",
     scores: { ...scores, overall: 8 },
     summary: "Historical summary",
-    suggestedExercises: ["Complete this drill"],
     strengths: ["Clear answer"],
     improvements: ["State the approach first"],
     rubricVersion: "1.0.0",
@@ -74,5 +71,4 @@ test("legacy review stays historical and hides stored model exercises", () => {
   );
   assert.match(html, /Historical feedback/);
   assert.match(html, /do not include verifiable transcript evidence/);
-  assert.doesNotMatch(html, /Complete this drill/);
 });

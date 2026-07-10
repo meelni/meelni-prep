@@ -21,6 +21,10 @@ export interface FeedbackTranscriptTurn {
   eventId?: string | null;
 }
 
+type CanonicalFeedbackTranscriptTurn = FeedbackTranscriptTurn & {
+  eventId: string;
+};
+
 interface TranscriptResponse {
   turns: FeedbackTranscriptTurn[];
 }
@@ -76,14 +80,20 @@ export function useEvidenceTranscript(sessionId: string) {
       return;
     }
     const target = document.getElementById(
-      transcriptTurnId(matchingTurn.eventId || matchingTurn.id)
+      transcriptTurnId(matchingTurn.eventId)
     );
     if (!target) {
       setNavigationError("The cited answer could not be focused in this view.");
       setPendingTurnRef(null);
       return;
     }
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    const prefersReducedMotion = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    target.scrollIntoView({
+      behavior: getEvidenceScrollBehavior(prefersReducedMotion === true),
+      block: "center",
+    });
     target.focus({ preventScroll: true });
     setNavigationError(null);
     setPendingTurnRef(null);
@@ -182,7 +192,7 @@ export function FeedbackTranscriptSection({
           <ol className="space-y-4">
             {turns.map((turn) => (
               <li
-                id={transcriptTurnId(turn.eventId || turn.id)}
+                id={turn.eventId ? transcriptTurnId(turn.eventId) : undefined}
                 key={turn.id}
                 tabIndex={-1}
                 className="focus-visible:ring-ring min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
@@ -220,11 +230,19 @@ export function FeedbackTranscriptSection({
 export function findTranscriptTurnReference(
   turns: FeedbackTranscriptTurn[],
   reference: string
-): FeedbackTranscriptTurn | null {
+): CanonicalFeedbackTranscriptTurn | null {
   return (
-    turns.find((turn) => turn.eventId === reference || turn.id === reference) ??
-    null
+    turns.find(
+      (turn): turn is CanonicalFeedbackTranscriptTurn =>
+        typeof turn.eventId === "string" && turn.eventId === reference
+    ) ?? null
   );
+}
+
+export function getEvidenceScrollBehavior(
+  prefersReducedMotion: boolean
+): ScrollBehavior {
+  return prefersReducedMotion ? "auto" : "smooth";
 }
 
 export function formatTranscriptTimestamp(timestamp: string | null): string {
