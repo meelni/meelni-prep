@@ -149,10 +149,10 @@ These get massive backlinks and social shares:
 - Daily question with answer tips
 - Backlink to Meelni
 
-**"Interview Readiness Quiz"**
-- 10-question assessment
-- "You're 67% ready for PM interviews"
-- CTA to practice with Meelni
+**"Practice Focus Check"**
+- 10-question self-reflection grounded in the candidate's current interview goals
+- Name a concrete next practice focus instead of scoring or predicting interview outcomes
+- CTA to practice the recommended question type with Meelni
 
 **"Framework Cheat Sheet" (PDF)**
 - CIRCLES, AARM, STAR, etc.
