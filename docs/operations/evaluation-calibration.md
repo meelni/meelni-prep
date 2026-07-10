@@ -33,10 +33,18 @@ npm run calibration:adjudication-manifest -- \
   --output docs/evidence/sav-198-adjudication-review-manifest.json
 ```
 
-The manifest contains the exact strength and improvement evidence, semantic
-behavior, observation, dimension, and next step for all 32 scored cases. A
-product owner or PM reviewer must approve or correct these candidates. Neither
-the deterministic harness nor a live model run counts as signoff.
+The manifest contains the exact strength and improvement evidence, observation,
+dimension, and next step for all 32 scored cases. A product owner or PM reviewer
+must approve or correct these candidates in a separate
+`evaluation-adjudication-approval.v1` JSON file. That approval contains the
+manifest/corpus hashes, versions, reviewer identity/role, review time, and one
+decision per scored case. Neither the candidate manifest, deterministic harness,
+nor a live model run counts as signoff. No approval artifact is committed while
+SAV-198 review remains pending.
+
+The eight insufficient fixtures are separately enforced validator negatives,
+not scored adjudication candidates. They have no score bands or findings;
+preflight requires all eight to skip evaluation and make zero provider calls.
 
 ## Authorized live-provider run
 
@@ -63,6 +71,7 @@ After authorization, set the acknowledgement only for the command invocation:
 ```bash
 MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   npm run calibration:live -- \
+  --approval /secure/path/evaluation-adjudication-approval.json \
   --output /tmp/meelni-calibration-live.json
 ```
 
@@ -95,6 +104,8 @@ secrets or provider responses containing sensitive data.
 - `launchAcceptance` is `passed`; a deterministic `passed` state is not enough.
 - Adjudication acceptance records completed product-owner/PM signoff; candidate
   status is never treated as ground truth.
+- Candidate and corpus hashes match the separately stored approval artifact,
+  and all 32 scored-case decisions are approved.
 
 If a live run fails, keep the launch gate closed. Inspect case/run/dimension
 failure records, update the evaluator or adjudication deliberately, rerun local

@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { FeedbackV2Result, FeedbackV2Scores } from "@meelni/core";
+import {
+  EVALUATION_ADJUDICATION_VERSION,
+  EVALUATION_GOLD_SET_VERSION,
+  evaluationCalibrationCases,
+} from "@meelni/test-fixtures";
 
 import {
   createDeterministicCalibrationEvaluator,
   runEvaluationCalibration,
 } from "./calibration";
+import { getEvaluationAdjudicationHashes } from "./calibration-approval";
 
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
 const NOW = new Date("2026-07-10T16:00:00.000Z");
@@ -219,6 +225,73 @@ test("run budget rejects a repetition typo before the evaluator can be called", 
   assert.equal(evaluatorCalls, 0);
 });
 
+test("approved adjudication without a live run remains pending live calibration", async () => {
+  const report = await runEvaluationCalibration({
+    executionKind: "deterministic_self_test",
+    evaluator: createDeterministicCalibrationEvaluator(SELF_TEST_MODEL),
+    modelVersion: SELF_TEST_MODEL,
+    repetitions: 3,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+  });
+  assert.equal(report.gate.adjudicationAcceptance, "passed");
+  assert.equal(report.gate.liveProviderAcceptance, "pending");
+  assert.equal(report.gate.launchAcceptance, "pending_live_provider_run");
+});
+
+test("live-pass with a pending decision remains pending signoff", async () => {
+  const model = "test-live-pass-pending-signoff";
+  const report = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    evaluator: createDeterministicCalibrationEvaluator(model),
+    modelVersion: model,
+    repetitions: 3,
+    now: NOW,
+    adjudicationApproval: approvalFixture(
+      "product_sense:01:caregiver-planning"
+    ),
+  });
+  assert.equal(report.gate.liveProviderAcceptance, "passed");
+  assert.equal(
+    report.gate.adjudicationAcceptance,
+    "pending_product_owner_pm_signoff"
+  );
+  assert.equal(report.gate.launchAcceptance, "pending_adjudication_signoff");
+});
+
+test("approved adjudication and live-pass satisfy the combined gate", async () => {
+  const model = "test-live-pass-approved";
+  const report = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    evaluator: createDeterministicCalibrationEvaluator(model),
+    modelVersion: model,
+    repetitions: 3,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+  });
+  assert.equal(report.gate.adjudicationAcceptance, "passed");
+  assert.equal(report.gate.liveProviderAcceptance, "passed");
+  assert.equal(report.gate.launchAcceptance, "passed");
+});
+
 function withScores(output: FeedbackV2Result, scores: FeedbackV2Scores) {
   return { ...output, scores, overallScore: 0 };
+}
+
+function approvalFixture(changesRequiredCaseId?: string) {
+  return {
+    contractVersion: "evaluation-adjudication-approval.v1",
+    ...getEvaluationAdjudicationHashes(),
+    goldSetVersion: EVALUATION_GOLD_SET_VERSION,
+    adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
+    reviewer: { identity: "test-reviewer", role: "pm_reviewer" },
+    reviewedAt: NOW.toISOString(),
+    decisions: evaluationCalibrationCases
+      .filter(({ expectedQuality }) => expectedQuality !== null)
+      .map(({ id }) => ({
+        caseId: id,
+        decision:
+          id === changesRequiredCaseId ? "changes_required" : "approved",
+      })),
+  };
 }
