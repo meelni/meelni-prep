@@ -1,6 +1,6 @@
 /**
  * Drill Generator
- * Generates targeted practice drills based on weak areas in interview performance
+ * Generates focused practice suggestions based on weak areas in interview performance
  */
 
 import type { DrillSuggestion, RubricScores } from "@meelni/core";
@@ -113,7 +113,7 @@ const DRILL_TEMPLATES = {
 };
 
 /**
- * Generate 2-3 targeted practice drills based on lowest scoring dimensions
+ * Generate 2-3 focused practice suggestions based on lowest scoring dimensions
  *
  * @param scores - Rubric scores for all 5 dimensions
  * @returns Array of 2-3 drill suggestions targeting weakest areas

@@ -3,7 +3,7 @@
  *
  * Analyzes an interview session transcript and generates comprehensive feedback
  * using GPT-4 Turbo. Includes dimension scores, strengths, improvements, and
- * practice drill recommendations. This endpoint is idempotent - if feedback already
+ * focused practice recommendations. This endpoint is idempotent - if feedback already
  * exists for the session, it returns success without regenerating.
  *
  * @route POST /api/feedback/generate
@@ -27,7 +27,7 @@
  * @response.feedback.overallScore {number} - Overall weighted score (0-10)
  * @response.feedback.strengths {Array<string>} - List of strength statements
  * @response.feedback.improvements {Array<string>} - List of improvement suggestions
- * @response.feedback.drills {Array<string>} - List of practice drill recommendations
+ * @response.feedback.drills {Array<string>} - List of focused practice recommendations
  * @response.feedback.summary {string} - Executive summary of performance
  * @response.feedback.createdAt {string} - ISO 8601 timestamp
  *

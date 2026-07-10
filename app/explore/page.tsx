@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
@@ -25,6 +25,16 @@ import {
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { usePostHog } from "posthog-js/react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/app/providers/auth-provider";
+import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
+import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
+import { resolveQuestionEntryAction } from "@/lib/navigation/question-auth-entry";
+import {
+  getExploreResultsAnnouncement,
+  resolvePublicQuestionAvailability,
+  type QuestionLoadState,
+} from "@/lib/explore/public-question-availability";
 
 interface Question {
   id: string;
@@ -34,32 +44,6 @@ interface Question {
   askedAt: Date | null;
   isActive: boolean;
   createdAt: Date | null;
-}
-
-// Format relative time for question recency
-function formatRelativeTime(date: Date | null): string {
-  if (!date) return "";
-
-  const now = new Date();
-  const askedDate = new Date(date);
-  const diffInMs = now.getTime() - askedDate.getTime();
-  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-
-  if (diffInDays < 7) {
-    return diffInDays === 0
-      ? "Today"
-      : diffInDays === 1
-        ? "Yesterday"
-        : `${diffInDays} days ago`;
-  } else if (diffInDays < 30) {
-    const weeks = Math.floor(diffInDays / 7);
-    return `${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
-  } else if (diffInDays < 365) {
-    const months = Math.floor(diffInDays / 30);
-    return `${months} ${months === 1 ? "month" : "months"} ago`;
-  } else {
-    return askedDate.getFullYear().toString();
-  }
 }
 
 // Capitalize company name
@@ -78,9 +62,14 @@ const QUESTIONS_PER_PAGE = 20;
 
 export default function ExplorePage() {
   const posthog = usePostHog();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { user, isLoading: authLoading } = useAuth();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loadState, setLoadState] = useState<QuestionLoadState>("loading");
+  const [requestVersion, setRequestVersion] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [selectedType, setSelectedType] = useState("All Types");
@@ -89,13 +78,20 @@ export default function ExplorePage() {
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(
     null
   );
+  const questionTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const publicAvailability = resolvePublicQuestionAvailability(
+    loadState,
+    totalQuestions
+  );
 
   // Track page view
   useEffect(() => {
-    posthog?.capture("explore_page_viewed", {
-      total_questions: totalQuestions,
-    });
-  }, [posthog, totalQuestions]);
+    if (loadState === "success") {
+      posthog?.capture("explore_page_viewed", {
+        total_questions: totalQuestions,
+      });
+    }
+  }, [loadState, posthog, totalQuestions]);
 
   // Fetch questions
   useEffect(() => {
@@ -103,7 +99,7 @@ export default function ExplorePage() {
 
     async function fetchQuestions() {
       try {
-        setLoading(true);
+        setLoadState("loading");
         const params = new URLSearchParams({
           limit: String(QUESTIONS_PER_PAGE),
           offset: String((currentPage - 1) * QUESTIONS_PER_PAGE),
@@ -131,21 +127,30 @@ export default function ExplorePage() {
           throw new Error(`Question request failed with ${res.status}`);
         }
         const data = await res.json();
-        setQuestions(data.questions || []);
-        setTotalQuestions(data.pagination?.total || 0);
+        if (
+          !Array.isArray(data.questions) ||
+          !Number.isSafeInteger(data.pagination?.total) ||
+          data.pagination.total < 0
+        ) {
+          throw new Error("Question response did not match the public contract");
+        }
+        setQuestions(data.questions);
+        setTotalQuestions(data.pagination.total);
+        setLoadState("success");
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
         console.error("Error fetching questions:", error);
-      } finally {
-        setLoading(false);
+        setQuestions([]);
+        setTotalQuestions(0);
+        setLoadState("error");
       }
     }
 
     fetchQuestions();
     return () => controller.abort();
-  }, [currentPage, debouncedSearchQuery, selectedType]);
+  }, [currentPage, debouncedSearchQuery, requestVersion, selectedType]);
 
   // Paginate questions
   const totalPages = Math.ceil(totalQuestions / QUESTIONS_PER_PAGE);
@@ -158,25 +163,28 @@ export default function ExplorePage() {
 
   // Track search queries
   useEffect(() => {
-    if (debouncedSearchQuery) {
+    if (debouncedSearchQuery && loadState === "success") {
       posthog?.capture("explore_search", {
         query: debouncedSearchQuery,
         results_count: totalQuestions,
       });
     }
-  }, [debouncedSearchQuery, posthog, totalQuestions]);
+  }, [debouncedSearchQuery, loadState, posthog, totalQuestions]);
 
   // Track filter changes
   useEffect(() => {
-    if (selectedType !== "All Types") {
+    if (selectedType !== "All Types" && loadState === "success") {
       posthog?.capture("explore_filter_type", {
         filter_type: selectedType,
         results_count: totalQuestions,
       });
     }
-  }, [selectedType, posthog, totalQuestions]);
+  }, [loadState, selectedType, posthog, totalQuestions]);
 
-  const handleQuestionClick = (question: Question) => {
+  const handleQuestionClick = (
+    question: Question,
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
     // Track click
     posthog?.capture("explore_question_clicked", {
       question_id: question.id,
@@ -185,7 +193,27 @@ export default function ExplorePage() {
       page: currentPage,
     });
 
-    // Show sign-in modal
+    const entryAction = resolveQuestionEntryAction({
+      authLoading,
+      isAuthenticated: Boolean(user),
+    });
+
+    if (entryAction === "wait") {
+      return;
+    }
+
+    if (entryAction === "launch") {
+      router.push(
+        buildQuestionInterviewHref(
+          question.id,
+          buildInternalRequestDestination(pathname, searchParams.toString())
+        )
+      );
+      return;
+    }
+
+    // Show sign-in modal for signed-out candidates.
+    questionTriggerRef.current = event.currentTarget;
     setSelectedQuestion(question);
     setSignInModalOpen(true);
   };
@@ -199,7 +227,7 @@ export default function ExplorePage() {
     });
   };
 
-  if (loading) {
+  if (loadState === "loading") {
     return (
       <>
         <Header />
@@ -218,12 +246,14 @@ export default function ExplorePage() {
   return (
     <>
       {/* Structured Data for SEO & LLM Indexing */}
-      <ExploreStructuredData
-        questions={questions}
-        currentPage={currentPage}
-        totalPages={totalPages}
-        totalQuestions={totalQuestions}
-      />
+      {publicAvailability.totalQuestions !== null && (
+        <ExploreStructuredData
+          questions={questions}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalQuestions={publicAvailability.totalQuestions}
+        />
+      )}
 
       <Header />
 
@@ -261,10 +291,16 @@ export default function ExplorePage() {
             Product Manager Interview Questions
           </h1>
           <p className="text-muted-foreground max-w-3xl text-lg">
-            Browse {totalQuestions.toLocaleString()} real interview questions
-            from Google, Meta, Amazon, and 100+ top companies. Practice Product
-            Sense, Behavioral, Execution, and Strategy questions with AI
-            coaching.
+            {publicAvailability.totalQuestions !== null ? (
+              <>
+                Browse {publicAvailability.totalQuestions.toLocaleString()} available
+                practice questions tagged by company and round type.
+              </>
+            ) : (
+              <>Browse practice questions tagged by company and round type.</>
+            )}{" "}
+            Practice Product Sense, Behavioral, Execution, and Strategy answers
+            out loud.
           </p>
         </header>
 
@@ -311,7 +347,24 @@ export default function ExplorePage() {
           className="mx-auto max-w-4xl px-4 pt-0 pb-12 sm:px-6"
           aria-label="Interview questions list"
         >
-          {paginatedQuestions.length === 0 ? (
+          {loadState === "error" ? (
+            <div className="py-24 text-center" role="alert">
+              <p className="text-foreground mb-2 text-lg font-medium">
+                Questions are temporarily unavailable
+              </p>
+              <p className="text-muted-foreground mb-6 text-sm">
+                We could not load the question bank. Try again without changing
+                your filters.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRequestVersion((version) => version + 1)}
+              >
+                Try again
+              </Button>
+            </div>
+          ) : paginatedQuestions.length === 0 ? (
             <div className="py-24 text-center">
               <p className="text-foreground mb-2 text-lg font-medium">
                 No questions found
@@ -338,9 +391,15 @@ export default function ExplorePage() {
                   <Button
                     type="button"
                     variant="ghost"
-                    onClick={() => handleQuestionClick(question)}
+                    onClick={(event) => handleQuestionClick(question, event)}
+                    disabled={authLoading}
+                    aria-busy={authLoading}
                     className="hover:text-foreground h-auto w-full flex-col items-stretch justify-start rounded-lg p-0 text-left hover:bg-transparent"
-                    aria-label={`Practice question: ${question.questionText}`}
+                    aria-label={
+                      authLoading
+                        ? "Checking sign-in status before opening this question"
+                        : `Practice question: ${question.questionText}`
+                    }
                   >
                     {/* Metadata */}
                     <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -366,23 +425,6 @@ export default function ExplorePage() {
                       >
                         {question.questionType}
                       </span>
-                      {question.askedAt && (
-                        <>
-                          <span
-                            className="text-muted-foreground text-xs"
-                            aria-hidden="true"
-                          >
-                            •
-                          </span>
-                          <time
-                            className="text-muted-foreground text-xs font-normal"
-                            dateTime={new Date(question.askedAt).toISOString()}
-                            itemProp="dateCreated"
-                          >
-                            {formatRelativeTime(question.askedAt)}
-                          </time>
-                        </>
-                      )}
                     </div>
 
                     {/* Question Text */}
@@ -448,12 +490,17 @@ export default function ExplorePage() {
           onClose={() => setSignInModalOpen(false)}
           questionText={selectedQuestion.questionText}
           questionId={selectedQuestion.id}
+          returnFocusRef={questionTriggerRef}
         />
       )}
 
       {/* Live region for accessibility */}
       <div role="status" aria-live="polite" className="sr-only">
-        Showing {paginatedQuestions.length} of {totalQuestions} questions
+        {getExploreResultsAnnouncement({
+          authLoading,
+          availability: publicAvailability,
+          visibleQuestions: paginatedQuestions.length,
+        })}
       </div>
     </>
   );
