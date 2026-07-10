@@ -10,16 +10,16 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import {
-  readOpaqueCorrelationId,
+  readInterviewSessionCorrelationId,
   readOperationalRequestId,
   reportOperationalFailure,
-  type SessionCorrelationId,
+  type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
 import { joinInterviewSessionWorkflow } from "@/lib/workflows/join-interview-session";
 
 export async function POST(req: NextRequest) {
-  let correlationId: SessionCorrelationId | null = null;
+  let correlationId: InterviewSessionCorrelationId | null = null;
   try {
     const supabase = await createClient();
     const {
@@ -32,9 +32,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    correlationId = readOpaqueCorrelationId(
-      isRecord(body) ? body.sessionId : null
-    );
+    correlationId = readInterviewSessionCorrelationId({
+      kind: "interview_session",
+      sessionId: isRecord(body) ? body.sessionId : null,
+    });
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (!livekitEnv.ok) {
       reportOperationalFailure({
@@ -56,6 +57,21 @@ export async function POST(req: NextRequest) {
       sessionId: isRecord(body) ? body.sessionId : undefined,
       env: livekitEnv.data,
     });
+
+    if (!result.ok && result.status >= 500) {
+      const providerUnavailable =
+        result.body.error === "livekit_token_unavailable";
+      reportOperationalFailure({
+        operation: "interview_token",
+        errorCode: providerUnavailable
+          ? "livekit_token_unavailable"
+          : "livekit_reconnect_rate_limit_unavailable",
+        severity: "critical",
+        retryable: result.status === 503,
+        requestId: readOperationalRequestId(req),
+        correlationId,
+      });
+    }
 
     const headers =
       !result.ok && result.status === 429 && result.retryAfterSeconds

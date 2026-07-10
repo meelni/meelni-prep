@@ -30,9 +30,10 @@ The event is constructed from a closed schema. Callers cannot attach an exceptio
 
 - `errorCode` is a bounded snake_case classification owned by Meelni.
 - `requestId` accepts only a bounded Vercel-style opaque identifier.
-- `correlationId` accepts only a UUID-shaped interview/session identifier. It is not a user identifier.
-- Reporter inputs use branded request/session identifier types produced by the
-  boundary parsers; ordinary strings cannot be passed accidentally.
+- `correlationId` accepts only a branded interview-session correlation value.
+- The correlation factory requires a discriminated `interview_session` source;
+  a raw string or Supabase user reference is not a valid typed input. The
+  factory also validates the session ID as a UUID at runtime.
 - `environment` is an enum.
 - `release` is a truncated validated Git commit SHA.
 - invalid optional values become `null` rather than being normalized or logged.
@@ -40,8 +41,16 @@ The event is constructed from a closed schema. Callers cannot attach an exceptio
 Raw provider error text may still be used transiently to choose an internal classification, but it must not enter this event or an HTTP response.
 
 Launch-critical instrumented boundaries must not write directly to the console.
-All failure telemetry at those boundaries goes through this closed schema so a
-future log drain cannot accidentally receive provider identifiers or user data.
+This rule includes the start/join workflows invoked by the route boundary, not
+only the route file. Failure telemetry across that call graph goes through this
+closed schema so a future log drain cannot accidentally receive provider
+identifiers, question text, raw errors, or user data.
+
+Stripe webhook idempotency storage retains the provider event ID, event type,
+one-way subject fingerprint, status, attempt count, and timestamps. New rows
+store `{}` instead of the provider payload and a stable failure code instead of
+raw exception text. Account deletion still redacts legacy rows that predate
+this contract.
 
 ## Compatibility
 

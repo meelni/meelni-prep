@@ -163,6 +163,7 @@ async function run() {
       await seedAuthorizationFixtures(upgrade);
       await seedLifecycleBackfillFixtures(upgrade);
       await seedLegacyCreditLedgerIntegrityFixtures(upgrade);
+      await seedLegacyStripeObservabilityFixture(upgrade);
       const lifecyclePreview = runPreflight(
         upgradeUrl,
         true,
@@ -177,6 +178,7 @@ async function run() {
       assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
+      await verifyStripeObservabilityRedaction(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl);
       await verifyAuthorization(upgrade);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
@@ -466,6 +468,41 @@ async function seedLifecycleBackfillFixtures(sql: postgres.Sql) {
       )
     ON CONFLICT (id) DO NOTHING
   `;
+}
+
+async function seedLegacyStripeObservabilityFixture(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO stripe_event_log (
+      stripe_event_id, event_type, payload, status, attempts, last_error
+    ) VALUES (
+      'evt_legacy_observability',
+      'invoice.payment_failed',
+      ${JSON.stringify({
+        data: {
+          object: {
+            customer: "cus_legacy_sensitive",
+            customer_email: "legacy@example.invalid",
+          },
+        },
+      })},
+      'failed',
+      1,
+      'provider request contained a raw secret'
+    )
+  `;
+}
+
+async function verifyStripeObservabilityRedaction(sql: postgres.Sql) {
+  const [row] = await sql<{ payload: string; last_error: string | null }[]>`
+    SELECT payload, last_error
+    FROM stripe_event_log
+    WHERE stripe_event_id = 'evt_legacy_observability'
+  `;
+
+  assert.deepEqual(row, {
+    payload: "{}",
+    last_error: "stripe_webhook_processing_failed",
+  });
 }
 
 async function seedLegacyCreditLedgerIntegrityFixtures(sql: postgres.Sql) {
@@ -1032,7 +1069,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 8);
+  assert.equal(await migrationCount(sql), 9);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name

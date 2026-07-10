@@ -229,7 +229,7 @@ export function classifyReconnectRateLimitError(
 
 export function createJoinInterviewSessionDeps(): JoinInterviewSessionDeps {
   return {
-    audit: (event) => console.info("[LiveKitJoinAudit]", event),
+    audit: () => {},
     consumeRateLimit: consumeReconnectRateLimit,
     getSession: getSessionForLiveKitJoin,
     issueToken: issueInterviewParticipantToken,

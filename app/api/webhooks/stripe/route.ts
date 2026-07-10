@@ -10,7 +10,11 @@ import {
 import { eq, and } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
-import { getStripeEventSubject } from "@/lib/billing/stripe-privacy";
+import {
+  getStripeEventSubject,
+  REDACTED_STRIPE_EVENT_PAYLOAD,
+  STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE,
+} from "@/lib/billing/stripe-privacy";
 import { hasStripeDeletionTombstone } from "@/lib/db/account-deletions";
 import {
   STRIPE_API_VERSION,
@@ -77,6 +81,22 @@ export async function POST(req: NextRequest) {
     if (existingEvent.length > 0) {
       const eventLog = existingEvent[0];
 
+      if (
+        eventLog.payload !== REDACTED_STRIPE_EVENT_PAYLOAD ||
+        (eventLog.lastError &&
+          eventLog.lastError !== STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE)
+      ) {
+        await db
+          .update(stripeEventLog)
+          .set({
+            payload: REDACTED_STRIPE_EVENT_PAYLOAD,
+            lastError: eventLog.lastError
+              ? STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE
+              : null,
+          })
+          .where(eq(stripeEventLog.id, eventLog.id));
+      }
+
       // If already processed, return success (idempotent)
       if (eventLog.status === "processed") {
         return NextResponse.json({
@@ -90,7 +110,7 @@ export async function POST(req: NextRequest) {
           .update(stripeEventLog)
           .set({
             status: "processed",
-            payload: "{}",
+            payload: REDACTED_STRIPE_EVENT_PAYLOAD,
             lastError: null,
             processedAt: new Date(),
             subjectFingerprint: subject.fingerprint,
@@ -106,6 +126,7 @@ export async function POST(req: NextRequest) {
           .set({
             attempts: eventLog.attempts + 1,
             status: "pending",
+            lastError: null,
           })
           .where(eq(stripeEventLog.id, eventLog.id));
       }
@@ -115,7 +136,7 @@ export async function POST(req: NextRequest) {
         stripeEventId: event.id,
         eventType: event.type,
         subjectFingerprint: subject.fingerprint,
-        payload: deletionTombstone ? "{}" : JSON.stringify(event),
+        payload: REDACTED_STRIPE_EVENT_PAYLOAD,
         status: deletionTombstone ? "processed" : "pending",
         attempts: 1,
         processedAt: deletionTombstone ? new Date() : null,
@@ -178,7 +199,7 @@ export async function POST(req: NextRequest) {
         .update(stripeEventLog)
         .set({
           status: "failed",
-          lastError: error instanceof Error ? error.message : String(error),
+          lastError: STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE,
         })
         .where(eq(stripeEventLog.stripeEventId, event.id));
 

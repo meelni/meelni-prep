@@ -97,14 +97,14 @@ import { getSessionTranscript } from "@/lib/db/transcripts";
 import { createFeedback, feedbackExists } from "@/lib/db/feedback";
 import { generateFeedback } from "@/lib/evaluation/scorer";
 import {
-  readOpaqueCorrelationId,
+  readInterviewSessionCorrelationId,
   readOperationalRequestId,
   reportOperationalFailure,
-  type SessionCorrelationId,
+  type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
 
 export async function POST(req: NextRequest) {
-  let correlationId: SessionCorrelationId | null = null;
+  let correlationId: InterviewSessionCorrelationId | null = null;
   try {
     // Verify authentication
     const supabase = await createClient();
@@ -120,7 +120,10 @@ export async function POST(req: NextRequest) {
     // Parse request body
     const body = await req.json();
     const { sessionId } = body;
-    correlationId = readOpaqueCorrelationId(sessionId);
+    correlationId = readInterviewSessionCorrelationId({
+      kind: "interview_session",
+      sessionId,
+    });
 
     // Validate required fields
     if (!sessionId) {

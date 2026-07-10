@@ -5,6 +5,8 @@ import {
   buildStripeDeletionSubjects,
   fingerprintStripeSubject,
   payloadContainsProviderIdentifier,
+  REDACTED_STRIPE_EVENT_PAYLOAD,
+  STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE,
 } from "./stripe-privacy";
 
 test("deletion subjects include pass-only and multiple mapped customers", () => {
@@ -20,6 +22,16 @@ test("deletion subjects include pass-only and multiple mapped customers", () => 
       { kind: "customer", providerId: "cus_second" },
     ]
   );
+});
+
+test("new Stripe observability persistence has no provider payload or raw error text", () => {
+  assert.equal(REDACTED_STRIPE_EVENT_PAYLOAD, "{}");
+  assert.equal(
+    STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE,
+    "stripe_webhook_processing_failed"
+  );
+  assert.equal(REDACTED_STRIPE_EVENT_PAYLOAD.includes("cus_"), false);
+  assert.match(STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE, /^[a-z0-9_]+$/);
 });
 
 test("Stripe subject fingerprints are stable and do not retain provider IDs", () => {

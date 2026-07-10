@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   getLiveKitEnvironment: vi.fn(),
   joinInterviewSessionWorkflow: vi.fn(),
+  reportOperationalFailure: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -17,6 +18,13 @@ vi.mock("@/lib/internal/integrations", () => ({
 
 vi.mock("@/lib/workflows/join-interview-session", () => ({
   joinInterviewSessionWorkflow: mocks.joinInterviewSessionWorkflow,
+}));
+
+vi.mock("@/lib/operations/operational-events", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/operations/operational-events")
+  >()),
+  reportOperationalFailure: mocks.reportOperationalFailure,
 }));
 
 import { POST } from "../route";
@@ -134,7 +142,58 @@ describe("POST /api/livekit/token", () => {
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("42");
     expect(await response.json()).toEqual({ error: "rate_limit_exceeded" });
+    expect(mocks.reportOperationalFailure).not.toHaveBeenCalled();
   });
+
+  it.each([
+    {
+      status: 503,
+      error: "rate_limit_unavailable",
+      errorCode: "livekit_reconnect_rate_limit_unavailable",
+      retryable: true,
+    },
+    {
+      status: 503,
+      error: "livekit_token_unavailable",
+      errorCode: "livekit_token_unavailable",
+      retryable: true,
+    },
+    {
+      status: 500,
+      error: "livekit_token_unavailable",
+      errorCode: "livekit_token_unavailable",
+      retryable: false,
+    },
+  ])(
+    "emits a closed operational event for $status $error",
+    async ({ status, error, errorCode, retryable }) => {
+      mocks.createClient.mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: "authenticated-user", email: null } },
+            error: null,
+          }),
+        },
+      });
+      mocks.joinInterviewSessionWorkflow.mockResolvedValue({
+        ok: false,
+        status,
+        body: { error },
+      });
+
+      const response = await POST(createRequest({ sessionId }));
+
+      expect(response.status).toBe(status);
+      expect(mocks.reportOperationalFailure).toHaveBeenCalledWith({
+        operation: "interview_token",
+        errorCode,
+        severity: "critical",
+        retryable,
+        requestId: null,
+        correlationId: sessionId,
+      });
+    }
+  );
 });
 
 function createRequest(body: Record<string, unknown>): NextRequest {

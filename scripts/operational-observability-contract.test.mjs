@@ -16,6 +16,13 @@ const CRITICAL_BOUNDARIES = [
   ["lib/inngest/functions/delete-account.ts", "account_deletion"],
 ];
 
+const CRITICAL_CALL_GRAPH_FILES = [
+  ...CRITICAL_BOUNDARIES.map(([file]) => file),
+  "app/api/feedback/generate/route.ts",
+  "lib/workflows/start-session.ts",
+  "lib/workflows/join-interview-session.ts",
+];
+
 test("every launch-critical boundary emits the closed operational contract", async () => {
   const missing = [];
 
@@ -34,7 +41,7 @@ test("every launch-critical boundary emits the closed operational contract", asy
 test("instrumented boundaries cannot bypass the redacted reporter with console output", async () => {
   const violations = [];
 
-  for (const [file] of CRITICAL_BOUNDARIES) {
+  for (const file of CRITICAL_CALL_GRAPH_FILES) {
     const source = await readFile(path.join(ROOT, file), "utf8");
     const sourceWithoutClosedOutcomeAudit =
       file === "lib/workflows/sync-question-bank.ts"
@@ -51,6 +58,18 @@ test("instrumented boundaries cannot bypass the redacted reporter with console o
   assert.deepEqual(violations, []);
 });
 
+test("Stripe durable observability stores only redacted payloads and stable failure codes", async () => {
+  const source = await readFile(
+    path.join(ROOT, "app/api/webhooks/stripe/route.ts"),
+    "utf8"
+  );
+
+  assert.doesNotMatch(source, /payload:\s*JSON\.stringify\(event\)/);
+  assert.doesNotMatch(source, /lastError:\s*error\s+instanceof\s+Error/);
+  assert.match(source, /payload:\s*REDACTED_STRIPE_EVENT_PAYLOAD/);
+  assert.match(source, /lastError:\s*STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE/);
+});
+
 test("the operational contract cannot accept arbitrary context or error objects", async () => {
   const source = await readFile(
     path.join(ROOT, "lib/operations/operational-events.ts"),
@@ -62,4 +81,6 @@ test("the operational contract cannot accept arbitrary context or error objects"
   assert.doesNotMatch(source, /stack\s*[?:]/);
   assert.match(source, /SAFE_CODE_PATTERN/);
   assert.match(source, /UUID_PATTERN/);
+  assert.doesNotMatch(source, /readOpaqueCorrelationId/);
+  assert.match(source, /InterviewSessionCorrelationSource/);
 });

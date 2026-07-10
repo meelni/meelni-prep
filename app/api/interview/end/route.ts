@@ -3,11 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkAndAwardAchievements } from "@/lib/achievements";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import {
-  readOpaqueCorrelationId,
+  readInterviewSessionCorrelationId,
   readOperationalRequestId,
   reportOperationalFailure,
   type OperationalRequestId,
-  type SessionCorrelationId,
+  type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
 import { updateStreak } from "@/lib/streaks";
@@ -18,7 +18,7 @@ const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export async function POST(req: NextRequest) {
-  let correlationId: SessionCorrelationId | null = null;
+  let correlationId: InterviewSessionCorrelationId | null = null;
   try {
     const supabase = await createClient();
     const {
@@ -41,7 +41,10 @@ export async function POST(req: NextRequest) {
 
     const body: unknown = await req.json();
     const sessionId = readSessionId(body);
-    correlationId = readOpaqueCorrelationId(sessionId);
+    correlationId = readInterviewSessionCorrelationId({
+      kind: "interview_session",
+      sessionId,
+    });
     if (!sessionId) {
       return NextResponse.json(
         {
@@ -166,7 +169,7 @@ async function updateCompletionMotivation(
   userId: string,
   telemetry: {
     requestId: OperationalRequestId | null;
-    correlationId: SessionCorrelationId | null;
+    correlationId: InterviewSessionCorrelationId | null;
   }
 ) {
   try {
