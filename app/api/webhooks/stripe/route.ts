@@ -2,20 +2,53 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
 import {
+  accountDeletionRequest,
+  appUser,
   stripeEventLog,
   subscription,
   paymentHistory,
   stripeCustomerMapping,
 } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
+import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
 import {
+  ensureStripeInvoicePaymentAllocationRefunded,
+  ensureStripePaymentFullyRefunded,
+} from "@/lib/billing/stripe-refund-reconciliation";
+import { loadStripeInvoicePaymentAllocations } from "@/lib/billing/stripe-invoice-reconciliation";
+import {
+  getMappedStripeCustomerUserId,
+  resolveAuthoritativeStripeUserId,
+  stripeSubjectOwnerMismatch,
+  type StripeCheckoutCorrelation,
+} from "@/lib/billing/stripe-customer-ownership";
+import {
+  buildStripeDeletionSubject,
+  buildStripeDeletionSubjects,
   getStripeEventSubject,
   REDACTED_STRIPE_EVENT_PAYLOAD,
   STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE,
+  type StripeDeletionSubject,
 } from "@/lib/billing/stripe-privacy";
-import { hasStripeDeletionTombstone } from "@/lib/db/account-deletions";
+import {
+  clearLateStripeDeletionSubjects,
+  getAccountDeletionRequestByStripeFingerprint,
+  hasAccountDeletionTombstone,
+  getAccountDeletionRequest,
+  markLateStripeReconciliationFailed,
+  recordLateStripeDeletionSubjects,
+  redactStripeEventLogs,
+} from "@/lib/db/account-deletions";
+import {
+  checkoutReconciliationErrorCode,
+  checkoutSessionAuthenticatedUserId,
+  deletedBillingIdempotencyKey,
+  reconcileDeletedCheckoutSession,
+  stripeEventMetadataUserId,
+} from "@/lib/billing/account-deletion-guard";
+import { isAlreadyDeletedProviderError } from "@/lib/workflows/delete-account";
 import {
   STRIPE_API_VERSION,
   getStripeCatalogIdForPrice,
@@ -67,9 +100,37 @@ export async function POST(req: NextRequest) {
     }
 
     const subject = getStripeEventSubject(event);
-    const deletionTombstone = subject.fingerprint
-      ? await hasStripeDeletionTombstone(subject.fingerprint)
+    const metadataUserId = stripeEventMetadataUserId(event);
+    const checkoutCorrelation = getCheckoutCorrelation(event, metadataUserId);
+    const eventUserId =
+      event.type === "checkout.session.completed"
+        ? checkoutSessionAuthenticatedUserId(
+            event.data.object as Stripe.Checkout.Session
+          )
+        : metadataUserId;
+    const subjectDeletionRequest = subject.fingerprint
+      ? await getAccountDeletionRequestByStripeFingerprint(subject.fingerprint)
+      : undefined;
+    const mappedUserId = await getMappedStripeCustomerUserId(
+      subject.customerId
+    );
+    const authoritativeUserId = resolveAuthoritativeStripeUserId({
+      checkoutCorrelation,
+      eventUserId,
+      mappedUserId,
+      tombstoneUserId: subjectDeletionRequest?.userId ?? null,
+    });
+    const userDeletionTombstone = authoritativeUserId
+      ? await hasAccountDeletionTombstone(authoritativeUserId)
       : false;
+    const deletionUserId =
+      subjectDeletionRequest?.userId ??
+      (userDeletionTombstone ? authoritativeUserId : null);
+    const deletionTombstone = Boolean(
+      subjectDeletionRequest || userDeletionTombstone
+    );
+    const reconcileDeletedBilling =
+      deletionTombstone && isDeletedBillingReconciliationEvent(event.type);
 
     // CRITICAL: Idempotency check using stripe_event_log
     const existingEvent = await db
@@ -80,6 +141,12 @@ export async function POST(req: NextRequest) {
 
     if (existingEvent.length > 0) {
       const eventLog = existingEvent[0];
+      // Upgrade legacy rows before any early return or retry transition. This
+      // prevents a process interruption from leaving an old raw payload behind.
+      await db
+        .update(stripeEventLog)
+        .set({ payload: "{}", lastError: null })
+        .where(eq(stripeEventLog.id, eventLog.id));
 
       if (
         eventLog.payload !== REDACTED_STRIPE_EVENT_PAYLOAD ||
@@ -98,14 +165,14 @@ export async function POST(req: NextRequest) {
       }
 
       // If already processed, return success (idempotent)
-      if (eventLog.status === "processed") {
+      if (eventLog.status === "processed" && !reconcileDeletedBilling) {
         return NextResponse.json({
           received: true,
           status: "already_processed",
         });
       }
 
-      if (deletionTombstone) {
+      if (deletionTombstone && !reconcileDeletedBilling) {
         await db
           .update(stripeEventLog)
           .set({
@@ -129,6 +196,13 @@ export async function POST(req: NextRequest) {
             lastError: null,
           })
           .where(eq(stripeEventLog.id, eventLog.id));
+      } else if (reconcileDeletedBilling) {
+        // Reconcile even if an older deployment marked the event processed.
+        // The provider operations share object-derived idempotency keys.
+        await db
+          .update(stripeEventLog)
+          .set({ status: "pending", payload: "{}", lastError: null })
+          .where(eq(stripeEventLog.id, eventLog.id));
       }
     } else {
       // Log new event
@@ -136,14 +210,64 @@ export async function POST(req: NextRequest) {
         stripeEventId: event.id,
         eventType: event.type,
         subjectFingerprint: subject.fingerprint,
+        // Raw Stripe payloads are never persisted. The verified event remains
+        // in memory for this request; durable logs retain only operational
+        // metadata so deletion cannot race a PII-bearing insert.
         payload: REDACTED_STRIPE_EVENT_PAYLOAD,
-        status: deletionTombstone ? "processed" : "pending",
+        status:
+          deletionTombstone && !reconcileDeletedBilling
+            ? "processed"
+            : "pending",
         attempts: 1,
-        processedAt: deletionTombstone ? new Date() : null,
+        processedAt:
+          deletionTombstone && !reconcileDeletedBilling ? new Date() : null,
       });
     }
 
     if (deletionTombstone) {
+      if (reconcileDeletedBilling) {
+        await db
+          .update(stripeEventLog)
+          .set({
+            payload: "{}",
+            lastError: null,
+            subjectFingerprint: subject.fingerprint,
+          })
+          .where(eq(stripeEventLog.stripeEventId, event.id));
+        try {
+          const reconciliationStatus =
+            await reconcileStripeEventForDeletedAccount(
+              event,
+              stripe,
+              deletionUserId
+            );
+          await db
+            .update(stripeEventLog)
+            .set({
+              status: "processed",
+              payload: "{}",
+              lastError: null,
+              processedAt: new Date(),
+              subjectFingerprint: subject.fingerprint,
+            })
+            .where(eq(stripeEventLog.stripeEventId, event.id));
+          return NextResponse.json({
+            received: true,
+            status: reconciliationStatus,
+          });
+        } catch (error) {
+          await db
+            .update(stripeEventLog)
+            .set({
+              status: "failed",
+              payload: "{}",
+              lastError: checkoutReconciliationErrorCode(error),
+              subjectFingerprint: subject.fingerprint,
+            })
+            .where(eq(stripeEventLog.stripeEventId, event.id));
+          throw error;
+        }
+      }
       return NextResponse.json({ received: true, status: "deleted_subject" });
     }
 
@@ -151,7 +275,7 @@ export async function POST(req: NextRequest) {
     try {
       switch (event.type) {
         case "checkout.session.completed":
-          await handleCheckoutCompleted(event);
+          await handleCheckoutCompleted(event, stripe);
           break;
 
         case "customer.subscription.created":
@@ -188,18 +312,60 @@ export async function POST(req: NextRequest) {
         .update(stripeEventLog)
         .set({
           status: "processed",
+          payload: "{}",
           processedAt: new Date(),
         })
         .where(eq(stripeEventLog.stripeEventId, event.id));
 
       return NextResponse.json({ received: true });
     } catch (error) {
+      if (
+        isAccountDeletionPendingError(error) &&
+        isDeletedBillingReconciliationEvent(event.type)
+      ) {
+        await redactDeletedStripeEvent(event);
+        try {
+          const reconciliationStatus =
+            await reconcileStripeEventForDeletedAccount(
+              event,
+              stripe,
+              deletionUserId ?? eventUserId
+            );
+          await db
+            .update(stripeEventLog)
+            .set({
+              status: "processed",
+              payload: "{}",
+              lastError: null,
+              processedAt: new Date(),
+              subjectFingerprint: subject.fingerprint,
+            })
+            .where(eq(stripeEventLog.stripeEventId, event.id));
+          return NextResponse.json({
+            received: true,
+            status: reconciliationStatus,
+          });
+        } catch (reconciliationError) {
+          await db
+            .update(stripeEventLog)
+            .set({
+              status: "failed",
+              payload: "{}",
+              lastError: checkoutReconciliationErrorCode(reconciliationError),
+              subjectFingerprint: subject.fingerprint,
+            })
+            .where(eq(stripeEventLog.stripeEventId, event.id));
+          throw reconciliationError;
+        }
+      }
+
       // Mark event as failed
       await db
         .update(stripeEventLog)
         .set({
           status: "failed",
-          lastError: STRIPE_WEBHOOK_PROCESSING_FAILURE_CODE,
+          payload: REDACTED_STRIPE_EVENT_PAYLOAD,
+          lastError: safeStripeWebhookErrorCode(error),
         })
         .where(eq(stripeEventLog.stripeEventId, event.id));
 
@@ -252,21 +418,14 @@ async function getUserIdFromStripe(
   customerId: string,
   fallbackMetadata?: string
 ): Promise<string> {
-  // First try: metadata (fast path)
-  if (fallbackMetadata) {
-    return fallbackMetadata;
-  }
-
-  // Second try: stripe_customer_mapping table (CRITICAL FALLBACK)
-  const mapping = await db
-    .select()
-    .from(stripeCustomerMapping)
-    .where(eq(stripeCustomerMapping.stripeCustomerId, customerId))
-    .limit(1);
-
-  if (mapping.length > 0) {
-    return mapping[0].userId;
-  }
+  const mappedUserId = await getMappedStripeCustomerUserId(customerId);
+  const userId = resolveAuthoritativeStripeUserId({
+    checkoutCorrelation: "not_applicable",
+    eventUserId: fallbackMetadata ?? null,
+    mappedUserId,
+    tombstoneUserId: null,
+  });
+  if (userId) return userId;
 
   throw new Error(`Cannot find userId for Stripe customer ${customerId}`);
 }
@@ -287,21 +446,6 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
   );
 
   const eventTimestamp = new Date(event.created * 1000);
-
-  // Get current subscription (for optimistic locking)
-  const currentSub = await db
-    .select()
-    .from(subscription)
-    .where(eq(subscription.userId, userId))
-    .limit(1);
-
-  const currentVersion = currentSub[0]?.version || 0;
-  const lastEventTime = currentSub[0]?.lastEventTimestamp;
-
-  // Prevent stale updates: Only process if event is newer than last processed event
-  if (lastEventTime && eventTimestamp <= lastEventTime) {
-    return;
-  }
 
   const catalogId = getStripeCatalogIdForPrice(
     stripeSubscription.items.data[0]?.price.id
@@ -346,7 +490,6 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
       ? new Date(stripeSubscription.canceled_at * 1000)
       : null,
     cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
-    version: currentVersion + 1,
     lastEventTimestamp: eventTimestamp,
     updatedAt: new Date(),
     ...trialUpdates,
@@ -354,14 +497,43 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 
   // Wrap all updates in a transaction for atomicity (P1 fix #5)
   await db.transaction(async (tx) => {
+    await lockBillingUserUnlessDeleting(tx, userId);
+    const currentSub = await tx
+      .select()
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1)
+      .for("update");
+    if (
+      currentSub[0] &&
+      !shouldApplyStripeSubscriptionState({
+        currentStatus: currentSub[0].status,
+        currentStripeSubscriptionId: currentSub[0].stripeSubscriptionId,
+        event:
+          event.type === "customer.subscription.created"
+            ? "subscription_created"
+            : "subscription_updated",
+        eventTimestamp,
+        incomingStripeSubscriptionId: stripeSubscription.id,
+        lastEventTimestamp: currentSub[0].lastEventTimestamp,
+      })
+    ) {
+      return;
+    }
+    const currentVersion = currentSub[0]?.version ?? 0;
+    const nextSubscriptionData = {
+      ...subscriptionData,
+      version: currentVersion + 1,
+    };
+
     if (currentSub.length === 0) {
       // Create new subscription
-      await tx.insert(subscription).values(subscriptionData);
+      await tx.insert(subscription).values(nextSubscriptionData);
     } else {
       // Update with optimistic locking
       const result = await tx
         .update(subscription)
-        .set(subscriptionData)
+        .set(nextSubscriptionData)
         .where(
           and(
             eq(subscription.userId, userId),
@@ -401,37 +573,53 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 /**
  * Handle checkout.session.completed events for one-time credit products.
  */
-async function handleCheckoutCompleted(event: Stripe.Event) {
+async function handleCheckoutCompleted(
+  event: Stripe.Event,
+  stripe: Stripe
+): Promise<"processed" | "deleted_checkout_reconciled"> {
   const session = event.data.object as Stripe.Checkout.Session;
-  const userId = session.metadata?.userId;
+  const userId = checkoutSessionAuthenticatedUserId(session);
   const catalogId = session.metadata?.catalogId;
 
   if (!userId || !catalogId || !isStripeCheckoutCatalogId(catalogId)) {
-    return;
+    return "processed";
   }
 
-  const customerId = getStripeCustomerId(session.customer);
-  if (customerId) {
-    await upsertStripeCustomerMapping({
-      stripeCustomerId: customerId,
-      userId,
-    });
+  if (await hasAccountDeletionTombstone(userId)) {
+    await redactDeletedStripeEvent(event);
+    await reconcileCheckoutForDeletedAccount(session, stripe, userId);
+    return "deleted_checkout_reconciled";
   }
 
-  if (catalogId !== "interview_pass") {
-    return;
+  try {
+    if (catalogId === "interview_pass") {
+      const ledger = createCreditLedgerService({
+        store: createDrizzleCreditLedgerStore(),
+      });
+      await ledger.grantCredits({
+        userId,
+        catalogId,
+        source: "checkout",
+        sourceId: session.id,
+        idempotencyKey: `stripe:checkout:${session.id}:interview_pass`,
+      });
+    }
+
+    const customerId = getStripeCustomerId(session.customer);
+    if (customerId) {
+      await upsertStripeCustomerMapping({
+        stripeCustomerId: customerId,
+        userId,
+      });
+    }
+  } catch (error) {
+    if (!isAccountDeletionPendingError(error)) throw error;
+    await redactDeletedStripeEvent(event);
+    await reconcileCheckoutForDeletedAccount(session, stripe, userId);
+    return "deleted_checkout_reconciled";
   }
 
-  const ledger = createCreditLedgerService({
-    store: createDrizzleCreditLedgerStore(),
-  });
-  await ledger.grantCredits({
-    userId,
-    catalogId,
-    source: "checkout",
-    sourceId: session.id,
-    idempotencyKey: `stripe:checkout:${session.id}:interview_pass`,
-  });
+  return "processed";
 }
 
 /**
@@ -446,14 +634,39 @@ async function handleSubscriptionDeleted(event: Stripe.Event) {
     stripeSubscription.metadata.userId
   );
 
-  await db
-    .update(subscription)
-    .set({
-      status: "canceled",
-      canceledAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(subscription.userId, userId));
+  const eventTimestamp = new Date(event.created * 1000);
+  await db.transaction(async (tx) => {
+    await lockBillingUserUnlessDeleting(tx, userId);
+    const [currentSub] = await tx
+      .select()
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1)
+      .for("update");
+    if (
+      !currentSub ||
+      !shouldApplyStripeSubscriptionState({
+        currentStatus: currentSub.status,
+        currentStripeSubscriptionId: currentSub.stripeSubscriptionId,
+        event: "subscription_deleted",
+        eventTimestamp,
+        incomingStripeSubscriptionId: stripeSubscription.id,
+        lastEventTimestamp: currentSub.lastEventTimestamp,
+      })
+    ) {
+      return;
+    }
+    await tx
+      .update(subscription)
+      .set({
+        status: "canceled",
+        canceledAt: eventTimestamp,
+        lastEventTimestamp: eventTimestamp,
+        version: currentSub.version + 1,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscription.userId, userId));
+  });
 }
 
 /**
@@ -487,39 +700,64 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
     });
   }
 
-  // In recent Stripe API versions, payment_intent moved to the invoice payments array.
-  // For simplicity, we'll use null and rely on stripeInvoiceId for tracking
-  // Use onConflictDoNothing() for idempotency (P1 fix #6)
-  await db
-    .insert(paymentHistory)
-    .values({
-      userId,
-      stripePaymentIntentId: null,
-      stripeInvoiceId: invoice.id,
-      stripeEventId: event.id,
-      amountInCents: invoice.amount_paid,
-      currency: invoice.currency,
-      status: "succeeded",
-      tier: catalogId,
-      periodStart: invoice.period_start
-        ? new Date(invoice.period_start * 1000)
-        : null,
-      periodEnd: invoice.period_end
-        ? new Date(invoice.period_end * 1000)
-        : null,
-      receiptUrl: invoice.hosted_invoice_url,
-    })
-    .onConflictDoNothing({ target: paymentHistory.stripeEventId });
+  const eventTimestamp = new Date(event.created * 1000);
+  await db.transaction(async (tx) => {
+    await lockBillingUserUnlessDeleting(tx, userId);
+    // In recent Stripe API versions, payment_intent moved to invoice payments.
+    // The event ID remains the durable idempotency key for payment history.
+    await tx
+      .insert(paymentHistory)
+      .values({
+        userId,
+        stripePaymentIntentId: null,
+        stripeInvoiceId: invoice.id,
+        stripeEventId: event.id,
+        amountInCents: invoice.amount_paid,
+        currency: invoice.currency,
+        status: "succeeded",
+        tier: catalogId,
+        periodStart: invoice.period_start
+          ? new Date(invoice.period_start * 1000)
+          : null,
+        periodEnd: invoice.period_end
+          ? new Date(invoice.period_end * 1000)
+          : null,
+        receiptUrl: invoice.hosted_invoice_url,
+      })
+      .onConflictDoNothing({ target: paymentHistory.stripeEventId });
 
-  // Clear grace period if payment succeeds after past_due
-  await db
-    .update(subscription)
-    .set({
-      status: "active",
-      gracePeriodEnd: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(subscription.userId, userId));
+    const [currentSub] = await tx
+      .select()
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1)
+      .for("update");
+    if (
+      !currentSub ||
+      !shouldApplyStripeSubscriptionState({
+        currentStatus: currentSub.status,
+        currentStripeSubscriptionId: currentSub.stripeSubscriptionId,
+        event: "invoice_succeeded",
+        eventTimestamp,
+        incomingStripeSubscriptionId: getInvoiceSubscriptionId(invoice),
+        lastEventTimestamp: currentSub.lastEventTimestamp,
+      })
+    ) {
+      return;
+    }
+    // Older invoice events may still be recorded, but cannot overwrite newer
+    // or terminal subscription state.
+    await tx
+      .update(subscription)
+      .set({
+        status: "active",
+        gracePeriodEnd: null,
+        lastEventTimestamp: eventTimestamp,
+        version: currentSub.version + 1,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscription.userId, userId));
+  });
 }
 
 /**
@@ -538,44 +776,63 @@ async function handlePaymentFailed(event: Stripe.Event) {
     return;
   }
 
-  // Record failed payment
-  // In recent Stripe API versions, payment_intent moved to the invoice payments array.
-  // For simplicity, we'll use null and rely on stripeInvoiceId for tracking
-  // Use onConflictDoNothing() for idempotency (P1 fix #6)
-  await db
-    .insert(paymentHistory)
-    .values({
-      userId,
-      stripePaymentIntentId: null,
-      stripeInvoiceId: invoice.id,
-      stripeEventId: event.id,
-      amountInCents: invoice.amount_due,
-      currency: invoice.currency,
-      status: "failed",
-      tier: getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
-      periodStart: invoice.period_start
-        ? new Date(invoice.period_start * 1000)
-        : null,
-      periodEnd: invoice.period_end
-        ? new Date(invoice.period_end * 1000)
-        : null,
-      failureReason:
-        invoice.last_finalization_error?.message || "Payment failed",
-    })
-    .onConflictDoNothing({ target: paymentHistory.stripeEventId });
-
-  // CRITICAL FIX: Set 7-day grace period
+  // Set a 7-day grace period without persisting raw provider errors.
   const gracePeriodEnd = new Date();
   gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 7);
+  const eventTimestamp = new Date(event.created * 1000);
+  await db.transaction(async (tx) => {
+    await lockBillingUserUnlessDeleting(tx, userId);
+    await tx
+      .insert(paymentHistory)
+      .values({
+        userId,
+        stripePaymentIntentId: null,
+        stripeInvoiceId: invoice.id,
+        stripeEventId: event.id,
+        amountInCents: invoice.amount_due,
+        currency: invoice.currency,
+        status: "failed",
+        tier: getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
+        periodStart: invoice.period_start
+          ? new Date(invoice.period_start * 1000)
+          : null,
+        periodEnd: invoice.period_end
+          ? new Date(invoice.period_end * 1000)
+          : null,
+        failureReason: "payment_failed",
+      })
+      .onConflictDoNothing({ target: paymentHistory.stripeEventId });
 
-  await db
-    .update(subscription)
-    .set({
-      status: "past_due",
-      gracePeriodEnd,
-      updatedAt: new Date(),
-    })
-    .where(eq(subscription.userId, userId));
+    const [currentSub] = await tx
+      .select()
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1)
+      .for("update");
+    if (
+      !currentSub ||
+      !shouldApplyStripeSubscriptionState({
+        currentStatus: currentSub.status,
+        currentStripeSubscriptionId: currentSub.stripeSubscriptionId,
+        event: "invoice_failed",
+        eventTimestamp,
+        incomingStripeSubscriptionId: getInvoiceSubscriptionId(invoice),
+        lastEventTimestamp: currentSub.lastEventTimestamp,
+      })
+    ) {
+      return;
+    }
+    await tx
+      .update(subscription)
+      .set({
+        status: "past_due",
+        gracePeriodEnd,
+        lastEventTimestamp: eventTimestamp,
+        version: currentSub.version + 1,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscription.userId, userId));
+  });
 }
 
 /**
@@ -652,6 +909,27 @@ function getInvoicePriceId(invoice: Stripe.Invoice): string | undefined {
   return invoice.lines.data[0]?.pricing?.price_details?.price;
 }
 
+type BillingTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function lockBillingUserUnlessDeleting(
+  tx: BillingTransaction,
+  userId: string
+) {
+  const [user] = await tx
+    .select({ id: appUser.id })
+    .from(appUser)
+    .where(eq(appUser.id, userId))
+    .limit(1)
+    .for("update");
+  if (!user) throw new Error("billing_user_not_found");
+  const [tombstone] = await tx
+    .select({ userId: accountDeletionRequest.userId })
+    .from(accountDeletionRequest)
+    .where(eq(accountDeletionRequest.userId, userId))
+    .limit(1);
+  if (tombstone) throw new Error("account_deletion_pending");
+}
+
 async function upsertStripeCustomerMapping({
   stripeCustomerId,
   stripeSubscriptionId,
@@ -661,19 +939,474 @@ async function upsertStripeCustomerMapping({
   stripeSubscriptionId?: string | null;
   userId: string;
 }) {
-  await db
-    .insert(stripeCustomerMapping)
-    .values({
-      stripeCustomerId,
-      stripeSubscriptionId: stripeSubscriptionId ?? null,
-      userId,
-    })
-    .onConflictDoUpdate({
-      target: stripeCustomerMapping.stripeCustomerId,
-      set: {
+  await db.transaction(async (tx) => {
+    const [user] = await tx
+      .select({ id: appUser.id })
+      .from(appUser)
+      .where(eq(appUser.id, userId))
+      .limit(1)
+      .for("update");
+    if (!user) throw new Error("billing_user_not_found");
+    const [tombstone] = await tx
+      .select({ userId: accountDeletionRequest.userId })
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1);
+    if (tombstone) throw new Error("account_deletion_pending");
+
+    await tx
+      .insert(stripeCustomerMapping)
+      .values({
+        stripeCustomerId,
         stripeSubscriptionId: stripeSubscriptionId ?? null,
         userId,
-        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: stripeCustomerMapping.stripeCustomerId,
+        set: {
+          stripeSubscriptionId: stripeSubscriptionId ?? null,
+          userId,
+          updatedAt: new Date(),
+        },
+      });
+  });
+}
+
+async function reconcileCheckoutForDeletedAccount(
+  session: Stripe.Checkout.Session,
+  stripe: Stripe,
+  userId: string | null
+) {
+  const customerId = getStripeCustomerId(session.customer);
+  const checkoutPaymentIntentId = getProviderId(session.payment_intent);
+  const lateSubjects = await recordAndRedactLateSubjects(
+    userId,
+    getProviderId(session.subscription),
+    customerId,
+    compactSubjects([
+      buildStripeDeletionSubject("payment_intent", checkoutPaymentIntentId),
+      checkoutPaymentIntentId
+        ? null
+        : buildStripeDeletionSubject("invoice", getProviderId(session.invoice)),
+    ])
+  );
+
+  try {
+    const result = await reconcileDeletedCheckoutSession(session, {
+      expireCheckout: async (checkoutSessionId, idempotencyKey) => {
+        try {
+          await stripe.checkout.sessions.expire(
+            checkoutSessionId,
+            {},
+            { idempotencyKey }
+          );
+        } catch (error) {
+          if (!isAlreadyDeletedProviderError(error)) throw error;
+        }
+      },
+      cancelSubscription: async (subscriptionId, idempotencyKey) => {
+        await cancelDeletedSubscription(stripe, subscriptionId, idempotencyKey);
+      },
+      loadInvoicePayments: async (invoiceId) => {
+        const invoice = await stripe.invoices.retrieve(invoiceId);
+        return loadStripeInvoicePaymentAllocations(stripe, invoice);
+      },
+      refundPayment: async (payment, idempotencyKey) => {
+        await refundDeletedPayment(stripe, payment, idempotencyKey);
       },
     });
+    await cleanupDeletedCustomer(
+      stripe,
+      userId,
+      customerId,
+      lateSubjects.map(({ fingerprint }) => fingerprint)
+    );
+    return result;
+  } catch (error) {
+    if (userId) await markLateStripeReconciliationFailed(userId);
+    throw normalizeDeletedBillingError(
+      error,
+      "deleted_checkout_reconciliation_failed"
+    );
+  }
+}
+
+type DeletedPaymentReference = {
+  allocationAmount?: number;
+  allocationFingerprint?: string;
+  kind: "payment_intent" | "charge";
+  providerId: string;
+};
+
+async function reconcileStripeEventForDeletedAccount(
+  event: Stripe.Event,
+  stripe: Stripe,
+  userId: string | null
+): Promise<
+  | "deleted_checkout_reconciled"
+  | "deleted_subscription_reconciled"
+  | "deleted_invoice_reconciled"
+> {
+  if (event.type === "checkout.session.completed") {
+    await reconcileCheckoutForDeletedAccount(
+      event.data.object as Stripe.Checkout.Session,
+      stripe,
+      userId
+    );
+    return "deleted_checkout_reconciled";
+  }
+
+  if (
+    event.type === "customer.subscription.created" ||
+    event.type === "customer.subscription.updated"
+  ) {
+    const stripeSubscription = event.data.object as Stripe.Subscription;
+    const customerId = getStripeCustomerId(stripeSubscription.customer);
+    const latestInvoiceId =
+      event.type === "customer.subscription.created"
+        ? getProviderId(stripeSubscription.latest_invoice)
+        : null;
+    const lateSubjects = await recordAndRedactLateSubjects(
+      userId,
+      stripeSubscription.id,
+      customerId,
+      compactSubjects([buildStripeDeletionSubject("invoice", latestInvoiceId)])
+    );
+    try {
+      await cancelDeletedSubscription(
+        stripe,
+        stripeSubscription.id,
+        deletedBillingIdempotencyKey(stripeSubscription.id, "cancel")
+      );
+
+      let reconciledSubjects = lateSubjects;
+      if (event.type === "customer.subscription.created") {
+        if (!latestInvoiceId) {
+          throw deletedBillingError(
+            "deleted_subscription_manual_reconciliation_required"
+          );
+        }
+        const invoice = await stripe.invoices.retrieve(latestInvoiceId);
+        if (
+          !Number.isSafeInteger(invoice.amount_paid) ||
+          invoice.amount_paid < 0
+        ) {
+          throw deletedBillingError(
+            "deleted_subscription_manual_reconciliation_required"
+          );
+        }
+        const payments = await loadStripeInvoicePaymentAllocations(
+          stripe,
+          invoice
+        );
+        if (invoice.amount_paid > 0) {
+          const paymentSubjects = await recordAndRedactLateSubjects(
+            userId,
+            null,
+            null,
+            compactSubjects(
+              payments.map((payment) =>
+                buildStripeDeletionSubject(payment.kind, payment.providerId)
+              )
+            )
+          );
+          reconciledSubjects = dedupeSubjects([
+            ...reconciledSubjects,
+            ...paymentSubjects,
+          ]);
+          for (const payment of payments) {
+            await refundDeletedPayment(stripe, payment);
+          }
+        }
+      }
+      await cleanupDeletedCustomer(
+        stripe,
+        userId,
+        customerId,
+        reconciledSubjects.map(({ fingerprint }) => fingerprint)
+      );
+    } catch (error) {
+      if (userId) await markLateStripeReconciliationFailed(userId);
+      throw normalizeDeletedBillingError(
+        error,
+        "deleted_subscription_reconciliation_failed",
+        "deleted_subscription_manual_reconciliation_required"
+      );
+    }
+    return "deleted_subscription_reconciled";
+  }
+
+  if (event.type === "invoice.payment_succeeded") {
+    const invoice = event.data.object as Stripe.Invoice;
+    const subscriptionId = getInvoiceSubscriptionId(invoice);
+    const customerId = getStripeCustomerId(invoice.customer);
+    const initialSubjects = await recordAndRedactLateSubjects(
+      userId,
+      subscriptionId,
+      customerId,
+      compactSubjects([buildStripeDeletionSubject("invoice", invoice.id)])
+    );
+    try {
+      const payments = await loadStripeInvoicePaymentAllocations(
+        stripe,
+        invoice
+      );
+      const paymentSubjects = await recordAndRedactLateSubjects(
+        userId,
+        null,
+        null,
+        compactSubjects(
+          payments.map((payment) =>
+            buildStripeDeletionSubject(payment.kind, payment.providerId)
+          )
+        )
+      );
+      const lateSubjects = dedupeSubjects([
+        ...initialSubjects,
+        ...paymentSubjects,
+      ]);
+      if (subscriptionId) {
+        await cancelDeletedSubscription(
+          stripe,
+          subscriptionId,
+          deletedBillingIdempotencyKey(subscriptionId, "cancel")
+        );
+      }
+
+      if (invoice.amount_paid > 0) {
+        for (const payment of payments) {
+          await refundDeletedPayment(stripe, payment);
+        }
+      }
+      await cleanupDeletedCustomer(
+        stripe,
+        userId,
+        customerId,
+        lateSubjects.map(({ fingerprint }) => fingerprint)
+      );
+    } catch (error) {
+      if (userId) await markLateStripeReconciliationFailed(userId);
+      throw normalizeDeletedBillingError(
+        error,
+        "deleted_invoice_reconciliation_failed",
+        "deleted_invoice_manual_reconciliation_required"
+      );
+    }
+    return "deleted_invoice_reconciled";
+  }
+
+  throw deletedBillingError("deleted_billing_reconciliation_failed");
+}
+
+async function recordAndRedactLateSubjects(
+  userId: string | null,
+  subscriptionId: string | null,
+  customerId: string | null,
+  additionalSubjects: StripeDeletionSubject[] = []
+) {
+  const subjects = dedupeSubjects([
+    ...buildStripeDeletionSubjects({
+      subscriptionId,
+      subscriptionCustomerId: customerId,
+      mappedCustomerIds: [],
+    }),
+    ...additionalSubjects,
+  ]);
+  if (!userId) return subjects;
+  let recorded = false;
+  try {
+    recorded = await recordLateStripeDeletionSubjects(userId, subjects);
+    if (!recorded) return subjects;
+    const request = await getAccountDeletionRequest(userId);
+    if (request) await redactStripeEventLogs(request);
+    return subjects;
+  } catch (error) {
+    if (recorded) await markLateStripeReconciliationFailed(userId);
+    throw error;
+  }
+}
+
+function compactSubjects(
+  subjects: Array<StripeDeletionSubject | null>
+): StripeDeletionSubject[] {
+  return subjects.filter(
+    (subject): subject is StripeDeletionSubject => subject !== null
+  );
+}
+
+function dedupeSubjects(subjects: StripeDeletionSubject[]) {
+  return [
+    ...new Map(
+      subjects.map((subject) => [subject.fingerprint, subject])
+    ).values(),
+  ];
+}
+
+async function cleanupDeletedCustomer(
+  stripe: Stripe,
+  userId: string | null,
+  customerId: string | null,
+  fingerprints: string[]
+) {
+  if (customerId) {
+    try {
+      await stripe.customers.del(
+        customerId,
+        {},
+        {
+          idempotencyKey: deletedBillingIdempotencyKey(customerId, "delete"),
+        }
+      );
+    } catch (error) {
+      if (!isAlreadyDeletedProviderError(error)) {
+        throw deletedBillingError("deleted_customer_cleanup_failed");
+      }
+    }
+  }
+  if (userId) {
+    await clearLateStripeDeletionSubjects(userId, fingerprints);
+  }
+}
+
+async function cancelDeletedSubscription(
+  stripe: Stripe,
+  subscriptionId: string,
+  idempotencyKey: string
+) {
+  try {
+    await stripe.subscriptions.cancel(
+      subscriptionId,
+      { prorate: false },
+      { idempotencyKey }
+    );
+  } catch (error) {
+    if (!isAlreadyDeletedProviderError(error)) throw error;
+  }
+}
+
+async function refundDeletedPayment(
+  stripe: Stripe,
+  payment: DeletedPaymentReference,
+  idempotencyKey?: string
+) {
+  if (
+    payment.allocationAmount !== undefined &&
+    payment.allocationFingerprint !== undefined
+  ) {
+    await ensureStripeInvoicePaymentAllocationRefunded(stripe, {
+      allocationAmount: payment.allocationAmount,
+      allocationFingerprint: payment.allocationFingerprint,
+      kind: payment.kind,
+      providerId: payment.providerId,
+      baseIdempotencyKey:
+        idempotencyKey ??
+        `account-deletion:invoice-payment-refund:${payment.allocationFingerprint}`,
+    });
+    return;
+  }
+  await ensureStripePaymentFullyRefunded(
+    stripe,
+    payment.kind,
+    payment.providerId,
+    idempotencyKey ?? deletedBillingIdempotencyKey(payment.providerId, "refund")
+  );
+}
+
+function getInvoiceSubscriptionId(invoice: Stripe.Invoice) {
+  return getProviderId(invoice.parent?.subscription_details?.subscription);
+}
+
+async function redactDeletedStripeEvent(event: Stripe.Event) {
+  const subject = getStripeEventSubject(event);
+  await db
+    .update(stripeEventLog)
+    .set({
+      payload: "{}",
+      lastError: null,
+      subjectFingerprint: subject.fingerprint,
+    })
+    .where(eq(stripeEventLog.stripeEventId, event.id));
+}
+
+function isAccountDeletionPendingError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.message === "account_deletion_pending" ||
+      error.message === "credit_ledger_user_not_found" ||
+      error.message === "billing_user_not_found")
+  );
+}
+
+function safeStripeWebhookErrorCode(error: unknown) {
+  if (isAccountDeletionPendingError(error)) return "account_deletion_pending";
+  if (error && typeof error === "object" && "code" in error) {
+    const reconciliationCode = checkoutReconciliationErrorCode(error);
+    if (
+      String(error.code).startsWith("deleted_checkout_") ||
+      String(error.code).startsWith("deleted_subscription_") ||
+      String(error.code).startsWith("deleted_invoice_") ||
+      String(error.code) === "deleted_customer_cleanup_failed" ||
+      String(error.code) === "deleted_billing_reconciliation_failed"
+    ) {
+      return reconciliationCode;
+    }
+  }
+  return "stripe_webhook_processing_failed";
+}
+
+function isDeletedBillingReconciliationEvent(type: Stripe.Event.Type) {
+  return (
+    type === "checkout.session.completed" ||
+    type === "customer.subscription.created" ||
+    type === "customer.subscription.updated" ||
+    type === "invoice.payment_succeeded"
+  );
+}
+
+function deletedBillingError(code: string): Error & { code: string } {
+  return Object.assign(new Error("Deleted billing reconciliation failed"), {
+    code,
+  });
+}
+
+function normalizeDeletedBillingError(
+  error: unknown,
+  fallbackCode: string,
+  manualCode?: string
+) {
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    String(error.code).startsWith("deleted_")
+  ) {
+    return error;
+  }
+  if (
+    manualCode &&
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    String(error.code).startsWith("stripe_invoice_payment_")
+  ) {
+    return deletedBillingError(manualCode);
+  }
+  return deletedBillingError(fallbackCode);
+}
+
+function getProviderId(value: string | { id: string } | null | undefined) {
+  if (!value) return null;
+  return typeof value === "string" ? value : value.id;
+}
+
+function getCheckoutCorrelation(
+  event: Stripe.Event,
+  metadataUserId: string | null
+): StripeCheckoutCorrelation {
+  if (event.type !== "checkout.session.completed") return "not_applicable";
+  const session = event.data.object as Stripe.Checkout.Session;
+  const correlatedUserId = checkoutSessionAuthenticatedUserId(session);
+  if (!metadataUserId && !session.client_reference_id) return "not_applicable";
+  if (!correlatedUserId) throw stripeSubjectOwnerMismatch();
+  return "valid";
 }

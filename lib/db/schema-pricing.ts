@@ -415,7 +415,7 @@ export const stripeEventLog = pgTable(
     stripeEventId: text("stripe_event_id").unique().notNull(),
     eventType: text("event_type").notNull(),
     subjectFingerprint: text("subject_fingerprint"),
-    payload: text("payload").notNull(), // Redacted sentinel; legacy rows may contain JSON
+    payload: text("payload").notNull(), // Always "{}" after legacy redaction; raw payloads are not retained.
     status: text("status").notNull().default("pending"), // 'pending', 'processed', 'failed'
     attempts: integer("attempts").default(0).notNull(),
     lastError: text("last_error"), // Stable code only; legacy rows may contain text
