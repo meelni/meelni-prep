@@ -76,6 +76,9 @@ session because `user_insights.last_session_id` is a `NO ACTION` foreign key.
 The account-deletion job normalizes provider, redaction, and application errors
 inside the Inngest step boundary so raw database/provider messages do not enter
 job history; the tombstone and job retain only a stable failure code.
+Local webhook redaction and application-data cleanup run before Supabase Auth
+and Stripe provider operations. Provider outages therefore retain only the
+durable typed cleanup references, not the user's local product data.
 
 ## Checkout and deletion concurrency
 
@@ -98,8 +101,23 @@ metadata user IDs. Credit and subscription writes serialize with deletion on
 the local user row and fail closed when a tombstone exists. A completed Checkout
 that arrives after deletion receives no credit, subscription entitlement, or
 customer mapping. Its event payload is redacted; known late customer and
-subscription subjects are folded into the tombstone as temporary cleanup IDs or
-completed-tombstone fingerprints.
+subscription subjects are folded into the tombstone as temporary cleanup IDs.
+Late invoice, PaymentIntent, or charge references are also retained only while
+financial recovery is pending. After cancellation/refund reconciliation,
+Meelni deletes the late Stripe customer and clears every raw ID, leaving
+fingerprints only. Any failure after subjects are recorded moves the tombstone
+into retryable failure. Recovery repeats cancellation, payment/invoice refund,
+then customer deletion with object-derived idempotency keys in that order.
+Completion clears only the provider fingerprints present in the worker's
+processed snapshot. Subjects appended by a concurrent webhook remain raw and
+recoverable; even a completed tombstone containing a raw reference is selected
+by recovery. Malformed persisted subject JSON fails closed rather than silently
+discarding an unknown provider reference.
+
+Stripe event logs never persist raw webhook payloads, including for active
+accounts. Signature-verified event data exists only in request memory; durable
+logs retain the event ID/type, subject fingerprint, state, attempts, timestamps,
+and stable error category. This removes the payload-insert race with deletion.
 
 For a late completed Checkout, Meelni attempts deterministic reconciliation:
 
@@ -116,11 +134,37 @@ subscription and refunds its paid PaymentIntent/charge. These paths share
 provider-object-derived idempotency keys with Checkout reconciliation, so no
 path relies on another event arriving first.
 
+If an operator partially refunds before replay, Meelni asks Stripe to refund
+the remaining unrefunded amount. After every create or replay outcome, Meelni
+retrieves the referenced PaymentIntent/charge and lists its refunds. Only
+refunds whose Stripe status is `succeeded` count toward the full amount; charge
+aggregates and pending refund amounts are not terminal evidence. If provider
+state remains partial, pending, or cannot be confirmed, reconciliation stays
+failed, provider references remain durable, and customer deletion does not run.
+A pending refund that succeeds is completed by webhook/worker replay without a
+new refund. If it fails, the next retry uses a deterministic attempt key derived
+from the terminal refund history and requests the remaining amount again.
+Refund history reads are capped at ten 100-object pages and malformed provider
+amount/status evidence fails closed.
+Subscription-deleted and invoice success/failure state changes also lock the
+user and fail closed on deletion. Stripe timestamps have second resolution, so
+subscription deletion is the terminal tie-breaker for same-resource,
+same-second events; invoice success/failure and subscription updates cannot
+overwrite that canceled resource. A distinct `subscription.created` event may
+replace a canceled subscription, while updates, invoices, and deletions for an
+old provider subscription can never mutate the user's current subscription.
+For a legacy canceled subscription row without a provider subscription ID, a
+correlated `subscription.created` event may establish the replacement resource
+identity. Other resource-specific events fail closed until billing
+sync/backfill scopes the row.
+
 Provider deletion, cancellation, and refunds are not transactional with local
 deletion. When Stripe does not expose a refundable reference, or a provider
 operation fails, the webhook event remains failed with a stable reconciliation
-code for retry/operator review. Meelni does not mark the event processed, grant
-an entitlement, or claim a refund occurred.
+code for retry/operator review. Cancellation, refund lookup/refund, and customer
+cleanup failures preserve the required provider references until recovery
+succeeds. Meelni does not mark the event processed, grant an entitlement, or
+claim a refund occurred.
 
 ## Retention boundary
 

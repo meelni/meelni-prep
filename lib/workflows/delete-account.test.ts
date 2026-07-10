@@ -21,6 +21,16 @@ const REQUEST: AccountDeletionRecord = {
       fingerprint: "subscription-fingerprint",
     },
     {
+      kind: "invoice",
+      providerId: "in_test",
+      fingerprint: "invoice-fingerprint",
+    },
+    {
+      kind: "payment_intent",
+      providerId: "pi_test",
+      fingerprint: "payment-fingerprint",
+    },
+    {
       kind: "customer",
       providerId: "cus_test",
       fingerprint: "customer-fingerprint",
@@ -38,12 +48,14 @@ test("durable deletion runs providers and application cleanup in retry-safe orde
   const calls: string[] = [];
   const result = await deleteAccountWorkflow(REQUEST, createDeps(calls));
   assert.deepEqual(calls, [
-    `auth:${REQUEST.userId}`,
-    "subscription:sub_test",
-    "customer:cus_test",
-    "customer:cus_second",
     `redact:${REQUEST.userId}`,
     `application:${REQUEST.userId}`,
+    `auth:${REQUEST.userId}`,
+    "subscription:sub_test",
+    "payment:payment_intent:pi_test",
+    "invoice:in_test",
+    "customer:cus_test",
+    "customer:cus_second",
     `completed:${REQUEST.userId}`,
   ]);
   assert.deepEqual(result, { alreadyCompleted: false });
@@ -60,7 +72,37 @@ test("auth failure preserves the tombstone and never reports completion", async 
   };
 
   await assert.rejects(() => deleteAccountWorkflow(REQUEST, deps));
-  assert.deepEqual(calls, [`auth:${REQUEST.userId}`]);
+  assert.deepEqual(calls, [
+    `redact:${REQUEST.userId}`,
+    `application:${REQUEST.userId}`,
+    `auth:${REQUEST.userId}`,
+  ]);
+  assert.equal(
+    calls.some((call) => call.startsWith("completed:")),
+    false
+  );
+});
+
+test("financial recovery failure preserves customer references and stops before deletion", async () => {
+  const calls: string[] = [];
+  const deps = createDeps(calls);
+  deps.refundPayment = async (kind, id) => {
+    calls.push(`payment:${kind}:${id}`);
+    throw new Error("refund unavailable");
+  };
+
+  await assert.rejects(() => deleteAccountWorkflow(REQUEST, deps));
+  assert.deepEqual(calls, [
+    `redact:${REQUEST.userId}`,
+    `application:${REQUEST.userId}`,
+    `auth:${REQUEST.userId}`,
+    "subscription:sub_test",
+    "payment:payment_intent:pi_test",
+  ]);
+  assert.equal(
+    calls.some((call) => call.startsWith("customer:")),
+    false
+  );
   assert.equal(
     calls.some((call) => call.startsWith("completed:")),
     false
@@ -71,7 +113,14 @@ test("completed deletion and missing provider records are idempotent", async () 
   const calls: string[] = [];
   assert.deepEqual(
     await deleteAccountWorkflow(
-      { ...REQUEST, status: "completed" },
+      {
+        ...REQUEST,
+        status: "completed",
+        stripeSubjects: REQUEST.stripeSubjects.map((subject) => ({
+          ...subject,
+          providerId: null,
+        })),
+      },
       createDeps(calls)
     ),
     { alreadyCompleted: true }
@@ -83,6 +132,17 @@ test("completed deletion and missing provider records are idempotent", async () 
   );
   assert.equal(isAlreadyDeletedProviderError({ code: "user_not_found" }), true);
   assert.equal(isAlreadyDeletedProviderError({ status: 404 }), true);
+});
+
+test("completed tombstones with late raw references remain recoverable", async () => {
+  const calls: string[] = [];
+  await deleteAccountWorkflow(
+    { ...REQUEST, status: "completed" },
+    createDeps(calls)
+  );
+  assert.equal(calls.includes("payment:payment_intent:pi_test"), true);
+  assert.equal(calls.includes("customer:cus_test"), true);
+  assert.equal(calls.at(-1), `completed:${REQUEST.userId}`);
 });
 
 test("deletion failures are reduced to a stable code without raw details", () => {
@@ -129,6 +189,12 @@ function createDeps(calls: string[]): DeleteAccountWorkflowDeps {
   return {
     cancelSubscription: async (id) => {
       calls.push(`subscription:${id}`);
+    },
+    refundInvoice: async (id) => {
+      calls.push(`invoice:${id}`);
+    },
+    refundPayment: async (kind, id) => {
+      calls.push(`payment:${kind}:${id}`);
     },
     deleteCustomer: async (id) => {
       calls.push(`customer:${id}`);

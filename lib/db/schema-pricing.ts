@@ -415,7 +415,7 @@ export const stripeEventLog = pgTable(
     stripeEventId: text("stripe_event_id").unique().notNull(),
     eventType: text("event_type").notNull(),
     subjectFingerprint: text("subject_fingerprint"),
-    payload: text("payload").notNull(), // JSON stringified
+    payload: text("payload").notNull(), // Always "{}"; raw provider payloads are not retained.
     status: text("status").notNull().default("pending"), // 'pending', 'processed', 'failed'
     attempts: integer("attempts").default(0).notNull(),
     lastError: text("last_error"),
