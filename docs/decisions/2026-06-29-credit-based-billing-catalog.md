@@ -14,7 +14,13 @@ Voice interviews have meaningful variable cost. An unlimited Pro plan creates po
 Meelni will move to a credit-based billing catalog:
 
 - No ongoing free full-interview allowance.
-- Trial grants 2 full-interview credits for 7 days.
+- Every authenticated account, including an account created before relaunch, is
+  eligible for exactly one trial grant of 2 full-interview credits for 7 days.
+- The trial starts only when the user first asks to start a full interview. A
+  signup, login, page visit, or credit-balance read must not start the clock.
+- `trial:<user_id>` is the canonical grant idempotency key. Its presence makes
+  the account permanently ineligible for another trial, including after the
+  original trial is consumed or expires.
 - Interview Pass sells 1 full-interview credit for $9, expiring after 30 days.
 - Starter is $19/month for 4 credits/month.
 - Pro is $49/month for 12 credits/month.
@@ -32,6 +38,11 @@ Any active, non-expired credit-bearing state should unlock all PM round types. A
 The implementation needs a canonical billing catalog and credit ledger. Product rules should not live independently in checkout routes, setup UI, billing modals, structured data, and webhook handlers.
 
 Session start should reserve and consume credits with idempotency. Failed starts should release the reservation. Support and recovery paths should be able to refund credits when Meelni fails the user.
+
+Session start creates or repairs the canonical trial grant after the user row
+exists and immediately before reserving a credit. Replaying that activation
+must also ensure the matching grant transaction exists. Billing GET routes are
+read-only and report eligibility from the canonical idempotency key.
 
 Existing free/pro/premium entitlement code, public pricing copy, structured data, checkout mapping, usage quota code, and billing tests need to be reconciled with this decision.
 
