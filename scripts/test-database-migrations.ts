@@ -232,6 +232,7 @@ function runPreflight(
 }
 
 interface MigrationPreflightCount {
+  projected_legacy_status: string;
   lifecycle_state: string;
   terminal_reason: string;
   rows: number;
@@ -275,7 +276,7 @@ function assertLifecycleBackfillCountsMatch(
   const aggregate = (counts: MigrationPreflightCount[]) => {
     const totals = new Map<string, number>();
     for (const count of counts) {
-      const key = `${count.lifecycle_state}:${count.terminal_reason}`;
+      const key = `${count.projected_legacy_status}:${count.lifecycle_state}:${count.terminal_reason}`;
       totals.set(key, (totals.get(key) ?? 0) + Number(count.rows));
     }
     return [...totals.entries()].sort(([left], [right]) =>

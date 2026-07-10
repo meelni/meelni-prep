@@ -260,16 +260,24 @@ async function run(url: string) {
         migrations.length === 6
           ? await tx<
               {
-                legacy_status: string;
+                projected_legacy_status: string;
                 lifecycle_state: string;
                 terminal_reason: string;
                 rows: number;
               }[]
             >`
-              SELECT legacy_status, lifecycle_state, terminal_reason,
+              SELECT projected_legacy_status, lifecycle_state, terminal_reason,
                 count(*)::int AS rows
               FROM (
-                SELECT status AS legacy_status,
+                SELECT
+                  CASE
+                    WHEN status = 'error' THEN 'error'
+                    WHEN status = 'too_short' THEN 'too_short'
+                    WHEN status = 'abandoned' THEN 'abandoned'
+                    WHEN status = 'completed' THEN 'completed'
+                    WHEN ended_at IS NOT NULL THEN 'abandoned'
+                    ELSE 'in_progress'
+                  END AS projected_legacy_status,
                   CASE
                     WHEN status = 'error' THEN 'failed'
                     WHEN status IN ('abandoned', 'too_short') THEN 'abandoned'
@@ -285,19 +293,19 @@ async function run(url: string) {
                   END AS terminal_reason
                 FROM interview_session
               ) preview
-              GROUP BY legacy_status, lifecycle_state, terminal_reason
-              ORDER BY legacy_status, lifecycle_state, terminal_reason
+              GROUP BY projected_legacy_status, lifecycle_state, terminal_reason
+              ORDER BY projected_legacy_status, lifecycle_state, terminal_reason
             `
           : migrations.length === 7
             ? await tx<
                 {
-                  legacy_status: string;
+                  projected_legacy_status: string;
                   lifecycle_state: string;
                   terminal_reason: string;
                   rows: number;
                 }[]
               >`
-                SELECT status AS legacy_status, lifecycle_state,
+                SELECT status AS projected_legacy_status, lifecycle_state,
                   COALESCE(terminal_reason, 'none') AS terminal_reason,
                   count(*)::int AS rows
                 FROM interview_session

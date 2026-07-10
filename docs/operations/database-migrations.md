@@ -20,7 +20,8 @@ See [migration history](./migration-history.md) for the retired orphan SQL files
 
 The preflight uses a read-only transaction, prints only redacted counts and
 states, verifies migration hashes, and refuses transaction-pooler URLs. At six
-migrations it also previews lifecycle backfill counts by legacy status,
+migrations it also previews lifecycle backfill counts by the projected legacy
+status after migration,
 proposed state, and proposed reason; at seven it reports the applied counts:
 
 ```bash

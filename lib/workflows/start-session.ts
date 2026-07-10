@@ -253,7 +253,11 @@ export async function startInterviewSessionWorkflow(
     });
   } catch (error) {
     console.error("Credit consume error:", getErrorMessage(error));
-    await terminalizeProviderFailure(session.id, deps);
+    await safelyTerminalizeProviderFailureAndRelease(
+      session.id,
+      reservationKey,
+      deps
+    );
     return {
       ok: false,
       status: 503,
@@ -336,6 +340,21 @@ async function terminalizeProviderFailureAndRelease(
     await terminalizeProviderFailure(sessionId, deps);
   } finally {
     await releaseInterviewCredit(reservationKey, deps);
+  }
+}
+
+async function safelyTerminalizeProviderFailureAndRelease(
+  sessionId: string,
+  reservationKey: string,
+  deps: StartInterviewSessionDeps
+): Promise<void> {
+  try {
+    await terminalizeProviderFailureAndRelease(sessionId, reservationKey, deps);
+  } catch (error) {
+    console.error(
+      "Session cleanup after credit consume failure error:",
+      getErrorMessage(error)
+    );
   }
 }
 
