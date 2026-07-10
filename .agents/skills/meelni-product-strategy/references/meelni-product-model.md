@@ -4,7 +4,7 @@
 
 Meelni is a live PM interview practice product for product managers who need realistic mock interviews, live voice practice, PM-calibrated feedback, and visible improvement before interviews.
 
-The restart direction is not generic mock interviews. The wedge is PM-specific depth: Product Sense, Execution/Product Metrics, Strategy, and Behavioral practice with realistic questions, voice agents, transcripts, feedback, drills, and progress loops.
+The restart direction is not generic mock interviews. The wedge is PM-specific depth: Product Sense, Execution/Product Metrics, Strategy, and Behavioral practice with realistic questions, voice agents, transcripts, feedback, focused practice, and progress loops.
 
 ## Current Structural Pillars
 
@@ -12,7 +12,7 @@ The restart direction is not generic mock interviews. The wedge is PM-specific d
 - Authenticated practice surfaces: setup, selected-question practice, voice interview, transcript, feedback, history, analytics, questions, settings, and billing.
 - Question supply: local database plus Google Sheets sync for PM interview questions and company-specific prompts.
 - Voice runtime: LiveKit-backed interview sessions with room metadata, transcript events, and Python agent runtime.
-- Feedback system: evaluation, scores, strengths, improvements, drills, insights, and comparison flows.
+- Feedback system: evaluation, scores, strengths, improvements, focused-practice recommendations, insights, and comparison flows.
 - Monetization foundation: Stripe subscription and usage/quota services.
 - Agent-ready architecture: packages for core contracts, agent contracts, integrations, test fixtures, and workflow boundaries.
 
@@ -20,7 +20,7 @@ The restart direction is not generic mock interviews. The wedge is PM-specific d
 
 Meelni helps PM candidates get better through repeated realistic mock interviews.
 
-The strongest version of the product turns one practice session into the next obvious action: a better question, a targeted drill, a clearer weakness, a sharper answer, or a clearer view of evidence-grounded practice progress.
+The strongest version of the product turns one practice session into the next obvious action: a better question, focused practice, a clearer weakness, a sharper answer, or a clearer view of evidence-grounded practice progress.
 
 ## Why Meelni Can Be Different
 
@@ -30,7 +30,7 @@ Strong areas versus generic interview prep:
 - PM-specific question types and rubrics
 - company and question-bank SEO as acquisition
 - feedback artifacts that show progress
-- targeted drills tied to actual answers
+- focused practice tied to actual answers
 - future applied AI PM practice: agent product strategy, skill design, eval design, and AI product case practice
 - future enterprise use cases around hiring enablement, talent development, custom rubrics, and skill evaluation
 
@@ -71,7 +71,7 @@ Default loop:
 2. Selected question practice
 3. Live voice mock interview
 4. Transcript and feedback artifact
-5. Targeted drill or learning material
+5. Focused practice or learning material
 6. Return practice and progress tracking
 
 Prefer product work that makes the next practice action more obvious, personalized, or likely to happen.
@@ -79,7 +79,7 @@ Prefer product work that makes the next practice action more obvious, personaliz
 ## Monetization Direction
 
 - Consumer first: free discovery, short trial such as seven days, clear limits, and paid plans for serious prep.
-- Consumer paid value should map to outcomes: more mock interviews, deeper feedback, saved history, targeted drills, company-specific prep, analytics, and visible practice progress.
+- Consumer paid value should map to outcomes: more mock interviews, deeper feedback, saved history, focused practice, company-specific prep, analytics, and visible practice progress.
 - Keep packaging simple until activation, completion, return practice, and paid conversion signals are understood.
 - Enterprise later: organizations, seats, admin visibility, cohort analytics, custom rubrics, custom agents, privacy controls, and evaluation exports.
 
@@ -95,7 +95,7 @@ Prefer product work that makes the next practice action more obvious, personaliz
 ### Future direction
 
 - richer trial and packaging experiments
-- deeper targeted drills and learning materials
+- deeper focused practice and learning materials
 - AI/agent product practice tracks for PMs
 - improved practice-progress signals
 - enterprise team practice, custom rubrics, and cohort reporting

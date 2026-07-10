@@ -14,33 +14,8 @@ interface ExploreQuestionListItemProps {
   };
   index: number;
   isLast: boolean;
+  disabled?: boolean;
   onPractice: MouseEventHandler<HTMLButtonElement>;
-}
-
-function formatRelativeTime(date: Date | string | null): string {
-  if (!date) return "";
-
-  const now = new Date();
-  const askedDate = new Date(date);
-  const diffInMs = now.getTime() - askedDate.getTime();
-  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-
-  if (diffInDays < 7) {
-    return diffInDays === 0
-      ? "Today"
-      : diffInDays === 1
-        ? "Yesterday"
-        : `${diffInDays} days ago`;
-  }
-  if (diffInDays < 30) {
-    const weeks = Math.floor(diffInDays / 7);
-    return `${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
-  }
-  if (diffInDays < 365) {
-    const months = Math.floor(diffInDays / 30);
-    return `${months} ${months === 1 ? "month" : "months"} ago`;
-  }
-  return askedDate.getFullYear().toString();
 }
 
 function formatCompanyName(company: string | null): string {
@@ -57,6 +32,7 @@ export function ExploreQuestionListItem({
   question,
   index,
   isLast,
+  disabled = false,
   onPractice,
 }: ExploreQuestionListItemProps) {
   return (
@@ -72,45 +48,25 @@ export function ExploreQuestionListItem({
         type="button"
         variant="ghost"
         onClick={onPractice}
+        disabled={disabled}
+        aria-busy={disabled}
         className="h-auto min-h-24 w-full min-w-0 touch-manipulation flex-col items-stretch justify-start gap-3 rounded-lg p-0 text-left whitespace-normal hover:bg-transparent"
         aria-label={`Practice question: ${question.questionText}`}
       >
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span
-            className="text-foreground max-w-full min-w-0 text-xs font-medium [overflow-wrap:anywhere] break-words"
-          >
+          <span className="text-foreground max-w-full min-w-0 text-xs font-medium [overflow-wrap:anywhere] break-words">
             {formatCompanyName(question.company)}
           </span>
           <span className="text-muted-foreground text-xs" aria-hidden="true">
             •
           </span>
-          <span
-            className="text-muted-foreground min-w-0 text-xs font-normal break-words"
-          >
+          <span className="text-muted-foreground min-w-0 text-xs font-normal break-words">
             {question.questionType}
           </span>
-          {question.askedAt && (
-            <>
-              <span
-                className="text-muted-foreground text-xs"
-                aria-hidden="true"
-              >
-                •
-              </span>
-              <time
-                className="text-muted-foreground text-xs font-normal"
-                dateTime={new Date(question.askedAt).toISOString()}
-              >
-                {formatRelativeTime(question.askedAt)}
-              </time>
-            </>
-          )}
         </div>
 
         <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-6">
-          <h2
-            className="text-foreground group-hover:text-primary min-w-0 text-lg leading-snug font-semibold [overflow-wrap:anywhere] break-words whitespace-normal transition-colors"
-          >
+          <h2 className="text-foreground group-hover:text-primary min-w-0 text-lg leading-snug font-semibold [overflow-wrap:anywhere] break-words whitespace-normal transition-colors">
             {formatQuestionText(question.questionText)}
           </h2>
           <span className="text-primary flex min-h-11 shrink-0 items-center gap-2 text-sm font-semibold">

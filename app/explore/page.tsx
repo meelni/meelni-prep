@@ -24,6 +24,16 @@ import {
 } from "lucide-react";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { usePostHog } from "posthog-js/react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/app/providers/auth-provider";
+import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
+import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
+import { resolveQuestionEntryAction } from "@/lib/navigation/question-auth-entry";
+import {
+  getExploreResultsAnnouncement,
+  resolvePublicQuestionAvailability,
+  type QuestionLoadState,
+} from "@/lib/explore/public-question-availability";
 
 interface Question {
   id: string;
@@ -39,10 +49,13 @@ const QUESTIONS_PER_PAGE = 20;
 
 export default function ExplorePage() {
   const posthog = usePostHog();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { user, isLoading: authLoading } = useAuth();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadState, setLoadState] = useState<QuestionLoadState>("loading");
   const [requestVersion, setRequestVersion] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -52,14 +65,20 @@ export default function ExplorePage() {
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(
     null
   );
-  const lastPracticeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const questionTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const publicAvailability = resolvePublicQuestionAvailability(
+    loadState,
+    totalQuestions
+  );
 
   // Track page view
   useEffect(() => {
-    posthog?.capture("explore_page_viewed", {
-      total_questions: totalQuestions,
-    });
-  }, [posthog, totalQuestions]);
+    if (loadState === "success") {
+      posthog?.capture("explore_page_viewed", {
+        total_questions: totalQuestions,
+      });
+    }
+  }, [loadState, posthog, totalQuestions]);
 
   // Fetch questions
   useEffect(() => {
@@ -68,8 +87,7 @@ export default function ExplorePage() {
 
     async function fetchQuestions() {
       try {
-        setLoading(true);
-        setLoadError(null);
+        setLoadState("loading");
         const params = new URLSearchParams({
           limit: String(QUESTIONS_PER_PAGE),
           offset: String((currentPage - 1) * QUESTIONS_PER_PAGE),
@@ -97,23 +115,28 @@ export default function ExplorePage() {
           throw new Error(`Question request failed with ${res.status}`);
         }
         const data = await res.json();
-        if (active) {
-          setQuestions(data.questions || []);
-          setTotalQuestions(data.pagination?.total || 0);
+        if (
+          !Array.isArray(data.questions) ||
+          !Number.isSafeInteger(data.pagination?.total) ||
+          data.pagination.total < 0
+        ) {
+          throw new Error(
+            "Question response did not match the public contract"
+          );
         }
+        if (!active) return;
+        setQuestions(data.questions);
+        setTotalQuestions(data.pagination.total);
+        setLoadState("success");
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
         console.error("Error fetching questions:", error);
         if (active) {
-          setLoadError(
-            "We couldn't load the question bank. Check your connection and try again."
-          );
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
+          setQuestions([]);
+          setTotalQuestions(0);
+          setLoadState("error");
         }
       }
     }
@@ -136,27 +159,27 @@ export default function ExplorePage() {
 
   // Track search queries
   useEffect(() => {
-    if (debouncedSearchQuery) {
+    if (debouncedSearchQuery && loadState === "success") {
       posthog?.capture("explore_search", {
         query: debouncedSearchQuery,
         results_count: totalQuestions,
       });
     }
-  }, [debouncedSearchQuery, posthog, totalQuestions]);
+  }, [debouncedSearchQuery, loadState, posthog, totalQuestions]);
 
   // Track filter changes
   useEffect(() => {
-    if (selectedType !== "All Types") {
+    if (selectedType !== "All Types" && loadState === "success") {
       posthog?.capture("explore_filter_type", {
         filter_type: selectedType,
         results_count: totalQuestions,
       });
     }
-  }, [selectedType, posthog, totalQuestions]);
+  }, [loadState, selectedType, posthog, totalQuestions]);
 
   const handleQuestionClick = (
     question: Question,
-    trigger: HTMLButtonElement
+    event: React.MouseEvent<HTMLButtonElement>
   ) => {
     // Track click
     posthog?.capture("explore_question_clicked", {
@@ -166,8 +189,27 @@ export default function ExplorePage() {
       page: currentPage,
     });
 
-    // Show sign-in modal
-    lastPracticeTriggerRef.current = trigger;
+    const entryAction = resolveQuestionEntryAction({
+      authLoading,
+      isAuthenticated: Boolean(user),
+    });
+
+    if (entryAction === "wait") {
+      return;
+    }
+
+    if (entryAction === "launch") {
+      router.push(
+        buildQuestionInterviewHref(
+          question.id,
+          buildInternalRequestDestination(pathname, searchParams.toString())
+        )
+      );
+      return;
+    }
+
+    // Show sign-in modal for signed-out candidates.
+    questionTriggerRef.current = event.currentTarget;
     setSelectedQuestion(question);
     setSignInModalOpen(true);
   };
@@ -184,12 +226,12 @@ export default function ExplorePage() {
   return (
     <>
       {/* Structured Data for SEO & LLM Indexing */}
-      {!loading && !loadError && totalQuestions > 0 && (
+      {publicAvailability.totalQuestions !== null && (
         <ExploreStructuredData
           questions={questions}
           currentPage={currentPage}
           totalPages={totalPages}
-          totalQuestions={totalQuestions}
+          totalQuestions={publicAvailability.totalQuestions}
         />
       )}
 
@@ -229,11 +271,16 @@ export default function ExplorePage() {
             Product Manager Interview Questions
           </h1>
           <p className="text-muted-foreground max-w-3xl text-lg">
-            Browse{" "}
-            {totalQuestions > 0 ? totalQuestions.toLocaleString() : "real"}{" "}
-            interview questions from Google, Meta, Amazon, and 100+ top
-            companies. Practice Product Sense, Behavioral, Execution, and
-            Strategy questions out loud.
+            {publicAvailability.totalQuestions !== null ? (
+              <>
+                Browse {publicAvailability.totalQuestions.toLocaleString()}{" "}
+                available practice questions tagged by company and round type.
+              </>
+            ) : (
+              <>Browse practice questions tagged by company and round type.</>
+            )}{" "}
+            Practice Product Sense, Behavioral, Execution, and Strategy answers
+            out loud.
           </p>
         </header>
 
@@ -295,9 +342,9 @@ export default function ExplorePage() {
           id="explore-question-list"
           className="mx-auto max-w-4xl px-4 pt-0 pb-12 sm:px-6"
           aria-label="Interview questions list"
-          aria-busy={loading}
+          aria-busy={loadState === "loading"}
         >
-          {loading ? (
+          {loadState === "loading" ? (
             <div className="space-y-0" aria-label="Loading questions">
               {Array.from({ length: 6 }, (_, index) => (
                 <div
@@ -315,13 +362,14 @@ export default function ExplorePage() {
                 Loading questions
               </span>
             </div>
-          ) : loadError ? (
+          ) : loadState === "error" ? (
             <div className="py-20 text-center" role="alert">
               <p className="text-foreground mb-2 text-lg font-medium">
                 Questions are temporarily unavailable
               </p>
               <p className="text-muted-foreground mx-auto mb-6 max-w-md text-sm">
-                {loadError}
+                We could not load the question bank. Check your connection and
+                try again.
               </p>
               <Button
                 type="button"
@@ -349,9 +397,8 @@ export default function ExplorePage() {
                   question={question}
                   index={index}
                   isLast={index === paginatedQuestions.length - 1}
-                  onPractice={(event) =>
-                    handleQuestionClick(question, event.currentTarget)
-                  }
+                  disabled={authLoading}
+                  onPractice={(event) => handleQuestionClick(question, event)}
                 />
               ))}
             </div>
@@ -401,17 +448,17 @@ export default function ExplorePage() {
           onClose={() => setSignInModalOpen(false)}
           questionText={selectedQuestion.questionText}
           questionId={selectedQuestion.id}
-          returnFocusRef={lastPracticeTriggerRef}
+          returnFocusRef={questionTriggerRef}
         />
       )}
 
       {/* Live region for accessibility */}
       <div role="status" aria-live="polite" className="sr-only">
-        {loading
-          ? "Loading questions"
-          : loadError
-            ? "Questions could not be loaded"
-            : `Showing ${paginatedQuestions.length} of ${totalQuestions} questions`}
+        {getExploreResultsAnnouncement({
+          authLoading,
+          availability: publicAvailability,
+          visibleQuestions: paginatedQuestions.length,
+        })}
       </div>
     </>
   );

@@ -43,6 +43,8 @@ test("practice summary recommends the weakest feedback dimension", () => {
   assert.equal(summary.progress.state, "single");
   assert.equal(summary.focusArea?.label, "Metrics depth");
   assert.match(summary.recommendation.title, /metric depth/i);
+  assert.equal(summary.prepPlan[1]?.title, "Metrics depth focused practice");
+  assert.doesNotMatch(summary.prepPlan[1]?.title ?? "", /drill|workout/i);
   assert.equal(summary.recentInterviews[0]?.scoreLabel, "6.2");
   assert.deepEqual(summary.progressSignal.bars, [{ score: 6.2, value: 62 }]);
 });

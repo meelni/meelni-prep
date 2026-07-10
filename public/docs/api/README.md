@@ -651,7 +651,7 @@ Retrieves the complete conversation transcript for an interview session, includi
 
 ### POST /api/feedback/generate
 
-Analyzes an interview session transcript and generates comprehensive feedback using GPT-4 Turbo. Includes dimension scores, strengths, improvements, and practice drill recommendations. This endpoint is idempotent - if feedback already exists for the session, it returns success without regenerating.
+Analyzes an interview session transcript and generates comprehensive feedback. Includes dimension scores, strengths, improvements, and suggested focused practice. This endpoint is idempotent - if feedback already exists for the session, it returns success without regenerating.
 
 **Authentication**: Required (Supabase Auth JWT)
 
@@ -1168,7 +1168,7 @@ async function runFullInterviewFlow() {
   console.log("Interview complete! Your score:", feedback.overallScore);
   console.log("Strengths:", feedback.strengths);
   console.log("Areas to improve:", feedback.improvements);
-  console.log("Practice drills:", feedback.drills);
+  console.log("Suggested exercises:", feedback.drills);
 }
 ```
 

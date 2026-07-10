@@ -3,7 +3,7 @@
  *
  * POST endpoint that evaluates a completed interview session using GPT-4 Turbo.
  * Generates rubric scores (0-10 scale), identifies strengths/improvements with evidence,
- * and provides targeted practice drills. This endpoint is idempotent - calling it
+ * and provides targeted practice recommendations. This endpoint is idempotent - calling it
  * multiple times for the same session returns the cached result.
  *
  * @route POST /api/eval/:sessionId
@@ -29,9 +29,9 @@
  * @response.improvements[].dimension {string} - Related competency dimension
  * @response.improvements[].text {string} - Improvement suggestion
  * @response.improvements[].example {string} - Concrete example
- * @response.drills {Array<Object>} - Practice drill recommendations
- * @response.drills[].title {string} - Drill name
- * @response.drills[].description {string} - What the drill does
+ * @response.drills {Array<Object>} - Focused practice recommendations
+ * @response.drills[].title {string} - Recommendation name
+ * @response.drills[].description {string} - What the exercise does
  * @response.drills[].tips {Array<string>} - Actionable tips
  * @response.summary {string} - Executive summary (2-3 sentences)
  *

@@ -20,6 +20,7 @@ test("question row keeps long content inside one visible practice control", () =
       }}
       index={0}
       isLast
+      disabled
       onPractice={() => undefined}
     />
   );
@@ -27,6 +28,8 @@ test("question row keeps long content inside one visible practice control", () =
   assert.equal(html.split("<" + "button").length - 1, 1);
   assert.match(html, /role="listitem"/);
   assert.match(html, /aria-label="Practice question:/);
+  assert.match(html, /aria-busy="true"/);
+  assert.match(html, /disabled=""/);
   assert.match(html, /Practice question/);
   assert.match(html, /whitespace-normal/);
   assert.match(html, /min-w-0/);
