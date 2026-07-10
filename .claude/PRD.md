@@ -156,7 +156,7 @@ Use observed session and feedback data as product-quality signals. Do not relabe
 
 These ideas are not shipped relaunch promises:
 
-- More targeted drills and learning material tied to actual answers.
+- More targeted practice and learning material tied to actual answers.
 - Deeper company- and round-specific practice paths.
 - AI and agent product-management practice tracks.
 - Validated progress models based on longitudinal evidence.
