@@ -27,7 +27,8 @@ const EMPTY_STATE_CONFIG: Record<
     icon: Search,
     iconBg: "bg-muted/30",
     title: "No questions found",
-    description: "Try adjusting your search or filters to find what you're looking for.",
+    description:
+      "Try adjusting your search or filters to find what you're looking for.",
   },
   "no-filter": {
     icon: Filter,
@@ -43,7 +44,7 @@ const EMPTY_STATE_CONFIG: Record<
     iconBg: "bg-primary/10",
     title: "Welcome to the Question Bank",
     description:
-      "Browse 2,879 real PM interview questions from top companies. Click \"Try Question\" to start practicing immediately.",
+      "Browse curated PM practice questions by company and round type. Choose a question to start practicing.",
   },
   "no-bookmarks": {
     icon: Bookmark,
@@ -72,29 +73,27 @@ export function EmptyState({
     <div className="py-16 text-center">
       {/* Icon */}
       <div
-        className={`w-16 h-16 mx-auto mb-4 rounded-full ${config.iconBg} flex items-center justify-center`}
+        className={`mx-auto mb-4 h-16 w-16 rounded-full ${config.iconBg} flex items-center justify-center`}
       >
         <Icon
-          className={`w-8 h-8 ${
-            type === "first-time"
-              ? "text-primary"
-              : "text-muted-foreground/50"
+          className={`h-8 w-8 ${
+            type === "first-time" ? "text-primary" : "text-muted-foreground/50"
           }`}
         />
       </div>
 
       {/* Title */}
-      <h3 className="text-lg font-medium text-foreground mb-2">
+      <h3 className="text-foreground mb-2 text-lg font-medium">
         {config.title}
       </h3>
 
       {/* Description */}
-      <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
+      <p className="text-muted-foreground mx-auto mb-6 max-w-md text-sm">
         {description}
       </p>
 
       {/* Actions */}
-      <div className="flex gap-3 justify-center flex-wrap">
+      <div className="flex flex-wrap justify-center gap-3">
         {type === "no-search" && onClearFilters && (
           <Button variant="outline" onClick={onClearFilters}>
             Clear Filters
@@ -121,9 +120,7 @@ export function EmptyState({
         )}
 
         {type === "no-bookmarks" && onExploreProductSense && (
-          <Button onClick={onExploreProductSense}>
-            Browse Question Bank
-          </Button>
+          <Button onClick={onExploreProductSense}>Browse Question Bank</Button>
         )}
       </div>
     </div>

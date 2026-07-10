@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Explore 2,879+ Real Interview Questions | Meelni",
+  title: "Explore PM Interview Practice Questions | Meelni",
   description:
-    "Browse real interview questions from Google, Meta, Amazon, and 100+ top companies. Practice product sense, execution, behavioral, and strategy questions with AI coaching.",
+    "Browse curated Product Sense, Execution, Behavioral, and Strategy practice questions by company and round type.",
   keywords: [
     "interview questions",
     "product manager interview",
@@ -18,9 +18,9 @@ export const metadata: Metadata = {
     "interview practice",
   ],
   openGraph: {
-    title: "Explore 2,879+ Real Interview Questions | Meelni",
+    title: "Explore PM Interview Practice Questions | Meelni",
     description:
-      "Browse real interview questions from top companies. Free to explore, sign up to practice with AI coaching.",
+      "Browse curated PM practice questions by company and round type, then practice a selected question out loud.",
     url: "https://meelni.com/explore",
     siteName: "Meelni",
     images: [
@@ -36,9 +36,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Explore 2,879+ Real Interview Questions | Meelni",
+    title: "Explore PM Interview Practice Questions | Meelni",
     description:
-      "Browse real interview questions from Google, Meta, Amazon, and 100+ top companies. Free to explore.",
+      "Browse curated PM practice questions by company and round type. Free to explore.",
     images: ["/og-image-explore.png"], // You'll need to create this
   },
   alternates: {
