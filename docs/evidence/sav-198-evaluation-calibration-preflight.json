@@ -1,0 +1,56 @@
+{
+  "contractVersion": "evaluation-calibration-report.v1",
+  "generatedAt": "2026-07-10T16:12:37.956Z",
+  "execution": {
+    "kind": "preflight",
+    "modelVersion": null,
+    "repetitions": 0,
+    "customerDataUsed": false,
+    "paidProviderCalled": false
+  },
+  "versions": {
+    "goldSet": "pm-gold-set.v1",
+    "adjudication": "pm-gold-adjudication.v1",
+    "schema": "feedback.v2",
+    "prompt": "feedback.prompt.v2",
+    "rubric": "pm-feedback-rubric.v2"
+  },
+  "corpus": {
+    "totalCases": 40,
+    "scoredCases": 32,
+    "insufficientCases": 8,
+    "casesByRound": {
+      "product_sense": 10,
+      "execution": 10,
+      "strategy": 10,
+      "behavioral": 10
+    },
+    "expectedStateMismatches": 0,
+    "invalidEvidenceAnchors": 0
+  },
+  "metrics": {
+    "evidenceValidityRate": null,
+    "adjudicatedEvidenceMatchRate": null,
+    "insufficientHandlingRate": 1,
+    "scoreBandAgreementRate": null,
+    "maximumRepeatedRunScoreRange": null,
+    "evaluatorCalls": 0,
+    "providerEvaluationCalls": 0
+  },
+  "thresholds": {
+    "evidenceValidityRate": 1,
+    "insufficientHandlingRate": 1,
+    "scoreBandAgreementRate": 0.8,
+    "maximumRepeatedRunScoreRange": 1,
+    "minimumProviderRuns": 3
+  },
+  "gate": {
+    "deterministicHarness": "not_run",
+    "liveProviderAcceptance": "pending",
+    "launchAcceptance": "pending_live_provider_run"
+  },
+  "failures": [],
+  "blockers": [
+    "No authorized live provider calibration has been run. Deterministic evidence proves only the harness and gold-set contract."
+  ]
+}
