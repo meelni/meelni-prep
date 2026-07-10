@@ -149,7 +149,8 @@ export const usageRecord = pgTable(
 
     // Usage counters
     interviewsUsed: integer("interviews_used").default(0).notNull(),
-    interviewsLimit: integer("interviews_limit").notNull(), // 3 for free, -1 for unlimited
+    // Legacy quota snapshot only. Credit grants are the entitlement authority.
+    interviewsLimit: integer("interviews_limit").notNull(),
 
     // Tier snapshot (for historical accuracy)
     tierSnapshot: text("tier_snapshot").notNull(),
@@ -178,7 +179,7 @@ export const usageRecord = pgTable(
       table.tierSnapshot
     ), // FIX: Missing index
 
-    // Check constraint: interviews_used <= interviews_limit (or unlimited)
+    // Preserve historical rows that used -1; do not use this for entitlement.
     usageLimitCheck: check(
       "usage_record_limit_check",
       sql`${table.interviewsUsed} <= ${table.interviewsLimit} OR ${table.interviewsLimit} = -1`
@@ -205,6 +206,8 @@ export const creditGrant = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     rolloverEligible: boolean("rollover_eligible").default(false).notNull(),
     rolloverSourceGrantId: uuid("rollover_source_grant_id"),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revocationKey: text("revocation_key"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -324,6 +327,7 @@ export const creditReservationGrant = pgTable(
       .references(() => creditGrant.id, { onDelete: "cascade" })
       .notNull(),
     credits: integer("credits").notNull(),
+    revokedCredits: integer("revoked_credits").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -337,6 +341,81 @@ export const creditReservationGrant = pgTable(
     creditsCheck: check(
       "credit_reservation_grant_credits_check",
       sql`${table.credits} > 0`
+    ),
+    revokedCreditsCheck: check(
+      "credit_reservation_grant_revoked_credits_check",
+      sql`${table.revokedCredits} >= 0 AND ${table.revokedCredits} <= ${table.credits}`
+    ),
+  })
+);
+
+export const creditRolloverLot = pgTable(
+  "credit_rollover_lot",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => appUser.id, { onDelete: "cascade" })
+      .notNull(),
+    rolloverGrantId: uuid("rollover_grant_id")
+      .references(() => creditGrant.id, { onDelete: "cascade" })
+      .notNull(),
+    sourceGrantId: uuid("source_grant_id")
+      .references(() => creditGrant.id, { onDelete: "cascade" })
+      .notNull(),
+    originalCredits: integer("original_credits").notNull(),
+    remainingCredits: integer("remaining_credits").notNull(),
+    reservedCredits: integer("reserved_credits").default(0).notNull(),
+    consumedCredits: integer("consumed_credits").default(0).notNull(),
+    revokedCredits: integer("revoked_credits").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    rolloverSourceUnique: unique("credit_rollover_lot_grant_source_uniq").on(
+      table.rolloverGrantId,
+      table.sourceGrantId
+    ),
+    userIdx: index("credit_rollover_lot_user_id_idx").on(table.userId),
+    sourceIdx: index("credit_rollover_lot_source_grant_id_idx").on(
+      table.sourceGrantId
+    ),
+    balanceCheck: check(
+      "credit_rollover_lot_balance_check",
+      sql`${table.originalCredits} > 0 AND ${table.remainingCredits} >= 0 AND ${table.reservedCredits} >= 0 AND ${table.consumedCredits} >= 0 AND ${table.revokedCredits} >= 0 AND ${table.originalCredits} = (${table.remainingCredits} + ${table.reservedCredits} + ${table.consumedCredits} + ${table.revokedCredits})`
+    ),
+  })
+);
+
+export const creditRolloverLotAllocation = pgTable(
+  "credit_rollover_lot_allocation",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reservationGrantId: uuid("reservation_grant_id")
+      .references(() => creditReservationGrant.id, { onDelete: "cascade" })
+      .notNull(),
+    rolloverLotId: uuid("rollover_lot_id")
+      .references(() => creditRolloverLot.id, { onDelete: "cascade" })
+      .notNull(),
+    credits: integer("credits").notNull(),
+    revokedCredits: integer("revoked_credits").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    allocationLotUnique: unique(
+      "credit_rollover_lot_allocation_uniq"
+    ).on(table.reservationGrantId, table.rolloverLotId),
+    lotIdx: index("credit_rollover_lot_allocation_lot_id_idx").on(
+      table.rolloverLotId
+    ),
+    creditsCheck: check(
+      "credit_rollover_lot_allocation_credits_check",
+      sql`${table.credits} > 0 AND ${table.revokedCredits} >= 0 AND ${table.revokedCredits} <= ${table.credits}`
     ),
   })
 );
@@ -404,7 +483,13 @@ export const paymentHistory = pgTable(
     // Stripe references
     stripePaymentIntentId: text("stripe_payment_intent_id").unique(),
     stripeInvoiceId: text("stripe_invoice_id"),
+    stripeCheckoutSessionId: text("stripe_checkout_session_id").unique(),
+    stripeChargeId: text("stripe_charge_id").unique(),
     stripeEventId: text("stripe_event_id").unique(), // CRITICAL FIX: Prevents duplicate payment records
+    creditGrantId: uuid("credit_grant_id").references(() => creditGrant.id, {
+      onDelete: "set null",
+    }),
+    catalogId: text("catalog_id"),
 
     // Payment details
     amountInCents: integer("amount_in_cents").notNull(),
@@ -429,7 +514,7 @@ export const paymentHistory = pgTable(
     // Check constraints
     statusCheck: check(
       "payment_history_status_check",
-      sql`${table.status} IN ('succeeded', 'failed', 'refunded', 'canceled')`
+      sql`${table.status} IN ('succeeded', 'failed', 'partially_refunded', 'refunded', 'disputed', 'canceled')`
     ),
 
     // Indexes
@@ -439,6 +524,119 @@ export const paymentHistory = pgTable(
     stripeEventIdIdx: index("payment_history_stripe_event_id_idx").on(
       table.stripeEventId
     ), // FIX: For idempotency check
+    invoiceIdx: index("payment_history_stripe_invoice_id_idx").on(
+      table.stripeInvoiceId
+    ),
+    grantIdx: index("payment_history_credit_grant_id_idx").on(
+      table.creditGrantId
+    ),
+  })
+);
+
+export const billingAdjustment = pgTable(
+  "billing_adjustment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => appUser.id, { onDelete: "cascade" })
+      .notNull(),
+    paymentHistoryId: uuid("payment_history_id").references(
+      () => paymentHistory.id,
+      { onDelete: "set null" }
+    ),
+    creditGrantId: uuid("credit_grant_id").references(() => creditGrant.id, {
+      onDelete: "set null",
+    }),
+    stripeEventId: text("stripe_event_id").unique().notNull(),
+    providerAdjustmentId: text("provider_adjustment_id").notNull(),
+    adjustmentType: text("adjustment_type").notNull(),
+    direction: text("direction").notNull(),
+    amountInCents: integer("amount_in_cents"),
+    currency: text("currency"),
+    sourceCredits: integer("source_credits").notNull(),
+    remainingCredits: integer("remaining_credits").notNull(),
+    reservedCredits: integer("reserved_credits").notNull(),
+    consumedCredits: integer("consumed_credits").notNull(),
+    revokedCredits: integer("revoked_credits").notNull(),
+    unrecoverableCredits: integer("unrecoverable_credits").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    userIdx: index("billing_adjustment_user_id_idx").on(table.userId),
+    paymentIdx: index("billing_adjustment_payment_history_id_idx").on(
+      table.paymentHistoryId
+    ),
+    grantIdx: index("billing_adjustment_credit_grant_id_idx").on(
+      table.creditGrantId
+    ),
+    typeCheck: check(
+      "billing_adjustment_type_check",
+      sql`${table.adjustmentType} IN ('refund', 'dispute')`
+    ),
+    directionCheck: check(
+      "billing_adjustment_direction_check",
+      sql`${table.direction} IN ('withdraw', 'reinstate')`
+    ),
+    providerDirectionUnique: unique(
+      "billing_adjustment_provider_direction_uniq"
+    ).on(table.providerAdjustmentId, table.direction),
+    quantitiesCheck: check(
+      "billing_adjustment_quantities_check",
+      sql`${table.sourceCredits} >= 0 AND ${table.remainingCredits} >= 0 AND ${table.reservedCredits} >= 0 AND ${table.consumedCredits} >= 0 AND ${table.revokedCredits} >= 0 AND ${table.unrecoverableCredits} >= 0 AND ${table.revokedCredits} = (${table.remainingCredits} + ${table.reservedCredits}) AND ${table.consumedCredits} <= ${table.unrecoverableCredits} AND (${table.revokedCredits} + ${table.unrecoverableCredits}) <= ${table.sourceCredits}`
+    ),
+  })
+);
+
+export const billingPaymentState = pgTable(
+  "billing_payment_state",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => appUser.id, { onDelete: "cascade" })
+      .notNull(),
+    paymentHistoryId: uuid("payment_history_id")
+      .references(() => paymentHistory.id, { onDelete: "cascade" })
+      .unique(),
+    creditGrantId: uuid("credit_grant_id")
+      .references(() => creditGrant.id, { onDelete: "cascade" })
+      .notNull()
+      .unique(),
+    sourceCredits: integer("source_credits").notNull(),
+    targetCredits: integer("target_credits").notNull(),
+    revokedCredits: integer("revoked_credits").notNull(),
+    unrecoverableCredits: integer("unrecoverable_credits").notNull(),
+    consumedCredits: integer("consumed_credits").notNull(),
+    grantRevocations: jsonb("grant_revocations")
+      .$type<Array<{ grantId: string; credits: number }>>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    allocationRevocations: jsonb("allocation_revocations")
+      .$type<
+        Array<{ allocationId: string; grantId: string; credits: number }>
+      >()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    lastProviderAdjustmentId: text("last_provider_adjustment_id").notNull(),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    userIdx: index("billing_payment_state_user_id_idx").on(table.userId),
+    grantIdx: index("billing_payment_state_credit_grant_id_idx").on(
+      table.creditGrantId
+    ),
+    quantitiesCheck: check(
+      "billing_payment_state_quantities_check",
+      sql`${table.sourceCredits} >= 0 AND ${table.targetCredits} >= 0 AND ${table.targetCredits} <= ${table.sourceCredits} AND ${table.revokedCredits} >= 0 AND ${table.unrecoverableCredits} >= 0 AND ${table.consumedCredits} >= 0 AND ${table.revokedCredits} + ${table.unrecoverableCredits} = ${table.targetCredits} AND ${table.consumedCredits} <= ${table.unrecoverableCredits} AND ${table.version} >= 1`
+    ),
   })
 );
 
@@ -544,6 +742,12 @@ export const creditGrantRelations = relations(creditGrant, ({ one, many }) => ({
   }),
   transactions: many(creditTransaction),
   reservationGrants: many(creditReservationGrant),
+  rolloverDestinationLots: many(creditRolloverLot, {
+    relationName: "rolloverLotDestination",
+  }),
+  rolloverSourceLots: many(creditRolloverLot, {
+    relationName: "rolloverLotSource",
+  }),
 }));
 
 export const creditReservationRelations = relations(
@@ -560,7 +764,7 @@ export const creditReservationRelations = relations(
 
 export const creditReservationGrantRelations = relations(
   creditReservationGrant,
-  ({ one }) => ({
+  ({ one, many }) => ({
     reservation: one(creditReservation, {
       fields: [creditReservationGrant.reservationId],
       references: [creditReservation.id],
@@ -568,6 +772,42 @@ export const creditReservationGrantRelations = relations(
     grant: one(creditGrant, {
       fields: [creditReservationGrant.grantId],
       references: [creditGrant.id],
+    }),
+    rolloverLotAllocations: many(creditRolloverLotAllocation),
+  })
+);
+
+export const creditRolloverLotRelations = relations(
+  creditRolloverLot,
+  ({ one, many }) => ({
+    user: one(appUser, {
+      fields: [creditRolloverLot.userId],
+      references: [appUser.id],
+    }),
+    rolloverGrant: one(creditGrant, {
+      fields: [creditRolloverLot.rolloverGrantId],
+      references: [creditGrant.id],
+      relationName: "rolloverLotDestination",
+    }),
+    sourceGrant: one(creditGrant, {
+      fields: [creditRolloverLot.sourceGrantId],
+      references: [creditGrant.id],
+      relationName: "rolloverLotSource",
+    }),
+    allocations: many(creditRolloverLotAllocation),
+  })
+);
+
+export const creditRolloverLotAllocationRelations = relations(
+  creditRolloverLotAllocation,
+  ({ one }) => ({
+    reservationGrant: one(creditReservationGrant, {
+      fields: [creditRolloverLotAllocation.reservationGrantId],
+      references: [creditReservationGrant.id],
+    }),
+    lot: one(creditRolloverLot, {
+      fields: [creditRolloverLotAllocation.rolloverLotId],
+      references: [creditRolloverLot.id],
     }),
   })
 );
@@ -595,7 +835,47 @@ export const paymentHistoryRelations = relations(paymentHistory, ({ one }) => ({
     fields: [paymentHistory.userId],
     references: [appUser.id],
   }),
+  grant: one(creditGrant, {
+    fields: [paymentHistory.creditGrantId],
+    references: [creditGrant.id],
+  }),
 }));
+
+export const billingAdjustmentRelations = relations(
+  billingAdjustment,
+  ({ one }) => ({
+    user: one(appUser, {
+      fields: [billingAdjustment.userId],
+      references: [appUser.id],
+    }),
+    payment: one(paymentHistory, {
+      fields: [billingAdjustment.paymentHistoryId],
+      references: [paymentHistory.id],
+    }),
+    grant: one(creditGrant, {
+      fields: [billingAdjustment.creditGrantId],
+      references: [creditGrant.id],
+    }),
+  })
+);
+
+export const billingPaymentStateRelations = relations(
+  billingPaymentState,
+  ({ one }) => ({
+    user: one(appUser, {
+      fields: [billingPaymentState.userId],
+      references: [appUser.id],
+    }),
+    payment: one(paymentHistory, {
+      fields: [billingPaymentState.paymentHistoryId],
+      references: [paymentHistory.id],
+    }),
+    grant: one(creditGrant, {
+      fields: [billingPaymentState.creditGrantId],
+      references: [creditGrant.id],
+    }),
+  })
+);
 
 export const stripeCustomerMappingRelations = relations(
   stripeCustomerMapping,

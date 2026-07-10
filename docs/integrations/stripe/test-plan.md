@@ -41,14 +41,14 @@ stripe listen --forward-to http://localhost:3000/api/webhooks/stripe
 
 ## Test Cards
 
-| Card number | Result |
-| --- | --- |
-| `4242 4242 4242 4242` | Successful Visa payment |
+| Card number           | Result                        |
+| --------------------- | ----------------------------- |
+| `4242 4242 4242 4242` | Successful Visa payment       |
 | `5555 5555 5555 4444` | Successful Mastercard payment |
-| `3782 822463 10005` | Successful Amex payment |
-| `4000 0000 0000 0002` | Generic decline |
-| `4000 0000 0000 9995` | Insufficient funds |
-| `4000 0025 0000 3155` | 3D Secure required |
+| `3782 822463 10005`   | Successful Amex payment       |
+| `4000 0000 0000 0002` | Generic decline               |
+| `4000 0000 0000 9995` | Insufficient funds            |
+| `4000 0025 0000 3155` | 3D Secure required            |
 
 Use any future expiry, any CVC, and any ZIP in test mode.
 
@@ -281,6 +281,41 @@ Expected:
 - Known Starter and Pro prices sync to `starter` and `pro`.
 - Unknown prices are logged and preserve existing local tier if one exists.
 - Unknown prices do not silently become `pro`.
+
+## Scenario 11: Refund And Dispute Convergence
+
+**Goal**: Verify provider payment truth and usable-credit truth remain reversible and proportional.
+
+Use Stripe test-mode fixtures only. Exercise `refund.created`, `refund.updated`, `refund.failed`, `charge.refunded`, `charge.dispute.created`, `charge.dispute.funds_withdrawn`, `charge.dispute.funds_reinstated`, and `charge.dispute.closed` for won and lost outcomes.
+
+Expected:
+
+- Provider object plus direction converges despite distinct delivery event IDs.
+- Reinstatement-before-withdrawal prevents a later stale freeze.
+- Cumulative partial reversals use floor rounding against original payment amount and cap at the source grant.
+- Existing reservations remain settleable; release cannot resurrect a frozen quantity, and reinstatement never recreates a quantity consumed while frozen.
+- A failed refund or won dispute reinstates only eligible correlated quantity.
+- Payment history remains `partially_refunded` or `disputed` while another active reversal exists.
+- Two full withdrawals keep the full source frozen when either one is reinstated; freeze ownership transfers to the remaining active provider object and restores only after the last active withdrawal is reinstated.
+- `billing_adjustment` records source, remaining, reserved, consumed, revoked, and unrecoverable quantities without hidden negative balances.
+
+### Pooled rollover provenance regression
+
+Create two Starter renewal grants with four credits each. Consume three from
+the first, temporarily dispute its last credit, consume three from the second,
+reinstate the first, and renew so the two remaining credits form one rollover
+grant. Consume one rollover credit, then fully refund both original payments in
+both orders and with concurrent duplicate delivery.
+
+Expected:
+
+- The remaining balance is four credits from the new renewal, not five.
+- The two original payment states total seven unrecoverable credits and one
+  revoked credit.
+- The consumed rollover credit belongs to exactly one source lot.
+- Replay and delivery order do not change the result.
+- A rollover grant without complete durable source lots blocks strict
+  preflight for support review; it is never attributed heuristically.
 
 ## Production Checklist
 

@@ -28,7 +28,8 @@ MIGRATION_TEST_DATABASE_URL=postgresql://... npm run test:database-migrations
 ```
 
 `npm run db:preflight` reports aggregate-only ledger integrity counts under
-`creditLedgerIntegrity`. Before relaunch, all counts must be zero on the
+`creditLedgerIntegrity` and payment-reversal correlation counts under
+`billingAdjustmentIntegrity`. Before relaunch, all counts must be zero on the
 isolated Preview database. The report must not contain user IDs, Stripe IDs,
 balances, or other customer data. Preview currently shares Production data, so
 do not run the rehearsal until SAV-226 establishes an isolated environment.
@@ -137,6 +138,13 @@ Stripe manual checks:
 - Starter Checkout creates subscription state and one 4-credit renewal grant.
 - Pro Checkout creates subscription state and one 12-credit renewal grant.
 - Replayed `checkout.session.completed` and `invoice.payment_succeeded` events do not duplicate grants.
+- `refund.created`, `refund.updated`, and legacy `charge.refunded` converge on one provider-object withdrawal; `refund.failed` or canceled status reinstates eligible value once.
+- `charge.dispute.created` and `charge.dispute.funds_withdrawn` converge on one withdrawal; `charge.dispute.funds_reinstated` and `charge.dispute.closed` with `won` converge on one reinstatement.
+- Reversed event order does not leave a stale freeze, and a second same-direction event ID does not produce an idempotency conflict.
+- Multiple partial refunds use cumulative floor rounding and never revoke more than the payment-funded source credits.
+- Reinstating one adjustment preserves `partially_refunded` or `disputed` payment status while another withdrawal remains active.
+- Reinstating one of multiple withdrawals recomputes the aggregate payment target and does not restore more value than all still-active withdrawals permit.
+- A credit consumed while frozen remains unrecoverable after a later session refund; overlapping withdrawal/reinstatement order cannot recreate it.
 - `invoice.payment_failed` creates failed payment history and no credit grant.
 - `/api/billing/sync` never maps unknown Stripe prices to Pro.
 
@@ -189,6 +197,71 @@ ledger-integrity incident and run recovery; never issue an ad hoc table update.
 Raw runtime exceptions, room tokens, recordings, transcripts, and provider
 secrets are not support-visible billing evidence.
 
+For a payment-reversal case, inspect the versioned aggregate state separately
+from immutable provider events:
+
+```sql
+SELECT
+  state.source_credits,
+  state.target_credits,
+  state.revoked_credits,
+  state.unrecoverable_credits,
+  state.consumed_credits,
+  state.version,
+  state.updated_at
+FROM billing_payment_state state
+WHERE state.payment_history_id = $1;
+
+SELECT
+  adjustment.adjustment_type,
+  adjustment.direction,
+  adjustment.amount_in_cents,
+  adjustment.revoked_credits,
+  adjustment.unrecoverable_credits,
+  adjustment.created_at
+FROM billing_adjustment adjustment
+WHERE adjustment.payment_history_id = $1
+ORDER BY adjustment.created_at, adjustment.id;
+```
+
+The state is current reconciliation truth; adjustment rows are historical
+event evidence and must never be reassigned or rewritten to represent current
+freeze ownership.
+
+For rollover provenance, inspect the source lots and reservation splits rather
+than attributing pooled consumption from the destination grant total:
+
+```sql
+SELECT
+  lot.source_grant_id,
+  lot.rollover_grant_id,
+  lot.original_credits,
+  lot.remaining_credits,
+  lot.reserved_credits,
+  lot.consumed_credits,
+  lot.revoked_credits
+FROM credit_rollover_lot lot
+WHERE lot.source_grant_id = $1
+ORDER BY lot.created_at, lot.id;
+
+SELECT
+  lot_allocation.reservation_grant_id,
+  lot_allocation.rollover_lot_id,
+  lot_allocation.credits,
+  lot_allocation.revoked_credits
+FROM credit_rollover_lot_allocation lot_allocation
+JOIN credit_rollover_lot lot ON lot.id = lot_allocation.rollover_lot_id
+WHERE lot.source_grant_id = $1
+ORDER BY lot_allocation.created_at, lot_allocation.id;
+```
+
+Every rollover grant must have source lots whose original, remaining, and
+reserved sums equal the destination grant. Every rollover reservation grant
+must have lot allocations whose credit and revoked sums equal the aggregate
+allocation. Strict preflight reports any mismatch. Do not manufacture lots for
+legacy pooled grants: stop launch, isolate the affected accounts, and resolve
+them through an explicit support decision with preserved evidence.
+
 ## Analytics Events
 
 PostHog server events emitted by the credit ledger:
@@ -203,6 +276,7 @@ PostHog server events emitted by the credit ledger:
 | `billing_credit_expired`          | `catalog_id`, `credit_source`, `credits`, `grant_id`                                                   |
 | `billing_credit_rollover_created` | `catalog_id`, `credits`, `source_id`, `grant_id`, `duplicate`                                          |
 | `billing_no_credits`              | `credits`, `balance_after`, `session_id`, `reason`                                                     |
+| `billing_credit_payment_adjusted` | `credits`, `reason`, `reserved_credits`, `consumed_credits`, `unrecoverable_credits`, `duplicate`      |
 
 Minimum launch dashboard questions:
 

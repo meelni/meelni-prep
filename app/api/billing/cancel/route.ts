@@ -118,7 +118,8 @@ export async function POST(req: NextRequest) {
       if (cancelImmediately) {
         // Cancel immediately - no more access after this
         await stripe.subscriptions.cancel(sub.stripeSubscriptionId, {
-          prorate: true, // Refund unused portion
+          prorate: true,
+          invoice_now: true,
         });
 
         // Update database
@@ -145,7 +146,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           success: true,
           message:
-            "Your subscription has been canceled immediately. You will receive a prorated refund.",
+            "Your subscription has been canceled immediately. Any eligible billing adjustment will appear in your payment history after Stripe processes it.",
           status: "canceled",
           effectiveDate: new Date().toISOString(),
         });

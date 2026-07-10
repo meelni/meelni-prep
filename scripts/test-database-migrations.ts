@@ -36,6 +36,7 @@ import {
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
   CREDIT_RECOVERY_SCHEMA_FINGERPRINT,
+  BILLING_TRUTH_SCHEMA_FINGERPRINT,
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
@@ -170,7 +171,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, CREDIT_RECOVERY_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, BILLING_TRUTH_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -4125,7 +4126,7 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(refundedPreflight.startingContract, "credit_recovery");
+    assert.equal(refundedPreflight.startingContract, "billing_truth");
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -4389,7 +4390,7 @@ async function verifyProviderCreditRecovery(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 16);
+  assert.equal(await migrationCount(sql), 17);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -4397,7 +4398,21 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 25);
+  assert.equal(tables.length, 29);
+  assert.ok(
+    tables.some(({ table_name }) => table_name === "billing_adjustment")
+  );
+  assert.ok(
+    tables.some(({ table_name }) => table_name === "billing_payment_state")
+  );
+  assert.ok(
+    tables.some(({ table_name }) => table_name === "credit_rollover_lot")
+  );
+  assert.ok(
+    tables.some(
+      ({ table_name }) => table_name === "credit_rollover_lot_allocation"
+    )
+  );
   assert.ok(
     tables.some(
       ({ table_name }) => table_name === "transcript_interruption_marker"
@@ -4477,6 +4492,14 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND trigger_name = 'protect_interview_session_stable_evidence'
   `;
   assert.equal(stableStartContracts.length, 17);
+
+  const billingEvidenceTriggers = await sql<{ name: string }[]>`
+    SELECT trigger_name AS name
+    FROM information_schema.triggers
+    WHERE trigger_schema = 'public'
+      AND trigger_name = 'billing_adjustment_immutable'
+  `;
+  assert.equal(billingEvidenceTriggers.length, 1);
 
   const lifecycleIndexes = await sql<{ indexname: string }[]>`
     SELECT indexname
@@ -4716,7 +4739,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 25);
+  assert.equal(rls.length, 29);
   assert.ok(rls.every((table) => table.enabled));
 
   const unsafePolicies = await sql<{ count: number }[]>`
@@ -5392,6 +5415,671 @@ async function verifyAtomicCreditLedger(
       new_grants: 0,
       rollover_transactions: 0,
     });
+
+    const adjustmentUser = creditTestUserId(8);
+    await seedCreditTestUser(
+      sql,
+      adjustmentUser,
+      `${scope}-billing-adjustment`
+    );
+    const paidGrant = await ledgers[0]!.grantCredits({
+      userId: adjustmentUser,
+      catalogId: "interview_pass",
+      source: "checkout",
+      sourceId: key("checkout-session"),
+      idempotencyKey: key("paid-grant"),
+      includedCredits: 1,
+      expiresAt: null,
+    });
+    const [payment] = await sql<{ id: string }[]>`
+      INSERT INTO payment_history (
+        user_id, stripe_payment_intent_id, stripe_checkout_session_id,
+        credit_grant_id, catalog_id, amount_in_cents, currency, status
+      ) VALUES (
+        ${adjustmentUser}::uuid, ${key("pi")}, ${key("checkout-session")},
+        ${paidGrant.grant.id}::uuid, 'interview_pass', 900, 'usd', 'succeeded'
+      ) RETURNING id
+    `;
+    assert.ok(payment?.id);
+    await ledgers[0]!.reserveCredit({
+      userId: adjustmentUser,
+      reservationKey: key("adjustment-reservation"),
+      credits: 1,
+    });
+    const adjustmentBase = {
+      userId: adjustmentUser,
+      paymentHistoryId: payment.id,
+      grantIdempotencyKey: key("paid-grant"),
+      providerAdjustmentId: key("refund-object"),
+      adjustmentType: "refund" as const,
+      amountInCents: 900,
+      sourcePaymentAmountInCents: 900,
+      currency: "usd",
+    };
+    const withdrawalAttempts = await runConcurrently(
+      ledgers.map(
+        (ledger, index) => () =>
+          ledger.revokePaidGrant({
+            ...adjustmentBase,
+            stripeEventId: key(`refund-delivery:${index}`),
+          })
+      )
+    );
+    assert.equal(rejected(withdrawalAttempts).length, 0);
+    const secondAdjustmentBase = {
+      ...adjustmentBase,
+      providerAdjustmentId: key("second-refund-object"),
+    };
+    await ledgers[0]!.revokePaidGrant({
+      ...secondAdjustmentBase,
+      stripeEventId: key("second-refund-delivery"),
+    });
+    await ledgers[0]!.releaseReservation({
+      reservationKey: key("adjustment-reservation"),
+      idempotencyKey: key("adjustment-release"),
+    });
+    const reinstatementAttempts = await runConcurrently(
+      ledgers.map(
+        (ledger, index) => () =>
+          ledger.reinstatePaidGrant({
+            ...adjustmentBase,
+            stripeEventId: key(`reinstatement-delivery:${index}`),
+          })
+      )
+    );
+    assert.equal(rejected(reinstatementAttempts).length, 0);
+    const [transferredState] = await sql<
+      {
+        remaining: number;
+        revocation_key: string | null;
+        payment_status: string;
+      }[]
+    >`
+      SELECT grant_row.remaining_credits::int AS remaining,
+        grant_row.revocation_key,
+        payment.status AS payment_status
+      FROM credit_grant grant_row
+      JOIN payment_history payment ON payment.credit_grant_id = grant_row.id
+      WHERE grant_row.id = ${paidGrant.grant.id}::uuid
+    `;
+    assert.deepEqual(transferredState, {
+      remaining: 0,
+      revocation_key: `payment:${payment.id}`,
+      payment_status: "refunded",
+    });
+    const secondReinstatementAttempts = await runConcurrently(
+      ledgers.map(
+        (ledger, index) => () =>
+          ledger.reinstatePaidGrant({
+            ...secondAdjustmentBase,
+            stripeEventId: key(`second-reinstatement-delivery:${index}`),
+          })
+      )
+    );
+    assert.equal(rejected(secondReinstatementAttempts).length, 0);
+    const [adjustmentState] = await sql<
+      {
+        remaining: number;
+        reserved: number;
+        revoked_at: Date | null;
+        adjustment_rows: number;
+        adjustment_transactions: number;
+        payment_status: string;
+      }[]
+    >`
+      SELECT grant_row.remaining_credits::int AS remaining,
+        grant_row.reserved_credits::int AS reserved,
+        grant_row.revoked_at,
+        (SELECT count(*)::int FROM billing_adjustment
+          WHERE user_id = ${adjustmentUser}::uuid) AS adjustment_rows,
+        (SELECT count(*)::int FROM credit_transaction
+          WHERE user_id = ${adjustmentUser}::uuid AND type = 'adjustment')
+          AS adjustment_transactions,
+        (SELECT status FROM payment_history WHERE id = ${payment.id}::uuid)
+          AS payment_status
+      FROM credit_grant grant_row
+      WHERE grant_row.id = ${paidGrant.grant.id}::uuid
+    `;
+    assert.deepEqual(adjustmentState, {
+      remaining: 1,
+      reserved: 0,
+      revoked_at: null,
+      adjustment_rows: 4,
+      adjustment_transactions: 1,
+      payment_status: "succeeded",
+    });
+    await assert.rejects(
+      () => sql`
+        UPDATE billing_adjustment
+        SET metadata = jsonb_build_object('rewritten', true)
+        WHERE user_id = ${adjustmentUser}::uuid
+      `,
+      /billing adjustment evidence is immutable/
+    );
+
+    const partialUser = creditTestUserId(9);
+    await seedCreditTestUser(sql, partialUser, `${scope}-partial-adjustment`);
+    const partialGrant = await ledgers[0]!.grantCredits({
+      userId: partialUser,
+      catalogId: "starter",
+      source: "subscription_renewal",
+      sourceId: key("partial-invoice"),
+      idempotencyKey: key("partial-paid-grant"),
+      includedCredits: 4,
+      expiresAt: null,
+    });
+    const [partialPayment] = await sql<{ id: string }[]>`
+      INSERT INTO payment_history (
+        user_id, stripe_payment_intent_id, stripe_invoice_id,
+        credit_grant_id, catalog_id, amount_in_cents, currency, status
+      ) VALUES (
+        ${partialUser}::uuid, ${key("partial-pi")}, ${key("partial-invoice")},
+        ${partialGrant.grant.id}::uuid, 'starter', 1900, 'usd', 'succeeded'
+      ) RETURNING id
+    `;
+    assert.ok(partialPayment?.id);
+    await ledgers[0]!.reserveCredit({
+      userId: partialUser,
+      reservationKey: key("partial-consumed"),
+      credits: 1,
+    });
+    await ledgers[0]!.consumeReservation({
+      reservationKey: key("partial-consumed"),
+      idempotencyKey: key("partial-consume"),
+    });
+    await ledgers[0]!.reserveCredit({
+      userId: partialUser,
+      reservationKey: key("partial-active"),
+      credits: 2,
+    });
+    const partialBase = {
+      userId: partialUser,
+      paymentHistoryId: partialPayment.id,
+      grantIdempotencyKey: key("partial-paid-grant"),
+      adjustmentType: "refund" as const,
+      amountInCents: 950,
+      sourcePaymentAmountInCents: 1900,
+      currency: "usd",
+    };
+    await ledgers[0]!.revokePaidGrant({
+      ...partialBase,
+      stripeEventId: key("partial-a"),
+      providerAdjustmentId: key("partial-refund-a"),
+    });
+    await ledgers[0]!.revokePaidGrant({
+      ...partialBase,
+      stripeEventId: key("partial-b"),
+      providerAdjustmentId: key("partial-refund-b"),
+    });
+    await ledgers[0]!.releaseReservation({
+      reservationKey: key("partial-active"),
+      idempotencyKey: key("partial-release"),
+    });
+    const partialFirstReinstatements = await runConcurrently(
+      ledgers.map(
+        (ledger, index) => () =>
+          ledger.reinstatePaidGrant({
+            ...partialBase,
+            stripeEventId: key(`partial-a-reinstate:${index}`),
+            providerAdjustmentId: key("partial-refund-a"),
+          })
+      )
+    );
+    assert.equal(rejected(partialFirstReinstatements).length, 0);
+    const [partialIntermediate] = await sql<
+      {
+        remaining: number;
+        revoked_at: Date | null;
+        payment_status: string;
+      }[]
+    >`
+      SELECT grant_row.remaining_credits::int AS remaining,
+        grant_row.revoked_at,
+        payment.status AS payment_status
+      FROM credit_grant grant_row
+      JOIN payment_history payment ON payment.credit_grant_id = grant_row.id
+      WHERE grant_row.id = ${partialGrant.grant.id}::uuid
+    `;
+    assert.deepEqual(partialIntermediate, {
+      remaining: 2,
+      revoked_at: null,
+      payment_status: "partially_refunded",
+    });
+    const partialSecondReinstatements = await runConcurrently(
+      ledgers.map(
+        (ledger, index) => () =>
+          ledger.reinstatePaidGrant({
+            ...partialBase,
+            stripeEventId: key(`partial-b-reinstate:${index}`),
+            providerAdjustmentId: key("partial-refund-b"),
+          })
+      )
+    );
+    assert.equal(rejected(partialSecondReinstatements).length, 0);
+    const [partialFinal] = await sql<
+      { remaining: number; payment_status: string; adjustment_rows: number }[]
+    >`
+      SELECT grant_row.remaining_credits::int AS remaining,
+        payment.status AS payment_status,
+        (SELECT count(*)::int FROM billing_adjustment
+          WHERE user_id = ${partialUser}::uuid) AS adjustment_rows
+      FROM credit_grant grant_row
+      JOIN payment_history payment ON payment.credit_grant_id = grant_row.id
+      WHERE grant_row.id = ${partialGrant.grant.id}::uuid
+    `;
+    assert.deepEqual(partialFinal, {
+      remaining: 3,
+      payment_status: "succeeded",
+      adjustment_rows: 4,
+    });
+
+    const overlapUser = creditTestUserId(10);
+    await seedCreditTestUser(
+      sql,
+      overlapUser,
+      `${scope}-overlapping-adjustments`
+    );
+    const overlapGrant = await ledgers[0]!.grantCredits({
+      userId: overlapUser,
+      catalogId: "starter",
+      source: "subscription_renewal",
+      sourceId: key("overlap-invoice"),
+      idempotencyKey: key("overlap-paid-grant"),
+      includedCredits: 4,
+      expiresAt: null,
+    });
+    const [overlapPayment] = await sql<{ id: string }[]>`
+      INSERT INTO payment_history (
+        user_id, stripe_payment_intent_id, stripe_invoice_id,
+        credit_grant_id, catalog_id, amount_in_cents, currency, status
+      ) VALUES (
+        ${overlapUser}::uuid, ${key("overlap-pi")}, ${key("overlap-invoice")},
+        ${overlapGrant.grant.id}::uuid, 'starter', 1900, 'usd', 'succeeded'
+      ) RETURNING id
+    `;
+    assert.ok(overlapPayment?.id);
+    await ledgers[0]!.reserveCredit({
+      userId: overlapUser,
+      reservationKey: key("overlap-consumed"),
+      credits: 3,
+    });
+    await ledgers[0]!.consumeReservation({
+      reservationKey: key("overlap-consumed"),
+      idempotencyKey: key("overlap-consume"),
+    });
+    const overlapBase = {
+      userId: overlapUser,
+      paymentHistoryId: overlapPayment.id,
+      grantIdempotencyKey: key("overlap-paid-grant"),
+      adjustmentType: "refund" as const,
+      amountInCents: 950,
+      sourcePaymentAmountInCents: 1900,
+      currency: "usd",
+    };
+    for (const providerAdjustmentId of [
+      key("overlap-refund-a"),
+      key("overlap-refund-b"),
+    ]) {
+      await ledgers[0]!.revokePaidGrant({
+        ...overlapBase,
+        stripeEventId: `${providerAdjustmentId}:withdraw`,
+        providerAdjustmentId,
+      });
+    }
+    await ledgers[0]!.reinstatePaidGrant({
+      ...overlapBase,
+      stripeEventId: key("overlap-a-reinstate"),
+      providerAdjustmentId: key("overlap-refund-a"),
+    });
+    await ledgers[0]!.revokePaidGrant({
+      ...overlapBase,
+      stripeEventId: key("overlap-c-withdraw"),
+      providerAdjustmentId: key("overlap-refund-c"),
+    });
+    const overlapReinstatementAttempts = await runConcurrently(
+      ledgers.map(
+        (ledger, index) => () =>
+          ledger.reinstatePaidGrant({
+            ...overlapBase,
+            stripeEventId: key(`overlap-b-reinstate:${index}`),
+            providerAdjustmentId: key("overlap-refund-b"),
+          })
+      )
+    );
+    assert.equal(rejected(overlapReinstatementAttempts).length, 0);
+    const [overlapState] = await sql<
+      {
+        remaining: number;
+        revoked_at: Date | null;
+        target: number;
+        revoked: number;
+        unrecoverable: number;
+        consumed: number;
+        grant_evidence: number;
+        allocation_evidence: number;
+      }[]
+    >`
+      SELECT grant_row.remaining_credits::int AS remaining,
+        grant_row.revoked_at,
+        state.target_credits::int AS target,
+        state.revoked_credits::int AS revoked,
+        state.unrecoverable_credits::int AS unrecoverable,
+        state.consumed_credits::int AS consumed,
+        jsonb_array_length(state.grant_revocations)::int AS grant_evidence,
+        jsonb_array_length(state.allocation_revocations)::int
+          AS allocation_evidence
+      FROM credit_grant grant_row
+      JOIN billing_payment_state state
+        ON state.credit_grant_id = grant_row.id
+      WHERE grant_row.id = ${overlapGrant.grant.id}::uuid
+    `;
+    assert.deepEqual(overlapState, {
+      remaining: 1,
+      revoked_at: null,
+      target: 2,
+      revoked: 0,
+      unrecoverable: 2,
+      consumed: 2,
+      grant_evidence: 0,
+      allocation_evidence: 0,
+    });
+
+    for (const [offset, firstProvider] of [
+      [11, "a"],
+      [12, "b"],
+    ] as const) {
+      const frozenUser = creditTestUserId(offset);
+      await seedCreditTestUser(
+        sql,
+        frozenUser,
+        `${scope}-refunded-frozen-${firstProvider}`
+      );
+      const frozenGrant = await ledgers[0]!.grantCredits({
+        userId: frozenUser,
+        catalogId: "interview_pass",
+        source: "checkout",
+        sourceId: key(`frozen-checkout-${firstProvider}`),
+        idempotencyKey: key(`frozen-grant-${firstProvider}`),
+        includedCredits: 1,
+        expiresAt: null,
+      });
+      const [frozenPayment] = await sql<{ id: string }[]>`
+        INSERT INTO payment_history (
+          user_id, stripe_payment_intent_id, stripe_checkout_session_id,
+          credit_grant_id, catalog_id, amount_in_cents, currency, status
+        ) VALUES (
+          ${frozenUser}::uuid, ${key(`frozen-pi-${firstProvider}`)},
+          ${key(`frozen-checkout-${firstProvider}`)},
+          ${frozenGrant.grant.id}::uuid, 'interview_pass', 900, 'usd',
+          'succeeded'
+        ) RETURNING id
+      `;
+      assert.ok(frozenPayment?.id);
+      const reservationKey = key(`frozen-reservation-${firstProvider}`);
+      await ledgers[0]!.reserveCredit({
+        userId: frozenUser,
+        reservationKey,
+      });
+      const frozenBase = {
+        userId: frozenUser,
+        paymentHistoryId: frozenPayment.id,
+        grantIdempotencyKey: key(`frozen-grant-${firstProvider}`),
+        adjustmentType: "refund" as const,
+        amountInCents: 900,
+        sourcePaymentAmountInCents: 900,
+        currency: "usd",
+      };
+      for (const provider of ["a", "b"] as const) {
+        if (provider === "b") {
+          await ledgers[0]!.consumeReservation({
+            reservationKey,
+            idempotencyKey: key(`frozen-consume-${firstProvider}`),
+          });
+        }
+        await ledgers[0]!.revokePaidGrant({
+          ...frozenBase,
+          stripeEventId: key(`frozen-${firstProvider}-${provider}-withdraw`),
+          providerAdjustmentId: key(`frozen-${firstProvider}-${provider}`),
+        });
+      }
+      await ledgers[0]!.refundReservation({
+        reservationKey,
+        idempotencyKey: key(`frozen-refund-${firstProvider}`),
+      });
+      const secondProvider = firstProvider === "a" ? "b" : "a";
+      await ledgers[0]!.reinstatePaidGrant({
+        ...frozenBase,
+        stripeEventId: key(`frozen-${firstProvider}-first-reinstate`),
+        providerAdjustmentId: key(`frozen-${firstProvider}-${firstProvider}`),
+      });
+      const [frozenIntermediate] = await sql<
+        { remaining: number; target: number; unrecoverable: number }[]
+      >`
+        SELECT grant_row.remaining_credits::int AS remaining,
+          state.target_credits::int AS target,
+          state.unrecoverable_credits::int AS unrecoverable
+        FROM credit_grant grant_row
+        JOIN billing_payment_state state
+          ON state.credit_grant_id = grant_row.id
+        WHERE grant_row.id = ${frozenGrant.grant.id}::uuid
+      `;
+      assert.deepEqual(frozenIntermediate, {
+        remaining: 0,
+        target: 1,
+        unrecoverable: 1,
+      });
+      await ledgers[0]!.reinstatePaidGrant({
+        ...frozenBase,
+        stripeEventId: key(`frozen-${firstProvider}-second-reinstate`),
+        providerAdjustmentId: key(`frozen-${firstProvider}-${secondProvider}`),
+      });
+      const [frozenFinal] = await sql<
+        {
+          remaining: number;
+          revoked_at: Date | null;
+          target: number;
+          revoked: number;
+          unrecoverable: number;
+        }[]
+      >`
+        SELECT grant_row.remaining_credits::int AS remaining,
+          grant_row.revoked_at,
+          state.target_credits::int AS target,
+          state.revoked_credits::int AS revoked,
+          state.unrecoverable_credits::int AS unrecoverable
+        FROM credit_grant grant_row
+        JOIN billing_payment_state state
+          ON state.credit_grant_id = grant_row.id
+        WHERE grant_row.id = ${frozenGrant.grant.id}::uuid
+      `;
+      assert.deepEqual(frozenFinal, {
+        remaining: 0,
+        revoked_at: null,
+        target: 0,
+        revoked: 0,
+        unrecoverable: 0,
+      });
+    }
+
+    const pooledUser = creditTestUserId(13);
+    await seedCreditTestUser(sql, pooledUser, `${scope}-pooled-rollover`);
+    const pooledGrantAKey = key("pooled-grant-a");
+    const pooledGrantBKey = key("pooled-grant-b");
+    const pooledGrantA = await ledgers[0]!.grantCredits({
+      userId: pooledUser,
+      catalogId: "starter",
+      source: "subscription_renewal",
+      sourceId: key("pooled-invoice-a"),
+      idempotencyKey: pooledGrantAKey,
+      includedCredits: 4,
+      expiresAt: null,
+    });
+    const [pooledPaymentA] = await sql<{ id: string }[]>`
+      INSERT INTO payment_history (
+        user_id, stripe_payment_intent_id, stripe_invoice_id,
+        credit_grant_id, catalog_id, amount_in_cents, currency, status
+      ) VALUES (
+        ${pooledUser}::uuid, ${key("pooled-pi-a")},
+        ${key("pooled-invoice-a")}, ${pooledGrantA.grant.id}::uuid,
+        'starter', 1900, 'usd', 'succeeded'
+      ) RETURNING id
+    `;
+    assert.ok(pooledPaymentA?.id);
+    await ledgers[0]!.reserveCredit({
+      userId: pooledUser,
+      reservationKey: key("pooled-consume-a"),
+      credits: 3,
+    });
+    await ledgers[0]!.consumeReservation({
+      reservationKey: key("pooled-consume-a"),
+      idempotencyKey: key("pooled-consume-a-terminal"),
+    });
+    const temporaryPooledDispute = {
+      userId: pooledUser,
+      paymentHistoryId: pooledPaymentA.id,
+      grantIdempotencyKey: pooledGrantAKey,
+      providerAdjustmentId: key("pooled-temporary-dispute"),
+      adjustmentType: "dispute" as const,
+      amountInCents: 1900,
+      sourcePaymentAmountInCents: 1900,
+      currency: "usd",
+    };
+    await ledgers[0]!.revokePaidGrant({
+      ...temporaryPooledDispute,
+      stripeEventId: key("pooled-temporary-withdraw"),
+    });
+    const pooledGrantB = await ledgers[0]!.grantCredits({
+      userId: pooledUser,
+      catalogId: "starter",
+      source: "subscription_renewal",
+      sourceId: key("pooled-invoice-b"),
+      idempotencyKey: pooledGrantBKey,
+      includedCredits: 4,
+      expiresAt: null,
+    });
+    const [pooledPaymentB] = await sql<{ id: string }[]>`
+      INSERT INTO payment_history (
+        user_id, stripe_payment_intent_id, stripe_invoice_id,
+        credit_grant_id, catalog_id, amount_in_cents, currency, status
+      ) VALUES (
+        ${pooledUser}::uuid, ${key("pooled-pi-b")},
+        ${key("pooled-invoice-b")}, ${pooledGrantB.grant.id}::uuid,
+        'starter', 1900, 'usd', 'succeeded'
+      ) RETURNING id
+    `;
+    assert.ok(pooledPaymentB?.id);
+    await ledgers[0]!.reserveCredit({
+      userId: pooledUser,
+      reservationKey: key("pooled-consume-b"),
+      credits: 3,
+    });
+    await ledgers[0]!.consumeReservation({
+      reservationKey: key("pooled-consume-b"),
+      idempotencyKey: key("pooled-consume-b-terminal"),
+    });
+    await ledgers[0]!.reinstatePaidGrant({
+      ...temporaryPooledDispute,
+      stripeEventId: key("pooled-temporary-reinstate"),
+    });
+    const pooledRenewal = await ledgers[0]!.renewSubscriptionCredits({
+      userId: pooledUser,
+      catalogId: "starter",
+      sourceId: key("pooled-invoice-c"),
+      renewalIdempotencyKey: key("pooled-grant-c"),
+      rolloverIdempotencyKey: key("pooled-rollover-c"),
+    });
+    assert.equal(pooledRenewal.rolledCredits, 2);
+    await ledgers[0]!.reserveCredit({
+      userId: pooledUser,
+      reservationKey: key("pooled-consume-rollover"),
+    });
+    await ledgers[0]!.consumeReservation({
+      reservationKey: key("pooled-consume-rollover"),
+      idempotencyKey: key("pooled-consume-rollover-terminal"),
+    });
+
+    const pooledRefundA = {
+      userId: pooledUser,
+      paymentHistoryId: pooledPaymentA.id,
+      grantIdempotencyKey: pooledGrantAKey,
+      stripeEventId: key("pooled-refund-a"),
+      providerAdjustmentId: key("pooled-refund-object-a"),
+      adjustmentType: "refund" as const,
+      amountInCents: 1900,
+      sourcePaymentAmountInCents: 1900,
+      currency: "usd",
+    };
+    const pooledRefundB = {
+      ...pooledRefundA,
+      paymentHistoryId: pooledPaymentB.id,
+      grantIdempotencyKey: pooledGrantBKey,
+      stripeEventId: key("pooled-refund-b"),
+      providerAdjustmentId: key("pooled-refund-object-b"),
+    };
+    const pooledRefundResults = await runConcurrently([
+      () => ledgers[1]!.revokePaidGrant(pooledRefundA),
+      () => ledgers[2]!.revokePaidGrant(pooledRefundB),
+      () => ledgers[3]!.revokePaidGrant(pooledRefundA),
+      () => ledgers[4]!.revokePaidGrant(pooledRefundB),
+    ]);
+    assert.equal(
+      rejected(pooledRefundResults).length,
+      0,
+      rejected(pooledRefundResults)
+        .map(({ reason }) => errorMessage(reason))
+        .join(" | ")
+    );
+    const [pooledTruth] = await sql<
+      {
+        available: number;
+        revoked: number;
+        unrecoverable: number;
+        consumed_lot_credits: number;
+      }[]
+    >`
+      SELECT
+        (SELECT COALESCE(sum(remaining_credits), 0)::int
+          FROM credit_grant
+          WHERE user_id = ${pooledUser}::uuid
+            AND revoked_at IS NULL
+            AND (expires_at IS NULL OR expires_at > ${ledgerNow.toISOString()}::timestamptz))
+          AS available,
+        (SELECT sum(revoked_credits)::int FROM billing_payment_state
+          WHERE credit_grant_id IN (
+            ${pooledGrantA.grant.id}::uuid, ${pooledGrantB.grant.id}::uuid
+          )) AS revoked,
+        (SELECT sum(unrecoverable_credits)::int FROM billing_payment_state
+          WHERE credit_grant_id IN (
+            ${pooledGrantA.grant.id}::uuid, ${pooledGrantB.grant.id}::uuid
+          )) AS unrecoverable,
+        (SELECT sum(consumed_credits)::int FROM credit_rollover_lot
+          WHERE source_grant_id IN (
+            ${pooledGrantA.grant.id}::uuid, ${pooledGrantB.grant.id}::uuid
+          )) AS consumed_lot_credits
+    `;
+    assert.deepEqual(pooledTruth, {
+      available: 4,
+      revoked: 1,
+      unrecoverable: 7,
+      consumed_lot_credits: 1,
+    });
+    const pooledPreflight = runPreflight(databaseUrl, true, "reconciled")!;
+    const billingIntegrity = (
+      pooledPreflight as MigrationPreflightResult & {
+        billingAdjustmentIntegrity: Record<string, number>;
+      }
+    ).billingAdjustmentIntegrity;
+    assert.equal(
+      billingIntegrity["rollover_lot_balance_mismatches"],
+      scope === "upgrade" ? 2 : 0
+    );
+    assert.ok(
+      Object.entries(billingIntegrity).every(
+        ([keyName, count]) =>
+          keyName === "rollover_lot_balance_mismatches" || count === 0
+      ),
+      JSON.stringify(billingIntegrity)
+    );
   } finally {
     await Promise.all(clients.map((client) => client.end()));
   }

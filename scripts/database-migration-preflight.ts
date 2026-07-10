@@ -23,6 +23,7 @@ import {
   RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT,
   STABLE_START_SCHEMA_FINGERPRINT,
   CREDIT_RECOVERY_SCHEMA_FINGERPRINT,
+  BILLING_TRUTH_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 import {
   canonicalEnvironmentForEnvFile,
@@ -106,10 +107,12 @@ async function run(url: string, environmentIdentity: string) {
         ORDER BY created_at
       `;
       if (
-        ![2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(migrations.length)
+        ![2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(
+          migrations.length
+        )
       ) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, 14 runtime-settlement, 15 stable-start, or 16 credit-recovery migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, 14 runtime-settlement, 15 stable-start, 16 credit-recovery, or 17 billing-truth migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -252,8 +255,26 @@ async function run(url: string, environmentIdentity: string) {
           ? await getCreditRecoveryIntegrity(tx)
           : { terminal_missing_policy: 0, settled_policy_mismatches: 0 };
       const creditRecoveryLaunchReady =
-        migrations.length === 16 &&
+        migrations.length >= 16 &&
         Object.values(creditRecoveryIntegrity).every((count) => count === 0);
+      const billingAdjustmentIntegrity =
+        migrations.length >= 17
+          ? await getBillingAdjustmentIntegrity(tx)
+          : {
+              correlation_mismatches: 0,
+              incomplete_withdrawal_evidence: 0,
+              revoked_grants_without_active_withdrawal: 0,
+              payment_state_mismatches: 0,
+              payment_state_evidence_mismatches: 0,
+              payment_state_marker_mismatches: 0,
+              rollover_lot_balance_mismatches: 0,
+              rollover_lot_allocation_mismatches: 0,
+              rollover_lot_reference_mismatches: 0,
+              payment_state_provenance_mismatches: 0,
+            };
+      const billingAdjustmentLaunchReady =
+        migrations.length >= 15 &&
+        Object.values(billingAdjustmentIntegrity).every((count) => count === 0);
       if (
         summary.unsupported_tiers > 0 ||
         summary.legacy_premium_trials > 0 ||
@@ -278,7 +299,8 @@ async function run(url: string, environmentIdentity: string) {
         | "transcript_privacy"
         | "runtime_settlement"
         | "stable_start"
-        | "credit_recovery";
+        | "credit_recovery"
+        | "billing_truth";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -314,12 +336,20 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "runtime_settlement";
       } else if (migrations.length === 15) {
         startingContract = "stable_start";
-      } else {
+      } else if (migrations.length === 16) {
         startingContract = "credit_recovery";
+      } else {
+        startingContract = "billing_truth";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
-          migrations.length >= 14 ? 25 : migrations.length === 13 ? 24 : 23;
+          migrations.length >= 17
+            ? 29
+            : migrations.length >= 14
+              ? 25
+              : migrations.length === 13
+                ? 24
+                : 23;
         if (
           summary.tables !== expectedTableCount ||
           summary.rls_tables !== expectedTableCount ||
@@ -356,7 +386,9 @@ async function run(url: string, environmentIdentity: string) {
                             ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
                             : migrations.length === 15
                               ? STABLE_START_SCHEMA_FINGERPRINT
-                              : CREDIT_RECOVERY_SCHEMA_FINGERPRINT;
+                              : migrations.length === 16
+                                ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
+                                : BILLING_TRUTH_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -434,29 +466,31 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 16
-            ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
-            : migrations.length === 15
-              ? STABLE_START_SCHEMA_FINGERPRINT
-              : migrations.length === 14
-                ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
-                : migrations.length === 13
-                  ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-                  : migrations.length === 12
-                    ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-                    : migrations.length === 11
-                      ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                      : migrations.length === 10
-                        ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
-                        : migrations.length === 9
-                          ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
-                          : migrations.length === 8
-                            ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                            : migrations.length === 7
-                              ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                              : migrations.length === 6
-                                ? RELAUNCH_SCHEMA_FINGERPRINT
-                                : "pending",
+          migrations.length === 17
+            ? BILLING_TRUTH_SCHEMA_FINGERPRINT
+            : migrations.length === 16
+              ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
+              : migrations.length === 15
+                ? STABLE_START_SCHEMA_FINGERPRINT
+                : migrations.length === 14
+                  ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+                  : migrations.length === 13
+                    ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                    : migrations.length === 12
+                      ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                      : migrations.length === 11
+                        ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                        : migrations.length === 10
+                          ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                          : migrations.length === 9
+                            ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                            : migrations.length === 8
+                              ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                              : migrations.length === 7
+                                ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                                : migrations.length === 6
+                                  ? RELAUNCH_SCHEMA_FINGERPRINT
+                                  : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }
@@ -468,6 +502,8 @@ async function run(url: string, environmentIdentity: string) {
         stableStartLaunchReady,
         creditRecoveryIntegrity,
         creditRecoveryLaunchReady,
+        billingAdjustmentIntegrity,
+        billingAdjustmentLaunchReady,
         ...summary,
       };
     });
@@ -476,10 +512,11 @@ async function run(url: string, environmentIdentity: string) {
     if (
       process.env.MEELNI_LAUNCH_STRICT === "1" &&
       (!result.stableStartLaunchReady ||
-        (result.migrationCount >= 14 && !result.creditRecoveryLaunchReady))
+        (result.migrationCount >= 14 && !result.creditRecoveryLaunchReady) ||
+        (result.migrationCount >= 15 && !result.billingAdjustmentLaunchReady))
     ) {
       throw new Error(
-        "Interview credit launch readiness checks are not clean; inspect stableStartIntegrity and creditRecoveryIntegrity"
+        "Interview credit launch readiness checks are not clean; inspect stableStartIntegrity, creditRecoveryIntegrity, and billingAdjustmentIntegrity"
       );
     }
   } finally {
@@ -767,6 +804,182 @@ async function getCreditRecoveryIntegrity(tx: postgres.TransactionSql) {
     counts ?? {
       terminal_missing_policy: 0,
       settled_policy_mismatches: 0,
+    }
+  );
+}
+
+async function getBillingAdjustmentIntegrity(tx: postgres.TransactionSql) {
+  const [counts] = await tx<
+    {
+      correlation_mismatches: number;
+      incomplete_withdrawal_evidence: number;
+      revoked_grants_without_active_withdrawal: number;
+      payment_state_mismatches: number;
+      payment_state_evidence_mismatches: number;
+      payment_state_marker_mismatches: number;
+      rollover_lot_balance_mismatches: number;
+      rollover_lot_allocation_mismatches: number;
+      rollover_lot_reference_mismatches: number;
+      payment_state_provenance_mismatches: number;
+    }[]
+  >`
+    SELECT
+      (SELECT count(*)::int
+       FROM billing_adjustment adjustment
+       LEFT JOIN payment_history payment ON payment.id = adjustment.payment_history_id
+       LEFT JOIN credit_grant grant_row ON grant_row.id = adjustment.credit_grant_id
+       WHERE (payment.id IS NOT NULL AND payment.user_id <> adjustment.user_id)
+          OR (grant_row.id IS NOT NULL AND grant_row.user_id <> adjustment.user_id))
+        AS correlation_mismatches,
+      (SELECT count(*)::int
+       FROM billing_adjustment
+       WHERE direction = 'withdraw'
+         AND (payment_history_id IS NULL OR credit_grant_id IS NULL))
+        AS incomplete_withdrawal_evidence,
+      (SELECT count(*)::int
+       FROM credit_grant grant_row
+       WHERE grant_row.revoked_at IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM billing_payment_state state
+           WHERE state.credit_grant_id = grant_row.id
+             AND state.target_credits = state.source_credits
+             AND grant_row.revocation_key =
+               'payment:' || COALESCE(
+                 state.payment_history_id::text,
+                 state.credit_grant_id::text
+               )
+         )) AS revoked_grants_without_active_withdrawal
+      ,(SELECT count(*)::int
+        FROM billing_payment_state state
+        JOIN credit_grant grant_row ON grant_row.id = state.credit_grant_id
+        LEFT JOIN payment_history payment ON payment.id = state.payment_history_id
+        WHERE state.user_id <> grant_row.user_id
+           OR state.source_credits <> grant_row.original_credits
+           OR (state.payment_history_id IS NOT NULL AND (
+             payment.user_id <> state.user_id
+             OR payment.credit_grant_id <> state.credit_grant_id
+           ))) AS payment_state_mismatches
+      ,(SELECT count(*)::int
+        FROM billing_payment_state state
+        WHERE state.revoked_credits <>
+          COALESCE((
+            SELECT sum((entry->>'credits')::int)
+            FROM jsonb_array_elements(state.grant_revocations) entry
+          ), 0) +
+          COALESCE((
+            SELECT sum((entry->>'credits')::int)
+            FROM jsonb_array_elements(state.allocation_revocations) entry
+          ), 0)) AS payment_state_evidence_mismatches
+      ,(SELECT count(*)::int
+        FROM billing_payment_state state
+        JOIN credit_grant grant_row ON grant_row.id = state.credit_grant_id
+        WHERE (state.target_credits = state.source_credits) <>
+          (grant_row.revoked_at IS NOT NULL)) AS payment_state_marker_mismatches
+      ,(SELECT count(*)::int
+        FROM credit_grant grant_row
+        WHERE grant_row.source = 'rollover'
+          AND (
+            NOT EXISTS (
+              SELECT 1 FROM credit_rollover_lot lot
+              WHERE lot.rollover_grant_id = grant_row.id
+            )
+            OR grant_row.original_credits <> COALESCE((
+              SELECT sum(lot.original_credits)
+              FROM credit_rollover_lot lot
+              WHERE lot.rollover_grant_id = grant_row.id
+            ), 0)
+            OR grant_row.remaining_credits <> COALESCE((
+              SELECT sum(lot.remaining_credits)
+              FROM credit_rollover_lot lot
+              WHERE lot.rollover_grant_id = grant_row.id
+            ), 0)
+            OR grant_row.reserved_credits <> COALESCE((
+              SELECT sum(lot.reserved_credits)
+              FROM credit_rollover_lot lot
+              WHERE lot.rollover_grant_id = grant_row.id
+            ), 0)
+          )) AS rollover_lot_balance_mismatches
+      ,(SELECT count(*)::int
+        FROM credit_reservation_grant allocation
+        JOIN credit_grant grant_row ON grant_row.id = allocation.grant_id
+        WHERE grant_row.source = 'rollover'
+          AND (
+            allocation.credits <> COALESCE((
+              SELECT sum(lot_allocation.credits)
+              FROM credit_rollover_lot_allocation lot_allocation
+              WHERE lot_allocation.reservation_grant_id = allocation.id
+            ), 0)
+            OR allocation.revoked_credits <> COALESCE((
+              SELECT sum(lot_allocation.revoked_credits)
+              FROM credit_rollover_lot_allocation lot_allocation
+              WHERE lot_allocation.reservation_grant_id = allocation.id
+            ), 0)
+          )) AS rollover_lot_allocation_mismatches
+      ,((SELECT count(*)
+        FROM credit_rollover_lot lot
+        JOIN credit_grant destination ON destination.id = lot.rollover_grant_id
+        JOIN credit_grant source_grant ON source_grant.id = lot.source_grant_id
+        WHERE destination.source <> 'rollover'
+          OR lot.user_id <> destination.user_id
+          OR lot.user_id <> source_grant.user_id
+          OR destination.catalog_id <> source_grant.catalog_id
+          OR NOT EXISTS (
+            SELECT 1 FROM credit_transaction source_txn
+            WHERE source_txn.type = 'rollover'
+              AND source_txn.grant_id = source_grant.id
+              AND source_txn.metadata =
+                jsonb_build_object('rolloverGrantId', destination.id)
+              AND source_txn.credits = lot.original_credits
+          )) + (SELECT count(*)
+        FROM credit_rollover_lot_allocation lot_allocation
+        JOIN credit_reservation_grant allocation
+          ON allocation.id = lot_allocation.reservation_grant_id
+        JOIN credit_rollover_lot lot
+          ON lot.id = lot_allocation.rollover_lot_id
+        WHERE allocation.grant_id <> lot.rollover_grant_id))::int
+          AS rollover_lot_reference_mismatches
+      ,((SELECT count(*)
+        FROM billing_payment_state state
+        CROSS JOIN LATERAL jsonb_array_elements(state.grant_revocations) entry
+        LEFT JOIN credit_rollover_lot lot
+          ON lot.id::text = entry->>'rolloverLotId'
+        WHERE (entry ? 'rolloverLotId' AND (
+            lot.id IS NULL
+            OR lot.source_grant_id <> state.credit_grant_id
+            OR lot.rollover_grant_id::text <> entry->>'grantId'
+          )) OR (NOT (entry ? 'rolloverLotId')
+            AND entry->>'grantId' <> state.credit_grant_id::text))
+        + (SELECT count(*)
+        FROM billing_payment_state state
+        CROSS JOIN LATERAL
+          jsonb_array_elements(state.allocation_revocations) entry
+        LEFT JOIN credit_rollover_lot_allocation lot_allocation
+          ON lot_allocation.id::text = entry->>'rolloverLotAllocationId'
+        LEFT JOIN credit_rollover_lot lot
+          ON lot.id = lot_allocation.rollover_lot_id
+        WHERE (entry ? 'rolloverLotAllocationId' AND (
+            lot_allocation.id IS NULL
+            OR lot.source_grant_id <> state.credit_grant_id
+            OR lot_allocation.reservation_grant_id::text <>
+              entry->>'allocationId'
+          )) OR (NOT (entry ? 'rolloverLotAllocationId') AND NOT EXISTS (
+            SELECT 1 FROM credit_reservation_grant allocation
+            WHERE allocation.id::text = entry->>'allocationId'
+              AND allocation.grant_id = state.credit_grant_id
+          ))))::int AS payment_state_provenance_mismatches
+  `;
+  return (
+    counts ?? {
+      correlation_mismatches: 0,
+      incomplete_withdrawal_evidence: 0,
+      revoked_grants_without_active_withdrawal: 0,
+      payment_state_mismatches: 0,
+      payment_state_evidence_mismatches: 0,
+      payment_state_marker_mismatches: 0,
+      rollover_lot_balance_mismatches: 0,
+      rollover_lot_allocation_mismatches: 0,
+      rollover_lot_reference_mismatches: 0,
+      payment_state_provenance_mismatches: 0,
     }
   );
 }

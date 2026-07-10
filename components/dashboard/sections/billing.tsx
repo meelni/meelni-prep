@@ -59,9 +59,15 @@ interface CreditBalance {
 
 interface Payment {
   id: string;
-  amount: number; // in cents
+  amountInCents: number;
   currency: string;
-  status: "succeeded" | "pending" | "failed";
+  status:
+    | "succeeded"
+    | "failed"
+    | "partially_refunded"
+    | "refunded"
+    | "disputed"
+    | "canceled";
   createdAt: string;
   receiptUrl?: string;
 }
@@ -602,19 +608,23 @@ export function BillingSection() {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-foreground text-sm font-medium">
-                        {formatCurrency(payment.amount, payment.currency)}
+                        {formatCurrency(
+                          payment.amountInCents,
+                          payment.currency
+                        )}
                       </p>
                       <Badge
                         variant={
                           payment.status === "succeeded"
                             ? "success"
-                            : payment.status === "pending"
-                              ? "default"
+                            : payment.status === "partially_refunded" ||
+                                payment.status === "refunded"
+                              ? "secondary"
                               : "destructive"
                         }
                         className="text-xs"
                       >
-                        {payment.status}
+                        {payment.status.replace("_", " ")}
                       </Badge>
                     </div>
                     <p className="text-muted-foreground text-xs">

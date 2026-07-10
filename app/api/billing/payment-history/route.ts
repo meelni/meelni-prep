@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { paymentHistory } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 
 /**
  * GET /api/billing/payment-history
@@ -18,7 +18,7 @@ import { eq, desc } from "drizzle-orm";
  *   - id: string
  *   - amountInCents: number
  *   - currency: string
- *   - status: 'succeeded' | 'failed' | 'refunded' | 'canceled'
+ *   - status: 'succeeded' | 'failed' | 'partially_refunded' | 'refunded' | 'disputed' | 'canceled'
  *   - tier: string
  *   - billingCycle: string
  *   - periodStart: ISO timestamp
@@ -36,27 +36,30 @@ export async function GET(req: Request) {
   try {
     // Check authentication
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Parse query parameters
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(parseInt(searchParams.get("limit") || "10", 10), 100);
+    const limit = Math.min(
+      parseInt(searchParams.get("limit") || "10", 10),
+      100
+    );
     const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
 
     // Fetch total count
     const totalCountResult = await db
-      .select({ count: paymentHistory.id })
+      .select({ count: count() })
       .from(paymentHistory)
       .where(eq(paymentHistory.userId, user.id));
 
-    const total = totalCountResult.length;
+    const total = totalCountResult[0]?.count ?? 0;
 
     // Fetch payment history with pagination
     const payments = await db

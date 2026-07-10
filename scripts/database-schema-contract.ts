@@ -29,6 +29,8 @@ export const STABLE_START_SCHEMA_FINGERPRINT =
   "01eb23d537b61f1c3aefccbde75d7cefb2679741cd96c411af59993f4cf7bf93";
 export const CREDIT_RECOVERY_SCHEMA_FINGERPRINT =
   "780a24caf2e4b720dc78ab794fdc56a082a5da2dc154b8e77d0f135d69ad4dc4";
+export const BILLING_TRUTH_SCHEMA_FINGERPRINT =
+  "4c3948949092b80df6b2e49ee14762053d1847a3d229fa6dcdfc49b3103bfe17";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =
@@ -149,7 +151,8 @@ export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
         WHERE n.nspname = 'public'
           AND p.proname IN (
             'protect_interview_session_stable_evidence',
-            'enforce_interview_credit_evidence_immutable'
+            'enforce_interview_credit_evidence_immutable',
+            'enforce_billing_adjustment_immutable'
           )
         ORDER BY p.proname, arguments
       `,
@@ -161,7 +164,8 @@ export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
         WHERE trigger_schema = 'public'
           AND trigger_name IN (
             'protect_interview_session_stable_evidence',
-            'interview_credit_evidence_immutable'
+            'interview_credit_evidence_immutable',
+            'billing_adjustment_immutable'
           )
         ORDER BY event_object_table, trigger_name, event_manipulation
       `,
