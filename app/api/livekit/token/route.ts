@@ -13,13 +13,11 @@ import {
   readInterviewSessionCorrelationId,
   readOperationalRequestId,
   reportOperationalFailure,
-  type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
 import { joinInterviewSessionWorkflow } from "@/lib/workflows/join-interview-session";
 
 export async function POST(req: NextRequest) {
-  let correlationId: InterviewSessionCorrelationId | null = null;
   try {
     const supabase = await createClient();
     const {
@@ -32,10 +30,6 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    correlationId = readInterviewSessionCorrelationId({
-      kind: "interview_session",
-      sessionId: isRecord(body) ? body.sessionId : null,
-    });
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (!livekitEnv.ok) {
       reportOperationalFailure({
@@ -44,7 +38,6 @@ export async function POST(req: NextRequest) {
         severity: "critical",
         retryable: false,
         requestId: readOperationalRequestId(req),
-        correlationId,
       });
       return NextResponse.json(
         { error: "Server configuration error" },
@@ -61,6 +54,13 @@ export async function POST(req: NextRequest) {
     if (!result.ok && result.status >= 500) {
       const providerUnavailable =
         result.body.error === "livekit_token_unavailable";
+      const correlationId = result.ownedSession
+        ? readInterviewSessionCorrelationId({
+            kind: "owned_interview_session",
+            session: result.ownedSession,
+            authenticatedUserId: user.id,
+          })
+        : null;
       reportOperationalFailure({
         operation: "interview_token",
         errorCode: providerUnavailable
@@ -88,7 +88,6 @@ export async function POST(req: NextRequest) {
       errorCode: "livekit_token_issue_failed",
       retryable: true,
       requestId: readOperationalRequestId(req),
-      correlationId,
     });
     return NextResponse.json(
       { error: "Failed to issue LiveKit token" },

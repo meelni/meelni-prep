@@ -88,7 +88,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import { getSessionById } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
@@ -122,26 +122,24 @@ export async function GET(
     }
 
     const { sessionId } = await params;
-    correlationId = readInterviewSessionCorrelationId({
-      kind: "interview_session",
-      sessionId,
-    });
-
-    // Verify user owns the session
-    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
-    if (!isOwner) {
+    const session = await getSessionById(sessionId);
+    if (!session || session.userId !== user.id) {
       return NextResponse.json(
         { error: "Session not found or access denied" },
         { status: 404 } // Use 404 to avoid leaking session existence
       );
     }
+    correlationId = readInterviewSessionCorrelationId({
+      kind: "owned_interview_session",
+      session,
+      authenticatedUserId: user.id,
+    });
 
     // Get feedback
     const feedbackRecord = await getFeedbackBySessionId(sessionId);
 
     if (!feedbackRecord) {
-      const session = await getSessionById(sessionId);
-      if (session && isInterviewTerminalState(session.lifecycleState)) {
+      if (isInterviewTerminalState(session.lifecycleState)) {
         return NextResponse.json(
           {
             status: "missing",
@@ -334,23 +332,21 @@ export async function POST(
     }
 
     const { sessionId } = await params;
-    correlationId = readInterviewSessionCorrelationId({
-      kind: "interview_session",
-      sessionId,
-    });
-    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
-    if (!isOwner) {
+    const session = await getSessionById(sessionId);
+    if (!session || session.userId !== user.id) {
       return NextResponse.json(
         { error: "Session not found or access denied" },
         { status: 404 }
       );
     }
-
-    const session = await getSessionById(sessionId);
+    correlationId = readInterviewSessionCorrelationId({
+      kind: "owned_interview_session",
+      session,
+      authenticatedUserId: user.id,
+    });
     if (
-      !session ||
-      (session.lifecycleState !== "ending" &&
-        !isInterviewTerminalState(session.lifecycleState))
+      session.lifecycleState !== "ending" &&
+      !isInterviewTerminalState(session.lifecycleState)
     ) {
       return NextResponse.json(
         {

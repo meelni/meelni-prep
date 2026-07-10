@@ -92,7 +92,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import { getSessionById } from "@/lib/db/sessions";
 import { getSessionTranscript } from "@/lib/db/transcripts";
 import { createFeedback, feedbackExists } from "@/lib/db/feedback";
 import { generateFeedback } from "@/lib/evaluation/scorer";
@@ -120,10 +120,6 @@ export async function POST(req: NextRequest) {
     // Parse request body
     const body = await req.json();
     const { sessionId } = body;
-    correlationId = readInterviewSessionCorrelationId({
-      kind: "interview_session",
-      sessionId,
-    });
 
     // Validate required fields
     if (!sessionId) {
@@ -133,14 +129,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify user owns the session
-    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
-    if (!isOwner) {
+    const session = await getSessionById(sessionId);
+    if (!session || session.userId !== user.id) {
       return NextResponse.json(
         { error: "Session not found or access denied" },
         { status: 403 }
       );
     }
+    correlationId = readInterviewSessionCorrelationId({
+      kind: "owned_interview_session",
+      session,
+      authenticatedUserId: user.id,
+    });
 
     // Check if feedback already exists (idempotent)
     const existingFeedback = await feedbackExists(sessionId);
@@ -150,12 +150,6 @@ export async function POST(req: NextRequest) {
         message: "Feedback already exists for this session",
         sessionId,
       });
-    }
-
-    // Get session details
-    const session = await getSessionById(sessionId);
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
     // Get transcript

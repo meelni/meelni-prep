@@ -30,6 +30,7 @@ vi.mock("@/lib/operations/operational-events", async (importOriginal) => ({
 import { POST } from "../route";
 
 const sessionId = "550e8400-e29b-41d4-a716-446655440000";
+const userId = "11111111-1111-4111-8111-111111111111";
 const livekitEnv = {
   apiKey: "test-key",
   apiSecret: "test-secret",
@@ -68,7 +69,7 @@ describe("POST /api/livekit/token", () => {
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: {
-            user: { id: "authenticated-user", email: "owner@example.com" },
+            user: { id: userId, email: "owner@example.com" },
           },
           error: null,
         }),
@@ -94,7 +95,7 @@ describe("POST /api/livekit/token", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.joinInterviewSessionWorkflow).toHaveBeenCalledWith({
-      user: { id: "authenticated-user" },
+      user: { id: userId },
       sessionId,
       env: livekitEnv,
     });
@@ -104,7 +105,7 @@ describe("POST /api/livekit/token", () => {
     mocks.createClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
-          data: { user: { id: "authenticated-user", email: null } },
+          data: { user: { id: userId, email: null } },
           error: null,
         }),
       },
@@ -125,7 +126,7 @@ describe("POST /api/livekit/token", () => {
     mocks.createClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
-          data: { user: { id: "authenticated-user", email: null } },
+          data: { user: { id: userId, email: null } },
           error: null,
         }),
       },
@@ -151,26 +152,29 @@ describe("POST /api/livekit/token", () => {
       error: "rate_limit_unavailable",
       errorCode: "livekit_reconnect_rate_limit_unavailable",
       retryable: true,
+      owned: false,
     },
     {
       status: 503,
       error: "livekit_token_unavailable",
       errorCode: "livekit_token_unavailable",
       retryable: true,
+      owned: true,
     },
     {
       status: 500,
       error: "livekit_token_unavailable",
       errorCode: "livekit_token_unavailable",
       retryable: false,
+      owned: true,
     },
   ])(
     "emits a closed operational event for $status $error",
-    async ({ status, error, errorCode, retryable }) => {
+    async ({ status, error, errorCode, retryable, owned }) => {
       mocks.createClient.mockResolvedValue({
         auth: {
           getUser: vi.fn().mockResolvedValue({
-            data: { user: { id: "authenticated-user", email: null } },
+            data: { user: { id: userId, email: null } },
             error: null,
           }),
         },
@@ -179,6 +183,7 @@ describe("POST /api/livekit/token", () => {
         ok: false,
         status,
         body: { error },
+        ...(owned ? { ownedSession: { id: sessionId, userId } } : {}),
       });
 
       const response = await POST(createRequest({ sessionId }));
@@ -190,10 +195,37 @@ describe("POST /api/livekit/token", () => {
         severity: "critical",
         retryable,
         requestId: null,
-        correlationId: sessionId,
+        correlationId: owned ? sessionId : null,
       });
     }
   );
+
+  it("never treats an authenticated user UUID as a session correlation", async () => {
+    mocks.createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: userId, email: null } },
+          error: null,
+        }),
+      },
+    });
+    mocks.getLiveKitEnvironment.mockReturnValue({
+      ok: false,
+      provider: "livekit",
+      error: { code: "missing", message: "missing", retryable: false },
+    });
+
+    const response = await POST(createRequest({ sessionId: userId }));
+
+    expect(response.status).toBe(500);
+    expect(mocks.reportOperationalFailure).toHaveBeenCalledWith({
+      operation: "interview_token",
+      errorCode: "livekit_config_missing",
+      severity: "critical",
+      retryable: false,
+      requestId: null,
+    });
+  });
 });
 
 function createRequest(body: Record<string, unknown>): NextRequest {

@@ -43,9 +43,10 @@
 
 - Required commands: Unit and route tests, `npm run check:ci`, `npm run build`, Semgrep.
 - Optional/manual checks: Controlled Preview failure and alert receipt after SAV-226.
-- Fixtures or regression tests needed: PII/secret rejection, typed user/session
-  misuse, returned token 5xx outcomes, invoked-workflow console bypasses, Stripe
-  durable redaction, and every critical operation wired to the closed reporter.
+- Fixtures or regression tests needed: exhaustive error-code rejection,
+  ownership-derived session correlation, typed/runtime user-ID misuse, returned
+  token 5xx outcomes, recursively reached console bypasses, Stripe durable
+  redaction, and every critical operation wired to the closed reporter.
 
 ## Rollout
 

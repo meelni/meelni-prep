@@ -41,10 +41,6 @@ export async function POST(req: NextRequest) {
 
     const body: unknown = await req.json();
     const sessionId = readSessionId(body);
-    correlationId = readInterviewSessionCorrelationId({
-      kind: "interview_session",
-      sessionId,
-    });
     if (!sessionId) {
       return NextResponse.json(
         {
@@ -65,6 +61,11 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+    correlationId = readInterviewSessionCorrelationId({
+      kind: "owned_interview_session",
+      session: { id: sessionId, userId: user.id },
+      authenticatedUserId: user.id,
+    });
 
     if (
       result.completion.disposition === "applied" &&

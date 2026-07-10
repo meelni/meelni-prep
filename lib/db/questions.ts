@@ -377,17 +377,28 @@ export async function getRandomRecentQuestion(
  */
 export async function recordQuestionUsage(
   sessionId: string,
-  questionId: string
+  questionId: string,
+  database: Pick<typeof db, "insert"> = db
 ): Promise<void> {
   const { sessionQuestion } = await import("./schema");
 
   try {
-    await db.insert(sessionQuestion).values({
+    await database.insert(sessionQuestion).values({
       sessionId,
       questionId,
     });
   } catch (error) {
-    // Ignore duplicate errors (question already recorded for this session)
-    console.error("Error recording question usage:", error);
+    if (isPostgresUniqueViolation(error)) return;
+    throw new Error("question_usage_record_failed");
   }
+}
+
+function isPostgresUniqueViolation(error: unknown) {
+  return (
+    error !== null &&
+    error !== undefined &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "23505"
+  );
 }

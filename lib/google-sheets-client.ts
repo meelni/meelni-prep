@@ -29,8 +29,6 @@ export interface SheetRow {
  */
 export async function fetchSheetAsCSV(csvUrl: string): Promise<SheetRow[]> {
   try {
-    console.log("📥 Fetching configured Google Sheets CSV source");
-
     const response = await fetch(csvUrl, {
       method: "GET",
       headers: {
@@ -50,7 +48,6 @@ export async function fetchSheetAsCSV(csvUrl: string): Promise<SheetRow[]> {
 
     return parseCSV(csvText);
   } catch {
-    console.error("❌ Google Sheets CSV fetch failed");
     throw new Error("Google Sheets CSV fetch failed");
   }
 }
@@ -76,8 +73,6 @@ export async function fetchSheetViaAPI(
       );
     }
 
-    console.log("📥 Fetching configured Google Sheets API source");
-
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?key=${apiKey}`;
 
     const response = await fetch(url, {
@@ -101,7 +96,6 @@ export async function fetchSheetViaAPI(
 
     return parseSheetValues(data.values);
   } catch {
-    console.error("❌ Google Sheets API fetch failed");
     throw new Error("Google Sheets API fetch failed");
   }
 }
@@ -131,7 +125,6 @@ function parseCSV(csvText: string): SheetRow[] {
 
       // Expecting 7 columns: Timestamp, Company, Question Text, Question Type, Interview Type, Comments, Notes
       if (fields.length < 4) {
-        console.warn(`⚠️  Row ${i + 2} has fewer than 4 fields, skipping`);
         continue;
       }
 
@@ -145,7 +138,7 @@ function parseCSV(csvText: string): SheetRow[] {
         notes: fields[6] || "",
       });
     } catch {
-      console.warn(`⚠️  Error parsing row ${i + 2}, skipping`);
+      // The workflow reports only aggregate invalid-row counts.
     }
   }
 
@@ -250,7 +243,6 @@ function parseSheetValues(values: string[][]): SheetRow[] {
 
     // Expecting 7 columns
     if (row.length < 4) {
-      console.warn(`⚠️  Row ${i + 2} has fewer than 4 fields, skipping`);
       continue;
     }
 

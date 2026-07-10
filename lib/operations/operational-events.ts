@@ -9,8 +9,34 @@ export const OPERATIONAL_FAILURE_OPERATIONS = [
   "account_deletion",
 ] as const;
 
+export const OPERATIONAL_FAILURE_ERROR_CODES = [
+  "account_deletion_failed",
+  "auth_code_exchange_failed",
+  "auth_user_upsert_failed",
+  "completion_achievements_update_failed",
+  "completion_streak_update_failed",
+  "feedback_dispatch_exhausted",
+  "feedback_generation_failed",
+  "feedback_read_failed",
+  "feedback_retry_failed",
+  "interview_end_failed",
+  "interview_start_failed",
+  "interview_start_rejected",
+  "livekit_agent_config_missing",
+  "livekit_config_missing",
+  "livekit_reconnect_rate_limit_unavailable",
+  "livekit_token_issue_failed",
+  "livekit_token_unavailable",
+  "question_sync_failed",
+  "question_sync_unavailable",
+  "stripe_signature_invalid",
+  "stripe_webhook_failed",
+] as const;
+
 export type OperationalFailureOperation =
   (typeof OPERATIONAL_FAILURE_OPERATIONS)[number];
+export type OperationalFailureErrorCode =
+  (typeof OPERATIONAL_FAILURE_ERROR_CODES)[number];
 
 export type OperationalFailureSeverity = "warning" | "error" | "critical";
 
@@ -24,14 +50,18 @@ export type InterviewSessionCorrelationId = string & {
   readonly [interviewSessionCorrelationIdBrand]: true;
 };
 
-export interface InterviewSessionCorrelationSource {
-  readonly kind: "interview_session";
-  readonly sessionId: unknown;
+export interface OwnedInterviewSessionCorrelationSource {
+  readonly kind: "owned_interview_session";
+  readonly session: {
+    readonly id: unknown;
+    readonly userId: unknown;
+  };
+  readonly authenticatedUserId: unknown;
 }
 
 export interface OperationalFailureInput {
   operation: OperationalFailureOperation;
-  errorCode: string;
+  errorCode: OperationalFailureErrorCode;
   severity?: OperationalFailureSeverity;
   retryable: boolean;
   requestId?: OperationalRequestId | null;
@@ -51,7 +81,7 @@ export interface OperationalFailureEvent {
     | "unknown";
   release: string | null;
   operation: OperationalFailureOperation;
-  errorCode: string;
+  errorCode: OperationalFailureErrorCode;
   severity: OperationalFailureSeverity;
   retryable: boolean;
   requestId: string | null;
@@ -66,9 +96,11 @@ interface OperationalEventDependencies {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SAFE_CODE_PATTERN = /^[a-z][a-z0-9_]{2,63}$/;
 const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const RELEASE_PATTERN = /^[0-9a-f]{7,40}$/i;
+const OPERATIONAL_FAILURE_ERROR_CODE_SET = new Set<string>(
+  OPERATIONAL_FAILURE_ERROR_CODES
+);
 
 const defaultDependencies: OperationalEventDependencies = {
   now: () => new Date(),
@@ -84,10 +116,8 @@ export function reportOperationalFailure(
   input: OperationalFailureInput,
   dependencies: OperationalEventDependencies = defaultDependencies
 ): OperationalFailureEvent {
-  if (!SAFE_CODE_PATTERN.test(input.errorCode)) {
-    throw new Error(
-      "Operational error code must be a bounded snake_case value"
-    );
+  if (!isOperationalFailureErrorCode(input.errorCode)) {
+    throw new Error("Operational error code is not in the versioned contract");
   }
 
   const event: OperationalFailureEvent = {
@@ -115,13 +145,30 @@ export function readOperationalRequestId(
 }
 
 export function readInterviewSessionCorrelationId(
-  source: InterviewSessionCorrelationSource
+  source: OwnedInterviewSessionCorrelationSource
 ): InterviewSessionCorrelationId | null {
-  return source?.kind === "interview_session" &&
-    typeof source.sessionId === "string" &&
-    UUID_PATTERN.test(source.sessionId)
-    ? (source.sessionId as InterviewSessionCorrelationId)
+  const sessionId = source?.session?.id;
+  const ownerUserId = source?.session?.userId;
+  const authenticatedUserId = source?.authenticatedUserId;
+  return source?.kind === "owned_interview_session" &&
+    typeof sessionId === "string" &&
+    typeof ownerUserId === "string" &&
+    typeof authenticatedUserId === "string" &&
+    UUID_PATTERN.test(sessionId) &&
+    UUID_PATTERN.test(ownerUserId) &&
+    UUID_PATTERN.test(authenticatedUserId) &&
+    ownerUserId === authenticatedUserId &&
+    sessionId !== ownerUserId
+    ? (sessionId as InterviewSessionCorrelationId)
     : null;
+}
+
+export function isOperationalFailureErrorCode(
+  value: unknown
+): value is OperationalFailureErrorCode {
+  return (
+    typeof value === "string" && OPERATIONAL_FAILURE_ERROR_CODE_SET.has(value)
+  );
 }
 
 function readEnvironment(

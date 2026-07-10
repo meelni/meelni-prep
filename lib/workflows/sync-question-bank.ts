@@ -202,7 +202,10 @@ function logQuestionSyncAudit(event: QuestionSyncAuditEvent): void {
   if (event.outcome === "failed" || event.outcome === "unavailable") {
     reportOperationalFailure({
       operation: "question_sync",
-      errorCode: event.errorCode ?? "question_sync_failed",
+      errorCode:
+        event.outcome === "unavailable"
+          ? "question_sync_unavailable"
+          : "question_sync_failed",
       severity: event.outcome === "unavailable" ? "critical" : "error",
       retryable: true,
     });
