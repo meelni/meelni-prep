@@ -9,7 +9,9 @@ import {
   buildFullConfig,
   calculateOverallScore,
   computeCreditEntitlements,
+  DRILL_TEMPLATE_VERSION,
   getBillingCatalogItem,
+  recommendDrill,
 } from "@meelni/core";
 import {
   buildInterviewRoomName,
@@ -46,6 +48,15 @@ test("workspace package entrypoints expose named contracts", () => {
       structure: 8,
     }),
     8
+  );
+  assert.equal(
+    recommendDrill({
+      roundType: "product_sense",
+      sourceState: "insufficient",
+      templateVersion: DRILL_TEMPLATE_VERSION,
+      feedback: null,
+    }).state,
+    "unavailable"
   );
   assert.equal(
     buildInterviewRoomMetadata(fixture.roomMetadata).round_type,
@@ -90,6 +101,7 @@ test("workspace package entrypoints expose named contracts to dynamic imports", 
 
   assert.equal(typeof core.buildFullConfig, "function");
   assert.equal(typeof core.calculateOverallScore, "function");
+  assert.equal(typeof core.recommendDrill, "function");
   assert.equal(typeof agent.buildInterviewRoomMetadata, "function");
   assert.equal(typeof agent.createTranscriptEvent, "function");
   assert.equal(typeof integrations.buildInterviewRoomName, "function");

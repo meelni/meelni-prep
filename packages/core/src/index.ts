@@ -2,6 +2,7 @@ export * from "./interview";
 export * from "./billing-catalog";
 export * from "./entitlements";
 export * from "./evaluation";
+export * from "./drill-recommendation";
 export * from "./feedback-v2";
 export * from "./feedback-transcript";
 export * from "./question";
