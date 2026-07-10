@@ -1,6 +1,7 @@
 import { and, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 
 import {
+  buildStripeDeletionSubjects,
   payloadContainsProviderIdentifier,
   type StripeDeletionSubject,
 } from "@/lib/billing/stripe-privacy";
@@ -15,6 +16,7 @@ import {
   sessionQuestion,
   stripeEventLog,
   stripeCustomerMapping,
+  subscription,
   transcriptTurn,
   userSettings,
 } from "./schema";
@@ -30,6 +32,29 @@ export interface AccountDeletionRecord {
   status: AccountDeletionStatus;
   stripeSubjects: StripeDeletionSubject[];
   attempts: number;
+}
+
+export async function loadAccountDeletionSubjects(userId: string) {
+  const [currentSubscription] = await db
+    .select({
+      stripeSubscriptionId: subscription.stripeSubscriptionId,
+      stripeCustomerId: subscription.stripeCustomerId,
+    })
+    .from(subscription)
+    .where(eq(subscription.userId, userId))
+    .limit(1);
+  const customerMappings = await db
+    .select({ stripeCustomerId: stripeCustomerMapping.stripeCustomerId })
+    .from(stripeCustomerMapping)
+    .where(eq(stripeCustomerMapping.userId, userId));
+
+  return buildStripeDeletionSubjects({
+    subscriptionId: currentSubscription?.stripeSubscriptionId,
+    subscriptionCustomerId: currentSubscription?.stripeCustomerId,
+    mappedCustomerIds: customerMappings.map(
+      ({ stripeCustomerId }) => stripeCustomerId
+    ),
+  });
 }
 
 export async function requestAccountDeletion(input: {
