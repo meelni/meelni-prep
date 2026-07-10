@@ -21,7 +21,7 @@ Use a change folder for:
 
 - interview session lifecycle changes;
 - LiveKit turn-taking, transcript, or room metadata behavior;
-- feedback, scoring, drills, or insights behavior;
+- feedback, scoring, practice exercises, or insights behavior;
 - question-bank or SEO behavior that affects conversion into practice;
 - entitlement, billing, usage quota, or compliance behavior;
 - data model changes with migration implications;

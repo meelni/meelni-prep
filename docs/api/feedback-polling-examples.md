@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `GET /api/feedback/[sessionId]` endpoint supports real-time polling for feedback generation status. This document provides example responses for all status states.
+The `GET /api/feedback/[sessionId]` endpoint supports polling for feedback generation status. This document provides example responses for all status states.
 
 ## Authentication
 

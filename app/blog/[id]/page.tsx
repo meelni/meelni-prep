@@ -87,8 +87,7 @@ function BlogPostStructuredData({ post }: { post: BlogPostType }) {
     headline: post.title,
     description: post.excerpt,
     url: `${baseUrl}/blog/${post.id}`,
-    datePublished: post.date,
-    dateModified: post.date,
+    datePublished: post.publishedAt,
     inLanguage: "en-US",
     author: {
       "@type": "Person",
@@ -333,7 +332,7 @@ export default async function BlogPost({
           className="mt-20 text-left"
           mark="M"
           title="Ready to practice with AI?"
-          description="Put these frameworks into action with Meelni's AI interview coach. Get real-time feedback and improve faster than solo practice."
+          description="Put the framework into action in a voice mock interview, then review feedback after the completed session."
           action={
             <Button asChild size="lg" variant="glow">
               <Link href="/dashboard/new-interview">
