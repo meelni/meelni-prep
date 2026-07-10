@@ -1514,7 +1514,10 @@ async function verifyDurableContactSubmission(
 ) {
   process.env.DATABASE_URL = databaseUrl;
   const [
-    { createDrizzleContactSubmissionStore },
+    {
+      consumeContactSubmissionAttemptBudget,
+      createDrizzleContactSubmissionStore,
+    },
     { deleteUserApplicationData },
     schema,
   ] = await Promise.all([
@@ -1528,6 +1531,7 @@ async function verifyDurableContactSubmission(
   const stores = clients.map((client) =>
     createDrizzleContactSubmissionStore(drizzle(client, { schema }))
   );
+  const databases = clients.map((client) => drizzle(client, { schema }));
   const rateLimitIdentities = {
     attempt: "d".repeat(64),
     client: "a".repeat(64),
@@ -1547,10 +1551,22 @@ async function verifyDurableContactSubmission(
     message: "This disposable fixture verifies durable contact behavior.",
     rateLimitIdentities,
   };
+  const accept = async (index: number, input: typeof baseInput) => {
+    const attempt = await consumeContactSubmissionAttemptBudget(
+      input.rateLimitIdentities.attempt,
+      databases[index]
+    );
+    return attempt.allowed
+      ? stores[index]!.accept(input)
+      : {
+          disposition: "rate_limited" as const,
+          retryAfterSeconds: attempt.retryAfterSeconds,
+        };
+  };
 
   try {
     const concurrent = await Promise.all(
-      stores.map((store) => store.accept(baseInput))
+      stores.map((_, index) => accept(index, baseInput))
     );
     const receiptIds = concurrent.flatMap((decision) =>
       decision.disposition === "stored" || decision.disposition === "replayed"
@@ -1569,7 +1585,7 @@ async function verifyDurableContactSubmission(
     );
 
     assert.deepEqual(
-      await stores[0]!.accept({
+      await accept(0, {
         ...baseInput,
         subject: "Changed payload",
       }),
@@ -1580,14 +1596,14 @@ async function verifyDurableContactSubmission(
       "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
       "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
     ].entries()) {
-      const decision = await stores[index]!.accept({
+      const decision = await accept(index, {
         ...baseInput,
         idempotencyKey,
       });
       assert.equal(decision.disposition, "stored");
     }
 
-    const limited = await stores[0]!.accept({
+    const limited = await accept(0, {
       ...baseInput,
       idempotencyKey: "ffffffff-ffff-4fff-8fff-ffffffffffff",
     });
@@ -1600,7 +1616,7 @@ async function verifyDurableContactSubmission(
     for (let index = 0; index < 48; index += 1) {
       assert.equal(
         (
-          await stores[index % stores.length]!.accept({
+          await accept(index % stores.length, {
             ...baseInput,
             subject: `conflict-${index}`,
           })
@@ -1610,7 +1626,7 @@ async function verifyDurableContactSubmission(
     }
     assert.equal(
       (
-        await stores[0]!.accept({
+        await accept(0, {
           ...baseInput,
           subject: "attempt-budget-exhausted",
         })
