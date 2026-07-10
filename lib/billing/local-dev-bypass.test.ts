@@ -83,3 +83,28 @@ test("local dev credit ledger reserves and completes credits without storage", a
   assert.equal(consumed.duplicate, false);
   assert.equal(replayed.duplicate, true);
 });
+
+test("local dev credit ledger rejects conflicting completion replays", async () => {
+  const ledger = createLocalDevCreditLedgerService();
+  const idempotencyKey = "consume:interview-start:user-1:room-1";
+
+  await ledger.consumeReservation({
+    reservationKey: "interview-start:user-1:room-1",
+    idempotencyKey,
+  });
+
+  await assert.rejects(
+    ledger.consumeReservation({
+      reservationKey: "interview-start:user-1:room-2",
+      idempotencyKey,
+    }),
+    /credit_transaction_idempotency_conflict/
+  );
+  await assert.rejects(
+    ledger.releaseReservation({
+      reservationKey: "interview-start:user-1:room-1",
+      idempotencyKey,
+    }),
+    /credit_transaction_idempotency_conflict/
+  );
+});
