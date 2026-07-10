@@ -23,6 +23,7 @@ interface ResolveServerGateOptions {
   fallbackValue?: boolean;
   timeoutMs?: number;
   user: StatsigUser;
+  networkAllowed?: boolean;
 }
 
 function createStatsigGateClient(
@@ -31,6 +32,9 @@ function createStatsigGateClient(
   apiUrl?: string
 ): StatsigGateClient {
   return new StatsigClient(clientKey, user, {
+    disableStableID: true,
+    disableStorage: true,
+    includeCurrentPageUrlWithEvents: false,
     loggingEnabled: "disabled",
     networkConfig: apiUrl ? { api: apiUrl } : undefined,
   });
@@ -44,8 +48,9 @@ export async function resolveServerGate({
   fallbackValue = false,
   timeoutMs = 1500,
   user,
+  networkAllowed = true,
 }: ResolveServerGateOptions): Promise<ServerGateResolution> {
-  if (!clientKey.trim()) {
+  if (!networkAllowed || !clientKey.trim()) {
     return { source: "configured-default", value: fallbackValue };
   }
 

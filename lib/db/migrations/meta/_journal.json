@@ -78,6 +78,20 @@
       "when": 1783689622000,
       "tag": "0010_feedback_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783697261709,
+      "tag": "0011_public_demo_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783697283607,
+      "tag": "0012_explicit_analytics_consent",
+      "breakpoints": true
     }
   ]
 }

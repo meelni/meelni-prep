@@ -227,7 +227,6 @@ function InterviewPageContent() {
 
       // Track interview started
       analytics.track("interview_started", {
-        session_id: data.sessionId,
         interview_type: roundType,
         mode: mode,
         skill_level: data.config?.difficulty,
@@ -603,10 +602,9 @@ function InterviewPageContent() {
     setCurrentNudge(null);
     setIsMuted(true);
     analytics.track("interview_deadline_reached", {
-      session_id: activeSessionId,
       interview_type: session?.config?.roundType,
     });
-  }, [activeSessionId, session?.config?.roundType]);
+  }, [session?.config?.roundType]);
 
   // The client only reflects the deadline. The server workflow owns completion
   // and room termination, including when this tab is hidden or killed.
@@ -711,7 +709,6 @@ function InterviewPageContent() {
       }
 
       analytics.track("interview_ended", {
-        session_id: activeSessionId,
         duration_seconds: duration,
         ended_naturally: true,
         interview_type: session?.config?.roundType,
@@ -812,7 +809,6 @@ function InterviewPageContent() {
         onHintModeChange={(mode) => {
           setHintMode(mode);
           analytics.track("hint_mode_changed", {
-            session_id: activeSessionId,
             hint_mode: mode,
             interview_type: session.config?.roundType,
           });
@@ -822,7 +818,6 @@ function InterviewPageContent() {
           setIsMuted(newMutedState);
           // Track mic toggle
           analytics.track("mic_toggled", {
-            session_id: sessionId ?? session.id,
             new_state: newMutedState ? "muted" : "unmuted",
           });
         }}
@@ -835,7 +830,6 @@ function InterviewPageContent() {
         onDismiss={() => {
           if (currentNudge) {
             analytics.track("hint_dismissed", {
-              session_id: activeSessionId,
               hint_type: currentNudge.type,
               hint_mode: hintMode,
             });

@@ -57,7 +57,7 @@ function HeroCTA({ onDemoClick }: HeroCTAProps) {
           className="group border-primary/40 bg-background/80 text-primary hover:border-primary hover:bg-primary/10 h-12 w-full rounded-lg px-5 font-semibold backdrop-blur-md sm:w-auto"
         >
           <Mic className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
-          Try voice demo
+          Try a 2-minute voice preview
         </Button>
       </motion.div>
     </div>

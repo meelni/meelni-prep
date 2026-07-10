@@ -24,7 +24,6 @@ export interface DashboardSettings {
   sessionCompletionEmail: boolean;
   feedbackReadyEmail: boolean;
   weeklyProgressReport: boolean;
-  shareAnonymousData: boolean;
   saveTranscripts: boolean;
   theme: "light" | "dark" | "system";
 }
@@ -63,7 +62,6 @@ export const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
   sessionCompletionEmail: true,
   feedbackReadyEmail: true,
   weeklyProgressReport: false,
-  shareAnonymousData: true,
   saveTranscripts: true,
   theme: "system",
 };
@@ -138,7 +136,10 @@ export function normalizeDashboardSettings(
   };
 }
 
-export function initialsForUser(displayName?: string | null, email?: string | null) {
+export function initialsForUser(
+  displayName?: string | null,
+  email?: string | null
+) {
   const source = displayName || email || "User";
   const chunks = source.includes("@") ? [source] : source.split(/\s+/);
 

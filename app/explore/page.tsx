@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
-import { usePostHog } from "posthog-js/react";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 interface Question {
   id: string;
@@ -77,7 +77,6 @@ function formatQuestionText(text: string): string {
 const QUESTIONS_PER_PAGE = 20;
 
 export default function ExplorePage() {
-  const posthog = usePostHog();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -92,10 +91,10 @@ export default function ExplorePage() {
 
   // Track page view
   useEffect(() => {
-    posthog?.capture("explore_page_viewed", {
+    analytics.track("explore_page_viewed", {
       total_questions: totalQuestions,
     });
-  }, [posthog, totalQuestions]);
+  }, [totalQuestions]);
 
   // Fetch questions
   useEffect(() => {
@@ -159,27 +158,25 @@ export default function ExplorePage() {
   // Track search queries
   useEffect(() => {
     if (debouncedSearchQuery) {
-      posthog?.capture("explore_search", {
-        query: debouncedSearchQuery,
+      analytics.track("explore_search", {
         results_count: totalQuestions,
       });
     }
-  }, [debouncedSearchQuery, posthog, totalQuestions]);
+  }, [debouncedSearchQuery, totalQuestions]);
 
   // Track filter changes
   useEffect(() => {
     if (selectedType !== "All Types") {
-      posthog?.capture("explore_filter_type", {
+      analytics.track("explore_filter_type", {
         filter_type: selectedType,
         results_count: totalQuestions,
       });
     }
-  }, [selectedType, posthog, totalQuestions]);
+  }, [selectedType, totalQuestions]);
 
   const handleQuestionClick = (question: Question) => {
     // Track click
-    posthog?.capture("explore_question_clicked", {
-      question_id: question.id,
+    analytics.track("explore_question_clicked", {
       question_type: question.questionType,
       company: question.company,
       page: currentPage,
@@ -193,7 +190,7 @@ export default function ExplorePage() {
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     window.scrollTo(0, 0);
-    posthog?.capture("explore_page_changed", {
+    analytics.track("explore_page_changed", {
       page,
       total_pages: totalPages,
     });

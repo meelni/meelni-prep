@@ -20,6 +20,7 @@ import {
   recoverInterviewReconnects,
 } from "@/lib/inngest/functions/enforce-interview-reconnect";
 import { recoverInterviewRoomCleanup } from "@/lib/inngest/functions/cleanup-interview-rooms";
+import { prunePublicDemo } from "@/lib/inngest/functions/prune-public-demo";
 
 /**
  * Serve Inngest functions via Next.js API route
@@ -46,5 +47,6 @@ export const { GET, POST, PUT } = serve({
     enforceInterviewReconnect, // Server-owned reconnect grace expiry
     recoverInterviewReconnects, // Requeues missing reconnect schedules
     recoverInterviewRoomCleanup, // Reclaims terminal rooms after provider outages
+    prunePublicDemo, // Removes expired pseudonymous preview limiter data
   ],
 });

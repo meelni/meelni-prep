@@ -55,24 +55,15 @@ export function buildStatsigUser({
     return {
       userID: anonymousId,
       custom: {
-        anonymous_id: anonymousId,
-        local_dev_id: anonymousId,
         logged_in: false,
       },
     };
   }
 
-  const emailDomain = user.email?.split("@")[1]?.toLowerCase();
-  const signupMethod = user.app_metadata?.provider === "google" ? "google" : "email";
-
   return {
-    userID: user.id,
+    userID: anonymousId,
     custom: {
-      anonymous_id: anonymousId,
-      created_at: user.created_at,
-      email_domain: emailDomain,
-      local_dev_id: anonymousId,
-      signup_method: signupMethod,
+      logged_in: true,
     },
   };
 }

@@ -41,6 +41,37 @@ const statusPageBackgroundClasses: Record<FeedbackTone, string> = {
   danger: "to-destructive/5",
 };
 
+type FeedbackThemeStyle = React.CSSProperties & Record<`--${string}`, string>;
+
+/**
+ * Feedback uses the focused review workspace in every app theme. Keep its
+ * semantic text colors independently contrast-safe against the dark panel.
+ */
+const FEEDBACK_REVIEW_THEME = {
+  "--accent": "#24242a",
+  "--accent-foreground": "#f2f2f7",
+  "--background": "#1c1c21",
+  "--border": "var(--dashboard-panel-border)",
+  "--card": "var(--dashboard-panel)",
+  "--card-foreground": "#f2f2f7",
+  "--destructive": "#ff8c9b",
+  "--destructive-foreground": "#141417",
+  "--foreground": "#f2f2f7",
+  "--info": "#74c7ec",
+  "--input": "#494953",
+  "--muted": "#2a2a31",
+  "--muted-foreground": "#b5b5c4",
+  "--popover": "#24242a",
+  "--popover-foreground": "#f2f2f7",
+  "--primary": "#b9a7ff",
+  "--primary-foreground": "#141417",
+  "--ring": "#b9a7ff",
+  "--secondary": "#24242a",
+  "--secondary-foreground": "#f2f2f7",
+  "--success": "#74d99f",
+  "--warning": "#f4c76a",
+} satisfies FeedbackThemeStyle;
+
 interface FeedbackSectionCardProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
   title: React.ReactNode;
@@ -87,46 +118,48 @@ function FeedbackReviewShell({
   action,
   maxWidth = "lg",
   bodyClassName,
+  style,
   children,
   ...props
 }: FeedbackReviewShellProps) {
   return (
     <div
       className={cn(
-        "bg-dashboard-canvas text-dashboard-foreground flex min-h-screen [--accent:#24242a] [--border:var(--dashboard-panel-border)] [--card:var(--dashboard-panel)] [--foreground:var(--dashboard-foreground)] [--muted-foreground:var(--dashboard-muted)] [--muted:#2a2a31] [--secondary:#24242a]",
+        "bg-dashboard-canvas text-dashboard-foreground flex min-h-dvh min-w-0 overflow-x-hidden",
         className
       )}
+      style={{ ...FEEDBACK_REVIEW_THEME, ...style }}
       {...props}
     >
-      <main className="min-w-0 flex-1 p-3">
-        <section className="border-dashboard-panel-border bg-dashboard-panel flex min-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[10px] border">
-          <header className="border-dashboard-panel-border flex h-10 shrink-0 items-center justify-between gap-4 border-b bg-transparent px-6 sm:px-8">
-            <p className="text-dashboard-muted truncate text-xs font-bold tracking-[0.28em] uppercase">
+      <main className="min-w-0 flex-1 p-2 sm:p-3">
+        <section className="border-dashboard-panel-border bg-dashboard-panel flex min-h-[calc(100dvh-1rem)] min-w-0 flex-col overflow-hidden rounded-[10px] border sm:min-h-[calc(100dvh-1.5rem)]">
+          <header className="border-dashboard-panel-border flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-2 border-b bg-transparent px-4 py-2 sm:px-8">
+            <p className="text-dashboard-muted min-w-0 text-xs font-bold tracking-[0.22em] break-words uppercase sm:tracking-[0.28em]">
               {label}
             </p>
-            {action && <div className="shrink-0">{action}</div>}
+            {action && <div className="max-w-full min-w-0">{action}</div>}
           </header>
           <div
             className={cn(
-              "min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8 sm:py-6",
+              "min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-6",
               bodyClassName
             )}
           >
             <div
               className={cn(
-                "mx-auto w-full space-y-8",
+                "mx-auto w-full min-w-0 space-y-8",
                 feedbackReviewShellMaxWidthClasses[maxWidth]
               )}
             >
               {(title || description) && (
                 <div className="space-y-2">
                   {title && (
-                    <h1 className="font-display text-dashboard-foreground text-3xl font-light tracking-tight sm:text-4xl">
+                    <h1 className="font-display text-dashboard-foreground text-3xl font-light tracking-tight break-words sm:text-4xl">
                       {title}
                     </h1>
                   )}
                   {description && (
-                    <p className="text-dashboard-muted max-w-2xl text-sm leading-6">
+                    <p className="text-dashboard-muted max-w-2xl text-sm leading-6 [overflow-wrap:anywhere] break-words">
                       {description}
                     </p>
                   )}
@@ -164,7 +197,12 @@ function FeedbackStatusPage({
       bodyClassName="flex items-center"
       {...props}
     >
-      <div className={cn("mx-auto max-w-3xl space-y-6", contentClassName)}>
+      <div
+        className={cn(
+          "mx-auto w-full max-w-3xl min-w-0 space-y-6",
+          contentClassName
+        )}
+      >
         <div className="space-y-3 text-center">
           <div className="flex justify-center">
             <div
@@ -176,14 +214,16 @@ function FeedbackStatusPage({
               {icon}
             </div>
           </div>
-          <h1 className="font-display text-3xl font-light md:text-4xl">
+          <h1 className="font-display text-3xl font-light [overflow-wrap:anywhere] break-words md:text-4xl">
             {title}
           </h1>
-          <p className="text-muted-foreground text-lg">{description}</p>
+          <p className="text-muted-foreground text-base leading-7 [overflow-wrap:anywhere] break-words sm:text-lg">
+            {description}
+          </p>
         </div>
         {children}
         {actions && (
-          <div className="flex flex-col justify-center gap-4 sm:flex-row">
+          <div className="flex min-w-0 flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
             {actions}
           </div>
         )}
@@ -220,7 +260,7 @@ function FeedbackMetricCard({
       {icon && (
         <div className={cn("shrink-0", iconToneClasses[tone])}>{icon}</div>
       )}
-      <div className="min-w-0">
+      <div className="min-w-0 [overflow-wrap:anywhere] break-words">
         <div className="text-muted-foreground text-sm">{label}</div>
         <div className="text-lg font-medium">
           {value}
@@ -273,11 +313,13 @@ function FeedbackActionItem({
       ) : (
         icon && <div className="mt-0.5 shrink-0">{icon}</div>
       )}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 [overflow-wrap:anywhere] break-words">
         {title && (
           <div className="text-foreground mb-1 font-medium">{title}</div>
         )}
-        <div className="text-muted-foreground text-sm">{children}</div>
+        <div className="text-muted-foreground text-sm leading-6">
+          {children}
+        </div>
       </div>
     </li>
   );
@@ -303,7 +345,7 @@ function FeedbackSectionCard({
     >
       <div
         className={cn(
-          "flex items-start justify-between gap-4 p-6 pb-4",
+          "flex min-w-0 flex-col items-start justify-between gap-3 p-4 pb-3 sm:flex-row sm:gap-4 sm:p-6 sm:pb-4",
           headerClassName
         )}
       >
@@ -318,16 +360,27 @@ function FeedbackSectionCard({
               {icon}
             </span>
           )}
-          <div className="min-w-0 space-y-1">
-            <AppSurfaceTitle className="text-lg">{title}</AppSurfaceTitle>
+          <div className="min-w-0 space-y-1 [overflow-wrap:anywhere] break-words">
+            <AppSurfaceTitle className="text-lg [overflow-wrap:anywhere] break-words">
+              {title}
+            </AppSurfaceTitle>
             {description && (
               <AppSurfaceDescription>{description}</AppSurfaceDescription>
             )}
           </div>
         </div>
-        {action && <div className="shrink-0">{action}</div>}
+        {action && (
+          <div className="max-w-full min-w-0 sm:shrink-0">{action}</div>
+        )}
       </div>
-      <div className={cn("px-6 pb-6", contentClassName)}>{children}</div>
+      <div
+        className={cn(
+          "min-w-0 px-4 pb-4 [overflow-wrap:anywhere] break-words sm:px-6 sm:pb-6",
+          contentClassName
+        )}
+      >
+        {children}
+      </div>
     </AppSurface>
   );
 }
@@ -354,8 +407,10 @@ function FeedbackScoreCard({
       className={cn("text-center", className)}
       {...props}
     >
-      <div className="mx-auto max-w-2xl space-y-3">
-        <div className="text-primary text-6xl font-bold">{score}</div>
+      <div className="mx-auto max-w-2xl min-w-0 space-y-3 [overflow-wrap:anywhere] break-words">
+        <div className="text-primary text-5xl font-bold sm:text-6xl">
+          {score}
+        </div>
         <AppSurfaceTitle className="text-lg font-medium">
           {label}
         </AppSurfaceTitle>
@@ -416,6 +471,7 @@ function FeedbackStateCard({
 }
 
 export {
+  FEEDBACK_REVIEW_THEME,
   FeedbackReviewShell,
   FeedbackSectionCard,
   FeedbackScoreCard,

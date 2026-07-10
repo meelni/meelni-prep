@@ -15,6 +15,7 @@ export interface InterviewLaunchContext {
   focus: string | null;
   company: string | null;
   returnTo: string | null;
+  entrySource: "voice_demo" | null;
 }
 
 type SearchParamsReader = Pick<URLSearchParams, "get">;
@@ -33,6 +34,8 @@ export function parseInterviewLaunchContext(
     focus: cleanValue(searchParams.get("focus")),
     company: cleanValue(searchParams.get("company")),
     returnTo: parseInternalReturnTo(searchParams.get("returnTo")),
+    entrySource:
+      searchParams.get("source") === "voice_demo" ? "voice_demo" : null,
   };
 }
 

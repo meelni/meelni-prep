@@ -834,47 +834,79 @@ Issues a short-lived JWT access token for reconnecting to an existing, active in
 
 ### POST /api/livekit/demo-token
 
-Generates LiveKit access tokens specifically for 60-second demo conversations on the landing page. Creates ephemeral rooms that auto-delete after 2 minutes and dispatches a Cloud-hosted demo agent to conduct a brief product demo.
+Starts or recovers a bounded two-minute voice preview on the landing page. New sessions create an ephemeral room and dispatch the configured preview agent; a single recovery token may reconnect the same signed browser session to the existing room. Recovery responses also include an opaque receipt that the first-party client acknowledges only after LiveKit connects.
 
-**Authentication**: Public (no authentication required - for landing page demo)
+**Authentication**: Public while the server-side relaunch gate is enabled. Requests require same-origin JSON, signed anonymous browser identity, and shared database authorization before LiveKit work.
 
 **Request Body**:
 
 ```json
-{
-  "participantName": "Guest"
-}
+{}
 ```
 
 **Request Parameters**:
 
-| Field             | Type   | Required | Default | Description                                      |
-| ----------------- | ------ | -------- | ------- | ------------------------------------------------ |
-| `participantName` | string | ✅ Yes   | -       | Display name for the participant (e.g., "Guest") |
+The server ignores caller-supplied room and participant identity.
 
 **Response** (200 OK):
 
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIs...",
-  "url": "wss://mockmate.livekit.cloud",
-  "roomName": "demo-1699999999999-abc123"
+  "url": "wss://example.livekit.cloud",
+  "durationSeconds": 120,
+  "recoveryReceipt": "11111111-1111-4111-8111-111111111111"
 }
 ```
 
+`recoveryReceipt` is present only for a recovery token. It must not be logged
+or treated as a room or participant identifier.
+
 **Implementation Details**:
 
-- Room naming format: `demo-{timestamp}-{random}` for tracking and analytics
-- Room lifetime: Auto-deletes 2 minutes after last participant leaves
+- Room and participant identity are derived server-side and are not returned
+- The Python agent independently deletes the room at the two-minute hard cap
 - Max participants: 2 (user + demo agent only)
-- Agent: Cloud-hosted demo agent (CA_Wp8bi3bRroE2) explicitly dispatched via AgentDispatchClient
-- Agent behavior: 60-second product demo with one quick question and feedback
-- Token TTL: 2 minutes (matches demo duration)
+- Agent: the environment-specific `LIVEKIT_DEMO_AGENT_NAME`, explicitly dispatched once
+- Agent behavior: one PM interview question, a realistic follow-up, and a concise takeaway
+- Token TTL: 150 seconds; TTL is a connection boundary, not session-duration enforcement
 
 **Errors**:
 
-- `400 Bad Request` - Missing `participantName`
-- `500 Internal Server Error` - LiveKit credentials not configured, room creation failed, or agent dispatch failed
+- `404 Not Found` - Relaunch gate is disabled
+- `409 Conflict` - The signed session is still provisioning
+- `415 Unsupported Media Type` - Request is not JSON
+- `429 Too Many Requests` - A shared global, IP, device, or session limit was reached
+- `503 Service Unavailable` - Shared authorization or provider startup is unavailable
+
+### POST /api/livekit/demo-token/ack
+
+Acknowledges that a recovery token reached a connected LiveKit room. The
+first-party browser calls this endpoint only after its `onConnected` event.
+Unacknowledged claims remain retryable after 30 seconds and do not consume the
+single recovery allowance.
+
+**Authentication**: The current signed anonymous browser-session cookie.
+Requests require same-origin JSON and the server-side relaunch gate.
+
+**Request Body**:
+
+```json
+{
+  "receipt": "11111111-1111-4111-8111-111111111111"
+}
+```
+
+**Response**: `204 No Content`. Missing, stale, mismatched, and already
+acknowledged receipts are safe no-ops and return no identifiers.
+
+**Errors**:
+
+- `400 Bad Request` - Receipt is malformed
+- `403 Forbidden` - Cross-site request denied
+- `404 Not Found` - Relaunch gate is disabled
+- `415 Unsupported Media Type` - Request is not JSON
+- `503 Service Unavailable` - Shared authorization is unavailable
 
 ---
 

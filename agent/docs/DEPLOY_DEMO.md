@@ -6,27 +6,19 @@
 2. **Authenticated with LiveKit Cloud**: Run `lk cloud auth`
 3. **Environment variables ready**: OPENAI_API_KEY, DEEPGRAM_API_KEY
 
-## Step 1: Prepare Environment File
+## Step 1: Configure LiveKit Cloud
 
-Create a `.env.demo` file with your API keys:
+Configure provider credentials and `LIVEKIT_DEMO_AGENT_NAME` as LiveKit Cloud
+secrets. Keep them out of source, shell history, and deployment documentation.
+The runtime uses LiveKit Inference for ElevenLabs, so no Cartesia credential is
+required.
 
-```bash
-cd agent
-cat > .env.demo << EOF
-OPENAI_API_KEY=your_openai_key_here
-DEEPGRAM_API_KEY=your_deepgram_key_here
-EOF
-```
+## Step 2: Verify the Image
 
-**Note**: Don't add CARTESIA_API_KEY - it's not needed when using LiveKit Inference!
-
-## Step 2: Rename Dockerfile
-
-The deployment needs the Dockerfile to be named exactly `Dockerfile`:
+From `agent/`, build the exact checked-in image before deployment:
 
 ```bash
-# Temporarily rename for deployment
-cp Dockerfile.demo Dockerfile
+docker build -f demo/Dockerfile .
 ```
 
 ## Step 3: Deploy to LiveKit Cloud
@@ -35,17 +27,15 @@ cp Dockerfile.demo Dockerfile
 # Make sure you're in the agent directory
 cd agent
 
-# Create and deploy the demo agent
-lk agent create \
-  --secrets-file .env.demo \
-  .
+./demo/deploy.sh
 ```
 
 This will:
+
 1. Upload your demo agent code
 2. Build a Docker image
 3. Deploy it to LiveKit Cloud
-4. Create a `livekit.toml` file with the agent ID
+4. Update the agent referenced by `demo/livekit.toml`
 
 ## Step 4: Save the Agent ID
 
@@ -55,7 +45,8 @@ After deployment, you'll see output like:
 Created agent: CA_xxxxxxxxxxxx
 ```
 
-**Save this ID!** You'll need it for the frontend.
+Save this ID as deployment metadata for LiveKit operations. The web app uses
+the configured dispatch name, not a hard-coded account ID.
 
 The agent ID is also saved in `livekit.toml`:
 
@@ -67,60 +58,46 @@ The agent ID is also saved in `livekit.toml`:
   id = "CA_xxxxxxxxxxxx"
 ```
 
-## Step 5: Update Frontend
+## Step 5: Configure the Dispatch Name
 
-Update `/app/api/livekit/demo-token/route.ts` to use the Cloud agent ID:
-
-```typescript
-// After creating the room, dispatch the Cloud agent
-const DEMO_AGENT_ID = "CA_xxxxxxxxxxxx"; // Your Cloud agent ID
-
-await fetch(`${livekit_url.replace('wss://', 'https://')}/agent/dispatch`, {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${apiKey}:${apiSecret}`,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    room: roomName,
-    agentName: DEMO_AGENT_ID,
-  }),
-});
-```
+Set `LIVEKIT_DEMO_AGENT_NAME` in the LiveKit agent environment and the matching
+server-side web environment. The API dispatches through the shared LiveKit
+adapter; do not embed an account-specific agent ID or provider credentials in
+frontend source.
 
 ## Step 6: Test
 
-1. Open http://localhost:3001
-2. Click "Talk to Meelni"
-3. Demo agent should join from LiveKit Cloud!
+1. Run the local stack with `npm run dev:local`
+2. Enable the relaunch gate only in the local development override
+3. Click "Try a 2-minute voice preview"
+4. Verify the agent-ready signal, takeaway, and hard room deletion
 
 ## Monitoring
 
 ### View agent status
+
 ```bash
 lk agent status
 ```
 
 ### View logs
+
 ```bash
 lk agent logs
 ```
 
 ### List all agents
+
 ```bash
 lk agent list
 ```
 
 ## Updating the Demo Agent
 
-When you make changes to `demo_agent.py`:
+When you change `demo/agent.py` or `demo/runtime.py`, deploy through the checked-in helper:
 
 ```bash
-# Make sure Dockerfile exists (or copy from Dockerfile.demo)
-cp Dockerfile.demo Dockerfile
-
-# Deploy new version
-lk agent deploy .
+./demo/deploy.sh
 ```
 
 This does a **rolling deployment** - old instances stay active for up to 1 hour to complete sessions.
@@ -144,37 +121,43 @@ lk agent delete
 ## Troubleshooting
 
 ### "No Dockerfile found"
+
 ```bash
-cp Dockerfile.demo Dockerfile
+docker build -f demo/Dockerfile .
 ```
 
 ### "Agent not joining rooms"
+
 Check the logs:
+
 ```bash
 lk agent logs --log-type deploy
 ```
 
 ### "Build failed"
+
 Check build logs:
+
 ```bash
 lk agent logs --log-type build
 ```
 
 ### Update secrets
-```bash
-lk agent update-secrets \
-  --secrets OPENAI_API_KEY=sk-new-key
-```
+
+Use the LiveKit Cloud secret manager, then redeploy through
+`./demo/deploy.sh`. Do not place secret values in commands saved to history.
 
 ## Cost Considerations
 
 **LiveKit Cloud Agent Hosting**:
+
 - Free tier: Limited hours/month
 - Paid tier: ~$0.10/hour per replica
 - Auto-scales based on demand
 - Can scale to zero on certain plans
 
 **Self-Hosted vs Cloud**:
+
 - **Self-hosted**: Free (your infrastructure), manual scaling
 - **Cloud**: Paid, auto-scaling, no infrastructure management
 
@@ -187,18 +170,19 @@ Landing Page → Demo Modal
     ↓
 POST /api/livekit/demo-token
     ↓
-Create room: demo-{timestamp}-{random}
+Atomically reserve a server-derived demo room
     ↓
-Dispatch Cloud Agent: CA_xxxxxxxxxxxx
+Dispatch the configured voice-preview agent once
     ↓
 LiveKit Cloud spins up demo agent instance
     ↓
-Agent joins room and conducts 60s demo
+Agent joins the room and conducts a two-minute voice preview
     ↓
 Agent instance scales down after session
 ```
 
 **Benefits**:
+
 - No local agent needed for demos
 - Automatic scaling
 - No competition with self-hosted agents
@@ -206,4 +190,5 @@ Agent instance scales down after session
 
 ---
 
-**Next**: After deployment, update the frontend with the agent ID and test!
+**Next**: Follow `docs/operations/public-voice-preview.md` for the gate-off,
+agent-first rollout and launch evidence.

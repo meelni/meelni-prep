@@ -2,7 +2,7 @@
 
 This directory contains two separate LiveKit agents:
 
-1. **Demo Agent** - Quick 60-second demos on the landing page
+1. **Voice Preview Agent** - Bounded two-minute practice previews on the landing page
 2. **Main Interview Agent** - Full interview sessions
 
 ## Quick Deployment
@@ -10,29 +10,30 @@ This directory contains two separate LiveKit agents:
 ### Deploy Demo Agent
 
 ```bash
-./deploy-demo.sh
+cd agent
+./demo/deploy.sh
 ```
 
 ### Deploy Main Interview Agent
 
 ```bash
-./deploy-main.sh
+cd agent
+./interview/deploy.sh
 ```
 
 ## How It Works
 
-Each agent has its own:
+Each agent has its own checked-in Dockerfile and deployment helper:
 
-- **Dockerfile**: `Dockerfile.demo` and `Dockerfile.main`
-- **Dockerignore**: `.dockerignore.demo` and `.dockerignore.main`
-- **Deployment Script**: `deploy-demo.sh` and `deploy-main.sh`
+- Voice preview: `demo/Dockerfile` and `demo/deploy.sh`
+- Full interview: `interview/Dockerfile` and `interview/deploy.sh`
 
 The deployment scripts:
 
-1. Copy the correct `.dockerignore` file to `.dockerignore`
-2. Copy the correct `Dockerfile` to `Dockerfile`
-3. Run `lk agent deploy .`
-4. Clean up temporary `Dockerfile`
+1. Preserve the root `agent/Dockerfile` in a temporary file.
+2. Copy the selected agent Dockerfile into the LiveKit build context.
+3. Deploy with the agent-specific `livekit.toml` configuration.
+4. Restore the original root Dockerfile on success or failure.
 
 ## Dispatch Names
 
@@ -43,59 +44,15 @@ The historical `CA_*` IDs from the previous account should not be reused for
 the reboot. Create/deploy agents in the new LiveKit account and set the matching
 dispatch names in app and agent environments.
 
-## Manual Deployment
-
-If you prefer to deploy manually:
-
-### Demo Agent
-
-```bash
-cp .dockerignore.demo .dockerignore
-cp Dockerfile.demo Dockerfile
-lk agent deploy .
-rm Dockerfile
-```
-
-### Main Interview Agent
-
-```bash
-cp .dockerignore.main .dockerignore
-cp Dockerfile.main Dockerfile
-lk agent deploy .
-rm Dockerfile
-```
-
-## File Exclusions
-
-### Demo Agent (.dockerignore.demo)
-
-Excludes:
-
-- Main agent files (`agent.py`, `prompts.py`, `config.py`, `utils/`)
-- Test files
-- `Dockerfile.main`
-
-### Main Interview Agent (.dockerignore.main)
-
-Excludes:
-
-- Demo agent files (`demo_agent.py`, `Dockerfile.demo`)
-- Test files
-
-Both exclude:
-
-- Python cache files
-- Virtual environments
-- Environment files (`.env`, `.env.local`, `.env.demo`)
-- Development tools
-- Git files
+Do not manually rename Dockerfiles or invent alternate `.dockerignore` files;
+the helpers are the reproducible deployment entrypoints.
 
 ## Troubleshooting
 
 ### Issue: Files not found during build
 
-- Make sure you're using the correct `.dockerignore` file
-- Check that required files aren't excluded in the `.dockerignore`
+- Build the exact image locally: `docker build -f demo/Dockerfile .`
+- Confirm `demo/agent.py` and `demo/runtime.py` are both in the image context
 
 ### Issue: Wrong agent deployed
 

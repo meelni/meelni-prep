@@ -93,7 +93,8 @@ export function SetupContent() {
     company: string | null;
     type: string;
   } | null>(null);
-  const launcherViewKey = questionIdParam ?? "dashboard";
+  const launcherViewKey =
+    questionIdParam ?? launchContext.entrySource ?? "dashboard";
   const trackedLauncherViewKey = useRef<string | null>(null);
 
   const recommendation = buildInterviewRecommendation({
@@ -116,15 +117,14 @@ export function SetupContent() {
       launchContext.difficulty ||
       launchContext.focus ||
       launchContext.company ||
-      launchContext.returnTo
+      launchContext.returnTo ||
+      launchContext.entrySource
   );
   const analyticsLaunchContext = useMemo(
     () => ({
-      focus: launchContext.focus ?? undefined,
-      company: launchContext.company ?? undefined,
-      return_to: launchContext.returnTo ?? undefined,
+      entry_source: launchContext.entrySource ?? undefined,
     }),
-    [launchContext.company, launchContext.focus, launchContext.returnTo]
+    [launchContext.entrySource]
   );
 
   // Credit state is informational; session start remains the source of truth.
@@ -284,9 +284,6 @@ export function SetupContent() {
 
         // Track setup started
         analytics.track("setup_started", {
-          user_id: user.id,
-          referrer_page:
-            typeof document !== "undefined" ? document.referrer : undefined,
           user_authenticated: true,
         });
       } catch (error) {
@@ -314,7 +311,6 @@ export function SetupContent() {
       (difficulty !== defaultDifficulty.current ? 1 : 0);
 
     analytics.track("setup_completed", {
-      user_id: user!.id,
       interview_type: roundType,
       skill_level: difficulty,
       mode: "voice_video",
@@ -328,7 +324,6 @@ export function SetupContent() {
       accepted_recommendation:
         roundType === recommendation.roundType &&
         difficulty === recommendation.difficulty,
-      question_id: questionId || undefined,
       ...analyticsLaunchContext,
     };
     trackInterviewLaunchEvent(
@@ -425,10 +420,8 @@ export function SetupContent() {
       const { sessionId } = await response.json();
 
       const startSucceededProperties = {
-        session_id: sessionId,
         interview_type: roundType,
         skill_level: difficulty,
-        question_id: questionId || undefined,
         ...analyticsLaunchContext,
       };
       trackInterviewLaunchEvent(
@@ -444,7 +437,7 @@ export function SetupContent() {
       const startFailedProperties = {
         interview_type: roundType,
         skill_level: difficulty,
-        error: err instanceof Error ? err.message : "unknown",
+        error_code: "session_start_failed",
         ...analyticsLaunchContext,
       };
       trackInterviewLaunchEvent(
