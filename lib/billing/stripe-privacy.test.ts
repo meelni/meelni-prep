@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildStripeDeletionSubjects,
   fingerprintStripeSubject,
+  normalizeStripeDeletionSubjects,
   payloadContainsProviderIdentifier,
 } from "./stripe-privacy";
 
@@ -45,4 +46,88 @@ test("legacy Stripe payload matching finds exact nested provider identifiers", (
     payloadContainsProviderIdentifier("not-json", ["cus_sensitive"]),
     false
   );
+});
+
+test("deletion subject parsing preserves legacy and financial recovery kinds", () => {
+  const legacyFingerprint = fingerprintStripeSubject("cus_legacy")!;
+  const subscriptionFingerprint = fingerprintStripeSubject("sub_legacy")!;
+  const invoiceFingerprint = fingerprintStripeSubject("in_recovery")!;
+  const paymentFingerprint = fingerprintStripeSubject("pi_recovery")!;
+  assert.deepEqual(
+    normalizeStripeDeletionSubjects([
+      {
+        kind: "customer",
+        providerId: "cus_legacy",
+        fingerprint: legacyFingerprint,
+      },
+      {
+        kind: "subscription",
+        providerId: null,
+        fingerprint: subscriptionFingerprint,
+      },
+      {
+        kind: "invoice",
+        providerId: "in_recovery",
+        fingerprint: invoiceFingerprint,
+      },
+      {
+        kind: "payment_intent",
+        providerId: "pi_recovery",
+        fingerprint: paymentFingerprint,
+      },
+    ]),
+    [
+      {
+        kind: "customer",
+        providerId: "cus_legacy",
+        fingerprint: legacyFingerprint,
+      },
+      {
+        kind: "subscription",
+        providerId: null,
+        fingerprint: subscriptionFingerprint,
+      },
+      {
+        kind: "invoice",
+        providerId: "in_recovery",
+        fingerprint: invoiceFingerprint,
+      },
+      {
+        kind: "payment_intent",
+        providerId: "pi_recovery",
+        fingerprint: paymentFingerprint,
+      },
+    ]
+  );
+  for (const corrupt of [
+    null,
+    [{ kind: "unknown", providerId: "bad", fingerprint: "bad" }],
+    [{ kind: "charge", providerId: 42, fingerprint: "bad-type" }],
+    [
+      {
+        kind: "customer",
+        providerId: "cus_mismatch",
+        fingerprint: fingerprintStripeSubject("cus_other"),
+      },
+    ],
+    [
+      {
+        kind: "customer",
+        providerId: "sub_wrong_kind",
+        fingerprint: fingerprintStripeSubject("sub_wrong_kind"),
+      },
+    ],
+  ]) {
+    assert.throws(
+      () => normalizeStripeDeletionSubjects(corrupt),
+      (error: unknown) => {
+        assert.equal(
+          (error as { code?: string }).code,
+          "account_deletion_subjects_invalid"
+        );
+        assert.equal(JSON.stringify(error).includes("bad"), false);
+        return true;
+      }
+    );
+  }
 });

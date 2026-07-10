@@ -286,7 +286,9 @@ export function buildDashboardPracticeSummary(
       },
       {
         label: "Next",
-        title: focusArea ? `${focusArea.label} drill` : "Review feedback",
+        title: focusArea
+          ? `${focusArea.label} focused practice`
+          : "Review feedback",
         description: focusArea
           ? `Practice the lowest scored dimension from your latest completed feedback.`
           : "Choose one concrete improvement from completed feedback.",
