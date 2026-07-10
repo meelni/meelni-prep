@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canonicalEnvironmentForEnvFile,
   getSupabaseEnvironmentIdentityPolicy,
   isLoopbackDatabaseUrl,
 } from "./supabase-environment-guard.mjs";
@@ -28,6 +29,7 @@ test("Preview must differ from the declared Production Supabase project", () => 
     getSupabaseEnvironmentIdentityPolicy({
       databaseUrl: databaseUrl(previewRef),
       environment: "preview",
+      expectedEnvironment: "preview",
       productionProjectRef: productionRef,
     }).allowed,
     true
@@ -36,6 +38,7 @@ test("Preview must differ from the declared Production Supabase project", () => 
   const policy = getSupabaseEnvironmentIdentityPolicy({
     databaseUrl: databaseUrl(productionRef),
     environment: "preview",
+    expectedEnvironment: "preview",
     productionProjectRef: productionRef,
   });
   assert.equal(policy.allowed, false);
@@ -47,6 +50,7 @@ test("Production must match the declared Production Supabase project", () => {
     getSupabaseEnvironmentIdentityPolicy({
       databaseUrl: databaseUrl(productionRef),
       environment: "production",
+      expectedEnvironment: "production",
       productionProjectRef: productionRef,
     }).allowed,
     true
@@ -55,6 +59,7 @@ test("Production must match the declared Production Supabase project", () => {
   const policy = getSupabaseEnvironmentIdentityPolicy({
     databaseUrl: databaseUrl(previewRef),
     environment: "production",
+    expectedEnvironment: "production",
     productionProjectRef: productionRef,
   });
   assert.equal(policy.allowed, false);
@@ -70,21 +75,55 @@ test("remote targets fail closed without valid environment identity metadata", (
     {
       databaseUrl: databaseUrl(previewRef),
       environment: "preview",
+      expectedEnvironment: "preview",
     },
     {
       databaseUrl: databaseUrl(previewRef),
       environment: "preview",
+      expectedEnvironment: "preview",
       productionProjectRef: "not-a-project-ref",
     },
     {
       databaseUrl:
         "postgresql://postgres:secret@database.example.invalid:5432/postgres",
       environment: "preview",
+      expectedEnvironment: "preview",
       productionProjectRef: productionRef,
     },
   ]) {
     assert.equal(getSupabaseEnvironmentIdentityPolicy(input).allowed, false);
   }
+});
+
+test("remote identity rejects canonical-file and Vercel marker disagreements", () => {
+  const wrongFile = getSupabaseEnvironmentIdentityPolicy({
+    databaseUrl: databaseUrl(productionRef),
+    environment: "production",
+    expectedEnvironment: "preview",
+    productionProjectRef: productionRef,
+    vercelEnvironment: "preview",
+  });
+  assert.equal(wrongFile.allowed, false);
+  assert.match(wrongFile.reason, /does not match expected preview/);
+
+  const wrongVercelMarker = getSupabaseEnvironmentIdentityPolicy({
+    databaseUrl: databaseUrl(previewRef),
+    environment: "preview",
+    expectedEnvironment: "preview",
+    productionProjectRef: productionRef,
+    vercelEnvironment: "production",
+  });
+  assert.equal(wrongVercelMarker.allowed, false);
+  assert.match(wrongVercelMarker.reason, /VERCEL_ENV=production/);
+});
+
+test("canonical env filenames have deterministic shared identities", () => {
+  assert.equal(canonicalEnvironmentForEnvFile(".env.local"), "preview");
+  assert.equal(
+    canonicalEnvironmentForEnvFile(".env.production.local"),
+    "production"
+  );
+  assert.equal(canonicalEnvironmentForEnvFile("/tmp/copied.env"), undefined);
 });
 
 function databaseUrl(ref) {

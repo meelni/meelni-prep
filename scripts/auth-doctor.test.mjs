@@ -51,6 +51,24 @@ test("project ref inference supports direct and pooler database URLs", () => {
     ),
     undefined
   );
+  assert.equal(
+    inferDatabaseProjectRef(
+      "postgresql://postgres.viafxscamydwybdlcynb:secret@evil.example:5432/postgres"
+    ),
+    undefined
+  );
+  assert.equal(
+    inferDatabaseProjectRef(
+      "https://postgres.viafxscamydwybdlcynb:secret@aws-0-us-west-1.pooler.supabase.com/postgres"
+    ),
+    undefined
+  );
+  assert.equal(
+    inferDatabaseProjectRef(
+      "postgresql://postgres.viafxscamydwybdlcynb:secret@aws-0-us-west-1.pooler.supabase.com,evil.example:5432/postgres"
+    ),
+    undefined
+  );
 });
 
 test("checkAuthCallbackRedirect warns when callback ignores redirectTo", () => {

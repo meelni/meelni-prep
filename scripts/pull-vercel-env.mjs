@@ -246,10 +246,12 @@ export function validateRefreshedEnv(env, environment) {
   const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
     databaseUrl: readEnvValue(env, "DATABASE_URL"),
     environment,
+    expectedEnvironment: environment,
     productionProjectRef: readEnvValue(
       env,
       "MEELNI_PRODUCTION_SUPABASE_PROJECT_REF"
     ),
+    vercelEnvironment: readEnvValue(env, "VERCEL_ENV"),
   });
   if (!identityPolicy.allowed) {
     throw new Error(

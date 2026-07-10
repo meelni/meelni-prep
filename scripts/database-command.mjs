@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 
 import { config } from "dotenv";
 
-import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-guard.mjs";
+import {
+  canonicalEnvironmentForEnvFile,
+  getSupabaseEnvironmentIdentityPolicy,
+} from "./supabase-environment-guard.mjs";
 
 export function getDatabaseCommandPolicy({
   command,
@@ -14,7 +17,9 @@ export function getDatabaseCommandPolicy({
   allowRemoteMigration = false,
   allowRemoteStudio = false,
   environment,
+  expectedEnvironment,
   productionProjectRef,
+  vercelEnvironment,
 }) {
   if (!databaseUrl) {
     return { allowed: false, reason: "DATABASE_URL is not configured" };
@@ -65,7 +70,9 @@ export function getDatabaseCommandPolicy({
     const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
       databaseUrl,
       environment,
+      expectedEnvironment,
       productionProjectRef,
+      vercelEnvironment,
     });
     if (!identityPolicy.allowed) return identityPolicy;
     return identityPolicy;
@@ -81,6 +88,9 @@ function main() {
   }
 
   const explicitEnvFile = process.env.MEELNI_ENV_FILE;
+  const allowRemoteMigration =
+    process.env.MEELNI_ALLOW_REMOTE_MIGRATION === "1";
+  const allowRemoteStudio = process.env.MEELNI_ALLOW_REMOTE_STUDIO === "1";
   const envFile = explicitEnvFile || ".env.local";
   // An explicitly selected environment must win over inherited shell state;
   // otherwise a Production command could silently target Preview (or reverse).
@@ -105,14 +115,20 @@ function main() {
     command,
     databaseUrl: process.env.DATABASE_URL,
     envFile: explicitEnvFile,
-    allowRemoteMigration: process.env.MEELNI_ALLOW_REMOTE_MIGRATION === "1",
-    allowRemoteStudio: process.env.MEELNI_ALLOW_REMOTE_STUDIO === "1",
+    allowRemoteMigration,
+    allowRemoteStudio,
     environment: explicitEnvFile
       ? loaded.parsed?.MEELNI_ENV_PULL_ENVIRONMENT
       : process.env.MEELNI_ENV_PULL_ENVIRONMENT,
+    expectedEnvironment: explicitEnvFile
+      ? canonicalEnvironmentForEnvFile(explicitEnvFile)
+      : undefined,
     productionProjectRef: explicitEnvFile
       ? loaded.parsed?.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF
       : process.env.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF,
+    vercelEnvironment: explicitEnvFile
+      ? loaded.parsed?.VERCEL_ENV
+      : process.env.VERCEL_ENV,
   });
   if (!policy.allowed) throw new Error(policy.reason);
 

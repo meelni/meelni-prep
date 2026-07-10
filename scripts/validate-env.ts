@@ -167,10 +167,14 @@ function validateEnvironment(): ValidationResult {
     }
   }
 
+  const environment = sharedEnvironment(process.env);
+  const vercelEnvironment = recognizedSharedEnvironment(process.env.VERCEL_ENV);
   const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
     databaseUrl: process.env.DATABASE_URL,
-    environment: sharedEnvironment(process.env),
+    environment,
+    expectedEnvironment: vercelEnvironment ?? environment,
     productionProjectRef: process.env.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF,
+    vercelEnvironment,
   });
   if (!identityPolicy.allowed) {
     errors.push(
@@ -211,11 +215,17 @@ function validateEnvironment(): ValidationResult {
   };
 }
 
+function recognizedSharedEnvironment(
+  value: string | undefined
+): "preview" | "production" | undefined {
+  return value === "preview" || value === "production" ? value : undefined;
+}
+
 function sharedEnvironment(
   envSource: NodeJS.ProcessEnv
 ): "preview" | "production" | undefined {
   const marker = envSource.MEELNI_ENV_PULL_ENVIRONMENT ?? envSource.VERCEL_ENV;
-  return marker === "preview" || marker === "production" ? marker : undefined;
+  return recognizedSharedEnvironment(marker);
 }
 
 // Run validation

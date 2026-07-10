@@ -15,7 +15,10 @@ import {
   RELAUNCH_SCHEMA_FINGERPRINT,
   SESSION_LIFECYCLE_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
-import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-guard.mjs";
+import {
+  canonicalEnvironmentForEnvFile,
+  getSupabaseEnvironmentIdentityPolicy,
+} from "./supabase-environment-guard.mjs";
 
 const envFile = process.env.MEELNI_ENV_FILE || ".env.local";
 const loadedEnv = config({
@@ -42,8 +45,10 @@ const selectedEnvironment = process.env.MEELNI_ENV_FILE
 const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
   databaseUrl,
   environment: selectedEnvironment.MEELNI_ENV_PULL_ENVIRONMENT,
+  expectedEnvironment: canonicalEnvironmentForEnvFile(envFile),
   productionProjectRef:
     selectedEnvironment.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF,
+  vercelEnvironment: selectedEnvironment.VERCEL_ENV,
 });
 if (!identityPolicy.allowed || !identityPolicy.environmentIdentity) {
   throw new Error(identityPolicy.reason);

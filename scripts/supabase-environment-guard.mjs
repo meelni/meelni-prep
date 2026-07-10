@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import { inferDatabaseProjectRef } from "./supabase-project-ref.mjs";
 
 export const PRODUCTION_SUPABASE_PROJECT_REF_ENV =
@@ -9,7 +11,9 @@ const SHARED_ENVIRONMENTS = new Set(["preview", "production"]);
 export function getSupabaseEnvironmentIdentityPolicy({
   databaseUrl,
   environment,
+  expectedEnvironment,
   productionProjectRef,
+  vercelEnvironment,
 }) {
   if (!databaseUrl) {
     return denied("DATABASE_URL is not configured");
@@ -34,6 +38,24 @@ export function getSupabaseEnvironmentIdentityPolicy({
   if (!SHARED_ENVIRONMENTS.has(environment)) {
     return denied(
       "Remote database access requires MEELNI_ENV_PULL_ENVIRONMENT=preview or production"
+    );
+  }
+
+  if (!SHARED_ENVIRONMENTS.has(expectedEnvironment)) {
+    return denied(
+      "Remote database access requires a canonical Preview or Production env file"
+    );
+  }
+
+  if (environment !== expectedEnvironment) {
+    return denied(
+      `Environment marker ${environment} does not match expected ${expectedEnvironment}`
+    );
+  }
+
+  if (vercelEnvironment && vercelEnvironment !== environment) {
+    return denied(
+      `VERCEL_ENV=${vercelEnvironment} does not match MEELNI_ENV_PULL_ENVIRONMENT=${environment}`
     );
   }
 
@@ -76,6 +98,17 @@ export function getSupabaseEnvironmentIdentityPolicy({
     local: false,
     reason: `verified_${environment}`,
   };
+}
+
+export function canonicalEnvironmentForEnvFile(envFile, root = process.cwd()) {
+  if (!envFile) return undefined;
+
+  const selected = resolve(root, envFile);
+  if (selected === resolve(root, ".env.local")) return "preview";
+  if (selected === resolve(root, ".env.production.local")) {
+    return "production";
+  }
+  return undefined;
 }
 
 export function isLoopbackDatabaseUrl(databaseUrl) {

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const previewRef = "previewprojectref123";
+const productionRef = "productionproject123";
 
 test("environment validation keeps loopback database workflows provider-independent", () => {
   const result = validateWith({
@@ -28,6 +29,32 @@ test("environment validation requires the Production identity anchor for remote 
   assert.match(
     `${result.stdout}\n${result.stderr}`,
     /MEELNI_PRODUCTION_SUPABASE_PROJECT_REF/
+  );
+});
+
+test("environment validation rejects conflicting Meelni and Vercel markers", () => {
+  const previewClaimedAsProduction = validateWith({
+    DATABASE_URL: databaseUrl(productionRef),
+    MEELNI_ENV_PULL_ENVIRONMENT: "production",
+    MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: productionRef,
+    VERCEL_ENV: "preview",
+  });
+  assert.equal(previewClaimedAsProduction.status, 1);
+  assert.match(
+    `${previewClaimedAsProduction.stdout}\n${previewClaimedAsProduction.stderr}`,
+    /does not match expected preview/
+  );
+
+  const productionClaimedAsPreview = validateWith({
+    DATABASE_URL: databaseUrl(previewRef),
+    MEELNI_ENV_PULL_ENVIRONMENT: "preview",
+    MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: productionRef,
+    VERCEL_ENV: "production",
+  });
+  assert.equal(productionClaimedAsPreview.status, 1);
+  assert.match(
+    `${productionClaimedAsPreview.stdout}\n${productionClaimedAsPreview.stderr}`,
+    /does not match expected production/
   );
 });
 
