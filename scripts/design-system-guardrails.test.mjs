@@ -673,7 +673,7 @@ test("priority overlays use the shared overlay color token", async () => {
   const globals = await readFile("app/globals.css", "utf8");
   const files = [
     {
-      file: "components/explore/question-signin-modal.tsx",
+      file: "components/ui/dialog.tsx",
       required: "bg-overlay/80",
     },
     {
@@ -2194,7 +2194,7 @@ test("explore question surfaces use shared form and action primitives", async ()
     },
     {
       file: "components/explore/question-signin-modal.tsx",
-      requiredImports: ["@/components/ui/button"],
+      requiredImports: ["@/components/ui/button", "@/components/ui/dialog"],
       bannedPatterns: ["<button"],
     },
     {

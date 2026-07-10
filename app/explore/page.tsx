@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
@@ -25,6 +25,11 @@ import {
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { usePostHog } from "posthog-js/react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/app/providers/auth-provider";
+import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
+import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
+import { resolveQuestionEntryAction } from "@/lib/navigation/question-auth-entry";
 
 interface Question {
   id: string;
@@ -78,6 +83,10 @@ const QUESTIONS_PER_PAGE = 20;
 
 export default function ExplorePage() {
   const posthog = usePostHog();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { user, isLoading: authLoading } = useAuth();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -89,6 +98,7 @@ export default function ExplorePage() {
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(
     null
   );
+  const questionTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // Track page view
   useEffect(() => {
@@ -176,7 +186,10 @@ export default function ExplorePage() {
     }
   }, [selectedType, posthog, totalQuestions]);
 
-  const handleQuestionClick = (question: Question) => {
+  const handleQuestionClick = (
+    question: Question,
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
     // Track click
     posthog?.capture("explore_question_clicked", {
       question_id: question.id,
@@ -185,7 +198,27 @@ export default function ExplorePage() {
       page: currentPage,
     });
 
-    // Show sign-in modal
+    const entryAction = resolveQuestionEntryAction({
+      authLoading,
+      isAuthenticated: Boolean(user),
+    });
+
+    if (entryAction === "wait") {
+      return;
+    }
+
+    if (entryAction === "launch") {
+      router.push(
+        buildQuestionInterviewHref(
+          question.id,
+          buildInternalRequestDestination(pathname, searchParams.toString())
+        )
+      );
+      return;
+    }
+
+    // Show sign-in modal for signed-out candidates.
+    questionTriggerRef.current = event.currentTarget;
     setSelectedQuestion(question);
     setSignInModalOpen(true);
   };
@@ -338,9 +371,15 @@ export default function ExplorePage() {
                   <Button
                     type="button"
                     variant="ghost"
-                    onClick={() => handleQuestionClick(question)}
+                    onClick={(event) => handleQuestionClick(question, event)}
+                    disabled={authLoading}
+                    aria-busy={authLoading}
                     className="hover:text-foreground h-auto w-full flex-col items-stretch justify-start rounded-lg p-0 text-left hover:bg-transparent"
-                    aria-label={`Practice question: ${question.questionText}`}
+                    aria-label={
+                      authLoading
+                        ? "Checking sign-in status before opening this question"
+                        : `Practice question: ${question.questionText}`
+                    }
                   >
                     {/* Metadata */}
                     <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -448,12 +487,15 @@ export default function ExplorePage() {
           onClose={() => setSignInModalOpen(false)}
           questionText={selectedQuestion.questionText}
           questionId={selectedQuestion.id}
+          returnFocusRef={questionTriggerRef}
         />
       )}
 
       {/* Live region for accessibility */}
       <div role="status" aria-live="polite" className="sr-only">
-        Showing {paginatedQuestions.length} of {totalQuestions} questions
+        {authLoading
+          ? "Checking sign-in status. Question actions will be available shortly."
+          : `Showing ${paginatedQuestions.length} of ${totalQuestions} questions`}
       </div>
     </>
   );
