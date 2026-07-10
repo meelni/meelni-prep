@@ -16,7 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { analytics } from "@/lib/analytics/analytics-service";
-import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
+import {
+  AUTH_SIGNUP_PATH,
+  buildAuthPageHref,
+  parseAuthHandoffContext,
+} from "@/lib/auth/auth-handoff";
 
 function AuthLoadingState() {
   return (
@@ -39,7 +43,8 @@ function SignInContent() {
   const [password, setPassword] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = getSafeInternalRedirect(searchParams.get("redirectTo"))!;
+  const authHandoff = parseAuthHandoffContext(searchParams);
+  const { redirectTo, cancelTo } = authHandoff;
 
   useEffect(() => {
     analytics.track("auth_signin_started", {
@@ -58,7 +63,7 @@ function SignInContent() {
     setError(null);
 
     try {
-      await signInWithGoogle(redirectTo);
+      await signInWithGoogle(authHandoff);
     } catch (err) {
       console.error("Sign in error:", err);
       setError("Failed to sign in. Please try again.");
@@ -95,7 +100,7 @@ function SignInContent() {
   }
 
   return (
-    <AuthShell backLabel="Back to home" onBack={() => router.push("/")}>
+    <AuthShell backLabel="Back" onBack={() => router.push(cancelTo)}>
       <AuthCard
         title="Welcome to Meelni"
         description="Save your progress and track improvement over time"
@@ -173,9 +178,7 @@ function SignInContent() {
             type="button"
             variant="link"
             onClick={() =>
-              router.push(
-                `/auth/signup?redirectTo=${encodeURIComponent(redirectTo)}`
-              )
+              router.push(buildAuthPageHref(AUTH_SIGNUP_PATH, authHandoff))
             }
             className="h-auto p-0 font-medium"
           >

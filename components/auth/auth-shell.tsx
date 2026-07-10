@@ -17,7 +17,7 @@ interface AuthShellProps {
 
 function AuthShell({ children, backLabel, onBack }: AuthShellProps) {
   return (
-    <div className="from-background via-background to-primary/5 flex min-h-screen items-center justify-center bg-gradient-to-br px-4">
+    <div className="from-background via-background to-primary/5 flex min-h-screen items-center justify-center bg-gradient-to-br px-4 py-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -66,7 +66,7 @@ function AuthCard({
     <AppSurface
       variant="default"
       size="lg"
-      className="bg-background/80 rounded-2xl p-8 shadow-2xl backdrop-blur-xl"
+      className="bg-background/80 rounded-2xl p-6 shadow-2xl backdrop-blur-xl sm:p-8"
     >
       <div className="mb-8 text-center">
         <motion.div

@@ -2,11 +2,17 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { Icons } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
+import {
+  AUTH_SIGNIN_PATH,
+  AUTH_SIGNUP_PATH,
+  buildAuthPageHref,
+} from "@/lib/auth/auth-handoff";
+import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
 import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
 
 interface QuestionSignInModalProps {
@@ -23,8 +29,21 @@ export function QuestionSignInModal({
   questionId,
 }: QuestionSignInModalProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { signInWithGoogle } = useAuth();
-  const interviewDestination = buildQuestionInterviewHref(questionId);
+  const originDestination = buildInternalRequestDestination(
+    pathname,
+    searchParams.toString()
+  );
+  const interviewDestination = buildQuestionInterviewHref(
+    questionId,
+    originDestination
+  );
+  const authHandoff = {
+    redirectTo: interviewDestination,
+    cancelTo: originDestination,
+  };
 
   // Handle ESC key to close modal
   useEffect(() => {
@@ -47,19 +66,15 @@ export function QuestionSignInModal({
   }, [isOpen, onClose]);
 
   const handleGoogleSignIn = async () => {
-    await signInWithGoogle(interviewDestination);
+    await signInWithGoogle(authHandoff);
   };
 
   const handleEmailSignIn = () => {
-    router.push(
-      `/auth/signin?redirectTo=${encodeURIComponent(interviewDestination)}`
-    );
+    router.push(buildAuthPageHref(AUTH_SIGNIN_PATH, authHandoff));
   };
 
   const handleSignUp = () => {
-    router.push(
-      `/auth/signup?redirectTo=${encodeURIComponent(interviewDestination)}`
-    );
+    router.push(buildAuthPageHref(AUTH_SIGNUP_PATH, authHandoff));
   };
 
   return (
