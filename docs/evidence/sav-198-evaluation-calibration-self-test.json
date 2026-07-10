@@ -1,16 +1,20 @@
 {
-  "contractVersion": "evaluation-calibration-report.v1",
-  "generatedAt": "2026-07-10T16:12:38.478Z",
+  "contractVersion": "evaluation-calibration-report.v2",
+  "generatedAt": "2026-07-10T16:37:57.379Z",
   "execution": {
     "kind": "deterministic_self_test",
     "modelVersion": "deterministic-calibration-self-test.v1",
     "repetitions": 3,
     "customerDataUsed": false,
-    "paidProviderCalled": false
+    "paidProviderCalled": false,
+    "modelVersionBasis": "deterministic_identifier",
+    "observedModelVersions": [
+      "deterministic-calibration-self-test.v1"
+    ]
   },
   "versions": {
-    "goldSet": "pm-gold-set.v1",
-    "adjudication": "pm-gold-adjudication.v1",
+    "goldSet": "pm-gold-set.v2",
+    "adjudication": "pm-gold-adjudication.v2",
     "schema": "feedback.v2",
     "prompt": "feedback.prompt.v2",
     "rubric": "pm-feedback-rubric.v2"
@@ -25,6 +29,11 @@
       "strategy": 10,
       "behavioral": 10
     },
+    "scoredCasesByQuality": {
+      "weak": 8,
+      "average": 8,
+      "strong": 16
+    },
     "expectedStateMismatches": 0,
     "invalidEvidenceAnchors": 0
   },
@@ -33,7 +42,25 @@
     "adjudicatedEvidenceMatchRate": 1,
     "insufficientHandlingRate": 1,
     "scoreBandAgreementRate": 1,
+    "scoreBandAgreementByDimension": {
+      "structure": 1,
+      "clarity": 1,
+      "insight": 1,
+      "communication": 1,
+      "leadership": 1
+    },
+    "scoreBandAgreementByRound": {
+      "product_sense": 1,
+      "execution": 1,
+      "strategy": 1,
+      "behavioral": 1
+    },
+    "scoreBandAgreementByState": {
+      "full": 1,
+      "partial": 1
+    },
     "maximumRepeatedRunScoreRange": 0,
+    "modelVersionMatchRate": 1,
     "evaluatorCalls": 96,
     "providerEvaluationCalls": 0
   },
@@ -41,8 +68,14 @@
     "evidenceValidityRate": 1,
     "insufficientHandlingRate": 1,
     "scoreBandAgreementRate": 0.8,
+    "minimumDimensionScoreBandAgreementRate": 0.8,
+    "minimumRoundScoreBandAgreementRate": 0.75,
+    "minimumStateScoreBandAgreementRate": 0.75,
     "maximumRepeatedRunScoreRange": 1,
-    "minimumProviderRuns": 3
+    "modelVersionMatchRate": 1,
+    "minimumProviderRuns": 3,
+    "maximumProviderRuns": 3,
+    "maximumProviderCalls": 96
   },
   "gate": {
     "deterministicHarness": "passed",

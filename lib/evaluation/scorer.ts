@@ -73,10 +73,12 @@ export async function generateFeedback(
       });
     }
 
+    // Preserve the model identity reported by the provider, which may resolve a
+    // configured alias to a dated snapshot.
     const result = parseFeedbackV2(unknownResponse, {
       transcript: aliasProjection.transcript,
       evaluationState,
-      modelVersion,
+      modelVersion: completion.model,
     });
     return normalizeFeedbackV2Recommendations(
       restoreCanonicalTranscriptIds(result, aliasProjection.canonicalIdByAlias)

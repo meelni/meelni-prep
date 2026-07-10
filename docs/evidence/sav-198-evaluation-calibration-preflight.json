@@ -1,16 +1,18 @@
 {
-  "contractVersion": "evaluation-calibration-report.v1",
-  "generatedAt": "2026-07-10T16:12:37.956Z",
+  "contractVersion": "evaluation-calibration-report.v2",
+  "generatedAt": "2026-07-10T16:37:56.643Z",
   "execution": {
     "kind": "preflight",
     "modelVersion": null,
     "repetitions": 0,
     "customerDataUsed": false,
-    "paidProviderCalled": false
+    "paidProviderCalled": false,
+    "modelVersionBasis": "not_applicable",
+    "observedModelVersions": []
   },
   "versions": {
-    "goldSet": "pm-gold-set.v1",
-    "adjudication": "pm-gold-adjudication.v1",
+    "goldSet": "pm-gold-set.v2",
+    "adjudication": "pm-gold-adjudication.v2",
     "schema": "feedback.v2",
     "prompt": "feedback.prompt.v2",
     "rubric": "pm-feedback-rubric.v2"
@@ -25,6 +27,11 @@
       "strategy": 10,
       "behavioral": 10
     },
+    "scoredCasesByQuality": {
+      "weak": 8,
+      "average": 8,
+      "strong": 16
+    },
     "expectedStateMismatches": 0,
     "invalidEvidenceAnchors": 0
   },
@@ -33,7 +40,25 @@
     "adjudicatedEvidenceMatchRate": null,
     "insufficientHandlingRate": 1,
     "scoreBandAgreementRate": null,
+    "scoreBandAgreementByDimension": {
+      "structure": null,
+      "clarity": null,
+      "insight": null,
+      "communication": null,
+      "leadership": null
+    },
+    "scoreBandAgreementByRound": {
+      "product_sense": null,
+      "execution": null,
+      "strategy": null,
+      "behavioral": null
+    },
+    "scoreBandAgreementByState": {
+      "full": null,
+      "partial": null
+    },
     "maximumRepeatedRunScoreRange": null,
+    "modelVersionMatchRate": null,
     "evaluatorCalls": 0,
     "providerEvaluationCalls": 0
   },
@@ -41,8 +66,14 @@
     "evidenceValidityRate": 1,
     "insufficientHandlingRate": 1,
     "scoreBandAgreementRate": 0.8,
+    "minimumDimensionScoreBandAgreementRate": 0.8,
+    "minimumRoundScoreBandAgreementRate": 0.75,
+    "minimumStateScoreBandAgreementRate": 0.75,
     "maximumRepeatedRunScoreRange": 1,
-    "minimumProviderRuns": 3
+    "modelVersionMatchRate": 1,
+    "minimumProviderRuns": 3,
+    "maximumProviderRuns": 3,
+    "maximumProviderCalls": 96
   },
   "gate": {
     "deterministicHarness": "not_run",
