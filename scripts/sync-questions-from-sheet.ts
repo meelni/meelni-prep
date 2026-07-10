@@ -6,10 +6,8 @@
  * - Method A: Fetch from public CSV URL (recommended, simpler)
  * - Method B: Use Google Sheets API (requires API key)
  *
- * Usage:
- *   npm run sync:questions              # Sync questions
- *   npm run sync:questions -- --dry-run # Preview changes without applying
- *   npm run sync:questions -- --verbose # Show detailed logs
+ * The CLI entrypoint is scripts/run-question-sync.ts. This module contains
+ * provider preparation and taxonomy mapping shared by the locked workflow.
  *
  * Environment variables required:
  *   GOOGLE_SHEET_CSV_URL  (Method A - recommended)
@@ -17,20 +15,18 @@
  *   GOOGLE_SHEETS_API_KEY + GOOGLE_SHEET_ID (Method B)
  */
 
-// Load environment variables from .env.local
-import { config } from "dotenv";
-import { resolve } from "path";
-const envFile = process.env.MEELNI_ENV_FILE || ".env.local";
-config({ path: resolve(process.cwd(), envFile) });
-
-import { interviewQuestion } from "@/lib/db/schema";
-import { inArray } from "drizzle-orm";
 import {
   fetchSheetAsCSV,
   validateSheetRow,
   type SheetRow,
 } from "@/lib/google-sheets-client";
 import { fetchSheetViaAPI } from "@/lib/google-sheets-api";
+import { deduplicateQuestionSyncSource } from "@/lib/question-sync/source";
+import type {
+  PreparedQuestionSync,
+  ProcessedQuestion,
+  QuestionStorageType,
+} from "@/lib/question-sync/types";
 import {
   canonicalQuestionTypeLabel,
   type CanonicalQuestionType,
@@ -324,10 +320,6 @@ const QUESTION_TYPE_MAPPING: Record<string, string> = {
   "Execution and metrics ": "Execution",
 };
 
-type QuestionStorageType =
-  | Exclude<CanonicalQuestionType, "Strategy">
-  | "Product Strategy";
-
 // Valid provider-facing labels while the historical database constraint remains.
 const VALID_QUESTION_TYPES = new Set<QuestionStorageType>([
   "Behavioral",
@@ -426,233 +418,41 @@ function mapQuestionType(rawQuestionType: string): QuestionStorageType | null {
   return null;
 }
 
-interface SyncStats {
-  newQuestions: number;
-  updatedQuestions: number;
-  deactivatedQuestions: number;
-  skippedQuestions: number;
-  errors: number;
-  skipReasons: Map<string, number>;
-}
+/** Fetch and normalize provider data before opening the database transaction. */
+export async function prepareQuestionSyncSource(): Promise<PreparedQuestionSync> {
+  const sheetRows = await fetchSheetData();
+  const sourceTimeZone = process.env.GOOGLE_SHEET_TIME_ZONE || "UTC";
+  parseGoogleSheetTimeZoneOffset(sourceTimeZone);
+  const validatedQuestions: ProcessedQuestion[] = [];
+  let invalidRows = 0;
 
-interface SyncOptions {
-  dryRun: boolean;
-  verbose: boolean;
-}
-
-export interface SyncResult {
-  success: boolean;
-  questionsAdded: number;
-  questionsUpdated: number;
-  questionsDeactivated: number;
-  questionsSkipped: number;
-  totalProcessed: number;
-  errors: number;
-  errorMessages?: string[];
-  timestamp: string;
-}
-
-const MIN_SAFE_VALIDATION_RATIO = 0.7;
-const MAX_SAFE_DEACTIVATION_RATIO = 0.25;
-
-export function getQuestionSyncSafetyError({
-  activeExistingRows,
-  deactivationRows,
-  sourceRows,
-  validRows,
-}: {
-  activeExistingRows: number;
-  deactivationRows: number;
-  sourceRows: number;
-  validRows: number;
-}): string | null {
-  if (sourceRows > 0 && validRows === 0) {
-    return "Question sync aborted: no source rows passed validation.";
+  for (const row of sheetRows) {
+    const result = processSheetRow(row, sourceTimeZone);
+    if (result.valid && result.question)
+      validatedQuestions.push(result.question);
+    else invalidRows++;
   }
 
-  const validationRatio = sourceRows > 0 ? validRows / sourceRows : 1;
-  if (validationRatio < MIN_SAFE_VALIDATION_RATIO) {
-    return `Question sync aborted: only ${(validationRatio * 100).toFixed(1)}% of source rows passed validation.`;
-  }
+  const { questions, duplicates } =
+    deduplicateQuestionSyncSource(validatedQuestions);
 
-  const deactivationRatio =
-    activeExistingRows > 0 ? deactivationRows / activeExistingRows : 0;
-  if (
-    activeExistingRows > 0 &&
-    deactivationRatio > MAX_SAFE_DEACTIVATION_RATIO
-  ) {
-    return `Question sync aborted: proposed deactivation affects ${(deactivationRatio * 100).toFixed(1)}% of active questions.`;
-  }
-
-  return null;
-}
-
-/**
- * Main sync function
- */
-async function syncQuestions(options: SyncOptions): Promise<SyncResult> {
-  console.log("\n🔄 Starting question sync from Google Sheet...");
-  console.log(
-    `Mode: ${options.dryRun ? "DRY RUN (no changes will be made)" : "LIVE"}\n`
+  console.info(
+    "question_sync_source",
+    JSON.stringify({
+      sourceRows: sheetRows.length,
+      validRows: validatedQuestions.length,
+      uniqueRows: questions.length,
+      invalidRows,
+      duplicateRows: duplicates,
+    })
   );
 
-  const stats: SyncStats = {
-    newQuestions: 0,
-    updatedQuestions: 0,
-    deactivatedQuestions: 0,
-    skippedQuestions: 0,
-    errors: 0,
-    skipReasons: new Map<string, number>(),
+  return {
+    questions,
+    sourceRows: sheetRows.length,
+    validRows: validatedQuestions.length,
+    questionsSkipped: invalidRows + duplicates,
   };
-
-  const errorMessages: string[] = [];
-
-  try {
-    // Step 1: Fetch data from Google Sheet
-    const sheetRows = await fetchSheetData();
-
-    if (sheetRows.length === 0) {
-      console.log("⚠️  No questions found in sheet");
-      return {
-        success: true,
-        questionsAdded: 0,
-        questionsUpdated: 0,
-        questionsDeactivated: 0,
-        questionsSkipped: 0,
-        totalProcessed: 0,
-        errors: 0,
-        timestamp: new Date().toISOString(),
-      };
-    }
-
-    console.log(`📋 Found ${sheetRows.length} questions in sheet\n`);
-
-    // Step 2: Process each question
-    const validQuestions: ProcessedQuestion[] = [];
-
-    for (let i = 0; i < sheetRows.length; i++) {
-      const row = sheetRows[i];
-      const result = await processSheetRow(row);
-
-      if (result.valid) {
-        validQuestions.push(result.question!);
-      } else {
-        stats.skippedQuestions++;
-
-        // Track skip reasons
-        const reason = result.reason || "Unknown reason";
-        stats.skipReasons.set(reason, (stats.skipReasons.get(reason) || 0) + 1);
-
-        if (options.verbose) {
-          console.log(`⏭️  Row ${i + 2}: Skipped - ${result.reason}`);
-          console.log(
-            `   Question text: "${row.questionText?.substring(0, 80) || "(empty)"}..."`
-          );
-          console.log(`   Question type: "${row.questionType || "(empty)"}"`);
-          console.log(`   Company: "${row.company || "(empty)"}"`);
-        }
-      }
-    }
-
-    console.log(`\n✅ Validated ${validQuestions.length} questions`);
-    console.log(`⏭️  Skipped ${stats.skippedQuestions} questions\n`);
-
-    // Step 3: Get existing questions from database
-    const existingQuestions = await getExistingQuestions();
-    const existingQuestionTexts = new Set(
-      existingQuestions.map((q) => normalizeText(q.questionText))
-    );
-
-    console.log(
-      `💾 Found ${existingQuestions.length} existing questions in database\n`
-    );
-
-    // Step 4: Determine new, updated, and deactivated questions
-    const newQuestions: ProcessedQuestion[] = [];
-    const sheetQuestionTexts = new Set<string>();
-
-    for (const question of validQuestions) {
-      const normalizedText = normalizeText(question.questionText);
-      sheetQuestionTexts.add(normalizedText);
-
-      if (!existingQuestionTexts.has(normalizedText)) {
-        newQuestions.push(question);
-      }
-      // Note: We don't update existing questions to preserve any manual edits
-    }
-
-    // Questions in DB but not in sheet should be deactivated
-    const questionsToDeactivate = existingQuestions.filter(
-      (q) =>
-        q.isActive && !sheetQuestionTexts.has(normalizeText(q.questionText))
-    );
-
-    const safetyError = getQuestionSyncSafetyError({
-      activeExistingRows: existingQuestions.filter((q) => q.isActive).length,
-      deactivationRows: questionsToDeactivate.length,
-      sourceRows: sheetRows.length,
-      validRows: validQuestions.length,
-    });
-    if (safetyError) {
-      throw new Error(safetyError);
-    }
-
-    stats.newQuestions = newQuestions.length;
-    stats.deactivatedQuestions = questionsToDeactivate.length;
-
-    // Step 5: Apply changes (or preview if dry run)
-    if (options.dryRun) {
-      console.log("🔍 DRY RUN - Preview of changes:\n");
-      previewChanges(newQuestions, questionsToDeactivate);
-    } else {
-      await applyChanges(
-        newQuestions,
-        questionsToDeactivate,
-        stats,
-        options,
-        errorMessages
-      );
-    }
-
-    // Step 6: Print summary
-    printSummary(stats, options.dryRun);
-
-    // Return result
-    return {
-      success: stats.errors === 0,
-      questionsAdded: stats.newQuestions,
-      questionsUpdated: stats.updatedQuestions,
-      questionsDeactivated: stats.deactivatedQuestions,
-      questionsSkipped: stats.skippedQuestions,
-      totalProcessed: sheetRows.length,
-      errors: stats.errors,
-      errorMessages: errorMessages.length > 0 ? errorMessages : undefined,
-      timestamp: new Date().toISOString(),
-    };
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    console.error("\n❌ Sync failed:", error);
-
-    return {
-      success: false,
-      questionsAdded: stats.newQuestions,
-      questionsUpdated: stats.updatedQuestions,
-      questionsDeactivated: stats.deactivatedQuestions,
-      questionsSkipped: stats.skippedQuestions,
-      totalProcessed: 0,
-      errors: stats.errors + 1,
-      errorMessages: [errorMessage],
-      timestamp: new Date().toISOString(),
-    };
-  }
-}
-
-interface ProcessedQuestion {
-  company: string | null;
-  questionText: string;
-  questionType: QuestionStorageType;
-  askedAt: Date | null;
 }
 
 /**
@@ -688,7 +488,10 @@ async function fetchSheetData(): Promise<SheetRow[]> {
 /**
  * Process a single sheet row into a database-ready question
  */
-function processSheetRow(row: SheetRow): {
+function processSheetRow(
+  row: SheetRow,
+  sourceTimeZone: string
+): {
   valid: boolean;
   question?: ProcessedQuestion;
   reason?: string;
@@ -704,14 +507,14 @@ function processSheetRow(row: SheetRow): {
   if (!mappedType) {
     return {
       valid: false,
-      reason: `Unknown question type: "${row.questionType}"`,
+      reason: "Unknown question type",
     };
   }
 
   if (!VALID_QUESTION_TYPES.has(mappedType)) {
     return {
       valid: false,
-      reason: `Invalid question type: "${mappedType}"`,
+      reason: "Invalid question type",
     };
   }
 
@@ -726,17 +529,12 @@ function processSheetRow(row: SheetRow): {
     return { valid: false, reason: "Empty question text" };
   }
 
-  // Parse timestamp (when question was asked in real interview)
-  let askedAt: Date | null = null;
-  if (row.timestamp && row.timestamp.trim().length > 0) {
-    try {
-      const parsed = new Date(row.timestamp.trim());
-      if (!isNaN(parsed.getTime())) {
-        askedAt = parsed;
-      }
-    } catch {
-      // Invalid date format, keep as null
-    }
+  const timestamp = row.timestamp?.trim() ?? "";
+  const askedAt = timestamp
+    ? parseGoogleSheetTimestamp(timestamp, sourceTimeZone)
+    : null;
+  if (timestamp && !askedAt) {
+    return { valid: false, reason: "Invalid timestamp" };
   }
 
   return {
@@ -751,230 +549,100 @@ function processSheetRow(row: SheetRow): {
 }
 
 /**
- * Get all existing questions from database
+ * Parse Google Forms' M/D/YYYY H:mm[:ss] timestamp without consulting the
+ * process timezone. The configured source zone must be UTC or a fixed numeric
+ * offset, avoiding named-zone DST overlaps and gaps.
  */
-async function getExistingQuestions() {
-  const { db } = await import("@/lib/db");
+export function parseGoogleSheetTimestamp(
+  value: string,
+  sourceTimeZone = process.env.GOOGLE_SHEET_TIME_ZONE || "UTC"
+): Date | null {
+  const source = value.trim();
+  if (!source) return null;
 
-  return await db
-    .select({
-      id: interviewQuestion.id,
-      company: interviewQuestion.company,
-      questionText: interviewQuestion.questionText,
-      questionType: interviewQuestion.questionType,
-      askedAt: interviewQuestion.askedAt,
-      isActive: interviewQuestion.isActive,
-    })
-    .from(interviewQuestion);
+  if (/(?:z|[+-]\d{2}:?\d{2})$/i.test(source)) {
+    const milliseconds = Date.parse(source);
+    return Number.isFinite(milliseconds) ? new Date(milliseconds) : null;
+  }
+
+  const match = source.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})[ ,]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i
+  );
+  if (!match) return null;
+
+  const [
+    ,
+    monthText,
+    dayText,
+    yearText,
+    hourText,
+    minuteText,
+    secondText,
+    meridiem,
+  ] = match;
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const year = Number(yearText);
+  let hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText ?? "0");
+
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return null;
+    hour = (hour % 12) + (meridiem.toUpperCase() === "PM" ? 12 : 0);
+  }
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59 ||
+    second < 0 ||
+    second > 59
+  ) {
+    return null;
+  }
+
+  const offsetMinutes = parseGoogleSheetTimeZoneOffset(sourceTimeZone);
+  const utcMilliseconds =
+    Date.UTC(year, month - 1, day, hour, minute, second) -
+    offsetMinutes * 60_000;
+  const localCheck = new Date(utcMilliseconds + offsetMinutes * 60_000);
+  if (
+    localCheck.getUTCFullYear() !== year ||
+    localCheck.getUTCMonth() !== month - 1 ||
+    localCheck.getUTCDate() !== day ||
+    localCheck.getUTCHours() !== hour ||
+    localCheck.getUTCMinutes() !== minute ||
+    localCheck.getUTCSeconds() !== second
+  ) {
+    return null;
+  }
+
+  return new Date(utcMilliseconds);
 }
 
-/**
- * Normalize text for comparison (lowercase, trim, remove extra whitespace)
- */
-function normalizeText(text: string): string {
-  return text.toLowerCase().trim().replace(/\s+/g, " ");
+export function parseGoogleSheetTimeZoneOffset(value: string): number {
+  const sourceTimeZone = value.trim();
+  if (/^(?:UTC|Z)$/i.test(sourceTimeZone)) return 0;
+
+  const match = sourceTimeZone.match(/^([+-])(\d{2}):(\d{2})$/);
+  if (!match) throw new Error("invalid_google_sheet_time_zone");
+
+  const hours = Number(match[2]);
+  const minutes = Number(match[3]);
+  if (hours > 14 || minutes > 59 || (hours === 14 && minutes !== 0)) {
+    throw new Error("invalid_google_sheet_time_zone");
+  }
+
+  const offset = hours * 60 + minutes;
+  return match[1] === "-" ? -offset : offset;
 }
 
-/**
- * Preview changes without applying them
- */
-function previewChanges(
-  newQuestions: ProcessedQuestion[],
-  questionsToDeactivate: Array<{ id: string; questionText: string }>
-) {
-  if (newQuestions.length > 0) {
-    console.log(`➕ Would add ${newQuestions.length} new questions:`);
-    newQuestions.slice(0, 5).forEach((q) => {
-      console.log(
-        `   • [${q.questionType}] ${q.questionText.substring(0, 70)}...`
-      );
-    });
-    if (newQuestions.length > 5) {
-      console.log(`   ... and ${newQuestions.length - 5} more`);
-    }
-    console.log();
-  }
-
-  if (questionsToDeactivate.length > 0) {
-    console.log(
-      `🔒 Would deactivate ${questionsToDeactivate.length} questions:`
-    );
-    questionsToDeactivate.slice(0, 5).forEach((q) => {
-      console.log(`   • ${q.questionText.substring(0, 70)}...`);
-    });
-    if (questionsToDeactivate.length > 5) {
-      console.log(`   ... and ${questionsToDeactivate.length - 5} more`);
-    }
-    console.log();
-  }
-
-  if (newQuestions.length === 0 && questionsToDeactivate.length === 0) {
-    console.log(
-      "✨ No changes needed - database is already in sync with sheet\n"
-    );
-  }
-}
-
-/**
- * Apply changes to database
- */
-async function applyChanges(
-  newQuestions: ProcessedQuestion[],
-  questionsToDeactivate: Array<{ id: string; questionText: string }>,
-  stats: SyncStats,
-  options: SyncOptions,
-  errorMessages: string[] = []
-) {
-  const { db } = await import("@/lib/db");
-  stats.newQuestions = 0;
-  stats.deactivatedQuestions = 0;
-
-  // Insert new questions
-  if (newQuestions.length > 0) {
-    console.log(`➕ Adding ${newQuestions.length} new questions...`);
-
-    for (const chunk of chunkArray(newQuestions, 500)) {
-      try {
-        await db.insert(interviewQuestion).values(
-          chunk.map((question) => ({
-            company: question.company,
-            questionText: question.questionText,
-            questionType: question.questionType,
-            askedAt: question.askedAt,
-            isActive: true,
-          }))
-        );
-
-        stats.newQuestions += chunk.length;
-
-        if (options.verbose) {
-          console.log(`   ✓ Added ${chunk.length} questions`);
-        }
-      } catch (error) {
-        stats.errors += chunk.length;
-        const errorMsg = `Error adding question batch: ${error instanceof Error ? error.message : "Unknown error"}`;
-        errorMessages.push(errorMsg);
-        console.error(`   ✗ ${errorMsg}`);
-      }
-    }
-  }
-
-  // Deactivate removed questions
-  if (questionsToDeactivate.length > 0) {
-    console.log(
-      `\n🔒 Deactivating ${questionsToDeactivate.length} questions...`
-    );
-
-    for (const chunk of chunkArray(questionsToDeactivate, 500)) {
-      try {
-        await db
-          .update(interviewQuestion)
-          .set({ isActive: false })
-          .where(
-            inArray(
-              interviewQuestion.id,
-              chunk.map((question) => question.id)
-            )
-          );
-
-        stats.deactivatedQuestions += chunk.length;
-
-        if (options.verbose) {
-          console.log(`   ✓ Deactivated ${chunk.length} questions`);
-        }
-      } catch (error) {
-        stats.errors += chunk.length;
-        const errorMsg = `Error deactivating question batch: ${error instanceof Error ? error.message : "Unknown error"}`;
-        errorMessages.push(errorMsg);
-        console.error(`   ✗ ${errorMsg}`);
-      }
-    }
-  }
-
-  if (newQuestions.length === 0 && questionsToDeactivate.length === 0) {
-    console.log(
-      "✨ No changes needed - database is already in sync with sheet"
-    );
-  }
-}
-
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
-}
-
-/**
- * Print sync summary
- */
-function printSummary(stats: SyncStats, isDryRun: boolean) {
-  console.log("\n" + "─".repeat(50));
-  console.log(`📊 Sync ${isDryRun ? "Preview" : "Complete"}\n`);
-  console.log(`   New questions:         ${stats.newQuestions}`);
-  console.log(`   Updated questions:     ${stats.updatedQuestions}`);
-  console.log(`   Deactivated questions: ${stats.deactivatedQuestions}`);
-  console.log(`   Skipped questions:     ${stats.skippedQuestions}`);
-  console.log(`   Errors:                ${stats.errors}`);
-
-  // Show skip reasons breakdown
-  if (stats.skippedQuestions > 0 && stats.skipReasons.size > 0) {
-    console.log(`\n   Skip reasons breakdown:`);
-    // Sort by count (descending)
-    const sortedReasons = Array.from(stats.skipReasons.entries()).sort(
-      (a, b) => b[1] - a[1]
-    );
-
-    for (const [reason, count] of sortedReasons) {
-      console.log(`      • ${reason}: ${count}`);
-    }
-  }
-
-  console.log("─".repeat(50) + "\n");
-
-  if (isDryRun) {
-    console.log("💡 Run without --dry-run to apply these changes\n");
-  } else if (stats.errors > 0) {
-    console.log("⚠️  Some errors occurred during sync. Check logs above.\n");
-  } else {
-    console.log("✅ All changes applied successfully!\n");
-  }
-}
-
-/**
- * Parse command line arguments
- */
-function parseArgs(): SyncOptions {
-  const args = process.argv.slice(2);
-
-  return {
-    dryRun: args.includes("--dry-run"),
-    verbose: args.includes("--verbose") || args.includes("-v"),
-  };
-}
-
-/**
- * Main entry point
- */
-async function main() {
-  const options = parseArgs();
-
-  try {
-    const result = await syncQuestions(options);
-    process.exit(result.success ? 0 : 1);
-  } catch (error) {
-    console.error("\n❌ Fatal error:", error);
-    process.exit(1);
-  }
-}
-
-// Run if executed directly
-if (require.main === module) {
-  main();
-}
-
-export { mapQuestionType, syncQuestions };
+export { mapQuestionType };
 
 function toQuestionStorageType(
   questionType: CanonicalQuestionType | null
