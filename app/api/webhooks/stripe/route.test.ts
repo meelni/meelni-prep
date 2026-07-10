@@ -98,7 +98,11 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
       amount_refunded: 2_900,
       refunded: true,
     });
-    state.retrieveInvoice.mockResolvedValue({ payments: { data: [] } });
+    state.retrieveInvoice.mockResolvedValue({
+      id: "in_test_deleted_subscription",
+      amount_paid: 0,
+      payments: { data: [] },
+    });
     state.refund.mockResolvedValue({
       id: "re_test",
       amount: 2_900,
@@ -190,6 +194,58 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
     expect(state.grantCredits).not.toHaveBeenCalled();
     expect(state.updateSets).toContainEqual(
       expect.objectContaining({ status: "processed", payload: "{}" })
+    );
+  });
+
+  it("refunds a paid subscription-first event before deleting its customer", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(true);
+    state.event = subscriptionEvent();
+    state.retrieveInvoice.mockResolvedValue({
+      id: "in_test_deleted_subscription",
+      amount_paid: 2_900,
+      payments: {
+        data: [
+          {
+            status: "paid",
+            payment: { payment_intent: "pi_test_deleted_subscription" },
+          },
+        ],
+      },
+    });
+
+    const calls: string[] = [];
+    state.refund.mockImplementation(async () => {
+      calls.push("refund");
+      return { id: "re_subscription", amount: 2_900, status: "succeeded" };
+    });
+    state.deleteCustomer.mockImplementation(async () => {
+      calls.push("customer");
+      return { id: "cus_test_deleted_subscription", deleted: true };
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(calls).toEqual(["refund", "customer"]);
+    expect(recordLateStripeDeletionSubjects).toHaveBeenCalledTimes(2);
+    expect(clearLateStripeDeletionSubjects).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a subscription-first customer recoverable without invoice evidence", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(true);
+    state.event = subscriptionEvent({ latest_invoice: null });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect(state.cancel).toHaveBeenCalledOnce();
+    expect(state.deleteCustomer).not.toHaveBeenCalled();
+    expect(clearLateStripeDeletionSubjects).not.toHaveBeenCalled();
+    expect(state.updateSets).toContainEqual(
+      expect.objectContaining({
+        status: "failed",
+        lastError: "deleted_subscription_manual_reconciliation_required",
+      })
     );
   });
 
@@ -566,6 +622,7 @@ function subscriptionEvent(overrides: Record<string, unknown> = {}) {
         id: "sub_test_deleted",
         object: "subscription",
         customer: "cus_test_deleted_subscription",
+        latest_invoice: "in_test_deleted_subscription",
         metadata: {
           userId: "11111111-1111-4111-8111-111111111111",
         },

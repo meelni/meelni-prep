@@ -18,7 +18,9 @@ import postgres from "postgres";
 import {
   buildStripeDeletionSubject,
   buildStripeDeletionSubjects,
+  fingerprintStripeSubject,
 } from "../lib/billing/stripe-privacy";
+import { ACCOUNT_IDENTITY_LOCK_NAMESPACE } from "../lib/db/account-identity-lock";
 
 import {
   ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
@@ -46,6 +48,7 @@ const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -1868,6 +1871,48 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
   );
   await sql`
     INSERT INTO app_user (id, email)
+    VALUES (${USER_RECREATION_RACE}::uuid, 'deletion-race@example.invalid')
+  `;
+  let racingUpsert: Promise<unknown> | undefined;
+  await sql.begin(async (tx) => {
+    await tx`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(
+          ${USER_RECREATION_RACE},
+          ${ACCOUNT_IDENTITY_LOCK_NAMESPACE}::bigint
+        )
+      )
+    `;
+    await tx`
+      SELECT id FROM app_user
+      WHERE id = ${USER_RECREATION_RACE}::uuid
+      FOR UPDATE
+    `;
+    racingUpsert = upsertUser({
+      id: USER_RECREATION_RACE,
+      email: "must-not-recreate@example.invalid",
+    });
+    // Give the concurrent upsert time to reach the identity lock. Without the
+    // shared lock it passes the tombstone check and waits on app_user instead.
+    await tx`SELECT pg_sleep(0.1)`;
+    await tx`
+      INSERT INTO account_deletion_request (user_id, status, stripe_subjects)
+      VALUES (${USER_RECREATION_RACE}::uuid, 'completed', '[]'::jsonb)
+    `;
+    await tx`
+      DELETE FROM app_user WHERE id = ${USER_RECREATION_RACE}::uuid
+    `;
+  });
+  await assert.rejects(racingUpsert!, AccountDeletionPendingError);
+  const [recreatedUser] = await sql<{ exists: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1 FROM app_user WHERE id = ${USER_RECREATION_RACE}::uuid
+    ) AS exists
+  `;
+  assert.equal(recreatedUser?.exists, false);
+
+  await sql`
+    INSERT INTO app_user (id, email)
     VALUES (${USER_TWO}::uuid, 'deletion-user@example.invalid')
   `;
   await sql`
@@ -2069,6 +2114,30 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       ${USER_CORRUPT_DELETION}::uuid,
       'failed',
       '[{"kind":"unknown","providerId":"unsafe","fingerprint":"bad"}]'::jsonb
+    )
+  `;
+  await assert.rejects(
+    () => getAccountDeletionRequest(USER_CORRUPT_DELETION),
+    (error: unknown) =>
+      (error as { code?: string }).code === "account_deletion_subjects_invalid"
+  );
+  await sql`
+    DELETE FROM account_deletion_request
+    WHERE user_id = ${USER_CORRUPT_DELETION}::uuid
+  `;
+  const wrongKindId = "sub_wrong_kind";
+  await sql`
+    INSERT INTO account_deletion_request (user_id, status, stripe_subjects)
+    VALUES (
+      ${USER_CORRUPT_DELETION}::uuid,
+      'failed',
+      ${JSON.stringify([
+        {
+          kind: "customer",
+          providerId: wrongKindId,
+          fingerprint: fingerprintStripeSubject(wrongKindId),
+        },
+      ])}::jsonb
     )
   `;
   await assert.rejects(

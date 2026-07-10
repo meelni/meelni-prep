@@ -128,7 +128,11 @@ For a late completed Checkout, Meelni attempts deterministic reconciliation:
 
 Stripe does not guarantee that Checkout, subscription, and invoice webhooks
 arrive in a useful order. A deleted account's `customer.subscription.created`
-or `.updated` event therefore cancels its subscription independently, and an
+event therefore persists and inspects its initial invoice, cancels the
+subscription, and reconciles any paid PaymentIntent/charge before customer
+deletion. Missing or malformed initial-invoice evidence fails closed and keeps
+the customer recoverable. A deleted account's `customer.subscription.updated`
+event cancels its subscription independently, and an
 `invoice.payment_succeeded` event independently cancels the referenced
 subscription and refunds its paid PaymentIntent/charge. These paths share
 provider-object-derived idempotency keys with Checkout reconciliation, so no
@@ -165,6 +169,11 @@ code for retry/operator review. Cancellation, refund lookup/refund, and customer
 cleanup failures preserve the required provider references until recovery
 succeeds. Meelni does not mark the event processed, grant an entitlement, or
 claim a refund occurred.
+
+Durable Stripe deletion subjects are validated as typed provider references:
+customer IDs must use `cus_`, subscriptions `sub_`, invoices `in_`, PaymentIntents
+`pi_`, and charges `ch_`. A kind/ID mismatch fails closed before any provider
+operation or fingerprint clearing.
 
 ## Retention boundary
 

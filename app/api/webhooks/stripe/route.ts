@@ -1010,10 +1010,15 @@ async function reconcileStripeEventForDeletedAccount(
   ) {
     const stripeSubscription = event.data.object as Stripe.Subscription;
     const customerId = getStripeCustomerId(stripeSubscription.customer);
+    const latestInvoiceId =
+      event.type === "customer.subscription.created"
+        ? getProviderId(stripeSubscription.latest_invoice)
+        : null;
     const lateSubjects = await recordAndRedactLateSubjects(
       userId,
       stripeSubscription.id,
-      customerId
+      customerId,
+      compactSubjects([buildStripeDeletionSubject("invoice", latestInvoiceId)])
     );
     try {
       await cancelDeletedSubscription(
@@ -1021,11 +1026,56 @@ async function reconcileStripeEventForDeletedAccount(
         stripeSubscription.id,
         deletedBillingIdempotencyKey(stripeSubscription.id, "cancel")
       );
+
+      let reconciledSubjects = lateSubjects;
+      if (event.type === "customer.subscription.created") {
+        if (!latestInvoiceId) {
+          throw deletedBillingError(
+            "deleted_subscription_manual_reconciliation_required"
+          );
+        }
+        const invoice = await stripe.invoices.retrieve(latestInvoiceId, {
+          expand: ["payments"],
+        });
+        if (
+          !Number.isSafeInteger(invoice.amount_paid) ||
+          invoice.amount_paid < 0
+        ) {
+          throw deletedBillingError(
+            "deleted_subscription_manual_reconciliation_required"
+          );
+        }
+        if (invoice.amount_paid > 0) {
+          const payment = getPaidInvoicePayment(invoice);
+          if (!payment) {
+            throw deletedBillingError(
+              "deleted_subscription_manual_reconciliation_required"
+            );
+          }
+          const paymentSubjects = await recordAndRedactLateSubjects(
+            userId,
+            null,
+            null,
+            compactSubjects([
+              buildStripeDeletionSubject(payment.kind, payment.providerId),
+            ])
+          );
+          reconciledSubjects = dedupeSubjects([
+            ...reconciledSubjects,
+            ...paymentSubjects,
+          ]);
+          await refundDeletedPayment(
+            stripe,
+            payment,
+            deletedBillingIdempotencyKey(payment.providerId, "refund")
+          );
+        }
+      }
       await cleanupDeletedCustomer(
         stripe,
         userId,
         customerId,
-        lateSubjects.map(({ fingerprint }) => fingerprint)
+        reconciledSubjects.map(({ fingerprint }) => fingerprint)
       );
     } catch (error) {
       if (userId) await markLateStripeReconciliationFailed(userId);
