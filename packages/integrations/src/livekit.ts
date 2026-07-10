@@ -90,6 +90,7 @@ export interface LiveKitProviderDependencies {
   accessTokenFactory?: AccessTokenFactory;
   agentDispatchClientFactory?: AgentDispatchClientFactory;
   roomServiceClientFactory?: RoomServiceClientFactory;
+  sleep?: (milliseconds: number) => Promise<void>;
 }
 
 interface AccessTokenLike {
@@ -278,6 +279,8 @@ export function createLiveKitPublicDemoProvider({
     new AgentDispatchClient(url, apiKey, apiSecret),
   roomServiceClientFactory = (url, apiKey, apiSecret) =>
     new RoomServiceClient(url, apiKey, apiSecret),
+  sleep = (milliseconds) =>
+    new Promise((resolve) => setTimeout(resolve, milliseconds)),
 }: LiveKitProviderDependencies = {}): LiveKitPublicDemoProvider {
   async function mintToken(
     input: IssuePublicDemoTokenInput
@@ -394,11 +397,19 @@ export function createLiveKitPublicDemoProvider({
       }
 
       try {
-        const participants = await roomClient.listParticipants(input.roomName);
-        const hasRemoteAgent = participants.some(
-          (participant) =>
-            participant.kind === 4 || participant.identity !== input.identity
+        let participants = await roomClient.listParticipants(input.roomName);
+        let hasRemoteAgent = hasRemoteAgentParticipant(
+          participants,
+          input.identity
         );
+        if (!hasRemoteAgent) {
+          await sleep(1_000);
+          participants = await roomClient.listParticipants(input.roomName);
+          hasRemoteAgent = hasRemoteAgentParticipant(
+            participants,
+            input.identity
+          );
+        }
         if (!hasRemoteAgent) {
           return providerFailure("livekit", {
             code: "livekit_demo_room_not_ready",
@@ -419,6 +430,16 @@ export function createLiveKitPublicDemoProvider({
     },
     deletePublicDemoRoom: deleteRoom,
   };
+}
+
+function hasRemoteAgentParticipant(
+  participants: Array<{ identity?: string; kind?: number }>,
+  localIdentity: string
+): boolean {
+  return participants.some(
+    (participant) =>
+      participant.kind === 4 || participant.identity !== localIdentity
+  );
 }
 
 export async function issueInterviewParticipantToken(

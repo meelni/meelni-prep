@@ -13,6 +13,8 @@
   seconds; stale or mismatched receipts cannot consume the recovery allowance.
 - Signed device identity: 30 days.
 - Active same-room recovery window: 7 minutes.
+- A recovery check waits once for one second before declaring the dispatched
+  agent missing, avoiding a false tombstone while the agent is still joining.
 - Signed session reservation/tombstone: 15 minutes. Expiry of the shorter
   recovery window does not permit a second dispatch under the same signed
   session.
@@ -64,6 +66,9 @@ start failure, cleanup failure, and global utilization. Alert before launch at
 provider-start failure above 5%. Never attach IPs, hashes, cookies, room names,
 tokens, participant identity, transcripts, audio, question text, or provider
 payloads.
+
+Limiter audit scope `active_device` identifies the single-active-preview fence;
+`device` identifies the rolling two-per-day budget.
 
 ## Cleanup
 
