@@ -330,7 +330,7 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       <motion.div initial="initial" animate="animate" variants={fadeInUp}>
         <FeedbackSectionCard
           title="Analyzing your interview"
-          description="This usually takes less than a minute."
+          description="You can leave this page and return when your review is ready."
           tone="info"
           action={
             <span className="text-primary text-sm font-medium">
