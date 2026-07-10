@@ -2277,6 +2277,12 @@ test("explore question surfaces use shared form and action primitives", async ()
     ) {
       violations.push(`${file}:truthful-structured-data-gate`);
     }
+    if (
+      file === "app/explore/page.tsx" &&
+      content.includes("query: debouncedSearchQuery")
+    ) {
+      violations.push(`${file}:raw-search-analytics`);
+    }
   }
 
   if (

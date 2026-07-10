@@ -161,7 +161,8 @@ export default function ExplorePage() {
   useEffect(() => {
     if (debouncedSearchQuery && loadState === "success") {
       posthog?.capture("explore_search", {
-        query: debouncedSearchQuery,
+        query_length: Math.min(debouncedSearchQuery.length, 200),
+        has_results: totalQuestions > 0,
         results_count: totalQuestions,
       });
     }

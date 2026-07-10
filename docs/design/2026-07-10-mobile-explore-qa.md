@@ -65,6 +65,8 @@ viewport, document scroll width equaled client width.
 - JSON-LD is emitted only after a successful validated response. A verified
   empty collection emits truthful zero-item schema; an outage emits no schema.
 - Unverified `askedAt` freshness remains absent from the visible question rows.
+- Search analytics record bounded length/result metadata, never the free-form
+  query text.
 - Structured data contains ItemList, BreadcrumbList, WebPage, CollectionPage,
   and a minimal Dataset grounded in visible question text and the API total.
   It does not invent FAQ answers, freshness dates, authorship, coverage,
