@@ -45,7 +45,7 @@ Every case records:
 - gold-set, adjudication, feedback schema, prompt, and rubric versions;
 - dimension score bands for scored cases;
 - adjudicated strength and improvement anchors using exact user-turn text;
-- a semantic behavior, observation, and next step for every evidence anchor;
+- a truthful observation and specific next step for every evidence anchor;
 - contract-v2 transcript events with stable IDs and timestamps.
 
 A fixture change that alters expected state, evidence, or score bands requires
@@ -54,15 +54,20 @@ a new gold-set or adjudication version rather than silently rewriting the old
 baseline.
 
 These are agent-authored synthetic adjudication candidates, not human-reviewed
-ground truth. Every scored case has a genuine evidenced strength and an
-explicitly evidenced improvement gap, but product-owner/PM review remains
-required. `npm run calibration:adjudication-manifest` emits the compact 32-case
-review manifest. Its signoff state cannot be changed by deterministic or live
-model results.
+ground truth. Every scored case has a genuine evidenced strength and a specific
+improvement grounded in a minimal exact substring of the substantive answer.
+`npm run calibration:adjudication-manifest` emits the compact 32-case candidate
+manifest. It contains no mutable approval flag.
+
+The eight insufficient fixtures are validator policy negatives: they prove that
+short and low-signal sessions are skipped before scoring. They have no score
+bands or scored findings, so they are not part of the 32-case semantic approval
+artifact. Their expected state and zero-call behavior remain enforced by the
+gold-set preflight and 100% insufficient-handling threshold.
 
 ## Report contract
 
-Every command emits `evaluation-calibration-report.v2` JSON with:
+Every command emits `evaluation-calibration-report.v3` JSON with:
 
 - execution kind, evaluator model, repetition count, and paid-provider status;
 - gold-set, adjudication, schema, prompt, and rubric versions;
@@ -112,6 +117,22 @@ each validated output, and the report lists those values in
 `observedModelVersions`. Acceptance requires every observed value to match the
 configured expectation. Deterministic runs use an explicit local identifier.
 
+## Approval artifact contract
+
+Approval is a separate `evaluation-adjudication-approval.v1` JSON artifact. The
+runtime parses it before evaluator work and requires:
+
+- the exact candidate-manifest SHA-256 and substantive-corpus SHA-256;
+- matching gold-set and adjudication versions;
+- reviewer identity and `product_owner` or `pm_reviewer` role;
+- a valid `reviewedAt` timestamp;
+- exactly one `approved` or `changes_required` decision for each of the 32
+  scored candidate IDs.
+
+Missing, stale, malformed, duplicate, or incomplete approval fails closed. The
+candidate source and manifest cannot declare themselves approved. The current
+repository intentionally commits no approval artifact or reviewer identity.
+
 ## Gate semantics
 
 `preflight` validates the corpus and workflow skip path without an evaluator.
@@ -123,7 +144,8 @@ Only an explicitly authorized `live_provider` execution can pass launch
 acceptance. A deterministic report must retain
 an unresolved launch gate even when every harness metric is perfect. Until the
 candidate manifest receives product-owner/PM signoff, launch acceptance remains
-`pending_adjudication_signoff`. After signoff, a live execution is still
+`pending_adjudication_signoff`. A validated all-approved artifact moves a
+non-live report only to `pending_live_provider_run`; a passing live run is still
 required. A live execution that misses any threshold must fail rather than
 downgrade itself to a self-test.
 
