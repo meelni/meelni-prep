@@ -149,5 +149,7 @@ actionable guidance in the meantime.
 All persisted strings crossing the read boundary have explicit field-specific
 limits. Identifiers and model/rubric versions are limited to 256 characters;
 summaries to 4,000; observations and next actions to 2,000; evidence quotes and
-historical notes to 4,000; and stored-but-hidden exercise strings to 2,000.
-Oversized values fail closed as `invalid` rather than reaching the API response.
+historical notes to 4,000; stored-but-hidden exercise strings to 2,000; and
+database numeric string representations to 32. Numeric strings must use plain
+unsigned decimal notation before range validation. Oversized or malformed
+values fail closed as `invalid` rather than reaching the API response.

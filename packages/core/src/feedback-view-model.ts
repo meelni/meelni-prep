@@ -161,6 +161,7 @@ const FEEDBACK_READ_LIMITS = {
   evidenceQuote: 4_000,
   legacyNote: 4_000,
   storedPracticeSuggestion: 2_000,
+  numericString: 32,
 } as const;
 
 export function presentCompletedFeedback(
@@ -519,7 +520,15 @@ function requireScore(value: unknown): number {
 }
 
 function requireNumberInRange(value: unknown): number {
-  if (typeof value === "string" && value.trim() !== "") value = Number(value);
+  if (typeof value === "string") {
+    if (
+      value.length > FEEDBACK_READ_LIMITS.numericString ||
+      !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)
+    ) {
+      throw new Error("number string is invalid");
+    }
+    value = Number(value);
+  }
   if (
     typeof value !== "number" ||
     !Number.isFinite(value) ||
