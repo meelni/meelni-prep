@@ -805,6 +805,8 @@ export async function deleteUserApplicationData(userId: string) {
       .delete(focusedPracticeAttempt)
       .where(eq(focusedPracticeAttempt.userId, userId));
 
+    await tx.delete(userInsights).where(eq(userInsights.userId, userId));
+
     for (const { id: sessionId } of sessions) {
       await tx.delete(feedback).where(eq(feedback.sessionId, sessionId));
       await tx
