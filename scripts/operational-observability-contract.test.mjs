@@ -77,6 +77,37 @@ test("instrumented boundaries cannot bypass the redacted reporter with console o
   assert.deepEqual(violations, []);
 });
 
+test("durable Inngest failures cannot interpolate identifiers into history", async () => {
+  const inngestFiles = [
+    "lib/inngest/functions/generate-feedback.ts",
+    "lib/inngest/functions/delete-account.ts",
+  ];
+  const inngestCallGraphFiles = await collectLocalCallGraph(inngestFiles);
+  const durableErrorViolations = [];
+  for (const file of inngestCallGraphFiles) {
+    const source = stripComments(await readFile(path.join(ROOT, file), "utf8"));
+    if (/new\s+Error\s*\(\s*`[^`]*\$\{/.test(source)) {
+      durableErrorViolations.push(file);
+    }
+  }
+  assert.deepEqual(durableErrorViolations, []);
+
+  const feedbackSource = await readFile(
+    path.join(ROOT, "lib/inngest/functions/generate-feedback.ts"),
+    "utf8"
+  );
+  for (const code of [
+    "feedback_session_not_found",
+    "feedback_session_owner_mismatch",
+    "feedback_dispatch_identity_missing",
+    "feedback_dispatch_identity_mismatch",
+    "feedback_record_not_found",
+  ]) {
+    assert.match(feedbackSource, new RegExp(`"${code}"`));
+  }
+  assert.doesNotMatch(feedbackSource, /throw\s+new\s+Error\s*\(\s*`/);
+});
+
 test("Stripe durable observability stores only redacted payloads and stable failure codes", async () => {
   const source = await readFile(
     path.join(ROOT, "app/api/webhooks/stripe/route.ts"),

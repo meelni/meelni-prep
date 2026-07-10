@@ -50,6 +50,10 @@ evaluation, question-selection, billing-analytics, and source-preparation
 callees rather than only route/workflow wrappers. Failure telemetry across that
 graph goes through this closed schema so a future log drain cannot accidentally
 receive provider identifiers, question text, raw errors, or user data.
+Errors that cross durable Inngest step or function boundaries use stable,
+identifier-free codes. They must not interpolate session IDs, user IDs, stored
+owner IDs, provider IDs, or payload content because Inngest retains failure
+history independently of the runtime-log event.
 
 Stripe webhook idempotency storage retains the provider event ID, event type,
 one-way subject fingerprint, status, attempt count, and timestamps. New rows

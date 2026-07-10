@@ -32,16 +32,14 @@ export function getStripePriceIdForCatalogId(
   env: Record<string, string | undefined> = process.env
 ): string {
   if (!isStripeCheckoutCatalogId(catalogId)) {
-    throw new Error(
-      `Catalog item ${catalogId} is not sold through Stripe Checkout`
-    );
+    throw stripeCatalogError("stripe_catalog_item_not_checkout");
   }
 
   const envName = PRICE_ENV_BY_CATALOG_ID[catalogId];
   const priceId = env[envName];
 
   if (!priceId) {
-    throw new Error(`Missing ${envName}`);
+    throw stripeCatalogError("stripe_price_not_configured");
   }
 
   return priceId;
@@ -52,7 +50,7 @@ export function getStripeCatalogIdForPrice(
   env: Record<string, string | undefined> = process.env
 ): StripeCheckoutCatalogId {
   if (!priceId) {
-    throw new Error("Missing Stripe price ID");
+    throw stripeCatalogError("stripe_price_missing");
   }
 
   for (const [catalogId, envName] of Object.entries(PRICE_ENV_BY_CATALOG_ID)) {
@@ -61,5 +59,15 @@ export function getStripeCatalogIdForPrice(
     }
   }
 
-  throw new Error(`Unknown Stripe price ID: ${priceId}`);
+  throw stripeCatalogError("stripe_price_unknown");
+}
+
+function stripeCatalogError(
+  code:
+    | "stripe_catalog_item_not_checkout"
+    | "stripe_price_not_configured"
+    | "stripe_price_missing"
+    | "stripe_price_unknown"
+) {
+  return Object.assign(new Error(code), { code });
 }
