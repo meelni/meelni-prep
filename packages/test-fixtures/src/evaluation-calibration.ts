@@ -5,6 +5,7 @@ import {
   type FeedbackDimension,
   type FeedbackV2Scores,
 } from "@meelni/core";
+import { SCORED_ADJUDICATIONS } from "./evaluation-calibration-adjudications";
 
 export const EVALUATION_GOLD_SET_VERSION = "pm-gold-set.v3" as const;
 export const EVALUATION_ADJUDICATION_VERSION =
@@ -57,10 +58,6 @@ export type CalibrationScoreBands = Record<
 export interface CalibrationEvidenceAnchor {
   dimension: FeedbackDimension;
   kind: "strength" | "improvement";
-  behavior:
-    | "made_explicit_opening_decision"
-    | "owned_specific_action"
-    | "identified_specific_gap";
   observation: string;
   turnRef: string;
   quote: string;
@@ -72,9 +69,6 @@ export interface EvaluationCalibrationCase {
   title: string;
   provenance: "fully_synthetic";
   adjudicationProvenance: "agent_authored_synthetic_candidate";
-  adjudicationSignoff:
-    | "pending_product_owner_pm_review"
-    | "product_owner_pm_approved";
   roundType: CalibrationRoundType;
   goldSetVersion: typeof EVALUATION_GOLD_SET_VERSION;
   adjudicationVersion: typeof EVALUATION_ADJUDICATION_VERSION;
@@ -474,7 +468,7 @@ export function buildEvaluationAdjudicationReviewManifest() {
     goldSetVersion: EVALUATION_GOLD_SET_VERSION,
     adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
     provenance: "agent_authored_synthetic_candidate" as const,
-    signoff: "pending_product_owner_pm_review" as const,
+    approvalRequired: true as const,
     scoredCaseCount: evaluationCalibrationCases.filter(
       ({ expectedQuality }) => expectedQuality !== null
     ).length,
@@ -485,7 +479,6 @@ export function buildEvaluationAdjudicationReviewManifest() {
         roundType: fixture.roundType,
         expectedQuality: fixture.expectedQuality,
         expectedCompletionState: fixture.expectedCompletionState,
-        signoff: fixture.adjudicationSignoff,
         strength: fixture.evidenceAnchors.find(
           ({ kind }) => kind === "strength"
         ),
@@ -531,19 +524,18 @@ function buildScoredCase(
   );
   const answers =
     expectedCompletionState === "full"
-      ? [
-          ...profiledAnswers,
-          improvementReflection(caseSeed),
-          ...fullSessionExtensions(caseSeed),
-        ]
-      : [...profiledAnswers, improvementReflection(caseSeed)];
+      ? [...profiledAnswers, ...fullSessionExtensions(caseSeed)]
+      : [...profiledAnswers];
   const transcript = buildConversation(id, answers, expectedCompletionState);
-  const strengthSequence = roundType === "behavioral" ? 2 : 1;
+  const adjudication = SCORED_ADJUDICATIONS[id];
+  if (!adjudication) throw new Error(`Missing adjudication candidate: ${id}`);
   const strengthTurn = transcript.find(
-    (turn) => turn.eventId === `${id}:user:${strengthSequence}`
+    (turn) =>
+      turn.eventId === `${id}:user:${adjudication.strength.turnSequence}`
   )!;
   const improvementTurn = transcript.find(
-    (turn) => turn.eventId === `${id}:user:4`
+    (turn) =>
+      turn.eventId === `${id}:user:${adjudication.improvement.turnSequence}`
   )!;
 
   return baseCase({
@@ -558,29 +550,20 @@ function buildScoredCase(
     ),
     evidenceAnchors: [
       {
-        dimension: caseSeed.evidenceDimensions[0],
+        dimension: adjudication.strength.dimension,
         kind: "strength",
-        behavior:
-          roundType === "behavioral"
-            ? "owned_specific_action"
-            : "made_explicit_opening_decision",
-        observation:
-          roundType === "behavioral"
-            ? `The ${caseSeed.title} answer identifies a specific action the candidate personally took.`
-            : `The ${caseSeed.title} answer makes a concrete opening decision instead of staying abstract.`,
+        observation: adjudication.strength.observation,
         turnRef: strengthTurn.eventId,
-        quote: strengthTurn.text,
-        nextStep:
-          "Keep this concrete behavior and connect it to the next decision in the answer.",
+        quote: adjudication.strength.quote,
+        nextStep: adjudication.strength.nextStep,
       },
       {
-        dimension: caseSeed.evidenceDimensions[1],
+        dimension: adjudication.improvement.dimension,
         kind: "improvement",
-        behavior: "identified_specific_gap",
-        observation: `The ${caseSeed.title} answer explicitly leaves a ${caseSeed.evidenceDimensions[1]} gap unresolved.`,
+        observation: adjudication.improvement.observation,
         turnRef: improvementTurn.eventId,
-        quote: improvementTurn.text,
-        nextStep: nextStepForDimension(caseSeed.evidenceDimensions[1]),
+        quote: adjudication.improvement.quote,
+        nextStep: adjudication.improvement.nextStep,
       },
     ],
   });
@@ -645,7 +628,6 @@ function baseCase(
     ...input,
     provenance: "fully_synthetic",
     adjudicationProvenance: "agent_authored_synthetic_candidate",
-    adjudicationSignoff: "pending_product_owner_pm_review",
     goldSetVersion: EVALUATION_GOLD_SET_VERSION,
     adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
     schemaVersion: FEEDBACK_SCHEMA_VERSION,
@@ -756,40 +738,6 @@ function buildConversation(
     turns.push(["user", answer, base + 20, base + 70]);
   });
   return timedTurns(id, turns);
-}
-
-function improvementReflection(caseSeed: ScoredSeed): string {
-  const dimension = caseSeed.evidenceDimensions[1];
-  return `A gap in my answer is ${gapForDimension(dimension)} I would address that before making the final recommendation.`;
-}
-
-function gapForDimension(dimension: FeedbackDimension): string {
-  const gaps: Record<FeedbackDimension, string> = {
-    structure: "that I have not made the sequence of decisions explicit.",
-    clarity: "that I have not stated the key choice in one concise sentence.",
-    insight:
-      "that I have not tested the most important assumption or an alternative explanation.",
-    communication:
-      "that I have not explained the tradeoff in language each stakeholder can act on.",
-    leadership:
-      "that I have not named an owner, commitment, or decision trigger.",
-  };
-  return gaps[dimension];
-}
-
-function nextStepForDimension(dimension: FeedbackDimension): string {
-  const nextSteps: Record<FeedbackDimension, string> = {
-    structure:
-      "State the decision sequence and signpost the transition between steps.",
-    clarity: "Summarize the key choice and rationale in one concise sentence.",
-    insight:
-      "Test the riskiest assumption and compare one plausible alternative.",
-    communication:
-      "Explain the tradeoff and action in stakeholder-ready language.",
-    leadership:
-      "Name the owner, commitment, and trigger for the next decision.",
-  };
-  return nextSteps[dimension];
 }
 
 function timedTurns(

@@ -3,7 +3,7 @@
   "goldSetVersion": "pm-gold-set.v3",
   "adjudicationVersion": "pm-gold-adjudication-candidates.v3",
   "provenance": "agent_authored_synthetic_candidate",
-  "signoff": "pending_product_owner_pm_review",
+  "approvalRequired": true,
   "scoredCaseCount": 32,
   "cases": [
     {
@@ -11,24 +11,21 @@
       "roundType": "product_sense",
       "expectedQuality": "weak",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Caregiver planning answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Names an intended user outcome before ideation.",
         "turnRef": "product_sense:01:caregiver-planning:user:1",
-        "quote": "For Caregiver planning, I would first define the intended user outcome. After that I would brainstorm features for everyone instead of choosing a user segment.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "define the intended user outcome",
+        "nextStep": "Specify the outcome and then narrow to one user segment."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Caregiver planning answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "product_sense:01:caregiver-planning:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Keeps the audience broad instead of making a segment decision.",
+        "turnRef": "product_sense:01:caregiver-planning:user:1",
+        "quote": "brainstorm features for everyone",
+        "nextStep": "Choose one segment and explain why it should be served first."
       }
     },
     {
@@ -36,24 +33,21 @@
       "roundType": "product_sense",
       "expectedQuality": "weak",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Accessible transit answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Names an intended user outcome before ideation.",
         "turnRef": "product_sense:02:accessible-transit:user:1",
-        "quote": "For Accessible transit, I would first define the intended user outcome. After that I would brainstorm features for everyone instead of choosing a user segment.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "define the intended user outcome",
+        "nextStep": "Make the outcome concrete for one accessibility need."
       },
       "improvement": {
         "dimension": "communication",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Accessible transit answer explicitly leaves a communication gap unresolved.",
-        "turnRef": "product_sense:02:accessible-transit:user:4",
-        "quote": "A gap in my answer is that I have not explained the tradeoff in language each stakeholder can act on. I would address that before making the final recommendation.",
-        "nextStep": "Explain the tradeoff and action in stakeholder-ready language."
+        "observation": "Uses a vague preference question that will not reveal whether the problem was solved.",
+        "turnRef": "product_sense:02:accessible-transit:user:2",
+        "quote": "ask users whether they like it",
+        "nextStep": "Ask a behavior-based validation question tied to the intended outcome."
       }
     },
     {
@@ -61,24 +55,21 @@
       "roundType": "product_sense",
       "expectedQuality": "average",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "clarity",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Teacher feedback answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "States a clear problem-discovery step before solution selection.",
         "turnRef": "product_sense:03:teacher-feedback:user:1",
-        "quote": "For Teacher feedback, I would choose one broad user group and confirm its main pain point before selecting a solution.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "confirm its main pain point",
+        "nextStep": "Name the user group and pain point in one precise sentence."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Teacher feedback answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "product_sense:03:teacher-feedback:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Acknowledges that the launch decision lacks a precise threshold.",
+        "turnRef": "product_sense:03:teacher-feedback:user:3",
+        "quote": "have not made the guardrail or launch threshold precise",
+        "nextStep": "Set a numeric launch threshold and one stopping guardrail."
       }
     },
     {
@@ -86,24 +77,21 @@
       "roundType": "product_sense",
       "expectedQuality": "average",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Community kitchens answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Makes an initial user choice rather than designing for everyone.",
         "turnRef": "product_sense:04:community-kitchens:user:1",
-        "quote": "For Community kitchens, I would choose one broad user group and confirm its main pain point before selecting a solution.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "choose one broad user group",
+        "nextStep": "Subsegment the broad group by the highest-cost unmet need."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Community kitchens answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "product_sense:04:community-kitchens:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Leaves the prioritization rationale too shallow for a confident product choice.",
+        "turnRef": "product_sense:04:community-kitchens:user:2",
+        "quote": "segmentation and comparison with alternatives are still fairly surface level",
+        "nextStep": "Compare two segments and alternatives using explicit decision criteria."
       }
     },
     {
@@ -111,24 +99,21 @@
       "roundType": "product_sense",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Language practice answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Identifies a specific audience and behavior gap.",
         "turnRef": "product_sense:05:language-practice:user:1",
-        "quote": "I would target adult language learners who understand lessons but avoid spontaneous conversation.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "adult language learners who understand lessons but avoid spontaneous conversation",
+        "nextStep": "Keep the behavioral segmentation and quantify when avoidance occurs."
       },
       "improvement": {
         "dimension": "communication",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Language practice answer explicitly leaves a communication gap unresolved.",
-        "turnRef": "product_sense:05:language-practice:user:4",
-        "quote": "A gap in my answer is that I have not explained the tradeoff in language each stakeholder can act on. I would address that before making the final recommendation.",
-        "nextStep": "Explain the tradeoff and action in stakeholder-ready language."
+        "observation": "Claims psychological safety without explaining what makes the prompt feel safe.",
+        "turnRef": "product_sense:05:language-practice:user:2",
+        "quote": "psychologically safe prompt",
+        "nextStep": "Describe the prompt mechanics and how safety would be validated with learners."
       }
     },
     {
@@ -136,24 +121,21 @@
       "roundType": "product_sense",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "clarity",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Repair guidance answer makes a concrete opening decision instead of staying abstract.",
-        "turnRef": "product_sense:06:repair-guidance:user:1",
-        "quote": "I would start with renters trying to diagnose a minor appliance problem before contacting maintenance.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "observation": "States a clear safety boundary for the product.",
+        "turnRef": "product_sense:06:repair-guidance:user:2",
+        "quote": "without encouraging repairs that require a professional",
+        "nextStep": "Keep the boundary explicit in the first solution description."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Repair guidance answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "product_sense:06:repair-guidance:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Defines a stop signal but not who reviews or acts on it.",
+        "turnRef": "product_sense:06:repair-guidance:user:3",
+        "quote": "unsafe self-repair attempts as a stopping guardrail",
+        "nextStep": "Name the accountable owner and response when the guardrail trips."
       }
     },
     {
@@ -161,24 +143,21 @@
       "roundType": "product_sense",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Neighborhood safety answer makes a concrete opening decision instead of staying abstract.",
-        "turnRef": "product_sense:07:neighborhood-safety:user:1",
-        "quote": "I would focus on late-shift workers deciding how to get from a station to home.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "observation": "Reframes safety around current, actionable route context.",
+        "turnRef": "product_sense:07:neighborhood-safety:user:2",
+        "quote": "current lighting and open businesses, not a generic crime score",
+        "nextStep": "Validate which contextual signals actually change route confidence."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Neighborhood safety answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "product_sense:07:neighborhood-safety:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Names a bias audit without ownership, cadence, or an action threshold.",
+        "turnRef": "product_sense:07:neighborhood-safety:user:3",
+        "quote": "auditing reports for bias",
+        "nextStep": "Assign an audit owner, cadence, and remediation trigger."
       }
     },
     {
@@ -186,24 +165,21 @@
       "roundType": "product_sense",
       "expectedQuality": "strong",
       "expectedCompletionState": "full",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Clinic follow-up answer makes a concrete opening decision instead of staying abstract.",
-        "turnRef": "product_sense:08:clinic-followup:user:1",
-        "quote": "I would prioritize clinic patients who leave with several instructions and limited time to ask questions.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "observation": "Defines a focused first job for the experience.",
+        "turnRef": "product_sense:08:clinic-followup:user:2",
+        "quote": "confirming the next action in plain language",
+        "nextStep": "Keep this job first and sequence later capabilities behind it."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Clinic follow-up answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "product_sense:08:clinic-followup:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Names escalation but leaves uncertainty criteria and ownership undefined.",
+        "turnRef": "product_sense:08:clinic-followup:user:2",
+        "quote": "escalation back to the care team when uncertain",
+        "nextStep": "Define the uncertainty threshold and the care-team owner for escalation."
       }
     },
     {
@@ -211,24 +187,21 @@
       "roundType": "execution",
       "expectedQuality": "weak",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Merchant onboarding answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Provides a minimal delivery goal before discussing work.",
         "turnRef": "execution:01:merchant-onboarding:user:1",
-        "quote": "For Merchant onboarding, I would first define a usable release as the delivery goal. I would then ask the team to move quickly without an owner or ordered milestones.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "define a usable release as the delivery goal",
+        "nextStep": "Translate usable release into observable acceptance criteria."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Merchant onboarding answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "execution:01:merchant-onboarding:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Explicitly leaves delivery ownership and sequencing unresolved.",
+        "turnRef": "execution:01:merchant-onboarding:user:1",
+        "quote": "without an owner or ordered milestones",
+        "nextStep": "Assign owners and order milestones by risk and dependency."
       }
     },
     {
@@ -236,24 +209,21 @@
       "roundType": "execution",
       "expectedQuality": "weak",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Search latency answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Provides a minimal delivery goal before discussing work.",
         "turnRef": "execution:02:search-latency:user:1",
-        "quote": "For Search latency, I would first define a usable release as the delivery goal. I would then ask the team to move quickly without an owner or ordered milestones.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "define a usable release as the delivery goal",
+        "nextStep": "Define usable in latency and relevance terms."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Search latency answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "execution:02:search-latency:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Leaves the release without measurable control points.",
+        "turnRef": "execution:02:search-latency:user:3",
+        "quote": "have not set a measurable outcome, guardrail, or rollback condition",
+        "nextStep": "Set a success metric, relevance guardrail, and rollback condition."
       }
     },
     {
@@ -261,24 +231,21 @@
       "roundType": "execution",
       "expectedQuality": "average",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Support routing answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Breaks delivery into workstreams rather than one undifferentiated launch.",
         "turnRef": "execution:03:support-routing:user:1",
-        "quote": "For Support routing, I would define a launch goal, identify the main workstreams, and give each one an owner.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "identify the main workstreams",
+        "nextStep": "Order the workstreams by dependency and customer risk."
       },
       "improvement": {
         "dimension": "communication",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Support routing answer explicitly leaves a communication gap unresolved.",
-        "turnRef": "execution:03:support-routing:user:4",
-        "quote": "A gap in my answer is that I have not explained the tradeoff in language each stakeholder can act on. I would address that before making the final recommendation.",
-        "nextStep": "Explain the tradeoff and action in stakeholder-ready language."
+        "observation": "Does not explain dependencies or rollback clearly enough for the team to act.",
+        "turnRef": "execution:03:support-routing:user:2",
+        "quote": "dependency analysis and rollback plan need more detail",
+        "nextStep": "State the critical dependency and rollback path explicitly."
       }
     },
     {
@@ -286,24 +253,21 @@
       "roundType": "execution",
       "expectedQuality": "average",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Mobile migration answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Assigns ownership to the identified workstreams.",
         "turnRef": "execution:04:mobile-migration:user:1",
-        "quote": "For Mobile migration, I would define a launch goal, identify the main workstreams, and give each one an owner.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "give each one an owner",
+        "nextStep": "Keep owners and acceptance criteria visible in the migration plan."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Mobile migration answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "execution:04:mobile-migration:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Mentions rollback but omits who makes the rollback decision and when.",
+        "turnRef": "execution:04:mobile-migration:user:2",
+        "quote": "rollback plan need more detail",
+        "nextStep": "Name the rollback decision owner and trigger."
       }
     },
     {
@@ -311,24 +275,21 @@
       "roundType": "execution",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Pricing rollout answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Separates the rollout into independently verifiable gates.",
         "turnRef": "execution:05:pricing-rollout:user:1",
-        "quote": "I would separate catalog correctness, entitlement enforcement, billing recovery, and customer communication into independent gates.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "independent gates",
+        "nextStep": "Keep gate evidence and ordering explicit in the rollout plan."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Pricing rollout answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "execution:05:pricing-rollout:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Uses readiness language without an accountable approver or threshold.",
+        "turnRef": "execution:05:pricing-rollout:user:2",
+        "quote": "until migration evidence and support playbooks are ready",
+        "nextStep": "Name the approver and evidence threshold for advancing the cohort."
       }
     },
     {
@@ -336,24 +297,21 @@
       "roundType": "execution",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Moderation queue answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Prioritizes the queue using severity and age.",
         "turnRef": "execution:06:moderation-queue:user:1",
-        "quote": "I would prioritize the oldest high-severity reports and expose uncertainty instead of hiding everything behind one score.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "oldest high-severity reports",
+        "nextStep": "Validate the severity-age rule against harm and reviewer capacity."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Moderation queue answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "execution:06:moderation-queue:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Chooses reversibility but does not specify escalation ownership for severe cases.",
+        "turnRef": "execution:06:moderation-queue:user:2",
+        "quote": "reversible actions",
+        "nextStep": "Assign escalation ownership and a deadline for irreversible decisions."
       }
     },
     {
@@ -361,24 +319,21 @@
       "roundType": "execution",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Warehouse pilot answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Includes a fallback in the pilot design before launch.",
         "turnRef": "execution:07:warehouse-pilot:user:1",
-        "quote": "I would choose one warehouse with stable scanning behavior and define a manual fallback before the pilot.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "define a manual fallback before the pilot",
+        "nextStep": "Test the fallback and document when it takes over."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Warehouse pilot answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "execution:07:warehouse-pilot:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Selects a site but does not name the local owner accountable for the fallback.",
+        "turnRef": "execution:07:warehouse-pilot:user:1",
+        "quote": "choose one warehouse",
+        "nextStep": "Name the warehouse owner and decision authority for pausing the pilot."
       }
     },
     {
@@ -386,24 +341,21 @@
       "roundType": "execution",
       "expectedQuality": "strong",
       "expectedCompletionState": "full",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "leadership",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Incident recovery answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Creates clear incident command ownership.",
         "turnRef": "execution:08:incident-recovery:user:1",
-        "quote": "I would assign one incident commander, stabilize writes, and publish a shared customer-impact timeline.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "assign one incident commander",
+        "nextStep": "Keep command ownership and handoff rules explicit throughout recovery."
       },
       "improvement": {
         "dimension": "insight",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Incident recovery answer explicitly leaves a insight gap unresolved.",
-        "turnRef": "execution:08:incident-recovery:user:4",
-        "quote": "A gap in my answer is that I have not tested the most important assumption or an alternative explanation. I would address that before making the final recommendation.",
-        "nextStep": "Test the riskiest assumption and compare one plausible alternative."
+        "observation": "Proposes a test without identifying the failed assumption or how recurrence will be detected.",
+        "turnRef": "execution:08:incident-recovery:user:3",
+        "quote": "convert the failed assumption into an automated rollback test",
+        "nextStep": "Name the failed assumption and the signal the automated test must catch."
       }
     },
     {
@@ -411,24 +363,21 @@
       "roundType": "strategy",
       "expectedQuality": "weak",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Creator market answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Starts with evidence of unmet need rather than a feature.",
         "turnRef": "strategy:01:creator-market:user:1",
-        "quote": "For Creator market, I would first test whether customers have an unmet need. I still have not sized a segment or explained why this market matters now.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "test whether customers have an unmet need",
+        "nextStep": "Define the customer and evidence that would confirm the need."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Creator market answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "strategy:01:creator-market:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Bases entry on an unbounded possibility rather than a decision rule.",
+        "turnRef": "strategy:01:creator-market:user:3",
+        "quote": "growth seems possible",
+        "nextStep": "Set an entry threshold and evidence that would reverse the recommendation."
       }
     },
     {
@@ -436,24 +385,21 @@
       "roundType": "strategy",
       "expectedQuality": "weak",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Regional expansion answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Begins with a testable customer-need question.",
         "turnRef": "strategy:02:regional-expansion:user:1",
-        "quote": "For Regional expansion, I would first test whether customers have an unmet need. I still have not sized a segment or explained why this market matters now.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "test whether customers have an unmet need",
+        "nextStep": "Sequence market size, constraints, and alternatives after the need test."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Regional expansion answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "strategy:02:regional-expansion:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Commits to imitation without comparing options.",
+        "turnRef": "strategy:02:regional-expansion:user:2",
+        "quote": "without comparing strategic alternatives",
+        "nextStep": "Compare build, partner, and no-entry options before recommending expansion."
       }
     },
     {
@@ -461,24 +407,21 @@
       "roundType": "strategy",
       "expectedQuality": "average",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Product bundling answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Names three relevant strategic lenses.",
         "turnRef": "strategy:03:bundling:user:1",
-        "quote": "For Product bundling, I would compare customer demand, competitor strength, and our right to win before choosing a direction.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "compare customer demand, competitor strength, and our right to win",
+        "nextStep": "Quantify each lens before choosing a bundle strategy."
       },
       "improvement": {
         "dimension": "communication",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Product bundling answer explicitly leaves a communication gap unresolved.",
-        "turnRef": "strategy:03:bundling:user:4",
-        "quote": "A gap in my answer is that I have not explained the tradeoff in language each stakeholder can act on. I would address that before making the final recommendation.",
-        "nextStep": "Explain the tradeoff and action in stakeholder-ready language."
+        "observation": "References two options without naming them, weakening the recommendation narrative.",
+        "turnRef": "strategy:03:bundling:user:2",
+        "quote": "two plausible options",
+        "nextStep": "Name both options and state why the preferred one wins."
       }
     },
     {
@@ -486,24 +429,21 @@
       "roundType": "strategy",
       "expectedQuality": "average",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "clarity",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Open platform answer makes a concrete opening decision instead of staying abstract.",
-        "turnRef": "strategy:04:open-platform:user:1",
-        "quote": "For Open platform, I would compare customer demand, competitor strength, and our right to win before choosing a direction.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "observation": "Makes a clear directional recommendation.",
+        "turnRef": "strategy:04:open-platform:user:2",
+        "quote": "favor the lower-investment entry",
+        "nextStep": "State the option, investment boundary, and expected advantage precisely."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Open platform answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "strategy:04:open-platform:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Leaves the pilot without a go/no-go trigger.",
+        "turnRef": "strategy:04:open-platform:user:3",
+        "quote": "have not set a precise trigger for expansion or exit",
+        "nextStep": "Set expansion and exit thresholds with a decision owner."
       }
     },
     {
@@ -511,24 +451,21 @@
       "roundType": "strategy",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Education entry answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Separates buyer and user motions that operate differently.",
         "turnRef": "strategy:05:education-entry:user:1",
-        "quote": "I would distinguish institutional buyers from individual teachers because procurement and adoption move on different clocks.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "institutional buyers from individual teachers",
+        "nextStep": "Keep procurement and adoption evidence separate in the strategy."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Education entry answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "strategy:05:education-entry:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Defers evaluation to an administrator without naming the owner or decision process.",
+        "turnRef": "strategy:05:education-entry:user:2",
+        "quote": "an administrator can later evaluate",
+        "nextStep": "Name who owns the go/no-go decision and what evidence they require."
       }
     },
     {
@@ -536,24 +473,21 @@
       "roundType": "strategy",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Marketplace liquidity answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Decomposes liquidity into distinct possible constraints.",
         "turnRef": "strategy:06:marketplace-liquidity:user:1",
-        "quote": "I would map whether the constraint is buyer demand, qualified supply, matching, or trust in each local market.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "buyer demand, qualified supply, matching, or trust",
+        "nextStep": "Diagnose one primary constraint per market before intervening."
       },
       "improvement": {
         "dimension": "insight",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Marketplace liquidity answer explicitly leaves a insight gap unresolved.",
-        "turnRef": "strategy:06:marketplace-liquidity:user:4",
-        "quote": "A gap in my answer is that I have not tested the most important assumption or an alternative explanation. I would address that before making the final recommendation.",
-        "nextStep": "Test the riskiest assumption and compare one plausible alternative."
+        "observation": "Uses organic liquidity as a trigger without defining a measurable threshold.",
+        "turnRef": "strategy:06:marketplace-liquidity:user:3",
+        "quote": "once organic liquidity holds",
+        "nextStep": "Define repeat-match and subsidy thresholds that demonstrate organic liquidity."
       }
     },
     {
@@ -561,24 +495,21 @@
       "roundType": "strategy",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "clarity",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The AI positioning answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Anchors positioning in a concrete customer decision.",
         "turnRef": "strategy:07:ai-positioning:user:1",
-        "quote": "I would anchor the strategy in a costly customer decision the product can improve, not in access to a general model.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "costly customer decision the product can improve",
+        "nextStep": "Name the decision, current cost, and improvement target."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The AI positioning answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "strategy:07:ai-positioning:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Preserves human review but leaves review ownership and escalation unspecified.",
+        "turnRef": "strategy:07:ai-positioning:user:3",
+        "quote": "human review remains required",
+        "nextStep": "Define reviewer authority and escalation for disputed outputs."
       }
     },
     {
@@ -586,24 +517,21 @@
       "roundType": "strategy",
       "expectedQuality": "strong",
       "expectedCompletionState": "full",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "made_explicit_opening_decision",
-        "observation": "The Portfolio exit answer makes a concrete opening decision instead of staying abstract.",
+        "observation": "Defines a balanced set of exit criteria.",
         "turnRef": "strategy:08:portfolio-exit:user:1",
-        "quote": "I would compare strategic fit, customer dependency, switching cost, and reinvestment return before recommending an exit.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "strategic fit, customer dependency, switching cost, and reinvestment return",
+        "nextStep": "Weight the criteria and show how they lead to the recommendation."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Portfolio exit answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "strategy:08:portfolio-exit:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Names a deadline without assigning decision ownership or governance.",
+        "turnRef": "strategy:08:portfolio-exit:user:3",
+        "quote": "set a decision date",
+        "nextStep": "Name the decision owner and approval process for the exit date."
       }
     },
     {
@@ -611,24 +539,21 @@
       "roundType": "behavioral",
       "expectedQuality": "weak",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "behavior": "owned_specific_action",
-        "observation": "The Roadmap conflict answer identifies a specific action the candidate personally took.",
+        "observation": "Took a concrete organizing action to surface the conflict.",
         "turnRef": "behavioral:01:roadmap-conflict:user:2",
-        "quote": "I scheduled one discussion and summarized the disagreement for the group, but I did not drive a clear tradeoff or decision.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "scheduled one discussion and summarized the disagreement",
+        "nextStep": "Keep the action and connect it to a clear decision sequence."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Roadmap conflict answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "behavioral:01:roadmap-conflict:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Did not convert the discussion into a decision.",
+        "turnRef": "behavioral:01:roadmap-conflict:user:2",
+        "quote": "did not drive a clear tradeoff or decision",
+        "nextStep": "State the tradeoff, recommendation, and decision owner."
       }
     },
     {
@@ -636,24 +561,21 @@
       "roundType": "behavioral",
       "expectedQuality": "weak",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "owned_specific_action",
-        "observation": "The Failed launch answer identifies a specific action the candidate personally took.",
+        "observation": "Captured competing perspectives instead of ignoring them.",
         "turnRef": "behavioral:02:failed-launch:user:2",
-        "quote": "I scheduled one discussion and summarized the disagreement for the group, but I did not drive a clear tradeoff or decision.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "summarized the disagreement",
+        "nextStep": "Use the disagreement to identify the failed assumption."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Failed launch answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "behavioral:02:failed-launch:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Provides no measurable outcome showing ownership or impact.",
+        "turnRef": "behavioral:02:failed-launch:user:3",
+        "quote": "do not have a concrete result",
+        "nextStep": "Quantify the result and state the action personally owned."
       }
     },
     {
@@ -661,24 +583,21 @@
       "roundType": "behavioral",
       "expectedQuality": "average",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "communication",
         "kind": "strength",
-        "behavior": "owned_specific_action",
-        "observation": "The Influence without authority answer identifies a specific action the candidate personally took.",
+        "observation": "Listened to stakeholders and proposed a concrete path forward.",
         "turnRef": "behavioral:03:influence-without-authority:user:2",
-        "quote": "I gathered their concerns, proposed a compromise, and followed up, although the hardest tradeoff and my personal influence are not fully clear.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "gathered their concerns, proposed a compromise",
+        "nextStep": "Keep the stakeholder concerns and proposal explicit."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Influence without authority answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "behavioral:03:influence-without-authority:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Does not distinguish the candidate's influence from the group's work.",
+        "turnRef": "behavioral:03:influence-without-authority:user:2",
+        "quote": "personal influence are not fully clear",
+        "nextStep": "Explain the specific intervention that changed the decision."
       }
     },
     {
@@ -686,24 +605,21 @@
       "roundType": "behavioral",
       "expectedQuality": "average",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "clarity",
         "kind": "strength",
-        "behavior": "owned_specific_action",
-        "observation": "The Customer escalation answer identifies a specific action the candidate personally took.",
-        "turnRef": "behavioral:04:customer-escalation:user:2",
-        "quote": "I gathered their concerns, proposed a compromise, and followed up, although the hardest tradeoff and my personal influence are not fully clear.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "observation": "States a bounded personal responsibility.",
+        "turnRef": "behavioral:04:customer-escalation:user:1",
+        "quote": "owned one part of a team problem",
+        "nextStep": "Name the exact responsibility and customer outcome."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Customer escalation answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "behavioral:04:customer-escalation:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Leaves the impact too vague to assess ownership.",
+        "turnRef": "behavioral:04:customer-escalation:user:3",
+        "quote": "result is only loosely measured",
+        "nextStep": "Provide a concrete customer or operational result."
       }
     },
     {
@@ -711,24 +627,21 @@
       "roundType": "behavioral",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "communication",
         "kind": "strength",
-        "behavior": "owned_specific_action",
-        "observation": "The Team disagreement answer identifies a specific action the candidate personally took.",
+        "observation": "Turned disagreement into a shared, testable question.",
         "turnRef": "behavioral:05:team-disagreement:user:2",
-        "quote": "I restated the user risk, asked each lead for the cheapest test, and sponsored a prototype with five target users.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "asked each lead for the cheapest test",
+        "nextStep": "Keep the test request and decision criteria explicit."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Team disagreement answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "behavioral:05:team-disagreement:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Reports adoption but not how a future inconclusive test would be resolved.",
+        "turnRef": "behavioral:05:team-disagreement:user:3",
+        "quote": "both leads adopted the test-first decision pattern",
+        "nextStep": "Explain the decision rule and owner when evidence is inconclusive."
       }
     },
     {
@@ -736,24 +649,21 @@
       "roundType": "behavioral",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "behavior": "owned_specific_action",
-        "observation": "The Missed goal answer identifies a specific action the candidate personally took.",
+        "observation": "Investigated the failed metric through customer evidence.",
         "turnRef": "behavioral:06:missed-goal:user:2",
-        "quote": "I shared the miss, interviewed inactive teams, and changed the roadmap from acquisition features to collaborative handoff reliability.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "interviewed inactive teams",
+        "nextStep": "Connect each finding to the roadmap change it justified."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Missed goal answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "behavioral:06:missed-goal:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Describes a roadmap change without explaining stakeholder alignment or decision authority.",
+        "turnRef": "behavioral:06:missed-goal:user:2",
+        "quote": "changed the roadmap",
+        "nextStep": "Explain how stakeholders were aligned and who approved the change."
       }
     },
     {
@@ -761,24 +671,21 @@
       "roundType": "behavioral",
       "expectedQuality": "strong",
       "expectedCompletionState": "partial",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "communication",
         "kind": "strength",
-        "behavior": "owned_specific_action",
-        "observation": "The Mentoring answer identifies a specific action the candidate personally took.",
+        "observation": "Used questions to transfer judgment instead of taking over the work.",
         "turnRef": "behavioral:07:mentoring:user:2",
-        "quote": "I modeled one problem framing, reviewed drafts with questions instead of edits, and gave them ownership of the next executive review.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "reviewed drafts with questions instead of edits",
+        "nextStep": "Keep the coaching method and expected learner decision explicit."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Mentoring answer explicitly leaves a leadership gap unresolved.",
-        "turnRef": "behavioral:07:mentoring:user:4",
-        "quote": "A gap in my answer is that I have not named an owner, commitment, or decision trigger. I would address that before making the final recommendation.",
-        "nextStep": "Name the owner, commitment, and trigger for the next decision."
+        "observation": "Delegates ownership without stating success criteria or an escalation boundary.",
+        "turnRef": "behavioral:07:mentoring:user:2",
+        "quote": "gave them ownership of the next executive review",
+        "nextStep": "Define success criteria and when the mentor should intervene."
       }
     },
     {
@@ -786,24 +693,21 @@
       "roundType": "behavioral",
       "expectedQuality": "strong",
       "expectedCompletionState": "full",
-      "signoff": "pending_product_owner_pm_review",
       "strength": {
         "dimension": "leadership",
         "kind": "strength",
-        "behavior": "owned_specific_action",
-        "observation": "The Ethical tradeoff answer identifies a specific action the candidate personally took.",
+        "observation": "Proposed a concrete ethical alternative rather than only objecting.",
         "turnRef": "behavioral:08:ethical-tradeoff:user:2",
-        "quote": "I documented the short-term revenue upside, the trust risk, and a transparent alternative that tested value reminders without obstructing exit.",
-        "nextStep": "Keep this concrete behavior and connect it to the next decision in the answer."
+        "quote": "transparent alternative",
+        "nextStep": "Keep the alternative and the decision principle explicit."
       },
       "improvement": {
         "dimension": "insight",
         "kind": "improvement",
-        "behavior": "identified_specific_gap",
-        "observation": "The Ethical tradeoff answer explicitly leaves a insight gap unresolved.",
-        "turnRef": "behavioral:08:ethical-tradeoff:user:4",
-        "quote": "A gap in my answer is that I have not tested the most important assumption or an alternative explanation. I would address that before making the final recommendation.",
-        "nextStep": "Test the riskiest assumption and compare one plausible alternative."
+        "observation": "Reports an aggregate outcome without duration, segmentation, or a counterfactual.",
+        "turnRef": "behavioral:08:ethical-tradeoff:user:3",
+        "quote": "improved retained renewals without more complaints",
+        "nextStep": "Test whether the outcome persists by segment against a clear comparison."
       }
     }
   ]
