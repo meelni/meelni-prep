@@ -21,7 +21,7 @@
     "build": "next build",
     "start": "next start",
     "check": "npm run format:check:quality && npm run lint && npm run typecheck && npm run typecheck:tests && npm run quality",
-    "check:ci": "npm run check && npm run test:core && npm run test:agent && npm run test:integrations && npm run test:fixtures && npm run test:workflows && npm run test:api && npm run test:auth-ui && npm run test:billing && npm run test:packages",
+    "check:ci": "npm run check && npm run test:product-language && npm run test:core && npm run test:agent && npm run test:integrations && npm run test:fixtures && npm run test:workflows && npm run test:api && npm run test:auth-ui && npm run test:billing && npm run test:operations && npm run test:content && npm run test:packages",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "typecheck": "tsc --noEmit",
@@ -58,14 +58,18 @@
     "test:python-agent": "python3 -m unittest agent/test_runtime_contracts.py",
     "test:local": "node --test scripts/*.test.mjs",
     "test:fixtures": "tsx --test packages/test-fixtures/src/*.test.ts",
-    "test:workflows": "tsx --test lib/workflows/*.test.ts lib/db/*.test.ts lib/question-sync/*.test.ts lib/security/*.test.ts lib/supabase/*.test.ts lib/auth/*.test.ts lib/navigation/*.test.ts lib/analytics/*.test.ts lib/dashboard/*.test.ts lib/evaluation/*.test.ts lib/operations/*.test.ts",
+    "test:content": "tsx --test lib/blog-data.test.ts lib/data/public-company.test.ts lib/explore/*.test.ts components/explore/structured-data.test.tsx && node --test scripts/content-credibility-contract.test.mjs",
+    "test:workflows": "tsx --test lib/workflows/*.test.ts lib/db/*.test.ts lib/question-sync/*.test.ts lib/security/*.test.ts lib/supabase/*.test.ts lib/auth/*.test.ts lib/navigation/*.test.ts lib/analytics/*.test.ts lib/dashboard/*.test.ts lib/evaluation/*.test.ts",
     "test:api": "vitest run app/auth/callback/route.test.ts app/api/interview/end/__tests__/route.test.ts app/api/livekit/token/__tests__/token-generation.test.ts app/api/feedback/[sessionId]/route.test.ts app/api/checkout/create-session/route.test.ts app/api/webhooks/stripe/route.test.ts app/api/user/export/route.test.ts app/api/user/delete/route.test.ts",
-    "test:auth-ui": "tsx --test components/auth/*.test.tsx && vitest run components/explore/*.test.tsx app/auth/*.test.tsx",
+    "test:auth-ui": "tsx --test components/auth/*.test.tsx && vitest run components/explore/question-signin-modal.test.tsx app/auth/*.test.tsx",
     "test:billing": "tsx --test lib/billing/*.test.ts",
+    "test:operations": "tsx --test lib/operations/*.test.ts && node --test scripts/check-service-health.test.mjs",
     "test:packages": "tsx --test scripts/package-entrypoints.test.ts",
     "test:quality": "node --test scripts/quality-scripts.test.mjs",
+    "test:product-language": "tsx --test lib/product-language.test.ts && node --test scripts/product-language-contract.test.mjs",
     "auth:doctor": "node scripts/auth-doctor.mjs",
     "auth:doctor:db": "node scripts/auth-doctor.mjs --db",
+    "health:synthetic": "tsx scripts/check-service-health.ts",
     "test:sheets": "tsx scripts/test-google-sheets-connection.ts",
     "test:feedback": "tsx --env-file=.env.local scripts/test-feedback-generation.ts",
     "validate:skills": "node scripts/validate-skills.mjs",
@@ -98,8 +102,6 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.4.0",
-    "@splinetool/react-spline": "^4.1.0",
-    "@splinetool/runtime": "^1.10.96",
     "@statsig/js-client": "^3.33.3",
     "@statsig/session-replay": "^3.33.3",
     "@statsig/web-analytics": "^3.33.3",
@@ -174,5 +176,11 @@
     "tw-animate-css": "^1.4.0",
     "typescript": "^5",
     "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    },
+    "postcss": "8.5.16"
   }
 }

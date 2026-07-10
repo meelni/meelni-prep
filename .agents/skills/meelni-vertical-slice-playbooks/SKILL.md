@@ -91,7 +91,7 @@ Validate:
 
 ## Slice: Feedback And Evaluation
 
-Use for scoring, rubrics, feedback generation, drills, transcript quality, insights, and feedback UI.
+Use for scoring, rubrics, feedback generation, practice exercises, transcript quality, insights, and feedback UI.
 
 Read:
 

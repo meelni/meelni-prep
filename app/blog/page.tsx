@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 export const metadata = {
   title: "Blog | Meelni",
   description:
-    "Frameworks, strategies, and insights from our PM coaching practice",
+    "PM interview practice frameworks, strategies, and answer walkthroughs",
 };
 
 // Structured Data for SEO
@@ -46,7 +46,7 @@ function BlogStructuredData() {
     "@type": "Blog",
     name: "Meelni Blog",
     description:
-      "Frameworks, strategies, and insights from our PM coaching practice",
+      "PM interview practice frameworks, strategies, and answer walkthroughs",
     url: `${baseUrl}/blog`,
     inLanguage: "en-US",
     publisher: {
@@ -59,7 +59,7 @@ function BlogStructuredData() {
       headline: post.title,
       description: post.excerpt,
       url: `${baseUrl}/blog/${post.id}`,
-      datePublished: post.date,
+      datePublished: post.publishedAt,
       author: {
         "@type": "Person",
         name: post.author,
@@ -136,7 +136,7 @@ export default function BlogIndex() {
         <MarketingHero
           eyebrow={<MarketingEyebrow mark="M">Meelni Blog</MarketingEyebrow>}
           title="Interview Insights"
-          description="Frameworks, strategies, and real interview walkthroughs from our PM coaching practice"
+          description="PM interview practice frameworks, strategies, and answer walkthroughs"
         />
 
         {/* Blog Posts Grid */}
