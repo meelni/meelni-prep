@@ -1,14 +1,12 @@
 import { ALL_INTERVIEW_TYPES, type RoundType } from "./interview";
 import {
-  FEEDBACK_EVALUATION_STATES,
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
-  isFeedbackV2Item,
   type FeedbackV2Item,
   type FeedbackV2Result,
 } from "./feedback-v2";
-import type { FeedbackDimension } from "./evaluation";
+import { calculateOverallScore, type FeedbackDimension } from "./evaluation";
 
 export const DRILL_RECOMMENDATION_CONTRACT_VERSION =
   "drill-recommendation.v1" as const;
@@ -143,7 +141,7 @@ export function recommendDrill(
       SOURCE_STATE_UNAVAILABLE_REASON[input.sourceState]
     );
   }
-  if (!isValidatedFeedbackV2Result(input.feedback)) {
+  if (!isCompleteFeedbackV2Result(input.feedback)) {
     return unavailable(input.templateVersion, "missing_validated_feedback");
   }
 
@@ -152,6 +150,12 @@ export function recommendDrill(
     score: input.feedback!.scores[dimension],
   }));
   if (scoreEntries.some(({ score }) => !isValidScore(score))) {
+    return unavailable(input.templateVersion, "invalid_scores");
+  }
+  if (
+    !isValidOverallScore(input.feedback.overallScore) ||
+    input.feedback.overallScore !== calculateOverallScore(input.feedback.scores)
+  ) {
     return unavailable(input.templateVersion, "invalid_scores");
   }
 
@@ -208,27 +212,143 @@ export function recommendDrill(
   };
 }
 
-function isValidatedFeedbackV2Result(
-  feedback: FeedbackV2Result | null
+const FEEDBACK_ROOT_KEYS = [
+  "schemaVersion",
+  "promptVersion",
+  "modelVersion",
+  "rubricVersion",
+  "evaluationState",
+  "scores",
+  "overallScore",
+  "strengths",
+  "improvements",
+  "drills",
+  "summary",
+] as const;
+
+const FEEDBACK_ITEM_KEYS = [
+  "dimension",
+  "observation",
+  "transcriptRefs",
+  "evidence",
+  "nextStep",
+  "rubricVersion",
+  "confidence",
+] as const;
+
+const FEEDBACK_EVIDENCE_KEYS = ["turnRef", "quote"] as const;
+
+function isCompleteFeedbackV2Result(
+  feedback: unknown
 ): feedback is FeedbackV2Result {
-  return Boolean(
-    feedback &&
-      feedback.schemaVersion === FEEDBACK_SCHEMA_VERSION &&
-      feedback.promptVersion === FEEDBACK_PROMPT_VERSION &&
-      feedback.rubricVersion === FEEDBACK_RUBRIC_VERSION &&
-      typeof feedback.modelVersion === "string" &&
-      feedback.modelVersion.trim() &&
-      (FEEDBACK_EVALUATION_STATES as readonly string[]).includes(
-        feedback.evaluationState
-      ) &&
-      feedback.scores &&
-      Array.isArray(feedback.improvements)
+  if (!isRecord(feedback) || !hasExactKeys(feedback, FEEDBACK_ROOT_KEYS)) {
+    return false;
+  }
+  if (
+    feedback.schemaVersion !== FEEDBACK_SCHEMA_VERSION ||
+    feedback.promptVersion !== FEEDBACK_PROMPT_VERSION ||
+    feedback.rubricVersion !== FEEDBACK_RUBRIC_VERSION ||
+    !isNonEmptyString(feedback.modelVersion) ||
+    (feedback.evaluationState !== "full" &&
+      feedback.evaluationState !== "partial") ||
+    !isRecord(feedback.scores) ||
+    !hasExactKeys(feedback.scores, SCORE_DIMENSIONS) ||
+    !Array.isArray(feedback.strengths) ||
+    feedback.strengths.length < 1 ||
+    feedback.strengths.length > 5 ||
+    !Array.isArray(feedback.improvements) ||
+    feedback.improvements.length < 1 ||
+    feedback.improvements.length > 5 ||
+    !Array.isArray(feedback.drills) ||
+    feedback.drills.length < 1 ||
+    feedback.drills.length > 3 ||
+    !feedback.drills.every(isNonEmptyString) ||
+    !isNonEmptyString(feedback.summary)
+  ) {
+    return false;
+  }
+
+  const findings = [...feedback.strengths, ...feedback.improvements];
+  return (
+    findings.every(isStrictFeedbackItem) &&
+    hasUniqueEvidenceAcrossFindings(findings)
   );
+}
+
+function isStrictFeedbackItem(value: unknown): value is FeedbackV2Item {
+  if (!isRecord(value) || !hasExactKeys(value, FEEDBACK_ITEM_KEYS)) {
+    return false;
+  }
+  if (
+    typeof value.dimension !== "string" ||
+    !SCORE_DIMENSIONS.includes(value.dimension as FeedbackDimension) ||
+    !isNonEmptyString(value.observation) ||
+    !isNonEmptyString(value.nextStep) ||
+    value.rubricVersion !== FEEDBACK_RUBRIC_VERSION ||
+    typeof value.confidence !== "number" ||
+    !Number.isFinite(value.confidence) ||
+    value.confidence < 0 ||
+    value.confidence > 1 ||
+    !Array.isArray(value.transcriptRefs) ||
+    value.transcriptRefs.length < 1 ||
+    value.transcriptRefs.length > 5 ||
+    !value.transcriptRefs.every(isNonEmptyString) ||
+    new Set(value.transcriptRefs).size !== value.transcriptRefs.length ||
+    !Array.isArray(value.evidence) ||
+    value.evidence.length < 1 ||
+    value.evidence.length > 5 ||
+    !value.evidence.every(isStrictEvidenceEntry)
+  ) {
+    return false;
+  }
+
+  const evidenceRefs = new Set(value.evidence.map(({ turnRef }) => turnRef));
+  return (
+    value.evidence.length === value.transcriptRefs.length &&
+    evidenceRefs.size === value.transcriptRefs.length &&
+    value.transcriptRefs.every((turnRef) => evidenceRefs.has(turnRef))
+  );
+}
+
+function isStrictEvidenceEntry(
+  value: unknown
+): value is { turnRef: string; quote: string } {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, FEEDBACK_EVIDENCE_KEYS) &&
+    isNonEmptyString(value.turnRef) &&
+    isNonEmptyString(value.quote)
+  );
+}
+
+function hasUniqueEvidenceAcrossFindings(findings: FeedbackV2Item[]): boolean {
+  const identities = findings.flatMap(({ evidence }) =>
+    evidence.map(({ turnRef, quote }) => `${turnRef}\u0000${quote}`)
+  );
+  return new Set(identities).size === identities.length;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expectedKeys: readonly string[]
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    keys.length === expectedKeys.length &&
+    keys.every((key) => expectedKeys.includes(key))
+  );
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function isGroundedImprovement(item: FeedbackV2Item): boolean {
   if (
-    !isFeedbackV2Item(item) ||
     !Number.isFinite(item.confidence) ||
     item.confidence <= 0 ||
     item.confidence > 1 ||
@@ -299,6 +419,15 @@ function isValidScore(value: unknown): value is number {
   return (
     typeof value === "number" &&
     Number.isInteger(value) &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 10
+  );
+}
+
+function isValidOverallScore(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
     Number.isFinite(value) &&
     value >= 0 &&
     value <= 10

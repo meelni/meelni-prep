@@ -14,7 +14,7 @@ import {
   type FeedbackV2Item,
   type FeedbackV2Result,
 } from "./feedback-v2";
-import type { FeedbackDimension } from "./evaluation";
+import { calculateOverallScore, type FeedbackDimension } from "./evaluation";
 import type { RoundType } from "./interview";
 
 const baseFinding = {
@@ -37,21 +37,22 @@ function feedback(overrides?: {
   improvements?: FeedbackV2Result["improvements"];
   scores?: Partial<FeedbackV2Result["scores"]>;
 }): FeedbackV2Result {
+  const scores = {
+    structure: 4,
+    clarity: 7,
+    insight: 8,
+    communication: 7,
+    leadership: 7,
+    ...overrides?.scores,
+  };
   return {
     schemaVersion: FEEDBACK_SCHEMA_VERSION,
     promptVersion: FEEDBACK_PROMPT_VERSION,
     modelVersion: "validated-fixture-model",
     rubricVersion: FEEDBACK_RUBRIC_VERSION,
     evaluationState: overrides?.evaluationState ?? "full",
-    scores: {
-      structure: 4,
-      clarity: 7,
-      insight: 8,
-      communication: 7,
-      leadership: 7,
-      ...overrides?.scores,
-    },
-    overallScore: 6.4,
+    scores,
+    overallScore: calculateOverallScore(scores),
     strengths: [
       {
         ...baseFinding,
@@ -221,42 +222,96 @@ test("missing, fractional, non-finite, and out-of-range scores fail closed", () 
 });
 
 test("malformed findings cannot authorize personalization", () => {
-  const malformedImprovements: unknown[] = [
-    { ...baseFinding, confidence: 0 },
-    { ...baseFinding, confidence: Number.NaN },
-    { ...baseFinding, confidence: 1.1 },
-    { ...baseFinding, observation: " " },
-    { ...baseFinding, nextStep: "" },
-    { ...baseFinding, evidence: [] },
-    { ...baseFinding, transcriptRefs: [] },
-    { ...baseFinding, transcriptRefs: [""] },
+  const malformedImprovements: Array<{
+    improvement: unknown;
+    reason: "missing_grounded_improvement" | "missing_validated_feedback";
+  }> = [
     {
-      ...baseFinding,
-      transcriptRefs: ["writer:2"],
-      evidence: [{ turnRef: "writer:2", quote: "" }],
+      improvement: { ...baseFinding, confidence: 0 },
+      reason: "missing_grounded_improvement",
     },
     {
-      ...baseFinding,
-      transcriptRefs: ["writer:2"],
-      evidence: [{ turnRef: "writer:other", quote: "unrelated" }],
+      improvement: { ...baseFinding, confidence: Number.NaN },
+      reason: "missing_validated_feedback",
     },
     {
-      ...baseFinding,
-      transcriptRefs: ["writer:2", "writer:2"],
+      improvement: { ...baseFinding, confidence: 1.1 },
+      reason: "missing_validated_feedback",
     },
     {
-      ...baseFinding,
-      transcriptRefs: ["writer:2"],
-      evidence: [
-        { turnRef: "writer:2", quote: "same" },
-        { turnRef: "writer:2", quote: "same" },
-      ],
+      improvement: { ...baseFinding, observation: " " },
+      reason: "missing_validated_feedback",
     },
-    { ...baseFinding, evidence: [null] },
-    { ...baseFinding, evidence: [{ turnRef: 2, quote: "wrong type" }] },
-    { ...baseFinding, evidence: [{ turnRef: "writer:2" }] },
+    {
+      improvement: { ...baseFinding, nextStep: "" },
+      reason: "missing_validated_feedback",
+    },
+    {
+      improvement: { ...baseFinding, evidence: [] },
+      reason: "missing_validated_feedback",
+    },
+    {
+      improvement: { ...baseFinding, transcriptRefs: [] },
+      reason: "missing_validated_feedback",
+    },
+    {
+      improvement: { ...baseFinding, transcriptRefs: [""] },
+      reason: "missing_validated_feedback",
+    },
+    {
+      improvement: {
+        ...baseFinding,
+        transcriptRefs: ["writer:2"],
+        evidence: [{ turnRef: "writer:2", quote: "" }],
+      },
+      reason: "missing_validated_feedback",
+    },
+    {
+      improvement: {
+        ...baseFinding,
+        transcriptRefs: ["writer:2"],
+        evidence: [{ turnRef: "writer:other", quote: "unrelated" }],
+      },
+      reason: "missing_validated_feedback",
+    },
+    {
+      improvement: {
+        ...baseFinding,
+        transcriptRefs: ["writer:2", "writer:2"],
+      },
+      reason: "missing_validated_feedback",
+    },
+    {
+      improvement: {
+        ...baseFinding,
+        transcriptRefs: ["writer:2"],
+        evidence: [
+          { turnRef: "writer:2", quote: "same" },
+          { turnRef: "writer:2", quote: "same" },
+        ],
+      },
+      reason: "missing_validated_feedback",
+    },
+    {
+      improvement: { ...baseFinding, evidence: [null] },
+      reason: "missing_validated_feedback",
+    },
+    {
+      improvement: {
+        ...baseFinding,
+        evidence: [{ turnRef: 2, quote: "wrong type" }],
+      },
+      reason: "missing_validated_feedback",
+    },
+    {
+      improvement: {
+        ...baseFinding,
+        evidence: [{ turnRef: "writer:2" }],
+      },
+      reason: "missing_validated_feedback",
+    },
   ];
-  for (const improvement of malformedImprovements) {
+  for (const { improvement, reason } of malformedImprovements) {
     const result = recommend({
       feedback: feedback({
         improvements: [improvement as FeedbackV2Item],
@@ -264,8 +319,98 @@ test("malformed findings cannot authorize personalization", () => {
     });
     assert.equal(result.state, "unavailable");
     if (result.state === "unavailable") {
-      assert.equal(result.reason, "missing_grounded_improvement");
+      assert.equal(result.reason, reason);
     }
+  }
+});
+
+test("mixed, incomplete, extra-key, and duplicate-evidence payloads fail closed", () => {
+  const valid = feedback();
+  const malformedFinding = {
+    ...baseFinding,
+    transcriptRefs: ["writer:99"],
+    evidence: [null],
+  } as unknown as FeedbackV2Item;
+  const mixed = {
+    ...valid,
+    improvements: [baseFinding, malformedFinding],
+  };
+  const incomplete = {
+    schemaVersion: valid.schemaVersion,
+    promptVersion: valid.promptVersion,
+    modelVersion: valid.modelVersion,
+    rubricVersion: valid.rubricVersion,
+    evaluationState: valid.evaluationState,
+    scores: valid.scores,
+    improvements: valid.improvements,
+  } as unknown as FeedbackV2Result;
+  const extraRoot = {
+    ...valid,
+    providerPayload: "must not be accepted",
+  } as unknown as FeedbackV2Result;
+  const extraScore = {
+    ...valid,
+    scores: { ...valid.scores, readiness: 10 },
+  } as unknown as FeedbackV2Result;
+  const extraFindingField = {
+    ...valid,
+    improvements: [{ ...baseFinding, readiness: "invented" }],
+  } as unknown as FeedbackV2Result;
+  const extraEvidenceField = {
+    ...valid,
+    improvements: [
+      {
+        ...baseFinding,
+        evidence: [
+          {
+            ...baseFinding.evidence[0],
+            source: "invented",
+          },
+        ],
+      },
+    ],
+  } as unknown as FeedbackV2Result;
+  const malformedStrength = {
+    ...valid,
+    strengths: [{ ...valid.strengths[0], evidence: [null] }],
+  } as unknown as FeedbackV2Result;
+  const duplicateAcrossFindings = {
+    ...valid,
+    improvements: [
+      {
+        ...baseFinding,
+        dimension: "clarity" as const,
+        transcriptRefs: ["writer:1"],
+        evidence: [{ turnRef: "writer:1", quote: "specific user need" }],
+      },
+    ],
+  };
+
+  for (const candidate of [
+    mixed,
+    incomplete,
+    extraRoot,
+    extraScore,
+    extraFindingField,
+    extraEvidenceField,
+    malformedStrength,
+    duplicateAcrossFindings,
+  ]) {
+    const result = recommend({ feedback: candidate });
+    assert.equal(result.state, "unavailable");
+    if (result.state === "unavailable") {
+      assert.equal(result.reason, "missing_validated_feedback");
+    }
+  }
+});
+
+test("stored overall score must match the canonical validated dimensions", () => {
+  const result = recommend({
+    feedback: { ...feedback(), overallScore: 6.4 },
+  });
+  assert.equal(result.state, "unavailable");
+  if (result.state === "unavailable") {
+    assert.equal(result.reason, "invalid_scores");
   }
 });
 

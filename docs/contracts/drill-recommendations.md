@@ -25,12 +25,19 @@ Recommendations accept only a completed `FeedbackV2Result` produced after `parse
 
 The recommendation boundary repeats the invariants needed for safe selection rather than trusting the shallow item shape alone:
 
+- the complete Feedback v2 root, score object, findings, evidence, drills, and
+  summary use the exact supported fields with no missing or unknown keys;
 - every dimension score is a finite integer from zero through ten;
+- the stored overall score matches the canonical weighted dimension score;
 - the selected improvement has non-empty observation and next-step text;
 - confidence is finite, greater than zero, and no greater than one;
 - transcript references are non-empty and unique;
 - evidence references match the transcript-reference set exactly;
 - evidence quotes are non-empty and evidence identities are unique.
+
+Validation is all-or-nothing. One malformed strength, improvement, evidence
+entry, or root field rejects the entire input; the resolver never filters bad
+items and personalizes from the remainder.
 
 Exact quote-to-transcript validation remains owned by `parseFeedbackV2`, which has the canonical transcript. The recommendation contract never accepts raw model JSON as a substitute for that parser.
 
