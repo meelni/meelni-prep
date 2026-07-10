@@ -50,3 +50,35 @@ export const PRODUCT_LANGUAGE_GUARDRAILS = {
     "Documented legacy route, analytics, database, and provider identifiers may retain fitness terminology temporarily for compatibility.",
   ],
 } as const;
+
+const FOCUS_PRACTICE_REPLACEMENTS = [
+  [/\bgyms\b/gi, "practice spaces"],
+  [/\bgym\b/gi, "practice"],
+  [/\breps\b/gi, "practice attempts"],
+  [/\brep\b/gi, "practice attempt"],
+  [/\bworkouts\b/gi, "practice plans"],
+  [/\bworkout\b/gi, "practice plan"],
+  [/\bdrills\b/gi, "exercises"],
+  [/\bdrill\b/gi, "exercise"],
+] as const;
+
+/**
+ * Model output is untrusted customer copy. Keep the legacy `drills` payload key,
+ * but normalize its values before they are persisted or rendered.
+ */
+export function normalizePracticeRecommendations(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((candidate) => {
+    if (typeof candidate !== "string") return [];
+
+    let normalized = candidate.trim();
+    if (!normalized) return [];
+
+    for (const [pattern, replacement] of FOCUS_PRACTICE_REPLACEMENTS) {
+      normalized = normalized.replace(pattern, replacement);
+    }
+
+    return [normalized];
+  });
+}

@@ -34,7 +34,13 @@ Return your analysis as a JSON object with this exact structure:
     "Another targeted practice recommendation"
   ],
   "summary": "2-3 sentence overall assessment of performance"
-}`;
+}
+
+Use focused-practice language in every recommendation.
+Never describe Meelni or the candidate's practice as a gym.
+Never call a practice attempt a rep.
+Never call a practice plan a workout.
+Never call a focused exercise a drill.`;
 
 export const ROUND_TYPE_PROMPTS = {
   product_sense: `
