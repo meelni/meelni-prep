@@ -200,7 +200,12 @@ Before opening or merging agent-authored changes, run the standard agent verific
 npm run verify:agent
 ```
 
-This runs the local doctor, canonical skill validation, TypeScript, local package tests, lint, and the production build. Python LiveKit agent tests run only when `agent/venv` exists.
+This runs the local doctor, canonical skill validation, TypeScript, local
+package tests, Python runtime-contract tests, lint, and the production build.
+The Python contract suite is mandatory even when `agent/venv` is absent because
+it uses provider-neutral fakes. LiveKit Agents and its plugins are pinned as one
+tested version family in `agent/requirements.txt`; update them together and
+rerun TypeScript/Python golden contract fixtures before deployment.
 
 ## Database Migration Verification
 

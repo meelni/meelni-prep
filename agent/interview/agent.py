@@ -4,12 +4,12 @@ Handles real-time voice interviews with LiveKit inference platform
 """
 
 import asyncio
-import json
 import logging
 import os
 import sys
 from itertools import count
 from pathlib import Path
+from uuid import uuid4
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
@@ -30,7 +30,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import parse_room_metadata
 from shared.runtime_config import get_model_config, get_tts_config
-from shared.transcript_events import TRANSCRIPT_DATA_TOPIC, create_transcript_event
+from shared.transcript_events import (
+    create_transcript_event_from_message,
+    publish_transcript_event,
+)
 from shared.utils.prompt_builder import build_agent_prompt
 
 load_dotenv()
@@ -159,51 +162,38 @@ async def entrypoint(ctx: JobContext):
     )
 
     # Subscribe to transcript events for real-time capture
+    transcript_writer_id = str(uuid4())
     transcript_sequence = count(1)
 
     @session.on("conversation_item_added")
     def on_conversation_item_added(event: ConversationItemAddedEvent):
         """Publish committed voice turns with runtime-measured playout timing."""
         item = event.item
-        if not isinstance(item, ChatMessage) or item.role not in ("user", "assistant"):
+        if not isinstance(item, ChatMessage):
             return
-        if item.role == "assistant" and item.interrupted:
-            logger.info(
-                "[Transcript] Deferring interrupted interviewer turn to partial-delivery rollout"
-            )
-            return
-
-        text = item.text_content
-        started_at = item.metrics.get("started_speaking_at")
-        ended_at = item.metrics.get("stopped_speaking_at")
-        if not text or started_at is None or ended_at is None or ended_at <= started_at:
-            logger.warning(
-                "[Transcript] Dropping committed turn without text and measured positive timing"
-            )
-            return
-
-        audio_duration_ms = round((ended_at - started_at) * 1000)
-        speaker = "user" if item.role == "user" else "interviewer"
-        transcript_data = create_transcript_event(
-            event_id=f"{room_name}:{item.id}",
+        transcript_data = create_transcript_event_from_message(
+            message=item,
+            writer_id=transcript_writer_id,
             sequence=next(transcript_sequence),
             session_id=session_id,
             room_name=room_name,
-            speaker=speaker,
-            text=text,
-            started_at=started_at,
-            ended_at=ended_at,
-            audio_duration_ms=audio_duration_ms,
             section=round_type,
-            delivery_state="delivered",
+        )
+        if transcript_data is None:
+            logger.warning(
+                "[Transcript] Dropping committed turn without canonical measured delivery"
+            )
+            return
+
+        logger.info(
+            f"[Transcript] {transcript_data['speaker']}: "
+            f"{str(transcript_data['text'])[:50]}..."
         )
 
-        logger.info(f"[Transcript] {speaker}: {text[:50]}...")
-
         asyncio.ensure_future(
-            ctx.room.local_participant.publish_data(
-                json.dumps(transcript_data).encode("utf-8"),
-                topic=TRANSCRIPT_DATA_TOPIC,
+            publish_transcript_event(
+                ctx.room.local_participant,
+                transcript_data,
             )
         )
 
