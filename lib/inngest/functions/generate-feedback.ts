@@ -14,6 +14,7 @@ import {
 import { generateFeedback as generateFeedbackWithGPT4 } from "@/lib/evaluation/scorer";
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import { resolveFeedbackGenerationEligibility } from "@/lib/workflows/feedback-generation-evidence";
+import type { FeedbackTranscriptTurn, FeedbackV2Result } from "@meelni/core";
 
 /**
  * Feedback generation event payload
@@ -46,7 +47,7 @@ async function fetchSessionData(sessionId: string) {
  */
 async function fetchSessionTranscript(
   sessionId: string
-): Promise<{ speaker: string; text: string }[]> {
+): Promise<FeedbackTranscriptTurn[]> {
   const turns = await db.query.transcriptTurn.findMany({
     where: eq(transcriptTurn.sessionId, sessionId),
     orderBy: [
@@ -59,10 +60,23 @@ async function fetchSessionTranscript(
   });
 
   return turns
-    .filter((turn) => turn.text !== null)
+    .filter(
+      (
+        turn
+      ): turn is typeof turn & {
+        eventId: string;
+        text: string;
+        speaker: "user" | "interviewer";
+      } =>
+        turn.contractVersion === 2 &&
+        turn.eventId !== null &&
+        turn.text !== null &&
+        (turn.speaker === "user" || turn.speaker === "interviewer")
+    )
     .map((turn) => ({
+      eventId: turn.eventId,
       speaker: turn.speaker,
-      text: turn.text!,
+      text: turn.text,
     }));
 }
 
@@ -292,18 +306,14 @@ export const generateFeedback = inngest.createFunction(
       };
     }
 
+    if (evaluationTier !== "full" && evaluationTier !== "partial") {
+      throw new Error(
+        `Unsupported feedback evaluation tier: ${evaluationTier}`
+      );
+    }
+
     // Step 3: Evaluate with GPT-4
-    const evaluation: {
-      overall_score: number;
-      structure_score: number;
-      clarity_score: number;
-      insight_score: number;
-      communication_score: number;
-      leadership_score: number;
-      strengths: string[];
-      improvements: string[];
-      drills: string[];
-      summary: string;
+    const evaluation: FeedbackV2Result & {
       processingDurationMs: number;
     } = await step.run("evaluate-session", async () => {
       const startTime = Date.now();
@@ -311,22 +321,14 @@ export const generateFeedback = inngest.createFunction(
       // Call the real GPT-4 evaluation service
       const result = await generateFeedbackWithGPT4(
         sessionData.roundType || "product_sense",
-        transcript
+        transcript,
+        evaluationTier
       );
 
       const processingDuration = Date.now() - startTime;
 
       return {
-        overall_score: result.overall_score,
-        structure_score: result.scores.structure,
-        clarity_score: result.scores.clarity,
-        insight_score: result.scores.insight,
-        communication_score: result.scores.communication,
-        leadership_score: result.scores.leadership,
-        strengths: result.strengths,
-        improvements: result.improvements,
-        drills: result.drills,
-        summary: result.summary,
+        ...result,
         processingDurationMs: processingDuration,
       };
     });
@@ -337,18 +339,22 @@ export const generateFeedback = inngest.createFunction(
         .update(feedback)
         .set({
           status: "completed",
-          overallScore: evaluation.overall_score.toString(),
-          structureScore: evaluation.structure_score,
-          clarityScore: evaluation.clarity_score,
-          insightScore: evaluation.insight_score,
-          communicationScore: evaluation.communication_score,
-          leadershipScore: evaluation.leadership_score,
+          overallScore: evaluation.overallScore.toString(),
+          structureScore: evaluation.scores.structure,
+          clarityScore: evaluation.scores.clarity,
+          insightScore: evaluation.scores.insight,
+          communicationScore: evaluation.scores.communication,
+          leadershipScore: evaluation.scores.leadership,
           strengths: evaluation.strengths,
           improvements: evaluation.improvements,
           drills: evaluation.drills,
           summary: evaluation.summary,
           processingDurationMs: evaluation.processingDurationMs,
-          rubricVersion: "1.0.0",
+          schemaVersion: evaluation.schemaVersion,
+          promptVersion: evaluation.promptVersion,
+          modelVersion: evaluation.modelVersion,
+          rubricVersion: evaluation.rubricVersion,
+          evaluationState: evaluation.evaluationState,
         })
         .where(eq(feedback.sessionId, sessionId));
     });
@@ -363,7 +369,7 @@ export const generateFeedback = inngest.createFunction(
       status: "completed",
       sessionId,
       tier: evaluationTier,
-      overallScore: evaluation.overall_score,
+      overallScore: evaluation.overallScore,
     };
   }
 );
