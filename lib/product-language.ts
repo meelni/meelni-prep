@@ -78,10 +78,6 @@ function containsFitnessFraming(value: string): boolean {
       /\b(?:sales|support|field|service|account|store|partner|customer(?: success)?)\s+reps?\b/gi,
       ""
     )
-    .replace(
-      /^interview\s+reps?\s+(?=before|about|on|to understand|to learn)\b/i,
-      ""
-    )
     .replace(/\bdrill(?:\s+down)?\s+into\b/gi, "");
 
   return FITNESS_VOCABULARY.test(withoutLegitimatePmUsage);

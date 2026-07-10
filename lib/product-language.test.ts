@@ -40,6 +40,7 @@ test("recommendation normalization drops unrecognized fitness framing", () => {
       "Complete one drill and six reps.",
       "Schedule interview reps each morning.",
       "Practice interview reps every day.",
+      "Interview reps before choosing the workflow.",
       "Practice one product-sense exercise.",
     ]),
     ["Practice one product-sense exercise."]
