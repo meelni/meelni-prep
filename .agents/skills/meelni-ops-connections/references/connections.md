@@ -157,6 +157,18 @@ Operational notes:
 - If login redirects to `xxx.supabase.co`, local `.env.local` still has placeholder Supabase values.
 - Use `npm run setup:local` or run `npx vercel@55.0.0 link --yes --project meelni` from the worktree, then `npm run env:pull` to refresh local auth envs.
 - Restart `npm run dev:local` after env changes so Next.js serves the updated public Supabase URL.
+- Check provider restore coverage without exposing credentials:
+
+  ```bash
+  npx --yes supabase@latest backups list \
+    --project-ref rarrrwkjuhfyfatcmrkw --output json
+  ```
+
+- As of 2026-07-10, the canonical project reported `pitr_enabled: false` and
+  no listed physical backup entries. Do not assume a provider restore point is
+  available. Capture a mode-0600 schema-only dump outside the repository before
+  additive migrations, and require a stronger data backup before destructive
+  data or schema changes.
 
 ## Google Sheets
 
