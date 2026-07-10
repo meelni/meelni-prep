@@ -4,6 +4,8 @@ from copy import deepcopy
 import math
 from typing import Any, Dict
 
+from shared.session_deadline import normalize_duration_minutes
+
 DEFAULT_INTERVIEW_RUNTIME_CONFIG: Dict[str, Any] = {
     "difficulty": "intermediate",
     "voice": "cgSgspJ2msm6clMCkdW9",
@@ -52,7 +54,7 @@ def normalize_runtime_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
         if normalized[key] not in allowed_values:
             normalized[key] = DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
 
-    for key in ("speed", "volume", "duration"):
+    for key in ("speed", "volume"):
         value = normalized.get(key)
         if (
             isinstance(value, bool)
@@ -60,6 +62,8 @@ def normalize_runtime_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
             or not math.isfinite(value)
         ):
             normalized[key] = DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
+
+    normalized["duration"] = normalize_duration_minutes(normalized.get("duration"))
 
     return normalized
 

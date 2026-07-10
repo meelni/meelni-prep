@@ -36,6 +36,10 @@ test("product sense fixture exposes a complete interview regression scenario", (
     ["interviewer", "user", "interviewer", "user"]
   );
   assert.equal(fixture.roomMetadata.question?.id, fixture.question.questionId);
+  assert.equal(
+    fixture.roomMetadata.deadline_at,
+    FIXTURE_CLOCK.endedAt.toISOString()
+  );
   assert.equal(fixture.feedback.session_id, fixture.session.id);
   assert.deepEqual(fixture.feedback.scores, {
     structure: 8,

@@ -1,4 +1,11 @@
-import type { HintMode, InterviewMode, RoundType } from "@meelni/core";
+import {
+  normalizeInterviewDurationMinutes,
+  parseInterviewDeadlineAt,
+  serializeInterviewDeadlineAt,
+  type HintMode,
+  type InterviewMode,
+  type RoundType,
+} from "@meelni/core";
 
 export type InterviewFeedbackMode = "real_time" | "end_only" | "silent";
 
@@ -31,6 +38,7 @@ export interface InterviewRoomQuestion {
 export interface InterviewRoomMetadata {
   contract_version: typeof INTERVIEW_ROOM_METADATA_CONTRACT_VERSION;
   session_id: string;
+  deadline_at: string | null;
   round_type: RoundType;
   mode?: InterviewMode;
   config: InterviewRuntimeConfig;
@@ -39,9 +47,10 @@ export interface InterviewRoomMetadata {
 
 export type InterviewRoomMetadataInput = Omit<
   InterviewRoomMetadata,
-  "contract_version"
+  "contract_version" | "deadline_at"
 > & {
   contract_version?: typeof INTERVIEW_ROOM_METADATA_CONTRACT_VERSION;
+  deadline_at?: string | Date | null;
 };
 
 export class InterviewRoomMetadataError extends Error {
@@ -51,6 +60,7 @@ export class InterviewRoomMetadataError extends Error {
       | "invalid_json"
       | "unsupported_contract"
       | "missing_session_id"
+      | "invalid_deadline"
       | "invalid_round_type"
   ) {
     super(`Invalid interview room metadata: ${code}`);
@@ -93,6 +103,7 @@ export function buildInterviewRoomMetadata(
     ...metadata,
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
     session_id: metadata.session_id,
+    deadline_at: normalizeDeadlineAt(metadata.deadline_at),
     config: metadata.config,
     question: metadata.question ? normalizeQuestion(metadata.question) : null,
   };
@@ -128,6 +139,7 @@ export function parseInterviewRoomMetadata(
   return buildInterviewRoomMetadata({
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
     session_id: parsed.session_id,
+    deadline_at: normalizeDeadlineAt(parsed.deadline_at),
     round_type: parsed.round_type,
     mode:
       parsed.mode === "text" || parsed.mode === "voice_video"
@@ -168,10 +180,7 @@ export function normalizeInterviewRuntimeConfig(
       config?.volume,
       DEFAULT_INTERVIEW_RUNTIME_CONFIG.volume!
     ),
-    duration: numberOrDefault(
-      config?.duration,
-      DEFAULT_INTERVIEW_RUNTIME_CONFIG.duration
-    ),
+    duration: normalizeInterviewDurationMinutes(config?.duration),
     feedback_mode: isFeedbackMode(config?.feedback_mode)
       ? config.feedback_mode
       : DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
@@ -215,6 +224,22 @@ function normalizeQuestion(
         ? { askedAt: question.askedAt.toISOString() }
         : {}),
   };
+}
+
+function normalizeDeadlineAt(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+
+  try {
+    if (value instanceof Date) {
+      return serializeInterviewDeadlineAt(value);
+    }
+    const parsed = parseInterviewDeadlineAt(value);
+    if (parsed) return serializeInterviewDeadlineAt(parsed);
+  } catch {
+    // Map every boundary failure to the stable metadata error below.
+  }
+
+  throw new InterviewRoomMetadataError("invalid_deadline");
 }
 
 function isRoundType(value: unknown): value is RoundType {

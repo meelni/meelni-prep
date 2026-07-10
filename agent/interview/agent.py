@@ -30,6 +30,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import parse_room_metadata
 from shared.runtime_config import get_model_config, get_tts_config
+from shared.session_deadline import (
+    DeadlineEnforcer,
+    cancel_deadline_watchdog,
+    parse_deadline_at,
+    watch_session_deadline,
+)
 from shared.transcript_events import (
     create_transcript_event_from_message,
     publish_transcript_event,
@@ -105,6 +111,7 @@ async def entrypoint(ctx: JobContext):
     config = metadata["config"]
     question = metadata.get("question")  # NEW: Extract question from metadata
     session_id = metadata["session_id"]
+    deadline_at = parse_deadline_at(metadata["deadline_at"])
     room_name = ctx.room.name
 
     logger.info(f"Room: {ctx.room.name}")
@@ -220,6 +227,58 @@ async def entrypoint(ctx: JobContext):
     await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.room)
 
     logger.info(f"Voice agent started successfully - {round_type} interview with {config['difficulty']} difficulty")
+
+    deadline_enforcer = DeadlineEnforcer()
+    deadline_task: asyncio.Task[bool] | None = None
+
+    async def terminate_room() -> None:
+        try:
+            await ctx.delete_room()
+        except Exception as error:
+            message = str(error).lower()
+            if "not found" in message or "does not exist" in message:
+                logger.info("Interview room was already terminated at the deadline")
+                return
+            raise
+
+    if deadline_at is not None:
+        deadline_task = asyncio.create_task(
+            watch_session_deadline(
+                deadline_at=deadline_at,
+                close_session=session.aclose,
+                terminate_room=terminate_room,
+                enforcer=deadline_enforcer,
+            )
+        )
+
+        def on_deadline_task_done(task: asyncio.Task[bool]) -> None:
+            if task.cancelled():
+                return
+            error = task.exception()
+            if error is not None:
+                logger.error(
+                    "Hard-deadline enforcement failed",
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+
+        deadline_task.add_done_callback(on_deadline_task_done)
+
+        @session.on("close")
+        def on_session_close(_event) -> None:
+            cancel_deadline_watchdog(deadline_task, deadline_enforcer)
+
+        logger.info("Hard deadline armed for %s", metadata["deadline_at"])
+
+        # Give an already-expired watchdog one event-loop turn to close the
+        # runtime before it can produce a greeting beyond the deadline.
+        await asyncio.sleep(0)
+        if deadline_enforcer.enforcement_started:
+            await deadline_task
+            return
+    else:
+        logger.warning(
+            "Interview metadata has no hard deadline; accepting legacy rollout payload"
+        )
 
     # CRITICAL: Send initial greeting so agent speaks first
     # AgentSession doesn't auto-generate output - it waits for user input
