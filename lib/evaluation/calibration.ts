@@ -10,11 +10,13 @@ import {
   type FeedbackV2Scores,
 } from "@meelni/core";
 import {
+  CALIBRATION_ROUND_TYPES,
   EVALUATION_ADJUDICATION_VERSION,
   EVALUATION_CALIBRATION_THRESHOLDS,
   EVALUATION_GOLD_SET_VERSION,
   evaluationCalibrationCases,
   type CalibrationCompletionState,
+  type CalibrationQuality,
   type EvaluationCalibrationCase,
 } from "@meelni/test-fixtures";
 
@@ -54,14 +56,21 @@ export interface CalibrationRunOptions {
   now?: Date;
 }
 
-interface CalibrationFailure {
+export interface CalibrationFailure {
   caseId: string;
   code: string;
   runIndex?: number;
+  dimension?: FeedbackDimension;
+  actualScore?: number;
+  expectedMinimum?: number;
+  expectedMaximum?: number;
+  observedScoreRange?: number;
+  observedModelVersion?: string;
+  expectedModelVersion?: string;
 }
 
 export interface EvaluationCalibrationReport {
-  contractVersion: "evaluation-calibration-report.v1";
+  contractVersion: "evaluation-calibration-report.v2";
   generatedAt: string;
   execution: {
     kind: CalibrationExecutionKind;
@@ -69,6 +78,11 @@ export interface EvaluationCalibrationReport {
     repetitions: number;
     customerDataUsed: false;
     paidProviderCalled: boolean;
+    modelVersionBasis:
+      | "not_applicable"
+      | "deterministic_identifier"
+      | "configured_provider_model";
+    observedModelVersions: string[];
   };
   versions: {
     goldSet: typeof EVALUATION_GOLD_SET_VERSION;
@@ -82,6 +96,7 @@ export interface EvaluationCalibrationReport {
     scoredCases: number;
     insufficientCases: number;
     casesByRound: Record<string, number>;
+    scoredCasesByQuality: Record<CalibrationQuality, number>;
     expectedStateMismatches: number;
     invalidEvidenceAnchors: number;
   };
@@ -90,7 +105,14 @@ export interface EvaluationCalibrationReport {
     adjudicatedEvidenceMatchRate: number | null;
     insufficientHandlingRate: number;
     scoreBandAgreementRate: number | null;
+    scoreBandAgreementByDimension: Record<FeedbackDimension, number | null>;
+    scoreBandAgreementByRound: Record<string, number | null>;
+    scoreBandAgreementByState: Record<
+      Exclude<CalibrationCompletionState, "insufficient">,
+      number | null
+    >;
     maximumRepeatedRunScoreRange: number | null;
+    modelVersionMatchRate: number | null;
     evaluatorCalls: number;
     providerEvaluationCalls: number;
   };
@@ -111,6 +133,32 @@ const DIMENSIONS: readonly FeedbackDimension[] = [
   "communication",
   "leadership",
 ];
+
+export function validateCalibrationRunBudget(
+  repetitions: number,
+  scoredCaseCount = evaluationCalibrationCases.filter(
+    (fixture) => fixture.expectedCompletionState !== "insufficient"
+  ).length
+): number {
+  const { minimumProviderRuns, maximumProviderRuns, maximumProviderCalls } =
+    EVALUATION_CALIBRATION_THRESHOLDS;
+  if (
+    !Number.isInteger(repetitions) ||
+    repetitions < minimumProviderRuns ||
+    repetitions > maximumProviderRuns
+  ) {
+    throw new Error(
+      `Calibration repetitions must be exactly ${minimumProviderRuns}; supported range is ${minimumProviderRuns}-${maximumProviderRuns}`
+    );
+  }
+  const providerCallBudget = scoredCaseCount * repetitions;
+  if (providerCallBudget > maximumProviderCalls) {
+    throw new Error(
+      `Calibration would require ${providerCallBudget} provider calls, above the ${maximumProviderCalls}-call cap`
+    );
+  }
+  return providerCallBudget;
+}
 
 export async function runEvaluationCalibration(
   options: CalibrationRunOptions
@@ -155,9 +203,16 @@ export async function runEvaluationCalibration(
   const insufficientCases = evaluationCalibrationCases.filter(
     (fixture) => fixture.expectedCompletionState === "insufficient"
   );
+  if (options.executionKind !== "preflight") {
+    validateCalibrationRunBudget(repetitions, scoredCases.length);
+  }
   let insufficientHandled = 0;
   let evaluatorCalls = 0;
-  const outputs = new Map<string, FeedbackV2Result[]>();
+  const outputs = new Map<
+    string,
+    Array<{ runIndex: number; evaluation: FeedbackV2Result }>
+  >();
+  const observedModelVersions = new Set<string>();
 
   for (const fixture of insufficientCases) {
     let evaluatorCalls = 0;
@@ -184,16 +239,13 @@ export async function runEvaluationCalibration(
         "Calibration execution requires an evaluator and modelVersion"
       );
     }
-    if (repetitions < EVALUATION_CALIBRATION_THRESHOLDS.minimumProviderRuns) {
-      throw new Error(
-        `Calibration execution requires at least ${EVALUATION_CALIBRATION_THRESHOLDS.minimumProviderRuns} repetitions`
-      );
-    }
-
     for (const fixture of scoredCases) {
       const expectedState =
         fixture.expectedCompletionState as FeedbackEvaluationState;
-      const caseOutputs: FeedbackV2Result[] = [];
+      const caseOutputs: Array<{
+        runIndex: number;
+        evaluation: FeedbackV2Result;
+      }> = [];
       for (let runIndex = 0; runIndex < repetitions; runIndex += 1) {
         try {
           const result = await runCaseThroughGenerationWorkflow({
@@ -214,7 +266,7 @@ export async function runEvaluationCalibration(
             });
             continue;
           }
-          caseOutputs.push(result.evaluation);
+          caseOutputs.push({ runIndex, evaluation: result.evaluation });
         } catch {
           failures.push({
             caseId: fixture.id,
@@ -231,12 +283,28 @@ export async function runEvaluationCalibration(
   let validEvidenceOutputs = 0;
   let matchedEvidenceOutputs = 0;
   let scoresInsideBand = 0;
+  let matchingModelVersions = 0;
   const expectedScoreComparisons = expectedOutputs * DIMENSIONS.length;
+  const dimensionMatches = new Map<FeedbackDimension, number>();
+  const roundMatches = new Map<string, number>();
+  const stateMatches = new Map<"full" | "partial", number>();
   let maximumRepeatedRunScoreRange = 0;
 
   for (const fixture of scoredCases) {
     const caseOutputs = outputs.get(fixture.id) ?? [];
-    for (const [runIndex, output] of caseOutputs.entries()) {
+    for (const { runIndex, evaluation: output } of caseOutputs) {
+      observedModelVersions.add(output.modelVersion);
+      if (output.modelVersion === options.modelVersion) {
+        matchingModelVersions += 1;
+      } else {
+        failures.push({
+          caseId: fixture.id,
+          runIndex,
+          code: "model_version_mismatch",
+          observedModelVersion: output.modelVersion,
+          expectedModelVersion: options.modelVersion ?? undefined,
+        });
+      }
       try {
         const reparsed = reparseEvaluation(output, fixture);
         validEvidenceOutputs += 1;
@@ -254,6 +322,22 @@ export async function runEvaluationCalibration(
           const score = reparsed.scores[dimension];
           if (score >= band.minimum && score <= band.maximum) {
             scoresInsideBand += 1;
+            increment(dimensionMatches, dimension);
+            increment(roundMatches, fixture.roundType);
+            increment(
+              stateMatches,
+              fixture.expectedCompletionState as "full" | "partial"
+            );
+          } else {
+            failures.push({
+              caseId: fixture.id,
+              runIndex,
+              dimension,
+              code: "score_outside_adjudicated_band",
+              actualScore: score,
+              expectedMinimum: band.minimum,
+              expectedMaximum: band.maximum,
+            });
           }
         }
       } catch {
@@ -270,12 +354,32 @@ export async function runEvaluationCalibration(
       continue;
     }
     for (const dimension of DIMENSIONS) {
-      const values = caseOutputs.map((output) => output.scores[dimension]);
+      const values = caseOutputs.map(({ runIndex, evaluation }) => ({
+        runIndex,
+        score: evaluation.scores[dimension],
+      }));
       if (values.length > 1) {
+        const scores = values.map(({ score }) => score);
+        const scoreRange = Math.max(...scores) - Math.min(...scores);
         maximumRepeatedRunScoreRange = Math.max(
           maximumRepeatedRunScoreRange,
-          Math.max(...values) - Math.min(...values)
+          scoreRange
         );
+        if (
+          scoreRange >
+          EVALUATION_CALIBRATION_THRESHOLDS.maximumRepeatedRunScoreRange
+        ) {
+          values.forEach(({ score: actualScore, runIndex }) => {
+            failures.push({
+              caseId: fixture.id,
+              runIndex,
+              dimension,
+              code: "unstable_dimension_score",
+              actualScore,
+              observedScoreRange: scoreRange,
+            });
+          });
+        }
       }
     }
   }
@@ -293,8 +397,44 @@ export async function runEvaluationCalibration(
       expectedScoreComparisons === 0
         ? null
         : scoresInsideBand / expectedScoreComparisons,
+    scoreBandAgreementByDimension: Object.fromEntries(
+      DIMENSIONS.map((dimension) => [
+        dimension,
+        rate(
+          dimensionMatches.get(dimension) ?? 0,
+          scoredCases.length * repetitions
+        ),
+      ])
+    ) as Record<FeedbackDimension, number | null>,
+    scoreBandAgreementByRound: Object.fromEntries(
+      CALIBRATION_ROUND_TYPES.map((roundType) => [
+        roundType,
+        rate(
+          roundMatches.get(roundType) ?? 0,
+          scoredCases.filter((fixture) => fixture.roundType === roundType)
+            .length *
+            repetitions *
+            DIMENSIONS.length
+        ),
+      ])
+    ),
+    scoreBandAgreementByState: Object.fromEntries(
+      (["full", "partial"] as const).map((state) => [
+        state,
+        rate(
+          stateMatches.get(state) ?? 0,
+          scoredCases.filter(
+            (fixture) => fixture.expectedCompletionState === state
+          ).length *
+            repetitions *
+            DIMENSIONS.length
+        ),
+      ])
+    ) as Record<"full" | "partial", number | null>,
     maximumRepeatedRunScoreRange:
       repetitions === 0 ? null : finiteOrNull(maximumRepeatedRunScoreRange),
+    modelVersionMatchRate:
+      expectedOutputs === 0 ? null : matchingModelVersions / expectedOutputs,
     evaluatorCalls,
     providerEvaluationCalls:
       options.executionKind === "live_provider" ? evaluatorCalls : 0,
@@ -311,14 +451,28 @@ export async function runEvaluationCalibration(
     metrics.scoreBandAgreementRate !== null &&
     metrics.scoreBandAgreementRate >=
       EVALUATION_CALIBRATION_THRESHOLDS.scoreBandAgreementRate &&
+    everyRateAtLeast(
+      metrics.scoreBandAgreementByDimension,
+      EVALUATION_CALIBRATION_THRESHOLDS.minimumDimensionScoreBandAgreementRate
+    ) &&
+    everyRateAtLeast(
+      metrics.scoreBandAgreementByRound,
+      EVALUATION_CALIBRATION_THRESHOLDS.minimumRoundScoreBandAgreementRate
+    ) &&
+    everyRateAtLeast(
+      metrics.scoreBandAgreementByState,
+      EVALUATION_CALIBRATION_THRESHOLDS.minimumStateScoreBandAgreementRate
+    ) &&
     metrics.maximumRepeatedRunScoreRange !== null &&
     metrics.maximumRepeatedRunScoreRange <=
-      EVALUATION_CALIBRATION_THRESHOLDS.maximumRepeatedRunScoreRange;
+      EVALUATION_CALIBRATION_THRESHOLDS.maximumRepeatedRunScoreRange &&
+    metrics.modelVersionMatchRate ===
+      EVALUATION_CALIBRATION_THRESHOLDS.modelVersionMatchRate;
   const executionPassed = corpusPassed && evaluatedThresholdsPassed;
   const liveProvider = options.executionKind === "live_provider";
 
   return {
-    contractVersion: "evaluation-calibration-report.v1",
+    contractVersion: "evaluation-calibration-report.v2",
     generatedAt: now.toISOString(),
     execution: {
       kind: options.executionKind,
@@ -326,6 +480,13 @@ export async function runEvaluationCalibration(
       repetitions,
       customerDataUsed: false,
       paidProviderCalled: liveProvider && evaluatorCalls > 0,
+      modelVersionBasis:
+        options.executionKind === "preflight"
+          ? "not_applicable"
+          : liveProvider
+            ? "configured_provider_model"
+            : "deterministic_identifier",
+      observedModelVersions: [...observedModelVersions].sort(),
     },
     versions: {
       goldSet: EVALUATION_GOLD_SET_VERSION,
@@ -346,6 +507,13 @@ export async function runEvaluationCalibration(
           ).length,
         ])
       ),
+      scoredCasesByQuality: Object.fromEntries(
+        (["weak", "average", "strong"] as const).map((quality) => [
+          quality,
+          scoredCases.filter((fixture) => fixture.expectedQuality === quality)
+            .length,
+        ])
+      ) as Record<CalibrationQuality, number>,
       expectedStateMismatches: failures.filter(
         ({ code }) => code === "expected_state_mismatch"
       ).length,
@@ -658,4 +826,21 @@ function matchesAdjudicatedEvidence(
 
 function finiteOrNull(value: number): number | null {
   return Number.isFinite(value) ? value : null;
+}
+
+function increment<Key>(map: Map<Key, number>, key: Key): void {
+  map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function rate(matches: number, total: number): number | null {
+  return total === 0 ? null : matches / total;
+}
+
+function everyRateAtLeast(
+  rates: Record<string, number | null>,
+  floor: number
+): boolean {
+  return Object.values(rates).every(
+    (value) => value !== null && value >= floor
+  );
 }

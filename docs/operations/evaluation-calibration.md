@@ -32,14 +32,25 @@ Do not run this step without explicit authorization for provider spend and
 confirmation that the intended model/configuration is the one being evaluated.
 The minimum run evaluates 32 scored synthetic transcripts three times, for 96
 model calls. The eight insufficient transcripts are expected to make zero
-model calls.
+model calls. Three repetitions and 96 calls are also hard maximums; other
+repetition counts fail before evaluator work.
+
+`calibration:live` loads `.env.local` through `tsx --env-file=.env.local`, just
+like other local feedback tooling. Run `npm run setup:local` first if the file
+does not exist. Keep both the provider key and model configuration only in that
+gitignored file.
+
+Before authorizing spend, set `OPENAI_FEEDBACK_MODEL` to the exact model ID the
+provider response is expected to report, preferably a pinned snapshot rather
+than a moving alias. The report treats this configured value as an expectation,
+not observed proof. Each validated output carries the API response's model ID,
+and any mismatch fails acceptance with case/run diagnostics.
 
 After authorization, set the acknowledgement only for the command invocation:
 
 ```bash
 MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   npm run calibration:live -- \
-  --repetitions 3 \
   --output /tmp/meelni-calibration-live.json
 ```
 
@@ -63,11 +74,14 @@ secrets or provider responses containing sensitive data.
   reported separately.
 - Evidence validity, adjudicated evidence match, and insufficient handling are
   all 100%.
-- Score-band agreement is at least 80%.
+- Pooled and per-dimension score-band agreement are at least 80%; each round and
+  completion state is at least 75%.
 - Maximum repeated-run score range is at most 1.
+- Every output model identity matches the configured expected model and the
+  observed identities are reviewed.
 - Report versions match the code intended for launch.
 - `launchAcceptance` is `passed`; a deterministic `passed` state is not enough.
 
-If a live run fails, keep the launch gate closed. Inspect case-level failure
-codes, update the evaluator or adjudication deliberately, rerun local tests,
-and obtain fresh authorization before another paid run.
+If a live run fails, keep the launch gate closed. Inspect case/run/dimension
+failure records, update the evaluator or adjudication deliberately, rerun local
+tests, and obtain fresh authorization before another paid run.
