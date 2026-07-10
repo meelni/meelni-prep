@@ -174,3 +174,9 @@ acknowledgement. Browser reload/reconnect hydrates owned durable turns and
 merges by event identity. Retired browser keys `transcript_queue` and
 `transcript_queue_v2` are deleted without reading their contents at bootstrap,
 sign-out, and account deletion.
+
+Before feedback eligibility is calculated, canonical events pass through the
+feedback transcript preparation boundary. Malformed events fail closed,
+semantic replays are counted once, and sessions without usable user speech or
+with high-confidence instruction-injection content become insufficient. The
+same prepared event set feeds evaluation so counting and evidence cannot drift.

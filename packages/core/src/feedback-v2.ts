@@ -1,4 +1,10 @@
 import { calculateOverallScore, type FeedbackDimension } from "./evaluation";
+import {
+  normalizeEvidenceQuoteToSource,
+  type FeedbackTranscriptTurn,
+} from "./feedback-transcript";
+
+export type { FeedbackTranscriptTurn } from "./feedback-transcript";
 
 export const FEEDBACK_SCHEMA_VERSION = "feedback.v2" as const;
 export const FEEDBACK_PROMPT_VERSION = "feedback.prompt.v2" as const;
@@ -7,13 +13,6 @@ export const FEEDBACK_RUBRIC_VERSION = "pm-feedback-rubric.v2" as const;
 export const FEEDBACK_EVALUATION_STATES = ["full", "partial"] as const;
 export type FeedbackEvaluationState =
   (typeof FEEDBACK_EVALUATION_STATES)[number];
-
-export interface FeedbackTranscriptTurn {
-  eventId: string;
-  speaker: "user" | "interviewer";
-  text: string;
-  deliveryState?: "delivered" | "partially_delivered";
-}
 
 export interface FeedbackEvidence {
   turnRef: string;
@@ -167,6 +166,14 @@ export function parseFeedbackV2(
     leadership: requireScore(scoresRecord.leadership, "scores.leadership"),
   };
 
+  const strengths = parseItems(root.strengths, "strengths", transcriptById);
+  const improvements = parseItems(
+    root.improvements,
+    "improvements",
+    transcriptById
+  );
+  requireUniqueEvidence([...strengths, ...improvements]);
+
   return {
     schemaVersion: FEEDBACK_SCHEMA_VERSION,
     promptVersion: FEEDBACK_PROMPT_VERSION,
@@ -175,8 +182,8 @@ export function parseFeedbackV2(
     evaluationState: options.evaluationState,
     scores,
     overallScore: calculateOverallScore(scores),
-    strengths: parseItems(root.strengths, "strengths", transcriptById),
-    improvements: parseItems(root.improvements, "improvements", transcriptById),
+    strengths,
+    improvements,
     drills: parseStringArray(root.drills, "drills", 1, 3),
     summary: requireNonEmpty(root.summary, "summary"),
   };
@@ -304,13 +311,34 @@ function parseEvidence(
         `${evidencePath}.turnRef does not exist in the canonical transcript`
       );
     }
-    if (!turn.text.includes(quote)) {
+    if (turn.speaker !== "user") {
+      throw new FeedbackV2ParseError(
+        `${evidencePath}.turnRef must reference user speech`
+      );
+    }
+    const normalizedQuote = normalizeEvidenceQuoteToSource(turn.text, quote);
+    if (!normalizedQuote) {
       throw new FeedbackV2ParseError(
         `${evidencePath}.quote is not exact evidence from ${turnRef}`
       );
     }
-    return { turnRef, quote };
+    return { turnRef, quote: normalizedQuote };
   });
+}
+
+function requireUniqueEvidence(items: FeedbackV2Item[]): void {
+  const seen = new Set<string>();
+  for (const item of items) {
+    for (const evidence of item.evidence) {
+      const identity = `${evidence.turnRef}\u0000${evidence.quote}`;
+      if (seen.has(identity)) {
+        throw new FeedbackV2ParseError(
+          `evidence ${evidence.turnRef} is repeated across findings`
+        );
+      }
+      seen.add(identity);
+    }
+  }
 }
 
 function parseStringArray(
