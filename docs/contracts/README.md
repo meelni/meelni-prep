@@ -13,3 +13,4 @@ Good candidates:
 - [question-bank records, taxonomy, and pagination](./question-bank.md);
 - subscription entitlement and usage quota states;
 - analytics event schemas.
+- [contact submission persistence, idempotency, and triage](./contact-submission.md).

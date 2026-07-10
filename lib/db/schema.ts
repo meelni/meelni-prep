@@ -19,6 +19,7 @@ import type {
   InterviewTerminalReason,
   LegacyInterviewSessionStatus,
 } from "@meelni/core";
+import type { ContactReason } from "@/lib/contact/contracts";
 import { appUser } from "./schema-core";
 
 // ==================== Pricing Schema Import ====================
@@ -169,6 +170,104 @@ export const livekitReconnectRateLimit = pgTable(
       "livekit_reconnect_rate_limit_capacity_check",
       sql`cardinality(${table.acceptedAt}) <= 10`
     ),
+  })
+);
+
+// Server-only support inbox. A committed row is the product's durable
+// acceptance guarantee; delivery to an external email provider is not implied.
+export const contactSubmission = pgTable(
+  "contact_submission",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    idempotencyKey: uuid("idempotency_key").notNull(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    reason: text("reason").$type<ContactReason>().notNull(),
+    subject: text("subject").notNull(),
+    message: text("message").notNull(),
+    persistenceState: text("persistence_state").default("stored").notNull(),
+    triageState: text("triage_state").default("new").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    idempotencyKeyIdx: uniqueIndex("contact_submission_idempotency_key_idx").on(
+      table.idempotencyKey
+    ),
+    createdAtIdx: index("contact_submission_created_at_idx").on(
+      table.createdAt
+    ),
+    reasonCheck: check(
+      "contact_submission_reason_check",
+      sql`${table.reason} IN ('billing', 'support', 'bug', 'feedback', 'other')`
+    ),
+    persistenceStateCheck: check(
+      "contact_submission_persistence_state_check",
+      sql`${table.persistenceState} = 'stored'`
+    ),
+    triageStateCheck: check(
+      "contact_submission_triage_state_check",
+      sql`${table.triageState} IN ('new', 'claimed', 'resolved')`
+    ),
+  })
+);
+
+// Append-only, PII-free record of privileged support inbox access and triage.
+export const contactSubmissionAccessAudit = pgTable(
+  "contact_submission_access_audit",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    submissionId: uuid("submission_id")
+      .references(() => contactSubmission.id, { onDelete: "cascade" })
+      .notNull(),
+    accessType: text("access_type").notNull(),
+    actorReference: text("actor_reference").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    submissionCreatedIdx: index(
+      "contact_submission_access_audit_submission_created_idx"
+    ).on(table.submissionId, table.createdAt),
+    accessTypeCheck: check(
+      "contact_submission_access_audit_type_check",
+      sql`${table.accessType} IN ('read', 'claim', 'resolve')`
+    ),
+    actorReferenceCheck: check(
+      "contact_submission_access_audit_actor_reference_check",
+      sql`${table.actorReference} ~ '^[A-Za-z0-9_.:-]{3,80}$'`
+    ),
+  })
+);
+
+// Shared PostgreSQL budget used by the public contact endpoint. Only hashes of
+// normalized limiter identities are retained; no raw email or IP is stored.
+export const contactSubmissionRateLimit = pgTable(
+  "contact_submission_rate_limit",
+  {
+    identityHash: text("identity_hash").primaryKey().notNull(),
+    windowStartedAt: timestamp("window_started_at", {
+      withTimezone: true,
+    }).notNull(),
+    requestCount: integer("request_count").default(0).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    identityHashCheck: check(
+      "contact_submission_rate_limit_identity_hash_check",
+      sql`${table.identityHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    requestCountCheck: check(
+      "contact_submission_rate_limit_request_count_check",
+      sql`${table.requestCount} >= 0`
+    ),
+    windowStartedAtIdx: index(
+      "contact_submission_rate_limit_window_started_idx"
+    ).on(table.windowStartedAt),
   })
 );
 

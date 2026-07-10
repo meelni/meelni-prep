@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFile,
   mkdir,
@@ -18,9 +19,9 @@ import postgres from "postgres";
 import { buildStripeDeletionSubjects } from "../lib/billing/stripe-privacy";
 
 import {
-  ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
+  DURABLE_CONTACT_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
@@ -102,6 +103,7 @@ async function run() {
     await verifyAuthorization(clean);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
+    await verifyDurableContactSubmission(clean, cleanUrl);
     await verifyAtomicCreditLedger(clean, cleanUrl, "clean");
     assertZeroCreditLedgerIntegrity(
       runPreflight(cleanUrl, true, "reconciled")!
@@ -110,10 +112,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, DURABLE_CONTACT_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -1032,7 +1031,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 8);
+  assert.equal(await migrationCount(sql), 9);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -1040,7 +1039,7 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 23);
+  assert.equal(tables.length, 26);
   assert.ok(
     tables.some(
       ({ table_name }) => table_name === "livekit_reconnect_rate_limit"
@@ -1049,6 +1048,49 @@ async function verifyDatabase(sql: postgres.Sql) {
   assert.ok(
     tables.some(({ table_name }) => table_name === "account_deletion_request")
   );
+  assert.ok(
+    tables.some(({ table_name }) => table_name === "contact_submission")
+  );
+  assert.ok(
+    tables.some(
+      ({ table_name }) => table_name === "contact_submission_rate_limit"
+    )
+  );
+  assert.ok(
+    tables.some(
+      ({ table_name }) => table_name === "contact_submission_access_audit"
+    )
+  );
+
+  const contactConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname IN (
+      'contact_submission_reason_check',
+      'contact_submission_persistence_state_check',
+      'contact_submission_triage_state_check',
+      'contact_submission_access_audit_type_check',
+      'contact_submission_access_audit_actor_reference_check',
+      'contact_submission_rate_limit_identity_hash_check',
+      'contact_submission_rate_limit_request_count_check'
+    )
+    ORDER BY conname
+  `;
+  assert.equal(contactConstraints.length, 7);
+
+  const contactIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'contact_submission_idempotency_key_idx',
+        'contact_submission_created_at_idx',
+        'contact_submission_access_audit_submission_created_idx',
+        'contact_submission_rate_limit_window_started_idx'
+      )
+    ORDER BY indexname
+  `;
+  assert.equal(contactIndexes.length, 4);
 
   const lifecycleColumns = await sql<{ column_name: string }[]>`
     SELECT column_name
@@ -1158,7 +1200,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 23);
+  assert.equal(rls.length, 26);
   assert.ok(rls.every((table) => table.enabled));
 
   const unsafePolicies = await sql<{ count: number }[]>`
@@ -1187,6 +1229,18 @@ async function verifyDatabase(sql: postgres.Sql) {
       anon_limiter_select: boolean;
       anon_limiter_insert: boolean;
       service_limiter_execute: boolean;
+      auth_contact_select: boolean;
+      auth_contact_insert: boolean;
+      anon_contact_select: boolean;
+      auth_contact_limiter_execute: boolean;
+      service_contact_limiter_execute: boolean;
+      service_contact_select: boolean;
+      service_contact_audit_select: boolean;
+      auth_contact_cleanup_execute: boolean;
+      service_contact_cleanup_execute: boolean;
+      service_contact_list_execute: boolean;
+      service_contact_read_execute: boolean;
+      service_contact_triage_execute: boolean;
     }[]
   >`
     SELECT
@@ -1225,7 +1279,67 @@ async function verifyDatabase(sql: postgres.Sql) {
         'service_role',
         'public.consume_livekit_reconnect_rate_limit(uuid)',
         'EXECUTE'
-      ) AS service_limiter_execute
+      ) AS service_limiter_execute,
+      has_table_privilege(
+        'authenticated',
+        'public.contact_submission',
+        'SELECT'
+      ) AS auth_contact_select,
+      has_table_privilege(
+        'authenticated',
+        'public.contact_submission',
+        'INSERT'
+      ) AS auth_contact_insert,
+      has_table_privilege(
+        'anon',
+        'public.contact_submission',
+        'SELECT'
+      ) AS anon_contact_select,
+      has_function_privilege(
+        'authenticated',
+        'public.consume_contact_submission_rate_limit(text,integer)',
+        'EXECUTE'
+      ) AS auth_contact_limiter_execute,
+      has_function_privilege(
+        'service_role',
+        'public.consume_contact_submission_rate_limit(text,integer)',
+        'EXECUTE'
+      ) AS service_contact_limiter_execute,
+      has_table_privilege(
+        'service_role',
+        'public.contact_submission',
+        'SELECT'
+      ) AS service_contact_select,
+      has_table_privilege(
+        'service_role',
+        'public.contact_submission_access_audit',
+        'SELECT'
+      ) AS service_contact_audit_select,
+      has_function_privilege(
+        'authenticated',
+        'public.cleanup_contact_submission_rate_limits(integer)',
+        'EXECUTE'
+      ) AS auth_contact_cleanup_execute,
+      has_function_privilege(
+        'service_role',
+        'public.cleanup_contact_submission_rate_limits(integer)',
+        'EXECUTE'
+      ) AS service_contact_cleanup_execute,
+      has_function_privilege(
+        'service_role',
+        'public.list_contact_submissions(integer)',
+        'EXECUTE'
+      ) AS service_contact_list_execute,
+      has_function_privilege(
+        'service_role',
+        'public.read_contact_submission(uuid,text)',
+        'EXECUTE'
+      ) AS service_contact_read_execute,
+      has_function_privilege(
+        'service_role',
+        'public.set_contact_submission_triage_state(uuid,text,text)',
+        'EXECUTE'
+      ) AS service_contact_triage_execute
   `;
   assert.deepEqual(privileges[0], {
     auth_subscription_update: false,
@@ -1237,6 +1351,18 @@ async function verifyDatabase(sql: postgres.Sql) {
     anon_limiter_select: false,
     anon_limiter_insert: false,
     service_limiter_execute: true,
+    auth_contact_select: false,
+    auth_contact_insert: false,
+    anon_contact_select: false,
+    auth_contact_limiter_execute: false,
+    service_contact_limiter_execute: true,
+    service_contact_select: false,
+    service_contact_audit_select: false,
+    auth_contact_cleanup_execute: false,
+    service_contact_cleanup_execute: true,
+    service_contact_list_execute: true,
+    service_contact_read_execute: true,
+    service_contact_triage_execute: true,
   });
 }
 
@@ -1254,6 +1380,25 @@ async function verifyAuthorization(sql: postgres.Sql) {
         sql,
         (tx) =>
           tx`UPDATE subscription SET tier = 'pro' WHERE user_id = ${USER_ONE}::uuid`
+      ),
+    /permission denied/
+  );
+  await assert.rejects(
+    () =>
+      asRole(
+        sql,
+        "authenticated",
+        (tx) => tx`SELECT * FROM contact_submission`
+      ),
+    /permission denied/
+  );
+  await assert.rejects(
+    () =>
+      asRole(
+        sql,
+        "anon",
+        (tx) =>
+          tx`SELECT * FROM public.consume_contact_submission_rate_limit(${"a".repeat(64)}, 3)`
       ),
     /permission denied/
   );
@@ -1350,6 +1495,226 @@ async function verifySharedLimiter(sql: postgres.Sql) {
     WHERE user_id = ${USER_ONE}::uuid
   `;
   assert.equal((await consumeRateLimit(sql, USER_ONE)).allowed, true);
+}
+
+async function verifyDurableContactSubmission(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [{ createDrizzleContactSubmissionStore }, schema] = await Promise.all([
+    import("../lib/db/contact-submissions"),
+    import("../lib/db/schema"),
+  ]);
+  const clients = Array.from({ length: 8 }, () =>
+    postgres(databaseUrl, { max: 1, prepare: false })
+  );
+  const stores = clients.map((client) =>
+    createDrizzleContactSubmissionStore(drizzle(client, { schema }))
+  );
+  const rateLimitIdentities = {
+    client: "a".repeat(64),
+    email: "b".repeat(64),
+    global: "c".repeat(64),
+  };
+  const guessableEmailHash = createHash("sha256")
+    .update("migration-test@example.invalid")
+    .digest("hex");
+  const baseInput = {
+    idempotencyKey: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    name: "Migration Test",
+    email: "migration-test@example.invalid",
+    reason: "support" as const,
+    subject: "Durable contact migration",
+    message: "This disposable fixture verifies durable contact behavior.",
+    rateLimitIdentities,
+  };
+
+  try {
+    const concurrent = await Promise.all(
+      stores.map((store) => store.accept(baseInput))
+    );
+    const receiptIds = concurrent.flatMap((decision) =>
+      decision.disposition === "stored" || decision.disposition === "replayed"
+        ? [decision.receiptId]
+        : []
+    );
+    assert.equal(receiptIds.length, stores.length);
+    assert.equal(new Set(receiptIds).size, 1);
+    assert.equal(
+      concurrent.filter(({ disposition }) => disposition === "stored").length,
+      1
+    );
+    assert.equal(
+      concurrent.filter(({ disposition }) => disposition === "replayed").length,
+      stores.length - 1
+    );
+
+    assert.deepEqual(
+      await stores[0]!.accept({
+        ...baseInput,
+        subject: "Changed payload",
+      }),
+      { disposition: "idempotency_conflict" }
+    );
+
+    for (const [index, idempotencyKey] of [
+      "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    ].entries()) {
+      const decision = await stores[index]!.accept({
+        ...baseInput,
+        idempotencyKey,
+      });
+      assert.equal(decision.disposition, "stored");
+    }
+
+    const limited = await stores[0]!.accept({
+      ...baseInput,
+      idempotencyKey: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    });
+    assert.equal(limited.disposition, "rate_limited");
+    if (limited.disposition === "rate_limited") {
+      assert.ok(limited.retryAfterSeconds >= 1);
+      assert.ok(limited.retryAfterSeconds <= 3600);
+    }
+
+    const state = await sql<
+      { submissions: number; email_budget: number; raw_email_hashes: number }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM contact_submission) AS submissions,
+        (SELECT request_count::int FROM contact_submission_rate_limit
+          WHERE identity_hash = ${rateLimitIdentities.email}) AS email_budget,
+        (SELECT count(*)::int FROM contact_submission_rate_limit
+          WHERE identity_hash = ${guessableEmailHash}) AS raw_email_hashes
+    `;
+    assert.deepEqual(state[0], {
+      submissions: 3,
+      email_budget: 3,
+      raw_email_hashes: 0,
+    });
+
+    const queue = await asRole(
+      sql,
+      "service_role",
+      (tx) =>
+        tx<
+          {
+            receipt_id: string;
+            reason: string;
+            triage_state: string;
+          }[]
+        >`SELECT receipt_id, reason, triage_state FROM public.list_contact_submissions(10)`
+    );
+    assert.equal(queue.length, 3);
+    assert.ok(queue.every(({ triage_state }) => triage_state === "new"));
+
+    const receiptId = receiptIds[0]!;
+    const privateResult = await asRole(
+      sql,
+      "service_role",
+      (tx) =>
+        tx<
+          { receipt_id: string; email: string; persistence_state: string }[]
+        >`SELECT receipt_id, email, persistence_state
+          FROM public.read_contact_submission(
+            ${receiptId}::uuid,
+            'migration-test-operator'
+          )`
+    );
+    assert.deepEqual(privateResult[0], {
+      receipt_id: receiptId,
+      email: baseInput.email,
+      persistence_state: "stored",
+    });
+
+    assert.equal(
+      (
+        await asRole(
+          sql,
+          "service_role",
+          (tx) =>
+            tx<{ changed: boolean }[]>`
+              SELECT public.set_contact_submission_triage_state(
+                ${receiptId}::uuid,
+                'claimed',
+                'migration-test-operator'
+              ) AS changed
+            `
+        )
+      )[0]?.changed,
+      true
+    );
+    assert.equal(
+      (
+        await asRole(
+          sql,
+          "service_role",
+          (tx) =>
+            tx<{ changed: boolean }[]>`
+              SELECT public.set_contact_submission_triage_state(
+                ${receiptId}::uuid,
+                'resolved',
+                'migration-test-operator'
+              ) AS changed
+            `
+        )
+      )[0]?.changed,
+      true
+    );
+
+    const [auditState] = await sql<{ audit_rows: number; state: string }[]>`
+      SELECT
+        (SELECT count(*)::int FROM contact_submission_access_audit
+          WHERE submission_id = ${receiptId}::uuid) AS audit_rows,
+        (SELECT triage_state FROM contact_submission
+          WHERE id = ${receiptId}::uuid) AS state
+    `;
+    assert.deepEqual(auditState, { audit_rows: 3, state: "resolved" });
+
+    const staleIdentities = Array.from({ length: 7 }, (_, index) =>
+      index.toString(16).padStart(64, "0")
+    );
+    await sql`
+      INSERT INTO contact_submission_rate_limit (
+        identity_hash, window_started_at, request_count
+      )
+      SELECT identity_hash, now() - interval '25 hours', 1
+      FROM unnest(${staleIdentities}::text[]) identity_hash
+    `;
+    const cleanupBatch = await asRole(
+      sql,
+      "service_role",
+      (tx) =>
+        tx<{ deleted: number }[]>`
+          SELECT public.cleanup_contact_submission_rate_limits(3) AS deleted
+        `
+    );
+    assert.equal(cleanupBatch[0]?.deleted, 3);
+    const cleanupRemainder = await asRole(
+      sql,
+      "service_role",
+      (tx) =>
+        tx<{ deleted: number }[]>`
+          SELECT public.cleanup_contact_submission_rate_limits(5000) AS deleted
+        `
+    );
+    assert.equal(cleanupRemainder[0]?.deleted, 4);
+    const [limiterState] = await sql<{ stale: number; active: number }[]>`
+      SELECT
+        count(*) FILTER (
+          WHERE window_started_at < date_trunc('hour', now()) - interval '24 hours'
+        )::int AS stale,
+        count(*) FILTER (
+          WHERE window_started_at >= date_trunc('hour', now())
+        )::int AS active
+      FROM contact_submission_rate_limit
+    `;
+    assert.deepEqual(limiterState, { stale: 0, active: 3 });
+  } finally {
+    await Promise.all(clients.map((client) => client.end()));
+  }
 }
 
 async function verifyAtomicCreditLedger(

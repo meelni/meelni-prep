@@ -1,149 +1,191 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 
-// Contact form validation schema
-const contactSchema = z.object({
-  name: z.string().min(1, "Name is required").max(100),
-  email: z.string().email("Invalid email address"),
-  reason: z.enum(["billing", "support", "bug", "feedback", "other"]),
-  subject: z.string().min(1, "Subject is required").max(200),
-  message: z.string().min(10, "Message must be at least 10 characters").max(5000),
-});
+import {
+  contactIdempotencyKeySchema,
+  contactSubmissionSchema,
+  type ContactSubmissionError,
+  type ContactSubmissionResponse,
+} from "@/lib/contact/contracts";
+import { createDrizzleContactSubmissionStore } from "@/lib/db/contact-submissions";
+import { createContactRateLimitIdentities } from "@/lib/security/contact-rate-limit-identity";
+import { submitContactRequest } from "@/lib/workflows/submit-contact-request";
 
-/**
- * POST /api/contact
- *
- * Handles contact form submissions.
- * Stores the message and sends notification email.
- */
+const MAX_CONTACT_REQUEST_BYTES = 32 * 1024;
+
+class ContactRequestTooLarge extends Error {}
+
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-
-    // Validate input
-    const result = contactSchema.safeParse(body);
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.error.issues[0]?.message || "Invalid input" },
-        { status: 400 }
-      );
-    }
-
-    const { name, email, reason, subject, message } = result.data;
-
-    // Determine priority based on reason
-    const priority = reason === "billing" ? "high" : "normal";
-
-    // Build email content
-    const emailSubject = `[Meelni ${reason.toUpperCase()}] ${subject}`;
-    const emailBody = `
-New contact form submission:
-
-From: ${name} <${email}>
-Reason: ${reason}
-Priority: ${priority}
-Subject: ${subject}
-
-Message:
-${message}
-
----
-Submitted at: ${new Date().toISOString()}
-    `.trim();
-
-    // Try to send via Resend if configured
-    const resendApiKey = process.env.RESEND_API_KEY;
-    const notificationEmail = process.env.CONTACT_NOTIFICATION_EMAIL || "support@meelni.com";
-
-    if (resendApiKey) {
-      try {
-        const resendResponse = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${resendApiKey}`,
-          },
-          body: JSON.stringify({
-            from: "Meelni Contact <noreply@meelni.com>",
-            to: [notificationEmail],
-            reply_to: email,
-            subject: emailSubject,
-            text: emailBody,
-          }),
-        });
-
-        if (!resendResponse.ok) {
-          const errorData = await resendResponse.json();
-          console.error("Resend API error:", errorData);
-          // Don't fail the request - message is still received
-        }
-      } catch (emailError) {
-        console.error("Failed to send email via Resend:", emailError);
-        // Don't fail the request - message is still received
-      }
-    }
-
-    // Also send auto-reply to user
-    if (resendApiKey) {
-      try {
-        await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${resendApiKey}`,
-          },
-          body: JSON.stringify({
-            from: "Meelni Support <support@meelni.com>",
-            to: [email],
-            subject: "We received your message - Meelni Support",
-            text: `Hi ${name},
-
-Thank you for reaching out to Meelni. We've received your message and will get back to you as soon as possible.
-
-For billing inquiries, we prioritize responses within 4 hours during business hours.
-For all other inquiries, expect a response within 24 hours.
-
-Your message reference:
-Subject: ${subject}
-Reason: ${reason}
-
-If this is urgent, you can also email us directly at:
-- billing@meelni.com (for billing issues)
-- support@meelni.com (for general support)
-
-Best regards,
-The Meelni Team
-
----
-This is an automated message. Please do not reply directly to this email.
-            `.trim(),
-          }),
-        });
-      } catch (emailError) {
-        console.error("Failed to send auto-reply:", emailError);
-        // Don't fail the request
-      }
-    }
-
-    // Log the contact for tracking (even without email service)
-    console.log("Contact form submission received:", {
-      name,
-      email,
-      reason,
-      subject,
-      priority,
-      timestamp: new Date().toISOString(),
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: "Your message has been received. We'll get back to you soon.",
-    });
-  } catch (error) {
-    console.error("Contact form error:", error);
-    return NextResponse.json(
-      { error: "Failed to process your message. Please try again or email us directly at support@meelni.com" },
-      { status: 500 }
+  const idempotencyKey = contactIdempotencyKeySchema.safeParse(
+    req.headers.get("Idempotency-Key")
+  );
+  if (!idempotencyKey.success) {
+    return contactError(
+      "invalid_idempotency_key",
+      "Refresh the page and try again.",
+      false,
+      400
     );
   }
+
+  let body: unknown;
+  try {
+    body = await readBoundedJson(req);
+  } catch (error) {
+    if (error instanceof ContactRequestTooLarge) {
+      return contactError(
+        "invalid_request",
+        "The request is too large. Shorten the message and try again.",
+        false,
+        413
+      );
+    }
+    return contactError(
+      "invalid_request",
+      "Enter your contact details and message, then try again.",
+      false,
+      400
+    );
+  }
+
+  const parsed = contactSubmissionSchema.safeParse(body);
+  if (!parsed.success) {
+    return contactError(
+      "invalid_request",
+      parsed.error.issues[0]?.message ?? "Check the form and try again.",
+      false,
+      400
+    );
+  }
+
+  let rateLimitIdentities;
+  try {
+    rateLimitIdentities = createContactRateLimitIdentities(
+      req.headers,
+      parsed.data.email
+    );
+  } catch {
+    console.error("contact_submission_failed", {
+      code: "security_configuration_unavailable",
+    });
+    return contactError(
+      "storage_unavailable",
+      "We could not save your request. Try again or email support@meelni.com directly.",
+      true,
+      503
+    );
+  }
+
+  const result = await submitContactRequest(
+    {
+      idempotencyKey: idempotencyKey.data,
+      ...parsed.data,
+      rateLimitIdentities,
+    },
+    createDrizzleContactSubmissionStore()
+  );
+
+  if (result.ok) {
+    return NextResponse.json<ContactSubmissionResponse>(result, {
+      status: result.duplicate ? 200 : 202,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  if (result.code === "idempotency_conflict") {
+    console.warn("contact_submission_rejected", {
+      code: result.code,
+    });
+    return contactError(
+      result.code,
+      "The form changed while it was being saved. Review it and submit again.",
+      false,
+      409
+    );
+  }
+
+  if (result.code === "rate_limited") {
+    console.warn("contact_submission_rejected", {
+      code: result.code,
+    });
+    const retryAfterSeconds = result.retryAfterSeconds ?? 60;
+    return contactError(
+      result.code,
+      "Too many requests were submitted. Wait a little, then try again or email us directly.",
+      true,
+      429,
+      retryAfterSeconds
+    );
+  }
+
+  console.error("contact_submission_failed", {
+    code: result.code,
+  });
+  return contactError(
+    result.code,
+    "We could not save your request. Try again or email support@meelni.com directly.",
+    true,
+    503
+  );
+}
+
+async function readBoundedJson(req: NextRequest): Promise<unknown> {
+  const declaredLength = Number(req.headers.get("Content-Length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > MAX_CONTACT_REQUEST_BYTES
+  ) {
+    throw new ContactRequestTooLarge();
+  }
+
+  if (!req.body) throw new SyntaxError("Missing request body");
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_CONTACT_REQUEST_BYTES) {
+      await reader.cancel();
+      throw new ContactRequestTooLarge();
+    }
+    chunks.push(value);
+  }
+
+  const bodyBytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bodyBytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(
+    new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes)
+  );
+}
+
+function contactError(
+  code: ContactSubmissionError["code"],
+  message: string,
+  retryable: boolean,
+  status: number,
+  retryAfterSeconds?: number
+) {
+  const body: ContactSubmissionError = {
+    ok: false,
+    code,
+    message,
+    retryable,
+    ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
+  };
+
+  return NextResponse.json<ContactSubmissionResponse>(body, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+      ...(retryAfterSeconds === undefined
+        ? {}
+        : { "Retry-After": String(retryAfterSeconds) }),
+    },
+  });
 }

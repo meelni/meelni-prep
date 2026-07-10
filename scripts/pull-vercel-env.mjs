@@ -28,6 +28,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export const PRESERVE_WHEN_ENCRYPTED_KEYS = [
   "CONTACT_NOTIFICATION_EMAIL",
+  "CONTACT_RATE_LIMIT_HMAC_SECRET",
   "CRON_SECRET",
   "DATABASE_URL",
   "DEEPGRAM_API_KEY",
