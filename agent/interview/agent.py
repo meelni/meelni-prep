@@ -165,37 +165,52 @@ async def entrypoint(ctx: JobContext):
     transcript_writer_id = str(uuid4())
     transcript_sequence = count(1)
 
-    @session.on("conversation_item_added")
-    def on_conversation_item_added(event: ConversationItemAddedEvent):
-        """Publish committed voice turns with runtime-measured playout timing."""
-        item = event.item
-        if not isinstance(item, ChatMessage):
-            return
-        transcript_data = create_transcript_event_from_message(
-            message=item,
-            writer_id=transcript_writer_id,
-            sequence=next(transcript_sequence),
-            session_id=session_id,
-            room_name=room_name,
-            section=round_type,
-        )
-        if transcript_data is None:
-            logger.warning(
-                "[Transcript] Dropping committed turn without canonical measured delivery"
-            )
-            return
-
-        logger.info(
-            f"[Transcript] {transcript_data['speaker']}: "
-            f"{str(transcript_data['text'])[:50]}..."
-        )
-
-        asyncio.ensure_future(
-            publish_transcript_event(
+    async def publish_transcript_event_safely(transcript_data: dict[str, object]):
+        try:
+            await publish_transcript_event(
                 ctx.room.local_participant,
                 transcript_data,
             )
-        )
+        except Exception as error:
+            logger.error(
+                "[Transcript] Failed to publish committed turn: %s",
+                error,
+                exc_info=True,
+            )
+
+    @session.on("conversation_item_added")
+    def on_conversation_item_added(event: ConversationItemAddedEvent):
+        """Publish committed voice turns with runtime-measured playout timing."""
+        try:
+            item = event.item
+            if not isinstance(item, ChatMessage):
+                return
+            transcript_data = create_transcript_event_from_message(
+                message=item,
+                writer_id=transcript_writer_id,
+                sequence=next(transcript_sequence),
+                session_id=session_id,
+                room_name=room_name,
+                section=round_type,
+            )
+            if transcript_data is None:
+                logger.warning(
+                    "[Transcript] Dropping committed turn without canonical measured delivery"
+                )
+                return
+
+            logger.info(
+                f"[Transcript] {transcript_data['speaker']}: "
+                f"{str(transcript_data['text'])[:50]}..."
+            )
+
+            asyncio.ensure_future(publish_transcript_event_safely(transcript_data))
+        except Exception as error:
+            logger.error(
+                "[Transcript] Failed to normalize committed turn: %s",
+                error,
+                exc_info=True,
+            )
 
     logger.info("Transcript event handlers registered successfully")
 
