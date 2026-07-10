@@ -11,7 +11,9 @@ HEALTHCHECK_URL=https://preview.example/api/health npm run health:synthetic
 The synthetic prints one closed JSON result and exits nonzero for degraded,
 unavailable, malformed, oversized, redirected, or unreachable responses. It
 accepts HTTPS, plus loopback HTTP for local tests, and rejects URLs containing
-credentials, query strings, or fragments.
+credentials, query strings, or fragments. It requires exact HTTP/body-status
+pairings and a canonical UTC timestamp; transport or schema mismatches use the
+fixed `health_endpoint_invalid` result.
 
 No scheduler, alert receiver, status vendor, or receipt claim is configured by
 this change. The relaunch gate remains off until a controlled isolated-Preview
@@ -26,6 +28,11 @@ degradation is received and acknowledged by an approved operator destination.
 | LiveKit           | Server credentials, URL, and interview agent name.   | `livekit_unavailable`; do not attempt a shared-provider rehearsal. |
 | Feedback dispatch | Hosted Inngest config and no stale or failed work.   | Preserve rows; use the feedback recovery workflow.                 |
 | Stripe webhook    | Signing config and no stale or failed work.          | Inspect Stripe delivery and redacted durable evidence.             |
+
+Unresolved failed workflow evidence takes precedence over stale evidence. The
+database evidence transaction has a PostgreSQL statement timeout shorter than
+the route deadline, and one unresolved underlying read remains single-flight
+across application timeout and cache expiry.
 
 The endpoint intentionally does not call LiveKit or Stripe. Provider-backed
 reachability and the full fresh-user path belong to the controlled Preview

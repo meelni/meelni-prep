@@ -52,16 +52,21 @@ exception messages, provider payloads, environment-variable names, or secrets.
 - `unavailable`: the database, LiveKit interview readiness, or a dependency
   needed to evaluate durable workflow evidence is unavailable.
 
-The HTTP response is `200` for healthy or degraded and `503` for unavailable.
-Consumers must evaluate the JSON status; a synthetic treats degraded as failed
-during relaunch. Each server instance coalesces concurrent checks and reuses a
-result for at most ten seconds to bound database load without hiding sustained
-degradation.
+The HTTP response is exactly `200` for healthy or degraded and exactly `503`
+for unavailable. Consumers must evaluate the JSON status; the synthetic rejects
+any HTTP/body-status mismatch and treats degraded as failed during relaunch. It
+also requires `checkedAt` to round-trip as an exact canonical UTC timestamp.
+Each server instance coalesces concurrent checks and reuses a result for at most
+ten seconds to bound database load without hiding sustained degradation.
 
 Database evidence checks for feedback dispatches and Stripe webhook rows stuck
-for more than ten minutes, plus any unresolved failed work. It
-does not infer health from customer traffic volume or reveal when the last
-customer event occurred.
+for more than ten minutes, plus any unresolved failed work. Failed evidence
+outranks stale evidence. Failed Stripe rows are not also classified as stale.
+The evidence query runs under a transaction-local PostgreSQL statement timeout;
+the store retains one underlying in-flight operation after an application-level
+timeout so cache expiry cannot start duplicate database work. It does not infer
+health from customer traffic volume or reveal when the last customer event
+occurred.
 
 ## Compatibility
 

@@ -42,6 +42,8 @@
 
 - Unit and HTTP contract tests.
 - Deterministic synthetic tests with mocked endpoint responses.
+- Stalled-query single-flight, exact HTTP mapping, canonical timestamp, and
+  simultaneous failed/stale evidence regressions.
 - `npm run check:ci` and `npm run build`.
 - Controlled isolated-Preview degradation and alert receipt remain launch gates.
 

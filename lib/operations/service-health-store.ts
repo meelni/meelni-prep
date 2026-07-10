@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { feedback, stripeEventLog } from "@/lib/db/schema";
@@ -7,40 +7,69 @@ import type {
   ServiceHealthStore,
 } from "@/lib/operations/service-health";
 
-export function createServiceHealthStore(): ServiceHealthStore {
-  return {
-    async readEvidence({ staleBefore }) {
-      const [feedbackRows, webhookRows] = await Promise.all([
-        db
-          .select({
-            stale: sql<number>`count(*) filter (
-              where ${inArray(feedback.dispatchStatus, ["pending", "sending"])}
-              and coalesce(${feedback.dispatchClaimedAt}, ${feedback.createdAt}) < ${staleBefore}
-            )`.mapWith(Number),
-            failed: sql<number>`count(*) filter (
-              where ${eq(feedback.dispatchStatus, "failed")}
-            )`.mapWith(Number),
-          })
-          .from(feedback),
-        db
-          .select({
-            stale: sql<number>`count(*) filter (
-              where ${inArray(stripeEventLog.status, ["pending", "failed"])}
-              and ${stripeEventLog.createdAt} < ${staleBefore}
-            )`.mapWith(Number),
-            failed: sql<number>`count(*) filter (
-              where ${eq(stripeEventLog.status, "failed")}
-            )`.mapWith(Number),
-          })
-          .from(stripeEventLog),
-      ]);
+type ServiceHealthEvidenceInput = Parameters<
+  ServiceHealthStore["readEvidence"]
+>[0];
+type ServiceHealthEvidenceRow = ServiceHealthEvidence & Record<string, unknown>;
 
-      return {
-        feedbackDispatchStale: (feedbackRows[0]?.stale ?? 0) > 0,
-        feedbackDispatchFailed: (feedbackRows[0]?.failed ?? 0) > 0,
-        stripeWebhookStale: (webhookRows[0]?.stale ?? 0) > 0,
-        stripeWebhookFailed: (webhookRows[0]?.failed ?? 0) > 0,
-      } satisfies ServiceHealthEvidence;
+export interface ServiceHealthEvidenceReader {
+  read(input: ServiceHealthEvidenceInput): Promise<ServiceHealthEvidence>;
+}
+
+export function createServiceHealthStore(
+  reader: ServiceHealthEvidenceReader = createDrizzleServiceHealthEvidenceReader()
+): ServiceHealthStore {
+  let inFlight: Promise<ServiceHealthEvidence> | undefined;
+
+  return {
+    readEvidence(input) {
+      if (inFlight) return inFlight;
+
+      const work = Promise.resolve().then(() => reader.read(input));
+      const tracked = work.finally(() => {
+        if (inFlight === tracked) inFlight = undefined;
+      });
+      inFlight = tracked;
+      return tracked;
+    },
+  };
+}
+
+export function createDrizzleServiceHealthEvidenceReader(
+  database: Pick<typeof db, "transaction"> = db
+): ServiceHealthEvidenceReader {
+  return {
+    async read({ staleBefore, queryTimeoutMs }) {
+      return database.transaction(async (transaction) => {
+        await transaction.execute(
+          sql`select set_config('statement_timeout', ${`${queryTimeoutMs}ms`}, true)`
+        );
+
+        const rows = await transaction.execute<ServiceHealthEvidenceRow>(sql`
+          select
+          exists (
+            select 1 from ${feedback}
+            where ${feedback.dispatchStatus} in ('pending', 'sending')
+              and coalesce(${feedback.dispatchClaimedAt}, ${feedback.createdAt}) < ${staleBefore}
+          ) as "feedbackDispatchStale",
+          exists (
+            select 1 from ${feedback}
+            where ${feedback.dispatchStatus} = 'failed'
+          ) as "feedbackDispatchFailed",
+          exists (
+            select 1 from ${stripeEventLog}
+            where ${stripeEventLog.status} = 'pending'
+              and ${stripeEventLog.createdAt} < ${staleBefore}
+          ) as "stripeWebhookStale",
+          exists (
+            select 1 from ${stripeEventLog}
+            where ${stripeEventLog.status} = 'failed'
+          ) as "stripeWebhookFailed"
+        `);
+        const evidence = rows[0];
+        if (!evidence) throw new Error("service_health_evidence_unavailable");
+        return evidence;
+      });
     },
   };
 }

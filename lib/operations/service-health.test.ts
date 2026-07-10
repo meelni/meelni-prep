@@ -126,7 +126,7 @@ test("database and LiveKit failures make practice unavailable", async () => {
 });
 
 test("database evidence uses one bounded stale-work cutoff", async () => {
-  let captured: { staleBefore: Date } | undefined;
+  let captured: { staleBefore: Date; queryTimeoutMs: number } | undefined;
   const capturingStore: ServiceHealthStore = {
     readEvidence: async (input) => {
       captured = input;
@@ -137,6 +137,34 @@ test("database evidence uses one bounded stale-work cutoff", async () => {
   await assessServiceHealth(dependencies(capturingStore, READY_ENV));
 
   assert.equal(captured?.staleBefore.toISOString(), "2026-07-10T19:50:00.000Z");
+  assert.equal(captured?.queryTimeoutMs, 1);
+});
+
+test("failed durable work outranks simultaneous stale evidence", async () => {
+  const report = await assessServiceHealth(
+    dependencies(
+      store({
+        feedbackDispatchStale: true,
+        feedbackDispatchFailed: true,
+        stripeWebhookStale: true,
+        stripeWebhookFailed: true,
+      }),
+      READY_ENV
+    )
+  );
+
+  assert.deepEqual(report.checks.slice(3), [
+    {
+      name: "feedback_dispatch",
+      status: "degraded",
+      code: "feedback_dispatch_failed",
+    },
+    {
+      name: "stripe_webhook",
+      status: "degraded",
+      code: "stripe_webhook_failed",
+    },
+  ]);
 });
 
 test("a hung database check fails closed at the configured timeout", async () => {
