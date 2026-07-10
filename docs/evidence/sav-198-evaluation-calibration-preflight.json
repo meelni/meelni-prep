@@ -1,6 +1,6 @@
 {
   "contractVersion": "evaluation-calibration-report.v3",
-  "generatedAt": "2026-07-10T17:25:16.515Z",
+  "generatedAt": "2026-07-10T17:40:43.755Z",
   "execution": {
     "kind": "preflight",
     "modelVersion": null,
@@ -16,7 +16,7 @@
     "schema": "feedback.v2",
     "prompt": "feedback.prompt.v2",
     "rubric": "pm-feedback-rubric.v2",
-    "candidateArtifactHash": "5ce31602857c9d0a260f8c784beb9ecd2fa545cc2faa6889f62bd33aa10f2c67",
+    "candidateArtifactHash": "f7c76bc1b5f84a5c077c5cc3882b3e1e33d10612993ca872570d43c3644618d2",
     "corpusHash": "f31999ba2c0aab9bfaf5d4af76d2cf70d0b90558f6de9f5d09570d14b55d132b"
   },
   "corpus": {
