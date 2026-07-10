@@ -108,3 +108,6 @@ before both eligibility and model evaluation:
 recommendations, never a v2 score object. Existing completed legacy feedback
 remains readable without reinterpretation. These deterministic controls do not
 claim exhaustive adversarial coverage or hiring calibration.
+
+Persistence, event fencing, retries, and insights handoff follow the
+[feedback generation contract](./feedback-generation.md).
