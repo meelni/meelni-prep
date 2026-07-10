@@ -114,6 +114,15 @@ recoverable; even a completed tombstone containing a raw reference is selected
 by recovery. Malformed persisted subject JSON fails closed rather than silently
 discarding an unknown provider reference.
 
+Stripe customer mapping and tombstone subject fingerprints are authoritative
+provider-subject ownership evidence. Event metadata alone is never ownership
+proof. A Checkout event may establish ownership only when its metadata and
+`client_reference_id` are both present and identical. Any disagreement among
+Checkout correlation, customer mapping, event metadata, or a tombstone subject
+fingerprint fails before event logging, entitlement mutation, cancellation,
+refund, customer deletion, or tombstone mutation. The same ownership decision
+gates active billing updates and deleted-account reconciliation.
+
 Stripe event logs never persist raw webhook payloads, including for active
 accounts. Signature-verified event data exists only in request memory; durable
 logs retain the event ID/type, subject fingerprint, state, attempts, timestamps,
@@ -123,20 +132,37 @@ For a late completed Checkout, Meelni attempts deterministic reconciliation:
 
 - expire it when it is still open;
 - cancel a created subscription;
-- refund a directly referenced PaymentIntent/charge or the paid payment exposed
-  by the initial invoice.
+- refund a directly referenced PaymentIntent/charge or every paid allocation
+  exposed by the initial invoice.
 
 Stripe does not guarantee that Checkout, subscription, and invoice webhooks
 arrive in a useful order. A deleted account's `customer.subscription.created`
 event therefore persists and inspects its initial invoice, cancels the
-subscription, and reconciles any paid PaymentIntent/charge before customer
-deletion. Missing or malformed initial-invoice evidence fails closed and keeps
-the customer recoverable. A deleted account's `customer.subscription.updated`
-event cancels its subscription independently, and an
+subscription, and reconciles every paid PaymentIntent/charge allocation before
+customer deletion. Missing or malformed initial-invoice evidence fails closed
+and keeps the customer recoverable. A deleted account's
+`customer.subscription.updated` event cancels its subscription independently,
+and an
 `invoice.payment_succeeded` event independently cancels the referenced
 subscription and refunds its paid PaymentIntent/charge. These paths share
 provider-object-derived idempotency keys with Checkout reconciliation, so no
 path relies on another event arriving first.
+
+Invoice reconciliation uses the paginated InvoicePayments API rather than the
+embedded first page. Reads are capped at ten 100-object pages. Every paid
+allocation must have a safe positive amount, matching currency, supported
+PaymentIntent or charge reference, and the allocation total must equal the
+invoice `amount_paid`. `payment_record`, incomplete pagination, malformed
+amounts, unsupported resource prefixes, or an unexplained total fails closed
+and retains the invoice, payment, and customer subjects for recovery or manual
+reconciliation.
+
+Refunds for a partial charge allocation use the exact InvoicePayment amount and
+carry only a one-way InvoicePayment fingerprint in Stripe metadata. Retry proof
+accepts terminal succeeded refunds tagged for that allocation. An untagged
+partial refund is accepted only when the allocation equals the complete charge;
+otherwise it is ambiguous and requires manual reconciliation. A provider-wide
+full refund remains terminal proof for every allocation on that charge.
 
 If an operator partially refunds before replay, Meelni asks Stripe to refund
 the remaining unrefunded amount. After every create or replay outcome, Meelni

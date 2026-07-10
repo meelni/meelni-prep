@@ -145,6 +145,27 @@ test("completed tombstones with late raw references remain recoverable", async (
   assert.equal(calls.at(-1), `completed:${REQUEST.userId}`);
 });
 
+test("invoice allocations discovered by recovery are included in snapshot completion", async () => {
+  const calls: string[] = [];
+  const completedFingerprints: string[][] = [];
+  const deps = createDeps(calls);
+  deps.refundInvoice = async (invoiceId) => {
+    calls.push(`invoice:${invoiceId}`);
+    return ["discovered-payment-fingerprint"];
+  };
+  deps.markCompleted = async (_userId, fingerprints) => {
+    completedFingerprints.push(fingerprints);
+  };
+
+  await deleteAccountWorkflow(REQUEST, deps);
+
+  assert.equal(
+    completedFingerprints[0]?.includes("discovered-payment-fingerprint"),
+    true
+  );
+  assert.equal(completedFingerprints[0]?.includes("invoice-fingerprint"), true);
+});
+
 test("deletion failures are reduced to a stable code without raw details", () => {
   const safe = safeAccountDeletionError(
     Object.assign(new Error("postgresql://secret-host transcript text"), {
@@ -192,6 +213,7 @@ function createDeps(calls: string[]): DeleteAccountWorkflowDeps {
     },
     refundInvoice: async (id) => {
       calls.push(`invoice:${id}`);
+      return [];
     },
     refundPayment: async (kind, id) => {
       calls.push(`payment:${kind}:${id}`);

@@ -74,6 +74,10 @@ failed, or processing records stale for at least fifteen minutes.
   reference after deletion. Confirm no credit, subscription row, or customer
   mapping is created; the event payload is `{}`; and subscription cancellation
   plus refundable payment reversal are attempted idempotently.
+- Replay a signed Checkout event with mismatched metadata and
+  `client_reference_id`, and replay a subscription/invoice event whose metadata
+  disagrees with the persisted customer mapping. Confirm both fail before any
+  event-log, tombstone, entitlement, cancellation, refund, or customer mutation.
 - Replay `customer.subscription.created` or `.updated` without a Checkout
   event. For creation, confirm the initial invoice and paid payment are retained
   and reconciled before customer deletion. Missing initial-invoice evidence
@@ -81,10 +85,16 @@ failed, or processing records stale for at least fifteen minutes.
   subscription is canceled with no local entitlement or raw event payload
   retained.
 - Replay `invoice.payment_succeeded` without a Checkout event. Confirm the
-  referenced subscription is canceled, the paid PaymentIntent/charge is
+  referenced subscription is canceled, every paid InvoicePayment allocation is
   refunded, and the event payload remains `{}`. Checkout, subscription, and
   invoice events must reconcile safely in any order using shared idempotency
   keys.
+- Model multiple and partial InvoicePayments across more than one response
+  page. Confirm the allocation amounts sum exactly to `invoice.amount_paid`,
+  every refundable allocation reaches terminal succeeded evidence, and customer
+  cleanup runs only afterward. Confirm `payment_record`, `has_more` beyond the
+  bounded page limit, currency/amount/total mismatches, and ambiguous untagged
+  partial refunds retain provider subjects and fail for operator recovery.
 - For each late Checkout/subscription/invoice event, confirm financial
   reconciliation finishes before the Stripe customer deletion call. On cleanup
   failure, confirm the tombstone retains raw cleanup IDs and becomes recoverable;

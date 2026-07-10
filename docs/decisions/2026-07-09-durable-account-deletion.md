@@ -39,6 +39,17 @@ report success while the authentication account remained active.
 - Replace raw Stripe identifiers with one-way fingerprints on completion and
   redact matching webhook payload/error data while retaining event idempotency
   metadata.
+- Treat the persisted Stripe customer mapping as authoritative provider-subject
+  ownership alongside a matching tombstone subject fingerprint. Event metadata
+  alone is never ownership proof; Checkout correlation is accepted only when
+  metadata and client reference match. Any metadata, Checkout client-reference,
+  mapping, or tombstone-fingerprint disagreement fails before active billing or
+  destructive cleanup.
+- Reconcile invoices through every paginated paid InvoicePayment allocation.
+  Exact partial-allocation refunds carry a one-way allocation fingerprint, and
+  customer deletion waits for terminal allocation-specific or full-charge
+  refund evidence. Unsupported PaymentRecords and ambiguous partial refunds
+  remain recoverable for manual reconciliation.
 
 ## Consequences
 

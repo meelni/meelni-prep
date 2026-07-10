@@ -85,10 +85,12 @@ test("completed deleted subscription checkout is canceled and refunded idempoten
       cancelSubscription: async (_id, key) => {
         calls.push({ operation: "cancel", key });
       },
-      loadInvoicePayment: async () => ({
-        kind: "payment_intent",
-        providerId: "pi_test_complete",
-      }),
+      loadInvoicePayments: async () => [
+        {
+          kind: "payment_intent",
+          providerId: "pi_test_complete",
+        },
+      ],
       refundPayment: async (_payment, key) => {
         calls.push({ operation: "refund", key });
       },
@@ -123,7 +125,7 @@ test("paid deleted checkout without a refundable reference fails visibly and saf
         {
           expireCheckout: async () => undefined,
           cancelSubscription: async () => undefined,
-          loadInvoicePayment: async () => null,
+          loadInvoicePayments: async () => [],
           refundPayment: async () => undefined,
         }
       ),
