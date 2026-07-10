@@ -266,9 +266,11 @@ BEGIN
 		decision := 'rate_limited';
 		room_name := NULL;
 		remaining := 0;
-		limiting_scope := CASE retry_after_seconds
-			WHEN global_retry THEN 'global'
-			WHEN ip_retry THEN 'ip'
+		limiting_scope := CASE
+			WHEN active_device_retry > 0
+				AND retry_after_seconds = active_device_retry THEN 'active_device'
+			WHEN retry_after_seconds = global_retry THEN 'global'
+			WHEN retry_after_seconds = ip_retry THEN 'ip'
 			ELSE 'device'
 		END;
 	ELSE

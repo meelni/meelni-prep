@@ -170,6 +170,10 @@ test("public demo recovery verifies a remote agent and never recreates a room", 
 
   const emptyCalls: string[] = [];
   const emptyProvider = createLiveKitPublicDemoProvider({
+    sleep: async (milliseconds) => {
+      assert.equal(milliseconds, 1_000);
+      emptyCalls.push("wait");
+    },
     roomServiceClientFactory: () => ({
       createRoom: async () => {
         emptyCalls.push("room");
@@ -185,7 +189,48 @@ test("public demo recovery verifies a remote agent and never recreates a room", 
   if (!rejected.ok) {
     assert.equal(rejected.error.code, "livekit_demo_room_not_ready");
   }
-  assert.deepEqual(emptyCalls, ["participants"]);
+  assert.deepEqual(emptyCalls, ["participants", "wait", "participants"]);
+});
+
+test("public demo recovery tolerates the agent participant join race", async () => {
+  const calls: string[] = [];
+  let participantChecks = 0;
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      addGrant() {}
+      async toJwt() {
+        calls.push("token");
+        return "recovery-token";
+      }
+    },
+    sleep: async (milliseconds) => {
+      assert.equal(milliseconds, 1_000);
+      calls.push("wait");
+    },
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {},
+      listParticipants: async () => {
+        calls.push("participants");
+        participantChecks += 1;
+        return participantChecks === 1
+          ? []
+          : [{ identity: "agent-demo", kind: 4 }];
+      },
+    }),
+  });
+
+  const recovered = await provider.issuePublicDemoToken({
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(recovered.ok, true);
+  assert.deepEqual(calls, ["participants", "wait", "participants", "token"]);
 });
 
 test("missing env detection supports required vars and at-least-one groups", () => {

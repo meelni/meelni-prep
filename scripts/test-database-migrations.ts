@@ -2206,7 +2206,7 @@ async function verifyPublicDemoLimits(sql: postgres.Sql, url: string) {
   assert.equal(
     deviceContention.filter(
       ({ decision, limiting_scope }) =>
-        decision === "rate_limited" && limiting_scope === "device"
+        decision === "rate_limited" && limiting_scope === "active_device"
     ).length,
     11
   );

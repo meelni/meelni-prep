@@ -6,7 +6,12 @@ export type PublicDemoDeploymentScope =
   | "production"
   | "preview"
   | "development";
-export type PublicDemoLimitScope = "global" | "ip" | "device" | "session";
+export type PublicDemoLimitScope =
+  | "global"
+  | "ip"
+  | "device"
+  | "active_device"
+  | "session";
 export type PublicDemoReservationAction =
   | "provision"
   | "issue_token"
@@ -190,6 +195,7 @@ function isScopeOrNull(value: unknown): value is PublicDemoLimitScope | null {
     value === "global" ||
     value === "ip" ||
     value === "device" ||
+    value === "active_device" ||
     value === "session"
   );
 }
