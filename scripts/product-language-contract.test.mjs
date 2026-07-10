@@ -50,6 +50,8 @@ const PROHIBITION_BREAK = /[,.;]|\b(?:but|however|yet)\b/i;
 const FITNESS_LANGUAGE = /\b(?:gym|rep|reps|workout|workouts|drill|drills)\b/i;
 const UNSUPPORTED_FEEDBACK_TIMING =
   /\b(?:real[- ]time|instant|immediate)\b.{0,30}\bfeedback\b|\bfeedback\b.{0,30}\b(?:real[- ]time|instant|immediate)\b/i;
+const UNSUPPORTED_OUTCOME_PROMISE =
+  /\b(?:ace|crush|master)\b.{0,40}\binterviews?\b|\bland\b.{0,30}\b(?:offers?|dream role)\b|\binterviews?\b.{0,40}\b(?:ace|crush|master)\b/i;
 const FORBIDDEN_CANONICAL_CLAIMS = [
   ["fitness positioning", /PM(?:-focused)? interview gym|live voice reps/i],
   ["legacy launch action", /\bNew Rep\b/i],
@@ -219,6 +221,7 @@ test("active product surfaces use interview-practice language", async () => {
     ["legacy navigation", /\bPractice Home\b/i],
     ["unsupported readiness claim", /\breadiness\b|\bInterview-ready\b/i],
     ["unsupported feedback timing", UNSUPPORTED_FEEDBACK_TIMING],
+    ["unsupported outcome promise", UNSUPPORTED_OUTCOME_PROMISE],
   ];
 
   for (const file of files) {
@@ -378,6 +381,21 @@ test("feedback timing guard rejects real-time, instant, and immediate product cl
   assert.doesNotMatch(
     "Review feedback after your completed interview.",
     UNSUPPORTED_FEEDBACK_TIMING
+  );
+});
+
+test("public copy guard rejects unsupported interview-outcome promises", () => {
+  assert.match(
+    "Master your PM interviews and land your dream role.",
+    UNSUPPORTED_OUTCOME_PROMISE
+  );
+  assert.match(
+    "Ready to ace your Meta interview?",
+    UNSUPPORTED_OUTCOME_PROMISE
+  );
+  assert.doesNotMatch(
+    "Prepare for your Meta interview with realistic practice.",
+    UNSUPPORTED_OUTCOME_PROMISE
   );
 });
 

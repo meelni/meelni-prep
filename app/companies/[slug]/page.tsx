@@ -538,7 +538,7 @@ export default function CompanyDetailPage() {
         {/* Final CTA */}
         <MarketingCtaCard
           mark="M"
-          title={`Ready to ace your ${company.name} interview?`}
+          title={`Ready to practice for your ${company.name} interview?`}
           description="Practice with Meelni's AI interviewer, then review feedback tied to your completed interview."
           action={
             <Button asChild size="lg" variant="glow">

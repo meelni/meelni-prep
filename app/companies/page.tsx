@@ -67,7 +67,7 @@ function CompaniesStructuredData() {
     "@type": "CollectionPage",
     name: "Company Interview Guides | Meelni",
     description:
-      "Master your PM interviews with detailed guides for top tech companies. Learn the interview process, practice real questions, and land your dream role.",
+      "Prepare for PM interviews with detailed guides for top tech companies. Learn the interview process and practice real questions.",
     url: `${baseUrl}/companies`,
     inLanguage: "en-US",
     isPartOf: {
@@ -139,7 +139,7 @@ export default function CompaniesPage() {
             </MarketingEyebrow>
           }
           title="Company Guides"
-          description="Master your PM interviews with detailed guides for top tech companies. Learn the process, practice real questions, and land your dream role."
+          description="Prepare for PM interviews with detailed guides for top tech companies. Learn the process and practice real questions."
         />
 
         {/* Company Cards Grid */}

@@ -44,7 +44,7 @@ const featureOptions: FeatureOption[] = [
   {
     id: 2,
     title: "Product Execution",
-    description: "Master goal-setting, metrics, and execution strategy for shipping great products.",
+    description: "Practice goal-setting, metrics, and execution strategy for shipping great products.",
     code: `🎯 Interviewer: "You're the PM for Instagram Reels. Set goals and success metrics."
 
 👤 You: "So Reels - this is Meta's answer to TikTok, now a core part of Instagram's strategy. Quick assumptions: focusing on Instagram Reels globally, current established state not launch phase."
