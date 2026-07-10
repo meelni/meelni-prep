@@ -12,6 +12,11 @@ See [migration history](./migration-history.md) for the retired orphan SQL files
   through a port-6543 transaction-pooler URL.
 - `.env.local` normally contains Preview values. Production operations must set
   `MEELNI_ENV_FILE=.env.production.local` explicitly.
+- Shared env files must contain `MEELNI_ENV_PULL_ENVIRONMENT` and the non-secret
+  `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF`. Preview database refs must differ
+  from the declared Production ref; Production database refs must match it.
+  Loopback databases are exempt so local workflows remain independent of
+  provider metadata.
 - Never run `db:push` against Preview or Production.
 - Repository wrappers refuse remote `db:push`, transaction-pooler migrations,
   and ambiguous remote migration/Studio commands.
@@ -32,7 +37,8 @@ npm run db:preflight:production
 Use the bare `npm run db:preflight` command only when an intentionally selected
 disposable/local `DATABASE_URL` is already in the shell. Shared Preview and
 Production checks must use the scoped aliases above so ambient credentials
-cannot redirect the check.
+cannot redirect the check. Successful output includes the verified
+`environmentIdentity` (`local`, `preview`, or `production`).
 
 Expected pre-migration status is `ready_to_reconcile` with two ledger entries,
 zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
@@ -70,7 +76,8 @@ changing terminal truth.
    Preview uses `npm run env:pull:preview`; Production uses
    `npm run env:pull:production`. A failed or mismatched refresh leaves the
    prior file untouched. Never substitute credentials from another
-   environment.
+   environment. Before either pull, configure the same non-secret
+   `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF` in Vercel Preview and Production.
 3. Run `npm run db:preflight:preview` or
    `npm run db:preflight:production` and retain its redacted output in the
    Linear issue. These commands explicitly select the file so an ambient shell
@@ -82,9 +89,14 @@ changing terminal truth.
    direct/session connection:
 
    ```bash
-   MEELNI_ENV_FILE=.env.production.local \
-   MEELNI_ALLOW_REMOTE_MIGRATION=1 \
-   npm run db:migrate
+   MEELNI_ALLOW_REMOTE_MIGRATION=1 npm run db:migrate:production
+   ```
+
+   Preview rehearsal uses the distinct alias and applies the same explicit
+   confirmation:
+
+   ```bash
+   MEELNI_ALLOW_REMOTE_MIGRATION=1 npm run db:migrate:preview
    ```
 
 7. Run preflight again; it must report `reconciled`.
