@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
 import { db } from "./index";
+import { FEEDBACK_GENERATION_EVENT_PREFIX } from "./feedback-event-id";
 import { feedback } from "./schema";
 
 export const FEEDBACK_DISPATCH_LEASE_MS = 2 * 60 * 1000;
@@ -69,6 +70,7 @@ export function createDrizzleFeedbackDispatchStore(
         .update(feedback)
         .set({
           dispatchStatus: "sending",
+          dispatchEventId: sql`${FEEDBACK_GENERATION_EVENT_PREFIX} || ':' || ${feedback.sessionId}::text || ':' || (${feedback.dispatchAttempts} + 1)::text`,
           dispatchAttempts: sql`${feedback.dispatchAttempts} + 1`,
           dispatchClaimedAt: now,
           dispatchLastError: null,

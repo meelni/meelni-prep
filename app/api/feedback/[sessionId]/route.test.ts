@@ -133,7 +133,7 @@ describe("/api/feedback/[sessionId]", () => {
         disposition: "failed",
         dispatch: {
           sessionId: SESSION_ID,
-          eventId: `feedback/generate.requested:${SESSION_ID}`,
+          eventId: `feedback/generate.requested:${SESSION_ID}:2`,
           status: "failed",
           attempts: 2,
           claimedAt: new Date("2026-07-09T22:00:00.000Z"),
@@ -167,7 +167,7 @@ describe("/api/feedback/[sessionId]", () => {
         disposition: "sent",
         dispatch: {
           sessionId: SESSION_ID,
-          eventId: `feedback/generate.requested:${SESSION_ID}`,
+          eventId: `feedback/generate.requested:${SESSION_ID}:2`,
           status: "sent",
           attempts: 2,
           claimedAt: new Date("2026-07-09T22:00:00.000Z"),

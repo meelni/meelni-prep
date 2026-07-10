@@ -125,7 +125,7 @@ function completionResult(input: {
 }) {
   const dispatch = {
     sessionId: SESSION_ID,
-    eventId: `feedback/generate.requested:${SESSION_ID}`,
+    eventId: `feedback/generate.requested:${SESSION_ID}:1`,
     status: input.dispatchStatus,
     attempts: 1,
     claimedAt: new Date("2026-07-09T22:00:00.000Z"),

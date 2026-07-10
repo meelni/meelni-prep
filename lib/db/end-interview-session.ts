@@ -9,10 +9,9 @@ import {
 } from "@meelni/core";
 
 import type { SessionValidation } from "@/lib/evaluation/session-validator";
+import { feedbackGenerationEventId } from "./feedback-event-id";
 import { db } from "./index";
 import { feedback, interviewSession } from "./schema";
-
-const FEEDBACK_EVENT_PREFIX = "feedback/generate.requested";
 
 export interface FinalizeInterviewSessionInput {
   sessionId: string;
@@ -39,10 +38,6 @@ export type FinalizeInterviewSessionResult =
     };
 
 export type EndInterviewSessionDatabase = Pick<typeof db, "transaction">;
-
-export function feedbackGenerationEventId(sessionId: string): string {
-  return `${FEEDBACK_EVENT_PREFIX}:${sessionId}`;
-}
 
 export async function finalizeInterviewSession(
   input: FinalizeInterviewSessionInput,
@@ -195,7 +190,7 @@ export async function finalizeInterviewSession(
         completionRecommendations: input.validation.recommendations,
         dispatchStatus: shouldGenerate ? "pending" : "not_required",
         dispatchEventId: shouldGenerate
-          ? feedbackGenerationEventId(input.sessionId)
+          ? feedbackGenerationEventId(input.sessionId, 0)
           : null,
       })
       .onConflictDoNothing({ target: feedback.sessionId })

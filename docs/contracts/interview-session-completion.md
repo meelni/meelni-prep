@@ -46,15 +46,23 @@ The feedback row carries a provider-neutral outbox:
 | Field                 | Meaning                                                   |
 | --------------------- | --------------------------------------------------------- |
 | `dispatch_status`     | `not_required`, `pending`, `sending`, `sent`, or `failed` |
-| `dispatch_event_id`   | Stable identity derived from the session ID               |
+| `dispatch_event_id`   | Stable identity for the currently claimed attempt         |
 | `dispatch_attempts`   | Number of accepted dispatch claims                        |
 | `dispatch_claimed_at` | Lease start for the current sender                        |
 | `dispatched_at`       | Provider acknowledgement time                             |
 | `dispatch_last_error` | Redacted failure summary for recovery and operations      |
 
-Only `pending`, `failed`, or an expired `sending` lease can be claimed. A successful claim changes the row to `sending` atomically. The provider event always carries the stored event ID. Acknowledgement changes it to `sent`; failure changes it to `failed` without changing `feedback.status=pending`.
+Only `pending`, `failed`, or an expired `sending` lease can be claimed. A
+successful claim atomically changes the row to `sending`, increments the
+attempt, and assigns an attempt-scoped provider event ID. Concurrent claimers
+therefore converge on one stored identity, while a later accepted retry gets a
+new identity that provider deduplication cannot suppress. The provider event
+always carries the stored event ID. Acknowledgement changes it to `sent`;
+failure changes it to `failed` without changing `feedback.status=pending`.
 
-A crash between provider acknowledgement and the `sent` write can cause a replay. The same event ID and idempotent feedback worker make that replay converge on the same feedback row.
+A crash between provider acknowledgement and the `sent` write can cause a
+later attempt. Attempt fencing and the idempotent feedback worker make
+concurrent or delayed events converge on the same feedback row.
 
 ## API And Client Behavior
 
@@ -62,13 +70,13 @@ The end response remains HTTP 200 when the session committed but provider dispat
 
 The browser must inspect `response.ok`. On a non-2xx response it keeps the interview room open, keeps the end modal available, shows the user-safe error, and offers retry. It navigates to feedback only after the end command confirms a committed result.
 
-`GET /api/feedback/:sessionId` reports when feedback is pending because dispatch is retryable. Authenticated `POST` on the same route retries only the stored event identity; it never creates a second feedback row or event identity.
+`GET /api/feedback/:sessionId` reports when feedback is pending because dispatch is retryable. Authenticated `POST` on the same route claims a new attempt identity only when the stored state is retryable; it never creates a second feedback row.
 
 ## Acceptance Evidence
 
 - Ten simultaneous end commands converge on one terminal result, one feedback row, and one event ID.
 - At most one non-expired dispatch claim is accepted.
-- Send failure and expired-lease recovery reuse the same event ID.
+- Send failure and expired-lease recovery create one unique event ID per accepted attempt.
 - Terminal-without-feedback repair does not alter terminal lifecycle fields.
 - The worker has no session-status write.
 - Clean and upgrade migrations pass with the outbox checks and indexes present.

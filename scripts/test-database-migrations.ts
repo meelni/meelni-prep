@@ -702,6 +702,9 @@ async function verifyAtomicSessionCompletion(
       staleBefore: new Date(now.getTime() - 119_000),
     });
     assert.equal(retry?.attempts, 2);
+    assert.notEqual(retry?.eventId, eventId);
+    const retryEventId = retry?.eventId;
+    assert.ok(retryEventId);
     assert.equal(
       await stores[0]!.markSent({
         sessionId: SESSION_ATOMIC_END,
@@ -714,7 +717,7 @@ async function verifyAtomicSessionCompletion(
     assert.equal(
       await stores[1]!.markSent({
         sessionId: SESSION_ATOMIC_END,
-        eventId,
+        eventId: retryEventId,
         attempt: 2,
         now: new Date(now.getTime() + 2_000),
       }),
