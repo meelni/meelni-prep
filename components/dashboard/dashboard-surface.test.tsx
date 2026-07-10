@@ -63,7 +63,7 @@ test("dashboard surface does not expose a top-level page header primitive", () =
   assert.doesNotMatch(source, /DASHBOARD_PAGE_DESCRIPTION_CLASS_NAME/);
 });
 
-test("dashboard progress charts use shared placeholder-aware bars", () => {
+test("dashboard progress charts render observed scores without future placeholders", () => {
   const sectionFiles = [
     "components/dashboard/sections/overview.tsx",
     "components/dashboard/sections/analytics.tsx",
@@ -73,10 +73,10 @@ test("dashboard progress charts use shared placeholder-aware bars", () => {
     "utf8"
   );
 
-  assert.match(chartSource, /state === "actual"/);
   assert.match(chartSource, /bg-primary/);
-  assert.match(chartSource, /bg-dashboard-muted\/15/);
-  assert.match(chartSource, /Future progress slot/);
+  assert.match(chartSource, /Observed scores from completed feedback/);
+  assert.doesNotMatch(chartSource, /Future progress slot/);
+  assert.doesNotMatch(chartSource, /placeholder/);
 
   for (const file of sectionFiles) {
     const source = readFileSync(file, "utf8");
@@ -84,4 +84,21 @@ test("dashboard progress charts use shared placeholder-aware bars", () => {
     assert.match(source, /ProgressSignalBars/, file);
     assert.doesNotMatch(source, /progressSignal\.values/, file);
   }
+});
+
+test("dashboard progress copy avoids unsupported superlatives and reliability claims", () => {
+  const overviewSource = readFileSync(
+    "components/dashboard/sections/overview.tsx",
+    "utf8"
+  );
+  const analyticsSource = readFileSync(
+    "components/dashboard/sections/analytics.tsx",
+    "utf8"
+  );
+
+  assert.match(overviewSource, /Suggested next interview/);
+  assert.doesNotMatch(overviewSource, /highest-leverage/i);
+  assert.match(analyticsSource, /compare observed scores/);
+  assert.doesNotMatch(analyticsSource, /reliable trend/i);
+  assert.doesNotMatch(analyticsSource, /bottleneck diagnosis/i);
 });

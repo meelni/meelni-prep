@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createDashboardProgressFixtures } from "@meelni/test-fixtures";
 
 import {
   buildDashboardPracticeSummary,
@@ -38,21 +39,22 @@ test("practice summary recommends the weakest feedback dimension", () => {
     },
   ]);
 
-  assert.equal(summary.progress.score, 62);
-  assert.equal(summary.focusArea.label, "Metrics depth");
+  assert.equal(summary.progress.score, 6.2);
+  assert.equal(summary.progress.state, "single");
+  assert.equal(summary.focusArea?.label, "Metrics depth");
   assert.match(summary.recommendation.title, /metric depth/i);
   assert.equal(summary.recentInterviews[0]?.scoreLabel, "6.2");
-  assert.deepEqual(
-    summary.progressSignal.bars.map((bar) => bar.state),
-    ["actual", "placeholder", "placeholder", "placeholder", "placeholder"]
-  );
+  assert.deepEqual(summary.progressSignal.bars, [{ score: 6.2, value: 62 }]);
 });
 
 test("practice summary gives new users a first-interview path", () => {
   const summary = buildDashboardPracticeSummary([]);
 
   assert.equal(summary.isNewUser, true);
-  assert.equal(summary.progress.score, 0);
+  assert.equal(summary.progress.score, null);
+  assert.equal(summary.progress.state, "empty");
+  assert.equal(summary.focusArea, null);
+  assert.deepEqual(summary.progressSignal.bars, []);
   assert.equal(summary.recommendation.href, "/dashboard/new-interview");
   assert.match(summary.recommendation.title, /first pm mock interview/i);
 });
@@ -123,19 +125,81 @@ test("history summary turns sessions into review rows and repeated patterns", ()
   assert.equal(summary.nextReview.countLabel, "2x");
 });
 
-test("progress bars keep a stable frame with honest placeholders", () => {
-  assert.deepEqual(buildProgressBars([6.2], 5), [
-    { value: 62, state: "actual" },
-    { value: 70, state: "placeholder" },
-    { value: 78, state: "placeholder" },
-    { value: 86, state: "placeholder" },
-    { value: 94, state: "placeholder" },
-  ]);
+test("progress bars contain observed scored interviews only", () => {
+  assert.deepEqual(buildProgressBars([6.2], 5), [{ score: 6.2, value: 62 }]);
 
   assert.deepEqual(
     buildProgressBars([7.1, 6.8, 6.4, 7.3, 8.1, 8.4], 5).map(
-      (bar) => bar.state
+      (bar) => bar.score
     ),
-    ["actual", "actual", "actual", "actual", "actual"]
+    [8.1, 7.3, 6.4, 6.8, 7.1]
   );
+  assert.deepEqual(buildProgressBars([Number.NaN, 11, -1]), []);
+});
+
+test("practice summary exposes honest zero, one, and many scored states", () => {
+  const fixtures = createDashboardProgressFixtures();
+  const zero = buildDashboardPracticeSummary(fixtures.zero);
+  const one = buildDashboardPracticeSummary(fixtures.one);
+  const many = buildDashboardPracticeSummary(fixtures.many);
+
+  assert.deepEqual(
+    [zero.progress.state, one.progress.state, many.progress.state],
+    ["empty", "single", "trend"]
+  );
+  assert.deepEqual(
+    [zero.progress.score, one.progress.score, many.progress.score],
+    [null, 6.2, 6.8]
+  );
+  assert.deepEqual(
+    many.progressSignal.bars.map((bar) => bar.score),
+    [6.2, 6.8, 7.4]
+  );
+  assert.match(many.progress.deltaLabel, /\+1\.2 points across 3 interviews/);
+});
+
+test("recent scored average is rounded to one decimal in the dashboard contract", () => {
+  const { many } = createDashboardProgressFixtures();
+  const scores = ["6.2", "6.2", "6.1"];
+  const sessions = many.map((session, index) => ({
+    ...session,
+    feedback: {
+      ...session.feedback!,
+      overallScore: scores[index]!,
+    },
+  }));
+
+  const summary = buildDashboardPracticeSummary(sessions);
+
+  assert.equal(summary.progress.score, 6.2);
+});
+
+test("only completed, valid scores contribute to progress and weaknesses", () => {
+  const { everyFeedbackStatus } = createDashboardProgressFixtures();
+  const summary = buildDashboardPracticeSummary(everyFeedbackStatus);
+  const history = buildHistorySummary(everyFeedbackStatus);
+
+  assert.equal(summary.progress.scoredInterviewCount, 1);
+  assert.equal(summary.progress.score, 6.2);
+  assert.equal(summary.progressSignal.bars.length, 1);
+  assert.equal(summary.focusArea?.label, "Metrics depth");
+  assert.deepEqual(history.patterns, [
+    {
+      label: "Metrics depth",
+      count: 1,
+      description:
+        "Metrics depth was the lowest scored dimension in 1 completed interview.",
+    },
+  ]);
+
+  const rowsById = new Map(history.rows.map((row) => [row.id, row]));
+  assert.equal(
+    rowsById.get("dashboard-pending")?.focusLabel,
+    "Feedback pending"
+  );
+  assert.equal(rowsById.get("dashboard-processing")?.scoreLabel, "Pending");
+  assert.equal(rowsById.get("dashboard-failed")?.scoreLabel, "Unavailable");
+  assert.equal(rowsById.get("dashboard-skipped")?.scoreLabel, "Skipped");
+  assert.equal(rowsById.get("dashboard-unscored")?.scoreLabel, "Unscored");
+  assert.equal(rowsById.get("dashboard-failed")?.feedbackHref, null);
 });

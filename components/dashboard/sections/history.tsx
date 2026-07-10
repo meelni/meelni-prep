@@ -87,7 +87,11 @@ export const HistorySection = memo(function HistorySection({
               variant="outline"
               className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground bg-transparent"
             >
-              <Link href={summary.nextReview.repeatHref}>Repeat</Link>
+              <Link href={summary.nextReview.repeatHref}>
+                {summary.nextReview.feedbackHref
+                  ? "Repeat interview"
+                  : "Start mock interview"}
+              </Link>
             </Button>
           </div>
         </section>
@@ -149,7 +153,9 @@ export const HistorySection = memo(function HistorySection({
                             Review
                           </Link>
                         ) : (
-                          <span className="text-dashboard-muted">Pending</span>
+                          <span className="text-dashboard-muted">
+                            {row.statusLabel}
+                          </span>
                         )}
                       </span>
                     </div>
@@ -180,6 +186,12 @@ export const HistorySection = memo(function HistorySection({
                   </p>
                 </div>
               ))}
+              {summary.patterns.length === 0 && (
+                <p className="text-dashboard-muted text-sm leading-6">
+                  Patterns appear only after completed feedback includes valid
+                  dimension scores.
+                </p>
+              )}
             </div>
           </aside>
         </div>

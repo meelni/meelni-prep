@@ -10,6 +10,7 @@
 import { db } from "@/lib/db";
 import { interviewSession } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { getCompletedFeedbackScore } from "@meelni/core";
 
 /**
  * Complete user insights data structure (matches userInsights JSONB schema)
@@ -85,6 +86,7 @@ interface SessionWithFeedback {
     [key: string]: unknown;
   };
   feedback: {
+    status: string | null;
     overallScore: string;
     structureScore: number | null;
     clarityScore: number | null;
@@ -119,6 +121,7 @@ export async function aggregateUserInsights(
     with: {
       feedback: {
         columns: {
+          status: true,
           overallScore: true,
           structureScore: true,
           clarityScore: true,
@@ -131,8 +134,10 @@ export async function aggregateUserInsights(
     orderBy: [desc(interviewSession.startedAt)],
   })) as SessionWithFeedback[];
 
-  // Filter to only completed sessions (those with feedback)
-  const completedSessions = sessions.filter((s) => s.feedback !== null);
+  // Progress claims require completed feedback with a valid rubric score.
+  const completedSessions = sessions.filter(
+    (session) => getCompletedFeedbackScore(session.feedback) !== null
+  );
 
   // Handle zero sessions case
   if (completedSessions.length === 0) {
@@ -140,8 +145,8 @@ export async function aggregateUserInsights(
   }
 
   // Extract scores
-  const scores = completedSessions.map((s) =>
-    parseFloat(s.feedback!.overallScore)
+  const scores = completedSessions.map(
+    (session) => getCompletedFeedbackScore(session.feedback)!
   );
 
   // Calculate streak days
