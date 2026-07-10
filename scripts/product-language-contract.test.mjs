@@ -33,6 +33,7 @@ const LEGACY_IDENTIFIER_ALLOWLIST = new Set([
 ]);
 const PROHIBITION_CONTEXT =
   /\b(?:do not|don't|avoid|instead of|without|must not|cannot|unsupported)\b/i;
+const MARKDOWN_LIST_ITEM = /^\s*(?:[-+*]|\d+[.)])\s+/;
 const FORBIDDEN_CANONICAL_CLAIMS = [
   ["fitness positioning", /PM(?:-focused)? interview gym|live voice reps/i],
   ["legacy launch action", /\bNew Rep\b/i],
@@ -85,16 +86,31 @@ async function markdownFiles(directory) {
 
 function findForbiddenCanonicalClaims(source) {
   const violations = [];
+  const lines = source.split("\n");
 
-  for (const [index, line] of source.split("\n").entries()) {
+  for (const [index, line] of lines.entries()) {
     for (const [label, pattern] of FORBIDDEN_CANONICAL_CLAIMS) {
-      if (pattern.test(line) && !PROHIBITION_CONTEXT.test(line)) {
+      if (pattern.test(line) && !hasProhibitionContext(lines, index)) {
         violations.push({ line: index + 1, label });
       }
     }
   }
 
   return violations;
+}
+
+function hasProhibitionContext(lines, index) {
+  if (PROHIBITION_CONTEXT.test(lines[index])) return true;
+  if (!MARKDOWN_LIST_ITEM.test(lines[index])) return false;
+
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const previousLine = lines[cursor];
+    if (!previousLine.trim()) return false;
+    if (PROHIBITION_CONTEXT.test(previousLine)) return true;
+    if (!MARKDOWN_LIST_ITEM.test(previousLine)) return false;
+  }
+
+  return false;
 }
 
 test("active product surfaces use interview-practice language", async () => {
@@ -177,6 +193,18 @@ test("guidance detector rejects canonical claims but permits explicit prohibitio
     ),
     []
   );
+
+  assert.deepEqual(
+    findForbiddenCanonicalClaims(
+      [
+        "Do not use these legacy terms:",
+        "- PM interview gym",
+        "- New Rep",
+        "- interview readiness score",
+      ].join("\n")
+    ),
+    []
+  );
 });
 
 test("superseded guidance is explicit and points to the accepted product contract", async () => {
@@ -201,7 +229,7 @@ test("legacy rep identifiers remain bounded to explicit compatibility files", as
     ).flat(),
   ];
   const violations = [];
-  const legacyIdentifier = /new[-_]rep|NewRep/;
+  const legacyIdentifier = /new[-_]rep|NewRep|newRep/;
 
   for (const file of files) {
     if (LEGACY_IDENTIFIER_ALLOWLIST.has(file)) continue;
