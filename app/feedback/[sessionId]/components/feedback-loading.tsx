@@ -95,7 +95,7 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
           data.error
         );
         setStatus("failed");
-        setRetryMode(null);
+        setRetryMode(data.retryable ? "dispatch" : null);
         setError(data.error || "Feedback generation failed.");
         return;
       }

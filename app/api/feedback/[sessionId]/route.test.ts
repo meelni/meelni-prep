@@ -102,6 +102,23 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
+  it("offers a retry after feedback generation exhausts its attempts", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "failed",
+        statusReason: "provider timeout",
+        dispatchStatus: "sent",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toMatchObject({
+      status: "failed",
+      retryable: true,
+    });
+  });
+
   it("retries the stored event identity without turning dispatch failure into 500", async () => {
     vi.mocked(getSessionById).mockResolvedValue({
       lifecycleState: "completed",
@@ -130,6 +147,40 @@ describe("/api/feedback/[sessionId]", () => {
     await expect(response.json()).resolves.toMatchObject({
       status: "pending",
       dispatch: { status: "failed", retryable: true },
+    });
+  });
+
+  it("returns a queued state after redispatching failed generation", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "completed",
+    } as never);
+    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue({
+      ok: true,
+      completion: {
+        feedback: feedbackRecord({
+          status: "failed",
+          dispatchStatus: "sent",
+        }),
+      },
+      dispatch: {
+        ok: true,
+        disposition: "sent",
+        dispatch: {
+          sessionId: SESSION_ID,
+          eventId: `feedback/generate.requested:${SESSION_ID}`,
+          status: "sent",
+          attempts: 2,
+          claimedAt: new Date("2026-07-09T22:00:00.000Z"),
+          dispatchedAt: new Date("2026-07-09T22:00:01.000Z"),
+        },
+      },
+    } as never);
+
+    const response = await POST(request("POST"), PARAMS);
+
+    await expect(response.json()).resolves.toMatchObject({
+      status: "pending",
+      dispatch: { status: "sent", retryable: false },
     });
   });
 

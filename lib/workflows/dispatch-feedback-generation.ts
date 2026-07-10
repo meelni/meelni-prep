@@ -68,7 +68,7 @@ export async function dispatchFeedbackGenerationWorkflow(
   if (!claimed.eventId) {
     await deps.store.markFailed({
       sessionId: input.sessionId,
-      eventId: "",
+      eventId: null,
       attempt: claimed.attempts,
       errorCode: "missing_event_id",
     });

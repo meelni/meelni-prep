@@ -79,6 +79,32 @@ test("skipped feedback never dispatches", async () => {
   if (result.ok) assert.equal(result.dispatch, null);
 });
 
+test("failed generation can redispatch its stored event identity", async () => {
+  let dispatches = 0;
+  const failed = completion({
+    feedback: feedbackRecord({
+      status: "failed",
+      statusReason: "provider timeout",
+      dispatchStatus: "sent",
+    }),
+  });
+
+  const result = await endInterviewSessionWorkflow(
+    { sessionId: SESSION_ID, userId: USER_ID },
+    createDeps({
+      finalize: async () => failed,
+      dispatch: async () => {
+        dispatches += 1;
+        return sentDispatch();
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(dispatches, 1);
+  if (result.ok) assert.equal(result.dispatch?.disposition, "sent");
+});
+
 test("not-found completion is returned without dispatch", async () => {
   let dispatches = 0;
   const result = await endInterviewSessionWorkflow(

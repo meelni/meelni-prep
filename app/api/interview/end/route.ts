@@ -146,8 +146,12 @@ function isUuid(value: string): boolean {
 async function updateCompletionMotivation(userId: string) {
   try {
     await updateStreak(userId);
+  } catch (error) {
+    console.error("Failed to update completion streak:", error);
+  }
+  try {
     await checkAndAwardAchievements(userId);
   } catch (error) {
-    console.error("Failed to update completion motivation:", error);
+    console.error("Failed to update completion achievements:", error);
   }
 }

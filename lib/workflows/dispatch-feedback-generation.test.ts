@@ -110,6 +110,23 @@ test("a stale sender reports the newer fenced claim instead of sent", async () =
   assert.equal(result.dispatch?.status, "sending");
 });
 
+test("a corrupt claim without an event identity fails immediately", async () => {
+  const store = createMemoryStore({ eventId: null });
+  let sends = 0;
+
+  const result = await dispatchFeedbackGenerationWorkflow(
+    { sessionId: SESSION_ID, userId: "user-1", tier: "full" },
+    createDeps(store, async () => {
+      sends += 1;
+    })
+  );
+
+  assert.equal(result.disposition, "failed");
+  assert.equal(result.dispatch?.eventId, null);
+  assert.equal((await store.get(SESSION_ID))?.status, "failed");
+  assert.equal(sends, 0);
+});
+
 function createDeps(
   store: FeedbackDispatchStore,
   send: DispatchFeedbackGenerationDeps["send"]
