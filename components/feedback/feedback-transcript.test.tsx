@@ -7,6 +7,7 @@ import {
   FeedbackTranscriptSection,
   findTranscriptTurnReference,
   formatTranscriptTimestamp,
+  getEvidenceScrollBehavior,
 } from "./feedback-transcript";
 
 const turns = [
@@ -21,7 +22,20 @@ const turns = [
 
 test("matches evidence by canonical event reference and reports missing references", () => {
   assert.equal(findTranscriptTurnReference(turns, "writer:1")?.id, "row-1");
+  assert.equal(findTranscriptTurnReference(turns, "row-1"), null);
+  assert.equal(
+    findTranscriptTurnReference(
+      [{ ...turns[0], id: "legacy-row", eventId: null }],
+      "legacy-row"
+    ),
+    null
+  );
   assert.equal(findTranscriptTurnReference(turns, "missing"), null);
+});
+
+test("evidence scrolling honors the reduced-motion preference", () => {
+  assert.equal(getEvidenceScrollBehavior(false), "smooth");
+  assert.equal(getEvidenceScrollBehavior(true), "auto");
 });
 
 test("transcript failure state offers an explicit retry action", () => {

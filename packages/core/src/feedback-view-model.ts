@@ -53,7 +53,6 @@ interface CompletedFeedbackBase {
   sessionId: string;
   scores: FeedbackScoreView;
   summary: string;
-  suggestedExercises: string[];
   createdAt: string;
   nextPracticeRecommendation: FeedbackNextPracticeRecommendation | null;
 }
@@ -154,6 +153,16 @@ const DIMENSIONS = new Set<FeedbackDimension>([
   "leadership",
 ]);
 
+const FEEDBACK_READ_LIMITS = {
+  identifier: 256,
+  modelVersion: 256,
+  summary: 4_000,
+  findingText: 2_000,
+  evidenceQuote: 4_000,
+  legacyNote: 4_000,
+  storedPracticeSuggestion: 2_000,
+} as const;
+
 export function presentCompletedFeedback(
   input: PersistedCompletedFeedback
 ): CompletedFeedbackView {
@@ -223,19 +232,32 @@ function parseV2Feedback(input: PersistedCompletedFeedback): FeedbackV2View {
   const strengths = parseV2Items(input.strengths, "strengths");
   const improvements = parseV2Items(input.improvements, "improvements");
   requireUniqueEvidence([...strengths, ...improvements]);
+  // Stored model-authored suggestions remain untrusted and are validated, but
+  // are intentionally excluded from the customer read model until SAV-201.
+  parseStringArray(
+    input.drills,
+    1,
+    3,
+    FEEDBACK_READ_LIMITS.storedPracticeSuggestion
+  );
 
   return {
     kind: "v2",
-    id: requireNonEmptyString(input.id),
-    sessionId: requireNonEmptyString(input.sessionId),
+    id: requireBoundedString(input.id, FEEDBACK_READ_LIMITS.identifier),
+    sessionId: requireBoundedString(
+      input.sessionId,
+      FEEDBACK_READ_LIMITS.identifier
+    ),
     scores,
     strengths,
     improvements,
-    summary: requireNonEmptyString(input.summary),
-    suggestedExercises: parseStringArray(input.drills, 1, 3),
+    summary: requireBoundedString(input.summary, FEEDBACK_READ_LIMITS.summary),
     schemaVersion: FEEDBACK_SCHEMA_VERSION,
     promptVersion: FEEDBACK_PROMPT_VERSION,
-    modelVersion: requireNonEmptyString(input.modelVersion),
+    modelVersion: requireBoundedString(
+      input.modelVersion,
+      FEEDBACK_READ_LIMITS.modelVersion
+    ),
     rubricVersion: FEEDBACK_RUBRIC_VERSION,
     evaluationState,
     createdAt: requireDateString(input.createdAt),
@@ -247,16 +269,29 @@ function parseLegacyFeedback(
   input: PersistedCompletedFeedback
 ): FeedbackLegacyView {
   const scores = parseLegacyScores(input);
+  // Historical suggestions are validated as persisted input but never cross
+  // the customer read boundary.
+  parseStringArray(
+    input.drills,
+    0,
+    5,
+    FEEDBACK_READ_LIMITS.storedPracticeSuggestion
+  );
   return {
     kind: "legacy",
-    id: requireNonEmptyString(input.id),
-    sessionId: requireNonEmptyString(input.sessionId),
+    id: requireBoundedString(input.id, FEEDBACK_READ_LIMITS.identifier),
+    sessionId: requireBoundedString(
+      input.sessionId,
+      FEEDBACK_READ_LIMITS.identifier
+    ),
     scores,
     strengths: parseLegacyItems(input.strengths, "strengths"),
     improvements: parseLegacyItems(input.improvements, "improvements"),
-    summary: requireNonEmptyString(input.summary),
-    suggestedExercises: parseStringArray(input.drills, 0, 5),
-    rubricVersion: requireNonEmptyString(input.rubricVersion),
+    summary: requireBoundedString(input.summary, FEEDBACK_READ_LIMITS.summary),
+    rubricVersion: requireBoundedString(
+      input.rubricVersion,
+      FEEDBACK_READ_LIMITS.identifier
+    ),
     createdAt: requireDateString(input.createdAt),
     nextPracticeRecommendation: null,
   };
@@ -313,7 +348,12 @@ function parseV2Items(value: unknown, path: string): FeedbackV2Item[] {
       throw new Error("dimension is invalid");
     }
     requireExact(item.rubricVersion, FEEDBACK_RUBRIC_VERSION);
-    const transcriptRefs = parseStringArray(item.transcriptRefs, 1, 5);
+    const transcriptRefs = parseStringArray(
+      item.transcriptRefs,
+      1,
+      5,
+      FEEDBACK_READ_LIMITS.identifier
+    );
     if (new Set(transcriptRefs).size !== transcriptRefs.length) {
       throw new Error("duplicate transcript reference");
     }
@@ -327,10 +367,16 @@ function parseV2Items(value: unknown, path: string): FeedbackV2Item[] {
     }
     return {
       dimension: item.dimension as FeedbackDimension,
-      observation: requireNonEmptyString(item.observation),
+      observation: requireBoundedString(
+        item.observation,
+        FEEDBACK_READ_LIMITS.findingText
+      ),
       transcriptRefs,
       evidence,
-      nextStep: requireNonEmptyString(item.nextStep),
+      nextStep: requireBoundedString(
+        item.nextStep,
+        FEEDBACK_READ_LIMITS.findingText
+      ),
       rubricVersion: FEEDBACK_RUBRIC_VERSION,
       confidence: requireConfidence(item.confidence),
     };
@@ -345,10 +391,19 @@ function parseEvidence(value: unknown): FeedbackEvidence[] {
   return value.map((entry) => {
     const record = requireRecord(entry);
     requireExactKeys(record, ["turnRef", "quote"]);
-    const turnRef = requireNonEmptyString(record.turnRef);
+    const turnRef = requireBoundedString(
+      record.turnRef,
+      FEEDBACK_READ_LIMITS.identifier
+    );
     if (seen.has(turnRef)) throw new Error("duplicate evidence reference");
     seen.add(turnRef);
-    return { turnRef, quote: requireNonEmptyString(record.quote) };
+    return {
+      turnRef,
+      quote: requireBoundedString(
+        record.quote,
+        FEEDBACK_READ_LIMITS.evidenceQuote
+      ),
+    };
   });
 }
 
@@ -368,7 +423,9 @@ function parseLegacyItems(value: unknown, path: string): string[] {
     throw new Error(`${path} is invalid`);
   }
   return value.map((entry) => {
-    if (typeof entry === "string") return requireNonEmptyString(entry);
+    if (typeof entry === "string") {
+      return requireBoundedString(entry, FEEDBACK_READ_LIMITS.legacyNote);
+    }
     const record = requireRecord(entry);
     requireExactKeys(record, [
       "dimension",
@@ -384,9 +441,11 @@ function parseLegacyItems(value: unknown, path: string): string[] {
       throw new Error("legacy dimension is invalid");
     }
     for (const optionalText of [record.evidence_quote, record.example]) {
-      if (optionalText !== undefined) requireNonEmptyString(optionalText);
+      if (optionalText !== undefined) {
+        requireBoundedString(optionalText, FEEDBACK_READ_LIMITS.legacyNote);
+      }
     }
-    return requireNonEmptyString(record.text);
+    return requireBoundedString(record.text, FEEDBACK_READ_LIMITS.legacyNote);
   });
 }
 
@@ -420,8 +479,12 @@ function requireExact(value: unknown, expected: string): void {
   if (value !== expected) throw new Error("version mismatch");
 }
 
-function requireNonEmptyString(value: unknown): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
+function requireBoundedString(value: unknown, maximumLength: number): string {
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    value.length > maximumLength
+  ) {
     throw new Error("string is invalid");
   }
   return value;
@@ -430,7 +493,8 @@ function requireNonEmptyString(value: unknown): string {
 function parseStringArray(
   value: unknown,
   minimum: number,
-  maximum: number
+  maximum: number,
+  maximumStringLength: number
 ): string[] {
   if (
     !Array.isArray(value) ||
@@ -439,7 +503,7 @@ function parseStringArray(
   ) {
     throw new Error("string array is invalid");
   }
-  return value.map(requireNonEmptyString);
+  return value.map((entry) => requireBoundedString(entry, maximumStringLength));
 }
 
 function requireScore(value: unknown): number {
@@ -491,7 +555,7 @@ function requireDateString(value: unknown): string {
     if (!Number.isFinite(value.getTime())) throw new Error("date is invalid");
     return value.toISOString();
   }
-  const source = requireNonEmptyString(value);
+  const source = requireBoundedString(value, 32);
   const date = new Date(source);
   if (!Number.isFinite(date.getTime())) throw new Error("date is invalid");
   const canonical = date.toISOString();

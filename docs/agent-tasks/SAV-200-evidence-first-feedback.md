@@ -59,7 +59,11 @@
 - The result and loading URLs use one polling/recovery controller and one
   discriminated lifecycle state model.
 - V2 findings render observation, every evidence excerpt, and one next action;
-  stored model-authored practice suggestions remain hidden until SAV-201.
+  stored model-authored practice suggestions are excluded from the customer/API
+  read model until SAV-201.
+- Transcript navigation resolves only canonical event IDs and programmatic
+  scrolling respects reduced-motion preferences. Explicit per-field persisted
+  string limits fail oversized completed feedback closed.
 - Invalid completed rows emit a redacted environment/release/session integrity
   signal and use `private, no-store` caching.
 - Node 22 validation passed: `npm run test:local`, targeted feedback component
