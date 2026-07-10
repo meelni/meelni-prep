@@ -46,6 +46,7 @@ test("local dev credit response exposes a generous non-persistent balance", () =
     reservedCredits: 0,
     expiringCredits: 0,
     nextCreditExpiresAt: null,
+    trialAvailable: false,
     grants: [],
     localDevBypass: true,
   });

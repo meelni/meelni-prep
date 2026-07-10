@@ -1,6 +1,6 @@
 # Credit Billing Launch Runbook
 
-Updated: 2026-06-29
+Updated: 2026-07-10
 
 This runbook must be completed before enabling the credit-based billing catalog in production.
 
@@ -22,13 +22,25 @@ SELECT COUNT(*) AS credit_grants FROM credit_grant;
 
 2. Classify users:
 
-| Existing state | Launch treatment |
-| --- | --- |
-| No subscription or `free` | No automatic full-interview credits unless separately eligible for the one-time 2-credit trial. |
-| Active `starter` | Grant current-cycle Starter credits only after confirming Stripe price maps to `starter`. |
-| Active `pro` | Grant current-cycle Pro credits only after confirming Stripe price maps to `pro`. |
-| Legacy `premium` or unknown paid price | Pause rollout for those users; manually map, grandfather, or refund before enforcing credits. |
-| `past_due` or `canceled` | Do not backfill new credits; preserve billing state and rely on purchase/reactivation path. |
+| Existing state                         | Launch treatment                                                                                |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| No subscription or `free`              | No automatic full-interview credits unless separately eligible for the one-time 2-credit trial. |
+| Active `starter`                       | Grant current-cycle Starter credits only after confirming Stripe price maps to `starter`.       |
+| Active `pro`                           | Grant current-cycle Pro credits only after confirming Stripe price maps to `pro`.               |
+| Legacy `premium` or unknown paid price | Pause rollout for those users; manually map, grandfather, or refund before enforcing credits.   |
+| `past_due` or `canceled`               | Do not backfill new credits; preserve billing state and rely on purchase/reactivation path.     |
+
+Do not pre-grant the relaunch trial. All authenticated accounts without a
+`trial:<user_id>` grant remain eligible, regardless of account age or paid
+billing history. The first full-interview start request creates that canonical
+2-credit grant with a 7-day expiration and then reserves one credit. Signup,
+login, setup-page visits, and `GET /api/billing/credits` remain read-only so
+they cannot start the trial clock.
+
+A consumed or expired canonical trial is still considered used. On an
+activation retry, the ledger must verify that the existing grant belongs to
+the same user and is a `trial` catalog/source grant, then create the missing
+`trial:<user_id>:grant` transaction if an earlier partial write omitted it.
 
 3. Dry-run proposed backfill in preview:
 
@@ -90,6 +102,14 @@ Stripe manual checks:
 
 Credit enforcement checks:
 
+- Historical and newly created accounts without `trial:<user_id>` see
+  `trialAvailable: true`; repeated credit reads create no grant.
+- The first full-interview start grants 2 trial credits, immediately reserves
+  1, and sets expiration to 7 days from that start attempt.
+- Concurrent or repeated starts leave one canonical trial grant and one grant
+  transaction.
+- Consumed or expired trial grants report `trialAvailable: false` and are never
+  reissued.
 - User with 1 available credit can start any PM round type.
 - User with 0 credits receives `no_credits_remaining`.
 - LiveKit dispatch failure releases the reserved credit.
@@ -99,16 +119,16 @@ Credit enforcement checks:
 
 PostHog server events emitted by the credit ledger:
 
-| Event | Key properties |
-| --- | --- |
-| `billing_credit_granted` | `catalog_id`, `credit_source`, `credits`, `balance_after`, `idempotency_key`, `source_id`, `duplicate` |
-| `billing_credit_reserved` | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id`, `balance_after` |
-| `billing_credit_consumed` | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id` |
-| `billing_credit_released` | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id` |
-| `billing_credit_refunded` | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id` |
-| `billing_credit_expired` | `catalog_id`, `credit_source`, `credits`, `grant_id` |
-| `billing_credit_rollover_created` | `catalog_id`, `credits`, `source_id`, `grant_id`, `duplicate` |
-| `billing_no_credits` | `credits`, `balance_after`, `session_id`, `reason` |
+| Event                             | Key properties                                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `billing_credit_granted`          | `catalog_id`, `credit_source`, `credits`, `balance_after`, `idempotency_key`, `source_id`, `duplicate` |
+| `billing_credit_reserved`         | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id`, `balance_after`              |
+| `billing_credit_consumed`         | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id`                               |
+| `billing_credit_released`         | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id`                               |
+| `billing_credit_refunded`         | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id`                               |
+| `billing_credit_expired`          | `catalog_id`, `credit_source`, `credits`, `grant_id`                                                   |
+| `billing_credit_rollover_created` | `catalog_id`, `credits`, `source_id`, `grant_id`, `duplicate`                                          |
+| `billing_no_credits`              | `credits`, `balance_after`, `session_id`, `reason`                                                     |
 
 Minimum launch dashboard questions:
 

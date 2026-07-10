@@ -67,6 +67,14 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
         allocations: [],
       };
     },
+    ensureTrialGrant: async (userId) => {
+      calls.push("ensureTrialGrant");
+      assert.equal(userId, user.id);
+    },
+    upsertUser: async (input) => {
+      calls.push("upsertUser");
+      assert.equal(input.id, user.id);
+    },
     consumeReservation: async (input) => {
       calls.push("consumeReservation");
       assert.equal(
@@ -136,6 +144,8 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
   }
   assert.deepEqual(calls, [
     "getQuestionById",
+    "upsertUser",
+    "ensureTrialGrant",
     "reserveCredit",
     "createSession",
     "recordQuestionUsage",
@@ -245,6 +255,81 @@ test("startInterviewSessionWorkflow returns no-credit response before session wo
     assert.equal(result.body.upgradeUrl, "/pricing");
   }
   assert.deepEqual(calls, ["reserveCredit"]);
+});
+
+test("startInterviewSessionWorkflow activates the trial after user upsert and immediately before reservation", async () => {
+  const calls: string[] = [];
+
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: { roundType: "product_sense" },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      upsertUser: async () => {
+        calls.push("upsertUser");
+      },
+      ensureTrialGrant: async () => {
+        calls.push("ensureTrialGrant");
+      },
+      reserveCredit: async (input) => {
+        calls.push("reserveCredit");
+        return {
+          reservation: createReservation(input.reservationKey),
+          allocations: [],
+        };
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ["upsertUser", "ensureTrialGrant", "reserveCredit"]);
+});
+
+test("startInterviewSessionWorkflow fails closed before reservation when trial activation fails", async () => {
+  const calls: string[] = [];
+
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: { roundType: "product_sense" },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      upsertUser: async () => {
+        calls.push("upsertUser");
+      },
+      ensureTrialGrant: async () => {
+        calls.push("ensureTrialGrant");
+        throw new Error("ledger unavailable");
+      },
+      reserveCredit: async () => {
+        calls.push("reserveCredit");
+        throw new Error("should not reserve");
+      },
+      createSession: async (input) => {
+        calls.push("createSession");
+        return {
+          id: createProductSenseInterviewFixture().session.id,
+          config: input.config,
+        };
+      },
+    })
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.status, 503);
+    assert.deepEqual(result.body, {
+      error: "service_unavailable",
+      message:
+        "Unable to activate interview credits. Please try again in a moment.",
+    });
+  }
+  assert.deepEqual(calls, ["upsertUser", "ensureTrialGrant"]);
 });
 
 test("startInterviewSessionWorkflow maps retryable LiveKit failures to service unavailable", async () => {
@@ -414,6 +499,7 @@ function createDeps(
     getQuestionById: async () => question,
     getRandomQuestion: async () => question,
     getRandomRecentQuestion: async () => question,
+    ensureTrialGrant: async () => {},
     reserveCredit: async (input) => ({
       reservation: createReservation(input.reservationKey),
       allocations: [],
@@ -450,8 +536,7 @@ function createTransitionResult(
       legacyStatus:
         input.to === "failed" ? ("error" as const) : ("in_progress" as const),
       activatedAt: null,
-      endingAt:
-        input.to === "ending" || input.to === "failed" ? now : null,
+      endingAt: input.to === "ending" || input.to === "failed" ? now : null,
       lastTransitionAt: now,
       endedAt: input.to === "failed" ? now : null,
     },

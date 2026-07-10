@@ -34,6 +34,7 @@ import {
   createLocalDevCreditLedgerService,
   isLocalDevCreditBypassEnabled,
 } from "@/lib/billing/local-dev-bypass";
+import { ensureCanonicalTrialGrant } from "@/lib/billing/trial";
 import {
   transitionInterviewSessionWorkflow,
   type TransitionInterviewSessionInput,
@@ -85,6 +86,7 @@ export interface StartInterviewSessionDeps {
     days: number,
     questionTypes: string[]
   ): Promise<QuestionBankRecord | null>;
+  ensureTrialGrant(userId: string): Promise<unknown>;
   reserveCredit(input: ReserveCreditInput): Promise<ReserveCreditResult>;
   consumeReservation(input: CompleteReservationInput): Promise<unknown>;
   releaseReservation(input: CompleteReservationInput): Promise<unknown>;
@@ -158,6 +160,11 @@ export async function startInterviewSessionWorkflow(
     email: input.user.email!,
     name: input.user.metadata?.name || input.user.metadata?.full_name || null,
   });
+
+  const trialGrant = await ensureTrialGrantForStart(input.user.id, deps);
+  if (!trialGrant.ok) {
+    return trialGrant;
+  }
 
   const roomName = deps.buildRoomName();
   const reservationKey = `interview-start:${input.user.id}:${roomName}`;
@@ -289,11 +296,12 @@ export async function startInterviewSessionWorkflow(
 }
 
 export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
-  const creditLedger = isLocalDevCreditBypassEnabled()
-    ? createLocalDevCreditLedgerService()
-    : createCreditLedgerService({
-        store: createDrizzleCreditLedgerStore(),
-      });
+  const localCreditBypass = isLocalDevCreditBypassEnabled();
+  const persistentCreditLedger = localCreditBypass
+    ? null
+    : createCreditLedgerService({ store: createDrizzleCreditLedgerStore() });
+  const creditLedger =
+    persistentCreditLedger ?? createLocalDevCreditLedgerService();
 
   return {
     buildRoomName: buildInterviewRoomName,
@@ -301,6 +309,12 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
     getQuestionById,
     getRandomQuestion,
     getRandomRecentQuestion,
+    ensureTrialGrant: async (userId) => {
+      if (!persistentCreditLedger) {
+        return;
+      }
+      await ensureCanonicalTrialGrant(persistentCreditLedger, userId);
+    },
     reserveCredit: creditLedger.reserveCredit,
     consumeReservation: creditLedger.consumeReservation,
     releaseReservation: creditLedger.releaseReservation,
@@ -309,6 +323,27 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
     recordQuestionUsage,
     upsertUser,
   };
+}
+
+async function ensureTrialGrantForStart(
+  userId: string,
+  deps: StartInterviewSessionDeps
+): Promise<{ ok: true } | StartInterviewSessionErrorResult> {
+  try {
+    await deps.ensureTrialGrant(userId);
+    return { ok: true };
+  } catch (error) {
+    console.error("Trial credit grant error:", getErrorMessage(error));
+    return {
+      ok: false,
+      status: 503,
+      body: {
+        error: "service_unavailable",
+        message:
+          "Unable to activate interview credits. Please try again in a moment.",
+      },
+    };
+  }
 }
 
 async function requireLifecycleTransition(
