@@ -266,10 +266,18 @@ export async function GET(
 
     // Case 5: Failed - return error with short cache
     if (status === "failed") {
+      const retryable =
+        feedbackRecord.dispatchStatus !== "not_required" &&
+        (feedbackRecord.dispatchStatus === "sent" ||
+          isFeedbackDispatchRetryable({
+            status: feedbackRecord.dispatchStatus,
+            claimedAt: feedbackRecord.dispatchClaimedAt,
+          }));
       return NextResponse.json(
         {
           status: "failed",
           error: feedbackRecord.statusReason || "Feedback generation failed",
+          retryable,
         },
         {
           headers: {
@@ -342,8 +350,12 @@ export async function POST(
     const dispatchStatus =
       result.dispatch?.dispatch?.status ??
       result.completion.feedback.dispatchStatus;
+    const feedbackStatus =
+      result.completion.feedback.status === "failed" && result.dispatch?.ok
+        ? "pending"
+        : result.completion.feedback.status;
     const retryable =
-      result.completion.feedback.status === "pending" &&
+      (feedbackStatus === "pending" || feedbackStatus === "failed") &&
       isFeedbackDispatchRetryable({
         status: dispatchStatus,
         claimedAt:
@@ -352,7 +364,7 @@ export async function POST(
       });
     return NextResponse.json(
       {
-        status: result.completion.feedback.status,
+        status: feedbackStatus,
         feedbackId: result.completion.feedback.id,
         dispatch: { status: dispatchStatus, retryable },
       },

@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
 import { db } from "./index";
 import { feedback } from "./schema";
@@ -29,7 +29,7 @@ export interface FeedbackDispatchStore {
   }): Promise<boolean>;
   markFailed(input: {
     sessionId: string;
-    eventId: string;
+    eventId: string | null;
     attempt: number;
     errorCode: string;
   }): Promise<boolean>;
@@ -76,9 +76,13 @@ export function createDrizzleFeedbackDispatchStore(
         .where(
           and(
             eq(feedback.sessionId, sessionId),
-            eq(feedback.status, "pending"),
+            inArray(feedback.status, ["pending", "failed"]),
             or(
               inArray(feedback.dispatchStatus, ["pending", "failed"]),
+              and(
+                eq(feedback.status, "failed"),
+                eq(feedback.dispatchStatus, "sent")
+              ),
               and(
                 eq(feedback.dispatchStatus, "sending"),
                 lt(feedback.dispatchClaimedAt, staleBefore)
@@ -111,6 +115,10 @@ export function createDrizzleFeedbackDispatchStore(
     },
 
     async markFailed({ sessionId, eventId, attempt, errorCode }) {
+      const eventPredicate =
+        eventId === null
+          ? isNull(feedback.dispatchEventId)
+          : eq(feedback.dispatchEventId, eventId);
       const rows = await database
         .update(feedback)
         .set({
@@ -120,7 +128,7 @@ export function createDrizzleFeedbackDispatchStore(
         .where(
           and(
             eq(feedback.sessionId, sessionId),
-            eq(feedback.dispatchEventId, eventId),
+            eventPredicate,
             eq(feedback.dispatchAttempts, attempt),
             eq(feedback.dispatchStatus, "sending")
           )

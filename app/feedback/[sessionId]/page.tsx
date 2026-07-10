@@ -334,9 +334,17 @@ export default function FeedbackPage() {
           "Something went wrong while generating feedback."
         }
         actions={
-          <Button onClick={() => router.push("/dashboard")}>
-            Go to Dashboard
-          </Button>
+          <div className="flex flex-wrap justify-center gap-3">
+            {feedbackData.retryable && (
+              <Button onClick={retryFeedback} disabled={retrying}>
+                {retrying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Retry Feedback
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => router.push("/dashboard")}>
+              Go to Dashboard
+            </Button>
+          </div>
         }
       />
     );

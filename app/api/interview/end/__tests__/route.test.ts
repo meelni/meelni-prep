@@ -12,6 +12,8 @@ vi.mock("@/lib/workflows/end-interview-session", () => ({
 import { NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { checkAndAwardAchievements } from "@/lib/achievements";
+import { updateStreak } from "@/lib/streaks";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 import { POST } from "../route";
 
@@ -83,6 +85,21 @@ describe("POST /api/interview/end", () => {
     expect(body).toMatchObject({
       error: "session_end_failed",
     });
+  });
+
+  it("checks achievements even when streak persistence fails", async () => {
+    mockAuth({ id: "user-motivation" });
+    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue(
+      completionResult({ dispatchStatus: "sent", dispatchOk: true }) as never
+    );
+    vi.mocked(updateStreak).mockRejectedValueOnce(
+      new Error("streak unavailable")
+    );
+
+    const response = await POST(request({ sessionId: SESSION_ID }));
+
+    expect(response.status).toBe(200);
+    expect(checkAndAwardAchievements).toHaveBeenCalledWith("user-motivation");
   });
 });
 

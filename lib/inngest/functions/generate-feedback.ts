@@ -102,7 +102,7 @@ export const generateFeedback = inngest.createFunction(
             and(
               eq(feedback.sessionId, sessionId),
               eq(feedback.dispatchEventId, eventId),
-              eq(feedback.status, "processing")
+              inArray(feedback.status, ["pending", "processing"])
             )
           );
       });

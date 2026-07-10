@@ -47,7 +47,8 @@ export async function endInterviewSessionWorkflow(
   if (!completion.ok) return completion;
 
   const shouldDispatch =
-    completion.feedback.status === "pending" &&
+    (completion.feedback.status === "pending" ||
+      completion.feedback.status === "failed") &&
     completion.feedback.dispatchStatus !== "not_required";
   let dispatch: DispatchFeedbackGenerationResult | null = null;
   if (shouldDispatch) {
