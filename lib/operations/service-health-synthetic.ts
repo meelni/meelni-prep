@@ -123,7 +123,10 @@ export async function runServiceHealthSynthetic(input: {
     ) {
       return failed("health_endpoint_invalid");
     }
-    if (payload.status === "healthy" && response.ok) {
+    if (!hasMatchingHttpStatus(payload.status, response.status)) {
+      return failed("health_endpoint_invalid");
+    }
+    if (payload.status === "healthy") {
       return {
         synthetic: "meelni_service_health",
         version: 1,
@@ -246,12 +249,20 @@ function isFreshTimestamp(
   if (
     !CANONICAL_UTC_TIMESTAMP.test(value) ||
     !Number.isFinite(timestamp) ||
+    new Date(timestamp).toISOString() !== value ||
     maxReportAgeMs < 0
   ) {
     return false;
   }
   const age = now.getTime() - timestamp;
   return age <= maxReportAgeMs && age >= -MAX_FUTURE_SKEW_MS;
+}
+
+function hasMatchingHttpStatus(
+  status: ServiceHealthStatus,
+  httpStatus: number
+): boolean {
+  return status === "unavailable" ? httpStatus === 503 : httpStatus === 200;
 }
 
 function aggregateCheckStatus(

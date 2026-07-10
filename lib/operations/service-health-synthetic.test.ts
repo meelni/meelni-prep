@@ -21,11 +21,10 @@ test("synthetic passes only a healthy closed health response", async () => {
   });
 });
 
-test("synthetic fails degraded, unavailable, and non-success responses", async () => {
+test("synthetic fails degraded and unavailable contract responses", async () => {
   for (const [status, httpStatus, code] of [
     ["degraded", 200, "health_endpoint_degraded"],
     ["unavailable", 503, "health_endpoint_unavailable"],
-    ["healthy", 503, "health_endpoint_unavailable"],
   ] as const) {
     const result = await runServiceHealthSynthetic({
       url: new URL("https://meelni.example.test/api/health"),
@@ -35,6 +34,25 @@ test("synthetic fails degraded, unavailable, and non-success responses", async (
     });
     assert.equal(result.status, "failed");
     assert.equal(result.code, code);
+  }
+});
+
+test("synthetic rejects every HTTP status and body-status mismatch", async () => {
+  for (const [status, httpStatus] of [
+    ["healthy", 201],
+    ["healthy", 503],
+    ["degraded", 500],
+    ["degraded", 503],
+    ["unavailable", 200],
+    ["unavailable", 500],
+  ] as const) {
+    const result = await runServiceHealthSynthetic({
+      url: new URL("https://meelni.example.test/api/health"),
+      fetcher: async () =>
+        Response.json(report(status), { status: httpStatus }) as never,
+      now: () => new Date("2026-07-10T20:01:00.000Z"),
+    });
+    assert.equal(result.code, "health_endpoint_invalid");
   }
 });
 
@@ -85,6 +103,20 @@ test("synthetic rejects stale, future, and internally inconsistent reports", asy
     });
     assert.equal(result.code, "health_endpoint_invalid");
   }
+});
+
+test("synthetic rejects impossible calendar timestamps that Date.parse normalizes", async () => {
+  const result = await runServiceHealthSynthetic({
+    url: new URL("https://meelni.example.test/api/health"),
+    fetcher: async () =>
+      Response.json({
+        ...report("healthy"),
+        checkedAt: "2026-02-31T20:00:00.000Z",
+      }) as never,
+    now: () => new Date("2026-03-03T20:00:30.000Z"),
+  });
+
+  assert.equal(result.code, "health_endpoint_invalid");
 });
 
 test("synthetic converts transport failures to one safe fixed code", async () => {

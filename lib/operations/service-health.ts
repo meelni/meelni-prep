@@ -53,7 +53,10 @@ export interface ServiceHealthEvidence {
 }
 
 export interface ServiceHealthStore {
-  readEvidence(input: { staleBefore: Date }): Promise<ServiceHealthEvidence>;
+  readEvidence(input: {
+    staleBefore: Date;
+    queryTimeoutMs: number;
+  }): Promise<ServiceHealthEvidence>;
 }
 
 interface ServiceHealthDependencies {
@@ -71,6 +74,7 @@ interface CachedServiceHealthReaderDependencies {
 
 const STALE_AFTER_MS = 10 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 2_000;
+const QUERY_TIMEOUT_HEADROOM_MS = 100;
 
 export async function assessServiceHealth(
   dependencies: ServiceHealthDependencies
@@ -85,8 +89,7 @@ export async function assessServiceHealth(
     LIVEKIT_API_SECRET: dependencies.env.LIVEKIT_API_SECRET,
     LIVEKIT_URL: dependencies.env.LIVEKIT_URL,
     NEXT_PUBLIC_LIVEKIT_URL: dependencies.env.NEXT_PUBLIC_LIVEKIT_URL,
-    LIVEKIT_INTERVIEW_AGENT_NAME:
-      dependencies.env.LIVEKIT_INTERVIEW_AGENT_NAME,
+    LIVEKIT_INTERVIEW_AGENT_NAME: dependencies.env.LIVEKIT_INTERVIEW_AGENT_NAME,
   };
   const liveKitReady =
     getLiveKitEnvironment(liveKitEnv).ok &&
@@ -104,11 +107,13 @@ export async function assessServiceHealth(
 
   let evidence: ServiceHealthEvidence | null = null;
   try {
+    const timeoutMs = normalizeTimeoutMs(dependencies.timeoutMs);
     evidence = await withTimeout(
       dependencies.store.readEvidence({
         staleBefore: new Date(checkedAt.getTime() - STALE_AFTER_MS),
+        queryTimeoutMs: Math.max(1, timeoutMs - QUERY_TIMEOUT_HEADROOM_MS),
       }),
-      dependencies.timeoutMs
+      timeoutMs
     );
     checks.push({
       name: "database",
@@ -198,18 +203,18 @@ function feedbackDispatchCheck(
       code: "feedback_dispatch_config_missing",
     };
   }
-  if (evidence.feedbackDispatchStale) {
-    return {
-      name: "feedback_dispatch",
-      status: "degraded",
-      code: "feedback_dispatch_stale",
-    };
-  }
   if (evidence.feedbackDispatchFailed) {
     return {
       name: "feedback_dispatch",
       status: "degraded",
       code: "feedback_dispatch_failed",
+    };
+  }
+  if (evidence.feedbackDispatchStale) {
+    return {
+      name: "feedback_dispatch",
+      status: "degraded",
+      code: "feedback_dispatch_stale",
     };
   }
   return {
@@ -237,18 +242,18 @@ function stripeWebhookCheck(
       code: "stripe_webhook_config_missing",
     };
   }
-  if (evidence.stripeWebhookStale) {
-    return {
-      name: "stripe_webhook",
-      status: "degraded",
-      code: "stripe_webhook_stale",
-    };
-  }
   if (evidence.stripeWebhookFailed) {
     return {
       name: "stripe_webhook",
       status: "degraded",
       code: "stripe_webhook_failed",
+    };
+  }
+  if (evidence.stripeWebhookStale) {
+    return {
+      name: "stripe_webhook",
+      status: "degraded",
+      code: "stripe_webhook_stale",
     };
   }
   return {
@@ -297,4 +302,10 @@ async function withTimeout<T>(
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+}
+
+function normalizeTimeoutMs(value: number): number {
+  return Number.isFinite(value) && value > 0
+    ? Math.max(1, Math.floor(value))
+    : DEFAULT_TIMEOUT_MS;
 }

@@ -9,11 +9,12 @@ import { createServiceHealthStore } from "@/lib/operations/service-health-store"
 export const dynamic = "force-dynamic";
 export const maxDuration = 5;
 
+const healthStore = createServiceHealthStore();
 const readServiceHealth = createCachedServiceHealthReader({
   assess: () =>
     assessServiceHealth(
       createDefaultServiceHealthDependencies({
-        store: createServiceHealthStore(),
+        store: healthStore,
       })
     ),
   now: Date.now,
