@@ -6,6 +6,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { Button } from "@/components/ui/button";
 import { QuestionSignInModal } from "./question-signin-modal";
 
 const mocks = vi.hoisted(() => ({
@@ -29,9 +30,9 @@ function ModalHarness() {
 
   return (
     <>
-      <button ref={triggerRef} type="button" onClick={() => setOpen(true)}>
+      <Button ref={triggerRef} type="button" onClick={() => setOpen(true)}>
         Choose question
-      </button>
+      </Button>
       <QuestionSignInModal
         isOpen={open}
         onClose={() => setOpen(false)}
