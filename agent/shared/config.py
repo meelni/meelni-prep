@@ -8,6 +8,7 @@ from shared.runtime_config import (
     get_tts_config,
     normalize_runtime_config,
 )
+from shared.session_deadline import normalize_deadline_at
 
 logger = logging.getLogger("agent-config")
 
@@ -79,6 +80,7 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         return {
             "contract_version": INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
             "session_id": session_id,
+            "deadline_at": normalize_deadline_at(data.get("deadline_at")),
             "round_type": round_type,
             "mode": data.get("mode") if data.get("mode") in {"text", "voice_video"} else None,
             "question": question,
