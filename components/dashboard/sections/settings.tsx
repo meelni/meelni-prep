@@ -7,11 +7,21 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Loader2,
+  Trash2,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/app/providers/auth-provider";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -40,7 +50,9 @@ import {
 } from "@/lib/dashboard/settings-contracts";
 import {
   requestAccountDeletion,
+  requestAccountExport,
   shouldShowSettingsLoading,
+  type AccountDeletionResult,
   type SettingsLoadState,
 } from "@/lib/dashboard/settings-actions";
 import { cn } from "@/lib/utils";
@@ -63,6 +75,7 @@ type LoadState = SettingsLoadState;
 
 export const SettingsSection = memo(function SettingsSection() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, session, signOut } = useAuth();
   const fallbackName =
     user?.user_metadata?.full_name || user?.email?.split("@")[0] || "";
@@ -78,6 +91,16 @@ export const SettingsSection = memo(function SettingsSection() {
     null
   );
   const [credits, setCredits] = useState<CreditSummary | null>(null);
+
+  useEffect(() => {
+    const requestedCategory = searchParams.get("section");
+    if (
+      requestedCategory &&
+      SETTINGS_CATEGORY_ORDER.includes(requestedCategory as SettingsCategoryId)
+    ) {
+      setActiveCategory(requestedCategory as SettingsCategoryId);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -307,6 +330,10 @@ export const SettingsSection = memo(function SettingsSection() {
               onChange={updateSettings}
               onSave={saveSettings}
               saveState={saveState}
+              onReauthenticate={async (path) => {
+                await signOut();
+                window.location.href = path;
+              }}
             />
           )}
         </section>
@@ -656,36 +683,57 @@ function DataPrivacyPane({
   onChange,
   onSave,
   saveState,
-}: SettingsPaneProps) {
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  onReauthenticate,
+}: SettingsPaneProps & {
+  onReauthenticate: (path: string) => Promise<void>;
+}) {
+  const [exportState, setExportState] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  const [deleteState, setDeleteState] = useState<
+    AccountDeletionResult["state"] | "idle" | "submitting"
+  >("idle");
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
+  const [reauthenticateAt, setReauthenticateAt] = useState<string | null>(null);
+
+  const handleAccountExport = async () => {
+    setExportState("loading");
+    setExportMessage(null);
+    const result = await requestAccountExport();
+    if (!result.ok) {
+      setExportState("error");
+      setExportMessage(result.error);
+      return;
+    }
+
+    const url = URL.createObjectURL(result.file);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = result.filename;
+    anchor.hidden = true;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setExportState("success");
+    setExportMessage(
+      "Your JSON export was prepared. It does not change or delete account data."
+    );
+  };
 
   const handleDeleteAccount = async () => {
-    setDeleteError(null);
-
-    const confirmed = window.confirm(
-      "Delete your account and all interview data? This cannot be undone."
-    );
-
-    if (!confirmed) {
-      return;
+    setDeleteState("submitting");
+    setDeleteMessage(null);
+    setReauthenticateAt(null);
+    const result = await requestAccountDeletion(confirmation);
+    setDeleteState(result.state);
+    setDeleteMessage(result.message);
+    if (result.state === "reauthentication_required") {
+      setReauthenticateAt(result.reauthenticateAt);
     }
-
-    const userInput = window.prompt("Type DELETE to confirm account deletion.");
-
-    if (userInput !== "DELETE") {
-      return;
-    }
-
-    const result = await requestAccountDeletion();
-
-    if (!result.ok) {
-      setDeleteError(
-        result.error ?? "We could not delete the account. Please try again."
-      );
-      return;
-    }
-
-    window.location.href = "/";
   };
 
   return (
@@ -709,29 +757,179 @@ function DataPrivacyPane({
         }
       />
 
-      {deleteError && (
+      {exportMessage && (
         <InlineNotice
-          title="Deletion failed"
-          description={deleteError}
-          tone="warning"
+          title={
+            exportState === "success" ? "Export prepared" : "Export failed"
+          }
+          description={exportMessage}
+          tone={exportState === "success" ? "success" : "warning"}
         />
       )}
 
       <SettingsGroup label="Account data">
         <SettingsActionRow
           title="Data export"
-          description="Automated export is not available in this first pass."
-          actionLabel="Future"
-          disabled
+          description="Download a versioned JSON copy of your profile, PM interview practice, feedback, preferences, and user-facing billing history. Provider secrets and raw operational payloads are excluded."
+          actionLabel={exportState === "loading" ? "Preparing" : "Download"}
+          onClick={handleAccountExport}
+          disabled={exportState === "loading"}
         />
         <SettingsActionRow
           title="Delete account"
-          description="Permanently delete account data, transcripts, billing records, and progress."
+          description="Request account cleanup. You will be signed out while Meelni completes retryable authentication, billing-resource, and application-data steps."
           actionLabel="Delete"
-          onClick={handleDeleteAccount}
+          onClick={() => {
+            setConfirmation("");
+            setDeleteState("idle");
+            setDeleteMessage(null);
+            setDeleteDialogOpen(true);
+          }}
           destructive
         />
       </SettingsGroup>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground sm:max-w-xl">
+          <DialogHeader>
+            <div className="bg-destructive/10 text-destructive mb-3 flex h-10 w-10 items-center justify-center rounded-full">
+              <Trash2 className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <DialogTitle>Request account deletion</DialogTitle>
+            <DialogDescription className="text-dashboard-muted leading-6">
+              This stores a durable deletion request, signs you out, and starts
+              retryable cleanup for your authentication account, captured
+              billing-provider resources, interviews, transcripts, feedback,
+              settings, and progress. The request cannot be undone after it is
+              accepted. Limited security, deletion-audit, backup, and legally
+              required billing records may be retained; Meelni does not claim a
+              fixed deletion period for those records yet.
+            </DialogDescription>
+          </DialogHeader>
+
+          {(deleteState === "requested" ||
+            deleteState === "retry_scheduled") && (
+            <InlineNotice
+              title={
+                deleteState === "requested"
+                  ? "Deletion request saved"
+                  : "Deletion request saved; cleanup delayed"
+              }
+              description={
+                deleteMessage ??
+                "Your request is durable and cleanup will continue in the background."
+              }
+              tone={deleteState === "requested" ? "success" : "warning"}
+            />
+          )}
+
+          {deleteState === "reauthentication_required" && (
+            <InlineNotice
+              title="Sign in again"
+              description={
+                deleteMessage ??
+                "For your security, account deletion requires a recent sign-in."
+              }
+              tone="warning"
+            />
+          )}
+
+          {deleteState === "error" && (
+            <InlineNotice
+              title="Deletion request not saved"
+              description={
+                deleteMessage ??
+                "We could not save the request. Review your connection and try again."
+              }
+              tone="warning"
+            />
+          )}
+
+          {deleteState !== "requested" &&
+            deleteState !== "retry_scheduled" &&
+            deleteState !== "reauthentication_required" && (
+              <div className="space-y-2">
+                <Label htmlFor="delete-confirmation">
+                  Type DELETE to confirm
+                </Label>
+                <Input
+                  id="delete-confirmation"
+                  autoComplete="off"
+                  value={confirmation}
+                  onChange={(event) => setConfirmation(event.target.value)}
+                  placeholder="DELETE"
+                  disabled={deleteState === "submitting"}
+                  className="border-dashboard-panel-border bg-transparent"
+                />
+              </div>
+            )}
+
+          <DialogFooter className="gap-2 sm:space-x-0">
+            {deleteState === "requested" ||
+            deleteState === "retry_scheduled" ? (
+              <Button
+                type="button"
+                onClick={() => (window.location.href = "/")}
+              >
+                Return to home
+              </Button>
+            ) : deleteState === "reauthentication_required" ? (
+              <>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button
+                  type="button"
+                  onClick={async () => {
+                    if (!reauthenticateAt) return;
+                    try {
+                      await onReauthenticate(reauthenticateAt);
+                    } catch {
+                      setDeleteState("error");
+                      setDeleteMessage(
+                        "We could not sign you out for reauthentication. Please try again."
+                      );
+                    }
+                  }}
+                >
+                  Sign in again
+                </Button>
+              </>
+            ) : (
+              <>
+                <DialogClose asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={deleteState === "submitting"}
+                  >
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleDeleteAccount}
+                  disabled={
+                    confirmation !== "DELETE" || deleteState === "submitting"
+                  }
+                  className="gap-2"
+                >
+                  {deleteState === "submitting" && (
+                    <Loader2
+                      className="h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
+                  )}
+                  Request deletion
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PaneShell>
   );
 }
@@ -996,19 +1194,23 @@ function InlineNotice({
 }: {
   title: string;
   description: string;
-  tone?: "default" | "warning";
+  tone?: "default" | "warning" | "success";
 }) {
+  const NoticeIcon = tone === "success" ? CheckCircle2 : AlertTriangle;
   return (
     <div
       className={cn(
         "border-dashboard-panel-border bg-dashboard-muted/10 mb-6 flex gap-3 rounded-lg border p-4",
-        tone === "warning" && "border-warning/30 bg-warning/10"
+        tone === "warning" && "border-warning/30 bg-warning/10",
+        tone === "success" && "border-success/30 bg-success/10"
       )}
     >
-      <AlertTriangle
+      <NoticeIcon
         className={cn(
           "mt-0.5 h-4 w-4 shrink-0",
-          tone === "warning" ? "text-warning" : "text-dashboard-muted"
+          tone === "warning" && "text-warning",
+          tone === "success" && "text-success",
+          tone === "default" && "text-dashboard-muted"
         )}
         aria-hidden="true"
       />
