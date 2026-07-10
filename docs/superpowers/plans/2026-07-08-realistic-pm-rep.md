@@ -1,5 +1,11 @@
 # Realistic PM Rep Implementation Plan
 
+> **Superseded on 2026-07-09. Do not execute.** This plan is retained as
+> historical implementation evidence and uses pre-positioning terminology.
+> Follow the accepted product contract in [`.claude/PRD.md`](../../../.claude/PRD.md)
+> and the [Live PM Interview Practice Positioning decision](../../decisions/2026-07-09-live-pm-interview-practice-positioning.md)
+> for current language, routes, analytics, and product claims.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Complete SAV-141 so candidates can launch one credible PM practice rep from the dashboard and enter a focused live interview room with opt-in hints.
