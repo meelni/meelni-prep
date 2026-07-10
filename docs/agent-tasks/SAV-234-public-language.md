@@ -61,6 +61,13 @@
   the language guard strips only identifier syntax and still rejects the same
   words in display strings.
 - The guard scans active TS/TSX surfaces, company/blog copy sources, public
-  Markdown/OpenAPI documents, and canonical product-strategy guidance.
+  Markdown/OpenAPI documents, architecture/operations guidance, and all
+  canonical Meelni skills.
 - Canonical `.agents/skills/meelni-product-strategy` sources use focused-practice
   vocabulary; Codex and Claude mirrors remain symlinks.
+- Feedback and vertical-slice skills now instruct agents to present practice
+  exercises while preserving `drills` only as an explicit compatibility key.
+- Unsupported feedback timing covers real-time, instant, and immediate claims;
+  the setup modal now promises feedback only after the practice finishes.
+- Both edited skills pass the canonical skill validator, and the product-language
+  contract passes all 11 cases.
