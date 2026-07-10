@@ -84,3 +84,56 @@ function validateWith(overrides) {
 function databaseUrl(ref) {
   return `postgresql://postgres.${ref}:secret@aws-0-us-west-1.pooler.supabase.com:5432/postgres`;
 }
+
+const requiredEnv = {
+  DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/meelni",
+  NEXT_PUBLIC_SUPABASE_URL: "https://testref.supabase.co",
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJtest-anon-key",
+  LIVEKIT_API_KEY: "test-livekit-key",
+  LIVEKIT_API_SECRET: "test-livekit-secret",
+  NEXT_PUBLIC_LIVEKIT_URL: "wss://test.livekit.cloud",
+  OPENAI_API_KEY: "sk-test-only-openai-key",
+};
+
+test("demo abuse secret is optional outside Production while the gate is off", () => {
+  const result = validate({ VERCEL_ENV: "preview" });
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Optional variable not set: DEMO_ABUSE_HMAC_SECRET/);
+});
+
+test("Production requires a valid demo abuse secret", () => {
+  const missing = validate({
+    VERCEL_ENV: "production",
+    INNGEST_EVENT_KEY: "test-event-key",
+    INNGEST_SIGNING_KEY: "test-signing-key",
+  });
+
+  assert.equal(missing.status, 1);
+  assert.match(missing.stdout, /Missing required variable: DEMO_ABUSE_HMAC_SECRET/);
+
+  const configured = validate({
+    VERCEL_ENV: "production",
+    INNGEST_EVENT_KEY: "test-event-key",
+    INNGEST_SIGNING_KEY: "test-signing-key",
+    DEMO_ABUSE_HMAC_SECRET: "A".repeat(43),
+  });
+
+  assert.equal(configured.status, 0, configured.stdout + configured.stderr);
+});
+
+function validate(overrides) {
+  return spawnSync(
+    process.execPath,
+    ["--import", "tsx", "scripts/validate-env.ts"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH,
+        ...requiredEnv,
+        ...overrides,
+      },
+    }
+  );
+}
