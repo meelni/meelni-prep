@@ -6,12 +6,14 @@ import { submitContactRequest } from "./submit-contact-request";
 
 const input = {
   idempotencyKey: "11111111-1111-4111-8111-111111111111",
+  userId: null,
   name: "Taylor",
   email: "taylor@example.invalid",
   reason: "support" as const,
   subject: "Account question",
   message: "I need help with my account settings.",
   rateLimitIdentities: {
+    attempt: "d".repeat(64),
     client: "a".repeat(64),
     email: "b".repeat(64),
     global: "c".repeat(64),

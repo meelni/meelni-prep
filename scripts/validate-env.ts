@@ -5,6 +5,7 @@
 
 import { isPlaceholderEnvValue } from "./local-env.mjs";
 import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-guard.mjs";
+import { isValidServerSecret } from "../lib/security/server-secret";
 
 interface EnvVarConfig {
   name: string;
@@ -191,10 +192,7 @@ function validateEnvironment(): ValidationResult {
   // Additional security checks
   const productionChecks = process.env.NODE_ENV === "production";
   if (productionChecks) {
-    if (
-      !process.env.CONTACT_RATE_LIMIT_HMAC_SECRET ||
-      process.env.CONTACT_RATE_LIMIT_HMAC_SECRET.length < 32
-    ) {
+    if (!isValidServerSecret(process.env.CONTACT_RATE_LIMIT_HMAC_SECRET)) {
       errors.push(
         "❌ CONTACT_RATE_LIMIT_HMAC_SECRET is required and must be at least 32 characters in production"
       );

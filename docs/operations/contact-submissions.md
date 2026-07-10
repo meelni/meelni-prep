@@ -8,10 +8,11 @@ Status: local implementation and rehearsal only; no Preview/Production mutation 
 2. Have Product/Legal accept a contact-content retention and deletion policy. SAV-182 does not invent one.
 3. Generate an independent, server-only `CONTACT_RATE_LIMIT_HMAC_SECRET` of at least 32 characters in each target environment. Do not reuse a provider key or expose it through `NEXT_PUBLIC_*`.
 4. Confirm Vercel is the direct trusted edge. Vercel documents `x-vercel-forwarded-for` as equivalent to its overwritten, spoofing-resistant `x-forwarded-for`; a non-Vercel production request fails closed. See [Vercel request headers](https://vercel.com/docs/headers/request-headers).
-5. Apply the migration only through the guarded database workflow after backup/preflight/rehearsal. Do not use `db:push`.
-6. Verify the registered hourly Inngest cleanup runs and alert when it reports `backlogLikely: true`.
-7. Assign a support owner and test the audited queue/read/claim/resolve procedure below.
-8. Preserve direct email fallbacks until target-environment storage, triage, cleanup, and monitoring evidence is accepted.
+5. Approve and verify a trusted-edge WAF/bot-control rule for distributed abuse. The database attempt budget covers every request but is not a botnet defense.
+6. Apply the migration only through the guarded database workflow after backup/preflight/rehearsal. Do not use `db:push`.
+7. Verify the registered hourly Inngest cleanup runs and alert when it reports `backlogLikely: true`.
+8. Assign a support owner and test the audited queue/read/claim/resolve procedure below.
+9. Preserve direct email fallbacks until target-environment storage, triage, cleanup, and monitoring evidence is accepted.
 
 ## Migration convergence
 
@@ -19,30 +20,27 @@ This independent branch generates one complete contact migration as `0008_durabl
 
 ## Least-privilege triage
 
-Use an approved interactive database session with command history and session recording disabled. Never run these reads in CI, paste results into Linear, or redirect output to files. Use an opaque internal actor reference such as `support-oncall-17`, never an email address.
+Use an approved, individually attributable database login with command history and session recording disabled. Never run these reads in CI, paste results into Linear, or redirect output to files. Shared database credentials do not satisfy the audit requirement.
 
 ```sql
 BEGIN;
 SET LOCAL ROLE service_role;
 SELECT * FROM public.list_contact_submissions(50);
 SELECT * FROM public.read_contact_submission(
-  'receipt-uuid-here'::uuid,
-  'support-oncall-17'
+  'receipt-uuid-here'::uuid
 );
 SELECT public.set_contact_submission_triage_state(
   'receipt-uuid-here'::uuid,
-  'claimed',
-  'support-oncall-17'
+  'claimed'
 );
 SELECT public.set_contact_submission_triage_state(
   'receipt-uuid-here'::uuid,
-  'resolved',
-  'support-oncall-17'
+  'resolved'
 );
 COMMIT;
 ```
 
-Queue listing is PII-free. Exact-receipt read writes an append-only audit row. Claim and resolve each write an audit row. The service role has execute access to these functions but no direct select/update access to contact or audit tables. Do not use database-owner access for ordinary triage.
+Queue listing is PII-free. Exact-receipt read writes an append-only audit row. Claim and resolve each write an audit row. PostgreSQL derives a pseudonymous audit fingerprint from the authenticated `session_user`; callers cannot self-assert it, and the operator roster remains outside customer-data logs. The service role has execute access to these functions but no direct select/update access to contact or audit tables. Do not use database-owner access for ordinary triage.
 
 ## Limiter cleanup
 

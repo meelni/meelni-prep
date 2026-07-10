@@ -11,8 +11,8 @@ The `account-deletion` Inngest function performs these idempotent stages:
    mapped customers;
 4. redact matching Stripe webhook payloads and errors while preserving event
    IDs, types, statuses, attempts, and timestamps;
-5. remove application data in a database transaction while preserving the
-   tombstone;
+5. remove application data and authenticated same-email support requests in a
+   database transaction while preserving the tombstone;
 6. clear raw provider IDs and mark the tombstone completed.
 
 Failed work is marked with a stable error category and retried. The
@@ -35,6 +35,8 @@ failed, or processing records stale for at least fifteen minutes.
   pages and API calls.
 - Confirm the Inngest run reaches completed and the Auth user is absent.
 - Confirm application rows are removed while the tombstone remains.
+- Confirm only support requests linked by the authenticated matching-email path
+  are removed; never delete unlinked requests by email text alone.
 - Simulate a provider failure and verify the record becomes failed and is
   requeued by recovery without duplicate billing or completion side effects.
 - Confirm matching Stripe event payload/error fields are redacted and late

@@ -11,6 +11,9 @@ const { createContactRateLimitIdentities, submitContactRequest } = vi.hoisted(
 vi.mock("@/lib/db/contact-submissions", () => ({
   createDrizzleContactSubmissionStore: () => ({}),
 }));
+vi.mock("@/lib/contact/authenticated-submitter", () => ({
+  resolveAuthenticatedContactUserId: () => null,
+}));
 vi.mock("@/lib/security/contact-rate-limit-identity", () => ({
   createContactRateLimitIdentities,
 }));
@@ -33,6 +36,7 @@ describe("POST /api/contact", () => {
     submitContactRequest.mockReset();
     createContactRateLimitIdentities.mockReset();
     createContactRateLimitIdentities.mockReturnValue({
+      attempt: "d".repeat(64),
       client: "a".repeat(64),
       email: "b".repeat(64),
       global: "c".repeat(64),

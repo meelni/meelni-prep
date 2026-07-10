@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  createContactRateLimitIdentities,
-  isValidContactRateLimitSecret,
-} from "./contact-rate-limit-identity";
+import { createContactRateLimitIdentities } from "./contact-rate-limit-identity";
 
 const secret = "a-dedicated-contact-secret-with-32-chars";
 
@@ -33,6 +30,7 @@ test("derives stable opaque identities from Vercel's trusted client header", () 
   assert.deepEqual(first, second);
   assert.match(first.client, /^[0-9a-f]{64}$/);
   assert.match(first.email, /^[0-9a-f]{64}$/);
+  assert.notEqual(first.attempt, first.client);
   assert.notEqual(first.client, first.email);
   assert.equal(JSON.stringify(first).includes("203.0.113.7"), false);
   assert.equal(JSON.stringify(first).includes("person@example.invalid"), false);
@@ -70,14 +68,5 @@ test("accepts only a valid local forwarding address outside production", () => {
         }
       ),
     /contact_trusted_client_address_unavailable/
-  );
-});
-
-test("rejects low-diversity and placeholder HMAC secrets", () => {
-  assert.equal(isValidContactRateLimitSecret(secret), true);
-  assert.equal(isValidContactRateLimitSecret("a".repeat(64)), false);
-  assert.equal(
-    isValidContactRateLimitSecret("change-me-contact-secret-1234567890"),
-    false
   );
 });

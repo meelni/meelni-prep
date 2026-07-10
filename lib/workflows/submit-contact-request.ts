@@ -2,7 +2,9 @@ import type { ContactSubmissionInput } from "@/lib/contact/contracts";
 
 export interface ContactSubmissionStoreInput extends ContactSubmissionInput {
   idempotencyKey: string;
+  userId: string | null;
   rateLimitIdentities: {
+    attempt: string;
     client: string;
     email: string;
     global: string;
