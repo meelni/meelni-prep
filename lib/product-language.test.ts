@@ -17,6 +17,21 @@ test("model-generated recommendations cannot expose fitness vocabulary", () => {
   );
 });
 
+test("recommendation normalization preserves legitimate PM-domain words", () => {
+  assert.deepEqual(
+    normalizePracticeRecommendations([
+      "Ask the sales rep which objections appear most often.",
+      "Interview support reps before prioritizing the workflow.",
+      "Drill into why field reps abandon the form.",
+    ]),
+    [
+      "Ask the sales rep which objections appear most often.",
+      "Interview support reps before prioritizing the workflow.",
+      "Drill into why field reps abandon the form.",
+    ]
+  );
+});
+
 test("recommendation normalization rejects malformed model output", () => {
   assert.deepEqual(
     normalizePracticeRecommendations(["  Focus on trade-offs.  ", null, 42, ""]),

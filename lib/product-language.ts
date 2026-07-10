@@ -54,12 +54,20 @@ export const PRODUCT_LANGUAGE_GUARDRAILS = {
 const FOCUS_PRACTICE_REPLACEMENTS = [
   [/\bgyms\b/gi, "practice spaces"],
   [/\bgym\b/gi, "practice"],
-  [/\breps\b/gi, "practice attempts"],
-  [/\brep\b/gi, "practice attempt"],
   [/\bworkouts\b/gi, "practice plans"],
   [/\bworkout\b/gi, "practice plan"],
-  [/\bdrills\b/gi, "exercises"],
-  [/\bdrill\b/gi, "exercise"],
+  [
+    /\b(\d+|one|two|three|four|five|several|some|more)\s+reps\b/gi,
+    "$1 practice attempts",
+  ],
+  [/\b(?:do|complete|repeat|run)\s+(?:some\s+)?reps\b/gi, "practice repeatedly"],
+  [/\b(practice|interview|answer|response)\s+reps\b/gi, "$1 attempts"],
+  [/\b(practice|interview|answer|response)\s+rep\b/gi, "$1 attempt"],
+  [
+    /\b(a|an|another|this|that|the|targeted|practice)\s+drill\b/gi,
+    "$1 exercise",
+  ],
+  [/\b(practice|targeted)\s+drills\b/gi, "$1 exercises"],
 ] as const;
 
 /**
