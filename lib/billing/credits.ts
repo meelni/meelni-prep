@@ -186,7 +186,7 @@ export interface CreditTerminalSettlementEvent {
 
 export type CreditTerminalSettlementTracker = (
   event: CreditTerminalSettlementEvent
-) => void;
+) => void | Promise<void>;
 
 export interface GrantCreditsInput {
   userId: string;
@@ -1899,7 +1899,7 @@ async function completeReservation({
 
   if (!outcome.duplicate) {
     try {
-      trackTerminalSettlement({
+      const tracking = trackTerminalSettlement({
         transactionType,
         userId: outcome.reservation.userId,
         catalogId: outcome.firstGrant?.catalogId,
@@ -1910,6 +1910,11 @@ async function completeReservation({
         reservationId: outcome.reservation.id,
         grantId: outcome.firstGrant?.id,
       });
+      if (tracking) {
+        void tracking.catch(() => {
+          console.error("billing_terminal_settlement_analytics_failed");
+        });
+      }
     } catch {
       console.error("billing_terminal_settlement_analytics_failed");
     }
