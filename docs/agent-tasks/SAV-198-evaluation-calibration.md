@@ -1,0 +1,47 @@
+# SAV-198 Evaluation Calibration
+
+## Intent
+
+- User request: prove PM feedback quality against an adjudicated gold set before relaunch.
+- Product/user outcome: feedback evidence, completion state, score agreement, and repeated-run stability have an honest launch gate.
+- Why now: SAV-196 made transcript evidence fail closed and SAV-197 made generation retry-safe; neither proves live model quality.
+
+## Slice
+
+- Primary slice: feedback and evaluation.
+- Secondary slices: reusable fixtures and operator tooling.
+- Relevant skills: `meelni-feedback-evaluation`, `meelni-vertical-slice-playbooks`, `meelni-engineering-memory`, `meelni-pr-prep`.
+
+## Linear Tracking
+
+- Project: Meelni.
+- Parent slice issue: SAV-168.
+- Child deliverable issue: SAV-198.
+- Current Linear state: In Progress.
+
+## Scope
+
+- In scope: at least 40 synthetic PM transcripts, adjudicated completion states, exact evidence anchors, dimension score bands, a repeatable workflow-backed calibration harness, machine-readable reports, and operator docs.
+- Out of scope: customer transcripts, remote database writes, paid provider calls without explicit authorization, provider/model changes, and launch-readiness claims from deterministic fixtures.
+- Assumptions: the SAV-196 canonical transcript validator and SAV-197 generation workflow remain the production boundaries under test.
+
+## Technical Plan
+
+- Fixture files: `packages/test-fixtures/src/evaluation-calibration.ts` and behavior tests.
+- Workflow files: `lib/evaluation/calibration.ts` and behavior tests using `generateFeedbackWorkflow` with an in-memory store.
+- Operator files: `scripts/run-evaluation-calibration.ts` and package scripts.
+- Provider dependency: optional OpenAI execution through the existing scorer, guarded by an explicit paid-calibration acknowledgement.
+- Docs: calibration contract, operations runbook, and a checked preflight report.
+
+## Validation
+
+- Required commands: calibration preflight/self-test, fixture/core/workflow tests, `npm run check:ci`, `npm run build`, and `npm run verify:agent` when the local environment permits it.
+- Fixtures: 10 Product Sense, 10 Execution, 10 Strategy, and 10 Behavioral cases; every round includes full, partial, short, and low-signal cases.
+- Acceptance thresholds: 100% exact evidence validity and insufficient handling, at least 80% of dimension scores inside adjudicated bands, and maximum repeated-run dimension range of 1.
+
+## Rollout
+
+- Risk level: high because the result gates claims about feedback trustworthiness.
+- Backward compatibility: additive test/operator surface only; no runtime schema or customer data changes.
+- Metrics/events to watch: provider-run validity, score agreement, unstable dimensions, insufficient cases incorrectly sent to the model.
+- Follow-up slice: an explicitly authorized repeated provider run; keep SAV-198 In Progress until its machine-readable report passes.
