@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-07-09
+- Amended: 2026-07-10
 
 ## Context
 
@@ -18,8 +19,14 @@ report success while the authentication account remained active.
 - Return `202 deletion_requested`; never claim synchronous completion.
 - Process Stripe, application-data, and Auth deletion through an idempotent
   Inngest workflow with per-user concurrency and retries.
-- Delete Supabase Auth first so Stripe outages cannot leave a tombstoned account
-  authenticated; provider identifiers are already captured for later retries.
+- Redact local provider logs and delete application data before calling Supabase
+  Auth or Stripe. Provider outages must not extend retention of local product
+  data; the tombstone keeps only the typed provider references needed for retry.
+- Delete Supabase Auth after local cleanup and before Stripe reconciliation.
+  Middleware rejects and signs out every tombstoned session, and OAuth/app-user
+  recreation shares a transaction-scoped account identity lock with deletion
+  intent, so changing the provider order does not restore product access or
+  recreate local identity data.
 - Keep the tombstone outside the `app_user` foreign-key graph so it survives
   application-data deletion and blocks user recreation.
 - Enforce tombstone denial for password logins and existing sessions in the
@@ -32,11 +39,24 @@ report success while the authentication account remained active.
 - Replace raw Stripe identifiers with one-way fingerprints on completion and
   redact matching webhook payload/error data while retaining event idempotency
   metadata.
+- Treat the persisted Stripe customer mapping as authoritative provider-subject
+  ownership alongside a matching tombstone subject fingerprint. Event metadata
+  alone is never ownership proof; Checkout correlation is accepted only when
+  metadata and client reference match. Any metadata, Checkout client-reference,
+  mapping, or tombstone-fingerprint disagreement fails before active billing or
+  destructive cleanup.
+- Reconcile invoices through every paginated paid InvoicePayment allocation.
+  Exact partial-allocation refunds carry a one-way allocation fingerprint, and
+  customer deletion waits for terminal allocation-specific or full-charge
+  refund evidence. Unsupported PaymentRecords and ambiguous partial refunds
+  remain recoverable for manual reconciliation.
 
 ## Consequences
 
 - A failed provider call leaves a recoverable tombstone rather than a live,
   partially recreated account.
+- A Supabase Auth or Stripe outage occurs only after local product data and
+  matching legacy provider-log payloads have been removed.
 - Account deletion now depends on the Inngest route and signing/event keys.
 - Completed tombstones retain only the user UUID, status/timestamps, attempts,
   and one-way fingerprints for every provider subject until a separate retention
