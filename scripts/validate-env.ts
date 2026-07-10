@@ -14,6 +14,12 @@ interface EnvVarConfig {
 }
 
 const envVars: EnvVarConfig[] = [
+  {
+    name: "CONTACT_RATE_LIMIT_HMAC_SECRET",
+    required: false,
+    description: "Server-only contact rate-limit HMAC secret",
+    pattern: /^.{32,}$/,
+  },
   // Database
   {
     name: "DATABASE_URL",
@@ -191,6 +197,14 @@ function validateEnvironment(): ValidationResult {
   // Additional security checks
   const productionChecks = process.env.NODE_ENV === "production";
   if (productionChecks) {
+    if (
+      !process.env.CONTACT_RATE_LIMIT_HMAC_SECRET ||
+      process.env.CONTACT_RATE_LIMIT_HMAC_SECRET.length < 32
+    ) {
+      errors.push(
+        "❌ CONTACT_RATE_LIMIT_HMAC_SECRET is required and must be at least 32 characters in production"
+      );
+    }
     // Warn if using test Stripe keys in production
     if (process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
       warnings.push("⚠️  Using Stripe TEST key in production environment");
