@@ -9,6 +9,7 @@ import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-gua
 interface EnvVarConfig {
   name: string;
   required: boolean;
+  requiredInProduction?: boolean;
   description: string;
   pattern?: RegExp;
 }
@@ -45,6 +46,13 @@ const envVars: EnvVarConfig[] = [
     name: "LIVEKIT_API_SECRET",
     required: true,
     description: "LiveKit API secret",
+  },
+  {
+    name: "DEMO_ABUSE_HMAC_SECRET",
+    required: true,
+    description:
+      "Dedicated 32-byte base64url secret for public voice preview abuse controls",
+    pattern: /^[A-Za-z0-9_-]{43}$/,
   },
   {
     name: "NEXT_PUBLIC_LIVEKIT_URL",
@@ -111,15 +119,17 @@ const envVars: EnvVarConfig[] = [
     pattern: /^https?:\/\/.+/,
   },
 
-  // Inngest (Optional - only required if background jobs enabled)
+  // Inngest (required in Production for durable jobs and privacy cleanup)
   {
     name: "INNGEST_EVENT_KEY",
     required: false,
+    requiredInProduction: true,
     description: "Inngest event key for background jobs",
   },
   {
     name: "INNGEST_SIGNING_KEY",
     required: false,
+    requiredInProduction: true,
     description: "Inngest signing key for webhook verification",
   },
 ];
@@ -133,12 +143,17 @@ interface ValidationResult {
 function validateEnvironment(): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const productionChecks =
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production";
 
   for (const envVar of envVars) {
     const value = process.env[envVar.name];
+    const required =
+      envVar.required || (productionChecks && envVar.requiredInProduction);
 
     // Check if required variable is missing
-    if (envVar.required && !value) {
+    if (required && !value) {
       errors.push(
         `❌ Missing required variable: ${envVar.name} - ${envVar.description}`
       );
@@ -146,7 +161,7 @@ function validateEnvironment(): ValidationResult {
     }
 
     // Check if optional variable is missing
-    if (!envVar.required && !value) {
+    if (!required && !value) {
       warnings.push(
         `⚠️  Optional variable not set: ${envVar.name} - ${envVar.description}`
       );
@@ -183,7 +198,6 @@ function validateEnvironment(): ValidationResult {
   }
 
   // Additional security checks
-  const productionChecks = process.env.NODE_ENV === "production";
   if (productionChecks) {
     // Warn if using test Stripe keys in production
     if (process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {

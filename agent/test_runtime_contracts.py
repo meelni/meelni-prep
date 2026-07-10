@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Runtime contract tests for the LiveKit interview agent."""
 
+import asyncio
 import json
 import sys
 import unittest
@@ -19,9 +20,58 @@ from shared.transcript_events import (
     is_transcript_event,
     publish_transcript_event,
 )
+from demo.runtime import (
+    create_demo_deadline,
+    resolve_demo_timing,
+    run_bounded,
+    stop_then_run_bounded,
+)
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_public_demo_timing_is_server_configured_but_hard_capped(self):
+        self.assertEqual(resolve_demo_timing({"duration_seconds": 120}).duration_seconds, 120)
+        self.assertEqual(resolve_demo_timing({"duration_seconds": 120}).warning_seconds, 90)
+        self.assertEqual(resolve_demo_timing({"duration_seconds": 600}).duration_seconds, 120)
+        self.assertEqual(resolve_demo_timing({"duration_seconds": 1}).duration_seconds, 60)
+        self.assertEqual(resolve_demo_timing({"duration_seconds": True}).duration_seconds, 120)
+
+    def test_public_demo_deadline_uses_monotonic_elapsed_time(self):
+        deadline = create_demo_deadline(
+            resolve_demo_timing({"duration_seconds": 120}),
+            started_at=500.25,
+        )
+        self.assertEqual(deadline.warning_at, 590.25)
+        self.assertEqual(deadline.ends_at, 620.25)
+        self.assertEqual(deadline.remaining_seconds(500.25), 120)
+        self.assertEqual(deadline.remaining_seconds(619.5), 1)
+        self.assertEqual(deadline.remaining_seconds(621), 0)
+        self.assertEqual(deadline.session_end_notify_at(0.25), 620.0)
+
+    def test_public_demo_stops_local_spend_before_bounded_delete_timeout(self):
+        events = []
+
+        async def never_finishes():
+            events.append("delete_started")
+            await asyncio.Future()
+
+        with self.assertRaises(asyncio.TimeoutError):
+            asyncio.run(
+                stop_then_run_bounded(
+                    lambda: events.append("local_stopped"),
+                    never_finishes,
+                    0.01,
+                )
+            )
+        self.assertEqual(events, ["local_stopped", "delete_started"])
+
+    def test_public_demo_connect_operation_is_bounded(self):
+        async def never_connects():
+            await asyncio.Future()
+
+        with self.assertRaises(asyncio.TimeoutError):
+            asyncio.run(run_bounded(never_connects, 0.01))
+
     def test_parse_room_metadata_accepts_production_question_shape(self):
         metadata = parse_room_metadata(json.dumps({
             "contract_version": 1,

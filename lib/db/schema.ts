@@ -172,6 +172,119 @@ export const livekitReconnectRateLimit = pgTable(
   })
 );
 
+// Shared anonymous budget for the public LiveKit demo. Identifiers are
+// domain-separated HMAC digests; raw IP addresses and cookie values never
+// enter Postgres. All three scopes are consumed atomically by the database
+// function in the demo rate-limit migration.
+export const publicDemoRateLimit = pgTable(
+  "public_demo_rate_limit",
+  {
+    deploymentScope: text("deployment_scope").notNull(),
+    scope: text("scope").notNull(),
+    identifierHash: text("identifier_hash").notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true })
+      .array()
+      .default(sql`ARRAY[]::timestamptz[]`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      name: "public_demo_rate_limit_pkey",
+      columns: [table.deploymentScope, table.scope, table.identifierHash],
+    }),
+    deploymentScopeCheck: check(
+      "public_demo_rate_limit_deployment_scope_check",
+      sql`${table.deploymentScope} IN ('production', 'preview', 'development')`
+    ),
+    scopeCheck: check(
+      "public_demo_rate_limit_scope_check",
+      sql`${table.scope} IN ('global', 'ip', 'device')`
+    ),
+    hashCheck: check(
+      "public_demo_rate_limit_hash_check",
+      sql`${table.identifierHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    capacityCheck: check(
+      "public_demo_rate_limit_capacity_check",
+      sql`cardinality(${table.acceptedAt}) <= 100`
+    ),
+  })
+);
+
+// One durable record per browser demo session fences room creation and agent
+// dispatch across retries and serverless instances.
+export const publicDemoSession = pgTable(
+  "public_demo_session",
+  {
+    id: uuid("id").primaryKey().notNull(),
+    deploymentScope: text("deployment_scope").notNull(),
+    ipHash: text("ip_hash").notNull(),
+    deviceHash: text("device_hash").notNull(),
+    roomName: text("room_name").notNull().unique(),
+    status: text("status").default("provisioning").notNull(),
+    provisionAttempts: integer("provision_attempts").default(1).notNull(),
+    tokenIssues: integer("token_issues").default(0).notNull(),
+    recoveryClaimToken: uuid("recovery_claim_token"),
+    recoveryClaimedAt: timestamp("recovery_claimed_at", {
+      withTimezone: true,
+    }),
+    recoveryAckToken: uuid("recovery_ack_token"),
+    failureCode: text("failure_code"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    activeExpiresAt: timestamp("active_expires_at", {
+      withTimezone: true,
+    }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    statusCheck: check(
+      "public_demo_session_status_check",
+      sql`${table.status} IN ('provisioning', 'ready', 'failed')`
+    ),
+    deploymentScopeCheck: check(
+      "public_demo_session_deployment_scope_check",
+      sql`${table.deploymentScope} IN ('production', 'preview', 'development')`
+    ),
+    ipHashCheck: check(
+      "public_demo_session_ip_hash_check",
+      sql`${table.ipHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    deviceHashCheck: check(
+      "public_demo_session_device_hash_check",
+      sql`${table.deviceHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    provisionAttemptsCheck: check(
+      "public_demo_session_provision_attempts_check",
+      sql`${table.provisionAttempts} BETWEEN 1 AND 2`
+    ),
+    tokenIssuesCheck: check(
+      "public_demo_session_token_issues_check",
+      sql`${table.tokenIssues} BETWEEN 0 AND 2`
+    ),
+    recoveryClaimCheck: check(
+      "public_demo_session_recovery_claim_check",
+      sql`((${table.recoveryClaimToken} IS NULL AND ${table.recoveryClaimedAt} IS NULL) OR (${table.recoveryClaimToken} IS NOT NULL AND ${table.recoveryClaimedAt} IS NOT NULL AND ${table.status} = 'ready' AND ${table.tokenIssues} = 1)) AND ((${table.recoveryAckToken} IS NULL AND ${table.tokenIssues} < 2) OR (${table.recoveryAckToken} IS NOT NULL AND ${table.recoveryClaimToken} IS NULL AND ${table.recoveryClaimedAt} IS NULL AND ${table.status} = 'ready' AND ${table.tokenIssues} = 2))`
+    ),
+    expiryOrderCheck: check(
+      "public_demo_session_expiry_order_check",
+      sql`${table.activeExpiresAt} <= ${table.expiresAt}`
+    ),
+    deviceExpiryIdx: index("public_demo_session_device_expiry_idx").on(
+      table.deviceHash,
+      table.activeExpiresAt
+    ),
+    expiryIdx: index("public_demo_session_expiry_idx").on(table.expiresAt),
+  })
+);
+
 // Durable tombstone/outbox for cross-provider account deletion. It has no
 // app_user FK so retries remain possible after application data is removed.
 export const accountDeletionRequest = pgTable(

@@ -19,6 +19,8 @@ export type AnalyticsEvent =
   | "demo_modal_closed"
   | "demo_completed"
   | "demo_mic_toggled"
+  | "demo_failed"
+  | "demo_conversion_clicked"
   // Auth Events
   | "auth_signup_started"
   | "auth_signup_completed"
@@ -110,11 +112,20 @@ interface LandingPageProperties {
   demo_completed: {
     duration_seconds: number;
     turn_count?: number;
-    converted_to_signup: boolean;
   };
   demo_mic_toggled: {
     new_state: "muted" | "unmuted";
     time_in_demo_seconds: number;
+  };
+  demo_failed: {
+    stage: string;
+    code: string;
+    retryable: boolean;
+  };
+  demo_conversion_clicked: {
+    destination: string;
+    duration_seconds: number;
+    turn_count: number;
   };
 }
 
@@ -159,6 +170,7 @@ interface InterviewLaunchAnalyticsContext {
   focus?: string;
   company?: string;
   return_to?: string;
+  entry_source?: "voice_demo";
 }
 
 type InterviewLauncherViewedProperties = InterviewLaunchAnalyticsContext & {

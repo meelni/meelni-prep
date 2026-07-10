@@ -10,6 +10,8 @@ export const SESSION_LIFECYCLE_SCHEMA_FINGERPRINT =
   "3953f5a151a268941ed48bacb0ed15bf7c4016026ecab249189ec367e0a39ab3";
 export const ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT =
   "db50dd715e13bcc70277b98e182c743293d5e6681d30c3d1e84ec24813476500";
+export const PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT =
+  "a7960947eca55928ad1cb6d36fd5cf07086f4ccd81ca765443996be161e5386f";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =
@@ -103,7 +105,15 @@ export async function getDatabaseSchemaContract(sql: Queryable) {
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'public'
-          AND p.proname = 'consume_livekit_reconnect_rate_limit'
+          AND p.proname IN (
+            'consume_livekit_reconnect_rate_limit',
+            'reserve_public_demo_session',
+            'complete_public_demo_session',
+            'fail_public_demo_recovery_session',
+            'finalize_public_demo_recovery_token',
+            'rollback_public_demo_recovery_token',
+            'prune_public_demo_abuse_data'
+          )
         ORDER BY p.proname, arguments
       `,
     ]);

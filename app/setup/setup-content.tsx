@@ -92,7 +92,8 @@ export function SetupContent() {
     company: string | null;
     type: string;
   } | null>(null);
-  const launcherViewKey = questionIdParam ?? "dashboard";
+  const launcherViewKey =
+    questionIdParam ?? launchContext.entrySource ?? "dashboard";
   const trackedLauncherViewKey = useRef<string | null>(null);
 
   const recommendation = buildInterviewRecommendation({
@@ -115,15 +116,22 @@ export function SetupContent() {
       launchContext.difficulty ||
       launchContext.focus ||
       launchContext.company ||
-      launchContext.returnTo
+      launchContext.returnTo ||
+      launchContext.entrySource
   );
   const analyticsLaunchContext = useMemo(
     () => ({
       focus: launchContext.focus ?? undefined,
       company: launchContext.company ?? undefined,
       return_to: launchContext.returnTo ?? undefined,
+      entry_source: launchContext.entrySource ?? undefined,
     }),
-    [launchContext.company, launchContext.focus, launchContext.returnTo]
+    [
+      launchContext.company,
+      launchContext.entrySource,
+      launchContext.focus,
+      launchContext.returnTo,
+    ]
   );
 
   // Credit state is informational; session start remains the source of truth.

@@ -302,19 +302,19 @@ See [Authentication Guide](./docs/AUTHENTICATION.md) for detailed setup instruct
 
 ### Key Endpoints
 
-| Endpoint                      | Method | Description                             |
-| ----------------------------- | ------ | --------------------------------------- |
-| `/api/session/start`          | POST   | Start a new interview session           |
-| `/api/session/end`            | POST   | End an interview session                |
-| `/api/session/:id`            | GET    | Get session details                     |
-| `/api/sessions`               | GET    | List user sessions                      |
-| `/api/session/transcript`     | POST   | Save transcript turns (single or batch) |
-| `/api/session/:id/transcript` | GET    | Get session transcript                  |
-| `/api/feedback/generate`      | POST   | Generate AI feedback (GPT-4 Turbo)      |
-| `/api/feedback/:id`           | GET    | Get session feedback                    |
-| `/api/livekit/token`          | POST   | Reconnect to an owned active interview  |
-| `/api/livekit/demo-token`     | POST   | Generate demo token (60-second preview) |
-| `/api/cartesia/voices`        | GET    | List available TTS voices               |
+| Endpoint                      | Method | Description                                       |
+| ----------------------------- | ------ | ------------------------------------------------- |
+| `/api/session/start`          | POST   | Start a new interview session                     |
+| `/api/session/end`            | POST   | End an interview session                          |
+| `/api/session/:id`            | GET    | Get session details                               |
+| `/api/sessions`               | GET    | List user sessions                                |
+| `/api/session/transcript`     | POST   | Save transcript turns (single or batch)           |
+| `/api/session/:id/transcript` | GET    | Get session transcript                            |
+| `/api/feedback/generate`      | POST   | Generate AI feedback (GPT-4 Turbo)                |
+| `/api/feedback/:id`           | GET    | Get session feedback                              |
+| `/api/livekit/token`          | POST   | Reconnect to an owned active interview            |
+| `/api/livekit/demo-token`     | POST   | Start or recover a bounded 2-minute voice preview |
+| `/api/cartesia/voices`        | GET    | List available TTS voices                         |
 
 ### Example: Start Interview Session
 
