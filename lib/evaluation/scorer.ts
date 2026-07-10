@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import {
   parseFeedbackV2,
+  prepareFeedbackTranscript,
   type FeedbackEvaluationState,
   type FeedbackTranscriptTurn,
   type FeedbackV2Result,
@@ -19,8 +20,12 @@ export async function generateFeedback(
   transcript: FeedbackTranscriptTurn[],
   evaluationState: FeedbackEvaluationState
 ): Promise<FeedbackV2Result> {
-  if (transcript.length === 0) {
-    throw new Error("Cannot generate feedback for empty canonical transcript");
+  const prepared = prepareFeedbackTranscript(transcript);
+  if (!prepared.eligible || prepared.transcript.length === 0) {
+    throw new Error(
+      prepared.reasons[0] ||
+        "Cannot generate feedback without trustworthy user transcript evidence"
+    );
   }
 
   const modelVersion = getFeedbackEvaluationModel();
@@ -31,7 +36,11 @@ export async function generateFeedback(
         { role: "system", content: EVALUATION_SYSTEM_PROMPT },
         {
           role: "user",
-          content: getEvaluationPrompt(roundType, transcript, evaluationState),
+          content: getEvaluationPrompt(
+            roundType,
+            prepared.transcript,
+            evaluationState
+          ),
         },
       ],
       temperature: 0.2,
@@ -51,7 +60,7 @@ export async function generateFeedback(
     }
 
     const result = parseFeedbackV2(unknownResponse, {
-      transcript,
+      transcript: prepared.transcript,
       evaluationState,
       modelVersion,
     });

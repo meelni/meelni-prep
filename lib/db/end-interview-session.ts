@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import {
   canTransitionInterviewLifecycle,
   deriveInterviewTerminalState,
@@ -10,8 +10,7 @@ import {
 } from "@meelni/core";
 
 import {
-  calculateSessionStatsFromTurns,
-  validateSessionStats,
+  calculateValidatedSessionFromTurns,
   type SessionValidation,
 } from "@/lib/evaluation/session-validator";
 import { feedbackGenerationEventId } from "./feedback-event-id";
@@ -123,13 +122,22 @@ export async function finalizeInterviewSession(
       const [turns, interruptionCounts, settlements] = await Promise.all([
         tx
           .select({
+            contractVersion: transcriptTurn.contractVersion,
+            eventId: transcriptTurn.eventId,
             speaker: transcriptTurn.speaker,
             text: transcriptTurn.text,
             startedAt: transcriptTurn.startedAt,
             endedAt: transcriptTurn.endedAt,
           })
           .from(transcriptTurn)
-          .where(eq(transcriptTurn.sessionId, input.sessionId)),
+          .where(eq(transcriptTurn.sessionId, input.sessionId))
+          .orderBy(
+            asc(transcriptTurn.startedAt),
+            asc(transcriptTurn.writerId),
+            asc(transcriptTurn.sequence),
+            asc(transcriptTurn.eventId),
+            asc(transcriptTurn.id)
+          ),
         tx
           .select({ value: sql<number>`count(*)::int` })
           .from(transcriptInterruptionMarker)
@@ -140,9 +148,7 @@ export async function finalizeInterviewSession(
           .where(eq(transcriptRuntimeSettlement.sessionId, input.sessionId))
           .limit(1),
       ]);
-      const baseValidation = validateSessionStats(
-        calculateSessionStatsFromTurns(turns)
-      );
+      const baseValidation = calculateValidatedSessionFromTurns(turns);
       const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
       const runtimeSettlementState =
         (settlements[0]?.state as "settled" | "degraded" | undefined) ?? null;
