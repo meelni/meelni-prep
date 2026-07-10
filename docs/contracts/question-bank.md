@@ -34,3 +34,15 @@ Unknown types are rejected at the API boundary or skipped by ingestion; they are
 The public contract and all application decisions use the four canonical rounds. Until the historical migration baseline is reconciled, the storage adapter persists canonical Strategy questions with the database-compatible `Product Strategy` label. Reads normalize that label back to `Strategy` before it leaves the data boundary.
 
 Historical subtype cleanup belongs with the provenance and deduplication work. It must preserve the original source category before any legacy label is collapsed, and it must not be added to the Drizzle journal until the existing manually applied migration history is reconciled safely.
+
+## Sync authorization and execution
+
+- The scheduled route requires an exact `Authorization: Bearer <CRON_SECRET>` header. A missing, blank, placeholder, short, or otherwise weak `CRON_SECRET` fails closed before provider or database work begins.
+- The manual route requires a separate `QUESTION_SYNC_OPERATOR_SECRET`. A signed-in Meelni user session, including an ordinary authenticated user, never authorizes a live sync.
+- The only accepted manual option is an optional boolean `dryRun`. Unknown options and malformed payloads are rejected.
+- Provider rows are fetched and validated before the database transaction opens. The workflow then holds a PostgreSQL transaction-scoped advisory lock while the same transaction reads existing questions, builds the mutation plan, inserts, reactivates, and deactivates. An overlapping request receives `409 question_sync_in_progress` before database reads or writes begin.
+- Until the schema gains a provider row identifier, stable source identity is the normalized composite of question text, company, canonical storage type, and `askedAt` instant. Offset-less Google Forms timestamps are converted using `GOOGLE_SHEET_TIME_ZONE`, which accepts only `UTC` or a fixed `±HH:MM` offset; named zones are rejected to avoid daylight-saving ambiguity. Only exact composite duplicates collapse. An inactive exact match is reactivated; changed provenance creates a new row and retires the prior active identity. If legacy data contains multiple active rows for one composite identity, the lexicographically lowest UUID remains active and the surplus rows are deactivated atomically.
+- Inserts, reactivations, and deactivations are atomic. Any write or connection failure rolls back the complete mutation, and deactivation never proceeds after a failed insert.
+- HTTP responses and structured audit events contain aggregate counts and stable error codes only. They must not include user identifiers, sheet identifiers, provider response bodies, credentials, or raw exception messages.
+
+The operational configuration and rollout procedure are in [Question sync operations](../operations/question-sync.md).
