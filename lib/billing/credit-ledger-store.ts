@@ -1,7 +1,8 @@
-import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
+  appUser,
   creditGrant,
   creditReservation,
   creditReservationGrant,
@@ -11,6 +12,7 @@ import type { BillingCatalogId } from "@meelni/core";
 
 import type {
   CreditGrantSource,
+  CreditLedgerTransaction,
   CreditLedgerStore,
   CreditReservationStatus,
   CreditTransactionType,
@@ -21,6 +23,12 @@ import type {
 } from "./credits";
 
 type CreditLedgerDatabase = typeof db;
+type CreditLedgerTransactionDatabase = Parameters<
+  Parameters<CreditLedgerDatabase["transaction"]>[0]
+>[0];
+type CreditLedgerExecutor =
+  | CreditLedgerDatabase
+  | CreditLedgerTransactionDatabase;
 
 type CreditGrantRow = typeof creditGrant.$inferSelect;
 type CreditReservationRow = typeof creditReservation.$inferSelect;
@@ -30,7 +38,30 @@ type CreditTransactionRow = typeof creditTransaction.$inferSelect;
 export function createDrizzleCreditLedgerStore(
   database: CreditLedgerDatabase = db
 ): CreditLedgerStore {
-  const store: CreditLedgerStore = {
+  const operations = createDrizzleCreditLedgerOperations(database);
+
+  return {
+    ...operations,
+    async withUserTransaction(userId, work) {
+      return database.transaction(async (transaction) => {
+        const users = await transaction
+          .select({ id: appUser.id })
+          .from(appUser)
+          .where(eq(appUser.id, userId))
+          .limit(1)
+          .for("update");
+        if (!users[0]) throw new Error("credit_ledger_user_not_found");
+
+        return work(createDrizzleCreditLedgerOperations(transaction));
+      });
+    },
+  };
+}
+
+function createDrizzleCreditLedgerOperations(
+  database: CreditLedgerExecutor
+): CreditLedgerTransaction {
+  const store: CreditLedgerTransaction = {
     async createGrant(input) {
       const inserted = await database
         .insert(creditGrant)
@@ -59,12 +90,34 @@ export function createDrizzleCreditLedgerStore(
       return rows[0] ? mapGrant(rows[0]) : null;
     },
 
+    async findGrantByIdempotencyKeyForUpdate(idempotencyKey) {
+      const rows = await database
+        .select()
+        .from(creditGrant)
+        .where(eq(creditGrant.idempotencyKey, idempotencyKey))
+        .limit(1)
+        .for("update");
+
+      return rows[0] ? mapGrant(rows[0]) : null;
+    },
+
     async findTransactionByIdempotencyKey(idempotencyKey) {
       const rows = await database
         .select()
         .from(creditTransaction)
         .where(eq(creditTransaction.idempotencyKey, idempotencyKey))
         .limit(1);
+
+      return rows[0] ? mapTransaction(rows[0]) : null;
+    },
+
+    async findTransactionByIdempotencyKeyForUpdate(idempotencyKey) {
+      const rows = await database
+        .select()
+        .from(creditTransaction)
+        .where(eq(creditTransaction.idempotencyKey, idempotencyKey))
+        .limit(1)
+        .for("update");
 
       return rows[0] ? mapTransaction(rows[0]) : null;
     },
@@ -82,8 +135,30 @@ export function createDrizzleCreditLedgerStore(
         )
         .orderBy(
           asc(creditGrant.expiresAt),
-          asc(creditGrant.createdAt)
+          asc(creditGrant.createdAt),
+          asc(creditGrant.id)
         );
+
+      return rows.map(mapGrant);
+    },
+
+    async listSpendableGrantsForUpdate(userId, now) {
+      const rows = await database
+        .select()
+        .from(creditGrant)
+        .where(
+          and(
+            eq(creditGrant.userId, userId),
+            gt(creditGrant.remainingCredits, 0),
+            or(isNull(creditGrant.expiresAt), gt(creditGrant.expiresAt, now))
+          )
+        )
+        .orderBy(
+          asc(creditGrant.expiresAt),
+          asc(creditGrant.createdAt),
+          asc(creditGrant.id)
+        )
+        .for("update");
 
       return rows.map(mapGrant);
     },
@@ -97,6 +172,28 @@ export function createDrizzleCreditLedgerStore(
       return rows.map(mapGrant);
     },
 
+    async listUserGrantsForUpdate(userId) {
+      const rows = await database
+        .select()
+        .from(creditGrant)
+        .where(eq(creditGrant.userId, userId))
+        .orderBy(asc(creditGrant.id))
+        .for("update");
+
+      return rows.map(mapGrant);
+    },
+
+    async listUserReservationsForUpdate(userId) {
+      const rows = await database
+        .select()
+        .from(creditReservation)
+        .where(eq(creditReservation.userId, userId))
+        .orderBy(asc(creditReservation.id))
+        .for("update");
+
+      return rows.map(mapReservation);
+    },
+
     async updateGrantBalances(grantId, balances) {
       const rows = await database
         .update(creditGrant)
@@ -104,7 +201,11 @@ export function createDrizzleCreditLedgerStore(
         .where(eq(creditGrant.id, grantId))
         .returning();
 
-      return requireRow(rows[0] ? mapGrant(rows[0]) : null, "Credit grant", grantId);
+      return requireRow(
+        rows[0] ? mapGrant(rows[0]) : null,
+        "Credit grant",
+        grantId
+      );
     },
 
     async createReservation(input) {
@@ -131,6 +232,17 @@ export function createDrizzleCreditLedgerStore(
         .from(creditReservation)
         .where(eq(creditReservation.reservationKey, reservationKey))
         .limit(1);
+
+      return rows[0] ? mapReservation(rows[0]) : null;
+    },
+
+    async findReservationByKeyForUpdate(reservationKey) {
+      const rows = await database
+        .select()
+        .from(creditReservation)
+        .where(eq(creditReservation.reservationKey, reservationKey))
+        .limit(1)
+        .for("update");
 
       return rows[0] ? mapReservation(rows[0]) : null;
     },
@@ -166,9 +278,37 @@ export function createDrizzleCreditLedgerStore(
       const rows = await database
         .select()
         .from(creditReservationGrant)
-        .where(eq(creditReservationGrant.reservationId, reservationId));
+        .where(eq(creditReservationGrant.reservationId, reservationId))
+        .orderBy(asc(creditReservationGrant.grantId));
 
       return rows.map(mapAllocation);
+    },
+
+    async listAllocationsForUpdate(reservationId) {
+      const rows = await database
+        .select()
+        .from(creditReservationGrant)
+        .where(eq(creditReservationGrant.reservationId, reservationId))
+        .orderBy(asc(creditReservationGrant.grantId))
+        .for("update");
+
+      return rows.map(mapAllocation);
+    },
+
+    async listTerminalTransactionsByReservationForUpdate(reservationId) {
+      const rows = await database
+        .select()
+        .from(creditTransaction)
+        .where(
+          and(
+            eq(creditTransaction.reservationId, reservationId),
+            inArray(creditTransaction.type, ["consume", "release", "refund"])
+          )
+        )
+        .orderBy(asc(creditTransaction.id))
+        .for("update");
+
+      return rows.map(mapTransaction);
     },
 
     async createTransaction(input) {

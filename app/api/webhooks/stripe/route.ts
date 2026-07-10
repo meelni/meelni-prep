@@ -449,18 +449,12 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
     const ledger = createCreditLedgerService({
       store: createDrizzleCreditLedgerStore(),
     });
-    await ledger.rolloverSubscriptionCredits({
+    await ledger.renewSubscriptionCredits({
       userId,
       catalogId,
-      idempotencyKey: `stripe:rollover:${invoice.id}:${catalogId}`,
+      renewalIdempotencyKey: `stripe:invoice:${invoice.id}:${catalogId}`,
+      rolloverIdempotencyKey: `stripe:rollover:${invoice.id}:${catalogId}`,
       sourceId: invoice.id,
-    });
-    await ledger.grantCredits({
-      userId,
-      catalogId,
-      source: "subscription_renewal",
-      sourceId: invoice.id,
-      idempotencyKey: `stripe:invoice:${invoice.id}:${catalogId}`,
     });
   }
 
