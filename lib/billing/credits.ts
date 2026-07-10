@@ -89,7 +89,7 @@ export interface LedgerCreditTransaction {
   createdAt: Date;
 }
 
-export interface CreditLedgerStore {
+export interface CreditLedgerOperations {
   createGrant(
     input: Omit<LedgerCreditGrant, "id" | "createdAt" | "updatedAt">
   ): Promise<LedgerCreditGrant>;
@@ -124,6 +124,39 @@ export interface CreditLedgerStore {
   createTransaction(
     input: Omit<LedgerCreditTransaction, "id" | "createdAt">
   ): Promise<LedgerCreditTransaction>;
+}
+
+export interface CreditLedgerTransaction extends CreditLedgerOperations {
+  findGrantByIdempotencyKeyForUpdate(
+    idempotencyKey: string
+  ): Promise<LedgerCreditGrant | null>;
+  findTransactionByIdempotencyKeyForUpdate(
+    idempotencyKey: string
+  ): Promise<LedgerCreditTransaction | null>;
+  listSpendableGrantsForUpdate(
+    userId: string,
+    now: Date
+  ): Promise<LedgerCreditGrant[]>;
+  listUserGrantsForUpdate(userId: string): Promise<LedgerCreditGrant[]>;
+  listUserReservationsForUpdate(
+    userId: string
+  ): Promise<LedgerCreditReservation[]>;
+  findReservationByKeyForUpdate(
+    reservationKey: string
+  ): Promise<LedgerCreditReservation | null>;
+  listAllocationsForUpdate(
+    reservationId: string
+  ): Promise<LedgerReservationAllocation[]>;
+  listTerminalTransactionsByReservationForUpdate(
+    reservationId: string
+  ): Promise<LedgerCreditTransaction[]>;
+}
+
+export interface CreditLedgerStore extends CreditLedgerOperations {
+  withUserTransaction<T>(
+    userId: string,
+    work: (transaction: CreditLedgerTransaction) => Promise<T>
+  ): Promise<T>;
 }
 
 export interface CreditBalance {
@@ -199,57 +232,50 @@ export interface RolloverSubscriptionCreditsResult {
   grant: LedgerCreditGrant | null;
 }
 
+export interface RenewSubscriptionCreditsInput {
+  userId: string;
+  catalogId: BillingCatalogId;
+  renewalIdempotencyKey: string;
+  rolloverIdempotencyKey: string;
+  sourceId?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface RenewSubscriptionCreditsResult {
+  grant: LedgerCreditGrant;
+  rolledCredits: number;
+  rolloverGrant: LedgerCreditGrant | null;
+}
+
 export function createCreditLedgerService({
   store,
   now = () => new Date(),
 }: CreateCreditLedgerServiceInput) {
   return {
     async grantCredits(input: GrantCreditsInput): Promise<GrantCreditsResult> {
-      const existing = await store.findGrantByIdempotencyKey(
-        input.idempotencyKey
-      );
       const catalogItem = BILLING_CATALOG[input.catalogId];
       const issuedAt = now();
       const includedCredits =
         input.includedCredits ?? catalogItem.includedCredits;
+      assertPositiveCredits(includedCredits);
       const expiresAt =
         input.expiresAt === undefined
           ? addDaysOrNull(issuedAt, catalogItem.expiresAfterDays)
           : input.expiresAt;
-      const grant =
-        existing ??
-        (await store.createGrant({
-          userId: input.userId,
-          catalogId: input.catalogId,
-          source: input.source,
-          sourceId: input.sourceId ?? null,
-          idempotencyKey: input.idempotencyKey,
-          originalCredits: includedCredits,
-          remainingCredits: includedCredits,
-          reservedCredits: 0,
-          expiresAt,
-          rolloverEligible:
-            input.rolloverEligible ??
-            (catalogItem.kind === "subscription" && includedCredits > 0),
-          rolloverSourceGrantId: input.rolloverSourceGrantId ?? null,
-          metadata: input.metadata ?? null,
-        }));
-
-      assertGrantMatchesRequest(grant, input);
-
-      const transaction = await store.createTransaction({
-        userId: grant.userId,
-        grantId: grant.id,
-        reservationId: null,
-        type: "grant",
-        credits: grant.originalCredits,
-        idempotencyKey: `${input.idempotencyKey}:grant`,
-        sourceId: grant.sourceId,
-        balanceAfter: grant.originalCredits,
-        metadata: grant.metadata,
-      });
-
-      assertGrantTransactionMatchesGrant(transaction, grant);
+      const rolloverEligible =
+        input.rolloverEligible ??
+        (catalogItem.kind === "subscription" && includedCredits > 0);
+      const { grant, duplicate } = await store.withUserTransaction(
+        input.userId,
+        async (transaction) =>
+          grantCreditsInTransaction({
+            store: transaction,
+            input,
+            includedCredits,
+            expiresAt,
+            rolloverEligible,
+          })
+      );
 
       trackBillingCreditGranted({
         userId: grant.userId,
@@ -260,7 +286,7 @@ export function createCreditLedgerService({
         idempotencyKey: input.idempotencyKey,
         sourceId: grant.sourceId,
         grantId: grant.id,
-        duplicate: existing !== null,
+        duplicate,
       });
 
       return { grant };
@@ -300,140 +326,240 @@ export function createCreditLedgerService({
 
     async expireCredits(userId: string): Promise<ExpireCreditsResult> {
       const currentTime = now();
-      let expiredCredits = 0;
+      const expired = await store.withUserTransaction(
+        userId,
+        async (transaction) => {
+          await assertUserReservationIntegrity(transaction, userId);
+          const events: Array<{
+            grant: LedgerCreditGrant;
+            credits: number;
+            idempotencyKey: string;
+          }> = [];
 
-      for (const grant of await store.listUserGrants(userId)) {
-        if (!grant.expiresAt || grant.expiresAt > currentTime) {
-          continue;
+          for (const grant of await transaction.listUserGrantsForUpdate(
+            userId
+          )) {
+            if (
+              !grant.expiresAt ||
+              grant.expiresAt > currentTime ||
+              grant.remainingCredits <= 0
+            ) {
+              continue;
+            }
+
+            const idempotencyKey = `expire:${grant.id}:${grant.expiresAt.toISOString()}`;
+            const existing =
+              await transaction.findTransactionByIdempotencyKeyForUpdate(
+                idempotencyKey
+              );
+            if (existing) {
+              throw new Error("credit_transaction_idempotency_conflict");
+            }
+
+            const credits = grant.remainingCredits;
+            const updatedGrant = await transaction.updateGrantBalances(
+              grant.id,
+              {
+                remainingCredits: 0,
+                reservedCredits: grant.reservedCredits,
+              }
+            );
+            await createAndValidateTransaction(transaction, {
+              userId,
+              grantId: grant.id,
+              reservationId: null,
+              type: "expire",
+              credits,
+              idempotencyKey,
+              sourceId: null,
+              balanceAfter: updatedGrant.remainingCredits,
+              metadata: null,
+            });
+            events.push({ grant, credits, idempotencyKey });
+          }
+
+          return events;
         }
+      );
 
-        if (grant.remainingCredits <= 0) {
-          continue;
-        }
-
-        expiredCredits += grant.remainingCredits;
-        const updatedGrant = await store.updateGrantBalances(grant.id, {
-          remainingCredits: 0,
-          reservedCredits: grant.reservedCredits,
-        });
-        await store.createTransaction({
-          userId,
-          grantId: grant.id,
-          reservationId: null,
-          type: "expire",
-          credits: grant.remainingCredits,
-          idempotencyKey: `expire:${grant.id}:${currentTime.toISOString()}`,
-          sourceId: null,
-          balanceAfter: updatedGrant.remainingCredits,
-          metadata: null,
-        });
+      for (const event of expired) {
         trackBillingCreditExpired({
           userId,
-          catalogId: grant.catalogId,
-          creditSource: grant.source,
+          catalogId: event.grant.catalogId,
+          creditSource: event.grant.source,
           transactionType: "expire",
-          credits: grant.remainingCredits,
-          balanceAfter: updatedGrant.remainingCredits,
-          idempotencyKey: `expire:${grant.id}:${currentTime.toISOString()}`,
-          grantId: grant.id,
+          credits: event.credits,
+          balanceAfter: 0,
+          idempotencyKey: event.idempotencyKey,
+          grantId: event.grant.id,
         });
       }
 
-      return { expiredCredits };
+      return {
+        expiredCredits: sumBy(expired, (event) => event.credits),
+      };
     },
 
     async reserveCredit(
       input: ReserveCreditInput
     ): Promise<ReserveCreditResult> {
-      const existing = await store.findReservationByKey(input.reservationKey);
-      if (existing) {
-        return {
-          reservation: existing,
-          allocations: await store.listAllocations(existing.id),
-        };
-      }
-
       const requestedCredits = input.credits ?? 1;
-      const spendableGrants = await store.listSpendableGrants(
-        input.userId,
-        now()
-      );
-      const availableCredits = sumBy(
-        spendableGrants,
-        (grant) => grant.remainingCredits
-      );
+      assertPositiveCredits(requestedCredits);
+      const currentTime = now();
+      let result:
+        | (ReserveCreditResult & {
+            events: Array<{
+              grant: LedgerCreditGrant;
+              credits: number;
+              balanceAfter: number;
+              transactionKey: string;
+            }>;
+          })
+        | undefined;
 
-      if (availableCredits < requestedCredits) {
-        trackBillingNoCredits({
-          userId: input.userId,
-          credits: requestedCredits,
-          balanceAfter: availableCredits,
-          sessionId: input.sessionId,
-          reason: "insufficient_credits",
-        });
-        throw new Error("insufficient_credits");
+      try {
+        result = await store.withUserTransaction(
+          input.userId,
+          async (transaction) => {
+            const existing = await transaction.findReservationByKeyForUpdate(
+              input.reservationKey
+            );
+            if (existing) {
+              assertReservationMatchesRequest(
+                existing,
+                input,
+                requestedCredits
+              );
+              const allocations = await assertReservationEvidence(
+                transaction,
+                existing
+              );
+              return { reservation: existing, allocations, events: [] };
+            }
+
+            await assertUserReservationIntegrity(transaction, input.userId);
+            const spendableGrants =
+              await transaction.listSpendableGrantsForUpdate(
+                input.userId,
+                currentTime
+              );
+            const availableCredits = sumBy(
+              spendableGrants,
+              (grant) => grant.remainingCredits
+            );
+
+            if (availableCredits < requestedCredits) {
+              throw new InsufficientCreditsError(availableCredits);
+            }
+
+            const reservation = await transaction.createReservation({
+              userId: input.userId,
+              reservationKey: input.reservationKey,
+              status: "active",
+              credits: requestedCredits,
+              sessionId: input.sessionId ?? null,
+              expiresAt: input.expiresAt ?? addMinutes(currentTime, 30),
+              metadata: input.metadata ?? null,
+            });
+            assertReservationMatchesRequest(
+              reservation,
+              input,
+              requestedCredits
+            );
+
+            const allocations: LedgerReservationAllocation[] = [];
+            const events: Array<{
+              grant: LedgerCreditGrant;
+              credits: number;
+              balanceAfter: number;
+              transactionKey: string;
+            }> = [];
+            let remainingToReserve = requestedCredits;
+
+            for (const grant of spendableGrants) {
+              if (remainingToReserve === 0) break;
+
+              const reservedFromGrant = Math.min(
+                grant.remainingCredits,
+                remainingToReserve
+              );
+              const updatedGrant = await transaction.updateGrantBalances(
+                grant.id,
+                {
+                  remainingCredits: grant.remainingCredits - reservedFromGrant,
+                  reservedCredits: grant.reservedCredits + reservedFromGrant,
+                }
+              );
+              allocations.push(
+                await transaction.createAllocation({
+                  reservationId: reservation.id,
+                  grantId: grant.id,
+                  credits: reservedFromGrant,
+                })
+              );
+              const transactionKey = `reserve:${input.reservationKey}:${grant.id}`;
+              await createAndValidateTransaction(transaction, {
+                userId: input.userId,
+                grantId: grant.id,
+                reservationId: reservation.id,
+                type: "reserve",
+                credits: reservedFromGrant,
+                idempotencyKey: transactionKey,
+                sourceId: input.sessionId ?? null,
+                balanceAfter: updatedGrant.remainingCredits,
+                metadata: input.metadata ?? null,
+              });
+              events.push({
+                grant,
+                credits: reservedFromGrant,
+                balanceAfter: updatedGrant.remainingCredits,
+                transactionKey,
+              });
+              remainingToReserve -= reservedFromGrant;
+            }
+
+            if (remainingToReserve !== 0) {
+              throw new Error("credit_reservation_incomplete");
+            }
+
+            await assertReservationEvidence(transaction, reservation);
+            await assertUserReservationIntegrity(transaction, input.userId);
+            return { reservation, allocations, events };
+          }
+        );
+      } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          trackBillingNoCredits({
+            userId: input.userId,
+            credits: requestedCredits,
+            balanceAfter: error.availableCredits,
+            sessionId: input.sessionId,
+            reason: "insufficient_credits",
+          });
+        }
+        throw error;
       }
 
-      const reservation = await store.createReservation({
-        userId: input.userId,
-        reservationKey: input.reservationKey,
-        status: "active",
-        credits: requestedCredits,
-        sessionId: input.sessionId ?? null,
-        expiresAt: input.expiresAt ?? addMinutes(now(), 30),
-        metadata: input.metadata ?? null,
-      });
-      const allocations: LedgerReservationAllocation[] = [];
-      let remainingToReserve = requestedCredits;
-
-      for (const grant of spendableGrants) {
-        if (remainingToReserve === 0) {
-          break;
-        }
-
-        const reservedFromGrant = Math.min(
-          grant.remainingCredits,
-          remainingToReserve
-        );
-        const updatedGrant = await store.updateGrantBalances(grant.id, {
-          remainingCredits: grant.remainingCredits - reservedFromGrant,
-          reservedCredits: grant.reservedCredits + reservedFromGrant,
-        });
-        allocations.push(
-          await store.createAllocation({
-            reservationId: reservation.id,
-            grantId: grant.id,
-            credits: reservedFromGrant,
-          })
-        );
-        await store.createTransaction({
-          userId: input.userId,
-          grantId: grant.id,
-          reservationId: reservation.id,
-          type: "reserve",
-          credits: reservedFromGrant,
-          idempotencyKey: `reserve:${input.reservationKey}:${grant.id}`,
-          sourceId: input.sessionId ?? null,
-          balanceAfter: updatedGrant.remainingCredits,
-          metadata: input.metadata ?? null,
-        });
+      for (const event of result.events) {
         trackBillingCreditReserved({
           userId: input.userId,
-          catalogId: grant.catalogId,
-          creditSource: grant.source,
+          catalogId: event.grant.catalogId,
+          creditSource: event.grant.source,
           transactionType: "reserve",
-          credits: reservedFromGrant,
-          balanceAfter: updatedGrant.remainingCredits,
-          idempotencyKey: `reserve:${input.reservationKey}:${grant.id}`,
+          credits: event.credits,
+          balanceAfter: event.balanceAfter,
+          idempotencyKey: event.transactionKey,
           sourceId: input.sessionId,
           sessionId: input.sessionId,
-          grantId: grant.id,
-          reservationId: reservation.id,
+          grantId: event.grant.id,
+          reservationId: result.reservation.id,
         });
-        remainingToReserve -= reservedFromGrant;
       }
 
-      return { reservation, allocations };
+      return {
+        reservation: result.reservation,
+        allocations: result.allocations,
+      };
     },
 
     async consumeReservation(
@@ -484,177 +610,875 @@ export function createCreditLedgerService({
       });
     },
 
-    async rolloverSubscriptionCredits(
-      input: RolloverSubscriptionCreditsInput
-    ): Promise<RolloverSubscriptionCreditsResult> {
-      const existing = await store.findGrantByIdempotencyKey(
-        input.idempotencyKey
-      );
-      if (existing) {
-        trackBillingCreditRolloverCreated({
-          userId: input.userId,
-          catalogId: existing.catalogId,
-          creditSource: existing.source,
-          transactionType: "rollover",
-          credits: existing.originalCredits,
-          balanceAfter: existing.remainingCredits,
-          idempotencyKey: input.idempotencyKey,
-          sourceId: input.sourceId,
-          grantId: existing.id,
-          duplicate: true,
-        });
-        return {
-          rolledCredits: existing.originalCredits,
-          grant: existing,
-        };
-      }
-
+    async renewSubscriptionCredits(
+      input: RenewSubscriptionCreditsInput
+    ): Promise<RenewSubscriptionCreditsResult> {
       const catalogItem = BILLING_CATALOG[input.catalogId];
-      const rolloverCapCredits = catalogItem.rolloverCapCredits;
-      const rolloverExpiresAfterDays = catalogItem.rolloverExpiresAfterDays;
-
-      if (rolloverCapCredits <= 0 || rolloverExpiresAfterDays === null) {
-        return { rolledCredits: 0, grant: null };
+      if (
+        catalogItem.kind !== "subscription" ||
+        input.renewalIdempotencyKey === input.rolloverIdempotencyKey
+      ) {
+        throw new Error("invalid_subscription_renewal");
       }
 
       const currentTime = now();
-      const sourceGrants = (await store.listUserGrants(input.userId))
-        .filter(
-          (grant) =>
-            grant.catalogId === input.catalogId &&
-            grant.rolloverEligible &&
-            isGrantActive(grant, currentTime) &&
-            grant.remainingCredits > 0
-        )
-        .sort(compareGrantSpendOrder);
-      let remainingToRoll = Math.min(
-        rolloverCapCredits,
-        sumBy(sourceGrants, (grant) => grant.remainingCredits)
+      const renewalInput: GrantCreditsInput = {
+        userId: input.userId,
+        catalogId: input.catalogId,
+        source: "subscription_renewal",
+        sourceId: input.sourceId ?? null,
+        idempotencyKey: input.renewalIdempotencyKey,
+        includedCredits: catalogItem.includedCredits,
+        rolloverEligible: true,
+        metadata: input.metadata ?? null,
+      };
+      const rolloverInput: RolloverSubscriptionCreditsInput = {
+        userId: input.userId,
+        catalogId: input.catalogId,
+        idempotencyKey: input.rolloverIdempotencyKey,
+        sourceId: input.sourceId ?? null,
+        metadata: input.metadata ?? null,
+      };
+      const outcome = await store.withUserTransaction(
+        input.userId,
+        async (transaction) => {
+          const existingRenewal =
+            await transaction.findGrantByIdempotencyKeyForUpdate(
+              input.renewalIdempotencyKey
+            );
+          if (existingRenewal) {
+            assertGrantMatchesRequest(
+              existingRenewal,
+              renewalInput,
+              catalogItem.includedCredits,
+              true
+            );
+            return {
+              renewal: { grant: existingRenewal, duplicate: true },
+              rollover: await validateCompositeRenewalReplay({
+                store: transaction,
+                input,
+                renewalGrant: existingRenewal,
+                rolloverInput,
+              }),
+            };
+          }
+
+          const orphanedRollover =
+            await transaction.findGrantByIdempotencyKeyForUpdate(
+              input.rolloverIdempotencyKey
+            );
+          let rollover: RolloverSubscriptionCreditsResult & {
+            duplicate: boolean;
+            sourceAllocations: RolloverSourceEvidence[];
+          };
+          if (orphanedRollover) {
+            assertRolloverGrantMatchesRequest(orphanedRollover, rolloverInput);
+            const sourceAllocations = await assertRolloverReplayEvidence(
+              transaction,
+              orphanedRollover,
+              rolloverInput
+            );
+            await assertOrphanRolloverDebitsApplied(
+              transaction,
+              input.userId,
+              sourceAllocations
+            );
+            rollover = {
+              rolledCredits: orphanedRollover.originalCredits,
+              grant: orphanedRollover,
+              duplicate: true,
+              sourceAllocations,
+            };
+          } else {
+            rollover = await rolloverSubscriptionCreditsInTransaction({
+              store: transaction,
+              input: rolloverInput,
+              currentTime,
+            });
+          }
+          const renewal = await grantCreditsInTransaction({
+            store: transaction,
+            input: renewalInput,
+            includedCredits: catalogItem.includedCredits,
+            expiresAt: null,
+            rolloverEligible: true,
+            transactionMetadata: buildCompositeRenewalTransactionMetadata(
+              input.metadata ?? null,
+              {
+                version: 1,
+                rolloverIdempotencyKey: input.rolloverIdempotencyKey,
+                rolledCredits: rollover.rolledCredits,
+                rolloverGrantId: rollover.grant?.id ?? null,
+                rolloverExpiresAt:
+                  rollover.grant?.expiresAt?.toISOString() ?? null,
+                rolloverSourceGrantId:
+                  rollover.grant?.rolloverSourceGrantId ?? null,
+                sourceAllocations: rollover.sourceAllocations,
+              }
+            ),
+          });
+          return { renewal, rollover };
+        }
       );
 
-      if (remainingToRoll === 0) {
-        return { rolledCredits: 0, grant: null };
-      }
-
-      const rolledCredits = remainingToRoll;
-      const rolloverGrant = await store.createGrant({
-        userId: input.userId,
-        catalogId: input.catalogId,
-        source: "rollover",
-        sourceId: input.sourceId ?? null,
-        idempotencyKey: input.idempotencyKey,
-        originalCredits: rolledCredits,
-        remainingCredits: rolledCredits,
-        reservedCredits: 0,
-        expiresAt: addDaysOrNull(currentTime, rolloverExpiresAfterDays),
-        rolloverEligible: false,
-        rolloverSourceGrantId: sourceGrants[0]?.id ?? null,
-        metadata: input.metadata ?? null,
-      });
-
-      for (const sourceGrant of sourceGrants) {
-        if (remainingToRoll === 0) {
-          break;
-        }
-
-        const creditsFromGrant = Math.min(
-          sourceGrant.remainingCredits,
-          remainingToRoll
-        );
-        const updatedGrant = await store.updateGrantBalances(sourceGrant.id, {
-          remainingCredits: sourceGrant.remainingCredits - creditsFromGrant,
-          reservedCredits: sourceGrant.reservedCredits,
-        });
-        await store.createTransaction({
+      if (outcome.rollover.grant) {
+        trackBillingCreditRolloverCreated({
           userId: input.userId,
-          grantId: sourceGrant.id,
-          reservationId: null,
-          type: "rollover",
-          credits: creditsFromGrant,
-          idempotencyKey: `${input.idempotencyKey}:source:${sourceGrant.id}`,
-          sourceId: input.sourceId ?? null,
-          balanceAfter: updatedGrant.remainingCredits,
-          metadata: {
-            rolloverGrantId: rolloverGrant.id,
-          },
+          catalogId: input.catalogId,
+          creditSource: "rollover",
+          transactionType: "rollover",
+          credits: outcome.rollover.rolledCredits,
+          balanceAfter: outcome.rollover.grant.remainingCredits,
+          idempotencyKey: input.rolloverIdempotencyKey,
+          sourceId: input.sourceId,
+          grantId: outcome.rollover.grant.id,
+          duplicate: outcome.rollover.duplicate,
         });
-        remainingToRoll -= creditsFromGrant;
       }
-
-      await store.createTransaction({
-        userId: input.userId,
-        grantId: rolloverGrant.id,
-        reservationId: null,
-        type: "rollover",
-        credits: rolledCredits,
-        idempotencyKey: `${input.idempotencyKey}:grant`,
-        sourceId: input.sourceId ?? null,
-        balanceAfter: rolloverGrant.remainingCredits,
-        metadata: input.metadata ?? null,
-      });
-
-      trackBillingCreditRolloverCreated({
-        userId: input.userId,
-        catalogId: input.catalogId,
-        creditSource: "rollover",
-        transactionType: "rollover",
-        credits: rolledCredits,
-        balanceAfter: rolloverGrant.remainingCredits,
-        idempotencyKey: input.idempotencyKey,
-        sourceId: input.sourceId,
-        grantId: rolloverGrant.id,
+      trackBillingCreditGranted({
+        userId: outcome.renewal.grant.userId,
+        catalogId: outcome.renewal.grant.catalogId,
+        creditSource: outcome.renewal.grant.source,
+        credits: outcome.renewal.grant.originalCredits,
+        balanceAfter: outcome.renewal.grant.remainingCredits,
+        idempotencyKey: input.renewalIdempotencyKey,
+        sourceId: outcome.renewal.grant.sourceId,
+        grantId: outcome.renewal.grant.id,
+        duplicate: outcome.renewal.duplicate,
       });
 
       return {
-        rolledCredits,
-        grant: rolloverGrant,
+        grant: outcome.renewal.grant,
+        rolledCredits: outcome.rollover.rolledCredits,
+        rolloverGrant: outcome.rollover.grant,
       };
     },
   };
 }
 
+async function grantCreditsInTransaction({
+  store,
+  input,
+  includedCredits,
+  expiresAt,
+  rolloverEligible,
+  transactionMetadata,
+}: {
+  store: CreditLedgerTransaction;
+  input: GrantCreditsInput;
+  includedCredits: number;
+  expiresAt: Date | null;
+  rolloverEligible: boolean;
+  transactionMetadata?: Record<string, unknown> | null;
+}): Promise<{ grant: LedgerCreditGrant; duplicate: boolean }> {
+  const existing = await store.findGrantByIdempotencyKeyForUpdate(
+    input.idempotencyKey
+  );
+  const grant =
+    existing ??
+    (await store.createGrant({
+      userId: input.userId,
+      catalogId: input.catalogId,
+      source: input.source,
+      sourceId: input.sourceId ?? null,
+      idempotencyKey: input.idempotencyKey,
+      originalCredits: includedCredits,
+      remainingCredits: includedCredits,
+      reservedCredits: 0,
+      expiresAt,
+      rolloverEligible,
+      rolloverSourceGrantId: input.rolloverSourceGrantId ?? null,
+      metadata: input.metadata ?? null,
+    }));
+
+  assertGrantMatchesRequest(grant, input, includedCredits, rolloverEligible);
+  await createAndValidateTransaction(store, {
+    userId: grant.userId,
+    grantId: grant.id,
+    reservationId: null,
+    type: "grant",
+    credits: grant.originalCredits,
+    idempotencyKey: `${input.idempotencyKey}:grant`,
+    sourceId: grant.sourceId,
+    balanceAfter: grant.originalCredits,
+    metadata:
+      transactionMetadata === undefined ? grant.metadata : transactionMetadata,
+  });
+
+  return { grant, duplicate: existing !== null };
+}
+
+const COMPOSITE_RENEWAL_EVIDENCE_KEY =
+  "__meelni_subscription_renewal_completion";
+
+interface RolloverSourceEvidence {
+  grantId: string;
+  credits: number;
+  balanceAfter: number;
+}
+
+interface CompositeRenewalEvidence {
+  version: 1;
+  rolloverIdempotencyKey: string;
+  rolledCredits: number;
+  rolloverGrantId: string | null;
+  rolloverExpiresAt: string | null;
+  rolloverSourceGrantId: string | null;
+  sourceAllocations: RolloverSourceEvidence[];
+}
+
+function buildCompositeRenewalTransactionMetadata(
+  metadata: Record<string, unknown> | null,
+  evidence: CompositeRenewalEvidence
+): Record<string, unknown> {
+  return {
+    ...(metadata ?? {}),
+    [COMPOSITE_RENEWAL_EVIDENCE_KEY]: evidence,
+  };
+}
+
+function readCompositeRenewalEvidence(
+  metadata: Record<string, unknown> | null
+): CompositeRenewalEvidence | null {
+  const value = metadata?.[COMPOSITE_RENEWAL_EVIDENCE_KEY];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const evidence = value as Record<string, unknown>;
+  const sourceAllocations = evidence.sourceAllocations;
+  const validSourceAllocations =
+    Array.isArray(sourceAllocations) &&
+    sourceAllocations.every(
+      (allocation) =>
+        allocation !== null &&
+        typeof allocation === "object" &&
+        !Array.isArray(allocation) &&
+        typeof (allocation as Record<string, unknown>).grantId === "string" &&
+        Number.isSafeInteger((allocation as Record<string, unknown>).credits) &&
+        ((allocation as Record<string, unknown>).credits as number) > 0 &&
+        Number.isSafeInteger(
+          (allocation as Record<string, unknown>).balanceAfter
+        ) &&
+        ((allocation as Record<string, unknown>).balanceAfter as number) >= 0
+    );
+  const rolledCredits = evidence.rolledCredits as number;
+  const zeroRollover = rolledCredits === 0;
+  if (
+    evidence.version !== 1 ||
+    typeof evidence.rolloverIdempotencyKey !== "string" ||
+    !Number.isSafeInteger(evidence.rolledCredits) ||
+    rolledCredits < 0 ||
+    !(
+      evidence.rolloverGrantId === null ||
+      typeof evidence.rolloverGrantId === "string"
+    ) ||
+    !(
+      evidence.rolloverExpiresAt === null ||
+      typeof evidence.rolloverExpiresAt === "string"
+    ) ||
+    !(
+      evidence.rolloverSourceGrantId === null ||
+      typeof evidence.rolloverSourceGrantId === "string"
+    ) ||
+    !validSourceAllocations ||
+    zeroRollover !== (evidence.rolloverGrantId === null) ||
+    zeroRollover !== (evidence.rolloverExpiresAt === null) ||
+    zeroRollover !== (evidence.rolloverSourceGrantId === null) ||
+    (zeroRollover
+      ? sourceAllocations.length !== 0
+      : sourceAllocations.length === 0 ||
+        sumBy(
+          sourceAllocations as unknown as RolloverSourceEvidence[],
+          (allocation) => allocation.credits
+        ) !== rolledCredits)
+  ) {
+    throw new Error("credit_subscription_renewal_evidence_conflict");
+  }
+
+  return evidence as unknown as CompositeRenewalEvidence;
+}
+
+async function validateCompositeRenewalReplay({
+  store,
+  input,
+  renewalGrant,
+  rolloverInput,
+}: {
+  store: CreditLedgerTransaction;
+  input: RenewSubscriptionCreditsInput;
+  renewalGrant: LedgerCreditGrant;
+  rolloverInput: RolloverSubscriptionCreditsInput;
+}): Promise<
+  RolloverSubscriptionCreditsResult & {
+    duplicate: boolean;
+    sourceAllocations: RolloverSourceEvidence[];
+  }
+> {
+  const renewalTransactionKey = `${input.renewalIdempotencyKey}:grant`;
+  const renewalTransaction =
+    await store.findTransactionByIdempotencyKeyForUpdate(renewalTransactionKey);
+  if (!renewalTransaction) {
+    throw new Error("credit_ledger_reconciliation_required");
+  }
+  const evidence = readCompositeRenewalEvidence(renewalTransaction.metadata);
+  const existingRollover = await store.findGrantByIdempotencyKeyForUpdate(
+    input.rolloverIdempotencyKey
+  );
+
+  if (!evidence) {
+    assertTransactionMatchesRequest(renewalTransaction, {
+      userId: input.userId,
+      grantId: renewalGrant.id,
+      reservationId: null,
+      type: "grant",
+      credits: renewalGrant.originalCredits,
+      idempotencyKey: renewalTransactionKey,
+      sourceId: input.sourceId ?? null,
+      balanceAfter: renewalGrant.originalCredits,
+      metadata: input.metadata ?? null,
+    });
+    if (!existingRollover) {
+      throw new Error("credit_ledger_reconciliation_required");
+    }
+    assertRolloverGrantMatchesRequest(existingRollover, rolloverInput);
+    const sourceAllocations = await assertRolloverReplayEvidence(
+      store,
+      existingRollover,
+      rolloverInput
+    );
+    return {
+      rolledCredits: existingRollover.originalCredits,
+      grant: existingRollover,
+      duplicate: true,
+      sourceAllocations,
+    };
+  }
+
+  if (evidence.rolloverIdempotencyKey !== input.rolloverIdempotencyKey) {
+    throw new Error("credit_subscription_renewal_evidence_conflict");
+  }
+  assertTransactionMatchesRequest(renewalTransaction, {
+    userId: input.userId,
+    grantId: renewalGrant.id,
+    reservationId: null,
+    type: "grant",
+    credits: renewalGrant.originalCredits,
+    idempotencyKey: renewalTransactionKey,
+    sourceId: input.sourceId ?? null,
+    balanceAfter: renewalGrant.originalCredits,
+    metadata: buildCompositeRenewalTransactionMetadata(
+      input.metadata ?? null,
+      evidence
+    ),
+  });
+
+  if (evidence.rolledCredits === 0) {
+    if (existingRollover) {
+      throw new Error("credit_subscription_renewal_evidence_conflict");
+    }
+    return {
+      rolledCredits: 0,
+      grant: null,
+      duplicate: true,
+      sourceAllocations: [],
+    };
+  }
+
+  if (
+    !existingRollover ||
+    existingRollover.id !== evidence.rolloverGrantId ||
+    existingRollover.originalCredits !== evidence.rolledCredits
+  ) {
+    throw new Error("credit_subscription_renewal_evidence_conflict");
+  }
+  assertRolloverGrantMatchesRequest(existingRollover, rolloverInput);
+  const sourceAllocations = await assertRolloverReplayEvidence(
+    store,
+    existingRollover,
+    rolloverInput
+  );
+  if (
+    existingRollover.expiresAt?.toISOString() !== evidence.rolloverExpiresAt ||
+    existingRollover.rolloverSourceGrantId !== evidence.rolloverSourceGrantId ||
+    !metadataEquals(
+      { sourceAllocations },
+      { sourceAllocations: evidence.sourceAllocations }
+    )
+  ) {
+    throw new Error("credit_subscription_renewal_evidence_conflict");
+  }
+  return {
+    rolledCredits: existingRollover.originalCredits,
+    grant: existingRollover,
+    duplicate: true,
+    sourceAllocations,
+  };
+}
+
+async function rolloverSubscriptionCreditsInTransaction({
+  store,
+  input,
+  currentTime,
+}: {
+  store: CreditLedgerTransaction;
+  input: RolloverSubscriptionCreditsInput;
+  currentTime: Date;
+}): Promise<
+  RolloverSubscriptionCreditsResult & {
+    duplicate: boolean;
+    sourceAllocations: RolloverSourceEvidence[];
+  }
+> {
+  const catalogItem = BILLING_CATALOG[input.catalogId];
+  if (
+    catalogItem.rolloverCapCredits <= 0 ||
+    catalogItem.rolloverExpiresAfterDays === null
+  ) {
+    return {
+      rolledCredits: 0,
+      grant: null,
+      duplicate: false,
+      sourceAllocations: [],
+    };
+  }
+
+  const existing = await store.findGrantByIdempotencyKeyForUpdate(
+    input.idempotencyKey
+  );
+  if (existing) {
+    assertRolloverGrantMatchesRequest(existing, input);
+    const sourceAllocations = await assertRolloverReplayEvidence(
+      store,
+      existing,
+      input
+    );
+    return {
+      rolledCredits: existing.originalCredits,
+      grant: existing,
+      duplicate: true,
+      sourceAllocations,
+    };
+  }
+
+  await assertUserReservationIntegrity(store, input.userId);
+  const sourceGrants = (await store.listUserGrantsForUpdate(input.userId))
+    .filter(
+      (grant) =>
+        grant.catalogId === input.catalogId &&
+        grant.rolloverEligible &&
+        isGrantActive(grant, currentTime) &&
+        grant.remainingCredits > 0
+    )
+    .sort(compareGrantSpendOrder);
+  let remainingToRoll = Math.min(
+    catalogItem.rolloverCapCredits,
+    sumBy(sourceGrants, (grant) => grant.remainingCredits)
+  );
+
+  if (remainingToRoll === 0) {
+    return {
+      rolledCredits: 0,
+      grant: null,
+      duplicate: false,
+      sourceAllocations: [],
+    };
+  }
+
+  const rolledCredits = remainingToRoll;
+  const rolloverGrant = await store.createGrant({
+    userId: input.userId,
+    catalogId: input.catalogId,
+    source: "rollover",
+    sourceId: input.sourceId ?? null,
+    idempotencyKey: input.idempotencyKey,
+    originalCredits: rolledCredits,
+    remainingCredits: rolledCredits,
+    reservedCredits: 0,
+    expiresAt: addDaysOrNull(currentTime, catalogItem.rolloverExpiresAfterDays),
+    rolloverEligible: false,
+    rolloverSourceGrantId: sourceGrants[0]?.id ?? null,
+    metadata: input.metadata ?? null,
+  });
+  assertRolloverGrantMatchesRequest(rolloverGrant, input, rolledCredits);
+
+  for (const sourceGrant of sourceGrants) {
+    if (remainingToRoll === 0) break;
+
+    const creditsFromGrant = Math.min(
+      sourceGrant.remainingCredits,
+      remainingToRoll
+    );
+    const updatedGrant = await store.updateGrantBalances(sourceGrant.id, {
+      remainingCredits: sourceGrant.remainingCredits - creditsFromGrant,
+      reservedCredits: sourceGrant.reservedCredits,
+    });
+    await createAndValidateTransaction(store, {
+      userId: input.userId,
+      grantId: sourceGrant.id,
+      reservationId: null,
+      type: "rollover",
+      credits: creditsFromGrant,
+      idempotencyKey: `${input.idempotencyKey}:source:${sourceGrant.id}`,
+      sourceId: input.sourceId ?? null,
+      balanceAfter: updatedGrant.remainingCredits,
+      metadata: { rolloverGrantId: rolloverGrant.id },
+    });
+    remainingToRoll -= creditsFromGrant;
+  }
+
+  if (remainingToRoll !== 0) {
+    throw new Error("credit_rollover_incomplete");
+  }
+
+  await createAndValidateTransaction(store, {
+    userId: input.userId,
+    grantId: rolloverGrant.id,
+    reservationId: null,
+    type: "rollover",
+    credits: rolledCredits,
+    idempotencyKey: `${input.idempotencyKey}:grant`,
+    sourceId: input.sourceId ?? null,
+    balanceAfter: rolloverGrant.remainingCredits,
+    metadata: input.metadata ?? null,
+  });
+  const sourceAllocations = await assertRolloverReplayEvidence(
+    store,
+    rolloverGrant,
+    input
+  );
+
+  return {
+    rolledCredits,
+    grant: rolloverGrant,
+    duplicate: false,
+    sourceAllocations,
+  };
+}
+
 function assertGrantMatchesRequest(
   grant: LedgerCreditGrant,
-  input: GrantCreditsInput
+  input: GrantCreditsInput,
+  includedCredits: number,
+  rolloverEligible: boolean
 ): void {
   if (
     grant.userId !== input.userId ||
     grant.catalogId !== input.catalogId ||
-    grant.source !== input.source
+    grant.source !== input.source ||
+    grant.sourceId !== (input.sourceId ?? null) ||
+    grant.originalCredits !== includedCredits ||
+    grant.rolloverEligible !== rolloverEligible ||
+    grant.rolloverSourceGrantId !== (input.rolloverSourceGrantId ?? null) ||
+    !metadataEquals(grant.metadata, input.metadata ?? null) ||
+    (input.expiresAt !== undefined &&
+      !datesEqual(grant.expiresAt, input.expiresAt))
   ) {
     throw new Error("credit_grant_idempotency_conflict");
   }
 }
 
-function assertGrantTransactionMatchesGrant(
+function assertTransactionMatchesRequest(
   transaction: LedgerCreditTransaction,
-  grant: LedgerCreditGrant
+  input: Omit<LedgerCreditTransaction, "id" | "createdAt">
 ): void {
   if (
-    transaction.userId !== grant.userId ||
-    transaction.grantId !== grant.id ||
-    transaction.reservationId !== null ||
-    transaction.type !== "grant" ||
-    transaction.credits !== grant.originalCredits ||
-    transaction.sourceId !== grant.sourceId ||
-    transaction.balanceAfter !== grant.originalCredits
+    transaction.userId !== input.userId ||
+    transaction.grantId !== input.grantId ||
+    transaction.reservationId !== input.reservationId ||
+    transaction.type !== input.type ||
+    transaction.credits !== input.credits ||
+    transaction.sourceId !== input.sourceId ||
+    transaction.balanceAfter !== input.balanceAfter ||
+    !metadataEquals(transaction.metadata, input.metadata)
   ) {
     throw new Error("credit_transaction_idempotency_conflict");
   }
 }
 
+async function createAndValidateTransaction(
+  store: CreditLedgerTransaction,
+  input: Omit<LedgerCreditTransaction, "id" | "createdAt">
+): Promise<LedgerCreditTransaction> {
+  const transaction = await store.createTransaction(input);
+  assertTransactionMatchesRequest(transaction, input);
+  return transaction;
+}
+
+function assertReservationMatchesRequest(
+  reservation: LedgerCreditReservation,
+  input: ReserveCreditInput,
+  requestedCredits: number
+): void {
+  if (
+    reservation.userId !== input.userId ||
+    reservation.credits !== requestedCredits ||
+    reservation.sessionId !== (input.sessionId ?? null) ||
+    !metadataEquals(reservation.metadata, input.metadata ?? null) ||
+    (input.expiresAt !== undefined &&
+      reservation.expiresAt.getTime() !== input.expiresAt.getTime())
+  ) {
+    throw new Error("credit_reservation_idempotency_conflict");
+  }
+}
+
+async function assertReservationEvidence(
+  store: CreditLedgerTransaction,
+  reservation: LedgerCreditReservation
+): Promise<LedgerReservationAllocation[]> {
+  const allocations = await store.listAllocationsForUpdate(reservation.id);
+  if (
+    allocations.length === 0 ||
+    sumBy(allocations, (allocation) => allocation.credits) !==
+      reservation.credits
+  ) {
+    throw new Error("credit_reservation_incomplete");
+  }
+
+  const grants = await store.listUserGrantsForUpdate(reservation.userId);
+  const grantsById = new Map(grants.map((grant) => [grant.id, grant]));
+  for (const allocation of allocations) {
+    const grant = grantsById.get(allocation.grantId);
+    if (!grant) throw new Error("credit_ledger_reconciliation_required");
+
+    const transactionKey = `reserve:${reservation.reservationKey}:${grant.id}`;
+    const reserveTransaction =
+      await store.findTransactionByIdempotencyKeyForUpdate(transactionKey);
+    if (!reserveTransaction) {
+      throw new Error("credit_reservation_incomplete");
+    }
+    if (
+      reserveTransaction.balanceAfter === null ||
+      !Number.isSafeInteger(reserveTransaction.balanceAfter) ||
+      reserveTransaction.balanceAfter < 0 ||
+      reserveTransaction.balanceAfter + allocation.credits >
+        grant.originalCredits
+    ) {
+      throw new Error("credit_ledger_reconciliation_required");
+    }
+    assertTransactionMatchesRequest(reserveTransaction, {
+      userId: reservation.userId,
+      grantId: grant.id,
+      reservationId: reservation.id,
+      type: "reserve",
+      credits: allocation.credits,
+      idempotencyKey: transactionKey,
+      sourceId: reservation.sessionId,
+      balanceAfter: reserveTransaction.balanceAfter,
+      metadata: reservation.metadata,
+    });
+  }
+
+  return allocations.sort((left, right) =>
+    left.grantId.localeCompare(right.grantId)
+  );
+}
+
+async function assertUserReservationIntegrity(
+  store: CreditLedgerTransaction,
+  userId: string
+): Promise<void> {
+  const reservations = await store.listUserReservationsForUpdate(userId);
+  const grants = await store.listUserGrantsForUpdate(userId);
+  const expectedReservedByGrant = new Map<string, number>();
+
+  for (const reservation of reservations) {
+    const allocations = await assertReservationEvidence(store, reservation);
+    assertReservationTerminalHistory(
+      reservation,
+      allocations,
+      await store.listTerminalTransactionsByReservationForUpdate(reservation.id)
+    );
+    if (reservation.status !== "active") continue;
+
+    for (const allocation of allocations) {
+      expectedReservedByGrant.set(
+        allocation.grantId,
+        (expectedReservedByGrant.get(allocation.grantId) ?? 0) +
+          allocation.credits
+      );
+    }
+  }
+
+  for (const grant of grants) {
+    if (
+      grant.reservedCredits !== (expectedReservedByGrant.get(grant.id) ?? 0)
+    ) {
+      throw new Error("credit_ledger_reconciliation_required");
+    }
+  }
+}
+
+function assertRolloverGrantMatchesRequest(
+  grant: LedgerCreditGrant,
+  input: RolloverSubscriptionCreditsInput,
+  expectedCredits?: number
+): void {
+  if (
+    grant.userId !== input.userId ||
+    grant.catalogId !== input.catalogId ||
+    grant.source !== "rollover" ||
+    grant.sourceId !== (input.sourceId ?? null) ||
+    (expectedCredits !== undefined &&
+      grant.originalCredits !== expectedCredits) ||
+    grant.rolloverEligible ||
+    !metadataEquals(grant.metadata, input.metadata ?? null)
+  ) {
+    throw new Error("credit_grant_idempotency_conflict");
+  }
+}
+
+async function assertRolloverReplayEvidence(
+  store: CreditLedgerTransaction,
+  rolloverGrant: LedgerCreditGrant,
+  input: RolloverSubscriptionCreditsInput
+): Promise<RolloverSourceEvidence[]> {
+  const grants = await store.listUserGrantsForUpdate(input.userId);
+  let sourceCredits = 0;
+  const sourceAllocations: RolloverSourceEvidence[] = [];
+
+  const approximateExpiryDays = rolloverGrant.expiresAt
+    ? (rolloverGrant.expiresAt.getTime() - rolloverGrant.createdAt.getTime()) /
+      86_400_000
+    : null;
+  if (
+    approximateExpiryDays === null ||
+    approximateExpiryDays < 59 ||
+    approximateExpiryDays > 61 ||
+    rolloverGrant.rolloverSourceGrantId === null
+  ) {
+    throw new Error("credit_rollover_incomplete");
+  }
+
+  for (const grant of grants) {
+    if (grant.id === rolloverGrant.id) continue;
+    const key = `${input.idempotencyKey}:source:${grant.id}`;
+    const transaction =
+      await store.findTransactionByIdempotencyKeyForUpdate(key);
+    if (!transaction) continue;
+
+    if (
+      grant.catalogId !== input.catalogId ||
+      !grant.rolloverEligible ||
+      !Number.isSafeInteger(transaction.credits) ||
+      transaction.credits <= 0 ||
+      transaction.balanceAfter === null ||
+      !Number.isSafeInteger(transaction.balanceAfter) ||
+      transaction.balanceAfter < 0 ||
+      transaction.balanceAfter + transaction.credits > grant.originalCredits
+    ) {
+      throw new Error("credit_rollover_incomplete");
+    }
+
+    assertTransactionMatchesRequest(transaction, {
+      userId: input.userId,
+      grantId: grant.id,
+      reservationId: null,
+      type: "rollover",
+      credits: transaction.credits,
+      idempotencyKey: key,
+      sourceId: input.sourceId ?? null,
+      balanceAfter: transaction.balanceAfter,
+      metadata: { rolloverGrantId: rolloverGrant.id },
+    });
+    sourceCredits += transaction.credits;
+    sourceAllocations.push({
+      grantId: grant.id,
+      credits: transaction.credits,
+      balanceAfter: transaction.balanceAfter,
+    });
+  }
+
+  sourceAllocations.sort((left, right) =>
+    left.grantId.localeCompare(right.grantId)
+  );
+  if (
+    sourceAllocations.length === 0 ||
+    sourceCredits !== rolloverGrant.originalCredits ||
+    !sourceAllocations.some(
+      (allocation) => allocation.grantId === rolloverGrant.rolloverSourceGrantId
+    )
+  ) {
+    throw new Error("credit_rollover_incomplete");
+  }
+
+  const destinationKey = `${input.idempotencyKey}:grant`;
+  const destination =
+    await store.findTransactionByIdempotencyKeyForUpdate(destinationKey);
+  if (!destination) throw new Error("credit_rollover_incomplete");
+  assertTransactionMatchesRequest(destination, {
+    userId: input.userId,
+    grantId: rolloverGrant.id,
+    reservationId: null,
+    type: "rollover",
+    credits: rolloverGrant.originalCredits,
+    idempotencyKey: destinationKey,
+    sourceId: input.sourceId ?? null,
+    balanceAfter: rolloverGrant.originalCredits,
+    metadata: input.metadata ?? null,
+  });
+  return sourceAllocations;
+}
+
+async function assertOrphanRolloverDebitsApplied(
+  store: CreditLedgerTransaction,
+  userId: string,
+  sourceAllocations: RolloverSourceEvidence[]
+): Promise<void> {
+  const grants = await store.listUserGrantsForUpdate(userId);
+  const grantsById = new Map(grants.map((grant) => [grant.id, grant]));
+  if (
+    sourceAllocations.some(
+      (allocation) =>
+        grantsById.get(allocation.grantId)?.remainingCredits !==
+        allocation.balanceAfter
+    )
+  ) {
+    throw new Error("credit_ledger_reconciliation_required");
+  }
+}
+
 export function createMemoryCreditLedgerStore(): CreditLedgerStore {
   let nextId = 1;
-  const grants: LedgerCreditGrant[] = [];
-  const reservations: LedgerCreditReservation[] = [];
-  const allocations: LedgerReservationAllocation[] = [];
-  const transactions: LedgerCreditTransaction[] = [];
+  let grants: LedgerCreditGrant[] = [];
+  let reservations: LedgerCreditReservation[] = [];
+  let allocations: LedgerReservationAllocation[] = [];
+  let transactions: LedgerCreditTransaction[] = [];
+  let transactionTail = Promise.resolve();
 
   function id(prefix: string) {
     return `${prefix}-${nextId++}`;
   }
 
-  return {
+  const store: CreditLedgerStore & CreditLedgerTransaction = {
+    async withUserTransaction(_userId, work) {
+      const previous = transactionTail;
+      let release = () => {};
+      transactionTail = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+
+      const snapshot = {
+        nextId,
+        grants: grants.map(cloneGrant),
+        reservations: reservations.map(cloneReservation),
+        allocations: allocations.map(cloneAllocation),
+        transactions: transactions.map(cloneTransaction),
+      };
+
+      try {
+        return await work(store);
+      } catch (error) {
+        nextId = snapshot.nextId;
+        grants = snapshot.grants;
+        reservations = snapshot.reservations;
+        allocations = snapshot.allocations;
+        transactions = snapshot.transactions;
+        throw error;
+      } finally {
+        release();
+      }
+    },
+
     async createGrant(input) {
       const existing = grants.find(
         (grant) => grant.idempotencyKey === input.idempotencyKey
@@ -681,11 +1505,19 @@ export function createMemoryCreditLedgerStore(): CreditLedgerStore {
       return grant ? cloneGrant(grant) : null;
     },
 
+    async findGrantByIdempotencyKeyForUpdate(idempotencyKey) {
+      return store.findGrantByIdempotencyKey(idempotencyKey);
+    },
+
     async findTransactionByIdempotencyKey(idempotencyKey) {
       const transaction = transactions.find(
         (candidate) => candidate.idempotencyKey === idempotencyKey
       );
       return transaction ? cloneTransaction(transaction) : null;
+    },
+
+    async findTransactionByIdempotencyKeyForUpdate(idempotencyKey) {
+      return store.findTransactionByIdempotencyKey(idempotencyKey);
     },
 
     async listSpendableGrants(userId, currentTime) {
@@ -700,8 +1532,26 @@ export function createMemoryCreditLedgerStore(): CreditLedgerStore {
         .map(cloneGrant);
     },
 
+    async listSpendableGrantsForUpdate(userId, currentTime) {
+      return store.listSpendableGrants(userId, currentTime);
+    },
+
     async listUserGrants(userId) {
       return grants.filter((grant) => grant.userId === userId).map(cloneGrant);
+    },
+
+    async listUserGrantsForUpdate(userId) {
+      return grants
+        .filter((grant) => grant.userId === userId)
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map(cloneGrant);
+    },
+
+    async listUserReservationsForUpdate(userId) {
+      return reservations
+        .filter((reservation) => reservation.userId === userId)
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map(cloneReservation);
     },
 
     async updateGrantBalances(grantId, balances) {
@@ -743,6 +1593,10 @@ export function createMemoryCreditLedgerStore(): CreditLedgerStore {
       return reservation ? cloneReservation(reservation) : null;
     },
 
+    async findReservationByKeyForUpdate(reservationKey) {
+      return store.findReservationByKey(reservationKey);
+    },
+
     async updateReservationStatus(reservationId, status) {
       const reservation = reservations.find(
         (candidate) => candidate.id === reservationId
@@ -773,6 +1627,24 @@ export function createMemoryCreditLedgerStore(): CreditLedgerStore {
         .map(cloneAllocation);
     },
 
+    async listAllocationsForUpdate(reservationId) {
+      return allocations
+        .filter((allocation) => allocation.reservationId === reservationId)
+        .sort((left, right) => left.grantId.localeCompare(right.grantId))
+        .map(cloneAllocation);
+    },
+
+    async listTerminalTransactionsByReservationForUpdate(reservationId) {
+      return transactions
+        .filter(
+          (transaction) =>
+            transaction.reservationId === reservationId &&
+            ["consume", "release", "refund"].includes(transaction.type)
+        )
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map(cloneTransaction);
+    },
+
     async createTransaction(input) {
       const existing = transactions.find(
         (transaction) => transaction.idempotencyKey === input.idempotencyKey
@@ -790,6 +1662,8 @@ export function createMemoryCreditLedgerStore(): CreditLedgerStore {
       return cloneTransaction(transaction);
     },
   };
+
+  return store;
 }
 
 function addDaysOrNull(date: Date, days: number | null): Date | null {
@@ -804,6 +1678,58 @@ function addDaysOrNull(date: Date, days: number | null): Date | null {
 
 function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60 * 1000);
+}
+
+class InsufficientCreditsError extends Error {
+  constructor(readonly availableCredits: number) {
+    super("insufficient_credits");
+  }
+}
+
+function assertPositiveCredits(credits: number): void {
+  if (!Number.isSafeInteger(credits) || credits <= 0) {
+    throw new Error("invalid_credit_amount");
+  }
+}
+
+function assertGrantBalances(
+  grant: LedgerCreditGrant,
+  balances: Pick<LedgerCreditGrant, "remainingCredits" | "reservedCredits">
+): void {
+  if (
+    balances.remainingCredits < 0 ||
+    balances.reservedCredits < 0 ||
+    balances.remainingCredits + balances.reservedCredits > grant.originalCredits
+  ) {
+    throw new Error("credit_ledger_reconciliation_required");
+  }
+}
+
+function datesEqual(left: Date | null, right: Date | null): boolean {
+  return left === null
+    ? right === null
+    : right !== null && left.getTime() === right.getTime();
+}
+
+function metadataEquals(
+  left: Record<string, unknown> | null,
+  right: Record<string, unknown> | null
+): boolean {
+  return canonicalJson(left) === canonicalJson(right);
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 async function completeReservation({
@@ -824,79 +1750,140 @@ async function completeReservation({
     credits: number;
   }): Pick<LedgerCreditGrant, "remainingCredits" | "reservedCredits">;
 }): Promise<CompleteReservationResult> {
-  const existingTransaction =
-    await store.findTransactionByIdempotencyKey(idempotencyKey);
-  const reservation = await store.findReservationByKey(reservationKey);
-
-  if (!reservation) {
+  const ownerLookup = await store.findReservationByKey(reservationKey);
+  if (!ownerLookup) {
     throw new Error(`Credit reservation ${reservationKey} was not found`);
   }
+  const outcome = await store.withUserTransaction(
+    ownerLookup.userId,
+    async (transaction) => {
+      const reservation =
+        await transaction.findReservationByKeyForUpdate(reservationKey);
+      if (!reservation || reservation.userId !== ownerLookup.userId) {
+        throw new Error("credit_reservation_idempotency_conflict");
+      }
 
-  if (existingTransaction || reservation.status === nextStatus) {
-    return { reservation };
-  }
+      await assertUserReservationIntegrity(transaction, reservation.userId);
+      const allocations = await assertReservationEvidence(
+        transaction,
+        reservation
+      );
+      const userGrants = await transaction.listUserGrantsForUpdate(
+        reservation.userId
+      );
+      const grantsById = new Map(userGrants.map((grant) => [grant.id, grant]));
+      const transactionInput = {
+        userId: reservation.userId,
+        grantId: null,
+        reservationId: reservation.id,
+        type: transactionType,
+        credits: reservation.credits,
+        idempotencyKey,
+        sourceId: reservation.sessionId,
+        balanceAfter: null,
+        metadata: {
+          allocations: allocations.map((allocation) => ({
+            grantId: allocation.grantId,
+            credits: allocation.credits,
+          })),
+        },
+      } satisfies Omit<LedgerCreditTransaction, "id" | "createdAt">;
+      const terminalTransactions =
+        await transaction.listTerminalTransactionsByReservationForUpdate(
+          reservation.id
+        );
+      assertReservationTerminalHistory(
+        reservation,
+        allocations,
+        terminalTransactions
+      );
+      const terminalTransaction =
+        terminalTransactions.find(
+          (candidate) => candidate.type === transactionType
+        ) ?? null;
+      if (
+        terminalTransaction &&
+        terminalTransaction.idempotencyKey !== idempotencyKey
+      ) {
+        throw new Error("credit_transaction_idempotency_conflict");
+      }
+      const existingTransaction =
+        await transaction.findTransactionByIdempotencyKeyForUpdate(
+          idempotencyKey
+        );
 
-  if (!canTransitionReservation(reservation.status, nextStatus)) {
-    throw new Error(
-      `Cannot move credit reservation ${reservationKey} from ${reservation.status} to ${nextStatus}`
-    );
-  }
+      if (existingTransaction) {
+        assertTransactionMatchesRequest(existingTransaction, transactionInput);
+        if (reservation.status !== nextStatus) {
+          throw new Error("credit_transaction_idempotency_conflict");
+        }
+        return {
+          reservation,
+          firstGrant: allocations[0]
+            ? (grantsById.get(allocations[0].grantId) ?? null)
+            : null,
+        };
+      }
 
-  const allocations = await store.listAllocations(reservation.id);
-  const userGrants = await store.listUserGrants(reservation.userId);
+      if (reservation.status === nextStatus) {
+        throw new Error("credit_ledger_reconciliation_required");
+      }
 
-  for (const allocation of allocations) {
-    const grant = userGrants.find(
-      (candidate) => candidate.id === allocation.grantId
-    );
-    if (!grant) {
-      throw new Error(`Credit grant ${allocation.grantId} was not found`);
+      if (!canTransitionReservation(reservation.status, nextStatus)) {
+        throw new Error(
+          `Cannot move credit reservation ${reservationKey} from ${reservation.status} to ${nextStatus}`
+        );
+      }
+
+      for (const allocation of allocations) {
+        const grant = grantsById.get(allocation.grantId);
+        if (!grant) {
+          throw new Error("credit_ledger_reconciliation_required");
+        }
+        const balances = applyAllocation({
+          grant,
+          credits: allocation.credits,
+        });
+        assertGrantBalances(grant, balances);
+        await transaction.updateGrantBalances(allocation.grantId, balances);
+      }
+
+      const updatedReservation = await transaction.updateReservationStatus(
+        reservation.id,
+        nextStatus
+      );
+      await createAndValidateTransaction(transaction, transactionInput);
+      assertReservationTerminalHistory(
+        updatedReservation,
+        allocations,
+        await transaction.listTerminalTransactionsByReservationForUpdate(
+          reservation.id
+        )
+      );
+      await assertUserReservationIntegrity(transaction, reservation.userId);
+
+      return {
+        reservation: updatedReservation,
+        firstGrant: allocations[0]
+          ? (grantsById.get(allocations[0].grantId) ?? null)
+          : null,
+      };
     }
-
-    await store.updateGrantBalances(
-      allocation.grantId,
-      applyAllocation({ grant, credits: allocation.credits })
-    );
-  }
-
-  const updatedReservation = await store.updateReservationStatus(
-    reservation.id,
-    nextStatus
   );
-  await store.createTransaction({
-    userId: reservation.userId,
-    grantId: null,
-    reservationId: reservation.id,
-    type: transactionType,
-    credits: reservation.credits,
-    idempotencyKey,
-    sourceId: reservation.sessionId,
-    balanceAfter: null,
-    metadata: {
-      allocations: allocations.map((allocation) => ({
-        grantId: allocation.grantId,
-        credits: allocation.credits,
-      })),
-    },
-  });
 
-  const firstAllocation = allocations[0];
-  const firstGrant = firstAllocation
-    ? userGrants.find((grant) => grant.id === firstAllocation.grantId)
-    : null;
   trackCompletedReservationEvent({
     transactionType,
-    userId: reservation.userId,
-    catalogId: firstGrant?.catalogId,
-    creditSource: firstGrant?.source,
-    credits: reservation.credits,
+    userId: outcome.reservation.userId,
+    catalogId: outcome.firstGrant?.catalogId,
+    creditSource: outcome.firstGrant?.source,
+    credits: outcome.reservation.credits,
     idempotencyKey,
-    sessionId: reservation.sessionId,
-    reservationId: reservation.id,
-    grantId: firstGrant?.id,
+    sessionId: outcome.reservation.sessionId,
+    reservationId: outcome.reservation.id,
+    grantId: outcome.firstGrant?.id,
   });
 
-  return { reservation: updatedReservation };
+  return { reservation: outcome.reservation };
 }
 
 function trackCompletedReservationEvent({
@@ -957,6 +1944,59 @@ function canTransitionReservation(
   return false;
 }
 
+function assertReservationTerminalHistory(
+  reservation: LedgerCreditReservation,
+  allocations: LedgerReservationAllocation[],
+  transactions: LedgerCreditTransaction[]
+): void {
+  const canonicalMetadata = {
+    allocations: allocations.map((allocation) => ({
+      grantId: allocation.grantId,
+      credits: allocation.credits,
+    })),
+  };
+  if (
+    transactions.some(
+      (transaction) =>
+        transaction.userId !== reservation.userId ||
+        transaction.reservationId !== reservation.id ||
+        transaction.grantId !== null ||
+        transaction.credits !== reservation.credits ||
+        transaction.sourceId !== reservation.sessionId ||
+        transaction.balanceAfter !== null ||
+        !metadataEquals(transaction.metadata, canonicalMetadata)
+    )
+  ) {
+    throw new Error("credit_ledger_reconciliation_required");
+  }
+
+  const counts = {
+    consume: transactions.filter(
+      (transaction) => transaction.type === "consume"
+    ).length,
+    release: transactions.filter(
+      (transaction) => transaction.type === "release"
+    ).length,
+    refund: transactions.filter((transaction) => transaction.type === "refund")
+      .length,
+  };
+  const valid =
+    (reservation.status === "active" && transactions.length === 0) ||
+    (reservation.status === "consumed" &&
+      transactions.length === 1 &&
+      counts.consume === 1) ||
+    (reservation.status === "released" &&
+      transactions.length === 1 &&
+      counts.release === 1) ||
+    (reservation.status === "refunded" &&
+      transactions.length === 2 &&
+      counts.consume === 1 &&
+      counts.refund === 1) ||
+    (reservation.status === "expired" && transactions.length === 0);
+
+  if (!valid) throw new Error("credit_ledger_reconciliation_required");
+}
+
 function isGrantActive(grant: LedgerCreditGrant, currentTime: Date): boolean {
   return grant.expiresAt === null || grant.expiresAt > currentTime;
 }
@@ -986,7 +2026,10 @@ function compareGrantSpendOrder(
     return 1;
   }
 
-  return left.createdAt.getTime() - right.createdAt.getTime();
+  const createdAtOrder = left.createdAt.getTime() - right.createdAt.getTime();
+  return createdAtOrder !== 0
+    ? createdAtOrder
+    : left.id.localeCompare(right.id);
 }
 
 function sumBy<T>(items: T[], read: (item: T) => number): number {

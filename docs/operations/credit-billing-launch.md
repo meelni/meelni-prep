@@ -4,6 +4,35 @@ Updated: 2026-07-10
 
 This runbook must be completed before enabling the credit-based billing catalog in production.
 
+## Ledger Transaction And Integrity Gate
+
+Every credit mutation must run through the transaction-bound ledger service.
+The PostgreSQL store locks the owning `app_user` row before reading or writing
+grants, reservations, allocations, or audit transactions. This makes one user
+the serialization boundary and keeps balances and audit evidence in the same
+commit. Analytics are emitted only after that commit succeeds.
+
+Do not write directly to the ledger tables from a webhook, route, repair script,
+or backfill. Subscription renewal must roll eligible credits and issue the new
+cycle grant in one ledger transaction. A replay is valid only when its user,
+catalog, source, amount, expiration, source/session, and persisted result all
+match. Ambiguous or partial evidence must fail with
+`credit_ledger_reconciliation_required`; do not automatically repair it.
+
+The database migration test suite exercises concurrent grants, reservations,
+settlements, refunds, and rollovers against real PostgreSQL on both a clean
+database and the legacy-upgrade path:
+
+```bash
+MIGRATION_TEST_DATABASE_URL=postgresql://... npm run test:database-migrations
+```
+
+`npm run db:preflight` reports aggregate-only ledger integrity counts under
+`creditLedgerIntegrity`. Before relaunch, all counts must be zero on the
+isolated Preview database. The report must not contain user IDs, Stripe IDs,
+balances, or other customer data. Preview currently shares Production data, so
+do not run the rehearsal until SAV-226 establishes an isolated environment.
+
 ## Migration And Backfill Plan
 
 Do not run production data changes until the preview checks below pass and an owner has reviewed current paid-user state.
