@@ -41,6 +41,8 @@ export const PRODUCT_LANGUAGE_GUARDRAILS = {
     "interview ready",
     "interview-ready",
     "readiness score",
+    "real-time feedback",
+    "instant feedback",
   ],
   exceptions: [
     "Verbatim interview-question content may legitimately discuss fitness products.",

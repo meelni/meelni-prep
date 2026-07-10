@@ -233,7 +233,7 @@ What questions do you have about this approach?"
 
 ## Practice This Question
 
-Ready to practice your own Product Sense answer? [Try a mock interview with Meelni](/dashboard/new-interview) and get real-time feedback on your structure, user empathy, and solution quality.
+Ready to practice your own Product Sense answer? [Try a mock interview with Meelni](/dashboard/new-interview) and review completed-interview feedback on your structure, user empathy, and solution quality.
 
 ---
 
@@ -1194,7 +1194,7 @@ This builds the **product intuition** you need for case studies.
 
 ### 3. Do Mock Interviews (Week 3+)
 
-Solo practice isn't enough—you need **real-time feedback**. Here's why:
+Solo practice can hide gaps—you need **feedback tied to a completed answer**. Here's why:
 
 **What solo practice misses:**
 - You don't know if you're going too deep or too shallow

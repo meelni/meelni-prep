@@ -36,7 +36,7 @@ export function getHomeMetadata(reactivated: boolean): Metadata {
       "behavioral interview practice",
       "execution interview questions",
       "strategy interview prep",
-      "real-time interview feedback",
+      "PM interview feedback",
       "voice interview practice",
       "PM interview questions",
       "product management interview",

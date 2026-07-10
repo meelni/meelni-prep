@@ -34,7 +34,7 @@ Keep output grounded in current product truth. Do not describe future concepts a
 - Product Sense, Execution/Product Metrics, Strategy, or Behavioral positioning
 - trial, pricing, packaging, and monetization strategy
 - question-bank, company-page, SEO, and conversion strategy
-- feedback, drill, progress, and retention loops
+- feedback, focused practice, progress, and retention loops
 - enterprise expansion strategy
 - AI/agent learning expansion for PMs
 - PRD or handoff brief shaping after product direction is clear

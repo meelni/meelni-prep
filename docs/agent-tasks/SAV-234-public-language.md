@@ -17,7 +17,7 @@
 - Project: Meelni Relaunch Readiness.
 - Parent slice issue: SAV-165.
 - Child deliverable issue: SAV-234.
-- Current Linear state: In Progress.
+- Current Linear state: In Review after remediation verification.
 
 ## Scope
 
@@ -41,7 +41,7 @@
 ## Validation
 
 - Required commands: Product-language contract, affected tests, typecheck, lint, production build.
-- Optional/manual checks: Browser review after the stacked branch is converged into an authenticated Preview deployment.
+- Optional/manual checks: Browser review on the converged authenticated Preview deployment.
 - Fixtures or regression tests needed: Contract rejection for gym, rep, workout, and drill vocabulary on active product surfaces.
 
 ## Rollout
@@ -49,4 +49,18 @@
 - Risk level: Low.
 - Backward compatibility: Preserve internal and API field names; change presentation only.
 - Metrics/events to watch: No event-contract changes.
-- Follow-up slice: Converge SAV-200/SAV-201 feedback branches and verify all public/authenticated copy in isolated Preview.
+- Follow-up slice: SAV-201 supplies deterministic focused-practice recommendations; SAV-234 does not expose stored compatibility fields.
+
+## Implementation Evidence
+
+- The branch is rebased directly onto remediated SAV-200 head `7511b9bc`.
+- Public product copy, structured data, company CTAs, blog content, and customer
+  API documentation use completed-interview feedback and focused-practice
+  vocabulary.
+- Exact `drills` JSON/property compatibility identifiers remain unchanged, but
+  the language guard strips only identifier syntax and still rejects the same
+  words in display strings.
+- The guard scans active TS/TSX surfaces, company/blog copy sources, public
+  Markdown/OpenAPI documents, and canonical product-strategy guidance.
+- Canonical `.agents/skills/meelni-product-strategy` sources use focused-practice
+  vocabulary; Codex and Claude mirrors remain symlinks.
