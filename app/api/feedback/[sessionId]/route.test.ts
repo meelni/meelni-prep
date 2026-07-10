@@ -401,6 +401,44 @@ describe("/api/feedback/[sessionId]", () => {
     const response = await GET(request(), PARAMS);
     expect(response.headers.get("cache-control")).toBe("private, max-age=3600");
   });
+
+  it("returns structured feedback v2 findings and stored versions", async () => {
+    const finding = {
+      dimension: "insight",
+      observation: "The answer selected a concrete segment.",
+      transcriptRefs: ["writer:1"],
+      evidence: [{ turnRef: "writer:1", quote: "working parents" }],
+      nextStep: "Carry the segment through prioritization.",
+      rubricVersion: "pm-feedback-rubric.v2",
+      confidence: 0.9,
+    };
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        overallScore: "7.8",
+        strengths: [finding],
+        improvements: [{ ...finding, dimension: "structure" }],
+        schemaVersion: "feedback.v2",
+        promptVersion: "feedback.prompt.v2",
+        modelVersion: "fixture-model-v1",
+        rubricVersion: "pm-feedback-rubric.v2",
+        evaluationState: "partial",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "completed",
+      feedback: {
+        strengths: [finding],
+        schemaVersion: "feedback.v2",
+        promptVersion: "feedback.prompt.v2",
+        modelVersion: "fixture-model-v1",
+        rubricVersion: "pm-feedback-rubric.v2",
+        evaluationState: "partial",
+      },
+    });
+  });
 });
 
 function request(method = "GET") {

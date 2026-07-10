@@ -92,6 +92,8 @@ under the owner/session/reservation/grant lock order. See
 - Any other terminal outcome creates `feedback.status=skipped` with a user-safe reason.
 - `feedback.session_id` is unique.
 - The feedback worker may change feedback status and result fields. It must not write session lifecycle or legacy session status.
+- New completed feedback uses the strict, evidence-grounded
+  [feedback v2 contract](./feedback-v2.md). Legacy v1 feedback remains readable.
 
 ## Dispatch Outbox
 

@@ -9,7 +9,7 @@ Good candidates:
 - [interview credit recovery](./interview-credit-recovery.md);
 - [LiveKit room metadata](./livekit-room-metadata.md);
 - [versioned transcript events](./transcript-events.md);
-- feedback status and response shapes;
+- [feedback v2 evidence and response shape](./feedback-v2.md);
 - [dashboard progress evidence](./dashboard-progress.md);
 - [question-bank records, taxonomy, and pagination](./question-bank.md);
 - [service health and readiness](./service-health.md);
