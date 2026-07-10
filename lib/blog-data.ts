@@ -233,7 +233,7 @@ What questions do you have about this approach?"
 
 ## Practice This Question
 
-Ready to practice your own Product Sense answer? [Try a mock interview with Meelni](/dashboard/new-interview) and get real-time feedback on your structure, user empathy, and solution quality.
+Ready to practice your own Product Sense answer? [Try a mock interview with Meelni](/dashboard/new-interview) and review completed-interview feedback on your structure, user empathy, and solution quality.
 
 ---
 
@@ -244,7 +244,7 @@ Ready to practice your own Product Sense answer? [Try a mock interview with Meel
     id: "product-sense-education-meta",
     title: "How to Answer: 'Design a Product for Education' at Meta",
     excerpt:
-      "Master this common Meta interview question with a complete walkthrough showing expert-level product thinking, from learner segmentation to knowledge retention solutions.",
+      "Work through this common Meta interview question with a structured example covering learner segmentation and knowledge retention.",
     author: "Meelni Team",
     date: "November 19, 2025",
     readTime: "11 min read",
@@ -753,7 +753,7 @@ What aspects would you like me to dive deeper on?"
     title:
       "How to Answer: 'Tell Me About a Time You Failed' - Leadership & Drive",
     excerpt:
-      "Master this critical behavioral question with a complete STAR framework example showing ownership, growth, and Meta's leadership principles in action.",
+      "Work through this behavioral question with a STAR example covering ownership, growth, and Meta's leadership principles.",
     author: "Meelni Team",
     date: "November 17, 2025",
     readTime: "9 min read",
@@ -1177,7 +1177,7 @@ Case study interviews are learnable, but you need **deliberate practice**. Here'
 
 ### 1. Build Your Framework Toolkit (Week 1-2)
 
-Master these core frameworks:
+Practice with these core frameworks:
 - **Product Design:** Clarify → Mission → Users → Pain Points → Solutions → Prioritize
 - **Product Improvement:** Current State → Goal → Segments → Needs → Ideas → Prioritize
 - **Metrics Thinking:** North Star → Input Metrics → Guardrails
@@ -1194,7 +1194,7 @@ This builds the **product intuition** you need for case studies.
 
 ### 3. Do Mock Interviews (Week 3+)
 
-Solo practice isn't enough—you need **real-time feedback**. Here's why:
+Solo practice can hide gaps—you need **feedback tied to a completed answer**. Here's why:
 
 **What solo practice misses:**
 - You don't know if you're going too deep or too shallow
@@ -1257,7 +1257,7 @@ Our AI interviewer:
 
 This is a common compliment after a successful product interview. But here's the truth: **Product sense isn't something you're born with—it's something you build.**
 
-The PMs who consistently crush product interviews aren't lucky. They're not magically intuitive. They're **systematically observant**. They've trained themselves to dissect every product they encounter, and over time, that practice becomes instinct.
+PMs who develop strong product-interview instincts are often **systematically observant**. They learn to dissect the products they encounter, and over time, that practice builds pattern recognition.
 
 This post shares an observation framework that helps candidates develop stronger product intuition through deliberate practice.
 
@@ -1418,7 +1418,7 @@ The combination is powerful: **critique builds intuition, Meelni builds intervie
   },
   {
     id: "mastering-product-sense-interviews",
-    title: "Mastering Product Sense Interviews: A Proven Framework",
+    title: "A Structured Approach to Product Sense Interviews",
     excerpt:
       "A clear pattern emerges from successful product interviews: candidates who excel aren't lacking creativity—they're using structure. Here's a 5-step framework that works consistently across Meta, Google, and Amazon.",
     author: "Meelni Team",
@@ -1426,11 +1426,11 @@ The combination is powerful: **critique builds intuition, Meelni builds intervie
     readTime: "6 min read",
     category: "Product Sense",
     content: `
-# Mastering Product Sense Interviews: A Proven Framework
+# A Structured Approach to Product Sense Interviews
 
 A clear pattern emerges from successful product interviews: candidates who struggle with product sense interviews aren't lacking creativity or product thinking—they're lacking **structure**.
 
-This post breaks down a 5-step framework that's helped candidates land offers at Meta, Google, Amazon, and top startups.
+This post breaks down a five-step framework for organizing a Product Sense answer under interview pressure.
 
 ## What Makes Product Sense So Hard?
 
@@ -1501,7 +1501,7 @@ Generate 3-5 solution ideas, then prioritize one using a consistent framework. H
 
 **Not checking in:** The best candidates make interviews conversational. Pause frequently, ask "Does that make sense?" or "Should I go deeper here?"
 
-## How Meelni Helps You Master This
+## How Meelni Helps You Practice This
 
 This is exactly why we built Meelni. You can't learn product sense by reading—you need **real interview practice**. Our AI interviewer:
 

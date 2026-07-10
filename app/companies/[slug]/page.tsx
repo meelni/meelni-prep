@@ -474,7 +474,7 @@ export default function CompanyDetailPage() {
           {/* Mini CTA */}
           <div className="bg-muted/30 border-border/40 mt-8 flex flex-col items-start justify-between gap-4 rounded-2xl border p-6 sm:flex-row sm:items-center">
             <p className="text-foreground/70 text-sm">
-              Practice these questions with real-time AI feedback
+              Practice these questions in a live mock interview
             </p>
             <Button asChild variant="outline">
               <Link href="/dashboard/new-interview">
@@ -538,8 +538,8 @@ export default function CompanyDetailPage() {
         {/* Final CTA */}
         <MarketingCtaCard
           mark="M"
-          title={`Ready to ace your ${company.name} interview?`}
-          description="Practice with Meelni's AI interview coach. Get real-time feedback, improve your answers, and build confidence before your big day."
+          title={`Ready to practice for your ${company.name} interview?`}
+          description="Practice with Meelni's AI interviewer, then review feedback tied to your completed interview."
           action={
             <Button asChild size="lg" variant="glow">
               <Link href="/dashboard/new-interview">

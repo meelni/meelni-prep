@@ -108,7 +108,7 @@ export async function generateMetadata({ params }): Promise<Metadata> {
   const question = await fetchQuestion(params.id);
   return {
     title: `${question.questionText} - ${question.company} PM Interview Question | Meelni`,
-    description: `Real ${question.questionType} question asked at ${question.company}. Practice with AI coaching and get instant feedback.`,
+    description: `Real ${question.questionType} question asked at ${question.company}. Practice with AI coaching and get feedback after a completed interview.`,
     keywords: [
       `${question.company} PM interview`,
       `${question.questionType} interview question`,

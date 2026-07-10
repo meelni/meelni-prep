@@ -9,7 +9,7 @@ The first restarted product is not a generic interview platform. It is a PM inte
 - real PM interview questions and company-specific preparation content;
 - live voice interview sessions;
 - transcript capture;
-- PM-calibrated feedback and drills;
+- PM-calibrated feedback and focused practice exercises;
 - progress, streaks, insights, and billing.
 
 ## Architecture
