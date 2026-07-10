@@ -5,19 +5,30 @@ import {
   useVoiceAssistant,
   useDataChannel,
 } from "@livekit/components-react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { analytics } from "@/lib/analytics/analytics-service";
-import { parseTranscriptEvent } from "@meelni/agent";
+import {
+  acceptTranscriptEventOnce,
+  getTranscriptEventTiming,
+  parseTranscriptEvent,
+} from "@meelni/agent";
 
 export interface TranscriptTurn {
+  persistable?: boolean;
+  eventId?: string;
+  writerId?: string;
+  sequence?: number;
+  sessionId?: string;
+  roomName?: string;
   speaker: "user" | "interviewer";
   text: string;
   timestamp: Date;
-  startedAt: Date;
-  endedAt: Date;
-  audioMs: number;
-  latencyMs: number;
-  section: string | null;
+  startedAt?: Date;
+  endedAt?: Date;
+  audioMs?: number;
+  latencyMs?: number;
+  section?: string;
+  deliveryState?: "delivered" | "partially_delivered";
 }
 
 interface LiveKitRoomWrapperProps {
@@ -75,6 +86,8 @@ export function LiveKitRoomWrapper({
       }}
     >
       <RoomContent
+        roomName={roomName}
+        sessionId={sessionId}
         onTranscriptUpdate={onTranscriptUpdate}
         onAgentStateChange={onAgentStateChange}
       >
@@ -85,18 +98,28 @@ export function LiveKitRoomWrapper({
 }
 
 interface RoomContentProps {
+  roomName: string;
+  sessionId: string;
   onTranscriptUpdate: (turn: TranscriptTurn) => void;
   onAgentStateChange: (state: string) => void;
   children: React.ReactNode;
 }
 
 function RoomContent({
+  roomName,
+  sessionId,
   onTranscriptUpdate,
   onAgentStateChange,
   children,
 }: RoomContentProps) {
   const { state } = useVoiceAssistant();
-  const { message } = useDataChannel("transcript");
+  const acceptedTranscriptEvents = useRef(new Set<string>());
+  const transcriptUpdateRef = useRef(onTranscriptUpdate);
+  transcriptUpdateRef.current = onTranscriptUpdate;
+
+  useEffect(() => {
+    acceptedTranscriptEvents.current.clear();
+  }, [roomName, sessionId]);
 
   // Subscribe to agent state changes
   useEffect(() => {
@@ -105,13 +128,10 @@ function RoomContent({
     }
   }, [state, onAgentStateChange]);
 
-  // Subscribe to transcript data from agent
-  useEffect(() => {
-    if (message) {
+  const handleTranscriptMessage = useCallback(
+    (message: { payload: Uint8Array }) => {
       try {
-        // Decode the data message (comes as Uint8Array)
-        const decoder = new TextDecoder();
-        const jsonString = decoder.decode(message.payload);
+        const jsonString = new TextDecoder().decode(message.payload);
         const transcriptData = parseTranscriptEvent(jsonString);
 
         if (!transcriptData) {
@@ -119,27 +139,66 @@ function RoomContent({
           return;
         }
 
+        if (
+          "contract_version" in transcriptData &&
+          (transcriptData.session_id !== sessionId ||
+            transcriptData.room_name !== roomName)
+        ) {
+          console.warn(
+            "[Transcript] Ignoring event with mismatched correlation"
+          );
+          return;
+        }
+
+        if (
+          !acceptTranscriptEventOnce(
+            acceptedTranscriptEvents.current,
+            transcriptData
+          )
+        ) {
+          return;
+        }
+
         console.log("[Transcript] Received:", transcriptData);
 
-        // Convert to TranscriptTurn format
-        const turn: TranscriptTurn = {
-          speaker: transcriptData.speaker === "user" ? "user" : "interviewer",
-          text: transcriptData.text,
-          timestamp: new Date(transcriptData.timestamp * 1000), // Convert from seconds to ms
-          startedAt: new Date(transcriptData.timestamp * 1000),
-          endedAt: new Date(transcriptData.timestamp * 1000),
-          audioMs: 0, // TODO: Calculate actual audio duration
-          latencyMs: 0, // TODO: Calculate actual latency
-          section: null, // TODO: Add section tracking
-        };
+        const isLegacyEvent = !("contract_version" in transcriptData);
+        const timing = getTranscriptEventTiming(transcriptData);
 
-        // Call the parent callback to save to database
-        onTranscriptUpdate(turn);
+        // Legacy v1 packets remain readable during a rolling deployment, but
+        // missing duration/section fields stay absent instead of being invented.
+        const turn: TranscriptTurn = isLegacyEvent
+          ? {
+              persistable: false,
+              speaker: transcriptData.speaker,
+              text: transcriptData.text,
+              timestamp: new Date(timing.timestampMs),
+            }
+          : {
+              persistable: true,
+              eventId: transcriptData.event_id,
+              writerId: transcriptData.writer_id,
+              sequence: transcriptData.sequence,
+              sessionId: transcriptData.session_id,
+              roomName: transcriptData.room_name,
+              speaker: transcriptData.speaker,
+              text: transcriptData.text,
+              timestamp: new Date(timing.timestampMs),
+              startedAt: new Date(timing.startedAtMs!),
+              endedAt: new Date(timing.endedAtMs!),
+              audioMs: timing.audioDurationMs,
+              section: transcriptData.section,
+              deliveryState: transcriptData.delivery_state,
+            };
+
+        transcriptUpdateRef.current(turn);
       } catch (error) {
         console.error("[Transcript] Failed to parse transcript data:", error);
       }
-    }
-  }, [message, onTranscriptUpdate]);
+    },
+    [roomName, sessionId]
+  );
+
+  useDataChannel("transcript", handleTranscriptMessage);
 
   return <>{children}</>;
 }

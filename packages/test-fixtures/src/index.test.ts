@@ -72,10 +72,20 @@ test("LiveKit start fixture matches provider and transcript-event contracts", ()
   assert.equal(fixture.input.metadata.round_type, "product_sense");
   assert.equal(fixture.input.env.url, "wss://fixture.livekit.cloud");
   assert.deepEqual(fixture.transcriptEvent, {
+    contract_version: 2,
+    event_id: "transcript-event-1",
+    writer_id: "writer-fixture-1",
+    sequence: 1,
+    session_id: "fixture-session-product-sense-1",
+    room_name: "interview-1782600000000-i00000",
     speaker: "interviewer",
     text: "Let's start with the product goal.",
-    timestamp: 1782600000,
     is_final: true,
+    started_at: "2026-06-27T17:30:00.000Z",
+    ended_at: "2026-06-27T17:30:08.000Z",
+    audio_duration_ms: 8000,
+    section: "prompt",
+    delivery_state: "delivered",
   });
   assert.deepEqual(fixture.expectedStartedRoom, {
     roomName: "interview-1782600000000-i00000",

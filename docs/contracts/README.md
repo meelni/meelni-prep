@@ -7,7 +7,7 @@ Good candidates:
 - [interview session lifecycle](./interview-session-lifecycle.md);
 - [interview session completion and feedback dispatch](./interview-session-completion.md);
 - [LiveKit room metadata](./livekit-room-metadata.md);
-- transcript events;
+- [versioned transcript events](./transcript-events.md);
 - feedback status and response shapes;
 - [dashboard progress evidence](./dashboard-progress.md);
 - [question-bank records, taxonomy, and pagination](./question-bank.md);
