@@ -22,6 +22,7 @@ import {
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
   RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT,
   STABLE_START_SCHEMA_FINGERPRINT,
+  CREDIT_RECOVERY_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 import {
   canonicalEnvironmentForEnvFile,
@@ -105,10 +106,10 @@ async function run(url: string, environmentIdentity: string) {
         ORDER BY created_at
       `;
       if (
-        ![2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(migrations.length)
+        ![2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(migrations.length)
       ) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, 14 runtime-settlement, or 15 stable-start migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, 14 runtime-settlement, 15 stable-start, or 16 credit-recovery migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -244,8 +245,15 @@ async function run(url: string, environmentIdentity: string) {
           ? await getStableStartIntegrity(tx, migrations.length >= 15)
           : emptyStableStartIntegrity();
       const stableStartLaunchReady =
-        migrations.length === 15 &&
+        migrations.length >= 15 &&
         Object.values(stableStartIntegrity).every((count) => count === 0);
+      const creditRecoveryIntegrity =
+        migrations.length >= 16
+          ? await getCreditRecoveryIntegrity(tx)
+          : { terminal_missing_policy: 0, settled_policy_mismatches: 0 };
+      const creditRecoveryLaunchReady =
+        migrations.length === 16 &&
+        Object.values(creditRecoveryIntegrity).every((count) => count === 0);
       if (
         summary.unsupported_tiers > 0 ||
         summary.legacy_premium_trials > 0 ||
@@ -269,7 +277,8 @@ async function run(url: string, environmentIdentity: string) {
         | "transcript_ingest"
         | "transcript_privacy"
         | "runtime_settlement"
-        | "stable_start";
+        | "stable_start"
+        | "credit_recovery";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -303,8 +312,10 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "transcript_privacy";
       } else if (migrations.length === 14) {
         startingContract = "runtime_settlement";
-      } else {
+      } else if (migrations.length === 15) {
         startingContract = "stable_start";
+      } else {
+        startingContract = "credit_recovery";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
@@ -320,7 +331,7 @@ async function run(url: string, environmentIdentity: string) {
           );
         }
         const schemaFingerprint = databaseSchemaFingerprint(
-          migrations.length === 15
+          migrations.length >= 15
             ? await getStableStartDatabaseSchemaContract(tx)
             : await getDatabaseSchemaContract(tx)
         );
@@ -343,7 +354,9 @@ async function run(url: string, environmentIdentity: string) {
                           ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
                           : migrations.length === 14
                             ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
-                            : STABLE_START_SCHEMA_FINGERPRINT;
+                            : migrations.length === 15
+                              ? STABLE_START_SCHEMA_FINGERPRINT
+                              : CREDIT_RECOVERY_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -421,27 +434,29 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 15
-            ? STABLE_START_SCHEMA_FINGERPRINT
-            : migrations.length === 14
-              ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
-              : migrations.length === 13
-                ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-                : migrations.length === 12
-                  ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-                  : migrations.length === 11
-                    ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                    : migrations.length === 10
-                      ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
-                      : migrations.length === 9
-                        ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
-                        : migrations.length === 8
-                          ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                          : migrations.length === 7
-                            ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                            : migrations.length === 6
-                              ? RELAUNCH_SCHEMA_FINGERPRINT
-                              : "pending",
+          migrations.length === 16
+            ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
+            : migrations.length === 15
+              ? STABLE_START_SCHEMA_FINGERPRINT
+              : migrations.length === 14
+                ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+                : migrations.length === 13
+                  ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                  : migrations.length === 12
+                    ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                    : migrations.length === 11
+                      ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                      : migrations.length === 10
+                        ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                        : migrations.length === 9
+                          ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                          : migrations.length === 8
+                            ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                            : migrations.length === 7
+                              ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                              : migrations.length === 6
+                                ? RELAUNCH_SCHEMA_FINGERPRINT
+                                : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }
@@ -451,6 +466,8 @@ async function run(url: string, environmentIdentity: string) {
         creditLedgerIntegrity,
         stableStartIntegrity,
         stableStartLaunchReady,
+        creditRecoveryIntegrity,
+        creditRecoveryLaunchReady,
         ...summary,
       };
     });
@@ -458,10 +475,11 @@ async function run(url: string, environmentIdentity: string) {
     console.log(JSON.stringify(result, null, 2));
     if (
       process.env.MEELNI_LAUNCH_STRICT === "1" &&
-      !result.stableStartLaunchReady
+      (!result.stableStartLaunchReady ||
+        (result.migrationCount >= 14 && !result.creditRecoveryLaunchReady))
     ) {
       throw new Error(
-        "Stable-start launch readiness checks are not clean; inspect stableStartIntegrity"
+        "Interview credit launch readiness checks are not clean; inspect stableStartIntegrity and creditRecoveryIntegrity"
       );
     }
   } finally {
@@ -654,7 +672,10 @@ async function getStableStartIntegrity(
           AND reservation.start_contract_version = 1
         WHERE session.start_contract_version = 1
           AND session.usable_at IS NOT NULL
-          AND reservation.status IS DISTINCT FROM 'consumed')
+          AND (
+            reservation.status IS NULL OR
+            reservation.status NOT IN ('consumed', 'refunded')
+          ))
         AS usable_without_consume,
       (SELECT count(*)::int
         FROM credit_reservation reservation
@@ -707,6 +728,47 @@ async function getStableStartIntegrity(
   `;
 
   return counts ?? emptyStableStartIntegrity();
+}
+
+async function getCreditRecoveryIntegrity(tx: postgres.TransactionSql) {
+  const [counts] = await tx<
+    {
+      terminal_missing_policy: number;
+      settled_policy_mismatches: number;
+    }[]
+  >`
+    SELECT
+      (SELECT count(*)::int
+       FROM interview_session
+       WHERE start_contract_version = 1
+         AND lifecycle_state IN ('completed', 'abandoned', 'failed')
+         AND credit_settled_at IS NULL) AS terminal_missing_policy,
+      (SELECT count(*)::int
+       FROM interview_session session
+       JOIN credit_reservation reservation
+         ON reservation.session_id = session.id
+        AND reservation.user_id = session.user_id
+        AND reservation.start_attempt_id = session.start_attempt_id
+        AND reservation.start_contract_version = 1
+       WHERE session.start_contract_version = 1
+         AND session.credit_settled_at IS NOT NULL
+         AND NOT (
+           (session.credit_settlement_action = 'release'
+             AND reservation.status = 'released') OR
+           (session.credit_settlement_action = 'refund'
+             AND reservation.status = 'refunded'
+             AND session.billing_fault IN ('provider', 'integrity')) OR
+           (session.credit_settlement_action = 'retain'
+             AND reservation.status = 'consumed'
+             AND session.billing_fault = 'user')
+         )) AS settled_policy_mismatches
+  `;
+  return (
+    counts ?? {
+      terminal_missing_policy: 0,
+      settled_policy_mismatches: 0,
+    }
+  );
 }
 
 function emptyCreditLedgerIntegrity(): CreditLedgerIntegrity {

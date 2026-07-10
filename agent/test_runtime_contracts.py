@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from shared.config import parse_room_metadata
 from shared.utils.prompt_builder import build_agent_prompt
 from shared.candidate_presence import wait_for_candidate_before_greeting
-from shared.runtime_events import create_runtime_event
+from shared.runtime_events import create_runtime_event, provider_failure_code
 from shared.runtime_config import (
     DEFAULT_INTERVIEW_RUNTIME_CONFIG,
     get_model_config,
@@ -62,6 +62,26 @@ from shared.transcript_events import (
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_runtime_provider_error_codes_are_allowlisted_and_payload_free(self):
+        self.assertEqual(provider_failure_code("stt_error"), "stt_provider_failed")
+        self.assertEqual(provider_failure_code("llm_error"), "llm_provider_failed")
+        self.assertEqual(provider_failure_code("tts_error"), "tts_provider_failed")
+        self.assertEqual(
+            provider_failure_code("realtime_model_error"),
+            "realtime_model_provider_failed",
+        )
+        self.assertEqual(
+            provider_failure_code("raw provider stack with token"),
+            "voice_runtime_provider_failed",
+        )
+
+    def test_interview_agent_reports_fatal_session_errors(self):
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+
+        self.assertIn('@session.on("error")', source)
+        self.assertIn('getattr(event.error, "recoverable", False)', source)
+        self.assertIn("schedule_provider_failure_report(", source)
+
     def test_interview_agent_keeps_room_io_open_for_reconnect_grace(self):
         source = (Path(__file__).parent / "interview" / "agent.py").read_text()
 
@@ -589,6 +609,19 @@ class RuntimeContractTests(unittest.TestCase):
                 occurred_at="2026-07-09T21:00:00.000Z",
             )
 
+        with self.assertRaisesRegex(ValueError, "malformed"):
+            create_runtime_event(
+                event_id="runtime-event-3",
+                session_id="session-1",
+                event_type="provider_failed",
+                occurred_at="2026-07-09T21:00:00.000Z",
+                failure={
+                    "reason": "provider_failure",
+                    "code": "Provider stack: secret",
+                    "retryable": False,
+                },
+            )
+
 
 class TranscriptPublisherTests(unittest.IsolatedAsyncioTestCase):
     async def test_publish_transcript_event_uses_canonical_topic_once(self):
@@ -843,6 +876,55 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             bodies,
             [{"sessionId": "session-1", "settlement": settlement}],
+        )
+        self.assertEqual(published, [])
+
+    async def test_provider_failure_uses_signed_runtime_event_envelope_after_seal(self):
+        bodies = []
+        published = []
+
+        async def transport(_url, body, _headers):
+            bodies.append(json.loads(body))
+            return IngestResponse(200)
+
+        async def publisher(event):
+            published.append(event)
+
+        queue = TranscriptIngestQueue(
+            ingest_url="http://localhost:3000/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        queue.seal_and_enqueue_runtime_settlement(
+            create_runtime_settlement(
+                session_id="session-1",
+                room_name="room-1",
+                writer_id="writer-1",
+                state="settled",
+                settled_at=1783650000,
+            )
+        )
+        failure = create_runtime_event(
+            event_id="provider-failure:session-1:voice_session_start_failed",
+            session_id="session-1",
+            event_type="provider_failed",
+            occurred_at="2026-07-10T08:30:00.000Z",
+            runtime_ref={"provider": "livekit", "id": "room-1"},
+            failure={
+                "reason": "provider_failure",
+                "code": "voice_session_start_failed",
+                "retryable": True,
+            },
+        )
+        queue.enqueue_runtime_event(failure)
+
+        result = await queue.flush(0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(
+            bodies[1],
+            {"sessionId": "session-1", "runtimeEvent": failure},
         )
         self.assertEqual(published, [])
 

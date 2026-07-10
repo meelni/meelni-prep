@@ -10,3 +10,4 @@ export * from "./session-lifecycle";
 export * from "./account-privacy";
 export * from "./session-deadline";
 export * from "./session-reconnect";
+export * from "./interview-credit-policy";

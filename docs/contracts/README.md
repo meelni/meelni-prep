@@ -6,6 +6,7 @@ Good candidates:
 
 - [interview session lifecycle](./interview-session-lifecycle.md);
 - [interview session completion and feedback dispatch](./interview-session-completion.md);
+- [interview credit recovery](./interview-credit-recovery.md);
 - [LiveKit room metadata](./livekit-room-metadata.md);
 - [versioned transcript events](./transcript-events.md);
 - feedback status and response shapes;

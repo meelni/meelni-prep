@@ -27,6 +27,8 @@ export const RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT =
 // deliberately did not inspect.
 export const STABLE_START_SCHEMA_FINGERPRINT =
   "01eb23d537b61f1c3aefccbde75d7cefb2679741cd96c411af59993f4cf7bf93";
+export const CREDIT_RECOVERY_SCHEMA_FINGERPRINT =
+  "42851bca4d637ce6f8962da7ce868efc4650afb9df5a7f5b5afd6f8749f79bf9";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =
@@ -145,7 +147,10 @@ export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'public'
-          AND p.proname = 'protect_interview_session_stable_evidence'
+          AND p.proname IN (
+            'protect_interview_session_stable_evidence',
+            'enforce_interview_credit_evidence_immutable'
+          )
         ORDER BY p.proname, arguments
       `,
       sql`
@@ -154,7 +159,10 @@ export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
           action_orientation, action_statement
         FROM information_schema.triggers
         WHERE trigger_schema = 'public'
-          AND trigger_name = 'protect_interview_session_stable_evidence'
+          AND trigger_name IN (
+            'protect_interview_session_stable_evidence',
+            'interview_credit_evidence_immutable'
+          )
         ORDER BY event_object_table, trigger_name, event_manipulation
       `,
     ]);

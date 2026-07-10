@@ -1,6 +1,7 @@
 """Provider-neutral lifecycle fact contract emitted by interview runtimes."""
 
 from datetime import datetime
+import re
 from typing import Any, Dict, Optional
 
 
@@ -13,6 +14,24 @@ INTERVIEW_RUNTIME_EVENT_TYPES = {
     "connection_restored",
     "provider_failed",
 }
+SAFE_FAILURE_CODE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
+PROVIDER_FAILURE_CODES = {
+    "stt_error": "stt_provider_failed",
+    "llm_error": "llm_provider_failed",
+    "tts_error": "tts_provider_failed",
+    "realtime_model_error": "realtime_model_provider_failed",
+    "interruption_detection_error": "turn_detection_provider_failed",
+}
+
+
+def provider_failure_code(error_type: object) -> str:
+    """Map LiveKit's typed error category without retaining provider payloads."""
+    if not isinstance(error_type, str):
+        return "voice_runtime_provider_failed"
+    return PROVIDER_FAILURE_CODES.get(
+        error_type,
+        "voice_runtime_provider_failed",
+    )
 
 
 def create_runtime_event(
@@ -25,28 +44,6 @@ def create_runtime_event(
     failure: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build and validate one versioned runtime lifecycle fact."""
-    if not event_id.strip() or not session_id.strip():
-        raise ValueError("Runtime lifecycle events require event and session IDs")
-    if event_type not in INTERVIEW_RUNTIME_EVENT_TYPES:
-        raise ValueError("Unknown runtime lifecycle event type")
-    _validate_iso_timestamp(occurred_at)
-
-    if runtime_ref is not None and (
-        not runtime_ref.get("provider", "").strip()
-        or not runtime_ref.get("id", "").strip()
-    ):
-        raise ValueError("Runtime references require provider and id")
-
-    if event_type == "provider_failed":
-        if not failure or failure.get("reason") != "provider_failure":
-            raise ValueError("Provider failure events require failure details")
-        if not str(failure.get("code", "")).strip() or not isinstance(
-            failure.get("retryable"), bool
-        ):
-            raise ValueError("Provider failure details are malformed")
-    elif failure is not None:
-        raise ValueError("Failure details are only valid for provider failures")
-
     event: Dict[str, Any] = {
         "contract_version": INTERVIEW_RUNTIME_EVENT_CONTRACT_VERSION,
         "event_id": event_id,
@@ -58,7 +55,56 @@ def create_runtime_event(
         event["runtime_ref"] = runtime_ref
     if failure is not None:
         event["failure"] = failure
+    if not is_runtime_event(event):
+        if event_type == "provider_failed" and not failure:
+            raise ValueError("Provider failure events require failure details")
+        raise ValueError("Runtime lifecycle event is malformed")
     return event
+
+
+def is_runtime_event(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    base_fields = {
+        "contract_version", "event_id", "session_id", "type", "occurred_at"
+    }
+    optional_fields = {"runtime_ref", "failure"}
+    if not set(value).issubset(base_fields | optional_fields) or not base_fields.issubset(value):
+        return False
+    if (
+        value.get("contract_version") != INTERVIEW_RUNTIME_EVENT_CONTRACT_VERSION
+        or not isinstance(value.get("event_id"), str)
+        or not value["event_id"].strip()
+        or not isinstance(value.get("session_id"), str)
+        or not value["session_id"].strip()
+        or value.get("type") not in INTERVIEW_RUNTIME_EVENT_TYPES
+    ):
+        return False
+    try:
+        _validate_iso_timestamp(value.get("occurred_at"))
+    except ValueError:
+        return False
+    runtime_ref = value.get("runtime_ref")
+    if runtime_ref is not None and (
+        not isinstance(runtime_ref, dict)
+        or set(runtime_ref) != {"provider", "id"}
+        or not isinstance(runtime_ref.get("provider"), str)
+        or not runtime_ref["provider"].strip()
+        or not isinstance(runtime_ref.get("id"), str)
+        or not runtime_ref["id"].strip()
+    ):
+        return False
+    failure = value.get("failure")
+    if value.get("type") == "provider_failed":
+        return (
+            isinstance(failure, dict)
+            and set(failure) == {"reason", "code", "retryable"}
+            and failure.get("reason") == "provider_failure"
+            and isinstance(failure.get("code"), str)
+            and SAFE_FAILURE_CODE.fullmatch(failure["code"]) is not None
+            and isinstance(failure.get("retryable"), bool)
+        )
+    return failure is None
 
 
 def _validate_iso_timestamp(value: str) -> None:
