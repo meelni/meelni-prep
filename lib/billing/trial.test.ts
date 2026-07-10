@@ -89,12 +89,19 @@ test("trial activation can retry after the first grant transaction write fails",
   let failTransactionOnce = true;
   const store: CreditLedgerStore = {
     ...baseStore,
-    async createTransaction(input) {
-      if (failTransactionOnce) {
-        failTransactionOnce = false;
-        throw new Error("transaction unavailable");
-      }
-      return baseStore.createTransaction(input);
+    async withUserTransaction(userId, work) {
+      return baseStore.withUserTransaction(userId, async (transaction) =>
+        work({
+          ...transaction,
+          async createTransaction(input) {
+            if (failTransactionOnce) {
+              failTransactionOnce = false;
+              throw new Error("transaction unavailable");
+            }
+            return transaction.createTransaction(input);
+          },
+        })
+      );
     },
   };
   const ledger = createCreditLedgerService({ store, now: () => STARTED_AT });
@@ -103,7 +110,7 @@ test("trial activation can retry after the first grant transaction write fails",
     () => ensureCanonicalTrialGrant(ledger, USER_ID),
     /transaction unavailable/
   );
-  assert.equal((await store.listUserGrants(USER_ID)).length, 1);
+  assert.equal((await store.listUserGrants(USER_ID)).length, 0);
 
   const retried = await ensureCanonicalTrialGrant(ledger, USER_ID);
   assert.equal(retried.grant.idempotencyKey, TRIAL_KEY);

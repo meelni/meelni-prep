@@ -102,6 +102,10 @@ async function run() {
     await verifyAuthorization(clean);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
+    await verifyAtomicCreditLedger(clean, cleanUrl, "clean");
+    assertZeroCreditLedgerIntegrity(
+      runPreflight(cleanUrl, true, "reconciled")!
+    );
 
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
@@ -158,20 +162,27 @@ async function run() {
       runPreflight(upgradeUrl, true, "ready_for_session_lifecycle");
       await seedAuthorizationFixtures(upgrade);
       await seedLifecycleBackfillFixtures(upgrade);
+      await seedLegacyCreditLedgerIntegrityFixtures(upgrade);
       const lifecyclePreview = runPreflight(
         upgradeUrl,
         true,
         "ready_for_session_lifecycle"
       );
+      assertLegacyCreditLedgerIntegrity(lifecyclePreview!);
       const countsBefore = await protectedRowCounts(upgrade);
       await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
       const lifecycleApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLifecycleBackfillCountsMatch(lifecyclePreview!, lifecycleApplied!);
+      assertLegacyCreditLedgerIntegrity(lifecycleApplied!);
       assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl);
       await verifyAuthorization(upgrade);
+      await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
+      assertLegacyCreditLedgerIntegrity(
+        runPreflight(upgradeUrl, true, "reconciled")!
+      );
       assert.equal(
         databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
         cleanFingerprint
@@ -250,6 +261,22 @@ interface MigrationPreflightResult {
     phase: "not_ready" | "preview" | "applied";
     counts: MigrationPreflightCount[];
   };
+  creditLedgerIntegrity: CreditLedgerIntegrity;
+}
+
+interface CreditLedgerIntegrity {
+  grant_evidence_mismatches: number;
+  empty_or_partial_active_reservations: number;
+  allocation_total_mismatches: number;
+  allocation_reserve_evidence_mismatches: number;
+  orphan_or_mismatched_reserve_transactions: number;
+  terminal_evidence_mismatches: number;
+  reserved_balance_mismatches: number;
+  rollover_evidence_mismatches: number;
+  orphan_or_mismatched_rollover_transactions: number;
+  orphan_rollover_grants: number;
+  subscription_renewal_evidence_mismatches: number;
+  cross_user_references: number;
 }
 
 function parsePreflightResult(output: string): MigrationPreflightResult {
@@ -294,6 +321,32 @@ function assertLifecycleBackfillCountsMatch(
   assert.deepEqual(
     aggregate(applied.lifecycleBackfill.counts),
     aggregate(preview.lifecycleBackfill.counts)
+  );
+}
+
+function assertLegacyCreditLedgerIntegrity(result: MigrationPreflightResult) {
+  assert.deepEqual(result.creditLedgerIntegrity, {
+    grant_evidence_mismatches: 1,
+    empty_or_partial_active_reservations: 2,
+    allocation_total_mismatches: 2,
+    allocation_reserve_evidence_mismatches: 1,
+    orphan_or_mismatched_reserve_transactions: 1,
+    terminal_evidence_mismatches: 2,
+    reserved_balance_mismatches: 1,
+    rollover_evidence_mismatches: 1,
+    orphan_or_mismatched_rollover_transactions: 1,
+    orphan_rollover_grants: 1,
+    subscription_renewal_evidence_mismatches: 1,
+    cross_user_references: 1,
+  });
+}
+
+function assertZeroCreditLedgerIntegrity(result: MigrationPreflightResult) {
+  assert.ok(
+    Object.values(result.creditLedgerIntegrity).every((count) => count === 0),
+    `Expected runtime ledger integrity counts to be zero: ${JSON.stringify(
+      result.creditLedgerIntegrity
+    )}`
   );
 }
 
@@ -413,6 +466,202 @@ async function seedLifecycleBackfillFixtures(sql: postgres.Sql) {
       )
     ON CONFLICT (id) DO NOTHING
   `;
+}
+
+async function seedLegacyCreditLedgerIntegrityFixtures(sql: postgres.Sql) {
+  await sql.unsafe(`
+    INSERT INTO app_user (id, email)
+    VALUES ('${USER_TWO}', 'legacy-integrity-user@example.invalid')
+    ON CONFLICT (id) DO NOTHING;
+
+    INSERT INTO credit_grant (
+      id, user_id, catalog_id, source, idempotency_key,
+      original_credits, remaining_credits, reserved_credits,
+      rollover_eligible, created_at, updated_at
+    ) VALUES
+      (
+        '10000000-0000-4000-8000-000000000001', '${USER_ONE}',
+        'interview_pass', 'migration', 'legacy:missing-grant-transaction',
+        1, 1, 0, false, '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z'
+      ),
+      (
+        '10000000-0000-4000-8000-000000000002', '${USER_ONE}',
+        'interview_pass', 'migration', 'legacy:empty-reservation-grant',
+        1, 1, 0, false, '2026-07-01T00:01:00Z', '2026-07-01T00:01:00Z'
+      ),
+      (
+        '10000000-0000-4000-8000-000000000003', '${USER_ONE}',
+        'pro', 'migration', 'legacy:partial-reservation-grant',
+        2, 1, 1, false, '2026-07-01T00:02:00Z', '2026-07-01T00:02:00Z'
+      ),
+      (
+        '10000000-0000-4000-8000-000000000004', '${USER_ONE}',
+        'interview_pass', 'migration', 'legacy:terminal-reservation-grant',
+        1, 0, 0, false, '2026-07-01T00:03:00Z', '2026-07-01T00:03:00Z'
+      ),
+      (
+        '10000000-0000-4000-8000-000000000005', '${USER_ONE}',
+        'interview_pass', 'migration', 'legacy:reserved-balance-grant',
+        1, 0, 1, false, '2026-07-01T00:04:00Z', '2026-07-01T00:04:00Z'
+      ),
+      (
+        '10000000-0000-4000-8000-000000000006', '${USER_ONE}',
+        'pro', 'rollover', 'legacy:rollover-mismatch',
+        1, 1, 0, false, '2026-07-01T00:05:00Z', '2026-07-01T00:05:00Z'
+      ),
+      (
+        '10000000-0000-4000-8000-000000000007', '${USER_ONE}',
+        'pro', 'subscription_renewal', 'legacy:renewal-evidence-mismatch',
+        12, 12, 0, true, '2026-07-01T00:06:00Z', '2026-07-01T00:06:00Z'
+      ),
+      (
+        '10000000-0000-4000-8000-000000000008', '${USER_ONE}',
+        'pro', 'rollover', 'legacy:complete-orphan-rollover',
+        1, 1, 0, false, '2026-07-01T00:07:00Z', '2026-07-01T00:07:00Z'
+      ),
+      (
+        '10000000-0000-4000-8000-000000000009', '${USER_ONE}',
+        'pro', 'migration', 'legacy:complete-orphan-source',
+        1, 0, 0, true, '2026-07-01T00:08:00Z', '2026-07-01T00:08:00Z'
+      );
+
+    UPDATE credit_grant
+    SET source_id = 'legacy:complete-orphan-provider',
+      expires_at = '2026-08-30T00:07:00Z',
+      rollover_source_grant_id =
+        '10000000-0000-4000-8000-000000000009'
+    WHERE id = '10000000-0000-4000-8000-000000000008';
+
+    UPDATE credit_grant
+    SET source_id = 'legacy:complete-orphan-provider'
+    WHERE id = '10000000-0000-4000-8000-000000000009';
+
+    INSERT INTO credit_transaction (
+      user_id, grant_id, reservation_id, type, credits,
+      idempotency_key, source_id, balance_after, metadata, created_at
+    )
+    SELECT '${USER_ONE}', grant_row.id, NULL, 'grant', grant_row.original_credits,
+      grant_row.idempotency_key || ':grant', grant_row.source_id,
+      grant_row.original_credits, grant_row.metadata, grant_row.created_at
+    FROM credit_grant grant_row
+    WHERE grant_row.id IN (
+      '10000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000003',
+      '10000000-0000-4000-8000-000000000004',
+      '10000000-0000-4000-8000-000000000005',
+      '10000000-0000-4000-8000-000000000007',
+      '10000000-0000-4000-8000-000000000009'
+    );
+
+    UPDATE credit_transaction
+    SET metadata = jsonb_build_object(
+      '__meelni_subscription_renewal_completion',
+      jsonb_build_object(
+        'version', 1,
+        'rolloverIdempotencyKey', 'legacy:rollover-mismatch',
+        'rolledCredits', 1,
+        'rolloverGrantId', '10000000-0000-4000-8000-000000000006',
+        'rolloverExpiresAt', '2026-08-31T00:00:00.000Z',
+        'rolloverSourceGrantId', 123,
+        'sourceAllocations', jsonb_build_array(jsonb_build_object(
+          'grantId', '10000000-0000-4000-8000-000000000002',
+          'credits', '1',
+          'balanceAfter', 0
+        ))
+      )
+    )
+    WHERE idempotency_key = 'legacy:renewal-evidence-mismatch:grant';
+
+    INSERT INTO credit_reservation (
+      id, user_id, reservation_key, status, credits, session_id,
+      expires_at, created_at, updated_at
+    ) VALUES
+      (
+        '20000000-0000-4000-8000-000000000001', '${USER_ONE}',
+        'legacy:empty-active', 'active', 1, NULL,
+        '2026-08-01T00:00:00Z', '2026-07-01T01:00:00Z',
+        '2026-07-01T01:00:00Z'
+      ),
+      (
+        '20000000-0000-4000-8000-000000000002', '${USER_ONE}',
+        'legacy:partial-active', 'active', 2, NULL,
+        '2026-08-01T00:00:00Z', '2026-07-01T01:01:00Z',
+        '2026-07-01T01:01:00Z'
+      ),
+      (
+        '20000000-0000-4000-8000-000000000003', '${USER_ONE}',
+        'legacy:terminal-missing-transaction', 'consumed', 1, NULL,
+        '2026-08-01T00:00:00Z', '2026-07-01T01:02:00Z',
+        '2026-07-01T01:02:00Z'
+      );
+
+    INSERT INTO credit_reservation_grant (
+      reservation_id, grant_id, credits, created_at
+    ) VALUES
+      (
+        '20000000-0000-4000-8000-000000000002',
+        '10000000-0000-4000-8000-000000000003', 1,
+        '2026-07-01T01:01:00Z'
+      ),
+      (
+        '20000000-0000-4000-8000-000000000003',
+        '10000000-0000-4000-8000-000000000004', 1,
+        '2026-07-01T01:02:00Z'
+      );
+
+    INSERT INTO credit_transaction (
+      user_id, grant_id, reservation_id, type, credits,
+      idempotency_key, source_id, balance_after, metadata, created_at
+    ) VALUES
+      (
+        '${USER_ONE}', '10000000-0000-4000-8000-000000000004',
+        '20000000-0000-4000-8000-000000000003', 'reserve', 1,
+        'reserve:legacy:terminal-missing-transaction:10000000-0000-4000-8000-000000000004',
+        NULL, 0, NULL, '2026-07-01T01:02:00Z'
+      ),
+      (
+        '${USER_ONE}', '10000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000001', 'reserve', 1,
+        'legacy:orphan-reserve-transaction',
+        NULL, 0, NULL, '2026-07-01T01:03:00Z'
+      ),
+      (
+        '${USER_ONE}', NULL,
+        '20000000-0000-4000-8000-000000000001', 'consume', 1,
+        'legacy:terminal-on-active-reservation',
+        NULL, NULL, '{"allocations": []}'::jsonb,
+        '2026-07-01T01:04:00Z'
+      ),
+      (
+        '${USER_ONE}', '10000000-0000-4000-8000-000000000002',
+        NULL, 'rollover', 1,
+        'legacy:orphan-rollover-transaction',
+        NULL, 0,
+        '{"rolloverGrantId": "10000000-0000-4000-8000-000000000006"}'::jsonb,
+        '2026-07-01T01:05:00Z'
+      ),
+      (
+        '${USER_TWO}', '10000000-0000-4000-8000-000000000001',
+        NULL, 'adjustment', 1,
+        'legacy:cross-user-reference',
+        NULL, NULL, NULL, '2026-07-01T01:06:00Z'
+      ),
+      (
+        '${USER_ONE}', '10000000-0000-4000-8000-000000000009',
+        NULL, 'rollover', 1,
+        'legacy:complete-orphan-rollover:source:10000000-0000-4000-8000-000000000009',
+        'legacy:complete-orphan-provider', 0,
+        '{"rolloverGrantId": "10000000-0000-4000-8000-000000000008"}'::jsonb,
+        '2026-07-01T01:07:00Z'
+      ),
+      (
+        '${USER_ONE}', '10000000-0000-4000-8000-000000000008',
+        NULL, 'rollover', 1,
+        'legacy:complete-orphan-rollover:grant',
+        'legacy:complete-orphan-provider', 1, NULL,
+        '2026-07-01T01:08:00Z'
+      );
+  `);
 }
 
 async function verifyCleanLifecycleDefaults(sql: postgres.Sql) {
@@ -1101,6 +1350,500 @@ async function verifySharedLimiter(sql: postgres.Sql) {
     WHERE user_id = ${USER_ONE}::uuid
   `;
   assert.equal((await consumeRateLimit(sql, USER_ONE)).allowed, true);
+}
+
+async function verifyAtomicCreditLedger(
+  sql: postgres.Sql,
+  databaseUrl: string,
+  scope: "clean" | "upgrade"
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    { createCreditLedgerService },
+    { createDrizzleCreditLedgerStore },
+    schema,
+  ] = await Promise.all([
+    import("../lib/billing/credits"),
+    import("../lib/billing/credit-ledger-store"),
+    import("../lib/db/schema"),
+  ]);
+  const [databaseClock] = await sql<{ now: Date }[]>`
+    SELECT clock_timestamp() AS now
+  `;
+  assert.ok(databaseClock?.now);
+  const ledgerNow = new Date(databaseClock.now);
+  const clients = Array.from({ length: 8 }, () =>
+    postgres(databaseUrl, { max: 1, prepare: false })
+  );
+  const ledgers = clients.map((client) =>
+    createCreditLedgerService({
+      store: createDrizzleCreditLedgerStore(drizzle(client, { schema })),
+      now: () => new Date(ledgerNow),
+    })
+  );
+  const key = (value: string) => `postgres:${scope}:${value}`;
+
+  try {
+    await Promise.all(clients.map((client) => client`SELECT 1`));
+
+    const lastCreditUser = creditTestUserId(1);
+    await seedCreditTestUser(sql, lastCreditUser, `${scope}-last-credit`);
+    await ledgers[0]!.grantCredits({
+      userId: lastCreditUser,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: key("last-credit-grant"),
+      includedCredits: 1,
+      expiresAt: null,
+    });
+    const lastCreditAttempts = await runConcurrently(
+      ledgers.map(
+        (ledger, index) => () =>
+          ledger.reserveCredit({
+            userId: lastCreditUser,
+            reservationKey: key(`last-credit:${index}`),
+            credits: 1,
+          })
+      )
+    );
+    assert.equal(fulfilled(lastCreditAttempts).length, 1);
+    assert.equal(rejected(lastCreditAttempts).length, ledgers.length - 1);
+    for (const failure of rejected(lastCreditAttempts)) {
+      assert.match(errorMessage(failure.reason), /insufficient_credits/);
+    }
+    const [lastCreditState] = await sql<
+      {
+        remaining: number;
+        reserved: number;
+        reservations: number;
+        allocations: number;
+        reserve_transactions: number;
+      }[]
+    >`
+      SELECT grant_row.remaining_credits::int AS remaining,
+        grant_row.reserved_credits::int AS reserved,
+        (SELECT count(*)::int FROM credit_reservation
+          WHERE user_id = ${lastCreditUser}::uuid) AS reservations,
+        (SELECT count(*)::int FROM credit_reservation_grant allocation
+          JOIN credit_reservation reservation
+            ON reservation.id = allocation.reservation_id
+          WHERE reservation.user_id = ${lastCreditUser}::uuid) AS allocations,
+        (SELECT count(*)::int FROM credit_transaction
+          WHERE user_id = ${lastCreditUser}::uuid AND type = 'reserve')
+          AS reserve_transactions
+      FROM credit_grant grant_row
+      WHERE grant_row.user_id = ${lastCreditUser}::uuid
+    `;
+    assert.deepEqual(lastCreditState, {
+      remaining: 0,
+      reserved: 1,
+      reservations: 1,
+      allocations: 1,
+      reserve_transactions: 1,
+    });
+
+    const replayUser = creditTestUserId(2);
+    await seedCreditTestUser(sql, replayUser, `${scope}-reservation-replay`);
+    await ledgers[0]!.grantCredits({
+      userId: replayUser,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: key("replay-grant"),
+      includedCredits: 1,
+      expiresAt: null,
+    });
+    const replayKey = key("same-reservation");
+    const replaySession = creditTestSessionId(2);
+    const replayAttempts = await runConcurrently(
+      ledgers.map(
+        (ledger) => () =>
+          ledger.reserveCredit({
+            userId: replayUser,
+            reservationKey: replayKey,
+            sessionId: replaySession,
+            credits: 1,
+          })
+      )
+    );
+    assert.equal(rejected(replayAttempts).length, 0);
+    const replayResults = fulfilled(replayAttempts).map(
+      (result) => result.value
+    );
+    assert.ok(
+      replayResults.every(
+        (result) => result.reservation.id === replayResults[0]!.reservation.id
+      )
+    );
+    const [replayState] = await sql<
+      { reservations: number; allocations: number; transactions: number }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM credit_reservation
+          WHERE user_id = ${replayUser}::uuid) AS reservations,
+        (SELECT count(*)::int FROM credit_reservation_grant allocation
+          JOIN credit_reservation reservation
+            ON reservation.id = allocation.reservation_id
+          WHERE reservation.user_id = ${replayUser}::uuid) AS allocations,
+        (SELECT count(*)::int FROM credit_transaction
+          WHERE user_id = ${replayUser}::uuid AND type = 'reserve') AS transactions
+    `;
+    assert.deepEqual(replayState, {
+      reservations: 1,
+      allocations: 1,
+      transactions: 1,
+    });
+
+    const grantUser = creditTestUserId(3);
+    await seedCreditTestUser(sql, grantUser, `${scope}-grant-replay`);
+    const grantAttempts = await runConcurrently(
+      ledgers.map(
+        (ledger) => () =>
+          ledger.grantCredits({
+            userId: grantUser,
+            catalogId: "interview_pass",
+            source: "admin",
+            sourceId: key("grant-source"),
+            idempotencyKey: key("same-grant"),
+            includedCredits: 1,
+            expiresAt: null,
+          })
+      )
+    );
+    assert.equal(rejected(grantAttempts).length, 0);
+    const grantResults = fulfilled(grantAttempts).map((result) => result.value);
+    assert.ok(
+      grantResults.every(
+        (result) => result.grant.id === grantResults[0]!.grant.id
+      )
+    );
+    const [grantState] = await sql<{ grants: number; transactions: number }[]>`
+      SELECT
+        (SELECT count(*)::int FROM credit_grant
+          WHERE user_id = ${grantUser}::uuid) AS grants,
+        (SELECT count(*)::int FROM credit_transaction
+          WHERE user_id = ${grantUser}::uuid AND type = 'grant') AS transactions
+    `;
+    assert.deepEqual(grantState, { grants: 1, transactions: 1 });
+
+    const terminalUser = creditTestUserId(4);
+    await seedCreditTestUser(sql, terminalUser, `${scope}-terminal-race`);
+    await ledgers[0]!.grantCredits({
+      userId: terminalUser,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: key("terminal-grant"),
+      includedCredits: 1,
+      expiresAt: null,
+    });
+    await ledgers[0]!.reserveCredit({
+      userId: terminalUser,
+      reservationKey: key("terminal-reservation"),
+      credits: 1,
+    });
+    const terminalAttempts = await runConcurrently(
+      ledgers.map(
+        (ledger, index) => () =>
+          index % 2 === 0
+            ? ledger.consumeReservation({
+                reservationKey: key("terminal-reservation"),
+                idempotencyKey: key("terminal-consume"),
+              })
+            : ledger.releaseReservation({
+                reservationKey: key("terminal-reservation"),
+                idempotencyKey: key("terminal-release"),
+              })
+      )
+    );
+    assert.ok(fulfilled(terminalAttempts).length >= ledgers.length / 2);
+    assert.ok(rejected(terminalAttempts).length >= 1);
+    const [terminalState] = await sql<
+      {
+        status: string;
+        terminal_transactions: number;
+        terminal_types: string[];
+      }[]
+    >`
+      SELECT reservation.status,
+        count(transaction.id)::int AS terminal_transactions,
+        array_agg(transaction.type ORDER BY transaction.type)
+          FILTER (WHERE transaction.id IS NOT NULL) AS terminal_types
+      FROM credit_reservation reservation
+      LEFT JOIN credit_transaction transaction
+        ON transaction.reservation_id = reservation.id
+        AND transaction.type IN ('consume', 'release')
+      WHERE reservation.reservation_key = ${key("terminal-reservation")}
+      GROUP BY reservation.status
+    `;
+    assert.equal(terminalState?.terminal_transactions, 1);
+    assert.deepEqual(terminalState?.terminal_types, [
+      terminalState?.status === "consumed" ? "consume" : "release",
+    ]);
+
+    const refundUser = creditTestUserId(5);
+    await seedCreditTestUser(sql, refundUser, `${scope}-refund-replay`);
+    await ledgers[0]!.grantCredits({
+      userId: refundUser,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: key("refund-grant"),
+      includedCredits: 1,
+      expiresAt: null,
+    });
+    await ledgers[0]!.reserveCredit({
+      userId: refundUser,
+      reservationKey: key("refund-reservation"),
+      credits: 1,
+    });
+    await ledgers[0]!.consumeReservation({
+      reservationKey: key("refund-reservation"),
+      idempotencyKey: key("refund-consume"),
+    });
+    const refundAttempts = await runConcurrently(
+      ledgers.map(
+        (ledger) => () =>
+          ledger.refundReservation({
+            reservationKey: key("refund-reservation"),
+            idempotencyKey: key("same-refund"),
+          })
+      )
+    );
+    assert.equal(rejected(refundAttempts).length, 0);
+    const [refundState] = await sql<
+      { status: string; remaining: number; reserved: number; refunds: number }[]
+    >`
+      SELECT reservation.status,
+        grant_row.remaining_credits::int AS remaining,
+        grant_row.reserved_credits::int AS reserved,
+        (SELECT count(*)::int FROM credit_transaction
+          WHERE reservation_id = reservation.id AND type = 'refund') AS refunds
+      FROM credit_reservation reservation
+      JOIN credit_reservation_grant allocation
+        ON allocation.reservation_id = reservation.id
+      JOIN credit_grant grant_row ON grant_row.id = allocation.grant_id
+      WHERE reservation.reservation_key = ${key("refund-reservation")}
+    `;
+    assert.deepEqual(refundState, {
+      status: "refunded",
+      remaining: 1,
+      reserved: 0,
+      refunds: 1,
+    });
+
+    const rolloverUser = creditTestUserId(6);
+    await seedCreditTestUser(sql, rolloverUser, `${scope}-rollover-replay`);
+    for (const index of [1, 2]) {
+      await ledgers[0]!.grantCredits({
+        userId: rolloverUser,
+        catalogId: "pro",
+        source: "subscription_renewal",
+        sourceId: key(`renewal-source:${index}`),
+        idempotencyKey: key(`renewal:${index}`),
+        includedCredits: 8,
+      });
+    }
+    const rolloverAttempts = await runConcurrently(
+      ledgers.map(
+        (ledger) => () =>
+          ledger.renewSubscriptionCredits({
+            userId: rolloverUser,
+            catalogId: "pro",
+            sourceId: key("rollover-source"),
+            renewalIdempotencyKey: key("same-renewal"),
+            rolloverIdempotencyKey: key("same-rollover"),
+          })
+      )
+    );
+    assert.equal(rejected(rolloverAttempts).length, 0);
+    const rolloverResults = fulfilled(rolloverAttempts).map(
+      (result) => result.value
+    );
+    assert.ok(
+      rolloverResults.every(
+        (result) =>
+          result.grant.id === rolloverResults[0]!.grant.id &&
+          result.rolloverGrant?.id === rolloverResults[0]!.rolloverGrant?.id
+      )
+    );
+    const [rolloverState] = await sql<
+      {
+        rollover_grants: number;
+        rollover_credits: number;
+        source_remaining: number;
+        total_remaining: number;
+        source_transactions: number;
+        target_transactions: number;
+        evidence_rollover_key: string;
+        evidence_rolled_credits: number;
+        evidence_grant_matches: boolean;
+      }[]
+    >`
+      SELECT
+        count(*) FILTER (WHERE source = 'rollover')::int AS rollover_grants,
+        COALESCE(sum(original_credits) FILTER (WHERE source = 'rollover'), 0)::int
+          AS rollover_credits,
+        COALESCE(sum(remaining_credits)
+          FILTER (WHERE source = 'subscription_renewal'), 0)::int
+          AS source_remaining,
+        COALESCE(sum(remaining_credits), 0)::int AS total_remaining,
+        (SELECT count(*)::int FROM credit_transaction
+          WHERE user_id = ${rolloverUser}::uuid
+            AND type = 'rollover'
+            AND metadata ? 'rolloverGrantId') AS source_transactions,
+        (SELECT count(*)::int FROM credit_transaction
+          WHERE user_id = ${rolloverUser}::uuid
+            AND type = 'rollover'
+            AND idempotency_key = ${key("same-rollover") + ":grant"})
+          AS target_transactions,
+        (SELECT metadata #>> '{__meelni_subscription_renewal_completion,rolloverIdempotencyKey}'
+          FROM credit_transaction
+          WHERE idempotency_key = ${key("same-renewal") + ":grant"})
+          AS evidence_rollover_key,
+        (SELECT (metadata #>> '{__meelni_subscription_renewal_completion,rolledCredits}')::int
+          FROM credit_transaction
+          WHERE idempotency_key = ${key("same-renewal") + ":grant"})
+          AS evidence_rolled_credits,
+        (SELECT
+          (renewal.metadata #>> '{__meelni_subscription_renewal_completion,rolloverGrantId}')::uuid
+            = rollover.id
+          FROM credit_transaction renewal
+          JOIN credit_grant rollover
+            ON rollover.idempotency_key = ${key("same-rollover")}
+          WHERE renewal.idempotency_key = ${key("same-renewal") + ":grant"})
+          AS evidence_grant_matches
+      FROM credit_grant
+      WHERE user_id = ${rolloverUser}::uuid
+    `;
+    assert.deepEqual(rolloverState, {
+      rollover_grants: 1,
+      rollover_credits: 12,
+      source_remaining: 16,
+      total_remaining: 28,
+      source_transactions: 2,
+      target_transactions: 1,
+      evidence_rollover_key: key("same-rollover"),
+      evidence_rolled_credits: 12,
+      evidence_grant_matches: true,
+    });
+
+    const rollbackUser = creditTestUserId(7);
+    await seedCreditTestUser(sql, rollbackUser, `${scope}-renewal-rollback`);
+    const rollbackSource = await ledgers[0]!.grantCredits({
+      userId: rollbackUser,
+      catalogId: "pro",
+      source: "subscription_renewal",
+      sourceId: key("rollback-source"),
+      idempotencyKey: key("rollback-source-grant"),
+      includedCredits: 8,
+    });
+    const rollbackRenewalKey = key("rollback-renewal");
+    const rollbackRolloverKey = key("rollback-rollover");
+    await sql`
+      INSERT INTO credit_transaction (
+        user_id, grant_id, reservation_id, type, credits,
+        idempotency_key, source_id, balance_after, metadata
+      ) VALUES (
+        ${rollbackUser}::uuid,
+        ${rollbackSource.grant.id}::uuid,
+        NULL,
+        'adjustment',
+        1,
+        ${`${rollbackRenewalKey}:grant`},
+        'preseeded-collision',
+        NULL,
+        ${JSON.stringify({ reason: "atomic_rollback_test" })}::jsonb
+      )
+    `;
+    await assert.rejects(
+      () =>
+        ledgers[0]!.renewSubscriptionCredits({
+          userId: rollbackUser,
+          catalogId: "pro",
+          sourceId: key("rollback-renewal-source"),
+          renewalIdempotencyKey: rollbackRenewalKey,
+          rolloverIdempotencyKey: rollbackRolloverKey,
+        }),
+      /credit_transaction_idempotency_conflict/
+    );
+    const [rollbackState] = await sql<
+      {
+        source_remaining: number;
+        source_reserved: number;
+        new_grants: number;
+        rollover_transactions: number;
+      }[]
+    >`
+      SELECT source.remaining_credits::int AS source_remaining,
+        source.reserved_credits::int AS source_reserved,
+        (SELECT count(*)::int FROM credit_grant
+          WHERE user_id = ${rollbackUser}::uuid
+            AND idempotency_key IN (${rollbackRenewalKey}, ${rollbackRolloverKey}))
+          AS new_grants,
+        (SELECT count(*)::int FROM credit_transaction
+          WHERE user_id = ${rollbackUser}::uuid
+            AND type = 'rollover'
+            AND idempotency_key LIKE ${`${rollbackRolloverKey}:%`})
+          AS rollover_transactions
+      FROM credit_grant source
+      WHERE source.id = ${rollbackSource.grant.id}::uuid
+    `;
+    assert.deepEqual(rollbackState, {
+      source_remaining: 8,
+      source_reserved: 0,
+      new_grants: 0,
+      rollover_transactions: 0,
+    });
+  } finally {
+    await Promise.all(clients.map((client) => client.end()));
+  }
+}
+
+async function seedCreditTestUser(
+  sql: postgres.Sql,
+  userId: string,
+  label: string
+) {
+  await sql`
+    INSERT INTO app_user (id, email)
+    VALUES (${userId}::uuid, ${`${label}@example.invalid`})
+  `;
+}
+
+function creditTestUserId(index: number): string {
+  return `30000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+}
+
+function creditTestSessionId(index: number): string {
+  return `40000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+}
+
+async function runConcurrently<T>(operations: Array<() => Promise<T>>) {
+  let release: (() => void) | undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const attempts = operations.map(async (operation) => {
+    await gate;
+    return operation();
+  });
+  release?.();
+  return Promise.allSettled(attempts);
+}
+
+function fulfilled<T>(results: PromiseSettledResult<T>[]) {
+  return results.filter(
+    (result): result is PromiseFulfilledResult<T> =>
+      result.status === "fulfilled"
+  );
+}
+
+function rejected<T>(results: PromiseSettledResult<T>[]) {
+  return results.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected"
+  );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function verifyDeletionTombstone(sql: postgres.Sql) {
