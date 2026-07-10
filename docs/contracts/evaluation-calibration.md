@@ -132,6 +132,8 @@ runtime parses it before evaluator work and requires:
 Missing, stale, malformed, duplicate, or incomplete approval fails closed. The
 candidate source and manifest cannot declare themselves approved. The current
 repository intentionally commits no approval artifact or reviewer identity.
+The live CLI likewise returns a failure unless the combined launch gate passes;
+provider acceptance alone is never a successful command outcome.
 
 ## Gate semantics
 

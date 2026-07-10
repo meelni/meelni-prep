@@ -14,7 +14,7 @@
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "observation": "Names an intended user outcome before ideation.",
+        "observation": "Recognizes that an intended user outcome should be defined before ideation.",
         "turnRef": "product_sense:01:caregiver-planning:user:1",
         "quote": "define the intended user outcome",
         "nextStep": "Specify the outcome and then narrow to one user segment."
@@ -36,7 +36,7 @@
       "strength": {
         "dimension": "insight",
         "kind": "strength",
-        "observation": "Names an intended user outcome before ideation.",
+        "observation": "Recognizes that an intended user outcome should be defined before ideation.",
         "turnRef": "product_sense:02:accessible-transit:user:1",
         "quote": "define the intended user outcome",
         "nextStep": "Make the outcome concrete for one accessibility need."
