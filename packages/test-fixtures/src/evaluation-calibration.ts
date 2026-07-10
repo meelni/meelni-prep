@@ -6,9 +6,9 @@ import {
   type FeedbackV2Scores,
 } from "@meelni/core";
 
-export const EVALUATION_GOLD_SET_VERSION = "pm-gold-set.v2" as const;
+export const EVALUATION_GOLD_SET_VERSION = "pm-gold-set.v3" as const;
 export const EVALUATION_ADJUDICATION_VERSION =
-  "pm-gold-adjudication.v2" as const;
+  "pm-gold-adjudication-candidates.v3" as const;
 
 export const EVALUATION_CALIBRATION_THRESHOLDS = {
   evidenceValidityRate: 1,
@@ -57,14 +57,24 @@ export type CalibrationScoreBands = Record<
 export interface CalibrationEvidenceAnchor {
   dimension: FeedbackDimension;
   kind: "strength" | "improvement";
+  behavior:
+    | "made_explicit_opening_decision"
+    | "owned_specific_action"
+    | "identified_specific_gap";
+  observation: string;
   turnRef: string;
   quote: string;
+  nextStep: string;
 }
 
 export interface EvaluationCalibrationCase {
   id: string;
   title: string;
   provenance: "fully_synthetic";
+  adjudicationProvenance: "agent_authored_synthetic_candidate";
+  adjudicationSignoff:
+    | "pending_product_owner_pm_review"
+    | "product_owner_pm_approved";
   roundType: CalibrationRoundType;
   goldSetVersion: typeof EVALUATION_GOLD_SET_VERSION;
   adjudicationVersion: typeof EVALUATION_ADJUDICATION_VERSION;
@@ -458,6 +468,34 @@ export const evaluationCalibrationCases: readonly EvaluationCalibrationCase[] =
     buildLowSignalCase(roundType),
   ]);
 
+export function buildEvaluationAdjudicationReviewManifest() {
+  return {
+    contractVersion: "evaluation-adjudication-review.v1" as const,
+    goldSetVersion: EVALUATION_GOLD_SET_VERSION,
+    adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
+    provenance: "agent_authored_synthetic_candidate" as const,
+    signoff: "pending_product_owner_pm_review" as const,
+    scoredCaseCount: evaluationCalibrationCases.filter(
+      ({ expectedQuality }) => expectedQuality !== null
+    ).length,
+    cases: evaluationCalibrationCases
+      .filter(({ expectedQuality }) => expectedQuality !== null)
+      .map((fixture) => ({
+        id: fixture.id,
+        roundType: fixture.roundType,
+        expectedQuality: fixture.expectedQuality,
+        expectedCompletionState: fixture.expectedCompletionState,
+        signoff: fixture.adjudicationSignoff,
+        strength: fixture.evidenceAnchors.find(
+          ({ kind }) => kind === "strength"
+        ),
+        improvement: fixture.evidenceAnchors.find(
+          ({ kind }) => kind === "improvement"
+        ),
+      })),
+  };
+}
+
 function seed(
   slug: string,
   title: string,
@@ -493,11 +531,20 @@ function buildScoredCase(
   );
   const answers =
     expectedCompletionState === "full"
-      ? [...profiledAnswers, ...fullSessionExtensions(caseSeed)]
-      : [...profiledAnswers];
+      ? [
+          ...profiledAnswers,
+          improvementReflection(caseSeed),
+          ...fullSessionExtensions(caseSeed),
+        ]
+      : [...profiledAnswers, improvementReflection(caseSeed)];
   const transcript = buildConversation(id, answers, expectedCompletionState);
-  const firstUser = transcript.find((turn) => turn.eventId === `${id}:user:1`)!;
-  const thirdUser = transcript.find((turn) => turn.eventId === `${id}:user:3`)!;
+  const strengthSequence = roundType === "behavioral" ? 2 : 1;
+  const strengthTurn = transcript.find(
+    (turn) => turn.eventId === `${id}:user:${strengthSequence}`
+  )!;
+  const improvementTurn = transcript.find(
+    (turn) => turn.eventId === `${id}:user:4`
+  )!;
 
   return baseCase({
     id,
@@ -513,14 +560,27 @@ function buildScoredCase(
       {
         dimension: caseSeed.evidenceDimensions[0],
         kind: "strength",
-        turnRef: firstUser.eventId,
-        quote: firstUser.text,
+        behavior:
+          roundType === "behavioral"
+            ? "owned_specific_action"
+            : "made_explicit_opening_decision",
+        observation:
+          roundType === "behavioral"
+            ? `The ${caseSeed.title} answer identifies a specific action the candidate personally took.`
+            : `The ${caseSeed.title} answer makes a concrete opening decision instead of staying abstract.`,
+        turnRef: strengthTurn.eventId,
+        quote: strengthTurn.text,
+        nextStep:
+          "Keep this concrete behavior and connect it to the next decision in the answer.",
       },
       {
         dimension: caseSeed.evidenceDimensions[1],
         kind: "improvement",
-        turnRef: thirdUser.eventId,
-        quote: thirdUser.text,
+        behavior: "identified_specific_gap",
+        observation: `The ${caseSeed.title} answer explicitly leaves a ${caseSeed.evidenceDimensions[1]} gap unresolved.`,
+        turnRef: improvementTurn.eventId,
+        quote: improvementTurn.text,
+        nextStep: nextStepForDimension(caseSeed.evidenceDimensions[1]),
       },
     ],
   });
@@ -584,6 +644,8 @@ function baseCase(
   return {
     ...input,
     provenance: "fully_synthetic",
+    adjudicationProvenance: "agent_authored_synthetic_candidate",
+    adjudicationSignoff: "pending_product_owner_pm_review",
     goldSetVersion: EVALUATION_GOLD_SET_VERSION,
     adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
     schemaVersion: FEEDBACK_SCHEMA_VERSION,
@@ -622,23 +684,23 @@ function answersForQuality(
   const weak: Record<CalibrationRoundType, readonly [string, string, string]> =
     {
       product_sense: [
-        `For ${caseSeed.title}, I would start by brainstorming features for everyone instead of choosing a user segment first.`,
+        `For ${caseSeed.title}, I would first define the intended user outcome. After that I would brainstorm features for everyone instead of choosing a user segment.`,
         "I would probably build the easiest idea and ask users whether they like it, but I have not defined the underlying problem or tradeoff.",
         "I would watch general usage after launch; I have not selected an outcome metric, guardrail, or decision threshold.",
       ],
       execution: [
-        `For ${caseSeed.title}, I would ask the team to move quickly, although I have not defined the goal, owner, or ordered milestones.`,
+        `For ${caseSeed.title}, I would first define a usable release as the delivery goal. I would then ask the team to move quickly without an owner or ordered milestones.`,
         "I would work on several pieces at once and handle dependencies when they appear rather than prioritize by risk.",
         "I would call the launch successful if it ships; I have not set a measurable outcome, guardrail, or rollback condition.",
       ],
       strategy: [
-        `For ${caseSeed.title}, I think the market is attractive, but I have not sized a segment or explained why it matters now.`,
+        `For ${caseSeed.title}, I would first test whether customers have an unmet need. I still have not sized a segment or explained why this market matters now.`,
         "I would copy the most visible competitor feature and decide the business model later without comparing strategic alternatives.",
         "I would recommend entering because growth seems possible, although I have not named a risk, trigger, or evidence that would change the decision.",
       ],
       behavioral: [
         `In the ${caseSeed.title} situation, the team had a difficult problem and I was involved, but I cannot clearly separate my responsibility from the group's.`,
-        "We talked about it and eventually chose an approach; I have not described my specific action, influence, or tradeoff.",
+        "I scheduled one discussion and summarized the disagreement for the group, but I did not drive a clear tradeoff or decision.",
         "The outcome was generally positive, but I do not have a concrete result and my learning is only that communication matters.",
       ],
     };
@@ -694,6 +756,40 @@ function buildConversation(
     turns.push(["user", answer, base + 20, base + 70]);
   });
   return timedTurns(id, turns);
+}
+
+function improvementReflection(caseSeed: ScoredSeed): string {
+  const dimension = caseSeed.evidenceDimensions[1];
+  return `A gap in my answer is ${gapForDimension(dimension)} I would address that before making the final recommendation.`;
+}
+
+function gapForDimension(dimension: FeedbackDimension): string {
+  const gaps: Record<FeedbackDimension, string> = {
+    structure: "that I have not made the sequence of decisions explicit.",
+    clarity: "that I have not stated the key choice in one concise sentence.",
+    insight:
+      "that I have not tested the most important assumption or an alternative explanation.",
+    communication:
+      "that I have not explained the tradeoff in language each stakeholder can act on.",
+    leadership:
+      "that I have not named an owner, commitment, or decision trigger.",
+  };
+  return gaps[dimension];
+}
+
+function nextStepForDimension(dimension: FeedbackDimension): string {
+  const nextSteps: Record<FeedbackDimension, string> = {
+    structure:
+      "State the decision sequence and signpost the transition between steps.",
+    clarity: "Summarize the key choice and rationale in one concise sentence.",
+    insight:
+      "Test the riskiest assumption and compare one plausible alternative.",
+    communication:
+      "Explain the tradeoff and action in stakeholder-ready language.",
+    leadership:
+      "Name the owner, commitment, and trigger for the next decision.",
+  };
+  return nextSteps[dimension];
 }
 
 function timedTurns(

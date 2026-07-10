@@ -21,7 +21,7 @@
 
 ## Scope
 
-- In scope: at least 40 synthetic PM transcripts spanning weak, average, and strong sufficient answers; adjudicated completion states; exact evidence anchors; dimension score bands; model provenance; a bounded workflow-backed calibration harness; machine-readable reports; and operator docs.
+- In scope: at least 40 synthetic PM transcripts spanning weak, average, and strong sufficient answers; agent-authored semantic adjudication candidates with exact evidence; an explicit product-owner/PM signoff gate; dimension score bands; model provenance; a bounded workflow-backed calibration harness; machine-readable reports; and operator docs.
 - Out of scope: customer transcripts, remote database writes, paid provider calls without explicit authorization, model tuning, and launch-readiness claims from deterministic fixtures.
 - Assumptions: the SAV-196 canonical transcript validator and SAV-197 generation workflow remain the production boundaries under test.
 

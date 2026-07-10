@@ -22,7 +22,8 @@ No calibration path connects to the application database.
 ## Gold-set contract
 
 `packages/test-fixtures/src/evaluation-calibration.ts` owns
-`pm-gold-set.v2` and `pm-gold-adjudication.v2`. This version contains 40
+`pm-gold-set.v3` and `pm-gold-adjudication-candidates.v3`. This version contains
+40
 fully synthetic cases:
 
 - 10 Product Sense;
@@ -44,12 +45,20 @@ Every case records:
 - gold-set, adjudication, feedback schema, prompt, and rubric versions;
 - dimension score bands for scored cases;
 - adjudicated strength and improvement anchors using exact user-turn text;
+- a semantic behavior, observation, and next step for every evidence anchor;
 - contract-v2 transcript events with stable IDs and timestamps.
 
 A fixture change that alters expected state, evidence, or score bands requires
 a new adjudication review. A behaviorally incompatible corpus change requires
 a new gold-set or adjudication version rather than silently rewriting the old
 baseline.
+
+These are agent-authored synthetic adjudication candidates, not human-reviewed
+ground truth. Every scored case has a genuine evidenced strength and an
+explicitly evidenced improvement gap, but product-owner/PM review remains
+required. `npm run calibration:adjudication-manifest` emits the compact 32-case
+review manifest. Its signoff state cannot be changed by deterministic or live
+model results.
 
 ## Report contract
 
@@ -112,8 +121,10 @@ predictable evaluator. Neither can pass `liveProviderAcceptance` or
 
 Only an explicitly authorized `live_provider` execution can pass launch
 acceptance. A deterministic report must retain
-`launchAcceptance: pending_live_provider_run`, even when every harness metric
-is perfect. A live execution that misses any threshold must fail rather than
+an unresolved launch gate even when every harness metric is perfect. Until the
+candidate manifest receives product-owner/PM signoff, launch acceptance remains
+`pending_adjudication_signoff`. After signoff, a live execution is still
+required. A live execution that misses any threshold must fail rather than
 downgrade itself to a self-test.
 
 The evaluated modes accept exactly three repetitions. The run budget is
