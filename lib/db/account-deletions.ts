@@ -2,6 +2,7 @@ import { and, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 
 import {
   buildStripeDeletionSubjects,
+  normalizeStripeDeletionSubjects,
   payloadContainsProviderIdentifier,
   type StripeDeletionSubject,
 } from "@/lib/billing/stripe-privacy";
@@ -164,13 +165,10 @@ export async function recordLateStripeDeletionSubjects(
       subjects.set(subject.fingerprint, {
         kind: existing?.kind ?? subject.kind,
         fingerprint: subject.fingerprint,
-        // Completed tombstones retain fingerprints only. Active deletion work
-        // may retain the provider ID temporarily so a recovery retry can remove
-        // a resource discovered after the original snapshot.
-        providerId:
-          request.status === "completed"
-            ? null
-            : (existing?.providerId ?? subject.providerId),
+        // A late provider resource must remain recoverable until its deletion
+        // succeeds. The cleanup path clears this raw ID immediately after the
+        // provider confirms deletion; only the fingerprint remains afterward.
+        providerId: existing?.providerId ?? subject.providerId,
       });
     }
     await tx
@@ -182,6 +180,64 @@ export async function recordLateStripeDeletionSubjects(
       .where(eq(accountDeletionRequest.userId, userId));
     return true;
   });
+}
+
+export async function clearLateStripeDeletionSubjects(
+  userId: string,
+  fingerprints: string[]
+): Promise<boolean> {
+  if (fingerprints.length === 0) return false;
+  return db.transaction(async (tx) => {
+    const [request] = await tx
+      .select()
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1)
+      .for("update");
+    if (!request) return false;
+
+    const cleared = new Set(fingerprints);
+    const stripeSubjects = request.stripeSubjects.map((subject) =>
+      cleared.has(subject.fingerprint)
+        ? { ...subject, providerId: null }
+        : subject
+    );
+    const hasRemainingSubjects = stripeSubjects.some(
+      ({ providerId }) => providerId !== null
+    );
+    await tx
+      .update(accountDeletionRequest)
+      .set({
+        stripeSubjects,
+        ...(request.lastErrorCode === "stripe_late_reconciliation_failed"
+          ? {
+              status: hasRemainingSubjects ? "failed" : "completed",
+              lastErrorCode: hasRemainingSubjects
+                ? "stripe_late_reconciliation_failed"
+                : null,
+            }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(accountDeletionRequest.userId, userId));
+    return true;
+  });
+}
+
+export async function markLateStripeReconciliationFailed(userId: string) {
+  await db
+    .update(accountDeletionRequest)
+    .set({
+      status: "failed",
+      lastErrorCode: "stripe_late_reconciliation_failed",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(accountDeletionRequest.userId, userId),
+        eq(accountDeletionRequest.status, "completed")
+      )
+    );
 }
 
 export async function markAccountDeletionProcessing(userId: string) {
@@ -210,7 +266,10 @@ export async function markAccountDeletionFailed(
     .where(eq(accountDeletionRequest.userId, userId));
 }
 
-export async function markAccountDeletionCompleted(userId: string) {
+export async function markAccountDeletionCompleted(
+  userId: string,
+  processedFingerprints: string[]
+) {
   const now = new Date();
   await db.transaction(async (tx) => {
     const [request] = await tx
@@ -220,16 +279,24 @@ export async function markAccountDeletionCompleted(userId: string) {
       .limit(1)
       .for("update");
     if (!request) throw new Error("Account deletion tombstone is missing");
+    const processed = new Set(processedFingerprints);
+    const stripeSubjects = request.stripeSubjects.map((subject) =>
+      processed.has(subject.fingerprint)
+        ? { ...subject, providerId: null }
+        : subject
+    );
+    const hasUnprocessedSubjects = stripeSubjects.some(
+      ({ providerId }) => providerId !== null
+    );
     await tx
       .update(accountDeletionRequest)
       .set({
-        status: "completed",
-        lastErrorCode: null,
-        completedAt: now,
-        stripeSubjects: request.stripeSubjects.map((subject) => ({
-          ...subject,
-          providerId: null,
-        })),
+        status: hasUnprocessedSubjects ? "failed" : "completed",
+        lastErrorCode: hasUnprocessedSubjects
+          ? "stripe_late_reconciliation_failed"
+          : null,
+        completedAt: hasUnprocessedSubjects ? request.completedAt : now,
+        stripeSubjects,
         updatedAt: now,
       })
       .where(eq(accountDeletionRequest.userId, userId));
@@ -239,13 +306,20 @@ export async function markAccountDeletionCompleted(userId: string) {
 export async function hasStripeDeletionTombstone(
   fingerprint: string
 ): Promise<boolean> {
+  return Boolean(
+    await getAccountDeletionRequestByStripeFingerprint(fingerprint)
+  );
+}
+
+export async function getAccountDeletionRequestByStripeFingerprint(
+  fingerprint: string
+): Promise<AccountDeletionRecord | undefined> {
   const row = await db.query.accountDeletionRequest.findFirst({
     where: sql`${accountDeletionRequest.stripeSubjects} @> ${JSON.stringify([
       { fingerprint },
     ])}::jsonb`,
-    columns: { userId: true },
   });
-  return Boolean(row);
+  return row ? toDeletionRecord(row) : undefined;
 }
 
 export async function redactStripeEventLogs(request: AccountDeletionRecord) {
@@ -299,6 +373,14 @@ export async function listRecoverableAccountDeletions(
       or(
         inArray(accountDeletionRequest.status, ["pending", "failed"]),
         and(
+          eq(accountDeletionRequest.status, "completed"),
+          sql`EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(${accountDeletionRequest.stripeSubjects}) subject
+            WHERE subject->>'providerId' IS NOT NULL
+          )`
+        ),
+        and(
           eq(accountDeletionRequest.status, "processing"),
           lt(accountDeletionRequest.updatedAt, staleBefore)
         )
@@ -347,7 +429,7 @@ function toDeletionRecord(record: typeof accountDeletionRequest.$inferSelect) {
   return {
     userId: record.userId,
     status: record.status as AccountDeletionStatus,
-    stripeSubjects: record.stripeSubjects,
+    stripeSubjects: normalizeStripeDeletionSubjects(record.stripeSubjects),
     attempts: record.attempts,
   };
 }

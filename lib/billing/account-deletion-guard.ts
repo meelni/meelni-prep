@@ -168,6 +168,7 @@ export function checkoutReconciliationErrorCode(error: unknown) {
       code === "deleted_subscription_reconciliation_failed" ||
       code === "deleted_invoice_reconciliation_failed" ||
       code === "deleted_invoice_manual_reconciliation_required" ||
+      code === "deleted_customer_cleanup_failed" ||
       code === "deleted_billing_reconciliation_failed"
     ) {
       return code;
@@ -178,7 +179,7 @@ export function checkoutReconciliationErrorCode(error: unknown) {
 
 export function deletedBillingIdempotencyKey(
   providerId: string,
-  operation: "cancel" | "expire" | "refund"
+  operation: "cancel" | "delete" | "expire" | "refund"
 ) {
   const fingerprint = fingerprintStripeSubject(providerId);
   if (!fingerprint) {

@@ -15,15 +15,21 @@ failed; the recovery cron will retry. Neither status claims provider completion.
 
 The `account-deletion` Inngest function performs these idempotent stages:
 
-1. delete the Supabase Auth user through the server-only service-role client;
-2. cancel every captured Stripe subscription when present;
-3. delete every captured Stripe customer, including pass-only and historical
-   mapped customers;
-4. redact matching Stripe webhook payloads and errors while preserving event
+1. redact matching Stripe webhook payloads and errors while preserving event
    IDs, types, statuses, attempts, and timestamps;
-5. remove application data in a database transaction while preserving the
+2. remove application data in a database transaction while preserving the
    tombstone, deleting `user_insights` before its `last_session_id` target;
-6. clear raw provider IDs and mark the tombstone completed.
+3. delete the Supabase Auth user through the server-only service-role client;
+4. cancel captured Stripe subscriptions and refund any typed late
+   invoice/PaymentIntent/charge references;
+5. delete every captured Stripe customer, including pass-only and historical
+   mapped customers, only after financial reconciliation;
+6. clear only processed raw provider IDs and mark the tombstone completed, or
+   leave concurrent late references recoverable.
+
+Local data and legacy provider-log payloads are removed before external Auth or
+Stripe calls. A provider outage therefore does not extend local retention: the durable
+tombstone preserves only the typed provider references needed for retries.
 
 Failed work is marked with a stable error category and retried. The
 `account-deletion-recovery` cron runs every ten minutes and requeues pending,
@@ -53,6 +59,9 @@ failed, or processing records stale for at least fifteen minutes.
   requeued by recovery without duplicate billing or completion side effects.
 - Confirm matching Stripe event payload/error fields are redacted and late
   events for a deleted subject are stored without raw payloads.
+- Confirm every new Stripe event log stores `{}` rather than a raw webhook
+  payload, including when deletion commits between the initial tombstone check
+  and fulfillment.
 - Seed an account with an interview session and `user_insights.last_session_id`;
   confirm deletion removes both without a foreign-key failure.
 - Confirm a tombstone present before Checkout causes no Stripe list/create call.
@@ -73,6 +82,46 @@ failed, or processing records stale for at least fifteen minutes.
   refunded, and the event payload remains `{}`. Checkout, subscription, and
   invoice events must reconcile safely in any order using shared idempotency
   keys.
+- For each late Checkout/subscription/invoice event, confirm financial
+  reconciliation finishes before the Stripe customer deletion call. On cleanup
+  failure, confirm the tombstone retains raw cleanup IDs and becomes recoverable;
+  on retry success, confirm only fingerprints remain.
+- Fail cancellation, invoice lookup, and refund before customer deletion.
+  Confirm each failure retains explicit typed subscription/invoice/payment/
+  customer references, marks the tombstone recoverable, and that the recovery
+  worker retries cancel → refund → customer delete before clearing raw IDs.
+- Pause a deletion worker after it reads its subject snapshot, append late
+  invoice/payment/customer subjects, then complete the worker. Confirm only the
+  original snapshot is fingerprint-only, the late subjects remain recoverable,
+  and a recovery pass clears them only after ordered provider reconciliation.
+- Seed a malformed subject kind/value in a disposable database and confirm the
+  deletion read fails closed with a stable error; it must not complete after
+  silently dropping the corrupt reference.
+- Manually model a partially refunded PaymentIntent and charge, then replay the
+  event. Confirm Stripe is asked to refund the remaining amount, provider state
+  is retrieved, and customer cleanup proceeds only after the total is fully
+  refunded. Model a response that remains partial and confirm the event stays
+  failed, cleanup does not run, and the retry reference remains.
+- Model a full-amount refund with Stripe status `pending`. Confirm the event and
+  tombstone remain recoverable and customer cleanup does not run. After a
+  `refund.updated` transition to `succeeded`, allow the ten-minute recovery
+  worker or an operator replay of the original billing event to confirm the
+  succeeded total and finish cleanup without another refund. After a transition
+  to `failed`, confirm replay requests the remainder with a new deterministic
+  attempt key and still requires terminal `succeeded` evidence before cleanup.
+- Replay older subscription-deleted and invoice success/failure events after a
+  newer subscription state. Confirm payment history remains idempotent and the
+  older event cannot overwrite the newer subscription state.
+- Replay subscription deletion and invoice/update events for the same provider
+  subscription with the exact same timestamp in both arrival orders. Confirm
+  cancellation wins the tie and no same-second invoice/update can reactivate
+  that resource. Then create a distinct subscription at the same timestamp and
+  confirm it can replace the canceled resource in either arrival order, while
+  the old subscription's delayed deletion/update cannot mutate the new one.
+- For a legacy subscription row with a null Stripe subscription ID, confirm a
+  correlated `subscription.created` event scopes and reactivates the row.
+  Confirm delete/update/invoice events with a specific subscription ID fail
+  closed until the billing sync route backfills the current resource identity.
 - Simulate a paid late Checkout without a refundable PaymentIntent/charge.
   Confirm the event remains failed with
   `deleted_checkout_manual_reconciliation_required`, no entitlement is granted,

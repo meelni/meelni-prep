@@ -1,6 +1,8 @@
 import Stripe from "stripe";
 
 import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
+import { deletedBillingIdempotencyKey } from "@/lib/billing/account-deletion-guard";
+import { ensureStripePaymentFullyRefunded } from "@/lib/billing/stripe-refund-reconciliation";
 import {
   deleteUserApplicationData,
   getAccountDeletionRequest,
@@ -43,7 +45,12 @@ export const deleteAccount = inngest.createFunction(
         "account_deletion_tombstone_missing"
       );
     }
-    if (request.status === "completed") return { status: "completed" };
+    if (
+      request.status === "completed" &&
+      request.stripeSubjects.every(({ providerId }) => providerId === null)
+    ) {
+      return { status: "completed" };
+    }
 
     await step.run("mark-processing", () =>
       runSafeAccountDeletionStep(
@@ -60,19 +67,83 @@ export const deleteAccount = inngest.createFunction(
               cancelSubscription: async (subscriptionId) => {
                 const stripe = createStripeClient();
                 try {
-                  await stripe.subscriptions.cancel(subscriptionId, {
-                    prorate: true,
-                  });
+                  await stripe.subscriptions.cancel(
+                    subscriptionId,
+                    { prorate: false },
+                    {
+                      idempotencyKey: deletedBillingIdempotencyKey(
+                        subscriptionId,
+                        "cancel"
+                      ),
+                    }
+                  );
                 } catch (error) {
                   if (!isAlreadyDeletedProviderError(error)) {
                     throw safeProviderError("stripe_provider_error");
                   }
                 }
               },
+              refundInvoice: async (invoiceId) => {
+                const stripe = createStripeClient();
+                try {
+                  const invoice = await stripe.invoices.retrieve(invoiceId, {
+                    expand: ["payments"],
+                  });
+                  if (invoice.amount_paid <= 0) return;
+                  const payment = invoice.payments?.data.find(
+                    (candidate) => candidate.status === "paid"
+                  )?.payment;
+                  const paymentIntentId = providerId(
+                    payment?.payment_intent ?? null
+                  );
+                  const chargeId = providerId(payment?.charge ?? null);
+                  if (paymentIntentId) {
+                    await refundStripePayment(
+                      stripe,
+                      "payment_intent",
+                      paymentIntentId
+                    );
+                  } else if (chargeId) {
+                    await refundStripePayment(stripe, "charge", chargeId);
+                  } else {
+                    throw safeProviderError("stripe_provider_error");
+                  }
+                } catch (error) {
+                  if (
+                    error &&
+                    typeof error === "object" &&
+                    "code" in error &&
+                    error.code === "stripe_provider_error"
+                  ) {
+                    throw error;
+                  }
+                  throw safeProviderError("stripe_provider_error");
+                }
+              },
+              refundPayment: async (kind, providerId) => {
+                try {
+                  await refundStripePayment(
+                    createStripeClient(),
+                    kind,
+                    providerId
+                  );
+                } catch {
+                  throw safeProviderError("stripe_provider_error");
+                }
+              },
               deleteCustomer: async (customerId) => {
                 const stripe = createStripeClient();
                 try {
-                  await stripe.customers.del(customerId);
+                  await stripe.customers.del(
+                    customerId,
+                    {},
+                    {
+                      idempotencyKey: deletedBillingIdempotencyKey(
+                        customerId,
+                        "delete"
+                      ),
+                    }
+                  );
                 } catch (error) {
                   if (!isAlreadyDeletedProviderError(error)) {
                     throw safeProviderError("stripe_provider_error");
@@ -148,4 +219,22 @@ function createStripeClient() {
 
 function safeProviderError(code: string) {
   return Object.assign(new Error("Provider deletion step failed"), { code });
+}
+
+async function refundStripePayment(
+  stripe: Stripe,
+  kind: "charge" | "payment_intent",
+  providerIdValue: string
+) {
+  await ensureStripePaymentFullyRefunded(
+    stripe,
+    kind,
+    providerIdValue,
+    deletedBillingIdempotencyKey(providerIdValue, "refund")
+  );
+}
+
+function providerId(value: string | { id: string } | null | undefined) {
+  if (!value) return null;
+  return typeof value === "string" ? value : value.id;
 }

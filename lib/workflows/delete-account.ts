@@ -2,34 +2,65 @@ import type { AccountDeletionRecord } from "@/lib/db/account-deletions";
 
 export interface DeleteAccountWorkflowDeps {
   cancelSubscription(subscriptionId: string): Promise<void>;
+  refundInvoice(invoiceId: string): Promise<void>;
+  refundPayment(
+    kind: "charge" | "payment_intent",
+    providerId: string
+  ): Promise<void>;
   deleteCustomer(customerId: string): Promise<void>;
   redactProviderLogs(request: AccountDeletionRecord): Promise<void>;
   deleteApplicationData(userId: string): Promise<void>;
   deleteAuthUser(userId: string): Promise<void>;
-  markCompleted(userId: string): Promise<void>;
+  markCompleted(userId: string, processedFingerprints: string[]): Promise<void>;
 }
 
 export async function deleteAccountWorkflow(
   request: AccountDeletionRecord,
   deps: DeleteAccountWorkflowDeps
 ) {
-  if (request.status === "completed") return { alreadyCompleted: true };
+  if (
+    request.status === "completed" &&
+    request.stripeSubjects.every(({ providerId }) => providerId === null)
+  ) {
+    return { alreadyCompleted: true };
+  }
 
+  // Local privacy cleanup does not wait on an external provider. The durable
+  // tombstone keeps every provider reference required for later retries.
+  await deps.redactProviderLogs(request);
+  await deps.deleteApplicationData(request.userId);
   await deps.deleteAuthUser(request.userId);
-  for (const subject of request.stripeSubjects) {
-    if (!subject.providerId) continue;
+
+  const pendingSubjects = request.stripeSubjects.filter(
+    (subject): subject is typeof subject & { providerId: string } =>
+      subject.providerId !== null
+  );
+  for (const subject of pendingSubjects) {
     if (subject.kind === "subscription") {
       await deps.cancelSubscription(subject.providerId);
-    } else {
+    }
+  }
+  for (const subject of pendingSubjects) {
+    if (subject.kind === "charge" || subject.kind === "payment_intent") {
+      await deps.refundPayment(subject.kind, subject.providerId);
+    }
+  }
+  for (const subject of pendingSubjects) {
+    if (subject.kind === "invoice") {
+      await deps.refundInvoice(subject.providerId);
+    }
+  }
+  // Customer deletion is deliberately last: cancellation and every known
+  // refundable payment must reconcile before the provider identity disappears.
+  for (const subject of pendingSubjects) {
+    if (subject.kind === "customer") {
       await deps.deleteCustomer(subject.providerId);
     }
   }
-  await deps.redactProviderLogs(request);
-
-  // The durable tombstone survives this application-data transaction. If an
-  // external provider fails, the retry resumes without allowing user recreation.
-  await deps.deleteApplicationData(request.userId);
-  await deps.markCompleted(request.userId);
+  await deps.markCompleted(
+    request.userId,
+    request.stripeSubjects.map(({ fingerprint }) => fingerprint)
+  );
   return { alreadyCompleted: false };
 }
 

@@ -15,7 +15,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
-import { buildStripeDeletionSubjects } from "../lib/billing/stripe-privacy";
+import {
+  buildStripeDeletionSubject,
+  buildStripeDeletionSubjects,
+} from "../lib/billing/stripe-privacy";
 
 import {
   ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
@@ -42,6 +45,7 @@ const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -1850,7 +1854,10 @@ function errorMessage(error: unknown): string {
 async function verifyDeletionTombstone(sql: postgres.Sql) {
   process.env.DATABASE_URL = databaseUrl(baseUrl, CLEAN_DATABASE);
   const {
+    clearLateStripeDeletionSubjects,
     deleteUserApplicationData,
+    getAccountDeletionRequest,
+    listRecoverableAccountDeletions,
     markAccountDeletionCompleted,
     recordLateStripeDeletionSubjects,
     redactStripeEventLogs,
@@ -1938,14 +1945,68 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
   );
   await redactStripeEventLogs(deletionRequest);
   await deleteUserApplicationData(USER_TWO);
-  await markAccountDeletionCompleted(USER_TWO);
-  await recordLateStripeDeletionSubjects(
-    USER_TWO,
-    buildStripeDeletionSubjects({
+  const lateSubjects = [
+    ...buildStripeDeletionSubjects({
       subscriptionId: null,
       subscriptionCustomerId: "cus_late_after_completion",
       mappedCustomerIds: [],
-    })
+    }),
+    buildStripeDeletionSubject("invoice", "in_late_after_completion")!,
+    buildStripeDeletionSubject("payment_intent", "pi_late_after_completion")!,
+  ];
+  await recordLateStripeDeletionSubjects(USER_TWO, lateSubjects);
+  assert.equal(
+    (await listRecoverableAccountDeletions(new Date())).includes(USER_TWO),
+    true
+  );
+  await markAccountDeletionCompleted(
+    USER_TWO,
+    deletionRequest.stripeSubjects.map(({ fingerprint }) => fingerprint)
+  );
+  const [pendingLateCleanup] = await sql<{ raw_provider_ids: number }[]>`
+    SELECT count(*)::int AS raw_provider_ids
+    FROM account_deletion_request
+    CROSS JOIN LATERAL jsonb_array_elements(stripe_subjects) subject
+    WHERE user_id = ${USER_TWO}::uuid
+      AND subject->>'providerId' IS NOT NULL
+  `;
+  assert.equal(pendingLateCleanup?.raw_provider_ids, 3);
+  const [failedLateCleanup] = await sql<
+    { status: string; last_error_code: string | null }[]
+  >`
+    SELECT status, last_error_code
+    FROM account_deletion_request
+    WHERE user_id = ${USER_TWO}::uuid
+  `;
+  assert.deepEqual(failedLateCleanup, {
+    status: "failed",
+    last_error_code: "stripe_late_reconciliation_failed",
+  });
+  assert.equal(
+    (await listRecoverableAccountDeletions(new Date())).includes(USER_TWO),
+    true
+  );
+  await clearLateStripeDeletionSubjects(USER_TWO, [
+    lateSubjects[0]!.fingerprint,
+  ]);
+  const [partiallyCleared] = await sql<
+    { status: string; raw_provider_ids: number }[]
+  >`
+    SELECT
+      status,
+      (SELECT count(*)::int
+        FROM jsonb_array_elements(stripe_subjects) subject
+        WHERE subject->>'providerId' IS NOT NULL) AS raw_provider_ids
+    FROM account_deletion_request
+    WHERE user_id = ${USER_TWO}::uuid
+  `;
+  assert.deepEqual(partiallyCleared, {
+    status: "failed",
+    raw_provider_ids: 2,
+  });
+  await clearLateStripeDeletionSubjects(
+    USER_TWO,
+    lateSubjects.slice(1).map(({ fingerprint }) => fingerprint)
   );
 
   const [state] = await sql<
@@ -1956,6 +2017,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       tombstone_exists: boolean;
       raw_provider_ids: number;
       provider_fingerprints: number;
+      deletion_status: string;
       redacted_payload: string;
       redacted_error: string | null;
     }[]
@@ -1982,6 +2044,8 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       (SELECT jsonb_array_length(stripe_subjects)::int
         FROM account_deletion_request
         WHERE user_id = ${USER_TWO}::uuid) AS provider_fingerprints,
+      (SELECT status FROM account_deletion_request
+        WHERE user_id = ${USER_TWO}::uuid) AS deletion_status,
       (SELECT payload FROM stripe_event_log
         WHERE stripe_event_id = 'evt_private') AS redacted_payload,
       (SELECT last_error FROM stripe_event_log
@@ -1993,10 +2057,29 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     user_insights_exists: false,
     tombstone_exists: true,
     raw_provider_ids: 0,
-    provider_fingerprints: 3,
+    provider_fingerprints: 5,
+    deletion_status: "completed",
     redacted_payload: "{}",
     redacted_error: null,
   });
+
+  await sql`
+    INSERT INTO account_deletion_request (user_id, status, stripe_subjects)
+    VALUES (
+      ${USER_CORRUPT_DELETION}::uuid,
+      'failed',
+      '[{"kind":"unknown","providerId":"unsafe","fingerprint":"bad"}]'::jsonb
+    )
+  `;
+  await assert.rejects(
+    () => getAccountDeletionRequest(USER_CORRUPT_DELETION),
+    (error: unknown) =>
+      (error as { code?: string }).code === "account_deletion_subjects_invalid"
+  );
+  await sql`
+    DELETE FROM account_deletion_request
+    WHERE user_id = ${USER_CORRUPT_DELETION}::uuid
+  `;
 }
 
 async function consumeRateLimit(sql: postgres.Sql, userId: string) {

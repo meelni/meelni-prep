@@ -70,8 +70,9 @@
   nested sensitive-field redaction, cross-user exclusion, stale-auth deletion,
   delayed queue retry, populated insights/session deletion, pre/post-Checkout
   tombstone races, event-order-independent Checkout/subscription/invoice
-  reconciliation, lost-202/session expiry, redacted job failures, and accessible
-  UI action states.
+  reconciliation, late-customer cleanup failure/recovery, full-versus-partial
+  manual refund replay, webhook-payload tombstone races, lost-202/session
+  expiry, redacted job failures, and accessible UI action states.
 
 ## Rollout
 

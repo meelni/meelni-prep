@@ -3,9 +3,64 @@ import { createHash } from "node:crypto";
 import type Stripe from "stripe";
 
 export interface StripeDeletionSubject {
-  kind: "customer" | "subscription";
+  kind: "charge" | "customer" | "invoice" | "payment_intent" | "subscription";
   providerId: string | null;
   fingerprint: string;
+}
+
+const STRIPE_DELETION_SUBJECT_KINDS = new Set<StripeDeletionSubject["kind"]>([
+  "charge",
+  "customer",
+  "invoice",
+  "payment_intent",
+  "subscription",
+]);
+
+export function normalizeStripeDeletionSubjects(
+  value: unknown
+): StripeDeletionSubject[] {
+  if (!Array.isArray(value)) throw invalidDeletionSubjects();
+  return value.map((candidate) => {
+    if (!candidate || typeof candidate !== "object") {
+      throw invalidDeletionSubjects();
+    }
+    const record = candidate as Record<string, unknown>;
+    const kind = record.kind;
+    const providerId = record.providerId;
+    const fingerprint = record.fingerprint;
+    if (
+      typeof kind !== "string" ||
+      !STRIPE_DELETION_SUBJECT_KINDS.has(
+        kind as StripeDeletionSubject["kind"]
+      ) ||
+      (providerId !== null && typeof providerId !== "string") ||
+      typeof fingerprint !== "string" ||
+      !/^[a-f0-9]{64}$/.test(fingerprint) ||
+      (typeof providerId === "string" &&
+        fingerprintStripeSubject(providerId) !== fingerprint)
+    ) {
+      throw invalidDeletionSubjects();
+    }
+    return {
+      kind: kind as StripeDeletionSubject["kind"],
+      providerId,
+      fingerprint,
+    };
+  });
+}
+
+function invalidDeletionSubjects(): Error & { code: string } {
+  return Object.assign(new Error("Account deletion subjects are invalid"), {
+    code: "account_deletion_subjects_invalid",
+  });
+}
+
+export function buildStripeDeletionSubject(
+  kind: StripeDeletionSubject["kind"],
+  providerId?: string | null
+): StripeDeletionSubject | null {
+  const fingerprint = fingerprintStripeSubject(providerId);
+  return providerId && fingerprint ? { kind, providerId, fingerprint } : null;
 }
 
 export function fingerprintStripeSubject(identifier?: string | null) {
@@ -33,15 +88,13 @@ export function buildStripeDeletionSubjects(input: {
   const seen = new Set<string>();
   const subjects: StripeDeletionSubject[] = [];
   for (const candidate of candidates) {
-    const fingerprint = fingerprintStripeSubject(candidate.providerId);
-    if (!candidate.providerId || !fingerprint || seen.has(fingerprint))
-      continue;
-    seen.add(fingerprint);
-    subjects.push({
-      kind: candidate.kind,
-      providerId: candidate.providerId,
-      fingerprint,
-    });
+    const subject = buildStripeDeletionSubject(
+      candidate.kind,
+      candidate.providerId
+    );
+    if (!subject || seen.has(subject.fingerprint)) continue;
+    seen.add(subject.fingerprint);
+    subjects.push(subject);
   }
   return subjects;
 }
