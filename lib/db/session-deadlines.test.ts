@@ -1,0 +1,48 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { buildInterviewDeadlineSchedules } from "./session-deadlines";
+
+test("recovery prioritizes absolute deadlines across mixed durations", () => {
+  const schedules = buildInterviewDeadlineSchedules(
+    [
+      {
+        id: "older-long",
+        startedAt: new Date("2026-07-10T06:00:00.000Z"),
+        config: { duration: 45 },
+      },
+      {
+        id: "newer-short",
+        startedAt: new Date("2026-07-10T06:20:00.000Z"),
+        config: { duration: 15 },
+      },
+      {
+        id: "middle-medium",
+        startedAt: new Date("2026-07-10T06:10:00.000Z"),
+        config: { duration: 30 },
+      },
+    ],
+    2
+  );
+
+  assert.deepEqual(schedules, [
+    {
+      sessionId: "newer-short",
+      deadlineAt: "2026-07-10T06:35:00.000Z",
+    },
+    {
+      sessionId: "middle-medium",
+      deadlineAt: "2026-07-10T06:40:00.000Z",
+    },
+  ]);
+});
+
+test("recovery ignores rows without a persisted start time", () => {
+  assert.deepEqual(
+    buildInterviewDeadlineSchedules(
+      [{ id: "missing-start", startedAt: null, config: { duration: 15 } }],
+      250
+    ),
+    []
+  );
+});

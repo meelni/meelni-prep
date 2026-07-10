@@ -1,6 +1,6 @@
 # Interview Session Lifecycle Contract
 
-Status: canonical contract, persistence/CAS foundation, start-path failure handling, metadata validation, and the core/voice-runtime deadline boundary are implemented; server deadline scheduling and terminal workflow adoption remain in rollout
+Status: canonical contract, persistence/CAS foundation, atomic completion, start-path failure handling, metadata validation, and server/client/voice-runtime hard-deadline enforcement are implemented; Preview rollout evidence remains open
 
 ## Purpose
 
@@ -119,18 +119,26 @@ uses 30 minutes as the one compatibility default, derives an absolute deadline
 from the server-owned start instant, and treats the exact deadline as expired.
 Serialized timestamps use canonical millisecond UTC ISO form.
 
-The voice runtime consumes `deadline_at` as a defensive stop boundary. It closes
-audio I/O immediately without draining queued agent speech and terminates the
-room once, even if duplicate watchdog tasks fire. A normal early close cancels
-the pending watchdog. That provider action prevents listening or speaking past
-the deadline but does not select or persist a terminal reason.
+The voice runtime consumes `deadline_at` as a defensive stop boundary. It
+rejects already-expired jobs before starting an agent session, closes audio I/O
+immediately without draining queued agent speech, and terminates the room once
+through the acknowledged room-service API even if duplicate watchdog tasks
+fire. A normal early close cancels the pending watchdog. That provider action
+prevents listening or speaking past the deadline but does not select or persist
+a terminal reason.
 
 The server deadline worker remains the sole owner of the durable `time_limit`
-command. It must use the same absolute deadline, converge with user-end and
-duplicate commands through the existing first-terminal-writer rule, and return
-stored truth to clients. The relaunch gate remains off until scheduling,
-terminalization, Preview timing evidence, and rollback are verified in the
-remaining SAV-189 slice.
+command. It schedules the absolute deadline with a future Inngest event,
+attempts room deletion before settlement, and uses an idempotent completion
+workflow for terminal truth, feedback dispatch, streaks, and completion-time
+achievements. A five-minute recovery scan prioritizes absolute deadlines and
+uses a unique delivery identity per recovery run.
+
+The client countdown reflects this deadline but never claims `time_limit`. At
+zero it mutes local input, removes voluntary controls, presents a non-dismissible
+saving state, and polls stored terminal truth before navigating to feedback.
+The relaunch gate remains off until Preview timing evidence and rollback are
+verified.
 
 ## Legacy Compatibility And Backfill
 

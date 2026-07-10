@@ -1,5 +1,8 @@
 import {
+  authorizeInterviewSessionEnd,
   finalizeInterviewSession,
+  type EndInterviewSessionCommand,
+  type FinalizeInterviewSessionInput,
   type FinalizeInterviewSessionResult,
 } from "@/lib/db/end-interview-session";
 import {
@@ -10,24 +13,23 @@ import {
   dispatchFeedbackGenerationWorkflow,
   type DispatchFeedbackGenerationResult,
 } from "./dispatch-feedback-generation";
+import { checkAndAwardAchievements } from "@/lib/achievements";
+import { updateStreak } from "@/lib/streaks";
 
-export interface EndInterviewSessionInput {
-  sessionId: string;
-  userId: string;
-}
+export type EndInterviewSessionInput = EndInterviewSessionCommand;
 
 export interface EndInterviewSessionDeps {
+  authorize(input: EndInterviewSessionInput): Promise<boolean>;
   validate(sessionId: string): Promise<SessionValidation>;
-  finalize(input: {
-    sessionId: string;
-    userId: string;
-    validation: SessionValidation;
-  }): Promise<FinalizeInterviewSessionResult>;
+  finalize(
+    input: FinalizeInterviewSessionInput
+  ): Promise<FinalizeInterviewSessionResult>;
   dispatch(input: {
     sessionId: string;
     userId: string;
     tier: string;
   }): Promise<DispatchFeedbackGenerationResult>;
+  updateMotivation(userId: string): Promise<void>;
 }
 
 export type EndInterviewSessionResult =
@@ -42,6 +44,10 @@ export async function endInterviewSessionWorkflow(
   input: EndInterviewSessionInput,
   deps: EndInterviewSessionDeps = createEndInterviewSessionDeps()
 ): Promise<EndInterviewSessionResult> {
+  if (!(await deps.authorize(input))) {
+    return { ok: false, reason: "not_found" };
+  }
+
   const validation = await deps.validate(input.sessionId);
   const completion = await deps.finalize({ ...input, validation });
   if (!completion.ok) return completion;
@@ -54,7 +60,8 @@ export async function endInterviewSessionWorkflow(
   if (shouldDispatch) {
     try {
       dispatch = await deps.dispatch({
-        ...input,
+        sessionId: input.sessionId,
+        userId: completion.userId,
         tier: completion.tier,
       });
     } catch {
@@ -73,13 +80,39 @@ export async function endInterviewSessionWorkflow(
     }
   }
 
+  if (
+    completion.disposition === "applied" &&
+    completion.lifecycle.state === "completed"
+  ) {
+    try {
+      await deps.updateMotivation(completion.userId);
+    } catch (error) {
+      console.error("Failed to update completion motivation:", error);
+    }
+  }
+
   return { ok: true, completion, dispatch };
 }
 
 export function createEndInterviewSessionDeps(): EndInterviewSessionDeps {
   return {
+    authorize: authorizeInterviewSessionEnd,
     validate: validateSessionCompleteness,
     finalize: finalizeInterviewSession,
     dispatch: dispatchFeedbackGenerationWorkflow,
+    updateMotivation: updateCompletionMotivation,
   };
+}
+
+async function updateCompletionMotivation(userId: string): Promise<void> {
+  try {
+    await updateStreak(userId);
+  } catch (error) {
+    console.error("Failed to update completion streak:", error);
+  }
+  try {
+    await checkAndAwardAchievements(userId);
+  } catch (error) {
+    console.error("Failed to update completion achievements:", error);
+  }
 }

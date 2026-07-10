@@ -63,11 +63,12 @@ TypeScript and Python. Callers derive one absolute `deadline_at` from the
 server-owned session start instant and serialize it only at room-metadata and
 API boundaries.
 
-The Python voice runtime arms one watchdog after `AgentSession` starts. At or
-after `deadline_at`, it calls the immediate `AgentSession.aclose()` path without
-draining queued speech, then requests room termination. Duplicate watchdogs
-share one enforcement operation. A normal session close cancels a watchdog that
-has not begun enforcement.
+The Python voice runtime rejects an already-expired job before `AgentSession`
+starts. For a future deadline it arms one watchdog after the session starts. At
+or after `deadline_at`, it calls the immediate `AgentSession.aclose()` path
+without draining queued speech, then uses the acknowledged room-service API to
+terminate the room. Duplicate watchdogs share one enforcement operation. A
+normal session close cancels a watchdog that has not begun enforcement.
 
 This runtime shutdown is a provider-side safety boundary, not canonical session
 terminal truth. The server deadline workflow still owns the versioned

@@ -49,6 +49,7 @@ export type AnalyticsEvent =
   | "setup_completed"
   // Interview Events
   | "interview_started"
+  | "interview_deadline_reached"
   | "interview_ended"
   | "interview_completed"
   | "interview_error"
@@ -250,6 +251,10 @@ interface InterviewProperties {
     interview_type?: string;
     mode?: string;
     skill_level?: string;
+  };
+  interview_deadline_reached: {
+    session_id: string;
+    interview_type?: string;
   };
   interview_ended: {
     session_id: string;
