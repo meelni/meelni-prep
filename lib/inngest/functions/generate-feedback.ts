@@ -30,6 +30,13 @@ interface FeedbackGenerationEvent {
   };
 }
 
+type FeedbackGenerationFailureCode =
+  | "feedback_session_not_found"
+  | "feedback_session_owner_mismatch"
+  | "feedback_dispatch_identity_missing"
+  | "feedback_dispatch_identity_mismatch"
+  | "feedback_record_not_found";
+
 /**
  * Fetch session data including round type
  */
@@ -39,7 +46,7 @@ async function fetchSessionData(sessionId: string) {
   });
 
   if (!session) {
-    throw new Error(`Session ${sessionId} not found`);
+    throw feedbackGenerationFailure("feedback_session_not_found");
   }
 
   return session;
@@ -131,13 +138,11 @@ export const generateFeedback = inngest.createFunction(
       });
 
       if (!session) {
-        throw new Error(`Session ${sessionId} not found`);
+        throw feedbackGenerationFailure("feedback_session_not_found");
       }
 
       if (session.userId !== userId) {
-        throw new Error(
-          `Security violation: userId ${userId} does not own session ${sessionId} (owner: ${session.userId})`
-        );
+        throw feedbackGenerationFailure("feedback_session_owner_mismatch");
       }
 
       return { validated: true };
@@ -154,10 +159,10 @@ export const generateFeedback = inngest.createFunction(
         return { validated: true, legacy: true };
       }
       if (!feedbackRecord?.dispatchEventId) {
-        throw new Error(`Feedback dispatch identity missing for ${sessionId}`);
+        throw feedbackGenerationFailure("feedback_dispatch_identity_missing");
       }
       if (event.id !== feedbackRecord.dispatchEventId) {
-        throw new Error(`Feedback dispatch identity mismatch for ${sessionId}`);
+        throw feedbackGenerationFailure("feedback_dispatch_identity_mismatch");
       }
       return { validated: true };
     });
@@ -220,7 +225,9 @@ export const generateFeedback = inngest.createFunction(
         const record = await db.query.feedback.findFirst({
           where: eq(feedback.sessionId, sessionId),
         });
-        if (!record) throw new Error(`Feedback ${sessionId} not found`);
+        if (!record) {
+          throw feedbackGenerationFailure("feedback_record_not_found");
+        }
         return {
           tier: record.completionTier,
           stats: record.completionStats,
@@ -374,6 +381,12 @@ export const generateFeedback = inngest.createFunction(
     };
   }
 );
+
+function feedbackGenerationFailure(
+  code: FeedbackGenerationFailureCode
+): Error & { code: FeedbackGenerationFailureCode } {
+  return Object.assign(new Error(code), { code });
+}
 
 async function readOwnedSessionCorrelationId(
   sessionId: string,

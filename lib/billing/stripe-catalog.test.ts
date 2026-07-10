@@ -30,14 +30,14 @@ test("stripe catalog maps checkout products to modes and prices", () => {
 test("stripe catalog rejects unsupported and unconfigured prices", () => {
   assert.throws(
     () => getStripePriceIdForCatalogId("trial", {}),
-    /Catalog item trial is not sold through Stripe Checkout/
+    /stripe_catalog_item_not_checkout/
   );
   assert.throws(
     () => getStripePriceIdForCatalogId("starter", {}),
-    /Missing STRIPE_STARTER_MONTHLY_PRICE_ID/
+    /stripe_price_not_configured/
   );
   assert.throws(
     () => getStripeCatalogIdForPrice("price_unknown", {}),
-    /Unknown Stripe price ID/
+    /stripe_price_unknown/
   );
 });
