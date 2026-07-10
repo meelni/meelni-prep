@@ -114,8 +114,10 @@ test("join workflow does not reveal whether a cross-user session exists", async 
 
 test("join workflow rejects completed and ended sessions", async () => {
   for (const session of [
-    createSession({ status: "completed" }),
-    createSession({ status: "error" }),
+    createSession({ lifecycleState: "ending" }),
+    createSession({ status: "completed", lifecycleState: "completed" }),
+    createSession({ status: "abandoned", lifecycleState: "abandoned" }),
+    createSession({ status: "error", lifecycleState: "failed" }),
     createSession({ endedAt: new Date("2026-07-09T12:10:00.000Z") }),
   ]) {
     const result = await joinInterviewSessionWorkflow(
@@ -337,6 +339,7 @@ function createSession(
     startedAt: new Date("2026-07-09T12:00:00.000Z"),
     endedAt: null,
     status: "in_progress",
+    lifecycleState: "active",
     ...overrides,
   };
 }

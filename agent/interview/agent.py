@@ -87,7 +87,15 @@ async def entrypoint(ctx: JobContext):
 
     # Parse room metadata to get round type, question, and config
     room_metadata = ctx.room.metadata or "{}"
-    metadata = parse_room_metadata(room_metadata)
+    try:
+        metadata = parse_room_metadata(room_metadata)
+    except ValueError:
+        logger.error(
+            "Rejecting interview job with invalid room metadata",
+            exc_info=True,
+        )
+        ctx.shutdown("invalid interview room metadata")
+        return
     round_type = metadata["round_type"]
     config = metadata["config"]
     question = metadata.get("question")  # NEW: Extract question from metadata

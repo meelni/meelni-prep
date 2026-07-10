@@ -1,6 +1,7 @@
 import { db } from "./index";
 import { interviewSession, appUser, feedback } from "./schema";
 import { eq, desc, and, sql } from "drizzle-orm";
+import { isInterviewSessionCompletedForRead } from "@/lib/internal/core";
 
 export interface CreateSessionInput {
   userId: string;
@@ -65,6 +66,12 @@ export async function getSessionForLiveKitJoin(sessionId: string) {
       startedAt: interviewSession.startedAt,
       endedAt: interviewSession.endedAt,
       status: interviewSession.status,
+      lifecycleState: interviewSession.lifecycleState,
+      lifecycleVersion: interviewSession.lifecycleVersion,
+      terminalReason: interviewSession.terminalReason,
+      activatedAt: interviewSession.activatedAt,
+      endingAt: interviewSession.endingAt,
+      lastTransitionAt: interviewSession.lastTransitionAt,
     })
     .from(interviewSession)
     .where(eq(interviewSession.id, sessionId))
@@ -149,6 +156,13 @@ export async function getUserSessionsPaginated(
       config: interviewSession.config,
       startedAt: interviewSession.startedAt,
       endedAt: interviewSession.endedAt,
+      lifecycleState: interviewSession.lifecycleState,
+      status: interviewSession.status,
+      lifecycleVersion: interviewSession.lifecycleVersion,
+      terminalReason: interviewSession.terminalReason,
+      activatedAt: interviewSession.activatedAt,
+      endingAt: interviewSession.endingAt,
+      lastTransitionAt: interviewSession.lastTransitionAt,
       feedback: {
         status: feedback.status,
         overallScore: feedback.overallScore,
@@ -223,6 +237,12 @@ export async function getUserSessionsByRoundTypePaginated(
       config: interviewSession.config,
       startedAt: interviewSession.startedAt,
       endedAt: interviewSession.endedAt,
+      lifecycleState: interviewSession.lifecycleState,
+      lifecycleVersion: interviewSession.lifecycleVersion,
+      terminalReason: interviewSession.terminalReason,
+      activatedAt: interviewSession.activatedAt,
+      endingAt: interviewSession.endingAt,
+      lastTransitionAt: interviewSession.lastTransitionAt,
       feedback: {
         status: feedback.status,
         overallScore: feedback.overallScore,
@@ -271,12 +291,22 @@ export async function getUserSessionStats(userId: string) {
       id: interviewSession.id,
       startedAt: interviewSession.startedAt,
       endedAt: interviewSession.endedAt,
+      lifecycleState: interviewSession.lifecycleState,
+      status: interviewSession.status,
     })
     .from(interviewSession)
     .where(eq(interviewSession.userId, userId));
 
   const totalSessions = allSessions.length;
-  const completedSessions = allSessions.filter((s) => s.endedAt !== null);
+  // SAV-188 will move the legacy end/feedback writers to canonical terminal
+  // transitions. Until then, honor a completed legacy projection only while
+  // the canonical row is still nonterminal; canonical terminal truth wins.
+  const completedSessions = allSessions.filter((session) =>
+    isInterviewSessionCompletedForRead({
+      state: session.lifecycleState,
+      legacyStatus: session.status,
+    })
+  );
 
   // Calculate total minutes from completed sessions
   const totalMinutes = completedSessions.reduce((sum, session) => {

@@ -206,11 +206,17 @@ await session.start(agent=InterviewAgent(instructions=prompt), room=room)
 - Response synthesized by Cartesia TTS → Audio played to user
 - Silero VAD monitors audio → Detects when user interrupts (barge-in)
 
-### 4. Interview State Management (Planned)
+### 4. Session, Transcript, And Feedback Ownership
 
-- Track conversation turns and timestamps
-- Save transcript to Supabase database
-- Trigger post-session evaluation job (Inngest)
+- The web session workflow owns the provider-neutral interview lifecycle; a
+  LiveKit job or participant disconnect does not decide the terminal outcome.
+- The interview agent publishes normalized final transcript events to the room.
+- The authenticated browser persists those events through
+  `/api/session/transcript` with a local retry queue.
+- Explicit end currently calls `/api/interview/end`, which calculates durable
+  signal and triggers the Inngest feedback workflow.
+- The canonical lifecycle and remaining rollout gaps are documented in
+  `docs/contracts/interview-session-lifecycle.md`.
 
 ---
 
