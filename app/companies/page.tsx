@@ -1,7 +1,13 @@
 "use client";
 
 import { companies } from "@/lib/data/companies";
-import { ArrowRight, Building2, ChevronRight, Home } from "lucide-react";
+import {
+  ArrowRight,
+  Building2,
+  ChevronRight,
+  Home,
+  MessageSquare,
+} from "lucide-react";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import {
@@ -9,6 +15,7 @@ import {
   MarketingCtaCard,
   MarketingEyebrow,
   MarketingHero,
+  MarketingMetaRow,
   MarketingPage,
 } from "@/components/marketing/marketing-surface";
 import { Button } from "@/components/ui/button";
@@ -156,13 +163,21 @@ export default function CompaniesPage() {
                 </div>
 
                 <div className="mt-auto space-y-4">
+                  <MarketingMetaRow
+                    items={[
+                      {
+                        icon: MessageSquare,
+                        label: `${company.questionCategories.reduce(
+                          (count, category) =>
+                            count + category.questions.length,
+                          0
+                        )} practice questions`,
+                      },
+                    ]}
+                  />
                   <div className="flex items-center justify-between gap-3">
-                    <span className="border-border bg-muted/60 text-muted-foreground rounded-full border px-2.5 py-1 text-xs font-medium">
-                      {company.questionCategories.reduce(
-                        (count, category) => count + category.questions.length,
-                        0
-                      )}{" "}
-                      practice questions
+                    <span className="text-muted-foreground text-xs">
+                      Current process varies by role.
                     </span>
                     <Button asChild variant="link" className="h-auto p-0">
                       <Link
