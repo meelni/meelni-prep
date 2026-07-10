@@ -1,6 +1,5 @@
-"use client";
-
 import { companies } from "@/lib/data/companies";
+import { toPublicCompanyGuide } from "@/lib/data/public-company";
 import {
   ArrowRight,
   Building2,
@@ -19,6 +18,8 @@ import {
   MarketingPage,
 } from "@/components/marketing/marketing-surface";
 import { Button } from "@/components/ui/button";
+
+const publicCompanies = companies.map(toPublicCompanyGuide);
 
 // Structured Data for SEO
 function CompaniesStructuredData() {
@@ -47,9 +48,9 @@ function CompaniesStructuredData() {
     "@context": "https://schema.org",
     "@type": "ItemList",
     name: "PM Interview Company Guides",
-    description: `PM interview practice guides for ${companies.length} companies, with illustrative questions organized by round type.`,
-    numberOfItems: companies.length,
-    itemListElement: companies.map((company, index) => ({
+    description: `PM interview practice guides for ${publicCompanies.length} companies, with illustrative questions organized by round type.`,
+    numberOfItems: publicCompanies.length,
+    itemListElement: publicCompanies.map((company, index) => ({
       "@type": "ListItem",
       position: index + 1,
       item: {
@@ -143,7 +144,7 @@ export default function CompaniesPage() {
 
         {/* Company Cards Grid */}
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-          {companies.map((company) => (
+          {publicCompanies.map((company) => (
             <MarketingCard key={company.slug}>
               <div className="p-6 pb-4">
                 <MarketingEyebrow className="min-h-8 px-3 py-1.5 text-xs">

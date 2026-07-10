@@ -1,9 +1,13 @@
 import { notFound } from "next/navigation";
 
-import { getCompanyBySlug, type Company } from "@/lib/data/companies";
+import { getCompanyBySlug } from "@/lib/data/companies";
+import {
+  toPublicCompanyGuide,
+  type PublicCompanyGuide,
+} from "@/lib/data/public-company";
 import { CompanyDetailClient } from "./company-detail-client";
 
-function CompanyStructuredData({ company }: { company: Company }) {
+function CompanyStructuredData({ company }: { company: PublicCompanyGuide }) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
   const url = `${baseUrl}/companies/${company.slug}`;
 
@@ -62,10 +66,12 @@ export default async function CompanyDetailPage({
     notFound();
   }
 
+  const publicCompany = toPublicCompanyGuide(company);
+
   return (
     <>
-      <CompanyStructuredData company={company} />
-      <CompanyDetailClient company={company} />
+      <CompanyStructuredData company={publicCompany} />
+      <CompanyDetailClient company={publicCompany} />
     </>
   );
 }

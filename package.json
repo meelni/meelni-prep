@@ -58,7 +58,7 @@
     "test:python-agent": "python3 -m unittest agent/test_runtime_contracts.py",
     "test:local": "node --test scripts/*.test.mjs",
     "test:fixtures": "tsx --test packages/test-fixtures/src/*.test.ts",
-    "test:content": "tsx --test lib/blog-data.test.ts components/explore/structured-data.test.tsx && node --test scripts/content-credibility-contract.test.mjs",
+    "test:content": "tsx --test lib/blog-data.test.ts lib/data/public-company.test.ts lib/explore/*.test.ts components/explore/structured-data.test.tsx && node --test scripts/content-credibility-contract.test.mjs",
     "test:workflows": "tsx --test lib/workflows/*.test.ts lib/db/*.test.ts lib/question-sync/*.test.ts lib/security/*.test.ts lib/supabase/*.test.ts lib/auth/*.test.ts lib/navigation/*.test.ts lib/analytics/*.test.ts lib/dashboard/*.test.ts",
     "test:api": "vitest run app/auth/callback/route.test.ts app/api/interview/end/__tests__/route.test.ts app/api/feedback/[sessionId]/route.test.ts app/api/checkout/create-session/route.test.ts app/api/webhooks/stripe/route.test.ts app/api/user/export/route.test.ts app/api/user/delete/route.test.ts",
     "test:auth-ui": "tsx --test components/auth/*.test.tsx && vitest run components/explore/question-signin-modal.test.tsx app/auth/*.test.tsx",
