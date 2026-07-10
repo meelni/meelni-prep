@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
@@ -98,6 +98,7 @@ export default function ExplorePage() {
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(
     null
   );
+  const questionTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // Track page view
   useEffect(() => {
@@ -185,7 +186,10 @@ export default function ExplorePage() {
     }
   }, [selectedType, posthog, totalQuestions]);
 
-  const handleQuestionClick = (question: Question) => {
+  const handleQuestionClick = (
+    question: Question,
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
     // Track click
     posthog?.capture("explore_question_clicked", {
       question_id: question.id,
@@ -214,6 +218,7 @@ export default function ExplorePage() {
     }
 
     // Show sign-in modal for signed-out candidates.
+    questionTriggerRef.current = event.currentTarget;
     setSelectedQuestion(question);
     setSignInModalOpen(true);
   };
@@ -366,7 +371,7 @@ export default function ExplorePage() {
                   <Button
                     type="button"
                     variant="ghost"
-                    onClick={() => handleQuestionClick(question)}
+                    onClick={(event) => handleQuestionClick(question, event)}
                     disabled={authLoading}
                     aria-busy={authLoading}
                     className="hover:text-foreground h-auto w-full flex-col items-stretch justify-start rounded-lg p-0 text-left hover:bg-transparent"
@@ -482,6 +487,7 @@ export default function ExplorePage() {
           onClose={() => setSignInModalOpen(false)}
           questionText={selectedQuestion.questionText}
           questionId={selectedQuestion.id}
+          returnFocusRef={questionTriggerRef}
         />
       )}
 
