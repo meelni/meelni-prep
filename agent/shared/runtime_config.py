@@ -5,6 +5,8 @@ import os
 import re
 from typing import Any, Dict
 
+from shared.session_deadline import normalize_duration_minutes
+
 DEFAULT_INTERVIEW_RUNTIME_CONFIG: Dict[str, Any] = {
     "difficulty": "intermediate",
     "voice": "cgSgspJ2msm6clMCkdW9",
@@ -69,6 +71,7 @@ def normalize_runtime_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
             normalized[key] = _env_string(
                 value, DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
             )
+    normalized["duration"] = normalize_duration_minutes(normalized.get("duration"))
 
     return normalized
 
