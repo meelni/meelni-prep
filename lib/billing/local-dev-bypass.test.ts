@@ -74,6 +74,12 @@ test("local dev credit ledger reserves and completes credits without storage", a
     reservationKey: "interview-start:user-1:room-1",
     idempotencyKey: "consume:interview-start:user-1:room-1",
   });
+  const replayed = await ledger.consumeReservation({
+    reservationKey: "interview-start:user-1:room-1",
+    idempotencyKey: "consume:interview-start:user-1:room-1",
+  });
 
   assert.equal(consumed.reservation.status, "consumed");
+  assert.equal(consumed.duplicate, false);
+  assert.equal(replayed.duplicate, true);
 });

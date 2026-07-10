@@ -144,6 +144,95 @@ test("release and refund restore credits exactly once", async () => {
   assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 1);
 });
 
+test("exact terminal replays do not emit duplicate settlement analytics", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const terminalEvents: Array<{
+    transactionType: "consume" | "release" | "refund";
+    idempotencyKey: string;
+  }> = [];
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-06-29T00:00:00.000Z"),
+    trackTerminalSettlement: ({ transactionType, idempotencyKey }) => {
+      terminalEvents.push({ transactionType, idempotencyKey });
+    },
+  });
+  await ledger.grantCredits({
+    userId: "user-analytics",
+    catalogId: "trial",
+    source: "trial",
+    idempotencyKey: "trial:user-analytics",
+  });
+
+  await ledger.reserveCredit({
+    userId: "user-analytics",
+    reservationKey: "session:consume-analytics",
+  });
+  const consumed = await ledger.consumeReservation({
+    reservationKey: "session:consume-analytics",
+    idempotencyKey: "consume:analytics",
+  });
+  const consumedReplay = await ledger.consumeReservation({
+    reservationKey: "session:consume-analytics",
+    idempotencyKey: "consume:analytics",
+  });
+
+  await ledger.reserveCredit({
+    userId: "user-analytics",
+    reservationKey: "session:release-analytics",
+  });
+  const released = await ledger.releaseReservation({
+    reservationKey: "session:release-analytics",
+    idempotencyKey: "release:analytics",
+  });
+  const releasedReplay = await ledger.releaseReservation({
+    reservationKey: "session:release-analytics",
+    idempotencyKey: "release:analytics",
+  });
+
+  await ledger.reserveCredit({
+    userId: "user-analytics",
+    reservationKey: "session:refund-analytics",
+  });
+  await ledger.consumeReservation({
+    reservationKey: "session:refund-analytics",
+    idempotencyKey: "consume:refund-analytics",
+  });
+  const refunded = await ledger.refundReservation({
+    reservationKey: "session:refund-analytics",
+    idempotencyKey: "refund:analytics",
+  });
+  const refundedReplay = await ledger.refundReservation({
+    reservationKey: "session:refund-analytics",
+    idempotencyKey: "refund:analytics",
+  });
+
+  assert.equal(consumed.duplicate, false);
+  assert.equal(consumedReplay.duplicate, true);
+  assert.equal(released.duplicate, false);
+  assert.equal(releasedReplay.duplicate, true);
+  assert.equal(refunded.duplicate, false);
+  assert.equal(refundedReplay.duplicate, true);
+  assert.deepEqual(terminalEvents, [
+    {
+      transactionType: "consume",
+      idempotencyKey: "consume:analytics",
+    },
+    {
+      transactionType: "release",
+      idempotencyKey: "release:analytics",
+    },
+    {
+      transactionType: "consume",
+      idempotencyKey: "consume:refund-analytics",
+    },
+    {
+      transactionType: "refund",
+      idempotencyKey: "refund:analytics",
+    },
+  ]);
+});
+
 test("subscription renewal respects the rollover cap and 60 day expiration", async () => {
   const store = createMemoryCreditLedgerStore();
   const renewedAt = new Date();
