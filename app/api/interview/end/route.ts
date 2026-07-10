@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { checkAndAwardAchievements } from "@/lib/achievements";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
+import {
+  readOpaqueCorrelationId,
+  readOperationalRequestId,
+  reportOperationalFailure,
+  type OperationalRequestId,
+  type SessionCorrelationId,
+} from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
 import { updateStreak } from "@/lib/streaks";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
@@ -11,6 +18,7 @@ const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export async function POST(req: NextRequest) {
+  let correlationId: SessionCorrelationId | null = null;
   try {
     const supabase = await createClient();
     const {
@@ -33,6 +41,7 @@ export async function POST(req: NextRequest) {
 
     const body: unknown = await req.json();
     const sessionId = readSessionId(body);
+    correlationId = readOpaqueCorrelationId(sessionId);
     if (!sessionId) {
       return NextResponse.json(
         {
@@ -58,7 +67,10 @@ export async function POST(req: NextRequest) {
       result.completion.disposition === "applied" &&
       result.completion.lifecycle.state === "completed"
     ) {
-      await updateCompletionMotivation(user.id);
+      await updateCompletionMotivation(user.id, {
+        requestId: readOperationalRequestId(req),
+        correlationId,
+      });
     }
 
     const dispatchStatus =
@@ -102,8 +114,15 @@ export async function POST(req: NextRequest) {
         : {}),
       nextHref: `/feedback/${sessionId}/loading`,
     });
-  } catch (error) {
-    console.error("Error ending session:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "interview_end",
+      errorCode: "interview_end_failed",
+      severity: "critical",
+      retryable: true,
+      requestId: readOperationalRequestId(req),
+      correlationId,
+    });
     return NextResponse.json(
       {
         error: "session_end_failed",
@@ -143,15 +162,33 @@ function isUuid(value: string): boolean {
   );
 }
 
-async function updateCompletionMotivation(userId: string) {
+async function updateCompletionMotivation(
+  userId: string,
+  telemetry: {
+    requestId: OperationalRequestId | null;
+    correlationId: SessionCorrelationId | null;
+  }
+) {
   try {
     await updateStreak(userId);
-  } catch (error) {
-    console.error("Failed to update completion streak:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "interview_end",
+      errorCode: "completion_streak_update_failed",
+      severity: "warning",
+      retryable: true,
+      ...telemetry,
+    });
   }
   try {
     await checkAndAwardAchievements(userId);
-  } catch (error) {
-    console.error("Failed to update completion achievements:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "interview_end",
+      errorCode: "completion_achievements_update_failed",
+      severity: "warning",
+      retryable: true,
+      ...telemetry,
+    });
   }
 }

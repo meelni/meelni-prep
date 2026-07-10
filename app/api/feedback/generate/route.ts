@@ -96,8 +96,15 @@ import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getSessionTranscript } from "@/lib/db/transcripts";
 import { createFeedback, feedbackExists } from "@/lib/db/feedback";
 import { generateFeedback } from "@/lib/evaluation/scorer";
+import {
+  readOpaqueCorrelationId,
+  readOperationalRequestId,
+  reportOperationalFailure,
+  type SessionCorrelationId,
+} from "@/lib/operations/operational-events";
 
 export async function POST(req: NextRequest) {
+  let correlationId: SessionCorrelationId | null = null;
   try {
     // Verify authentication
     const supabase = await createClient();
@@ -113,6 +120,7 @@ export async function POST(req: NextRequest) {
     // Parse request body
     const body = await req.json();
     const { sessionId } = body;
+    correlationId = readOpaqueCorrelationId(sessionId);
 
     // Validate required fields
     if (!sessionId) {
@@ -144,10 +152,7 @@ export async function POST(req: NextRequest) {
     // Get session details
     const session = await getSessionById(sessionId);
     if (!session) {
-      return NextResponse.json(
-        { error: "Session not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
     // Get transcript
@@ -190,12 +195,18 @@ export async function POST(req: NextRequest) {
       success: true,
       feedback: feedbackRecord,
     });
-  } catch (error) {
-    console.error("Error generating feedback:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "feedback_queue",
+      errorCode: "feedback_generation_failed",
+      severity: "critical",
+      retryable: true,
+      requestId: readOperationalRequestId(req),
+      correlationId,
+    });
     return NextResponse.json(
       {
         error: "Failed to generate feedback",
-        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
     );

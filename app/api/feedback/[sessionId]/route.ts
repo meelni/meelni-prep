@@ -94,6 +94,12 @@ import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
 import { isInterviewTerminalState } from "@meelni/core";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
+import {
+  readOpaqueCorrelationId,
+  readOperationalRequestId,
+  reportOperationalFailure,
+  type SessionCorrelationId,
+} from "@/lib/operations/operational-events";
 
 // Estimated total processing time (seconds)
 const ESTIMATED_PROCESSING_TIME = 45;
@@ -102,6 +108,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
+  let correlationId: SessionCorrelationId | null = null;
   try {
     // Verify authentication
     const supabase = await createClient();
@@ -115,6 +122,7 @@ export async function GET(
     }
 
     const { sessionId } = await params;
+    correlationId = readOpaqueCorrelationId(sessionId);
 
     // Verify user owns the session
     const isOwner = await isSessionOwnedByUser(sessionId, user.id);
@@ -292,8 +300,14 @@ export async function GET(
       { error: "Invalid feedback status" },
       { status: 500 }
     );
-  } catch (error) {
-    console.error("Error fetching feedback:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "feedback_queue",
+      errorCode: "feedback_read_failed",
+      retryable: true,
+      requestId: readOperationalRequestId(req),
+      correlationId,
+    });
     return NextResponse.json(
       { error: "Failed to fetch feedback" },
       { status: 500 }
@@ -302,9 +316,10 @@ export async function GET(
 }
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
+  let correlationId: SessionCorrelationId | null = null;
   try {
     const supabase = await createClient();
     const {
@@ -316,6 +331,7 @@ export async function POST(
     }
 
     const { sessionId } = await params;
+    correlationId = readOpaqueCorrelationId(sessionId);
     const isOwner = await isSessionOwnedByUser(sessionId, user.id);
     if (!isOwner) {
       return NextResponse.json(
@@ -370,8 +386,15 @@ export async function POST(
       },
       { headers: { "Cache-Control": "private, no-store" } }
     );
-  } catch (error) {
-    console.error("Error retrying feedback dispatch:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "feedback_queue",
+      errorCode: "feedback_retry_failed",
+      severity: "critical",
+      retryable: true,
+      requestId: readOperationalRequestId(req),
+      correlationId,
+    });
     return NextResponse.json(
       {
         error: "feedback_retry_failed",

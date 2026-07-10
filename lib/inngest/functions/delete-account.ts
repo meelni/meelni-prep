@@ -11,6 +11,7 @@ import {
   redactStripeEventLogs,
 } from "@/lib/db/account-deletions";
 import { inngest } from "@/lib/inngest/client";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   accountDeletionFailureCode,
@@ -79,6 +80,12 @@ export const deleteAccount = inngest.createFunction(
         userId,
         accountDeletionFailureCode(error)
       );
+      reportOperationalFailure({
+        operation: "account_deletion",
+        errorCode: "account_deletion_failed",
+        severity: "critical",
+        retryable: true,
+      });
       throw error;
     }
 

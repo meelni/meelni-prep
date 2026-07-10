@@ -2,6 +2,10 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { AccountDeletionPendingError, upsertUser } from "@/lib/db/users";
 import { buildSafeInternalRedirectUrl } from "@/lib/auth/safe-redirect";
+import {
+  readOperationalRequestId,
+  reportOperationalFailure,
+} from "@/lib/operations/operational-events";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -14,7 +18,13 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
-      console.error("Error exchanging code for session:", error);
+      reportOperationalFailure({
+        operation: "auth_callback",
+        errorCode: "auth_code_exchange_failed",
+        severity: "warning",
+        retryable: true,
+        requestId: readOperationalRequestId(request),
+      });
       return NextResponse.redirect(`${origin}/auth/signin?error=auth_failed`);
     }
 
@@ -39,7 +49,13 @@ export async function GET(request: Request) {
             `${origin}/auth/signin?error=account_deletion_pending`
           );
         }
-        console.error("Error upserting user:", error);
+        reportOperationalFailure({
+          operation: "auth_callback",
+          errorCode: "auth_user_upsert_failed",
+          severity: "critical",
+          retryable: true,
+          requestId: readOperationalRequestId(request),
+        });
         // Continue anyway - user is authenticated even if DB insert fails
       }
     }

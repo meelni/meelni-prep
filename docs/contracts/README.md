@@ -13,3 +13,4 @@ Good candidates:
 - [question-bank records, taxonomy, and pagination](./question-bank.md);
 - subscription entitlement and usage quota states;
 - analytics event schemas.
+- [redacted operational failure events](./operational-failures.md).
