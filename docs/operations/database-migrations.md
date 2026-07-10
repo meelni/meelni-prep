@@ -21,8 +21,8 @@ See [migration history](./migration-history.md) for the retired orphan SQL files
 The preflight uses a read-only transaction, prints only redacted counts and
 states, verifies migration hashes, and refuses transaction-pooler URLs. At six
 migrations it also previews lifecycle backfill counts by the projected legacy
-status after migration,
-proposed state, and proposed reason; at seven it reports the applied counts:
+status after migration, proposed state, and proposed reason; at seven and eight
+it reports the applied counts:
 
 ```bash
 npm run db:preflight:preview
@@ -39,10 +39,11 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with seven
+six ledger entries. Expected post-migration status is `reconciled` with eight
 ledger entries, 23 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
-ACL, limiter-function, and interview-lifecycle contract fingerprint.
+ACL, limiter-function, interview-lifecycle, and atomic-completion contract
+fingerprint.
 
 ## Rehearsal
 
@@ -57,6 +58,10 @@ and removes fresh clean/upgrade databases on every run. CI runs it against a
 pinned PostgreSQL 17 container and proves the guarded CLI bootstrap, independent
 legacy-fixture upgrade, idempotency, row preservation, exact schema contract,
 least-privilege RLS, and shared limiter concurrency.
+It also runs ten real completion transactions over independent connections,
+proves one feedback/event identity, verifies one dispatch lease winner with
+fenced acknowledgements, and repairs terminal-without-feedback state without
+changing terminal truth.
 
 ## Preview and Production rollout
 
@@ -83,8 +88,8 @@ least-privilege RLS, and shared limiter concurrency.
    ```
 
 7. Run preflight again; it must report `reconciled`.
-8. Deploy application code that uses the lifecycle fields and shared
-   rate-limit function only after the migration reports `reconciled`.
+8. Deploy application code that uses the lifecycle and completion fields only
+   after the migration reports `reconciled`.
 9. Verify billing reads, session start/reconnect, transcript capture, feedback,
    question browsing, and account deletion.
 10. Monitor limiter 429/503 rates, database connections, query latency, and lock

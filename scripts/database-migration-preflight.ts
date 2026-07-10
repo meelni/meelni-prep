@@ -6,6 +6,7 @@ import { config } from "dotenv";
 import postgres from "postgres";
 
 import {
+  ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
@@ -71,9 +72,9 @@ async function run(url: string) {
         FROM drizzle.__drizzle_migrations
         ORDER BY created_at
       `;
-      if (![2, 6, 7].includes(migrations.length)) {
+      if (![2, 6, 7, 8].includes(migrations.length)) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, or 7 lifecycle migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, or 8 atomic-completion migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -210,7 +211,8 @@ async function run(url: string) {
         | "clean_0001"
         | "legacy_relaunch"
         | "relaunch_reconciled"
-        | "session_lifecycle";
+        | "session_lifecycle"
+        | "atomic_session_completion";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -228,8 +230,10 @@ async function run(url: string) {
         }
       } else if (migrations.length === 6) {
         startingContract = "relaunch_reconciled";
-      } else {
+      } else if (migrations.length === 7) {
         startingContract = "session_lifecycle";
+      } else {
+        startingContract = "atomic_session_completion";
       }
       if (migrations.length >= 6) {
         if (
@@ -248,10 +252,12 @@ async function run(url: string) {
         const expectedFingerprint =
           migrations.length === 6
             ? RELAUNCH_SCHEMA_FINGERPRINT
-            : SESSION_LIFECYCLE_SCHEMA_FINGERPRINT;
+            : migrations.length === 7
+              ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+              : ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
-            "Reconciled database differs from the exact launch schema contract"
+            `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
           );
         }
       }
@@ -296,7 +302,7 @@ async function run(url: string) {
               GROUP BY projected_legacy_status, lifecycle_state, terminal_reason
               ORDER BY projected_legacy_status, lifecycle_state, terminal_reason
             `
-          : migrations.length === 7
+          : migrations.length >= 7
             ? await tx<
                 {
                   projected_legacy_status: string;
@@ -325,15 +331,17 @@ async function run(url: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 7
-            ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-            : migrations.length === 6
-              ? RELAUNCH_SCHEMA_FINGERPRINT
-              : "pending",
+          migrations.length === 8
+            ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+            : migrations.length === 7
+              ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+              : migrations.length === 6
+                ? RELAUNCH_SCHEMA_FINGERPRINT
+                : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }
-            : migrations.length === 7
+            : migrations.length >= 7
               ? { phase: "applied", counts: lifecycleBackfillCounts }
               : { phase: "not_ready", counts: [] },
         ...summary,

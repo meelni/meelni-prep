@@ -55,11 +55,13 @@ interface PersistedInterviewSession {
   startedAt: string;
   roundType?: string | null;
   mode?: string | null;
-  config?: (Record<string, unknown> & {
-    roundType?: string | null;
-    mode?: string | null;
-    difficulty?: string | null;
-  }) | null;
+  config?:
+    | (Record<string, unknown> & {
+        roundType?: string | null;
+        mode?: string | null;
+        difficulty?: string | null;
+      })
+    | null;
 }
 
 function InterviewPageContent() {
@@ -93,6 +95,7 @@ function InterviewPageContent() {
   const [isMuted, setIsMuted] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
+  const [endSessionError, setEndSessionError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [transcriptSaveErrors, setTranscriptSaveErrors] = useState(0);
@@ -424,11 +427,29 @@ function InterviewPageContent() {
     }
 
     setIsEndingSession(true);
+    setEndSessionError(null);
     try {
-      // Track interview ended
       const duration = sessionStartTime
         ? (Date.now() - sessionStartTime) / 1000
         : 0;
+
+      const response = await fetch("/api/interview/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: activeSessionId }),
+      });
+      const data = (await response.json().catch(() => null)) as {
+        message?: string;
+        nextHref?: string;
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            "We couldn't end the interview yet. You're still connected and can try again."
+        );
+      }
+
       analytics.track("interview_ended", {
         session_id: activeSessionId,
         duration_seconds: duration,
@@ -436,20 +457,22 @@ function InterviewPageContent() {
         interview_type: session?.config?.roundType,
       });
 
-      // End session in database
-      await fetch("/api/interview/end", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: activeSessionId }),
-      });
-
       setShowEndModal(false);
       setIsEndingSession(false);
 
-      // Navigate to feedback loading page
-      router.push(`/feedback/${activeSessionId}/loading`);
+      const nextHref = data?.nextHref?.startsWith(
+        `/feedback/${activeSessionId}`
+      )
+        ? data.nextHref
+        : `/feedback/${activeSessionId}/loading`;
+      router.push(nextHref);
     } catch (error) {
       console.error("Failed to end session:", error);
+      setEndSessionError(
+        error instanceof Error
+          ? error.message
+          : "We couldn't end the interview yet. You're still connected and can try again."
+      );
       setIsEndingSession(false);
     }
   };
@@ -546,7 +569,11 @@ function InterviewPageContent() {
       <EndSessionModal
         isOpen={showEndModal}
         isLoading={isEndingSession}
-        onClose={() => setShowEndModal(false)}
+        error={endSessionError}
+        onClose={() => {
+          setShowEndModal(false);
+          setEndSessionError(null);
+        }}
         onConfirm={handleEndSession}
       />
     </LiveKitRoomWrapper>
