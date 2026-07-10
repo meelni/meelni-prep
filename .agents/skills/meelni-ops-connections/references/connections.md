@@ -97,6 +97,39 @@ Guidelines:
 - Production must use live Stripe keys and live price IDs.
 - After env changes, redeploy the affected environment before assuming runtime behavior changed.
 
+## GitHub
+
+Canonical target:
+
+- Account: `saviii`
+- App repo: `saviii/meelni-prep`
+- Local remote: `https://github.com/saviii/meelni-prep.git`
+
+Install, authenticate, and upgrade:
+
+```bash
+brew install gh
+gh auth login --web
+brew upgrade gh
+```
+
+Use the browser device flow and store the resulting credential in the macOS keyring. Never record the OAuth token or a one-time device code.
+
+Verify:
+
+```bash
+gh auth status
+gh repo view --json nameWithOwner,url,viewerPermission
+```
+
+The active account should be `saviii`; the Meelni repository should resolve to `saviii/meelni-prep`. Use the GitHub app connector for structured PR and issue operations when available, and local `git`/`gh` for branch-aware workflows, authentication checks, pushes, and GitHub Actions logs.
+
+Production guardrails:
+
+- Confirm the current branch, diff, and intended remote before pushing or opening a PR.
+- Do not print or document the keyring token reported by `gh auth status`.
+- Do not change repository settings, protections, secrets, or Actions variables without explicit scope from the user.
+
 ## LiveKit
 
 Canonical target:
@@ -147,8 +180,35 @@ Operational notes:
 
 Canonical target:
 
+- Project name: `Meelni`
+- Project ref: `rarrrwkjuhfyfatcmrkw`
 - Project host: `rarrrwkjuhfyfatcmrkw.supabase.co`
+- Region: `East US (Ohio)`
 - Local browser auth redirects through Supabase OAuth and returns to `http://localhost:3000/auth/callback`.
+
+Auth and link:
+
+```bash
+brew install supabase/tap/supabase
+supabase login
+supabase link --project-ref rarrrwkjuhfyfatcmrkw
+```
+
+When the CLI detects a Codex agent terminal and refuses interactive login in JSON output mode, use the manual browser flow:
+
+```bash
+supabase login --no-browser --agent no --output-format text
+```
+
+Open the one-time URL, authorize it in the browser, and enter the short verification code in the same terminal. Never record the one-time URL, code, or resulting token.
+
+Verify:
+
+```bash
+supabase projects list --agent no --output-format text
+```
+
+The `Meelni` row should show the linked marker. Link metadata under `supabase/.temp/` is local-only and ignored by Git.
 
 Env and secrets:
 
