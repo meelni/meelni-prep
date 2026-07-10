@@ -11,6 +11,7 @@ Full interview rooms receive JSON metadata with this shape:
 {
   "contract_version": 1,
   "session_id": "uuid",
+  "deadline_at": "2026-07-09T20:30:00.000Z",
   "round_type": "product_sense",
   "mode": "voice_video",
   "question": {
@@ -59,12 +60,39 @@ environment. Web and voice-agent deployments therefore must use matching
 serialized shape. `contract_version` and `session_id` are required. The web
 workflow creates both; consumers must not invent a session ID from a room name.
 
+`deadline_at`, when present, is an absolute UTC timestamp in canonical
+`YYYY-MM-DDTHH:mm:ss.sssZ` form. An explicitly malformed timestamp fails closed
+at the TypeScript and Python metadata boundaries. Missing `deadline_at` is
+normalized to `null` only for rolling compatibility with rooms created before
+SAV-189; new server writers must always supply it before hard-deadline rollout
+can be considered complete.
+
 Contract version 1 is the only canonical writer shape. Python may normalize the
 documented legacy question aliases (`question_id`, `question_text`, and
 `question_type`) at its adapter boundary, but new writers use `id`, `text`, and
 `type`. Missing metadata, invalid JSON, an unsupported contract version, a
 missing session ID, or an invalid round type is a runtime-start failure. It must
 not silently create an uncorrelated default interview.
+
+## Duration And Runtime Deadline
+
+`packages/core/src/session-deadline.ts` owns the provider-neutral duration and
+absolute-deadline policy. Supported interview durations are 15, 30, and 45
+minutes; missing or unsupported values normalize to 30 minutes in both
+TypeScript and Python. Callers derive one absolute `deadline_at` from the
+server-owned session start instant and serialize it only at room-metadata and
+API boundaries.
+
+The Python voice runtime arms one watchdog after `AgentSession` starts. At or
+after `deadline_at`, it calls the immediate `AgentSession.aclose()` path without
+draining queued speech, then requests room termination. Duplicate watchdogs
+share one enforcement operation. A normal session close cancels a watchdog that
+has not begun enforcement.
+
+This runtime shutdown is a provider-side safety boundary, not canonical session
+terminal truth. The server deadline workflow still owns the versioned
+`time_limit` claim, feedback handoff, and durable outcome. Agent shutdown must
+not write lifecycle state or infer feedback eligibility.
 
 Room metadata correlates the runtime to the session; it does not own session
 lifecycle. Provider-native room/job/participant states are normalized signals

@@ -1,6 +1,6 @@
 # Interview Session Lifecycle Contract
 
-Status: canonical contract, persistence/CAS foundation, start-path failure handling, and metadata validation implemented; terminal workflow adoption remains in rollout
+Status: canonical contract, persistence/CAS foundation, start-path failure handling, metadata validation, and the core/voice-runtime deadline boundary are implemented; server deadline scheduling and terminal workflow adoption remain in rollout
 
 ## Purpose
 
@@ -107,9 +107,30 @@ This first-valid-claim rule makes concurrent end, deadline, disconnect, and prov
 
 ## Room Metadata And Correlation
 
-Canonical room metadata contract version 1 requires `contract_version: 1` and `session_id`. The runtime reference, selected question, transcript events, logs, and feedback request must remain correlated to the same session ID.
+Canonical room metadata contract version 1 requires `contract_version: 1` and `session_id`. New SAV-189 writers also supply one canonical UTC `deadline_at`; missing values remain readable only during the staged rollout. The runtime reference, selected question, transcript events, logs, and feedback request must remain correlated to the same session ID.
 
 Room metadata does not own lifecycle state. Provider-native room or participant statuses are adapter inputs only. See [LiveKit Room Metadata And Transcript Contract](./livekit-room-metadata.md).
+
+## Hard Deadline Boundary
+
+The provider-neutral duration/deadline policy lives in
+`packages/core/src/session-deadline.ts`. It accepts only 15, 30, or 45 minutes,
+uses 30 minutes as the one compatibility default, derives an absolute deadline
+from the server-owned start instant, and treats the exact deadline as expired.
+Serialized timestamps use canonical millisecond UTC ISO form.
+
+The voice runtime consumes `deadline_at` as a defensive stop boundary. It closes
+audio I/O immediately without draining queued agent speech and terminates the
+room once, even if duplicate watchdog tasks fire. A normal early close cancels
+the pending watchdog. That provider action prevents listening or speaking past
+the deadline but does not select or persist a terminal reason.
+
+The server deadline worker remains the sole owner of the durable `time_limit`
+command. It must use the same absolute deadline, converge with user-end and
+duplicate commands through the existing first-terminal-writer rule, and return
+stored truth to clients. The relaunch gate remains off until scheduling,
+terminalization, Preview timing evidence, and rollback are verified in the
+remaining SAV-189 slice.
 
 ## Legacy Compatibility And Backfill
 
