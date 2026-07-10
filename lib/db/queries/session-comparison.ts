@@ -12,6 +12,7 @@ import {
   FeedbackContent,
   ScoreDelta,
 } from "@/lib/types/comparison";
+import { projectFeedbackItems } from "@meelni/core";
 
 /**
  * Get all sessions for a specific user and interview type
@@ -207,16 +208,8 @@ async function fetchSessionDetail(
 
   // Build feedback content
   const feedbackContent: FeedbackContent = {
-    strengths: Array.isArray(session.strengths)
-      ? session.strengths
-      : session.strengths
-        ? [String(session.strengths)]
-        : [],
-    improvements: Array.isArray(session.improvements)
-      ? session.improvements
-      : session.improvements
-        ? [String(session.improvements)]
-        : [],
+    strengths: projectFeedbackItems(session.strengths),
+    improvements: projectFeedbackItems(session.improvements),
     summary: session.summary,
   };
 

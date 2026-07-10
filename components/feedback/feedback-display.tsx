@@ -14,6 +14,7 @@ import {
   Sparkles,
   RefreshCw,
 } from "lucide-react";
+import { projectFeedbackItems } from "@meelni/core";
 
 interface FeedbackProps {
   feedback: {
@@ -23,8 +24,8 @@ interface FeedbackProps {
     communicationScore: number | null;
     leadershipScore: number | null;
     overallScore: string | null;
-    strengths: string[] | null;
-    improvements: string[] | null;
+    strengths: unknown;
+    improvements: unknown;
     drills: string[] | null;
     summary: string | null;
   } | null;
@@ -72,10 +73,8 @@ export function FeedbackDisplay({
     Leadership: feedback.leadershipScore,
   };
 
-  const strengths = Array.isArray(feedback.strengths) ? feedback.strengths : [];
-  const improvements = Array.isArray(feedback.improvements)
-    ? feedback.improvements
-    : [];
+  const strengths = projectFeedbackItems(feedback.strengths);
+  const improvements = projectFeedbackItems(feedback.improvements);
   const recommendations = Array.isArray(feedback.drills)
     ? feedback.drills
     : [];

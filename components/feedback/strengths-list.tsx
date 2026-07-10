@@ -4,9 +4,10 @@ import { FeedbackSectionCard } from "@/components/feedback/feedback-surface";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Quote } from "lucide-react";
 import type { FeedbackItem } from "@/lib/types/feedback";
+import { isFeedbackV2Item, type FeedbackV2Item } from "@meelni/core";
 
 interface StrengthsListProps {
-  strengths: (FeedbackItem | string)[];
+  strengths: (FeedbackItem | FeedbackV2Item | string)[];
 }
 
 export function StrengthsList({ strengths }: StrengthsListProps) {
@@ -25,9 +26,18 @@ export function StrengthsList({ strengths }: StrengthsListProps) {
       {strengths.map((strength, index) => {
         // Handle both string array and object array formats
         const isString = typeof strength === "string";
-        const text = isString ? strength : strength.text;
+        const isV2 = isFeedbackV2Item(strength);
+        const text = isString
+          ? strength
+          : isV2
+            ? strength.observation
+            : strength.text;
         const dimension = isString ? null : strength.dimension;
-        const evidenceQuote = isString ? null : strength.evidence_quote;
+        const evidenceQuote = isString
+          ? null
+          : isV2
+            ? strength.evidence[0]?.quote
+            : strength.evidence_quote;
 
         // Extract dimension label if available
         const dimensionLabel = dimension
