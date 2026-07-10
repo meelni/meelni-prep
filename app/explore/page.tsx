@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
 import { ExploreStructuredData } from "@/components/explore/structured-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ExploreQuestionListItem } from "@/components/explore/explore-question-list-item";
 import {
   Select,
   SelectContent,
@@ -16,13 +17,11 @@ import {
 } from "@/components/ui/select";
 import {
   Search,
-  ArrowRight,
   ChevronLeft,
   ChevronRight,
   Home,
   ChevronRight as BreadcrumbArrow,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { usePostHog } from "posthog-js/react";
 
@@ -36,44 +35,6 @@ interface Question {
   createdAt: Date | null;
 }
 
-// Format relative time for question recency
-function formatRelativeTime(date: Date | null): string {
-  if (!date) return "";
-
-  const now = new Date();
-  const askedDate = new Date(date);
-  const diffInMs = now.getTime() - askedDate.getTime();
-  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-
-  if (diffInDays < 7) {
-    return diffInDays === 0
-      ? "Today"
-      : diffInDays === 1
-        ? "Yesterday"
-        : `${diffInDays} days ago`;
-  } else if (diffInDays < 30) {
-    const weeks = Math.floor(diffInDays / 7);
-    return `${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
-  } else if (diffInDays < 365) {
-    const months = Math.floor(diffInDays / 30);
-    return `${months} ${months === 1 ? "month" : "months"} ago`;
-  } else {
-    return askedDate.getFullYear().toString();
-  }
-}
-
-// Capitalize company name
-function formatCompanyName(company: string | null): string {
-  if (!company) return "Unknown";
-  return company.charAt(0).toUpperCase() + company.slice(1);
-}
-
-// Capitalize first letter of question text
-function formatQuestionText(text: string): string {
-  if (!text) return "";
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
 const QUESTIONS_PER_PAGE = 20;
 
 export default function ExplorePage() {
@@ -81,6 +42,8 @@ export default function ExplorePage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [requestVersion, setRequestVersion] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [selectedType, setSelectedType] = useState("All Types");
@@ -89,6 +52,7 @@ export default function ExplorePage() {
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(
     null
   );
+  const lastPracticeTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // Track page view
   useEffect(() => {
@@ -100,10 +64,12 @@ export default function ExplorePage() {
   // Fetch questions
   useEffect(() => {
     const controller = new AbortController();
+    let active = true;
 
     async function fetchQuestions() {
       try {
         setLoading(true);
+        setLoadError(null);
         const params = new URLSearchParams({
           limit: String(QUESTIONS_PER_PAGE),
           offset: String((currentPage - 1) * QUESTIONS_PER_PAGE),
@@ -131,21 +97,33 @@ export default function ExplorePage() {
           throw new Error(`Question request failed with ${res.status}`);
         }
         const data = await res.json();
-        setQuestions(data.questions || []);
-        setTotalQuestions(data.pagination?.total || 0);
+        if (active) {
+          setQuestions(data.questions || []);
+          setTotalQuestions(data.pagination?.total || 0);
+        }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
         console.error("Error fetching questions:", error);
+        if (active) {
+          setLoadError(
+            "We couldn't load the question bank. Check your connection and try again."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     }
 
     fetchQuestions();
-    return () => controller.abort();
-  }, [currentPage, debouncedSearchQuery, selectedType]);
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [currentPage, debouncedSearchQuery, selectedType, requestVersion]);
 
   // Paginate questions
   const totalPages = Math.ceil(totalQuestions / QUESTIONS_PER_PAGE);
@@ -176,7 +154,10 @@ export default function ExplorePage() {
     }
   }, [selectedType, posthog, totalQuestions]);
 
-  const handleQuestionClick = (question: Question) => {
+  const handleQuestionClick = (
+    question: Question,
+    trigger: HTMLButtonElement
+  ) => {
     // Track click
     posthog?.capture("explore_question_clicked", {
       question_id: question.id,
@@ -186,6 +167,7 @@ export default function ExplorePage() {
     });
 
     // Show sign-in modal
+    lastPracticeTriggerRef.current = trigger;
     setSelectedQuestion(question);
     setSignInModalOpen(true);
   };
@@ -199,31 +181,17 @@ export default function ExplorePage() {
     });
   };
 
-  if (loading) {
-    return (
-      <>
-        <Header />
-        <div className="bg-background flex min-h-screen items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
-            <p className="text-muted-foreground text-sm">
-              Loading questions...
-            </p>
-          </div>
-        </div>
-      </>
-    );
-  }
-
   return (
     <>
       {/* Structured Data for SEO & LLM Indexing */}
-      <ExploreStructuredData
-        questions={questions}
-        currentPage={currentPage}
-        totalPages={totalPages}
-        totalQuestions={totalQuestions}
-      />
+      {!loading && !loadError && totalQuestions > 0 && (
+        <ExploreStructuredData
+          questions={questions}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalQuestions={totalQuestions}
+        />
+      )}
 
       <Header />
 
@@ -261,10 +229,11 @@ export default function ExplorePage() {
             Product Manager Interview Questions
           </h1>
           <p className="text-muted-foreground max-w-3xl text-lg">
-            Browse {totalQuestions.toLocaleString()} real interview questions
-            from Google, Meta, Amazon, and 100+ top companies. Practice Product
-            Sense, Behavioral, Execution, and Strategy questions with AI
-            coaching.
+            Browse{" "}
+            {totalQuestions > 0 ? totalQuestions.toLocaleString() : "real"}{" "}
+            interview questions from Google, Meta, Amazon, and 100+ top
+            companies. Practice Product Sense, Behavioral, Execution, and
+            Strategy questions out loud.
           </p>
         </header>
 
@@ -282,21 +251,36 @@ export default function ExplorePage() {
                     placeholder="Search questions or companies..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
+                    className="min-h-11 pl-10"
+                    aria-label="Search interview questions or companies"
+                    aria-controls="explore-question-list"
                   />
                 </div>
 
                 {/* Type Filter */}
                 <Select value={selectedType} onValueChange={setSelectedType}>
-                  <SelectTrigger className="w-full rounded-lg font-medium sm:w-[180px]">
+                  <SelectTrigger
+                    className="min-h-11 w-full rounded-lg font-medium sm:w-[180px]"
+                    aria-label="Filter by question type"
+                  >
                     <SelectValue placeholder="Question type" />
                   </SelectTrigger>
                   <SelectContent align="end">
-                    <SelectItem value="All Types">All Types</SelectItem>
-                    <SelectItem value="Product Sense">Product Sense</SelectItem>
-                    <SelectItem value="Execution">Execution</SelectItem>
-                    <SelectItem value="Behavioral">Behavioral</SelectItem>
-                    <SelectItem value="Strategy">Strategy</SelectItem>
+                    <SelectItem className="min-h-11" value="All Types">
+                      All Types
+                    </SelectItem>
+                    <SelectItem className="min-h-11" value="Product Sense">
+                      Product Sense
+                    </SelectItem>
+                    <SelectItem className="min-h-11" value="Execution">
+                      Execution
+                    </SelectItem>
+                    <SelectItem className="min-h-11" value="Behavioral">
+                      Behavioral
+                    </SelectItem>
+                    <SelectItem className="min-h-11" value="Strategy">
+                      Strategy
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -308,10 +292,47 @@ export default function ExplorePage() {
 
         {/* Questions Feed - Semantic Section */}
         <section
+          id="explore-question-list"
           className="mx-auto max-w-4xl px-4 pt-0 pb-12 sm:px-6"
           aria-label="Interview questions list"
+          aria-busy={loading}
         >
-          {paginatedQuestions.length === 0 ? (
+          {loading ? (
+            <div className="space-y-0" aria-label="Loading questions">
+              {Array.from({ length: 6 }, (_, index) => (
+                <div
+                  key={index}
+                  className="border-border/40 border-b py-6 last:border-b-0"
+                  aria-hidden="true"
+                >
+                  <div className="bg-muted mb-3 h-3 w-40 max-w-3/5 animate-pulse rounded" />
+                  <div className="bg-muted h-5 w-full animate-pulse rounded" />
+                  <div className="bg-muted mt-2 h-5 w-4/5 animate-pulse rounded" />
+                  <div className="bg-muted mt-4 h-11 w-36 animate-pulse rounded" />
+                </div>
+              ))}
+              <span className="sr-only" role="status">
+                Loading questions
+              </span>
+            </div>
+          ) : loadError ? (
+            <div className="py-20 text-center" role="alert">
+              <p className="text-foreground mb-2 text-lg font-medium">
+                Questions are temporarily unavailable
+              </p>
+              <p className="text-muted-foreground mx-auto mb-6 max-w-md text-sm">
+                {loadError}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                onClick={() => setRequestVersion((version) => version + 1)}
+              >
+                Try again
+              </Button>
+            </div>
+          ) : paginatedQuestions.length === 0 ? (
             <div className="py-24 text-center">
               <p className="text-foreground mb-2 text-lg font-medium">
                 No questions found
@@ -323,120 +344,52 @@ export default function ExplorePage() {
           ) : (
             <div className="space-y-0" role="list">
               {paginatedQuestions.map((question, index) => (
-                <article
+                <ExploreQuestionListItem
                   key={question.id}
-                  className={cn(
-                    "group py-6 transition-all duration-200",
-                    "hover:bg-muted/20 -mx-4 rounded-lg px-4",
-                    index !== paginatedQuestions.length - 1 &&
-                      "border-border/40 border-b"
-                  )}
-                  role="listitem"
-                  itemScope
-                  itemType="https://schema.org/Question"
-                >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => handleQuestionClick(question)}
-                    className="hover:text-foreground h-auto w-full flex-col items-stretch justify-start rounded-lg p-0 text-left hover:bg-transparent"
-                    aria-label={`Practice question: ${question.questionText}`}
-                  >
-                    {/* Metadata */}
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <span
-                        className="text-foreground text-xs font-medium"
-                        itemProp="author"
-                        itemScope
-                        itemType="https://schema.org/Organization"
-                      >
-                        <span itemProp="name">
-                          {formatCompanyName(question.company)}
-                        </span>
-                      </span>
-                      <span
-                        className="text-muted-foreground text-xs"
-                        aria-hidden="true"
-                      >
-                        •
-                      </span>
-                      <span
-                        className="text-muted-foreground text-xs font-normal"
-                        itemProp="about"
-                      >
-                        {question.questionType}
-                      </span>
-                      {question.askedAt && (
-                        <>
-                          <span
-                            className="text-muted-foreground text-xs"
-                            aria-hidden="true"
-                          >
-                            •
-                          </span>
-                          <time
-                            className="text-muted-foreground text-xs font-normal"
-                            dateTime={new Date(question.askedAt).toISOString()}
-                            itemProp="dateCreated"
-                          >
-                            {formatRelativeTime(question.askedAt)}
-                          </time>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Question Text */}
-                    <div className="flex items-start justify-between gap-4">
-                      <h2
-                        className="text-foreground group-hover:text-primary text-lg leading-[1.4] font-semibold transition-colors"
-                        itemProp="name"
-                      >
-                        {formatQuestionText(question.questionText)}
-                      </h2>
-                      <div className="mt-0.5 flex flex-shrink-0 items-center gap-2">
-                        <ArrowRight
-                          className="text-primary h-5 w-5 opacity-0 transition-all duration-200 group-hover:translate-x-1 group-hover:opacity-100"
-                          aria-hidden="true"
-                        />
-                      </div>
-                    </div>
-                  </Button>
-                </article>
+                  question={question}
+                  index={index}
+                  isLast={index === paginatedQuestions.length - 1}
+                  onPractice={(event) =>
+                    handleQuestionClick(question, event.currentTarget)
+                  }
+                />
               ))}
             </div>
           )}
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="border-border/40 mt-12 flex items-center justify-between border-t pt-8">
+            <nav
+              className="border-border/40 mt-12 grid grid-cols-2 items-center gap-3 border-t pt-8 sm:grid-cols-3"
+              aria-label="Question pages"
+            >
+              <div className="col-span-2 row-start-1 text-center sm:col-span-1 sm:col-start-2">
+                <span className="text-muted-foreground text-sm">
+                  Page {currentPage} of {totalPages}
+                </span>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="gap-2"
+                className="col-start-1 row-start-2 min-h-11 w-full gap-2 sm:row-start-1 sm:w-fit sm:justify-self-start"
               >
                 <ChevronLeft className="h-4 w-4" />
                 Previous
               </Button>
-
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground text-sm">
-                  Page {currentPage} of {totalPages}
-                </span>
-              </div>
 
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                className="gap-2"
+                className="col-start-2 row-start-2 min-h-11 w-full gap-2 sm:col-start-3 sm:row-start-1 sm:w-fit sm:justify-self-end"
               >
                 Next
                 <ChevronRight className="h-4 w-4" />
               </Button>
-            </div>
+            </nav>
           )}
         </section>
       </main>
@@ -448,12 +401,17 @@ export default function ExplorePage() {
           onClose={() => setSignInModalOpen(false)}
           questionText={selectedQuestion.questionText}
           questionId={selectedQuestion.id}
+          returnFocusRef={lastPracticeTriggerRef}
         />
       )}
 
       {/* Live region for accessibility */}
       <div role="status" aria-live="polite" className="sr-only">
-        Showing {paginatedQuestions.length} of {totalQuestions} questions
+        {loading
+          ? "Loading questions"
+          : loadError
+            ? "Questions could not be loaded"
+            : `Showing ${paginatedQuestions.length} of ${totalQuestions} questions`}
       </div>
     </>
   );
