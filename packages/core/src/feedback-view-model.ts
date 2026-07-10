@@ -8,6 +8,9 @@ import {
   type FeedbackV2Item,
   type FeedbackV2Scores,
 } from "./feedback-v2";
+import { prepareFeedbackTranscript } from "./feedback-transcript";
+
+export const LEGACY_FEEDBACK_RUBRIC_VERSION = "1.0.0" as const;
 
 export interface PersistedCompletedFeedback {
   id: unknown;
@@ -28,6 +31,17 @@ export interface PersistedCompletedFeedback {
   modelVersion: unknown;
   evaluationState: unknown;
   createdAt: unknown;
+}
+
+export interface PersistedFeedbackEvidenceTurn {
+  eventId: unknown;
+  speaker: unknown;
+  text: unknown;
+  contractVersion: unknown;
+}
+
+export interface PresentCompletedFeedbackOptions {
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[];
 }
 
 export interface FeedbackScoreView {
@@ -70,7 +84,7 @@ export interface FeedbackV2View extends CompletedFeedbackBase {
 
 export interface FeedbackLegacyView extends CompletedFeedbackBase {
   kind: "legacy";
-  rubricVersion: string;
+  rubricVersion: typeof LEGACY_FEEDBACK_RUBRIC_VERSION;
   strengths: string[];
   improvements: string[];
 }
@@ -163,14 +177,16 @@ const FEEDBACK_READ_LIMITS = {
   storedPracticeSuggestion: 2_000,
   numericString: 32,
 } as const;
+const MAX_PERSISTED_EVIDENCE_TURNS = 1_000;
 
 export function presentCompletedFeedback(
-  input: PersistedCompletedFeedback
+  input: PersistedCompletedFeedback,
+  options: PresentCompletedFeedbackOptions
 ): CompletedFeedbackView {
   try {
     return hasLegacyVersionTuple(input)
       ? parseLegacyFeedback(input)
-      : parseV2Feedback(input);
+      : parseV2Feedback(input, options.evidenceTurns);
   } catch {
     return { kind: "invalid", reason: "incompatible_or_corrupt" };
   }
@@ -224,14 +240,22 @@ export function getFeedbackConfidenceLabel(
   return "Limited evidence";
 }
 
-function parseV2Feedback(input: PersistedCompletedFeedback): FeedbackV2View {
+function parseV2Feedback(
+  input: PersistedCompletedFeedback,
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[]
+): FeedbackV2View {
   requireExact(input.schemaVersion, FEEDBACK_SCHEMA_VERSION);
   requireExact(input.promptVersion, FEEDBACK_PROMPT_VERSION);
   requireExact(input.rubricVersion, FEEDBACK_RUBRIC_VERSION);
   const evaluationState = requireEvaluationState(input.evaluationState);
   const scores = parseScores(input);
-  const strengths = parseV2Items(input.strengths, "strengths");
-  const improvements = parseV2Items(input.improvements, "improvements");
+  const evidenceByTurn = parseCanonicalEvidenceTurns(evidenceTurns);
+  const strengths = parseV2Items(input.strengths, "strengths", evidenceByTurn);
+  const improvements = parseV2Items(
+    input.improvements,
+    "improvements",
+    evidenceByTurn
+  );
   requireUniqueEvidence([...strengths, ...improvements]);
   // Stored model-authored suggestions remain untrusted and are validated, but
   // are intentionally excluded from the customer read model until SAV-201.
@@ -269,6 +293,7 @@ function parseV2Feedback(input: PersistedCompletedFeedback): FeedbackV2View {
 function parseLegacyFeedback(
   input: PersistedCompletedFeedback
 ): FeedbackLegacyView {
+  requireExact(input.rubricVersion, LEGACY_FEEDBACK_RUBRIC_VERSION);
   const scores = parseLegacyScores(input);
   // Historical suggestions are validated as persisted input but never cross
   // the customer read boundary.
@@ -289,10 +314,7 @@ function parseLegacyFeedback(
     strengths: parseLegacyItems(input.strengths, "strengths"),
     improvements: parseLegacyItems(input.improvements, "improvements"),
     summary: requireBoundedString(input.summary, FEEDBACK_READ_LIMITS.summary),
-    rubricVersion: requireBoundedString(
-      input.rubricVersion,
-      FEEDBACK_READ_LIMITS.identifier
-    ),
+    rubricVersion: LEGACY_FEEDBACK_RUBRIC_VERSION,
     createdAt: requireDateString(input.createdAt),
     nextPracticeRecommendation: null,
   };
@@ -327,7 +349,11 @@ function parseScores(input: PersistedCompletedFeedback): FeedbackScoreView {
   return { ...dimensionScores, overall: calculatedOverall };
 }
 
-function parseV2Items(value: unknown, path: string): FeedbackV2Item[] {
+function parseV2Items(
+  value: unknown,
+  path: string,
+  evidenceByTurn: ReadonlyMap<string, string>
+): FeedbackV2Item[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 5) {
     throw new Error(`${path} is invalid`);
   }
@@ -358,7 +384,7 @@ function parseV2Items(value: unknown, path: string): FeedbackV2Item[] {
     if (new Set(transcriptRefs).size !== transcriptRefs.length) {
       throw new Error("duplicate transcript reference");
     }
-    const evidence = parseEvidence(item.evidence);
+    const evidence = parseEvidence(item.evidence, evidenceByTurn);
     const evidenceRefs = new Set(evidence.map((entry) => entry.turnRef));
     if (
       evidenceRefs.size !== transcriptRefs.length ||
@@ -384,7 +410,10 @@ function parseV2Items(value: unknown, path: string): FeedbackV2Item[] {
   });
 }
 
-function parseEvidence(value: unknown): FeedbackEvidence[] {
+function parseEvidence(
+  value: unknown,
+  evidenceByTurn: ReadonlyMap<string, string>
+): FeedbackEvidence[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 5) {
     throw new Error("evidence is invalid");
   }
@@ -398,14 +427,45 @@ function parseEvidence(value: unknown): FeedbackEvidence[] {
     );
     if (seen.has(turnRef)) throw new Error("duplicate evidence reference");
     seen.add(turnRef);
-    return {
-      turnRef,
-      quote: requireBoundedString(
-        record.quote,
-        FEEDBACK_READ_LIMITS.evidenceQuote
-      ),
-    };
+    const quote = requireBoundedString(
+      record.quote,
+      FEEDBACK_READ_LIMITS.evidenceQuote
+    );
+    const source = evidenceByTurn.get(turnRef);
+    if (source === undefined || !source.includes(quote)) {
+      throw new Error("evidence is not grounded in canonical user speech");
+    }
+    return { turnRef, quote };
   });
+}
+
+function parseCanonicalEvidenceTurns(
+  turns: readonly PersistedFeedbackEvidenceTurn[]
+): ReadonlyMap<string, string> {
+  if (turns.length === 0 || turns.length > MAX_PERSISTED_EVIDENCE_TURNS) {
+    throw new Error("canonical evidence transcript is invalid");
+  }
+  const prepared = prepareFeedbackTranscript(
+    turns.map((turn) => ({
+      eventId: typeof turn.eventId === "string" ? turn.eventId : null,
+      speaker: typeof turn.speaker === "string" ? turn.speaker : "",
+      text: typeof turn.text === "string" ? turn.text : null,
+      contractVersion:
+        typeof turn.contractVersion === "number" ? turn.contractVersion : null,
+    })),
+    { requireContractV2: true }
+  );
+  if (!prepared.eligible) {
+    throw new Error("canonical evidence transcript is invalid");
+  }
+  const evidenceByTurn = new Map<string, string>();
+  for (const turn of prepared.transcript) {
+    if (turn.speaker !== "user") {
+      throw new Error("evidence transcript contains non-user speech");
+    }
+    evidenceByTurn.set(turn.eventId, turn.text);
+  }
+  return evidenceByTurn;
 }
 
 function requireUniqueEvidence(items: FeedbackV2Item[]): void {

@@ -30,4 +30,6 @@ test("invalid completed feedback exposes no inferred score", () => {
   );
   assert.match(html, /No score has been inferred/);
   assert.doesNotMatch(html, /0\.0/);
+  assert.doesNotMatch(html, /Transcript evidence/);
+  assert.doesNotMatch(html, /invented quote/);
 });

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
+import { getFeedbackEvidenceTurns } from "@/lib/db/transcripts";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import {
   isFeedbackGenerationLeaseExpired,
@@ -148,26 +149,38 @@ export async function GET(
 
     // Case 3: Completed - return full feedback with cache
     if (status === "completed") {
-      const feedbackView = presentCompletedFeedback({
-        id: feedbackRecord.id,
-        sessionId: feedbackRecord.sessionId,
-        structureScore: feedbackRecord.structureScore,
-        clarityScore: feedbackRecord.clarityScore,
-        insightScore: feedbackRecord.insightScore,
-        communicationScore: feedbackRecord.communicationScore,
-        leadershipScore: feedbackRecord.leadershipScore,
-        overallScore: feedbackRecord.overallScore,
-        strengths: feedbackRecord.strengths,
-        improvements: feedbackRecord.improvements,
-        drills: feedbackRecord.drills,
-        summary: feedbackRecord.summary,
-        rubricVersion: feedbackRecord.rubricVersion,
-        schemaVersion: feedbackRecord.schemaVersion,
-        promptVersion: feedbackRecord.promptVersion,
-        modelVersion: feedbackRecord.modelVersion,
-        evaluationState: feedbackRecord.evaluationState,
-        createdAt: feedbackRecord.createdAt,
-      });
+      const hasVersionedFeedback = [
+        feedbackRecord.schemaVersion,
+        feedbackRecord.promptVersion,
+        feedbackRecord.modelVersion,
+        feedbackRecord.evaluationState,
+      ].some((value) => value !== null);
+      const evidenceTurns = hasVersionedFeedback
+        ? await getFeedbackEvidenceTurns(sessionId)
+        : [];
+      const feedbackView = presentCompletedFeedback(
+        {
+          id: feedbackRecord.id,
+          sessionId: feedbackRecord.sessionId,
+          structureScore: feedbackRecord.structureScore,
+          clarityScore: feedbackRecord.clarityScore,
+          insightScore: feedbackRecord.insightScore,
+          communicationScore: feedbackRecord.communicationScore,
+          leadershipScore: feedbackRecord.leadershipScore,
+          overallScore: feedbackRecord.overallScore,
+          strengths: feedbackRecord.strengths,
+          improvements: feedbackRecord.improvements,
+          drills: feedbackRecord.drills,
+          summary: feedbackRecord.summary,
+          rubricVersion: feedbackRecord.rubricVersion,
+          schemaVersion: feedbackRecord.schemaVersion,
+          promptVersion: feedbackRecord.promptVersion,
+          modelVersion: feedbackRecord.modelVersion,
+          evaluationState: feedbackRecord.evaluationState,
+          createdAt: feedbackRecord.createdAt,
+        },
+        { evidenceTurns }
+      );
       if (feedbackView.kind === "invalid") {
         console.error("[feedback.integrity] incompatible completed feedback", {
           environment:

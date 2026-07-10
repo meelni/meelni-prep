@@ -8,6 +8,9 @@ vi.mock("@/lib/db/sessions", () => ({
 vi.mock("@/lib/db/feedback", () => ({
   getFeedbackBySessionId: vi.fn(),
 }));
+vi.mock("@/lib/db/transcripts", () => ({
+  getFeedbackEvidenceTurns: vi.fn(),
+}));
 vi.mock("@/lib/evaluation/session-validator", () => ({
   validateSessionCompleteness: vi.fn(),
 }));
@@ -19,6 +22,7 @@ import { NextRequest } from "next/server";
 
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import { getFeedbackEvidenceTurns } from "@/lib/db/transcripts";
 import { createClient } from "@/lib/supabase/server";
 import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
 import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
@@ -32,6 +36,20 @@ describe("/api/feedback/[sessionId]", () => {
     vi.clearAllMocks();
     mockAuth({ id: "user-1" });
     vi.mocked(isSessionOwnedByUser).mockResolvedValue(true);
+    vi.mocked(getFeedbackEvidenceTurns).mockResolvedValue([
+      {
+        eventId: "writer:1",
+        speaker: "user",
+        text: "I would focus on working parents first.",
+        contractVersion: 2,
+      },
+      {
+        eventId: "writer:2",
+        speaker: "user",
+        text: "First, I would define the goal; first, I would then prioritize.",
+        contractVersion: 2,
+      },
+    ] as never);
   });
 
   it("rejects unauthenticated polling", async () => {
@@ -44,6 +62,7 @@ describe("/api/feedback/[sessionId]", () => {
     vi.mocked(isSessionOwnedByUser).mockResolvedValue(false);
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(404);
+    expect(getFeedbackEvidenceTurns).not.toHaveBeenCalled();
   });
 
   it("returns a typed recoverable state for terminal-without-feedback", async () => {
@@ -326,6 +345,62 @@ describe("/api/feedback/[sessionId]", () => {
       },
     });
     expect(body.feedback).not.toHaveProperty("suggestedExercises");
+    expect(getFeedbackEvidenceTurns).toHaveBeenCalledWith(SESSION_ID);
+  });
+
+  it("fails closed when persisted v2 evidence does not resolve to canonical user speech", async () => {
+    const integrityLog = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const inventedFinding = {
+      dimension: "insight",
+      observation: "Invented observation",
+      transcriptRefs: ["does-not-exist"],
+      evidence: [{ turnRef: "does-not-exist", quote: "invented quote" }],
+      nextStep: "Invented action",
+      rubricVersion: "pm-feedback-rubric.v2",
+      confidence: 0.99,
+    };
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        structureScore: 8,
+        clarityScore: 7,
+        insightScore: 9,
+        communicationScore: 8,
+        leadershipScore: 7,
+        overallScore: "7.9",
+        strengths: [inventedFinding],
+        improvements: [
+          {
+            ...inventedFinding,
+            dimension: "structure",
+            transcriptRefs: ["also-missing"],
+            evidence: [
+              { turnRef: "also-missing", quote: "another invented quote" },
+            ],
+          },
+        ],
+        drills: ["Hidden suggestion"],
+        summary: "Invented summary",
+        schemaVersion: "feedback.v2",
+        promptVersion: "feedback.prompt.v2",
+        modelVersion: "fixture-model-v1",
+        rubricVersion: "pm-feedback-rubric.v2",
+        evaluationState: "full",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toEqual({
+      status: "completed",
+      retryable: false,
+      feedback: { kind: "invalid", reason: "incompatible_or_corrupt" },
+    });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(integrityLog).toHaveBeenCalled();
+    integrityLog.mockRestore();
   });
 
   it("fails closed when a completed row has missing scores", async () => {
@@ -401,6 +476,44 @@ describe("/api/feedback/[sessionId]", () => {
       feedback: { kind: "legacy", strengths: ["Clear explanation"] },
     });
     expect(body.feedback).not.toHaveProperty("suggestedExercises");
+    expect(getFeedbackEvidenceTurns).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for an unsupported historical rubric without loading transcript data", async () => {
+    const integrityLog = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        structureScore: 8,
+        clarityScore: 7,
+        insightScore: 9,
+        communicationScore: 8,
+        leadershipScore: 7,
+        overallScore: "8.0",
+        strengths: ["Clear explanation"],
+        improvements: ["State the approach first"],
+        drills: [],
+        summary: "Historical summary",
+        rubricVersion: "not-a-supported-rubric",
+        schemaVersion: null,
+        promptVersion: null,
+        modelVersion: null,
+        evaluationState: null,
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toEqual({
+      status: "completed",
+      retryable: false,
+      feedback: { kind: "invalid", reason: "incompatible_or_corrupt" },
+    });
+    expect(getFeedbackEvidenceTurns).not.toHaveBeenCalled();
+    expect(integrityLog).toHaveBeenCalled();
+    integrityLog.mockRestore();
   });
 
   it("preserves insufficient and abandoned skipped states", async () => {

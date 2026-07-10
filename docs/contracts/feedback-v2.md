@@ -82,7 +82,8 @@ in the existing JSONB arrays and adds nullable schema, prompt, model, and
 evaluation-state columns. The database enforces either a completely absent v2
 version tuple for a legacy row or a complete, internally consistent v2 tuple.
 Historical string-array v1 rows keep `rubric_version=1.0.0` and remain readable.
-New completed writes use v2 only.
+The read boundary accepts that exact historical rubric marker only; arbitrary or
+unknown rubric versions fail closed. New completed writes use v2 only.
 
 ## Transcript validation boundary
 
@@ -117,9 +118,10 @@ Persistence, event fencing, retries, and insights handoff follow the
 Persisted completed rows are untrusted input when read back. The canonical
 presenter in `packages/core/src/feedback-view-model.ts` produces exactly one of:
 
-- validated `v2`, with the exact supported version tuple, complete scores,
-  structurally valid findings and evidence, and an overall score that matches
-  the canonical v2 weighting;
+- validated `v2`, with the exact supported version tuple, complete scores, an
+  overall score that matches the canonical v2 weighting, and findings whose
+  event IDs and exact quotes resolve against current canonical persisted user
+  turns for the same owner-scoped session;
 - validated `legacy`, with a completely absent v2 tuple, explicitly bounded
   historical strings, complete in-range scores, and an explicit
   historical-feedback label;
@@ -129,6 +131,16 @@ Historical feedback keeps the separately model-authored overall score used by
 the legacy writer. It is not reweighted using v2 rules and is never described
 as transcript-grounded or personalized. Missing, out-of-range, or malformed
 legacy data still fails closed.
+
+The authenticated API loads only the canonical user-turn fields required for
+this verification: event ID, speaker, text, and transcript contract version.
+The presenter repeats the v2 transcript-integrity checks at read time, rejects
+missing, duplicate, non-v2, non-user, or unsafe turns, and excludes semantic
+replays from the evidence set. Every persisted evidence reference must exist in
+that canonical set, and every quote must remain an exact substring of the
+referenced user turn. A row that passed write-time validation but no longer
+matches current persisted transcript truth is returned as `invalid`; it is
+never downgraded into historical feedback or labeled as transcript evidence.
 
 The API emits a redacted integrity log when a completed row is invalid. The log
 contains only environment, release, and opaque session correlation; it never
