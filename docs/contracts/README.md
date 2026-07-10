@@ -10,6 +10,7 @@ Good candidates:
 - [versioned transcript events](./transcript-events.md);
 - [feedback v2 evidence and response shape](./feedback-v2.md);
 - [feedback generation state, event fencing, and retry recovery](./feedback-generation.md);
+- [evaluation calibration gold set and report](./evaluation-calibration.md);
 - [dashboard progress evidence](./dashboard-progress.md);
 - [question-bank records, taxonomy, and pagination](./question-bank.md);
 - subscription entitlement and usage quota states;
