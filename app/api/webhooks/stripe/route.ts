@@ -52,6 +52,8 @@ import {
   getStripeCatalogIdForPrice,
   isStripeCheckoutCatalogId,
 } from "@/lib/billing/stripe-catalog";
+import { reconcileStripeBillingAdjustment } from "@/lib/billing/stripe-billing-adjustment";
+import { normalizeStripeBillingAdjustmentEvent } from "@/lib/billing/stripe-adjustment-events";
 
 /**
  * Stripe Webhook Handler with Idempotency
@@ -271,8 +273,18 @@ export async function POST(req: NextRequest) {
           await handleTrialWillEnd(event);
           break;
 
+        case "refund.created":
+        case "refund.updated":
+        case "refund.failed":
         case "charge.refunded":
-          await handleRefund(event);
+          await handleRefundOrDispute(event);
+          break;
+
+        case "charge.dispute.created":
+        case "charge.dispute.funds_withdrawn":
+        case "charge.dispute.funds_reinstated":
+        case "charge.dispute.closed":
+          await handleRefundOrDispute(event);
           break;
 
         default:
@@ -586,6 +598,39 @@ async function handleCheckoutCompleted(
     return "deleted_checkout_reconciled";
   }
 
+  if (session.payment_status !== "paid") {
+    throw new Error("checkout_payment_not_settled");
+  }
+  const paymentIntentId = getExpandableId(session.payment_intent);
+  if (!paymentIntentId || session.amount_total === null || !session.currency) {
+    throw new Error("billing_payment_correlation_required");
+  }
+
+  const ledger = createCreditLedgerService({
+    store: createDrizzleCreditLedgerStore(),
+  });
+  const { grant } = await ledger.grantCredits({
+    userId,
+    catalogId,
+    source: "checkout",
+    sourceId: session.id,
+    idempotencyKey: `stripe:checkout:${session.id}:interview_pass`,
+  });
+  await db
+    .insert(paymentHistory)
+    .values({
+      userId,
+      stripePaymentIntentId: paymentIntentId,
+      stripeCheckoutSessionId: session.id,
+      stripeEventId: event.id,
+      creditGrantId: grant.id,
+      catalogId,
+      amountInCents: session.amount_total,
+      currency: session.currency,
+      status: "succeeded",
+      tier: catalogId,
+    })
+    .onConflictDoNothing({ target: paymentHistory.stripeEventId });
   return "processed";
 }
 
@@ -654,20 +699,23 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
   }
 
   const catalogId = getStripeCatalogIdForPrice(getInvoicePriceId(invoice));
+  let creditGrantId: string | null = null;
 
   if (catalogId === "starter" || catalogId === "pro") {
     const ledger = createCreditLedgerService({
       store: createDrizzleCreditLedgerStore(),
     });
-    await ledger.renewSubscriptionCredits({
+    const renewal = await ledger.renewSubscriptionCredits({
       userId,
       catalogId,
       renewalIdempotencyKey: `stripe:invoice:${invoice.id}:${catalogId}`,
       rolloverIdempotencyKey: `stripe:rollover:${invoice.id}:${catalogId}`,
       sourceId: invoice.id,
     });
+    creditGrantId = renewal.grant.id;
   }
 
+  const invoicePayment = await getInvoicePaymentCorrelation(invoice);
   const eventTimestamp = new Date(event.created * 1000);
   await db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, userId);
@@ -677,9 +725,12 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
       .insert(paymentHistory)
       .values({
         userId,
-        stripePaymentIntentId: null,
+        stripePaymentIntentId: invoicePayment.paymentIntentId,
         stripeInvoiceId: invoice.id,
+        stripeChargeId: invoicePayment.chargeId,
         stripeEventId: event.id,
+        creditGrantId,
+        catalogId,
         amountInCents: invoice.amount_paid,
         currency: invoice.currency,
         status: "succeeded",
@@ -826,22 +877,10 @@ async function handleTrialWillEnd(event: Stripe.Event) {
  *
  * Phase 0.5B: Track refunds in payment history
  */
-async function handleRefund(event: Stripe.Event) {
-  const charge = event.data.object as Stripe.Charge;
-  const paymentIntentId = charge.payment_intent as string;
-
-  if (!paymentIntentId) {
-    console.warn("Missing payment_intent in refund event");
-    return;
-  }
-
-  // Update payment history to mark as refunded
-  await db
-    .update(paymentHistory)
-    .set({
-      status: "refunded",
-    })
-    .where(eq(paymentHistory.stripePaymentIntentId, paymentIntentId));
+async function handleRefundOrDispute(event: Stripe.Event) {
+  await reconcileStripeBillingAdjustment(
+    normalizeStripeBillingAdjustmentEvent(event)
+  );
 }
 
 /**
@@ -899,6 +938,35 @@ async function lockBillingUserUnlessDeleting(
     .where(eq(accountDeletionRequest.userId, userId))
     .limit(1);
   if (tombstone) throw new Error("account_deletion_pending");
+}
+
+function getExpandableId(value: { id: string } | string | null | undefined) {
+  if (!value) return null;
+  return typeof value === "string" ? value : value.id;
+}
+
+async function getInvoicePaymentCorrelation(invoice: Stripe.Invoice) {
+  const embedded = invoice.payments?.data.find(
+    (candidate) => candidate.status === "paid"
+  );
+  const invoicePayment =
+    embedded ??
+    (
+      await getStripe().invoicePayments.list({
+        invoice: invoice.id,
+        limit: 10,
+      })
+    ).data.find((candidate) => candidate.status === "paid");
+  const paymentIntent = invoicePayment?.payment.payment_intent;
+  const charge = invoicePayment?.payment.charge;
+  const expandedPaymentIntent =
+    paymentIntent && typeof paymentIntent !== "string" ? paymentIntent : null;
+  return {
+    paymentIntentId: getExpandableId(paymentIntent),
+    chargeId:
+      getExpandableId(charge) ??
+      getExpandableId(expandedPaymentIntent?.latest_charge),
+  };
 }
 
 async function upsertStripeCustomerMapping({

@@ -22,7 +22,6 @@ const stripe = process.env.STRIPE_SECRET_KEY
  * This ensures the local database reflects the current Stripe state.
  *
  * Use cases:
- * - Called on user login to ensure subscription state is current
  * - Called after checkout completion
  * - Called when user reports discrepancy
  *
@@ -60,7 +59,8 @@ export async function POST() {
       .where(eq(subscription.userId, userId))
       .limit(1);
 
-    // If no subscription exists, create a free tier record
+    // If no local subscription exists, recover only a real paid-provider
+    // subscription. A sync request must never fabricate free entitlement.
     if (existingSubscription.length === 0) {
       // Check if user has a Stripe customer mapping
       const mapping = await db
@@ -69,11 +69,9 @@ export async function POST() {
         .where(eq(stripeCustomerMapping.userId, userId))
         .limit(1);
 
-      let stripeCustomerId: string | null = null;
-
       // If we have a mapping, try to get subscription from Stripe
       if (mapping.length > 0) {
-        stripeCustomerId = mapping[0].stripeCustomerId;
+        const stripeCustomerId = mapping[0].stripeCustomerId;
 
         try {
           // List subscriptions for this customer
@@ -100,28 +98,14 @@ export async function POST() {
           }
         } catch (stripeError) {
           console.error("Error fetching Stripe subscription:", stripeError);
-          // Continue to create free tier
+          throw stripeError;
         }
       }
 
-      // Create free tier subscription
-      const now = new Date();
-      const periodEnd = new Date(now);
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-      await db.insert(subscription).values({
-        userId,
-        tier: "free",
-        status: "active",
-        stripeCustomerId,
-        currentPeriodStart: now,
-        currentPeriodEnd: periodEnd,
-      });
-
       return NextResponse.json({
-        synced: true,
-        subscription: { tier: "free", status: "active" },
-        message: "No paid subscription initialized",
+        synced: false,
+        subscription: null,
+        message: "No paid Stripe subscription found",
       });
     }
 
@@ -190,7 +174,16 @@ export async function POST() {
       }
     }
 
-    // No Stripe subscription - return current database state
+    if (sub.tier === "free") {
+      return NextResponse.json({
+        synced: false,
+        subscription: null,
+        message: "No paid Stripe subscription found",
+      });
+    }
+
+    // Preserve an existing paid/canceled local state when there is no provider
+    // object to recover. This read does not create or upgrade entitlement.
     return NextResponse.json({
       synced: true,
       subscription: {

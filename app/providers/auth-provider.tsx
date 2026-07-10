@@ -119,20 +119,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         }
 
-        // Sync subscription status from Stripe on login
-        // This ensures UI reflects current subscription state
-        // (prevents issues where webhook failed or was delayed)
-        fetch("/api/billing/sync", { method: "POST" })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.synced) {
-              console.log("Subscription synced:", data.message);
-            }
-          })
-          .catch((err) => {
-            console.error("Failed to sync subscription:", err);
-            // Non-blocking - don't fail login if sync fails
-          });
       } else if (event === "SIGNED_OUT") {
         scrubRetiredTranscriptBrowserStorage();
         analytics.track("auth_signout_completed", {});

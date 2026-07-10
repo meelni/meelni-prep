@@ -17,6 +17,9 @@ interface BillingCreditEventInput {
   reservationId?: string | null;
   reason?: string;
   duplicate?: boolean;
+  reservedCredits?: number;
+  consumedCredits?: number;
+  unrecoverableCredits?: number;
 }
 
 export function trackBillingCreditGranted(input: BillingCreditEventInput) {
@@ -43,12 +46,18 @@ export function trackBillingCreditExpired(input: BillingCreditEventInput) {
   trackBillingEvent("billing_credit_expired", input);
 }
 
-export function trackBillingCreditRolloverCreated(input: BillingCreditEventInput) {
+export function trackBillingCreditRolloverCreated(
+  input: BillingCreditEventInput
+) {
   trackBillingEvent("billing_credit_rollover_created", input);
 }
 
 export function trackBillingNoCredits(input: BillingCreditEventInput) {
   trackBillingEvent("billing_no_credits", input);
+}
+
+export function trackBillingPaymentAdjusted(input: BillingCreditEventInput) {
+  trackBillingEvent("billing_credit_payment_adjusted", input);
 }
 
 function trackBillingEvent(event: string, input: BillingCreditEventInput) {
@@ -71,6 +80,9 @@ function trackBillingEvent(event: string, input: BillingCreditEventInput) {
       reservation_id: input.reservationId,
       reason: input.reason,
       duplicate: input.duplicate,
+      reserved_credits: input.reservedCredits,
+      consumed_credits: input.consumedCredits,
+      unrecoverable_credits: input.unrecoverableCredits,
     },
     input.userId
   );

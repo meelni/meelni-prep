@@ -4,20 +4,29 @@ import { db } from "@/lib/db";
 import {
   appUser,
   accountDeletionRequest,
+  billingAdjustment,
+  billingPaymentState,
   creditGrant,
+  creditRolloverLot,
+  creditRolloverLotAllocation,
   creditReservation,
   creditReservationGrant,
   creditTransaction,
+  paymentHistory,
 } from "@/lib/db/schema";
 import type { BillingCatalogId } from "@meelni/core";
 
 import type {
   CreditGrantSource,
+  LedgerBillingAdjustment,
+  LedgerBillingPaymentState,
   CreditLedgerTransaction,
   CreditLedgerStore,
   CreditReservationStatus,
   CreditTransactionType,
   LedgerCreditGrant,
+  LedgerRolloverLot,
+  LedgerRolloverLotAllocation,
   LedgerCreditReservation,
   LedgerCreditTransaction,
   LedgerReservationAllocation,
@@ -35,6 +44,11 @@ type CreditGrantRow = typeof creditGrant.$inferSelect;
 type CreditReservationRow = typeof creditReservation.$inferSelect;
 type CreditReservationGrantRow = typeof creditReservationGrant.$inferSelect;
 type CreditTransactionRow = typeof creditTransaction.$inferSelect;
+type BillingAdjustmentRow = typeof billingAdjustment.$inferSelect;
+type BillingPaymentStateRow = typeof billingPaymentState.$inferSelect;
+type CreditRolloverLotRow = typeof creditRolloverLot.$inferSelect;
+type CreditRolloverLotAllocationRow =
+  typeof creditRolloverLotAllocation.$inferSelect;
 
 interface CreditLedgerTransactionLease {
   active: boolean;
@@ -353,6 +367,7 @@ function createDrizzleCreditLedgerTransaction(
         .where(
           and(
             eq(creditGrant.userId, userId),
+            isNull(creditGrant.revokedAt),
             gt(creditGrant.remainingCredits, 0),
             or(isNull(creditGrant.expiresAt), gt(creditGrant.expiresAt, now))
           )
@@ -376,6 +391,7 @@ function createDrizzleCreditLedgerTransaction(
         .where(
           and(
             eq(creditGrant.userId, userId),
+            isNull(creditGrant.revokedAt),
             gt(creditGrant.remainingCredits, 0),
             or(isNull(creditGrant.expiresAt), gt(creditGrant.expiresAt, now))
           )
@@ -437,6 +453,43 @@ function createDrizzleCreditLedgerTransaction(
         .where(eq(creditGrant.id, grantId))
         .returning();
 
+      return requireRow(
+        rows[0] ? mapGrant(rows[0]) : null,
+        "Credit grant",
+        grantId
+      );
+    },
+
+    async revokeGrant(grantId, input) {
+      const rows = await database
+        .update(creditGrant)
+        .set({
+          remainingCredits: input.remainingCredits,
+          revokedAt: input.revokedAt,
+          revocationKey: input.revocationKey,
+          updatedAt: new Date(),
+        })
+        .where(eq(creditGrant.id, grantId))
+        .returning();
+      return requireRow(
+        rows[0] ? mapGrant(rows[0]) : null,
+        "Credit grant",
+        grantId
+      );
+    },
+
+    async restoreGrant(grantId, input) {
+      const rows = await database
+        .update(creditGrant)
+        .set({
+          remainingCredits: input.remainingCredits,
+          ...(input.clearRevocation
+            ? { revokedAt: null, revocationKey: null }
+            : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(creditGrant.id, grantId))
+        .returning();
       return requireRow(
         rows[0] ? mapGrant(rows[0]) : null,
         "Credit grant",
@@ -524,13 +577,116 @@ function createDrizzleCreditLedgerTransaction(
       await assertGrantOwnership(input.grantId);
       const rows = await database
         .insert(creditReservationGrant)
-        .values(input)
+        .values({ ...input, revokedCredits: input.revokedCredits ?? 0 })
         .returning();
 
       return requireRow(
         rows[0] ? mapAllocation(rows[0]) : null,
         "Credit reservation allocation",
         `${input.reservationId}:${input.grantId}`
+      );
+    },
+
+    async updateAllocationRevokedCredits(allocationId, revokedCredits) {
+      const rows = await database
+        .update(creditReservationGrant)
+        .set({ revokedCredits })
+        .where(eq(creditReservationGrant.id, allocationId))
+        .returning();
+      return requireRow(
+        rows[0] ? mapAllocation(rows[0]) : null,
+        "Credit allocation",
+        allocationId
+      );
+    },
+
+    async createRolloverLot(input) {
+      const inserted = await database
+        .insert(creditRolloverLot)
+        .values(input)
+        .onConflictDoNothing({
+          target: [
+            creditRolloverLot.rolloverGrantId,
+            creditRolloverLot.sourceGrantId,
+          ],
+        })
+        .returning();
+      if (inserted[0]) return mapRolloverLot(inserted[0]);
+      const rows = await database
+        .select()
+        .from(creditRolloverLot)
+        .where(
+          and(
+            eq(creditRolloverLot.rolloverGrantId, input.rolloverGrantId),
+            eq(creditRolloverLot.sourceGrantId, input.sourceGrantId)
+          )
+        )
+        .limit(1);
+      return requireRow(
+        rows[0] ? mapRolloverLot(rows[0]) : null,
+        "Credit rollover lot",
+        `${input.rolloverGrantId}:${input.sourceGrantId}`
+      );
+    },
+
+    async updateRolloverLotBalances(lotId, balances) {
+      const rows = await database
+        .update(creditRolloverLot)
+        .set({ ...balances, updatedAt: new Date() })
+        .where(eq(creditRolloverLot.id, lotId))
+        .returning();
+      return requireRow(
+        rows[0] ? mapRolloverLot(rows[0]) : null,
+        "Credit rollover lot",
+        lotId
+      );
+    },
+
+    async createRolloverLotAllocation(input) {
+      const inserted = await database
+        .insert(creditRolloverLotAllocation)
+        .values(input)
+        .onConflictDoNothing({
+          target: [
+            creditRolloverLotAllocation.reservationGrantId,
+            creditRolloverLotAllocation.rolloverLotId,
+          ],
+        })
+        .returning();
+      if (inserted[0]) return mapRolloverLotAllocation(inserted[0]);
+      const rows = await database
+        .select()
+        .from(creditRolloverLotAllocation)
+        .where(
+          and(
+            eq(
+              creditRolloverLotAllocation.reservationGrantId,
+              input.reservationGrantId
+            ),
+            eq(creditRolloverLotAllocation.rolloverLotId, input.rolloverLotId)
+          )
+        )
+        .limit(1);
+      return requireRow(
+        rows[0] ? mapRolloverLotAllocation(rows[0]) : null,
+        "Credit rollover lot allocation",
+        `${input.reservationGrantId}:${input.rolloverLotId}`
+      );
+    },
+
+    async updateRolloverLotAllocationRevokedCredits(
+      allocationId,
+      revokedCredits
+    ) {
+      const rows = await database
+        .update(creditRolloverLotAllocation)
+        .set({ revokedCredits })
+        .where(eq(creditRolloverLotAllocation.id, allocationId))
+        .returning();
+      return requireRow(
+        rows[0] ? mapRolloverLotAllocation(rows[0]) : null,
+        "Credit rollover lot allocation",
+        allocationId
       );
     },
 
@@ -580,6 +736,50 @@ function createDrizzleCreditLedgerTransaction(
       return rows.map(mapTransaction);
     },
 
+    async listTransactionsByGrantForUpdate(grantId) {
+      const rows = await database
+        .select()
+        .from(creditTransaction)
+        .where(eq(creditTransaction.grantId, grantId))
+        .orderBy(asc(creditTransaction.id))
+        .for("update");
+      return rows.map(mapTransaction);
+    },
+
+    async listRolloverLotsForGrantForUpdate(rolloverGrantId) {
+      const rows = await database
+        .select()
+        .from(creditRolloverLot)
+        .where(eq(creditRolloverLot.rolloverGrantId, rolloverGrantId))
+        .orderBy(asc(creditRolloverLot.createdAt), asc(creditRolloverLot.id))
+        .for("update");
+      return rows.map(mapRolloverLot);
+    },
+
+    async listRolloverLotsForSourceForUpdate(sourceGrantId) {
+      const rows = await database
+        .select()
+        .from(creditRolloverLot)
+        .where(eq(creditRolloverLot.sourceGrantId, sourceGrantId))
+        .orderBy(asc(creditRolloverLot.createdAt), asc(creditRolloverLot.id))
+        .for("update");
+      return rows.map(mapRolloverLot);
+    },
+
+    async listRolloverLotAllocationsForReservationGrantForUpdate(
+      reservationGrantId
+    ) {
+      const rows = await database
+        .select()
+        .from(creditRolloverLotAllocation)
+        .where(
+          eq(creditRolloverLotAllocation.reservationGrantId, reservationGrantId)
+        )
+        .orderBy(asc(creditRolloverLotAllocation.createdAt))
+        .for("update");
+      return rows.map(mapRolloverLotAllocation);
+    },
+
     async createTransaction(input) {
       requireActiveTransaction();
       requireLockedUser(input.userId);
@@ -603,6 +803,121 @@ function createDrizzleCreditLedgerTransaction(
         input.idempotencyKey
       );
     },
+
+    async createBillingAdjustment(input) {
+      const inserted = await database
+        .insert(billingAdjustment)
+        .values(input)
+        .onConflictDoNothing({
+          target: [
+            billingAdjustment.providerAdjustmentId,
+            billingAdjustment.direction,
+          ],
+        })
+        .returning();
+      if (inserted[0]) return mapBillingAdjustment(inserted[0]);
+      return requireRow(
+        await store.findBillingAdjustment(
+          input.providerAdjustmentId,
+          input.direction
+        ),
+        "Billing adjustment",
+        input.providerAdjustmentId
+      );
+    },
+
+    async findBillingAdjustment(providerAdjustmentId, direction) {
+      const rows = await database
+        .select()
+        .from(billingAdjustment)
+        .where(
+          and(
+            eq(billingAdjustment.providerAdjustmentId, providerAdjustmentId),
+            eq(billingAdjustment.direction, direction)
+          )
+        )
+        .limit(1);
+      return rows[0] ? mapBillingAdjustment(rows[0]) : null;
+    },
+
+    async createBillingPaymentState(input) {
+      const inserted = await database
+        .insert(billingPaymentState)
+        .values(input)
+        .onConflictDoNothing({ target: billingPaymentState.creditGrantId })
+        .returning();
+      if (inserted[0]) return mapBillingPaymentState(inserted[0]);
+      return requireRow(
+        await store.findBillingPaymentStateForUpdate(input.creditGrantId),
+        "Billing payment state",
+        input.creditGrantId
+      );
+    },
+
+    async findBillingAdjustmentForUpdate(providerAdjustmentId, direction) {
+      const rows = await database
+        .select()
+        .from(billingAdjustment)
+        .where(
+          and(
+            eq(billingAdjustment.providerAdjustmentId, providerAdjustmentId),
+            eq(billingAdjustment.direction, direction)
+          )
+        )
+        .limit(1)
+        .for("update");
+      return rows[0] ? mapBillingAdjustment(rows[0]) : null;
+    },
+
+    async listBillingAdjustmentsForPaymentForUpdate(paymentHistoryId) {
+      const rows = await database
+        .select()
+        .from(billingAdjustment)
+        .where(eq(billingAdjustment.paymentHistoryId, paymentHistoryId))
+        .orderBy(asc(billingAdjustment.createdAt), asc(billingAdjustment.id))
+        .for("update");
+      return rows.map(mapBillingAdjustment);
+    },
+
+    async listBillingAdjustmentsForGrantForUpdate(creditGrantId) {
+      const rows = await database
+        .select()
+        .from(billingAdjustment)
+        .where(eq(billingAdjustment.creditGrantId, creditGrantId))
+        .orderBy(asc(billingAdjustment.createdAt), asc(billingAdjustment.id))
+        .for("update");
+      return rows.map(mapBillingAdjustment);
+    },
+
+    async findBillingPaymentStateForUpdate(creditGrantId) {
+      const rows = await database
+        .select()
+        .from(billingPaymentState)
+        .where(eq(billingPaymentState.creditGrantId, creditGrantId))
+        .limit(1)
+        .for("update");
+      return rows[0] ? mapBillingPaymentState(rows[0]) : null;
+    },
+
+    async updateBillingPaymentState(stateId, input) {
+      const rows = await database
+        .update(billingPaymentState)
+        .set({ ...input, updatedAt: new Date() })
+        .where(eq(billingPaymentState.id, stateId))
+        .returning();
+      return requireRow(
+        rows[0] ? mapBillingPaymentState(rows[0]) : null,
+        "Billing payment state",
+        stateId
+      );
+    },
+
+    async updatePaymentHistoryStatus(paymentHistoryId, status) {
+      await database
+        .update(paymentHistory)
+        .set({ status })
+        .where(eq(paymentHistory.id, paymentHistoryId));
+    },
   };
 
   return store;
@@ -622,6 +937,8 @@ function mapGrant(row: CreditGrantRow): LedgerCreditGrant {
     expiresAt: row.expiresAt,
     rolloverEligible: row.rolloverEligible,
     rolloverSourceGrantId: row.rolloverSourceGrantId,
+    revokedAt: row.revokedAt,
+    revocationKey: row.revocationKey,
     metadata: row.metadata ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -645,6 +962,54 @@ function mapReservation(row: CreditReservationRow): LedgerCreditReservation {
   };
 }
 
+function mapBillingAdjustment(
+  row: BillingAdjustmentRow
+): LedgerBillingAdjustment {
+  return {
+    id: row.id,
+    userId: row.userId,
+    paymentHistoryId: row.paymentHistoryId,
+    creditGrantId: row.creditGrantId,
+    stripeEventId: row.stripeEventId,
+    providerAdjustmentId: row.providerAdjustmentId,
+    adjustmentType:
+      row.adjustmentType as LedgerBillingAdjustment["adjustmentType"],
+    direction: row.direction as LedgerBillingAdjustment["direction"],
+    amountInCents: row.amountInCents,
+    currency: row.currency,
+    sourceCredits: row.sourceCredits,
+    remainingCredits: row.remainingCredits,
+    reservedCredits: row.reservedCredits,
+    consumedCredits: row.consumedCredits,
+    revokedCredits: row.revokedCredits,
+    unrecoverableCredits: row.unrecoverableCredits,
+    metadata: row.metadata ?? null,
+    createdAt: row.createdAt,
+  };
+}
+
+function mapBillingPaymentState(
+  row: BillingPaymentStateRow
+): LedgerBillingPaymentState {
+  return {
+    id: row.id,
+    userId: row.userId,
+    paymentHistoryId: row.paymentHistoryId,
+    creditGrantId: row.creditGrantId,
+    sourceCredits: row.sourceCredits,
+    targetCredits: row.targetCredits,
+    revokedCredits: row.revokedCredits,
+    unrecoverableCredits: row.unrecoverableCredits,
+    consumedCredits: row.consumedCredits,
+    grantRevocations: row.grantRevocations,
+    allocationRevocations: row.allocationRevocations,
+    lastProviderAdjustmentId: row.lastProviderAdjustmentId,
+    version: row.version,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 function mapAllocation(
   row: CreditReservationGrantRow
 ): LedgerReservationAllocation {
@@ -653,6 +1018,36 @@ function mapAllocation(
     reservationId: row.reservationId,
     grantId: row.grantId,
     credits: row.credits,
+    revokedCredits: row.revokedCredits,
+    createdAt: row.createdAt,
+  };
+}
+
+function mapRolloverLot(row: CreditRolloverLotRow): LedgerRolloverLot {
+  return {
+    id: row.id,
+    userId: row.userId,
+    rolloverGrantId: row.rolloverGrantId,
+    sourceGrantId: row.sourceGrantId,
+    originalCredits: row.originalCredits,
+    remainingCredits: row.remainingCredits,
+    reservedCredits: row.reservedCredits,
+    consumedCredits: row.consumedCredits,
+    revokedCredits: row.revokedCredits,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function mapRolloverLotAllocation(
+  row: CreditRolloverLotAllocationRow
+): LedgerRolloverLotAllocation {
+  return {
+    id: row.id,
+    reservationGrantId: row.reservationGrantId,
+    rolloverLotId: row.rolloverLotId,
+    credits: row.credits,
+    revokedCredits: row.revokedCredits,
     createdAt: row.createdAt,
   };
 }
