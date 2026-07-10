@@ -83,8 +83,8 @@ Unsupported explicit versions and malformed packets fail closed.
 
 Version 1 read support can be removed only after deployed agents all emit
 version 2 and the observation window reports no legacy packets. Version 2 is
-additive at the transport boundary; no database migration is part of this
-slice.
+additive at the transport boundary; SAV-194 adds nullable canonical persistence
+columns so historical rows remain readable.
 
 ## Rollout And Verification
 
@@ -101,3 +101,36 @@ items rather than publishing generated-but-unheard text as delivered speech.
 
 The public relaunch gate remains off until the downstream transcript privacy,
 ingest, evaluation, and launch-rehearsal slices pass.
+
+## Durable Ingest
+
+SAV-194 makes version 2 the only durable writer shape. The authenticated web
+endpoint accepts `{ sessionId, event }`, validates the complete shared event,
+requires `event.session_id === sessionId`, and verifies both session ownership
+and the stored provider room inside the database transaction. Missing and
+cross-user sessions remain indistinguishable.
+
+`event_id` is globally unique. An equivalent replay returns the existing row;
+reusing the identity with different content fails closed. `(session_id,
+writer_id, sequence)` is also unique, so a writer cannot assign one sequence to
+two events. A session accepts at most 1,000 durable turns. Legacy rows keep all
+canonical identity fields null. Canonical rows
+require the entire version 2 identity/timing tuple and are immutable through
+the legacy correction helpers.
+
+Within one writer, measured start times must remain monotonic with sequence.
+The ingest transaction rejects an inversion. Readers therefore order by
+`started_at`, then `writer_id`, `sequence`, `event_id`, and row ID; this obeys
+writer sequence while producing a deterministic cross-writer order.
+
+Transcript insert and terminalization transactions lock the same session row.
+Explicit browser end establishes a client cutoff, stops accepting later packet
+arrivals, and performs a bounded retry/in-flight flush. Once the terminal
+transaction owns the row, it calculates feedback eligibility from the durable
+turns in that transaction and closes new distinct writes. Equivalent replays
+remain idempotent after terminalization. System deadlines use the durable
+evidence available when they acquire the same lock.
+
+The browser remains a temporary authenticated transport bridge and cannot make
+a packet durable until the server acknowledges it. SAV-193 owns removal of raw
+browser persistence and the longer-term server-side ingest trust boundary.

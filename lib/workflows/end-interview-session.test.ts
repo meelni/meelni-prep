@@ -120,17 +120,12 @@ test("not-found completion is returned without dispatch", async () => {
   assert.equal(dispatches, 0);
 });
 
-test("authorization runs before transcript validation", async () => {
-  let validations = 0;
+test("authorization runs before atomic transcript settlement", async () => {
   let finalizations = 0;
   const result = await endInterviewSessionWorkflow(
     userEndInput(),
     createDeps({
       authorize: async () => false,
-      validate: async () => {
-        validations += 1;
-        return validation();
-      },
       finalize: async () => {
         finalizations += 1;
         return completion();
@@ -139,31 +134,24 @@ test("authorization runs before transcript validation", async () => {
   );
 
   assert.deepEqual(result, { ok: false, reason: "not_found" });
-  assert.equal(validations, 0);
   assert.equal(finalizations, 0);
 });
 
 test("a caller-provided validation snapshot is finalized without revalidation", async () => {
-  let validations = 0;
   let finalizedValidation: SessionValidation | null = null;
   const snapshot = validation();
   const result = await endInterviewSessionWithValidationWorkflow(
     userEndInput(),
     snapshot,
     createDeps({
-      validate: async () => {
-        validations += 1;
-        return validation();
-      },
       finalize: async (input) => {
-        finalizedValidation = input.validation;
+        finalizedValidation = input.validationOverride ?? null;
         return completion();
       },
     })
   );
 
   assert.equal(result.ok, true);
-  assert.equal(validations, 0);
   assert.equal(finalizedValidation, snapshot);
 });
 
@@ -287,7 +275,6 @@ function createDeps(
 ): EndInterviewSessionDeps {
   return {
     authorize: async () => true,
-    validate: async () => validation(),
     finalize: async () => completion(),
     dispatch: async () => sentDispatch(),
     updateMotivation: async () => undefined,

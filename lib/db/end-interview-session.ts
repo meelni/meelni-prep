@@ -8,10 +8,14 @@ import {
   type InterviewTerminalReason,
 } from "@meelni/core";
 
-import type { SessionValidation } from "@/lib/evaluation/session-validator";
+import {
+  calculateSessionStatsFromTurns,
+  validateSessionStats,
+  type SessionValidation,
+} from "@/lib/evaluation/session-validator";
 import { feedbackGenerationEventId } from "./feedback-event-id";
 import { db } from "./index";
-import { feedback, interviewSession } from "./schema";
+import { feedback, interviewSession, transcriptTurn } from "./schema";
 
 export type EndInterviewSessionCommand = { sessionId: string } & (
   | {
@@ -33,7 +37,7 @@ export type EndInterviewSessionCommand = { sessionId: string } & (
 );
 
 export type FinalizeInterviewSessionInput = EndInterviewSessionCommand & {
-  validation: SessionValidation;
+  validationOverride?: SessionValidation;
   now?: Date;
 };
 
@@ -100,6 +104,22 @@ export async function finalizeInterviewSession(
       .for("update");
     const stored = rows[0];
     if (!stored) return { ok: false, reason: "not_found" } as const;
+
+    const validation =
+      input.validationOverride ??
+      validateSessionStats(
+        calculateSessionStatsFromTurns(
+          await tx
+            .select({
+              speaker: transcriptTurn.speaker,
+              text: transcriptTurn.text,
+              startedAt: transcriptTurn.startedAt,
+              endedAt: transcriptTurn.endedAt,
+            })
+            .from(transcriptTurn)
+            .where(eq(transcriptTurn.sessionId, input.sessionId))
+        )
+      );
 
     let state = stored.lifecycleState;
     let version = stored.lifecycleVersion;
@@ -188,7 +208,7 @@ export async function finalizeInterviewSession(
     };
 
     if (!wasTerminal) {
-      if (state !== "ending" && input.validation.stats.totalTurns > 0) {
+      if (state !== "ending" && validation.stats.totalTurns > 0) {
         if (state === "created") await advance("connecting", null);
         if (state === "connecting" || state === "reconnecting") {
           await advance("active", null);
@@ -197,7 +217,7 @@ export async function finalizeInterviewSession(
 
       if (state !== "ending") {
         const requestedReason = resolveInterviewTerminalReason(
-          input.validation,
+          validation,
           input.requestedTerminalReason
         );
         await advance("ending", requestedReason);
@@ -225,17 +245,17 @@ export async function finalizeInterviewSession(
       await tx
         .update(interviewSession)
         .set({
-          totalTurns: input.validation.stats.totalTurns,
-          totalWords: input.validation.stats.totalWords,
-          durationSeconds: input.validation.stats.durationSeconds,
+          totalTurns: validation.stats.totalTurns,
+          totalWords: validation.stats.totalWords,
+          durationSeconds: validation.stats.durationSeconds,
         })
         .where(eq(interviewSession.id, input.sessionId));
     }
 
-    const shouldGenerate = state === "completed" && input.validation.isValid;
+    const shouldGenerate = state === "completed" && validation.isValid;
     const skippedReason = shouldGenerate
       ? null
-      : input.validation.reasons[0] ||
+      : validation.reasons[0] ||
         `Interview ended as ${state} (${terminalReason})`;
     const inserted = await tx
       .insert(feedback)
@@ -244,9 +264,9 @@ export async function finalizeInterviewSession(
         status: shouldGenerate ? "pending" : "skipped",
         statusReason: skippedReason,
         rubricVersion: "1.0.0",
-        completionTier: input.validation.tier,
-        completionStats: input.validation.stats,
-        completionRecommendations: input.validation.recommendations,
+        completionTier: validation.tier,
+        completionStats: validation.stats,
+        completionRecommendations: validation.recommendations,
         dispatchStatus: shouldGenerate ? "pending" : "not_required",
         dispatchEventId: shouldGenerate
           ? feedbackGenerationEventId(input.sessionId, 0)
@@ -279,13 +299,12 @@ export async function finalizeInterviewSession(
       roomName: stored.livekitRoomName,
       lifecycle: { state, version, terminalReason, endedAt },
       feedback: feedbackRecord,
-      stats: feedbackRecord.completionStats ?? input.validation.stats,
+      stats: feedbackRecord.completionStats ?? validation.stats,
       tier:
         (feedbackRecord.completionTier as SessionValidation["tier"] | null) ??
-        input.validation.tier,
+        validation.tier,
       recommendations:
-        feedbackRecord.completionRecommendations ??
-        input.validation.recommendations,
+        feedbackRecord.completionRecommendations ?? validation.recommendations,
     } as const;
   });
 }

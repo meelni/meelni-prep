@@ -18,10 +18,12 @@ import {
   acceptTranscriptEventOnce,
   getTranscriptEventTiming,
   parseTranscriptEvent,
+  type TranscriptEvent,
 } from "@meelni/agent";
 
 export interface TranscriptTurn {
   persistable?: boolean;
+  event?: TranscriptEvent;
   eventId?: string;
   writerId?: string;
   sequence?: number;
@@ -218,6 +220,7 @@ function RoomContent({
             }
           : {
               persistable: true,
+              event: transcriptData,
               eventId: transcriptData.event_id,
               writerId: transcriptData.writer_id,
               sequence: transcriptData.sequence,
