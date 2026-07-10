@@ -38,7 +38,11 @@ test("calibration preflight validates 40 synthetic cases without claiming readin
   assert.equal(report.metrics.evaluatorCalls, 0);
   assert.equal(report.execution.paidProviderCalled, false);
   assert.equal(report.gate.liveProviderAcceptance, "pending");
-  assert.equal(report.gate.launchAcceptance, "pending_live_provider_run");
+  assert.equal(
+    report.gate.adjudicationAcceptance,
+    "pending_product_owner_pm_signoff"
+  );
+  assert.equal(report.gate.launchAcceptance, "pending_adjudication_signoff");
 });
 
 test("deterministic self-test proves the harness but keeps live acceptance pending", async () => {
@@ -69,7 +73,7 @@ test("deterministic self-test proves the harness but keeps live acceptance pendi
   assert.deepEqual(report.execution.observedModelVersions, [SELF_TEST_MODEL]);
   assert.equal(report.gate.deterministicHarness, "passed");
   assert.equal(report.gate.liveProviderAcceptance, "pending");
-  assert.equal(report.gate.launchAcceptance, "pending_live_provider_run");
+  assert.equal(report.gate.launchAcceptance, "pending_adjudication_signoff");
   assert.equal(report.failures.length, 0);
 });
 

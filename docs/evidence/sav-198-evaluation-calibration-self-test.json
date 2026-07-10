@@ -1,6 +1,6 @@
 {
   "contractVersion": "evaluation-calibration-report.v2",
-  "generatedAt": "2026-07-10T16:37:57.379Z",
+  "generatedAt": "2026-07-10T16:59:43.501Z",
   "execution": {
     "kind": "deterministic_self_test",
     "modelVersion": "deterministic-calibration-self-test.v1",
@@ -13,8 +13,8 @@
     ]
   },
   "versions": {
-    "goldSet": "pm-gold-set.v2",
-    "adjudication": "pm-gold-adjudication.v2",
+    "goldSet": "pm-gold-set.v3",
+    "adjudication": "pm-gold-adjudication-candidates.v3",
     "schema": "feedback.v2",
     "prompt": "feedback.prompt.v2",
     "rubric": "pm-feedback-rubric.v2"
@@ -34,6 +34,7 @@
       "average": 8,
       "strong": 16
     },
+    "pendingAdjudicationSignoffs": 40,
     "expectedStateMismatches": 0,
     "invalidEvidenceAnchors": 0
   },
@@ -79,11 +80,13 @@
   },
   "gate": {
     "deterministicHarness": "passed",
+    "adjudicationAcceptance": "pending_product_owner_pm_signoff",
     "liveProviderAcceptance": "pending",
-    "launchAcceptance": "pending_live_provider_run"
+    "launchAcceptance": "pending_adjudication_signoff"
   },
   "failures": [],
   "blockers": [
-    "No authorized live provider calibration has been run. Deterministic evidence proves only the harness and gold-set contract."
+    "The agent-authored synthetic adjudication candidates require product-owner/PM review and signoff. Model runs cannot satisfy this gate.",
+    "No authorized live provider calibration has been run. Deterministic evidence proves only the harness and candidate-set contract."
   ]
 }
