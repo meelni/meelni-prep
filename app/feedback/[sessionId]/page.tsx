@@ -310,14 +310,6 @@ export default function FeedbackPage() {
             : "Generating Feedback"
         }
         description="Our AI is analyzing your interview performance..."
-        actions={
-          feedbackData.estimatedTimeRemaining !== undefined && (
-            <p className="text-muted-foreground text-sm">
-              Estimated time remaining: {feedbackData.estimatedTimeRemaining}{" "}
-              seconds
-            </p>
-          )
-        }
       />
     );
   }

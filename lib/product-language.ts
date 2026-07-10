@@ -61,14 +61,28 @@ const FOCUS_PRACTICE_REPLACEMENTS = [
     "$1 practice attempts",
   ],
   [/\b(?:do|complete|repeat|run)\s+(?:some\s+)?reps\b/gi, "practice repeatedly"],
-  [/\b(practice|interview|answer|response)\s+reps\b/gi, "$1 attempts"],
-  [/\b(practice|interview|answer|response)\s+rep\b/gi, "$1 attempt"],
+  [/\b(practice|answer|response)\s+reps\b/gi, "$1 attempts"],
+  [/\b(practice|answer|response)\s+rep\b/gi, "$1 attempt"],
   [
     /\b(a|an|another|this|that|the|targeted|practice)\s+drill\b/gi,
     "$1 exercise",
   ],
   [/\b(practice|targeted)\s+drills\b/gi, "$1 exercises"],
 ] as const;
+
+const FITNESS_VOCABULARY = /\b(?:gyms?|reps?|workouts?|drills?)\b/i;
+
+function containsFitnessFraming(value: string): boolean {
+  const withoutLegitimatePmUsage = value
+    .replace(
+      /\b(?:sales|support|field|service|account|store|partner|customer(?: success)?)\s+reps?\b/gi,
+      ""
+    )
+    .replace(/\binterview\s+reps?\b/gi, "")
+    .replace(/\bdrill(?:\s+down)?\s+into\b/gi, "");
+
+  return FITNESS_VOCABULARY.test(withoutLegitimatePmUsage);
+}
 
 /**
  * Model output is untrusted customer copy. Keep the legacy `drills` payload key,
@@ -86,6 +100,8 @@ export function normalizePracticeRecommendations(value: unknown): string[] {
     for (const [pattern, replacement] of FOCUS_PRACTICE_REPLACEMENTS) {
       normalized = normalized.replace(pattern, replacement);
     }
+
+    if (containsFitnessFraming(normalized)) return [];
 
     return [normalized];
   });

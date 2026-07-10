@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import ts from "typescript";
 
 const ROOT = process.cwd();
 const UI_ROOTS = ["app", "components"];
@@ -159,17 +160,54 @@ function stripExactLegacyIdentifiers(file, source) {
 
 function stringLiteralValues(source) {
   const sanitized = stripExactCompatibilityIdentifiers(source);
-  return [...sanitized.matchAll(/(["'`])((?:\\.|(?!\1)[\s\S])*)\1/g)].map(
-    (match) => match[2]
+  const sourceFile = ts.createSourceFile(
+    "customer-copy.tsx",
+    sanitized,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
   );
+  const values = [];
+
+  function visit(node) {
+    if (ts.isStringLiteralLike(node)) values.push(node.text);
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return values;
 }
 
 function stringLiteralContent(source) {
   return stringLiteralValues(source).join("\n");
 }
 
+function customerFacingCopyValues(source) {
+  const sanitized = stripExactCompatibilityIdentifiers(source);
+  const sourceFile = ts.createSourceFile(
+    "customer-copy.tsx",
+    sanitized,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const values = [];
+
+  function visit(node) {
+    if (ts.isStringLiteralLike(node)) values.push(node.text);
+    if (ts.isJsxText(node)) {
+      const text = node.getText(sourceFile).trim();
+      if (text) values.push(text);
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return values;
+}
+
 function hasUnsupportedQuantifiedLatency(source) {
-  return stringLiteralValues(source).some(
+  return customerFacingCopyValues(source).some(
     (value) =>
       QUANTIFIED_TIME_UNIT.test(value) &&
       FEEDBACK_LATENCY_CONTEXT.test(value) &&
@@ -467,7 +505,7 @@ test("feedback timing guard rejects unsupported quantified latency promises", ()
     "We will have your review in under a minute.",
     "Wait 30 seconds for feedback.",
   ]) {
-    assert.equal(hasUnsupportedQuantifiedLatency(JSON.stringify(claim)), true);
+    assert.equal(hasUnsupportedQuantifiedLatency(`<p>${claim}</p>`), true);
   }
   assert.equal(
     hasUnsupportedQuantifiedLatency(
@@ -479,6 +517,12 @@ test("feedback timing guard rejects unsupported quantified latency promises", ()
   );
   assert.equal(
     hasUnsupportedQuantifiedLatency(JSON.stringify("Practice for 20 minutes.")),
+    false
+  );
+  assert.equal(
+    hasUnsupportedQuantifiedLatency(
+      "<p>Feedback generation timed out after 90 seconds.</p>"
+    ),
     false
   );
 });

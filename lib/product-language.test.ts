@@ -32,6 +32,18 @@ test("recommendation normalization preserves legitimate PM-domain words", () => 
   );
 });
 
+test("recommendation normalization drops unrecognized fitness framing", () => {
+  assert.deepEqual(
+    normalizePracticeRecommendations([
+      "Schedule drills for each weak area.",
+      "Do another rep before tomorrow.",
+      "Complete one drill and six reps.",
+      "Practice one product-sense exercise.",
+    ]),
+    ["Practice one product-sense exercise."]
+  );
+});
+
 test("recommendation normalization rejects malformed model output", () => {
   assert.deepEqual(
     normalizePracticeRecommendations(["  Focus on trade-offs.  ", null, 42, ""]),
