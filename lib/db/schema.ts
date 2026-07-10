@@ -180,6 +180,7 @@ export const contactSubmission = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     idempotencyKey: uuid("idempotency_key").notNull(),
+    userId: uuid("user_id"),
     name: text("name").notNull(),
     email: text("email").notNull(),
     reason: text("reason").$type<ContactReason>().notNull(),
@@ -198,6 +199,7 @@ export const contactSubmission = pgTable(
     createdAtIdx: index("contact_submission_created_at_idx").on(
       table.createdAt
     ),
+    userIdIdx: index("contact_submission_user_id_idx").on(table.userId),
     reasonCheck: check(
       "contact_submission_reason_check",
       sql`${table.reason} IN ('billing', 'support', 'bug', 'feedback', 'other')`

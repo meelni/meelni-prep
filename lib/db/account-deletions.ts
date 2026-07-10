@@ -9,6 +9,7 @@ import { db } from "./index";
 import {
   accountDeletionRequest,
   appUser,
+  contactSubmission,
   feedback,
   interviewSession,
   livekitReconnectRateLimit,
@@ -216,6 +217,9 @@ export async function deleteUserApplicationData(userId: string) {
     await tx
       .delete(stripeCustomerMapping)
       .where(eq(stripeCustomerMapping.userId, userId));
+    await tx
+      .delete(contactSubmission)
+      .where(eq(contactSubmission.userId, userId));
     await tx.delete(appUser).where(eq(appUser.id, userId));
   });
 }

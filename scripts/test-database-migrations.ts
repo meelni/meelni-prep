@@ -42,6 +42,7 @@ const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const CONTACT_DELETE_USER = "12121212-1212-4212-8212-121212121212";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -1085,12 +1086,13 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND indexname IN (
         'contact_submission_idempotency_key_idx',
         'contact_submission_created_at_idx',
+        'contact_submission_user_id_idx',
         'contact_submission_access_audit_submission_created_idx',
         'contact_submission_rate_limit_window_started_idx'
       )
     ORDER BY indexname
   `;
-  assert.equal(contactIndexes.length, 4);
+  assert.equal(contactIndexes.length, 5);
 
   const lifecycleColumns = await sql<{ column_name: string }[]>`
     SELECT column_name
@@ -1332,12 +1334,12 @@ async function verifyDatabase(sql: postgres.Sql) {
       ) AS service_contact_list_execute,
       has_function_privilege(
         'service_role',
-        'public.read_contact_submission(uuid,text)',
+        'public.read_contact_submission(uuid)',
         'EXECUTE'
       ) AS service_contact_read_execute,
       has_function_privilege(
         'service_role',
-        'public.set_contact_submission_triage_state(uuid,text,text)',
+        'public.set_contact_submission_triage_state(uuid,text)',
         'EXECUTE'
       ) AS service_contact_triage_execute
   `;
@@ -1502,8 +1504,13 @@ async function verifyDurableContactSubmission(
   databaseUrl: string
 ) {
   process.env.DATABASE_URL = databaseUrl;
-  const [{ createDrizzleContactSubmissionStore }, schema] = await Promise.all([
+  const [
+    { createDrizzleContactSubmissionStore },
+    { deleteUserApplicationData },
+    schema,
+  ] = await Promise.all([
     import("../lib/db/contact-submissions"),
+    import("../lib/db/account-deletions"),
     import("../lib/db/schema"),
   ]);
   const clients = Array.from({ length: 8 }, () =>
@@ -1513,6 +1520,7 @@ async function verifyDurableContactSubmission(
     createDrizzleContactSubmissionStore(drizzle(client, { schema }))
   );
   const rateLimitIdentities = {
+    attempt: "d".repeat(64),
     client: "a".repeat(64),
     email: "b".repeat(64),
     global: "c".repeat(64),
@@ -1522,6 +1530,7 @@ async function verifyDurableContactSubmission(
     .digest("hex");
   const baseInput = {
     idempotencyKey: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    userId: USER_ONE,
     name: "Migration Test",
     email: "migration-test@example.invalid",
     reason: "support" as const,
@@ -1579,19 +1588,48 @@ async function verifyDurableContactSubmission(
       assert.ok(limited.retryAfterSeconds <= 3600);
     }
 
+    for (let index = 0; index < 48; index += 1) {
+      assert.equal(
+        (
+          await stores[index % stores.length]!.accept({
+            ...baseInput,
+            subject: `conflict-${index}`,
+          })
+        ).disposition,
+        "idempotency_conflict"
+      );
+    }
+    assert.equal(
+      (
+        await stores[0]!.accept({
+          ...baseInput,
+          subject: "attempt-budget-exhausted",
+        })
+      ).disposition,
+      "rate_limited"
+    );
+
     const state = await sql<
-      { submissions: number; email_budget: number; raw_email_hashes: number }[]
+      {
+        submissions: number;
+        email_budget: number;
+        attempt_budget: number;
+        raw_email_hashes: number;
+      }[]
     >`
       SELECT
         (SELECT count(*)::int FROM contact_submission) AS submissions,
         (SELECT request_count::int FROM contact_submission_rate_limit
           WHERE identity_hash = ${rateLimitIdentities.email}) AS email_budget,
+        (SELECT request_count::int FROM contact_submission_rate_limit
+          WHERE identity_hash = ${rateLimitIdentities.attempt}) AS attempt_budget,
         (SELECT count(*)::int FROM contact_submission_rate_limit
           WHERE identity_hash = ${guessableEmailHash}) AS raw_email_hashes
     `;
     assert.deepEqual(state[0], {
       submissions: 3,
       email_budget: 3,
+      attempt_budget: 60,
       raw_email_hashes: 0,
     });
 
@@ -1619,8 +1657,7 @@ async function verifyDurableContactSubmission(
           { receipt_id: string; email: string; persistence_state: string }[]
         >`SELECT receipt_id, email, persistence_state
           FROM public.read_contact_submission(
-            ${receiptId}::uuid,
-            'migration-test-operator'
+            ${receiptId}::uuid
           )`
     );
     assert.deepEqual(privateResult[0], {
@@ -1638,8 +1675,7 @@ async function verifyDurableContactSubmission(
             tx<{ changed: boolean }[]>`
               SELECT public.set_contact_submission_triage_state(
                 ${receiptId}::uuid,
-                'claimed',
-                'migration-test-operator'
+                'claimed'
               ) AS changed
             `
         )
@@ -1655,8 +1691,7 @@ async function verifyDurableContactSubmission(
             tx<{ changed: boolean }[]>`
               SELECT public.set_contact_submission_triage_state(
                 ${receiptId}::uuid,
-                'resolved',
-                'migration-test-operator'
+                'resolved'
               ) AS changed
             `
         )
@@ -1664,14 +1699,31 @@ async function verifyDurableContactSubmission(
       true
     );
 
-    const [auditState] = await sql<{ audit_rows: number; state: string }[]>`
+    const [auditState] = await sql<
+      {
+        audit_rows: number;
+        state: string;
+        actors: string[];
+        expected_actor: string;
+      }[]
+    >`
       SELECT
         (SELECT count(*)::int FROM contact_submission_access_audit
           WHERE submission_id = ${receiptId}::uuid) AS audit_rows,
         (SELECT triage_state FROM contact_submission
-          WHERE id = ${receiptId}::uuid) AS state
+          WHERE id = ${receiptId}::uuid) AS state,
+        (SELECT array_agg(DISTINCT actor_reference)
+          FROM contact_submission_access_audit
+          WHERE submission_id = ${receiptId}::uuid) AS actors,
+        md5(session_user::text) AS expected_actor
     `;
-    assert.deepEqual(auditState, { audit_rows: 3, state: "resolved" });
+    assert.ok(auditState);
+    assert.deepEqual(auditState, {
+      audit_rows: 3,
+      state: "resolved",
+      actors: [auditState!.expected_actor],
+      expected_actor: auditState!.expected_actor,
+    });
 
     const staleIdentities = Array.from({ length: 7 }, (_, index) =>
       index.toString(16).padStart(64, "0")
@@ -1711,7 +1763,35 @@ async function verifyDurableContactSubmission(
         )::int AS active
       FROM contact_submission_rate_limit
     `;
-    assert.deepEqual(limiterState, { stale: 0, active: 3 });
+    assert.deepEqual(limiterState, { stale: 0, active: 4 });
+
+    await sql`
+      INSERT INTO app_user (id, email)
+      VALUES (${CONTACT_DELETE_USER}::uuid, 'delete-contact@example.invalid')
+    `;
+    await sql`
+      INSERT INTO contact_submission (
+        idempotency_key, user_id, name, email, reason, subject, message
+      ) VALUES
+      ('13131313-1313-4313-8313-131313131313'::uuid,
+        ${CONTACT_DELETE_USER}::uuid, 'Linked',
+        'delete-contact@example.invalid', 'support', 'Linked request',
+        'This request is linked to the authenticated account.'),
+      ('14141414-1414-4414-8414-141414141414'::uuid,
+        NULL, 'Unlinked', 'delete-contact@example.invalid', 'support',
+        'Unlinked request',
+        'This request must not be deleted by matching email text.')
+    `;
+    await deleteUserApplicationData(CONTACT_DELETE_USER);
+    const [privacyDeletion] = await sql<{ linked: number; unlinked: number }[]>`
+      SELECT
+        count(*) FILTER (WHERE user_id = ${CONTACT_DELETE_USER}::uuid)::int AS linked,
+        count(*) FILTER (
+          WHERE idempotency_key = '14141414-1414-4414-8414-141414141414'::uuid
+        )::int AS unlinked
+      FROM contact_submission
+    `;
+    assert.deepEqual(privacyDeletion, { linked: 0, unlinked: 1 });
   } finally {
     await Promise.all(clients.map((client) => client.end()));
   }

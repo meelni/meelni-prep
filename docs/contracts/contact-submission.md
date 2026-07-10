@@ -32,6 +32,8 @@ Network retries reuse the same key while the payload is unchanged. Editing any f
 ## Persistence and triage
 
 - `persistence_state` is exactly `stored` in this slice.
+- An authenticated submission is linked to `user_id` only when the server-verified account email exactly matches the normalized form email. Account deletion removes only those linked rows; it never deletes another person's request merely because a form contained the account email.
+- Anonymous or mismatched-email submissions remain unlinked and require a separately verified privacy request from the submitting email address. Automated deletion by email alone is intentionally forbidden.
 - `triage_state` is `new`, `claimed`, or `resolved` and is independent of persistence.
 - Queue listing returns receipt, reason, triage state, and created time only.
 - Reading customer content requires an exact receipt plus a non-PII operator reference and writes an append-only `read` audit row.
@@ -39,8 +41,9 @@ Network retries reuse the same key while the payload is unchanged. Editing any f
 
 ## Abuse-control threat model
 
-Three fixed-hour PostgreSQL budgets are consumed in one transaction:
+Every request first consumes a separately committed trusted-client attempt budget, including exact replays and idempotency conflicts. A second transaction consumes accepted-submission budgets only for a new row:
 
+- trusted-edge client attempt HMAC: 60 requests/hour;
 - normalized email HMAC: 3 accepted requests/hour;
 - trusted-edge client-address HMAC: 10 accepted requests/hour;
 - emergency global HMAC: 10,000 accepted requests/hour.
@@ -49,13 +52,15 @@ The dedicated server-only HMAC secret prevents offline guessing of common email/
 
 Residual risks: distributed clients can rotate both IP and email; NAT users share a client budget; the high global ceiling is emergency containment, not primary abuse control. A CAPTCHA/WAF or authenticated support path is a separate decision. The global ceiling is deliberately high so it is not an easy site-wide denial lever.
 
+Relaunch remains gated until a trusted-edge WAF/bot-control policy covers distributed traffic; the database attempt budget is the durable application backstop, not a complete botnet defense.
+
 Limiter rows are operational security state, not support content or a contact-retention mechanism. An indexed, service-only cleanup function deletes at most 5,000 windows older than 24 hours per call with `SKIP LOCKED`.
 
 ## Logging and privacy
 
 Operational logs may contain only fixed event and result codes. They must not contain name, email, reason-associated subject, message, raw client address, provider response, request body, or validation payload. Receipt IDs may be used only in the private triage workflow, not routine logs or Linear evidence.
 
-Contact-content retention is intentionally not encoded by SAV-182. Product/Legal must accept a maximum retention and deletion process before launch; an arbitrary expiry timestamp would not itself delete data and must not be presented as policy.
+Contact-content retention is intentionally not encoded by SAV-182. The public policy precisely distinguishes account-linked deletion from separately verified communication deletion. Product/Legal must still accept a maximum ordinary retention period before launch; an arbitrary expiry timestamp would not itself delete data and must not be presented as policy.
 
 ## Rollout invariant
 

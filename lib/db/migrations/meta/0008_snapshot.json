@@ -1,5 +1,5 @@
 {
-  "id": "5aa22b5e-55f9-4ffd-8c52-73892467dda8",
+  "id": "0ac7b286-be4e-4e3f-8ea4-7ab31a7d3865",
   "prevId": "f708d09b-eb28-4f11-84c8-6bfc619798a4",
   "version": "7",
   "dialect": "postgresql",
@@ -289,6 +289,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "name": {
           "name": "name",
           "type": "text",
@@ -362,6 +368,21 @@
           "columns": [
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contact_submission_user_id_idx": {
+          "name": "contact_submission_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
