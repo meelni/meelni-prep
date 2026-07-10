@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +23,13 @@ import {
   FeedbackStatusPage,
 } from "@/components/feedback/feedback-surface";
 import { isFeedbackV2Item, projectFeedbackItems } from "@meelni/core";
+import {
+  createFeedbackPollBudget,
+  createFeedbackRecoveryCoordinator,
+} from "@/lib/utils/feedback-client-recovery";
+
+const FEEDBACK_POLL_INTERVAL_MS = 3000;
+const MAX_FEEDBACK_POLLS = 30;
 
 interface FeedbackData {
   id: string;
@@ -104,6 +111,23 @@ interface TranscriptResponse {
   turns: TranscriptTurn[];
 }
 
+async function requestFeedbackRecovery(
+  sessionId: string
+): Promise<FeedbackResponse> {
+  const response = await fetch(`/api/feedback/${sessionId}`, {
+    method: "POST",
+  });
+  const data = (await response
+    .json()
+    .catch(() => null)) as FeedbackResponse | null;
+  if (!response.ok || !data) {
+    throw new Error(
+      data?.message || "Feedback could not be queued. Please try again."
+    );
+  }
+  return data;
+}
+
 function LoadingSkeleton() {
   return (
     <FeedbackReviewShell
@@ -163,21 +187,16 @@ export default function FeedbackPage() {
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [autoRecovering, setAutoRecovering] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const recoveryCoordinator = useRef(createFeedbackRecoveryCoordinator());
+  const pollBudget = useRef(createFeedbackPollBudget(MAX_FEEDBACK_POLLS));
 
   const retryFeedback = async () => {
     setRetrying(true);
     setRetryError(null);
     try {
-      const response = await fetch(`/api/feedback/${sessionId}`, {
-        method: "POST",
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(
-          data?.message || "Feedback could not be queued. Please try again."
-        );
-      }
+      await requestFeedbackRecovery(sessionId);
       router.replace(`/feedback/${sessionId}/loading`);
     } catch (retryError) {
       setRetryError(
@@ -192,6 +211,20 @@ export default function FeedbackPage() {
 
   useEffect(() => {
     if (!sessionId) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const schedulePoll = () => {
+      if (!pollBudget.current.consume()) {
+        if (active) {
+          setError(
+            "Feedback is taking longer than expected. Return to the dashboard and check again shortly."
+          );
+        }
+        return;
+      }
+      timer = setTimeout(fetchFeedback, FEEDBACK_POLL_INTERVAL_MS);
+    };
 
     async function fetchFeedback() {
       try {
@@ -212,17 +245,55 @@ export default function FeedbackPage() {
           );
         }
 
-        setFeedbackData(data);
+        if (!active) return;
 
-        // If still processing, poll again
+        if (data.retryable === true) {
+          setAutoRecovering(true);
+          try {
+            const recovery = await recoveryCoordinator.current.attempt(
+              data,
+              () => requestFeedbackRecovery(sessionId)
+            );
+            if (!active) return;
+            if (recovery.disposition === "recovered") {
+              setFeedbackData(recovery.value);
+              pollBudget.current.reset();
+              if (
+                recovery.value.status === "settling" ||
+                recovery.value.status === "pending" ||
+                recovery.value.status === "processing"
+              ) {
+                schedulePoll();
+              } else if (recovery.value.status === "completed") {
+                timer = setTimeout(fetchFeedback, 0);
+              }
+            } else if (recovery.disposition === "already_attempted") {
+              setFeedbackData(data);
+            }
+          } catch (recoveryError) {
+            if (!active) return;
+            setFeedbackData(data);
+            setRetryError(
+              recoveryError instanceof Error
+                ? recoveryError.message
+                : "Feedback could not be queued. Please try again."
+            );
+          } finally {
+            if (active) setAutoRecovering(false);
+          }
+          return;
+        }
+
+        setFeedbackData(data);
         if (
           data.status === "settling" ||
           data.status === "pending" ||
           data.status === "processing"
         ) {
-          setTimeout(fetchFeedback, 3000); // Poll every 3 seconds
+          schedulePoll();
         }
       } catch (err) {
+        if (!active) return;
         setError(
           err instanceof Error ? err.message : "Failed to load feedback"
         );
@@ -232,6 +303,10 @@ export default function FeedbackPage() {
     }
 
     fetchFeedback();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
   }, [sessionId, router]);
 
   // Fetch transcript when expanded
@@ -269,7 +344,7 @@ export default function FeedbackPage() {
     });
   };
 
-  if (loading) {
+  if (loading || autoRecovering) {
     return <LoadingSkeleton />;
   }
 
@@ -290,10 +365,7 @@ export default function FeedbackPage() {
     );
   }
 
-  if (
-    feedbackData?.status === "missing" ||
-    (feedbackData?.status === "pending" && feedbackData.dispatch?.retryable)
-  ) {
+  if (feedbackData?.retryable === true) {
     return (
       <FeedbackStatusPage
         tone="warning"
