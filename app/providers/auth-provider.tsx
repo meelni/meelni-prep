@@ -35,7 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const supabase = createClient();
+  // A browser auth client owns subscriptions and in-flight session recovery.
+  // Keep one instance for this provider lifetime so state-driven renders do
+  // not restart initialization or duplicate auth listeners.
+  const [supabase] = useState(createClient);
 
   useEffect(() => {
     let active = true;
