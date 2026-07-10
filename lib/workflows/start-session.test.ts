@@ -629,6 +629,7 @@ test("startInterviewSessionWorkflow fails closed before reservation when trial a
         return {
           id: createProductSenseInterviewFixture().session.id,
           config: input.config,
+          startedAt: createProductSenseInterviewFixture().session.startedAt,
         };
       },
     })
