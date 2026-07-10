@@ -9,12 +9,12 @@ Use this skill before changing Meelni external systems. It records stable accoun
 
 ## Quick Anchors
 
-| System | Canonical target |
-| --- | --- |
-| Vercel | Project `meelni/meelni`; use `npx vercel@latest` device-flow login |
+| System | Canonical target                                                                            |
+| ------ | ------------------------------------------------------------------------------------------- |
+| Vercel | Project `meelni/meelni`; use `npx vercel@55.0.0` device-flow login                          |
 | Stripe | Account `acct_1SSreECdoT5hfbsF`; use Stripe CLI or Stripe MCP depending on read/write needs |
-| Linear | Use the product project/work tracked under `SAV-*` unless the user says otherwise |
-| Repo | `/Users/REDACTED/Desktop/Github/meelni-prep` for the Milni/Meelni product app |
+| Linear | Use the product project/work tracked under `SAV-*` unless the user says otherwise           |
+| Repo   | `/Users/REDACTED/Desktop/Github/meelni-prep` for the Milni/Meelni product app                   |
 
 ## Workflow
 
@@ -29,7 +29,7 @@ Use this skill before changing Meelni external systems. It records stable accoun
 
 ## Common Mistakes
 
-- Do not use deprecated Vercel login flags such as `--github`; use the OAuth device flow from `npx vercel@latest login`.
+- Do not use deprecated Vercel login flags such as `--github`; use the OAuth device flow from `npx vercel@55.0.0 login`.
 - Do not point Production Vercel at Stripe test prices.
 - Do not delete or archive legacy Stripe prices until live subscriptions are checked.
 - Do not assume connector tools can write; some MCPs are read/search only and require CLI or dashboard actions for mutations.

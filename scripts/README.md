@@ -1,36 +1,17 @@
 # Meelni Scripts
 
-This directory contains utility scripts for Google Sheets sync and Vercel deployment.
+This directory contains utility scripts for Google Sheets sync and local/CI operations.
 
 ## 🚀 Deployment Scripts
 
-### deploy.sh
+The legacy local Production deployment script was retired. Production changes
+must pass review and CI, then be promoted from the canonical `meelni/meelni`
+Vercel project so the account, project, commit, and environment remain visible.
 
-Automated deployment script with pre-flight checks for Vercel production.
-
-**Usage**:
-```bash
-./scripts/deploy.sh
-```
-
-**What it does**:
-1. Checks Vercel CLI installation
-2. Verifies authentication
-3. Runs build check
-4. Validates TypeScript
-5. Runs linter
-6. Deploys to production
-
-### setup-vercel-env.sh
-
-Automates adding environment variables to Vercel from `.env.local`.
-
-**Usage**:
-```bash
-./scripts/setup-vercel-env.sh
-```
-
-**Important**: After running, enable Preview/Development for `NEXT_PUBLIC_*` vars in Vercel Dashboard.
+Production environment variables must be configured per environment through
+the Vercel Dashboard or an explicitly scoped `vercel env add` command. The old
+helper that sourced `.env.local` and uploaded it wholesale to Production was
+retired because local files normally contain Preview or test credentials.
 
 ---
 
@@ -58,6 +39,7 @@ The sync service fetches interview questions from a Google Sheet and synchronize
    - Copy the generated URL
 
 2. **Add CSV URL to environment variables**:
+
    ```bash
    # .env.local
    GOOGLE_SHEET_CSV_URL=https://docs.google.com/spreadsheets/d/e/.../pub?output=csv
@@ -76,6 +58,7 @@ The sync service fetches interview questions from a Google Sheet and synchronize
    - Create API key (or service account credentials)
 
 2. **Add credentials to environment variables**:
+
    ```bash
    # .env.local
    GOOGLE_SHEETS_API_KEY=your_api_key_here
@@ -91,15 +74,15 @@ The sync service fetches interview questions from a Google Sheet and synchronize
 
 Your Google Sheet should have these columns (in this order):
 
-| Column | Name | Required | Notes |
-|--------|------|----------|-------|
-| A | Timestamp | No | Automatically added by Google Forms |
-| B | Company | No | Company name (e.g., "Meta", "Google") |
-| C | Question Text | **Yes** | The interview question |
-| D | Question Type | **Yes** | Must be one of the valid types (see below) |
-| E | Interview Type | No | Ignored by sync script |
-| F | Comments | No | Ignored by sync script |
-| G | Notes | No | Ignored by sync script |
+| Column | Name           | Required | Notes                                      |
+| ------ | -------------- | -------- | ------------------------------------------ |
+| A      | Timestamp      | No       | Automatically added by Google Forms        |
+| B      | Company        | No       | Company name (e.g., "Meta", "Google")      |
+| C      | Question Text  | **Yes**  | The interview question                     |
+| D      | Question Type  | **Yes**  | Must be one of the valid types (see below) |
+| E      | Interview Type | No       | Ignored by sync script                     |
+| F      | Comments       | No       | Ignored by sync script                     |
+| G      | Notes          | No       | Ignored by sync script                     |
 
 ### Valid Question Types
 
@@ -241,6 +224,7 @@ Mode: DRY RUN (no changes will be made)
 **Problem**: Can't fetch CSV from URL
 
 **Solution**:
+
 1. Verify sheet is published: File → Share → Publish to web
 2. Check the published URL ends with `?output=csv`
 3. Make sure sheet isn't private/restricted
@@ -250,6 +234,7 @@ Mode: DRY RUN (no changes will be made)
 **Problem**: Questions skipped due to invalid type
 
 **Solution**:
+
 - Check your sheet uses **exact** question type names (case-sensitive)
 - Valid types: `A/B Testing`, `Product design / strategy`, `Behavioral`, `Execution`, `Product Sense`, `Pricing`, `Estimation`, `Product Strategy`
 - Note: `Product design / strategy` (with space before slash) is automatically mapped to `Product design/strategy`
@@ -259,6 +244,7 @@ Mode: DRY RUN (no changes will be made)
 **Problem**: `Missing environment variables` error
 
 **Solution**:
+
 - For Method A: Set `GOOGLE_SHEET_CSV_URL` in `.env.local`
 - For Method B: Set `GOOGLE_SHEETS_API_KEY` and `GOOGLE_SHEET_ID` in `.env.local`
 
@@ -267,6 +253,7 @@ Mode: DRY RUN (no changes will be made)
 **Problem**: Can't connect to database
 
 **Solution**:
+
 - Verify `DATABASE_URL` is set in `.env.local`
 - Check database is accessible
 - Run `npm run db:push` to ensure schema is up to date
@@ -295,7 +282,7 @@ name: Sync Questions
 on:
   schedule:
     # Run every Monday at 9 AM UTC
-    - cron: '0 9 * * 1'
+    - cron: "0 9 * * 1"
   workflow_dispatch: # Allow manual trigger
 
 jobs:
@@ -306,7 +293,7 @@ jobs:
 
       - uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install dependencies
         run: npm ci
@@ -329,6 +316,7 @@ Don't forget to add secrets in GitHub: Settings → Secrets → Actions → New 
 ## Support
 
 For issues or questions:
+
 1. Check this README
 2. Review error messages (they're descriptive!)
 3. Run with `--dry-run --verbose` to debug

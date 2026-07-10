@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import Stripe from "stripe";
 import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
+import { isStripeLiveServerKey } from "@/lib/billing/stripe-key-mode";
 
 /**
  * POST /api/customer-portal
@@ -44,17 +45,23 @@ export async function POST(request: NextRequest) {
       await stripe.customers.retrieve(stripeCustomerId);
     } catch (stripeError) {
       // Customer doesn't exist in current mode (likely test customer ID with live keys)
-      console.error(`Stripe customer ${stripeCustomerId} not found:`, getErrorMessage(stripeError));
+      console.error(
+        `Stripe customer ${stripeCustomerId} not found:`,
+        getErrorMessage(stripeError)
+      );
 
       // Check if this is a mode mismatch (test customer with live keys or vice versa)
-      const isTestCustomer = stripeCustomerId.startsWith('cus_') && !stripeCustomerId.includes('live');
-      const isLiveMode = process.env.STRIPE_SECRET_KEY?.startsWith('sk_live');
+      const isTestCustomer =
+        stripeCustomerId.startsWith("cus_") &&
+        !stripeCustomerId.includes("live");
+      const isLiveMode = isStripeLiveServerKey(process.env.STRIPE_SECRET_KEY);
 
       if (isTestCustomer && isLiveMode) {
         return NextResponse.json(
           {
-            error: "Your subscription was created in test mode. Please create a new subscription to access the customer portal.",
-            code: "MODE_MISMATCH"
+            error:
+              "Your subscription was created in test mode. Please create a new subscription to access the customer portal.",
+            code: "MODE_MISMATCH",
           },
           { status: 400 }
         );
@@ -63,8 +70,9 @@ export async function POST(request: NextRequest) {
       // Generic customer not found error
       return NextResponse.json(
         {
-          error: "Stripe customer not found. Your subscription may need to be recreated.",
-          code: "CUSTOMER_NOT_FOUND"
+          error:
+            "Stripe customer not found. Your subscription may need to be recreated.",
+          code: "CUSTOMER_NOT_FOUND",
         },
         { status: 404 }
       );

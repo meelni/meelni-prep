@@ -5,6 +5,7 @@ import { subscription } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
+import { isStripeLiveServerKey } from "@/lib/billing/stripe-key-mode";
 
 /**
  * POST /api/billing/portal
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
       const isTestCustomer =
         sub.stripeCustomerId.startsWith("cus_") &&
         !sub.stripeCustomerId.includes("live");
-      const isLiveMode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_live");
+      const isLiveMode = isStripeLiveServerKey(process.env.STRIPE_SECRET_KEY);
 
       if (isTestCustomer && isLiveMode) {
         return NextResponse.json(

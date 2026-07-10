@@ -9,7 +9,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const requiredSupabaseEnv = [
   ["DATABASE_URL", "Database URL"],
   ["NEXT_PUBLIC_SUPABASE_URL", "Supabase URL"],
-  ["NEXT_PUBLIC_SUPABASE_ANON_KEY", "Supabase anon key"]
+  ["NEXT_PUBLIC_SUPABASE_ANON_KEY", "Supabase anon key"],
 ];
 
 const requiredTables = [
@@ -25,14 +25,14 @@ const requiredTables = [
   "usage_record",
   "payment_history",
   "stripe_event_log",
-  "stripe_customer_mapping"
+  "stripe_customer_mapping",
 ];
 
 const migrationFiles = [
   "lib/db/migrations/0000_many_nocturne.sql",
   "lib/db/migrations/0001_panoramic_otto_octavius.sql",
   "lib/db/migrations/0002_pricing_rls_policies.sql",
-  "supabase/migrations/apply_all_rls.sql"
+  "supabase/migrations/apply_all_rls.sql",
 ];
 
 export function checkRequiredSupabaseEnv(values) {
@@ -44,11 +44,17 @@ export function checkRequiredSupabaseEnv(values) {
     }
 
     if (key === "NEXT_PUBLIC_SUPABASE_URL" && !inferSupabaseProjectRef(value)) {
-      return fail(name, `${key} must look like https://<project-ref>.supabase.co.`);
+      return fail(
+        name,
+        `${key} must look like https://<project-ref>.supabase.co.`
+      );
     }
 
     if (key === "NEXT_PUBLIC_SUPABASE_ANON_KEY" && !looksLikeJwt(value)) {
-      return warn(name, `${key} is present but does not look like a Supabase JWT anon key.`);
+      return warn(
+        name,
+        `${key} is present but does not look like a Supabase JWT anon key.`
+      );
     }
 
     if (key === "DATABASE_URL" && !looksLikePostgresUrl(value)) {
@@ -60,8 +66,12 @@ export function checkRequiredSupabaseEnv(values) {
 }
 
 export function checkProjectAlignment(values) {
-  const supabaseRef = inferSupabaseProjectRef(getEnvValue(values, "NEXT_PUBLIC_SUPABASE_URL"));
-  const databaseRef = inferDatabaseProjectRef(getEnvValue(values, "DATABASE_URL"));
+  const supabaseRef = inferSupabaseProjectRef(
+    getEnvValue(values, "NEXT_PUBLIC_SUPABASE_URL")
+  );
+  const databaseRef = inferDatabaseProjectRef(
+    getEnvValue(values, "DATABASE_URL")
+  );
 
   if (!supabaseRef || !databaseRef) {
     return warn(
@@ -77,7 +87,10 @@ export function checkProjectAlignment(values) {
     );
   }
 
-  return pass("Supabase project alignment", `Both URLs point at project ${supabaseRef}.`);
+  return pass(
+    "Supabase project alignment",
+    `Both URLs point at project ${supabaseRef}.`
+  );
 }
 
 export function inferSupabaseProjectRef(value) {
@@ -97,13 +110,19 @@ export function inferDatabaseProjectRef(value) {
 
   try {
     const url = new URL(value);
-    const directHostMatch = url.hostname.match(/^db\.([a-z0-9-]+)\.supabase\.co$/);
+    const directHostMatch = url.hostname.match(
+      /^db\.([a-z0-9-]+)\.supabase\.co$/
+    );
     if (directHostMatch) return directHostMatch[1];
 
-    const poolerUserMatch = decodeURIComponent(url.username).match(/^postgres\.([a-z0-9-]+)$/);
+    const poolerUserMatch = decodeURIComponent(url.username).match(
+      /^postgres\.([a-z0-9-]+)$/
+    );
     if (poolerUserMatch) return poolerUserMatch[1];
 
-    const poolerHostMatch = url.hostname.match(/^([a-z0-9-]+)\.pooler\.supabase\.com$/);
+    const poolerHostMatch = url.hostname.match(
+      /^([a-z0-9-]+)\.pooler\.supabase\.com$/
+    );
     if (poolerHostMatch) return poolerHostMatch[1];
   } catch {
     return undefined;
@@ -114,8 +133,14 @@ export function inferDatabaseProjectRef(value) {
 
 export function checkServiceRole(values) {
   return getEnvValue(values, "SUPABASE_SERVICE_ROLE_KEY")
-    ? pass("Service role key", "SUPABASE_SERVICE_ROLE_KEY is present for server-only maintenance tasks.")
-    : warn("Service role key", "SUPABASE_SERVICE_ROLE_KEY is not set. Some admin/backfill tasks may need it.");
+    ? pass(
+        "Service role key",
+        "SUPABASE_SERVICE_ROLE_KEY is present for server-only maintenance tasks."
+      )
+    : warn(
+        "Service role key",
+        "SUPABASE_SERVICE_ROLE_KEY is not set. Some admin/backfill tasks may need it."
+      );
 }
 
 export function checkMigrationFiles(root = repoRoot) {
@@ -127,7 +152,9 @@ export function checkMigrationFiles(root = repoRoot) {
 }
 
 export function checkAuthCallbackRedirect(source) {
-  const readsRedirectTo = /searchParams\.get\(["']redirectTo["']\)/.test(source);
+  const readsRedirectTo = /searchParams\.get\(["']redirectTo["']\)/.test(
+    source
+  );
   const redirectsDashboardOnly = /redirect\([^)]*\/dashboard/.test(source);
 
   if (!readsRedirectTo || redirectsDashboardOnly) {
@@ -146,10 +173,16 @@ export function checkMiddlewareCoverage(source) {
   );
 
   if (missingRoutes.length > 0) {
-    return fail("Middleware protected routes", `Missing protected route(s): ${missingRoutes.join(", ")}.`);
+    return fail(
+      "Middleware protected routes",
+      `Missing protected route(s): ${missingRoutes.join(", ")}.`
+    );
   }
 
-  return pass("Middleware protected routes", "Dashboard, setup, and interview routes are protected.");
+  return pass(
+    "Middleware protected routes",
+    "Dashboard, setup, and interview routes are protected."
+  );
 }
 
 export async function runDatabaseChecks(databaseUrl) {
@@ -158,7 +191,7 @@ export async function runDatabaseChecks(databaseUrl) {
     max: 1,
     ssl: "require",
     connect_timeout: 8,
-    idle_timeout: 1
+    idle_timeout: 1,
   });
 
   try {
@@ -174,18 +207,34 @@ export async function runDatabaseChecks(databaseUrl) {
       GROUP BY tablename
     `;
 
-    const tableMap = new Map(tableRows.map((row) => [row.tablename, row.rowsecurity]));
-    const policyMap = new Map(policyRows.map((row) => [row.tablename, row.policy_count]));
-    const missingTables = requiredTables.filter((table) => !tableMap.has(table));
-    const rlsDisabled = requiredTables.filter((table) => tableMap.has(table) && !tableMap.get(table));
-    const missingPolicies = requiredTables.filter((table) => tableMap.has(table) && !policyMap.get(table));
+    const tableMap = new Map(
+      tableRows.map((row) => [row.tablename, row.rowsecurity])
+    );
+    const policyMap = new Map(
+      policyRows.map((row) => [row.tablename, row.policy_count])
+    );
+    const missingTables = requiredTables.filter(
+      (table) => !tableMap.has(table)
+    );
+    const rlsDisabled = requiredTables.filter(
+      (table) => tableMap.has(table) && !tableMap.get(table)
+    );
+    const missingPolicies = requiredTables.filter(
+      (table) => tableMap.has(table) && !policyMap.get(table)
+    );
 
     const results = [];
 
     results.push(
       missingTables.length === 0
-        ? pass("Database tables", `All ${requiredTables.length} expected auth/product tables exist.`)
-        : fail("Database tables", `Missing table(s): ${missingTables.join(", ")}.`)
+        ? pass(
+            "Database tables",
+            `All ${requiredTables.length} expected auth/product tables exist.`
+          )
+        : fail(
+            "Database tables",
+            `Missing table(s): ${missingTables.join(", ")}.`
+          )
     );
 
     results.push(
@@ -196,8 +245,14 @@ export async function runDatabaseChecks(databaseUrl) {
 
     results.push(
       missingPolicies.length === 0
-        ? pass("Database policies", "Expected tables have at least one RLS policy.")
-        : warn("Database policies", `No RLS policies found for: ${missingPolicies.join(", ")}.`)
+        ? pass(
+            "Database policies",
+            "Expected tables have at least one RLS policy."
+          )
+        : warn(
+            "Database policies",
+            `No RLS policies found for: ${missingPolicies.join(", ")}.`
+          )
     );
 
     return results;
@@ -205,8 +260,10 @@ export async function runDatabaseChecks(databaseUrl) {
     return [
       fail(
         "Database connection",
-        error instanceof Error ? error.message : "Could not connect to the configured database."
-      )
+        error instanceof Error
+          ? error.message
+          : "Could not connect to the configured database."
+      ),
     ];
   } finally {
     await sql.end({ timeout: 5 });
@@ -216,7 +273,7 @@ export async function runDatabaseChecks(databaseUrl) {
 export function summarizeResults(results) {
   return {
     failures: results.filter((result) => result.status === "fail").length,
-    warnings: results.filter((result) => result.status === "warn").length
+    warnings: results.filter((result) => result.status === "warn").length,
   };
 }
 
@@ -229,14 +286,19 @@ async function main() {
   results.push(
     existsSync(envPath)
       ? pass("Env file", ".env.local exists.")
-      : fail("Env file", ".env.local is missing. Run `npm run setup:local` or `npm run env:pull`.")
+      : fail(
+          "Env file",
+          ".env.local is missing. Run `npm run setup:local` or `npm run env:pull`."
+        )
   );
 
   results.push(...checkRequiredSupabaseEnv(values));
   results.push(checkProjectAlignment(values));
   results.push(checkServiceRole(values));
   results.push(...checkMigrationFiles(repoRoot));
-  results.push(checkAuthCallbackRedirect(readSource("app/auth/callback/route.ts")));
+  results.push(
+    checkAuthCallbackRedirect(readSource("app/auth/callback/route.ts"))
+  );
   results.push(checkMiddlewareCoverage(readSource("middleware.ts")));
 
   if (includeDb) {
@@ -245,7 +307,12 @@ async function main() {
       results.push(...(await runDatabaseChecks(databaseUrl)));
     }
   } else {
-    results.push(warn("Database checks", "Skipped live DB checks. Run `npm run auth:doctor:db` to verify schema and RLS."));
+    results.push(
+      warn(
+        "Database checks",
+        "Skipped live DB checks. Run `npm run auth:doctor:db` to verify schema and RLS."
+      )
+    );
   }
 
   console.log("Auth/Supabase doctor\n");
@@ -257,7 +324,9 @@ async function main() {
   console.log("");
 
   if (summary.failures > 0) {
-    console.log(`Doctor found ${summary.failures} failure(s) and ${summary.warnings} warning(s).`);
+    console.log(
+      `Doctor found ${summary.failures} failure(s) and ${summary.warnings} warning(s).`
+    );
     process.exit(1);
   }
 
@@ -309,6 +378,9 @@ function fail(name, message) {
   return { status: "fail", name, message };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   await main();
 }

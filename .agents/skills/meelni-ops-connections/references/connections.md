@@ -35,7 +35,7 @@ Canonical target:
 Auth:
 
 ```bash
-npx vercel@latest login
+npx vercel@55.0.0 login
 ```
 
 Use the OAuth device-flow URL/code printed by the CLI. Do not use deprecated email, `--github`, `--gitlab`, `--bitbucket`, `--oob`, or old team login flows.
@@ -43,26 +43,52 @@ Use the OAuth device-flow URL/code printed by the CLI. Do not use deprecated ema
 Verify:
 
 ```bash
-npx vercel@latest whoami
-npx vercel@latest link --yes --project meelni
-npx vercel@latest env ls
+npx vercel@55.0.0 whoami
+npx vercel@55.0.0 link --yes --project meelni
+npx vercel@55.0.0 env ls
 ```
 
-For local Codex worktrees, link the repo with `npx vercel@latest link --yes --project meelni`. The observed `meelnis` account behaves as the current personal scope, so passing `--scope meelnis` can be rejected by the Vercel CLI.
+For local Codex worktrees, link the repo with `npx vercel@55.0.0 link --yes --project meelni`. The observed `meelnis` account behaves as the current personal scope, so passing `--scope meelnis` can be rejected by the Vercel CLI.
 
 Fresh worktree setup should run `npm run setup:local`; when Vercel CLI auth is available, that setup path links the worktree and runs `npm run env:pull` if required env values are missing or still placeholders.
 
 Safe env operations:
 
 ```bash
-npx vercel@latest env add NAME preview --value "$VALUE" --yes --force
-npx vercel@latest env add NAME production --value "$VALUE" --yes --force
-npx vercel@latest env rm NAME preview --yes
+npx vercel@55.0.0 env add NAME preview --yes --force
+npx vercel@55.0.0 env add NAME production --yes --force
+npx vercel@55.0.0 env rm NAME preview --yes
 ```
+
+Scoped local refresh and verification:
+
+```bash
+npm run env:pull:preview
+npm run db:preflight:preview
+npm run env:pull:production
+npm run db:preflight:production
+```
+
+For a fresh unmarked file with several intentionally restored same-environment
+values, use `npm run env:adopt:preview` or `npm run env:adopt:production` only
+after verifying every provider account/mode. Adoption still requires the local
+database project to match the public Supabase project from the scoped Vercel
+pull; a database match by itself preserves only database/Supabase credentials.
 
 Guidelines:
 
 - List env names and target environments only; never print env values.
+- Enter secret values through the Vercel prompt or provider dashboard; never
+  pass them with `--value` because process arguments can be inspected locally.
+- Preview refresh writes only `.env.local`; Production refresh writes only
+  `.env.production.local`. The refresh validates Supabase project alignment and
+  atomically replaces a private `0600` file. It does not scrape deployed sites
+  or borrow values across environments.
+- Encrypted Vercel values can pull as present-but-blank. A usable value in the
+  same existing environment file is preserved. If none exists, restore or
+  rotate it from the provider dashboard and update the same Vercel environment;
+  never copy a Production database secret into Preview or paste a secret into
+  chat.
 - Preview/Development can use Stripe test keys and test price IDs.
 - Production must use live Stripe keys and live price IDs.
 - After env changes, redeploy the affected environment before assuming runtime behavior changed.
@@ -94,6 +120,7 @@ lk agent status --id CA_t3sKQEihMQ7x --project meelni
 ```
 
 Docs MCP:
+
 ```bash
 codex mcp add --url https://docs.livekit.io/mcp livekit-docs
 ```
@@ -128,7 +155,7 @@ Env and secrets:
 Operational notes:
 
 - If login redirects to `xxx.supabase.co`, local `.env.local` still has placeholder Supabase values.
-- Use `npm run setup:local` or run `npx vercel@latest link --yes --project meelni` from the worktree, then `npm run env:pull` to refresh local auth envs.
+- Use `npm run setup:local` or run `npx vercel@55.0.0 link --yes --project meelni` from the worktree, then `npm run env:pull` to refresh local auth envs.
 - Restart `npm run dev:local` after env changes so Next.js serves the updated public Supabase URL.
 
 ## Google Sheets
