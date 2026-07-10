@@ -6,10 +6,8 @@
  * - LLM crawlers (ChatGPT, Perplexity, Claude)
  * - Social platforms
  *
- * Implements:
- * - ItemList schema (for the question collection)
- * - BreadcrumbList schema (navigation hierarchy)
- * - WebPage schema (page metadata)
+ * The schema is intentionally limited to facts represented by the active
+ * public-question response and the visible Explore page.
  */
 
 interface Question {
@@ -36,13 +34,14 @@ export function ExploreStructuredData({
   totalQuestions,
 }: ExploreStructuredDataProps) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+  const pageCount = Math.max(1, totalPages);
 
   // 1. ItemList Schema - for the collection of questions
   const itemListSchema = {
     "@context": "https://schema.org",
     "@type": "ItemList",
     name: "Product Manager Interview Questions",
-    description: `Browse ${totalQuestions.toLocaleString()} real interview questions from top tech companies including Google, Meta, Amazon, and more.`,
+    description: `Browse ${totalQuestions.toLocaleString()} currently available PM practice questions by company and round type.`,
     numberOfItems: totalQuestions,
     itemListElement: questions.slice(0, 20).map((question, index) => ({
       "@type": "ListItem",
@@ -75,12 +74,12 @@ export function ExploreStructuredData({
     ],
   };
 
-  // 3. WebPage Schema with detailed metadata
+  // 3. WebPage Schema with API-derived count
   const webPageSchema = {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    name: "Explore Real PM Interview Questions",
-    description: `Browse and search through ${totalQuestions.toLocaleString()} real Product Manager interview questions from companies like Google, Meta, Amazon, Apple, and more.`,
+    name: "Explore PM Interview Practice Questions",
+    description: `Browse and search ${totalQuestions.toLocaleString()} currently available Product Manager practice questions by company and round type.`,
     url: `${baseUrl}/explore`,
     inLanguage: "en-US",
     isPartOf: {
@@ -92,55 +91,31 @@ export function ExploreStructuredData({
       "@type": "Organization",
       name: "Meelni",
       url: baseUrl,
-      logo: {
-        "@type": "ImageObject",
-        url: `${baseUrl}/logo.png`,
-      },
     },
   };
 
-  // 4. CollectionPage Schema (more specific than WebPage)
+  // 4. CollectionPage Schema
   const collectionPageSchema = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    name: `PM Interview Questions - Page ${currentPage} of ${totalPages}`,
-    description: "Searchable database of real Product Manager interview questions",
-    url: `${baseUrl}/explore`,
+    name: `PM Interview Questions - Page ${currentPage} of ${pageCount}`,
+    description:
+      "Browse PM practice questions organized by company tag and round type.",
+    url: `${baseUrl}/explore?page=${currentPage}`,
     about: {
       "@type": "Thing",
       name: "Product Manager Interviews",
-      description: "Interview questions for Product Manager roles at top technology companies",
+      description: "Practice prompts for Product Manager interviews",
     },
-    keywords: [
-      "product manager interview questions",
-      "PM interview prep",
-      "product sense questions",
-      "behavioral interview questions",
-      "execution interview questions",
-      "strategy interview questions",
-      "Google PM interview",
-      "Meta PM interview",
-      "Amazon PM interview",
-    ].join(", "),
   };
 
-  // 5. Dataset Schema (helps Google understand this as a structured data source)
+  // 5. Dataset Schema for the visible public collection
   const datasetSchema = {
     "@context": "https://schema.org",
     "@type": "Dataset",
     name: "Meelni PM Interview Question Database",
-    description: `Public collection of ${totalQuestions.toLocaleString()} Product Manager interview questions available in Meelni Explore.`,
+    description: `Question bank containing ${totalQuestions.toLocaleString()} currently available Product Manager practice questions.`,
     url: `${baseUrl}/explore`,
-    numberOfItems: totalQuestions,
-    keywords: [
-      "product manager",
-      "interview questions",
-      "product sense",
-      "behavioral",
-      "execution",
-      "strategy",
-      "PM interview",
-    ],
     creator: {
       "@type": "Organization",
       name: "Meelni",

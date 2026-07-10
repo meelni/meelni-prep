@@ -673,7 +673,7 @@ test("priority overlays use the shared overlay color token", async () => {
   const globals = await readFile("app/globals.css", "utf8");
   const files = [
     {
-      file: "components/explore/question-signin-modal.tsx",
+      file: "components/ui/dialog.tsx",
       required: "bg-overlay/80",
     },
     {
@@ -2273,7 +2273,7 @@ test("explore question surfaces use shared form and action primitives", async ()
     }
     if (
       file === "app/explore/page.tsx" &&
-      !content.includes("!loading && !loadError && totalQuestions > 0")
+      !content.includes("publicAvailability.totalQuestions !== null")
     ) {
       violations.push(`${file}:truthful-structured-data-gate`);
     }
@@ -2405,7 +2405,7 @@ test("contact page uses shared marketing and form primitives", async () => {
 });
 
 test("company detail page uses shared marketing article primitives", async () => {
-  const file = "app/companies/[slug]/page.tsx";
+  const file = "app/companies/[slug]/company-detail-client.tsx";
   const content = await readFile(file, "utf8");
   const violations = [];
 

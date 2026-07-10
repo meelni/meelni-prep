@@ -120,6 +120,13 @@ export const SETTINGS_DATA_CONTRACT: SettingsContractItem[] = [
   },
   {
     category: "data-privacy",
+    label: "Account data export",
+    source: "/api/user/export versioned account privacy contract",
+    action: "external",
+    shipsNow: true,
+  },
+  {
+    category: "data-privacy",
     label: "Account deletion",
     source: "/api/user/delete",
     action: "external",
@@ -138,7 +145,10 @@ export function normalizeDashboardSettings(
   };
 }
 
-export function initialsForUser(displayName?: string | null, email?: string | null) {
+export function initialsForUser(
+  displayName?: string | null,
+  email?: string | null
+) {
   const source = displayName || email || "User";
   const chunks = source.includes("@") ? [source] : source.split(/\s+/);
 
