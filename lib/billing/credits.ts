@@ -1898,17 +1898,21 @@ async function completeReservation({
   );
 
   if (!outcome.duplicate) {
-    trackTerminalSettlement({
-      transactionType,
-      userId: outcome.reservation.userId,
-      catalogId: outcome.firstGrant?.catalogId,
-      creditSource: outcome.firstGrant?.source,
-      credits: outcome.reservation.credits,
-      idempotencyKey,
-      sessionId: outcome.reservation.sessionId,
-      reservationId: outcome.reservation.id,
-      grantId: outcome.firstGrant?.id,
-    });
+    try {
+      trackTerminalSettlement({
+        transactionType,
+        userId: outcome.reservation.userId,
+        catalogId: outcome.firstGrant?.catalogId,
+        creditSource: outcome.firstGrant?.source,
+        credits: outcome.reservation.credits,
+        idempotencyKey,
+        sessionId: outcome.reservation.sessionId,
+        reservationId: outcome.reservation.id,
+        grantId: outcome.firstGrant?.id,
+      });
+    } catch {
+      console.error("billing_terminal_settlement_analytics_failed");
+    }
   }
 
   return {
