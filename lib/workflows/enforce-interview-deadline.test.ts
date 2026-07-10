@@ -247,6 +247,7 @@ function createDeps(
         roomName,
         disposition: "already_absent" as const,
       }),
+    markRoomCleanupComplete: async () => undefined,
     now: () => new Date(DEADLINE),
     ...overrides,
   };

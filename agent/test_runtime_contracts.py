@@ -40,6 +40,14 @@ from shared.transcript_events import (
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_interview_agent_keeps_room_io_open_for_reconnect_grace(self):
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+
+        self.assertIn(
+            "room_options=room_io.RoomOptions(close_on_disconnect=False)",
+            source,
+        )
+
     def test_parse_room_metadata_accepts_production_question_shape(self):
         metadata = parse_room_metadata(json.dumps({
             "contract_version": 1,

@@ -43,6 +43,7 @@ import {
   buildInterviewHrefWithoutQuestion,
   parseInterviewLaunchContext,
 } from "@/lib/navigation/interview-launch";
+import { getCanonicalInterviewHref } from "@/components/interview/session-recovery";
 
 export function SetupContent() {
   const { user, isLoading: authLoading } = useAuth();
@@ -401,7 +402,7 @@ export function SetupContent() {
         throw new Error(errorData.error || "Failed to start session");
       }
 
-      const { sessionId, token, url, roomName } = await response.json();
+      const { sessionId } = await response.json();
 
       const startSucceededProperties = {
         session_id: sessionId,
@@ -415,17 +416,9 @@ export function SetupContent() {
         startSucceededProperties
       );
 
-      // Navigate to interview page with session data
-      router.push(
-        "/interview?sessionId=" +
-          sessionId +
-          "&token=" +
-          encodeURIComponent(token) +
-          "&url=" +
-          encodeURIComponent(url) +
-          "&room=" +
-          roomName
-      );
+      // Keep room credentials out of browser history. The interview route
+      // authorizes this owned session and mints a fresh short-lived token.
+      router.push(getCanonicalInterviewHref(String(sessionId)));
     } catch (err) {
       console.error("Failed to start session:", err);
       const startFailedProperties = {
