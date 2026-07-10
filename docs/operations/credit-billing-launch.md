@@ -146,18 +146,18 @@ Credit enforcement checks:
 
 ## Analytics Events
 
-PostHog server events emitted by the credit ledger:
+Optional PostHog server events emitted only after current DB-backed account consent. Users are represented by server HMAC pseudonyms; operational identifiers remain in the ledger and are excluded from analytics.
 
-| Event                             | Key properties                                                                                         |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `billing_credit_granted`          | `catalog_id`, `credit_source`, `credits`, `balance_after`, `idempotency_key`, `source_id`, `duplicate` |
-| `billing_credit_reserved`         | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id`, `balance_after`              |
-| `billing_credit_consumed`         | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id`                               |
-| `billing_credit_released`         | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id`                               |
-| `billing_credit_refunded`         | `catalog_id`, `credit_source`, `credits`, `session_id`, `reservation_id`                               |
-| `billing_credit_expired`          | `catalog_id`, `credit_source`, `credits`, `grant_id`                                                   |
-| `billing_credit_rollover_created` | `catalog_id`, `credits`, `source_id`, `grant_id`, `duplicate`                                          |
-| `billing_no_credits`              | `credits`, `balance_after`, `session_id`, `reason`                                                     |
+| Event                             | Key properties                                                                               |
+| --------------------------------- | -------------------------------------------------------------------------------------------- |
+| `billing_credit_granted`          | `catalog_id`, `credit_source`, `transaction_type`, `credits`, `balance_after`, `duplicate`   |
+| `billing_credit_reserved`         | `catalog_id`, `credit_source`, `transaction_type`, `credits`, `balance_after`                |
+| `billing_credit_consumed`         | `catalog_id`, `credit_source`, `transaction_type`, `credits`, `balance_after`                |
+| `billing_credit_released`         | `catalog_id`, `credit_source`, `transaction_type`, `credits`, `balance_after`, `reason_code` |
+| `billing_credit_refunded`         | `catalog_id`, `credit_source`, `transaction_type`, `credits`, `balance_after`, `reason_code` |
+| `billing_credit_expired`          | `catalog_id`, `credit_source`, `transaction_type`, `credits`, `balance_after`                |
+| `billing_credit_rollover_created` | `catalog_id`, `credit_source`, `transaction_type`, `credits`, `balance_after`, `duplicate`   |
+| `billing_no_credits`              | `catalog_id`, `credits`, `balance_after`, `reason_code`                                      |
 
 Minimum launch dashboard questions:
 

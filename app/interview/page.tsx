@@ -173,7 +173,6 @@ function InterviewPageContent() {
 
       // Track interview started
       analytics.track("interview_started", {
-        session_id: data.sessionId,
         interview_type: roundType,
         mode: mode,
         skill_level: data.config?.difficulty,
@@ -210,7 +209,6 @@ function InterviewPageContent() {
 
       // Track interview started
       analytics.track("interview_started", {
-        session_id: sessionId ?? "",
         interview_type: normalizedSession.config.roundType,
         mode: normalizedSession.config.mode,
         skill_level: normalizedSession.config.difficulty,
@@ -437,7 +435,6 @@ function InterviewPageContent() {
       }
 
       analytics.track("interview_ended", {
-        session_id: activeSessionId,
         duration_seconds: duration,
         ended_naturally: true,
         interview_type: session?.config?.roundType,
@@ -523,7 +520,6 @@ function InterviewPageContent() {
         onHintModeChange={(mode) => {
           setHintMode(mode);
           analytics.track("hint_mode_changed", {
-            session_id: activeSessionId,
             hint_mode: mode,
             interview_type: session.config?.roundType,
           });
@@ -533,7 +529,6 @@ function InterviewPageContent() {
           setIsMuted(newMutedState);
           // Track mic toggle
           analytics.track("mic_toggled", {
-            session_id: sessionId ?? session.id,
             new_state: newMutedState ? "muted" : "unmuted",
           });
         }}
@@ -544,7 +539,6 @@ function InterviewPageContent() {
         onDismiss={() => {
           if (currentNudge) {
             analytics.track("hint_dismissed", {
-              session_id: activeSessionId,
               hint_type: currentNudge.type,
               hint_mode: hintMode,
             });

@@ -1,20 +1,31 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { analytics } from "@/lib/analytics/analytics-service";
 import {
   buildAuthCallbackHref,
   buildPasswordResetCallbackHref,
   type AuthHandoffContext,
 } from "@/lib/auth/auth-handoff";
 import { resolveAuthInitializationWithin } from "@/lib/auth/auth-initialization";
+import {
+  createAuthTransition,
+  type AuthTransition,
+} from "@/lib/analytics/auth-transition";
+import { analytics } from "@/lib/analytics/analytics-service";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
+  authTransition: AuthTransition | null;
   signInWithGoogle: (handoff?: Partial<AuthHandoffContext>) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (
@@ -35,6 +46,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authTransition, setAuthTransition] = useState<AuthTransition | null>(
+    null
+  );
+  const authTransitionSequenceRef = useRef(0);
+  const lastAuthTransitionKeyRef = useRef<string | null>(null);
+  const explicitSignOutRef = useRef(false);
   // A browser auth client owns subscriptions and in-flight session recovery.
   // Keep one instance for this provider lifetime so state-driven renders do
   // not restart initialization or duplicate auth listeners.
@@ -47,15 +64,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!active) return;
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
-
-      if (nextSession?.user) {
-        const provider = nextSession.user.app_metadata.provider;
-        analytics.identify(nextSession.user.id, {
-          email_domain: nextSession.user.email?.split("@")[1],
-          signup_method: provider === "google" ? "google" : "email",
-          created_at: nextSession.user.created_at,
-        });
-      }
     };
 
     // Get initial session
@@ -85,39 +93,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      const deferExplicitSignOut =
+        event === "SIGNED_OUT" && explicitSignOutRef.current;
+      if (!deferExplicitSignOut) {
+        setSession(session);
+        setUser(session?.user ?? null);
+      }
       setIsLoading(false);
 
-      // Track auth events
       if (event === "SIGNED_IN" && session?.user) {
-        const provider = session.user.app_metadata.provider;
-        const method = provider === "google" ? "google" : "email";
-
-        // Identify user
-        analytics.identify(session.user.id, {
-          email_domain: session.user.email?.split("@")[1],
-          signup_method: method,
-          created_at: session.user.created_at,
-        });
-
-        // Check if new user (created_at === last_sign_in_at within 5 seconds)
-        const createdAt = new Date(session.user.created_at).getTime();
-        const lastSignIn = session.user.last_sign_in_at
-          ? new Date(session.user.last_sign_in_at).getTime()
-          : createdAt;
-        const isNewUser = Math.abs(createdAt - lastSignIn) < 5000;
-
-        if (isNewUser) {
-          analytics.track("auth_signup_completed", {
-            method,
-          });
-        } else {
-          analytics.track("auth_signin_completed", {
-            method,
-          });
+        const transition = createAuthTransition(
+          session.user,
+          ++authTransitionSequenceRef.current
+        );
+        if (transition.dedupeKey !== lastAuthTransitionKeyRef.current) {
+          lastAuthTransitionKeyRef.current = transition.dedupeKey;
+          setAuthTransition(transition);
         }
-
         // Sync subscription status from Stripe on login
         // This ensures UI reflects current subscription state
         // (prevents issues where webhook failed or was delayed)
@@ -132,9 +124,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.error("Failed to sync subscription:", err);
             // Non-blocking - don't fail login if sync fails
           });
-      } else if (event === "SIGNED_OUT") {
-        analytics.track("auth_signout_completed", {});
-        analytics.reset();
       }
     });
 
@@ -211,18 +200,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
+    explicitSignOutRef.current = true;
+    let error: Error | null = null;
+    try {
+      const result = await supabase.auth.signOut();
+      error = result.error;
+    } catch (caught) {
+      explicitSignOutRef.current = false;
+      throw caught;
+    }
     if (error) {
+      explicitSignOutRef.current = false;
       console.error("Error signing out:", error);
       throw error;
     }
 
-    // Track sign out and reset analytics
     analytics.track("auth_signout_completed", {});
-    analytics.reset();
-
     setUser(null);
     setSession(null);
+    setAuthTransition(null);
+    explicitSignOutRef.current = false;
   };
 
   return (
@@ -231,6 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         session,
         isLoading,
+        authTransition,
         signInWithGoogle,
         signInWithEmail,
         signUpWithEmail,

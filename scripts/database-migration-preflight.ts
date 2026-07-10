@@ -8,6 +8,7 @@ import postgres from "postgres";
 import {
   ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
+  ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
@@ -97,9 +98,9 @@ async function run(url: string, environmentIdentity: string) {
         FROM drizzle.__drizzle_migrations
         ORDER BY created_at
       `;
-      if (![2, 6, 7, 8, 9].includes(migrations.length)) {
+      if (![2, 6, 7, 8, 9, 10].includes(migrations.length)) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, or 9 public-demo migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 public-demo, or 10 analytics-consent migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -247,7 +248,8 @@ async function run(url: string, environmentIdentity: string) {
         | "relaunch_reconciled"
         | "session_lifecycle"
         | "atomic_session_completion"
-        | "public_demo_limits";
+        | "public_demo_limits"
+        | "explicit_analytics_consent";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -269,8 +271,10 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "session_lifecycle";
       } else if (migrations.length === 8) {
         startingContract = "atomic_session_completion";
-      } else {
+      } else if (migrations.length === 9) {
         startingContract = "public_demo_limits";
+      } else {
+        startingContract = "explicit_analytics_consent";
       }
       if (migrations.length >= 6) {
         const expectedTableCount = migrations.length >= 9 ? 25 : 23;
@@ -294,7 +298,9 @@ async function run(url: string, environmentIdentity: string) {
               ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
               : migrations.length === 8
                 ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                : PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT;
+                : migrations.length === 9
+                  ? PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
+                  : ANALYTICS_CONSENT_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -372,15 +378,17 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 9
-            ? PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
-            : migrations.length === 8
-              ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-              : migrations.length === 7
-                ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                : migrations.length === 6
-                  ? RELAUNCH_SCHEMA_FINGERPRINT
-                  : "pending",
+          migrations.length === 10
+            ? ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
+            : migrations.length === 9
+              ? PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
+              : migrations.length === 8
+                ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                : migrations.length === 7
+                  ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                  : migrations.length === 6
+                    ? RELAUNCH_SCHEMA_FINGERPRINT
+                    : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }

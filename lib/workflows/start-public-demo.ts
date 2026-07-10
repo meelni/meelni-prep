@@ -13,6 +13,7 @@ import {
   type PublicDemoLimitScope,
 } from "@/lib/db/demo-rate-limits";
 import { trackServerEvent } from "@/lib/analytics/posthog-server";
+import type { AnalyticsConsentSnapshot } from "@/lib/analytics/consent-contract";
 
 export interface StartPublicDemoInput {
   sessionId: string;
@@ -22,6 +23,7 @@ export interface StartPublicDemoInput {
   deploymentScope: PublicDemoDeploymentScope;
   agentName: string;
   env: LiveKitEnvironment;
+  analyticsConsent?: AnalyticsConsentSnapshot;
 }
 
 export interface PublicDemoAuditEvent {
@@ -72,7 +74,7 @@ export type StartPublicDemoResult =
 
 export async function startPublicDemoWorkflow(
   input: StartPublicDemoInput,
-  deps: StartPublicDemoDeps = createStartPublicDemoDeps()
+  deps: StartPublicDemoDeps = createStartPublicDemoDeps(input.analyticsConsent)
 ): Promise<StartPublicDemoResult> {
   let reservation: Awaited<ReturnType<typeof reservePublicDemoSession>>;
   try {
@@ -213,14 +215,17 @@ export function getPublicDemoDeploymentScope(
   return "development";
 }
 
-function createStartPublicDemoDeps(): StartPublicDemoDeps {
+function createStartPublicDemoDeps(
+  consent?: AnalyticsConsentSnapshot
+): StartPublicDemoDeps {
   return {
     audit: (event) => {
       console.info("[PublicDemoAudit]", event);
-      trackServerEvent(
+      void trackServerEvent(
         "public_demo_authorization",
         { ...event },
-        "public-demo"
+        { anonymousId: "public-demo" },
+        consent
       );
     },
     completeSession: completePublicDemoSession,

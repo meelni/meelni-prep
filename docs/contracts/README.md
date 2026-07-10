@@ -16,3 +16,4 @@ Good candidates:
 - [account export, recent-auth deletion, and retention boundaries](./account-privacy.md);
 - subscription entitlement and usage quota states;
 - analytics event schemas.
+- [analytics consent and provider initialization](./analytics-consent.md).

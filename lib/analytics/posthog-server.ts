@@ -4,6 +4,15 @@
  */
 
 import { PostHog } from "posthog-node";
+import {
+  isCurrentAnalyticsAcceptance,
+  type AnalyticsConsentSnapshot,
+} from "./consent-contract";
+import {
+  sanitizeAnalyticsEventProperties,
+  sanitizeAnalyticsTraits,
+} from "./event-policy";
+import { createAnalyticsPseudonym } from "./pseudonym";
 
 let serverPostHog: PostHog | null = null;
 
@@ -12,24 +21,19 @@ let serverPostHog: PostHog | null = null;
  * Singleton pattern for server-side usage
  */
 export function getServerPostHog(): PostHog | null {
-  // Use server-side key (not exposed to client)
-  const apiKey = process.env.POSTHOG_SERVER_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY;
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
+  // PostHog capture uses the project API key (phc_), including on the server.
+  // Personal API keys (phx_) are for management APIs and must never be used as
+  // an ingestion token.
+  const apiKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  const host =
+    process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
   // Return null if no API key configured
   if (!apiKey) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn("[Analytics Server] PostHog server key not configured");
+      console.warn("[Analytics Server] PostHog project key not configured");
     }
     return null;
-  }
-
-  // Warn if using client key instead of server key
-  if (!process.env.POSTHOG_SERVER_KEY && process.env.NODE_ENV !== "production") {
-    console.warn(
-      "[Analytics Server] Using NEXT_PUBLIC_POSTHOG_KEY (client key) instead of POSTHOG_SERVER_KEY. " +
-        "Please set POSTHOG_SERVER_KEY for production."
-    );
   }
 
   // Return existing instance if already initialized
@@ -40,6 +44,13 @@ export function getServerPostHog(): PostHog | null {
   // Create new instance
   serverPostHog = new PostHog(apiKey, {
     host,
+    flushAt: 1,
+    flushInterval: 0,
+    requestTimeout: 2_000,
+    fetchRetryCount: 0,
+    preloadFeatureFlags: false,
+    disableRemoteConfig: true,
+    disableSurveys: true,
   });
 
   // Shutdown handler for graceful cleanup
@@ -61,11 +72,17 @@ export function getServerPostHog(): PostHog | null {
  * Track server-side event
  * Helper function for API routes
  */
-export function trackServerEvent(
+export async function trackServerEvent(
   event: string,
   properties: Record<string, unknown>,
-  distinctId?: string
-): void {
+  subject?: { anonymousId?: string; userId?: string },
+  consent?: AnalyticsConsentSnapshot
+): Promise<void> {
+  if (!consent || !isCurrentAnalyticsAcceptance(consent)) return;
+  const distinctId = subject?.userId
+    ? createAnalyticsPseudonym(subject.userId)
+    : (subject?.anonymousId ?? "anonymous");
+  if (!distinctId) return;
   const client = getServerPostHog();
 
   if (!client) {
@@ -73,10 +90,10 @@ export function trackServerEvent(
   }
 
   try {
-    client.capture({
-      distinctId: distinctId || "anonymous",
+    await deliverPostHogCapture(client, {
+      distinctId,
       event,
-      properties,
+      properties: sanitizeAnalyticsEventProperties(event, properties),
     });
   } catch (error) {
     console.error("[Analytics Server] Error tracking event:", error);
@@ -87,10 +104,14 @@ export function trackServerEvent(
  * Identify server-side user
  * Helper function for API routes
  */
-export function identifyServerUser(
+export async function identifyServerUser(
   userId: string,
-  properties?: Record<string, unknown>
-): void {
+  properties?: Record<string, unknown>,
+  consent?: AnalyticsConsentSnapshot
+): Promise<void> {
+  if (!consent || !isCurrentAnalyticsAcceptance(consent)) return;
+  const distinctId = createAnalyticsPseudonym(userId);
+  if (!distinctId) return;
   const client = getServerPostHog();
 
   if (!client) {
@@ -99,10 +120,32 @@ export function identifyServerUser(
 
   try {
     client.identify({
-      distinctId: userId,
-      properties,
+      distinctId,
+      properties: properties ? sanitizeAnalyticsTraits(properties) : undefined,
     });
+    await client.flush();
   } catch (error) {
     console.error("[Analytics Server] Error identifying user:", error);
   }
+}
+
+interface FlushablePostHogClient {
+  capture(message: {
+    distinctId: string;
+    event: string;
+    properties: Record<string, unknown>;
+  }): void;
+  flush(): Promise<unknown>;
+}
+
+export async function deliverPostHogCapture(
+  client: FlushablePostHogClient,
+  message: {
+    distinctId: string;
+    event: string;
+    properties: Record<string, unknown>;
+  }
+): Promise<void> {
+  client.capture(message);
+  await client.flush();
 }

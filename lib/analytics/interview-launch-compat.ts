@@ -1,15 +1,10 @@
 import { analytics } from "@/lib/analytics/analytics-service";
-import type { EventProperties } from "@/lib/analytics/types";
+import {
+  LEGACY_INTERVIEW_LAUNCH_EVENTS,
+  type EventProperties,
+} from "@/lib/analytics/types";
 
-export const LEGACY_INTERVIEW_LAUNCH_EVENTS = {
-  new_interview_launcher_viewed: "new_rep_launcher_viewed",
-  new_interview_recommendation_accepted:
-    "new_rep_recommendation_accepted",
-  new_interview_recommendation_changed: "new_rep_recommendation_changed",
-  new_interview_start_attempted: "new_rep_start_attempted",
-  new_interview_start_succeeded: "new_rep_start_succeeded",
-  new_interview_start_failed: "new_rep_start_failed",
-} as const;
+export { LEGACY_INTERVIEW_LAUNCH_EVENTS } from "@/lib/analytics/types";
 
 export type CanonicalInterviewLaunchEvent =
   keyof typeof LEGACY_INTERVIEW_LAUNCH_EVENTS;

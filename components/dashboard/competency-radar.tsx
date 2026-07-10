@@ -54,7 +54,6 @@ export function CompetencyRadar({ data }: CompetencyRadarProps) {
     analytics.track("chart_interacted", {
       chart_type: "competency_radar",
       interaction_type: "click",
-      data_point: `${data.length} competencies`,
     });
   };
 

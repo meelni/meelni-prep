@@ -23,9 +23,9 @@ import {
   ChevronRight as BreadcrumbArrow,
 } from "lucide-react";
 import { useDebounce } from "@/lib/hooks/use-debounce";
-import { usePostHog } from "posthog-js/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/providers/auth-provider";
+import { analytics } from "@/lib/analytics/analytics-service";
 import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
 import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
 import { resolveQuestionEntryAction } from "@/lib/navigation/question-auth-entry";
@@ -48,7 +48,6 @@ interface Question {
 const QUESTIONS_PER_PAGE = 20;
 
 export default function ExplorePage() {
-  const posthog = usePostHog();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -74,11 +73,11 @@ export default function ExplorePage() {
   // Track page view
   useEffect(() => {
     if (loadState === "success") {
-      posthog?.capture("explore_page_viewed", {
+      analytics.track("explore_page_viewed", {
         total_questions: totalQuestions,
       });
     }
-  }, [loadState, posthog, totalQuestions]);
+  }, [loadState, totalQuestions]);
 
   // Fetch questions
   useEffect(() => {
@@ -160,31 +159,28 @@ export default function ExplorePage() {
   // Track search queries
   useEffect(() => {
     if (debouncedSearchQuery && loadState === "success") {
-      posthog?.capture("explore_search", {
-        query_length: Math.min(debouncedSearchQuery.length, 200),
-        has_results: totalQuestions > 0,
+      analytics.track("explore_search", {
         results_count: totalQuestions,
       });
     }
-  }, [debouncedSearchQuery, loadState, posthog, totalQuestions]);
+  }, [debouncedSearchQuery, loadState, totalQuestions]);
 
   // Track filter changes
   useEffect(() => {
     if (selectedType !== "All Types" && loadState === "success") {
-      posthog?.capture("explore_filter_type", {
+      analytics.track("explore_filter_type", {
         filter_type: selectedType,
         results_count: totalQuestions,
       });
     }
-  }, [loadState, selectedType, posthog, totalQuestions]);
+  }, [loadState, selectedType, totalQuestions]);
 
   const handleQuestionClick = (
     question: Question,
     event: React.MouseEvent<HTMLButtonElement>
   ) => {
     // Track click
-    posthog?.capture("explore_question_clicked", {
-      question_id: question.id,
+    analytics.track("explore_question_clicked", {
       question_type: question.questionType,
       company: question.company,
       page: currentPage,
@@ -218,7 +214,7 @@ export default function ExplorePage() {
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     window.scrollTo(0, 0);
-    posthog?.capture("explore_page_changed", {
+    analytics.track("explore_page_changed", {
       page,
       total_pages: totalPages,
     });

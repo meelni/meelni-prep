@@ -77,11 +77,9 @@ export function ScoreChart({ data }: ScoreChartProps) {
     activePayload?: Array<{ payload?: ScoreDataPoint }>;
   }) => {
     if (dataPoint && dataPoint.activePayload) {
-      const point = dataPoint.activePayload[0]?.payload;
       analytics.track("chart_interacted", {
         chart_type: "score_chart",
         interaction_type: "click",
-        data_point: `${point?.date}: ${point?.score}`,
       });
     }
   };

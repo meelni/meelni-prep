@@ -3,6 +3,16 @@
  * Type-safe event tracking system for Meelni
  */
 
+export const LEGACY_INTERVIEW_LAUNCH_EVENTS = {
+  new_interview_launcher_viewed: "new_rep_launcher_viewed",
+  new_interview_recommendation_accepted:
+    "new_rep_recommendation_accepted",
+  new_interview_recommendation_changed: "new_rep_recommendation_changed",
+  new_interview_start_attempted: "new_rep_start_attempted",
+  new_interview_start_succeeded: "new_rep_start_succeeded",
+  new_interview_start_failed: "new_rep_start_failed",
+} as const;
+
 // =============================================================================
 // Event Names
 // =============================================================================
@@ -21,6 +31,13 @@ export type AnalyticsEvent =
   | "demo_mic_toggled"
   | "demo_failed"
   | "demo_conversion_clicked"
+  | "explore_page_viewed"
+  | "explore_cta_clicked"
+  | "explore_cta_dismissed"
+  | "explore_search"
+  | "explore_filter_type"
+  | "explore_question_clicked"
+  | "explore_page_changed"
   // Auth Events
   | "auth_signup_started"
   | "auth_signup_completed"
@@ -89,14 +106,19 @@ export type AnalyticsEvent =
  * Landing Page Event Properties
  */
 interface LandingPageProperties {
-  landing_page_viewed: {
-    referrer?: string;
-    utm_source?: string;
-    utm_medium?: string;
-    utm_campaign?: string;
+  explore_page_viewed: { total_questions: number };
+  explore_cta_clicked: { cta_position: number };
+  explore_cta_dismissed: { cta_position: number };
+  explore_search: { results_count: number };
+  explore_filter_type: { filter_type: string; results_count: number };
+  explore_question_clicked: {
+    question_type: string;
+    company: string | null;
+    page: number;
   };
+  explore_page_changed: { page: number; total_pages: number };
+  landing_page_viewed: Record<string, never>;
   cta_clicked: {
-    button_text: string;
     location: string;
     destination: string;
   };
@@ -119,7 +141,7 @@ interface LandingPageProperties {
   };
   demo_failed: {
     stage: string;
-    code: string;
+    error_code: string;
     retryable: boolean;
   };
   demo_conversion_clicked: {
@@ -141,7 +163,7 @@ interface AuthProperties {
   };
   auth_signup_failed: {
     method: "google" | "email";
-    error: string;
+    error_code: string;
   };
   auth_signin_started: {
     source?: string;
@@ -151,14 +173,12 @@ interface AuthProperties {
   };
   auth_signin_failed: {
     method: "google" | "email";
-    error: string;
+    error_code: string;
   };
   auth_signout_completed: Record<string, never>; // No properties
-  auth_password_reset_requested: {
-    email_domain?: string;
-  };
+  auth_password_reset_requested: Record<string, never>;
   auth_error: {
-    error_type: string;
+    error_code: string;
     auth_method: "google" | "email";
   };
 }
@@ -167,9 +187,6 @@ interface AuthProperties {
  * Setup Event Properties
  */
 interface InterviewLaunchAnalyticsContext {
-  focus?: string;
-  company?: string;
-  return_to?: string;
   entry_source?: "voice_demo";
 }
 
@@ -200,30 +217,24 @@ type InterviewStartAttemptedProperties = InterviewLaunchAnalyticsContext & {
   skill_level: string;
   recommendation_source: string;
   accepted_recommendation: boolean;
-  question_id?: string;
 };
 
 type InterviewStartSucceededProperties = InterviewLaunchAnalyticsContext & {
-  session_id: string;
   interview_type: string;
   skill_level: string;
-  question_id?: string;
 };
 
 type InterviewStartFailedProperties = InterviewLaunchAnalyticsContext & {
   interview_type: string | null;
   skill_level: string | null;
-  error: string;
+  error_code: string;
 };
 
 interface SetupProperties {
   setup_started: {
-    user_id: string;
-    referrer_page?: string;
     user_authenticated: boolean;
   };
   interview_type_selected: {
-    user_id: string;
     interview_type: "product_sense" | "behavioral" | "execution" | "strategy";
   };
   skill_level_selected: {
@@ -232,7 +243,6 @@ interface SetupProperties {
     is_default_selection: boolean;
   };
   setup_completed: {
-    user_id: string;
     interview_type: "product_sense" | "behavioral" | "execution" | "strategy";
     skill_level: "beginner" | "intermediate" | "advanced";
     mode: "voice_video";
@@ -258,40 +268,30 @@ interface SetupProperties {
  */
 interface InterviewProperties {
   interview_started: {
-    session_id: string;
     interview_type?: string;
     mode?: string;
     skill_level?: string;
   };
   interview_ended: {
-    session_id: string;
     duration_seconds: number;
     ended_naturally: boolean;
     interview_type?: string;
   };
   interview_completed: {
-    user_id: string;
-    session_id: string;
     duration_seconds: number;
     turn_count: number;
   };
   interview_error: {
-    user_id: string;
-    session_id?: string;
-    error_type: string;
-    error_message: string;
+    error_code: string;
   };
   mic_toggled: {
-    session_id: string;
     new_state: "muted" | "unmuted";
   };
   hint_mode_changed: {
-    session_id: string;
     hint_mode: "off" | "gentle" | "coach";
     interview_type?: string;
   };
   hint_dismissed: {
-    session_id: string;
     hint_type: string;
     hint_mode: "off" | "gentle" | "coach";
   };
@@ -311,25 +311,20 @@ interface DashboardProperties {
       | "questions";
   };
   ftue_cta_clicked: {
-    user_id?: string;
-    cta_text: string;
+    source?: string;
   };
-  ftue_viewed: {
-    user_id?: string;
-  };
+  ftue_viewed: Record<string, never>;
   session_history_viewed: {
     section: "history" | "overview";
     total_sessions: number;
     has_feedback: boolean;
   };
   session_details_clicked: {
-    session_id: string;
     interview_type: string;
     session_age_days: number;
     has_feedback: boolean;
   };
   feedback_viewed: {
-    session_id: string;
     feedback_available: boolean;
     overall_score?: number;
   };
@@ -340,7 +335,6 @@ interface DashboardProperties {
       | "stats_cards"
       | "interview_type_breakdown";
     interaction_type: "hover" | "click" | "expand";
-    data_point?: string;
     time_spent_seconds?: number;
   };
   competency_radar_viewed: {
@@ -390,12 +384,7 @@ interface BillingCreditProperties {
     | "rollover";
   credits?: number;
   balance_after?: number | null;
-  idempotency_key?: string;
-  source_id?: string | null;
-  session_id?: string | null;
-  grant_id?: string | null;
-  reservation_id?: string | null;
-  reason?: string;
+  reason_code?: string;
   duplicate?: boolean;
 }
 
@@ -412,16 +401,13 @@ interface PerformanceProperties {
     fcp?: number; // First Contentful Paint (ms)
   };
   livekit_connection_established: {
-    session_id: string;
     connection_time_ms: number;
     region?: string;
     connection_quality: "excellent" | "good" | "poor";
   };
   error_boundary_triggered: {
-    error_message: string;
-    component_stack?: string;
+    error_code: string;
     page: string;
-    user_action?: string;
   };
 }
 
@@ -446,15 +432,7 @@ export type EventProperties = LandingPageProperties &
  * Used with analytics.identify()
  */
 export interface UserTraits {
-  user_id: string;
-  email?: string; // Will be sanitized before sending
-  email_domain?: string; // Domain part of email (e.g., gmail.com)
-  name?: string;
-  created_at?: string;
-  signup_method?: "google" | "email"; // How the user signed up
-  total_sessions?: number;
-  avg_score?: number;
-  subscription_tier?: "free" | "pro";
+  signup_method?: "google" | "email";
 }
 
 // =============================================================================

@@ -871,15 +871,13 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
       setUrl(data.url);
       setDurationSeconds(data.durationSeconds ?? 120);
       setRecoveryReceipt(data.recoveryReceipt ?? null);
-    } catch (err) {
+    } catch {
       if (controller.signal.aborted && !requestTimedOut) return;
       analytics.track("demo_failed", {
         stage: "token_request",
-        code: requestTimedOut
+        error_code: requestTimedOut
           ? "token_request_timeout"
-          : err instanceof Error
-            ? err.message
-            : "unknown",
+          : "token_request_failed",
         retryable: true,
       });
       setError({
@@ -930,7 +928,7 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
       }
       analytics.track("demo_failed", {
         stage: "recovery_ack",
-        code: lastCode,
+        error_code: lastCode,
         retryable: true,
       });
     } finally {
@@ -941,7 +939,7 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
   const handleRuntimeError = useCallback((nextError: DemoStartError) => {
     analytics.track("demo_failed", {
       stage: "livekit_room",
-      code: nextError.title,
+      error_code: "livekit_runtime_error",
       retryable: true,
     });
     setToken("");
