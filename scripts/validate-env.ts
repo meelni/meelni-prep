@@ -4,6 +4,7 @@
  */
 
 import { isPlaceholderEnvValue } from "./local-env.mjs";
+import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-guard.mjs";
 
 interface EnvVarConfig {
   name: string;
@@ -34,7 +35,6 @@ const envVars: EnvVarConfig[] = [
     description: "Supabase anonymous key",
     pattern: /^eyJ.+/,
   },
-
   // LiveKit
   {
     name: "LIVEKIT_API_KEY",
@@ -65,7 +65,8 @@ const envVars: EnvVarConfig[] = [
   {
     name: "DEEPGRAM_API_KEY",
     required: false,
-    description: "Deepgram API key for direct Nova-3 access outside LiveKit inference",
+    description:
+      "Deepgram API key for direct Nova-3 access outside LiveKit inference",
   },
 
   // Stripe (Optional - only required if billing enabled)
@@ -138,13 +139,17 @@ function validateEnvironment(): ValidationResult {
 
     // Check if required variable is missing
     if (envVar.required && !value) {
-      errors.push(`❌ Missing required variable: ${envVar.name} - ${envVar.description}`);
+      errors.push(
+        `❌ Missing required variable: ${envVar.name} - ${envVar.description}`
+      );
       continue;
     }
 
     // Check if optional variable is missing
     if (!envVar.required && !value) {
-      warnings.push(`⚠️  Optional variable not set: ${envVar.name} - ${envVar.description}`);
+      warnings.push(
+        `⚠️  Optional variable not set: ${envVar.name} - ${envVar.description}`
+      );
       continue;
     }
 
@@ -156,8 +161,25 @@ function validateEnvironment(): ValidationResult {
     }
 
     if (value && isPlaceholderEnvValue(value)) {
-      errors.push(`❌ Placeholder value for ${envVar.name}: refresh .env.local with npm run env:pull`);
+      errors.push(
+        `❌ Placeholder value for ${envVar.name}: refresh .env.local with npm run env:pull`
+      );
     }
+  }
+
+  const environment = sharedEnvironment(process.env);
+  const vercelEnvironment = recognizedSharedEnvironment(process.env.VERCEL_ENV);
+  const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
+    databaseUrl: process.env.DATABASE_URL,
+    environment,
+    expectedEnvironment: vercelEnvironment ?? environment,
+    productionProjectRef: process.env.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF,
+    vercelEnvironment,
+  });
+  if (!identityPolicy.allowed) {
+    errors.push(
+      `❌ Invalid database environment identity: ${identityPolicy.reason}`
+    );
   }
 
   // Additional security checks
@@ -170,11 +192,16 @@ function validateEnvironment(): ValidationResult {
 
     // Warn if APP_URL is localhost in production
     if (process.env.NEXT_PUBLIC_APP_URL?.includes("localhost")) {
-      warnings.push("⚠️  NEXT_PUBLIC_APP_URL points to localhost in production");
+      warnings.push(
+        "⚠️  NEXT_PUBLIC_APP_URL points to localhost in production"
+      );
     }
 
     // Warn if using client PostHog key for server-side tracking
-    if (process.env.NEXT_PUBLIC_POSTHOG_KEY && !process.env.POSTHOG_SERVER_KEY) {
+    if (
+      process.env.NEXT_PUBLIC_POSTHOG_KEY &&
+      !process.env.POSTHOG_SERVER_KEY
+    ) {
       warnings.push(
         "⚠️  Using client PostHog key for server-side tracking. Set POSTHOG_SERVER_KEY for production."
       );
@@ -186,6 +213,19 @@ function validateEnvironment(): ValidationResult {
     errors,
     warnings,
   };
+}
+
+function recognizedSharedEnvironment(
+  value: string | undefined
+): "preview" | "production" | undefined {
+  return value === "preview" || value === "production" ? value : undefined;
+}
+
+function sharedEnvironment(
+  envSource: NodeJS.ProcessEnv
+): "preview" | "production" | undefined {
+  const marker = envSource.MEELNI_ENV_PULL_ENVIRONMENT ?? envSource.VERCEL_ENV;
+  return recognizedSharedEnvironment(marker);
 }
 
 // Run validation
@@ -210,5 +250,7 @@ if (result.errors.length > 0) {
 console.log("✅ All required environment variables are set and valid!\n");
 
 if (result.warnings.length > 0) {
-  console.log(`Note: ${result.warnings.length} warning(s) found. Review them before deployment.\n`);
+  console.log(
+    `Note: ${result.warnings.length} warning(s) found. Review them before deployment.\n`
+  );
 }

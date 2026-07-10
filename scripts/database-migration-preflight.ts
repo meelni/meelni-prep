@@ -15,6 +15,10 @@ import {
   RELAUNCH_SCHEMA_FINGERPRINT,
   SESSION_LIFECYCLE_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
+import {
+  canonicalEnvironmentForEnvFile,
+  getSupabaseEnvironmentIdentityPolicy,
+} from "./supabase-environment-guard.mjs";
 
 const envFile = process.env.MEELNI_ENV_FILE || ".env.local";
 const loadedEnv = config({
@@ -35,7 +39,27 @@ if (process.env.MEELNI_ENV_FILE) {
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is not configured");
 
-void run(databaseUrl)
+const selectedEnvironment = process.env.MEELNI_ENV_FILE
+  ? (loadedEnv.parsed ?? {})
+  : process.env;
+const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
+  databaseUrl,
+  environment: selectedEnvironment.MEELNI_ENV_PULL_ENVIRONMENT,
+  expectedEnvironment: canonicalEnvironmentForEnvFile(envFile),
+  productionProjectRef:
+    selectedEnvironment.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF,
+  vercelEnvironment: selectedEnvironment.VERCEL_ENV,
+});
+if (!identityPolicy.allowed || !identityPolicy.environmentIdentity) {
+  throw new Error(identityPolicy.reason);
+}
+if (!identityPolicy.local && !process.env.MEELNI_ENV_FILE) {
+  throw new Error(
+    "Remote database preflight requires an explicit MEELNI_ENV_FILE; use db:preflight:preview or db:preflight:production"
+  );
+}
+
+void run(databaseUrl, identityPolicy.environmentIdentity)
   .then(() => process.exit(0))
   .catch((error) => {
     console.error(
@@ -47,7 +71,7 @@ void run(databaseUrl)
     process.exit(1);
   });
 
-async function run(url: string) {
+async function run(url: string, environmentIdentity: string) {
   const parsed = new URL(url);
   const transactionPooler = parsed.port === "6543";
   if (transactionPooler) {
@@ -328,6 +352,7 @@ async function run(url: string) {
               ? "ready_for_session_lifecycle"
               : "reconciled",
         connectionMode: "direct_or_session",
+        environmentIdentity,
         migrationCount: migrations.length,
         startingContract,
         schemaContract:

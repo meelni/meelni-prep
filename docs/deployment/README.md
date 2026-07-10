@@ -107,6 +107,7 @@ Key variables:
 - `DATABASE_URL` - Supabase PostgreSQL connection string
 - `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key
+- `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF` - non-secret Production project ref used by shared database guards
 - `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` - LiveKit credentials
 - `NEXT_PUBLIC_LIVEKIT_URL` - LiveKit WebSocket URL
 - `OPENAI_API_KEY` - OpenAI API key for GPT-4.1-mini

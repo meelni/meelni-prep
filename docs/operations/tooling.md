@@ -31,6 +31,13 @@ It pulls into a private temporary file, validates the result, and atomically
 replaces the destination with mode `0600`; a failed pull leaves the existing
 file unchanged.
 
+Both Vercel environments must define the same non-secret
+`MEELNI_PRODUCTION_SUPABASE_PROJECT_REF`. Preview refreshes fail if their
+aligned Supabase project equals that declared Production ref; Production
+refreshes fail unless their aligned project matches it exactly. Missing,
+malformed, or ambiguous identity metadata fails before the destination file is
+replaced.
+
 Vercel can return a present but blank value for an encrypted secret. In that
 case the refresh preserves a usable value already present in the same
 environment file only when that file is already marked for the requested
@@ -92,6 +99,20 @@ explicitly:
 npm run env:pull:production
 npm run db:preflight:production
 ```
+
+Remote migrations use the matching scoped alias plus a separate explicit
+confirmation. The alias selects the env file but intentionally does not supply
+the confirmation itself:
+
+```bash
+MEELNI_ALLOW_REMOTE_MIGRATION=1 npm run db:migrate:preview
+MEELNI_ALLOW_REMOTE_MIGRATION=1 npm run db:migrate:production
+```
+
+The migration and preflight wrappers apply the same project identity rule as
+the pull. A Preview target can never equal the declared Production project,
+and a Production target must equal it. Loopback PostgreSQL URLs do not require
+shared-environment markers or a Production ref.
 
 ## Doctor
 

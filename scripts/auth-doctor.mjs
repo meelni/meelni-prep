@@ -3,6 +3,15 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { readEnvFile } from "./local-env.mjs";
+import {
+  inferDatabaseProjectRef,
+  inferSupabaseProjectRef,
+} from "./supabase-project-ref.mjs";
+
+export {
+  inferDatabaseProjectRef,
+  inferSupabaseProjectRef,
+} from "./supabase-project-ref.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -91,44 +100,6 @@ export function checkProjectAlignment(values) {
     "Supabase project alignment",
     `Both URLs point at project ${supabaseRef}.`
   );
-}
-
-export function inferSupabaseProjectRef(value) {
-  if (!value) return undefined;
-
-  try {
-    const url = new URL(value);
-    const match = url.hostname.match(/^([a-z0-9-]+)\.supabase\.co$/);
-    return match?.[1];
-  } catch {
-    return undefined;
-  }
-}
-
-export function inferDatabaseProjectRef(value) {
-  if (!value) return undefined;
-
-  try {
-    const url = new URL(value);
-    const directHostMatch = url.hostname.match(
-      /^db\.([a-z0-9-]+)\.supabase\.co$/
-    );
-    if (directHostMatch) return directHostMatch[1];
-
-    const poolerUserMatch = decodeURIComponent(url.username).match(
-      /^postgres\.([a-z0-9-]+)$/
-    );
-    if (poolerUserMatch) return poolerUserMatch[1];
-
-    const poolerHostMatch = url.hostname.match(
-      /^([a-z0-9-]+)\.pooler\.supabase\.com$/
-    );
-    if (poolerHostMatch) return poolerHostMatch[1];
-  } catch {
-    return undefined;
-  }
-
-  return undefined;
 }
 
 export function checkServiceRole(values) {
