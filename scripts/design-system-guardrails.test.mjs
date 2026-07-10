@@ -2345,7 +2345,7 @@ test("contact page uses shared marketing and form primitives", async () => {
 });
 
 test("company detail page uses shared marketing article primitives", async () => {
-  const file = "app/companies/[slug]/page.tsx";
+  const file = "app/companies/[slug]/company-detail-client.tsx";
   const content = await readFile(file, "utf8");
   const violations = [];
 

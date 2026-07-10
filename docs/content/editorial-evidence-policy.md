@@ -43,4 +43,4 @@ Sources should support the exact claim. A general careers page does not support 
 
 ## Enforcement
 
-The content-credibility contract rejects hardcoded legacy corpus totals and prevents company pages from rendering quarantined salary, process-duration, round-count, or difficulty fields. Preview review must still verify visible copy and schema after stacked SEO branches converge.
+The content-credibility contract rejects hardcoded legacy corpus totals, invented schema properties, unsupported published-article claim classes, and company-page use of quarantined salary, process-duration, round-count, or difficulty fields. Behavior tests operate on emitted schema and the exported published collection; source guards protect the route/component boundary. Preview review must still verify visible copy and schema after stacked SEO branches converge.

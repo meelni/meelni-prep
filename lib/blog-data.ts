@@ -4,6 +4,7 @@ export interface BlogPost {
   excerpt: string;
   author: string;
   date: string;
+  publishedAt: string;
   readTime: string;
   category: string;
   image?: string;
@@ -20,6 +21,7 @@ const allBlogPosts: BlogPost[] = [
       "A step-by-step breakdown of how to tackle this classic Meta Product Sense question, including framework, segmentation, and solution development with real PM thinking.",
     author: "Meelni Team",
     date: "November 20, 2025",
+    publishedAt: "2025-11-20",
     readTime: "12 min read",
     category: "Product Sense",
     content: `
@@ -250,6 +252,7 @@ Ready to practice your own Product Sense answer? [Try a mock interview with Meel
       "Work through this common Meta interview question with a structured example covering learner segmentation and knowledge retention.",
     author: "Meelni Team",
     date: "November 19, 2025",
+    publishedAt: "2025-11-19",
     readTime: "11 min read",
     category: "Product Sense",
     content: `
@@ -483,6 +486,7 @@ What aspects would you like me to elaborate on?"
       "A complete walkthrough of how to approach this Meta Analytical Thinking question, including North Star metrics, ecosystem mapping, and tradeoff analysis.",
     author: "Meelni Team",
     date: "November 18, 2025",
+    publishedAt: "2025-11-18",
     readTime: "10 min read",
     category: "Analytical Thinking",
     content: `
@@ -754,12 +758,14 @@ What aspects would you like me to dive deeper on?"
   },
   {
     id: "leadership-drive-failure-story",
+    published: false,
     title:
       "How to Answer: 'Tell Me About a Time You Failed' - Leadership & Drive",
     excerpt:
       "Work through this behavioral question with a STAR example covering ownership, growth, and Meta's leadership principles.",
     author: "Meelni Team",
     date: "November 17, 2025",
+    publishedAt: "2025-11-17",
     readTime: "9 min read",
     category: "Leadership",
     content: `
@@ -975,6 +981,7 @@ I'd love to hear about how Meta handles the tension between innovation and stabi
       "Case-style PM questions reveal how you structure ambiguous problems. Learn a durable practice method without assuming a company's current interview format.",
     author: "Meelni Team",
     date: "November 12, 2025",
+    publishedAt: "2025-11-12",
     readTime: "9 min read",
     category: "Interview Strategy",
     content: `
@@ -1248,21 +1255,22 @@ Our AI interviewer:
   },
   {
     id: "building-product-intuition",
-    title: "Building Product Intuition: The Daily Practice Top PMs Use",
+    title: "Building Product Intuition: A Daily Observation Practice",
     excerpt:
       "Product sense can improve through deliberate observation. Use this framework to practice noticing user needs, trade-offs, and product decisions.",
     author: "Meelni Team",
     date: "November 10, 2025",
+    publishedAt: "2025-11-10",
     readTime: "8 min read",
     category: "Product Sense",
     content: `
-# Building Product Intuition: The Daily Practice Top PMs Use
+# Building Product Intuition: A Daily Observation Practice
 
 "You just have really strong product sense."
 
 This is a common compliment after a successful product interview. But here's the truth: **Product sense isn't something you're born with—it's something you build.**
 
-PMs who develop strong product-interview instincts are often **systematically observant**. They learn to dissect the products they encounter, and over time, that practice builds pattern recognition.
+Systematic observation gives you more examples to draw from when discussing users, trade-offs, and product decisions. Over time, that practice can make product critique feel more natural.
 
 This post shares an observation framework that helps candidates develop stronger product intuition through deliberate practice.
 
@@ -1277,7 +1285,7 @@ The good news? You're already equipped to build this skill. You're a person. You
 
 ## The Product Critique Framework
 
-Every time you try a new app, visit a website, or experience any product, run through this framework. Do this 10 times and you'll start seeing patterns. After 50 times, your interviews will transform.
+Every time you try a new app, visit a website, or experience any product, run through this framework. Repeating the exercise helps you compare observations and notice patterns.
 
 ### Phase 1: Before You Even Open It
 
@@ -1332,7 +1340,7 @@ This phase teaches you about **user experience, activation, and first-run engage
 
 ### Phase 3: The Next 7 Days
 
-Most candidates stop their product critique after one use. The best candidates track **behavior over time**, because that's where retention and stickiness live.
+A first impression cannot show retention or habit formation. Track **behavior over time** to examine why people return or leave.
 
 **Usage Frequency:**
 - Did you open it again? When? Why?
@@ -1358,7 +1366,7 @@ This phase teaches you about **retention, stickiness, and product-market fit**�
 
 ### Phase 4: The Retrospective (6-12 Months Later)
 
-This is the phase that separates good PMs from great ones.
+This phase turns a prediction into a calibration exercise.
 
 **Were you right?**
 - Check back on your prediction. How'd you do?
@@ -1366,7 +1374,7 @@ This is the phase that separates good PMs from great ones.
 - How were your personal preferences different from the broader market?
 
 **Calibration:**
-Understanding where your taste diverges from the market is **crucial** for PM interviews. Interviewers want to know you can build for users who aren't like you.
+Understanding where your taste diverges from other users helps you avoid treating personal preference as universal evidence.
 
 Example: Maybe you hated an app's aggressive notifications, but it grew 10x because notifications drove retention for the target demographic (busy parents who needed reminders).
 
@@ -1383,9 +1391,9 @@ You've observed how your friend with a baby uses apps differently (one-handed, i
 **"Why did Product X fail?"**
 You've made predictions. You've been wrong. You've learned what actually matters vs. what sounds smart in theory.
 
-## The Meta Framework Connection
+## Connect Observations to an Interview Answer
 
-This critique framework directly maps to what Meta (and other top companies) test in product interviews:
+Use the observations to make each part of a product answer more concrete:
 
 **Product Motivation/Mission** → Clarity on value prop and market positioning
 **Target Audience** → User segmentation based on real behavior patterns
@@ -1406,36 +1414,29 @@ This critique framework directly maps to what Meta (and other top companies) tes
 
 Product critique builds intuition, but **product interviews test articulation**. You can have great insights but still bomb if you can't structure your thinking under pressure.
 
-That's where Meelni comes in. Our AI interviewer:
-- Asks real product sense questions
-- Pushes back when you jump to solutions too fast
-- Catches when you're not showing user empathy
-- Gives framework-based feedback on how you structured your answer
-
-The combination is powerful: **critique builds intuition, Meelni builds interview performance**.
+Meelni lets you choose a PM practice question, answer it out loud in a mock interview, and review feedback after the completed session. Use that feedback to choose the next part of your answer to practice.
 
 [Start practicing now](/dashboard/new-interview) and put your product observations to the test.
 
 ---
 
-*Remember: Great product intuition doesn't just happen. The best PMs have been watching and studying people—including themselves—for a long, long time. Start today.*
+*Remember: product intuition grows from noticing behavior, recording predictions, and revisiting what you got wrong. Start with one product today.*
     `,
   },
   {
     id: "mastering-product-sense-interviews",
-    title: "A Structured Approach to Product Sense Interviews",
+    title: "A Practical Framework for Product Sense Interviews",
     excerpt:
-      "A clear pattern emerges from successful product interviews: candidates who excel aren't lacking creativity—they're using structure. Here's a 5-step framework that works consistently across Meta, Google, and Amazon.",
+      "Use a five-step structure to clarify a product prompt, choose a user, identify needs, and prioritize a solution.",
     author: "Meelni Team",
     date: "November 8, 2025",
+    publishedAt: "2025-11-08",
     readTime: "6 min read",
     category: "Product Sense",
     content: `
-# A Structured Approach to Product Sense Interviews
+# A Practical Framework for Product Sense Interviews
 
-A clear pattern emerges from successful product interviews: candidates who struggle with product sense interviews aren't lacking creativity or product thinking—they're lacking **structure**.
-
-This post breaks down a five-step framework for organizing a Product Sense answer under interview pressure.
+Product sense prompts are broad. A simple structure can help you make assumptions explicit, keep the discussion connected to a user problem, and explain why you prioritize one solution.
 
 ## What Makes Product Sense So Hard?
 
@@ -1445,7 +1446,7 @@ The hard truth? **You need to think on your feet and respond quickly**. That's w
 
 ## The 5-Step Product Sense Framework
 
-Here's a framework refined from patterns observed across successful candidates:
+Here is one framework you can use and adapt:
 
 ### 1. **Clarify the Prompt**
 
@@ -1504,41 +1505,33 @@ Generate 3-5 solution ideas, then prioritize one using a consistent framework. H
 
 **Inconsistent prioritization:** If you pick "new parents" as your user segment because of high impact, don't then pick a solution optimized for "ease of implementation." Stay aligned.
 
-**Not checking in:** The best candidates make interviews conversational. Pause frequently, ask "Does that make sense?" or "Should I go deeper here?"
+**Not checking in:** Keep the discussion conversational. Pause at useful transitions and ask whether the interviewer wants more depth.
 
 ## How Meelni Helps You Practice This
 
-This is exactly why we built Meelni. You can't learn product sense by reading—you need **real interview practice**. Our AI interviewer:
-
-- Throws realistic product sense prompts at you
-- Adapts to your responses in real-time
-- Catches when you skip steps or lose thread
-- Provides framework-based feedback after each session
+Reading a framework is different from explaining a decision out loud. Meelni lets you choose a product sense prompt, complete a voice mock interview, and review feedback afterward.
 
 Ready to practice? [Start your first mock interview](/dashboard/new-interview).
 
 ---
 
-*Want the template? We've built this framework directly into Meelni's coaching system. Every product sense interview follows this structure, with real-time nudges when you veer off track.*
+*Treat the framework as scaffolding rather than a script. Keep the conversation responsive to the prompt and the user you chose.*
     `,
   },
   {
     id: "execution-interviews-metrics-that-matter",
     title: "Execution Interviews: The Metrics That Actually Matter",
     excerpt:
-      "Most candidates pick vanity metrics. Here's how to identify metrics that show you understand the business, backed by proven PM frameworks.",
+      "Learn a practical way to connect user value, input metrics, guardrails, and business outcomes in an execution answer.",
     author: "Meelni Team",
     date: "November 5, 2025",
+    publishedAt: "2025-11-05",
     readTime: "5 min read",
     category: "Execution",
     content: `
 # Execution Interviews: The Metrics That Actually Matter
 
-There's one mistake that shows up repeatedly in execution interviews: **picking vanity metrics**.
-
-A candidate will design a brilliant feature, lay out a solid roadmap, and then say something like: "We'll measure success with daily active users."
-
-The interviewer's face falls. Why? Because DAU doesn't tell you if your feature actually solved the problem.
+A metric is useful only when it helps evaluate the user or business outcome in the prompt. For example, daily active users alone may not show whether a specific feature solved its intended problem.
 
 ## What Execution Interviews Really Test
 
@@ -1577,7 +1570,7 @@ These ensure you're not breaking things while optimizing for your goal:
 
 ## The Goal-Setting Framework
 
-Here's a proven structure for setting meaningful goals:
+Here is one structure for setting meaningful goals:
 
 **1. Start with the user problem you're solving**
 
@@ -1620,54 +1613,50 @@ Every feature has costs. Show you understand:
 - Speed to market vs. quality
 - One user segment vs. another
 
-The best candidates say: "We could also do X, but I'm prioritizing Y because..."
+A clear answer states an alternative and explains why the chosen trade-off fits the goal.
 
 ## How to Practice Execution Thinking
 
 Execution interviews are learnable, but you need **feedback loops**. When you practice solo, you don't know if your metrics make sense or if you're optimizing for the wrong thing.
 
-That's why we built Meelni's execution mode:
-- You walk through goal-setting for realistic PM scenarios
-- Our AI pushes back when your metrics are vanity
-- You get post-session feedback on metric selection and trade-off reasoning
+Use a mock interview to practice explaining the goal, metric hierarchy, and trade-offs out loud. After a completed Meelni session, review the feedback and choose one part of the reasoning to tighten.
 
 [Try an execution interview now](/dashboard/new-interview) and see where you stand.
 
 ---
 
-*Remember: The interviewer isn't just evaluating your answer—they're evaluating how you think. Show them you understand the difference between activity and value, and you're already ahead of 80% of candidates.*
+*Remember: connect each metric to the user value or business outcome it is meant to represent.*
     `,
   },
   {
     id: "star-method-leadership-interviews",
-    title: "Beyond STAR: How Top PMs Tell Leadership Stories",
+    title: "Beyond STAR: Make Leadership Reasoning Visible",
     excerpt:
-      "STAR is table stakes. Here's an advanced storytelling framework that separates senior PM offers from 'not enough leadership' rejections.",
+      "Extend STAR with context, decision reasoning, trade-offs, and leadership impact so a behavioral answer is easier to evaluate.",
     author: "Meelni Team",
     date: "November 1, 2025",
+    publishedAt: "2025-11-01",
     readTime: "7 min read",
     category: "Leadership",
     content: `
-# Beyond STAR: How Top PMs Tell Leadership Stories
+# Beyond STAR: Make Leadership Reasoning Visible
 
 Every PM knows the STAR method: Situation, Task, Action, Result. It's the baseline for behavioral interviews.
 
-But a pattern emerges from senior PM interviews: **STAR alone doesn't cut it for L5+ roles**.
-
-Candidates who only use STAR get feedback like "not enough strategic thinking" or "didn't demonstrate senior-level leadership." Why? Because STAR is transactional—it describes what you did, not **how you think**.
+STAR can become a chronology that describes what happened without explaining **how you made decisions**. Adding context, alternatives, and trade-offs makes the reasoning easier to follow.
 
 This post shares a framework that transforms good STAR stories into compelling leadership narratives.
 
 ## The Problem with STAR at Senior Levels
 
-STAR works great for L3-L4 (APM, IC PM) roles because interviewers want to see you can execute. But senior roles require:
+Leadership stories can demonstrate several dimensions beyond execution:
 
 - **Strategic thinking** (why this problem, why now?)
 - **Stakeholder influence** (how did you build consensus?)
 - **Trade-off navigation** (what did you sacrifice?)
 - **Team development** (how did you grow others?)
 
-Standard STAR stories miss these dimensions entirely.
+A basic STAR answer may omit these dimensions unless you make them explicit.
 
 ## The STAR+ Framework for Senior PMs
 
@@ -1716,7 +1705,7 @@ Senior PMs rarely have direct reports. Show you can:
 **Story prompt:** "Tell me about a time you got buy-in for an unpopular decision"
 
 ### 2. **Strategic Trade-offs**
-L5+ roles require ruthless prioritization. Show you can:
+Practice explaining how you prioritize when several options are valuable:
 - Say no to good ideas
 - Balance short-term vs. long-term
 - Make decisions with incomplete data
@@ -1763,7 +1752,7 @@ Specificity builds credibility.
 
 ## How to Build Your Story Bank
 
-**You need 8-10 stories that cover all leadership dimensions**. Here's how:
+Build a small story bank that covers different leadership dimensions. Here is one approach:
 
 1. **Audit your experience** across these categories:
    - Cross-functional influence
@@ -1784,11 +1773,7 @@ Solo practice only gets you halfway. You need:
 - Follow-up questions that test your story depth
 - Feedback on whether you demonstrated senior-level thinking
 
-That's exactly what Meelni's Leadership & Drive mode does. Our AI interviewer:
-- Asks realistic behavioral questions
-- Probes for strategic thinking and trade-offs
-- Catches when you're being too tactical
-- Gives framework-based feedback
+Meelni lets you practice a behavioral prompt out loud in a voice mock interview and review feedback after the completed session.
 
 [Try a leadership interview now](/dashboard/new-interview) and see if your stories hold up.
 
