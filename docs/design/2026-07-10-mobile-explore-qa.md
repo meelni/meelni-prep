@@ -1,6 +1,6 @@
 # Mobile Explore Launch QA
 
-Status: verified implementation evidence for SAV-210
+Status: verified implementation evidence for SAV-210, re-audited after current-main convergence
 
 ## Scope
 
@@ -22,6 +22,11 @@ included:
 - a long Product Sense question that wraps across many lines;
 - realistic Execution and Behavioral questions;
 - dates and canonical four-round question types.
+
+The post-convergence re-audit used a disposable loopback PostgreSQL database
+with three local question rows and analytics keys disabled. It reproduced the
+same long-content and round-type cases without reading Preview or Production.
+The disposable database was dropped after verification.
 
 ## Viewport evidence
 
@@ -58,6 +63,7 @@ viewport, document scroll width equaled client width.
 - Fetch failures have an explicit retry path and never present an empty result
   as success.
 - JSON-LD is emitted only after a successful non-empty response.
+- Unverified `askedAt` freshness remains absent from the visible question rows.
 - Structured data contains ItemList, BreadcrumbList, WebPage, CollectionPage,
   and a minimal Dataset grounded in visible question text and the API total.
   It does not invent FAQ answers, freshness dates, authorship, coverage,
