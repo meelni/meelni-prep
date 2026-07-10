@@ -29,6 +29,7 @@ import {
   StatusPill,
 } from "@/components/ui/app-surface";
 import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
+import { compareTranscriptOrdering } from "@/lib/workflows/ingest-transcript-event";
 import { analytics } from "@/lib/analytics/analytics-service";
 import {
   deriveInterviewDeadlineAt,
@@ -124,6 +125,7 @@ function InterviewPageContent() {
   const [isMuted, setIsMuted] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
+  const endIntentRef = useRef(false);
   const [endSessionError, setEndSessionError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -378,10 +380,14 @@ function InterviewPageContent() {
       );
       return;
     }
+    if (endIntentRef.current) {
+      console.warn("[Interview] Ignoring transcript received after end intent");
+      return;
+    }
 
     // The LiveKit adapter rejects replayed packet identities before this
     // callback, so UI and persistence observe the same accepted turn exactly once.
-    setTranscript((prev) => [...prev, turn]);
+    setTranscript((prev) => [...prev, turn].sort(compareTranscriptOrdering));
 
     if (turn.persistable === false) {
       console.warn(
@@ -390,17 +396,19 @@ function InterviewPageContent() {
       return;
     }
 
+    if (!turn.event) {
+      console.warn(
+        "[Interview] Ignoring transcript turn without a canonical event"
+      );
+      return;
+    }
+
     // Save to database with automatic retry queue
     try {
       const result = await transcriptQueue.save({
+        ownerId: user!.id,
         sessionId: activeSessionId,
-        speaker: turn.speaker,
-        text: turn.text,
-        startedAt: turn.startedAt,
-        endedAt: turn.endedAt,
-        audioMs: turn.audioMs,
-        latencyMs: turn.latencyMs,
-        section: turn.section || undefined,
+        event: turn.event,
       });
 
       if (!result.success) {
@@ -667,6 +675,20 @@ function InterviewPageContent() {
     setIsEndingSession(true);
     setEndSessionError(null);
     try {
+      const transcriptSettlement = await transcriptQueue.flush(
+        user!.id,
+        activeSessionId,
+        5_000
+      );
+      if (!transcriptSettlement.settled) {
+        throw new Error(
+          transcriptSettlement.failed > 0
+            ? "We couldn't verify the complete transcript. You're still connected; please retry in a moment."
+            : "We're still saving your latest response. You're still connected; please retry in a moment."
+        );
+      }
+      endIntentRef.current = true;
+
       const duration = sessionStartTime
         ? (Date.now() - sessionStartTime) / 1000
         : 0;
@@ -705,6 +727,7 @@ function InterviewPageContent() {
         : `/feedback/${activeSessionId}/loading`;
       router.push(nextHref);
     } catch (error) {
+      endIntentRef.current = false;
       console.error("Failed to end session:", error);
       setEndSessionError(
         error instanceof Error

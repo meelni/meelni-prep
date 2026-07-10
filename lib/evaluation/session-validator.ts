@@ -94,10 +94,26 @@ export async function calculateSessionStats(
   // Fetch all transcript turns for this session
   const turns = await db.query.transcriptTurn.findMany({
     where: eq(transcriptTurn.sessionId, sessionId),
-    orderBy: [desc(transcriptTurn.startedAt)],
+    orderBy: [
+      desc(transcriptTurn.startedAt),
+      desc(transcriptTurn.writerId),
+      desc(transcriptTurn.sequence),
+      desc(transcriptTurn.eventId),
+      desc(transcriptTurn.id),
+    ],
   });
 
-  // Calculate statistics
+  return calculateSessionStatsFromTurns(turns);
+}
+
+export function calculateSessionStatsFromTurns(
+  turns: Array<{
+    speaker: string;
+    text: string | null;
+    startedAt: Date | null;
+    endedAt: Date | null;
+  }>
+): SessionStats {
   const totalTurns = turns.length;
   const userTurns = turns.filter((turn) => turn.speaker === "user").length;
 
@@ -108,18 +124,19 @@ export async function calculateSessionStats(
     return sum + words;
   }, 0);
 
-  // Calculate duration from first to last turn
-  let durationSeconds = 0;
-  if (turns.length > 0) {
-    const firstTurn = turns[turns.length - 1]; // oldest (sorted desc)
-    const lastTurn = turns[0]; // newest
-
-    if (firstTurn.startedAt && lastTurn.endedAt) {
-      const startTime = new Date(firstTurn.startedAt).getTime();
-      const endTime = new Date(lastTurn.endedAt).getTime();
-      durationSeconds = Math.floor((endTime - startTime) / 1000);
-    }
-  }
+  const startTimes = turns.flatMap((turn) =>
+    turn.startedAt ? [turn.startedAt.getTime()] : []
+  );
+  const endTimes = turns.flatMap((turn) =>
+    turn.endedAt ? [turn.endedAt.getTime()] : []
+  );
+  const durationSeconds =
+    startTimes.length > 0 && endTimes.length > 0
+      ? Math.max(
+          0,
+          Math.floor((Math.max(...endTimes) - Math.min(...startTimes)) / 1000)
+        )
+      : 0;
 
   // Count substantive responses (user turns with >10 words)
   const substantiveResponses = turns.filter((turn) => {
@@ -163,6 +180,10 @@ export async function validateSessionCompleteness(
   // Calculate session statistics
   const stats = await calculateSessionStats(sessionId);
 
+  return validateSessionStats(stats);
+}
+
+export function validateSessionStats(stats: SessionStats): SessionValidation {
   // Check for abandoned session (0 turns)
   if (stats.totalTurns === 0) {
     return {

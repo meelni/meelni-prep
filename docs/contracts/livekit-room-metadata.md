@@ -134,6 +134,6 @@ start/end timing and audio duration, a non-null section, and explicit delivery
 state across TypeScript and Python.
 
 A realtime data packet remains best-effort transport, not durable transcript
-storage. A turn counts as durable lifecycle signal only after persistence
-succeeds. Data-packet delivery can miss a temporarily disconnected receiver;
-reconnect and end workflows must not assume that every packet arrived.
+storage. A turn counts as durable lifecycle signal only after the authenticated
+endpoint verifies session/room correlation and acknowledges persistence.
+Reconnect and end workflows must not assume that every packet arrived.
