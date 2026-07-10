@@ -4,9 +4,10 @@ import { FeedbackSectionCard } from "@/components/feedback/feedback-surface";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, ArrowRight } from "lucide-react";
 import type { FeedbackItem } from "@/lib/types/feedback";
+import { isFeedbackV2Item, type FeedbackV2Item } from "@meelni/core";
 
 interface ImprovementsListProps {
-  improvements: (FeedbackItem | string)[];
+  improvements: (FeedbackItem | FeedbackV2Item | string)[];
 }
 
 export function ImprovementsList({ improvements }: ImprovementsListProps) {
@@ -25,9 +26,18 @@ export function ImprovementsList({ improvements }: ImprovementsListProps) {
       {improvements.map((improvement, index) => {
         // Handle both string array and object array formats
         const isString = typeof improvement === "string";
-        const text = isString ? improvement : improvement.text;
+        const isV2 = isFeedbackV2Item(improvement);
+        const text = isString
+          ? improvement
+          : isV2
+            ? improvement.observation
+            : improvement.text;
         const dimension = isString ? null : improvement.dimension;
-        const example = isString ? null : improvement.example;
+        const example = isString
+          ? null
+          : isV2
+            ? improvement.nextStep
+            : improvement.example;
 
         // Extract dimension label if available
         const dimensionLabel = dimension
