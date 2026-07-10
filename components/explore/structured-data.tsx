@@ -34,6 +34,7 @@ export function ExploreStructuredData({
   totalQuestions,
 }: ExploreStructuredDataProps) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+  const pageCount = Math.max(1, totalPages);
 
   // 1. ItemList Schema - for the collection of questions
   const itemListSchema = {
@@ -97,7 +98,7 @@ export function ExploreStructuredData({
   const collectionPageSchema = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    name: `PM Interview Questions - Page ${currentPage} of ${totalPages}`,
+    name: `PM Interview Questions - Page ${currentPage} of ${pageCount}`,
     description:
       "Browse PM practice questions organized by company tag and round type.",
     url: `${baseUrl}/explore?page=${currentPage}`,

@@ -33,3 +33,18 @@ test("Explore schema emits API-derived visible facts without invented claims", (
     /acceptedAnswer|FAQPage|author|dateModified|datePublished|aggregateRating|DataDownload|temporalCoverage|spatialCoverage|real .*asked at/i
   );
 });
+
+test("a verified empty collection never claims page one of zero", () => {
+  const html = renderToStaticMarkup(
+    <ExploreStructuredData
+      currentPage={1}
+      totalPages={0}
+      totalQuestions={0}
+      questions={[]}
+    />
+  );
+
+  assert.match(html, /0 currently available PM practice questions/);
+  assert.match(html, /Page 1 of 1/);
+  assert.doesNotMatch(html, /Page 1 of 0/);
+});

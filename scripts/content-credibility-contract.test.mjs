@@ -77,6 +77,26 @@ test("company pages keep volatile legacy fields outside presentation", async () 
   }
 
   assert.deepEqual(violations, []);
+
+  const listPage = await source("app/companies/page.tsx");
+  const detailPage = await source("app/companies/[slug]/page.tsx");
+  const detailClient = await source(
+    "app/companies/[slug]/company-detail-client.tsx"
+  );
+
+  assert.doesNotMatch(listPage, /^"use client";/);
+  assert.doesNotMatch(detailClient, /lib\/data\/companies|type\s+Company\b/);
+  assert.match(detailPage, /toPublicCompanyGuide\(company\)/);
+  assert.match(detailPage, /CompanyDetailClient company=\{publicCompany\}/);
+});
+
+test("Explore failures cannot emit exact-zero copy or schema", async () => {
+  const page = await source("app/explore/page.tsx");
+
+  assert.match(page, /resolvePublicQuestionAvailability/);
+  assert.match(page, /publicAvailability\.totalQuestions !== null/);
+  assert.match(page, /Questions are temporarily unavailable/);
+  assert.match(page, /setLoadState\("error"\)/);
 });
 
 test("unsupported company-process articles remain unpublished", async () => {

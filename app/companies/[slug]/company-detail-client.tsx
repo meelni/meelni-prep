@@ -1,6 +1,5 @@
 "use client";
 
-import type { Company } from "@/lib/data/companies";
 import { Button } from "@/components/ui/button";
 import {
   MarketingArticleHeader,
@@ -21,8 +20,13 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 import { Header } from "@/components/sections/header";
+import type { PublicCompanyGuide } from "@/lib/data/public-company";
 
-export function CompanyDetailClient({ company }: { company: Company }) {
+export function CompanyDetailClient({
+  company,
+}: {
+  company: PublicCompanyGuide;
+}) {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set()
   );
