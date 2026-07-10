@@ -1,0 +1,132 @@
+import {
+  deriveInterviewDeadlineAt,
+  isInterviewDeadlineReached,
+  normalizeInterviewDurationMinutes,
+  parseInterviewDeadlineAt,
+  serializeInterviewDeadlineAt,
+} from "@/lib/internal/core";
+import {
+  terminateInterviewRoom,
+  type LiveKitEnvironment,
+  type ProviderResult,
+  type TerminatedInterviewRoom,
+} from "@/lib/internal/integrations";
+import {
+  getInterviewDeadlineSession,
+  type InterviewDeadlineSession,
+} from "@/lib/db/session-deadlines";
+import {
+  endInterviewSessionWorkflow,
+  type EndInterviewSessionResult,
+} from "./end-interview-session";
+
+export interface EnforceInterviewDeadlineInput {
+  sessionId: string;
+  deadlineAt: unknown;
+  env: LiveKitEnvironment;
+}
+
+export interface EnforceInterviewDeadlineDeps {
+  getSession(sessionId: string): Promise<InterviewDeadlineSession | undefined>;
+  endSession(sessionId: string): Promise<EndInterviewSessionResult>;
+  terminateRoom(input: {
+    roomName: string;
+    env: LiveKitEnvironment;
+  }): Promise<ProviderResult<TerminatedInterviewRoom>>;
+  now(): Date;
+}
+
+export type EnforceInterviewDeadlineResult =
+  | {
+      ok: false;
+      disposition: "invalid_event" | "not_found" | "stale_event" | "not_due";
+    }
+  | {
+      ok: true;
+      disposition: "enforced";
+      completion: Extract<EndInterviewSessionResult, { ok: true }>;
+      room: TerminatedInterviewRoom | null;
+    };
+
+export async function enforceInterviewDeadlineWorkflow(
+  input: EnforceInterviewDeadlineInput,
+  deps: EnforceInterviewDeadlineDeps = createEnforceInterviewDeadlineDeps()
+): Promise<EnforceInterviewDeadlineResult> {
+  const requestedDeadline = parseInterviewDeadlineAt(input.deadlineAt);
+  if (!requestedDeadline) {
+    return { ok: false, disposition: "invalid_event" };
+  }
+
+  const session = await deps.getSession(input.sessionId);
+  if (!session?.startedAt) {
+    return { ok: false, disposition: "not_found" };
+  }
+
+  const config = isRecord(session.config) ? session.config : {};
+  const storedDeadline = deriveInterviewDeadlineAt({
+    startedAt: session.startedAt,
+    durationMinutes: normalizeInterviewDurationMinutes(config.duration),
+  });
+  if (
+    serializeInterviewDeadlineAt(requestedDeadline) !==
+    serializeInterviewDeadlineAt(storedDeadline)
+  ) {
+    return { ok: false, disposition: "stale_event" };
+  }
+  if (
+    !isInterviewDeadlineReached({ deadlineAt: storedDeadline, now: deps.now() })
+  ) {
+    return { ok: false, disposition: "not_due" };
+  }
+
+  let room: TerminatedInterviewRoom | null = null;
+  let roomTerminationError: { code: string } | null = null;
+  if (session.roomName) {
+    const terminated = await deps.terminateRoom({
+      roomName: session.roomName,
+      env: input.env,
+    });
+    if (terminated.ok) {
+      room = terminated.data;
+    } else {
+      roomTerminationError = { code: terminated.error.code };
+    }
+  }
+
+  const completion = await deps.endSession(input.sessionId);
+  if (!completion.ok) {
+    if (roomTerminationError) {
+      throw Object.assign(
+        new Error("LiveKit deadline room termination failed"),
+        { code: roomTerminationError.code }
+      );
+    }
+    return { ok: false, disposition: "not_found" };
+  }
+
+  if (roomTerminationError) {
+    throw Object.assign(new Error("LiveKit deadline room termination failed"), {
+      code: roomTerminationError.code,
+    });
+  }
+
+  return { ok: true, disposition: "enforced", completion, room };
+}
+
+export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDeps {
+  return {
+    getSession: getInterviewDeadlineSession,
+    endSession: (sessionId) =>
+      endInterviewSessionWorkflow({
+        sessionId,
+        actor: { type: "system", source: "hard_deadline" },
+        requestedTerminalReason: "time_limit",
+      }),
+    terminateRoom: terminateInterviewRoom,
+    now: () => new Date(),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}

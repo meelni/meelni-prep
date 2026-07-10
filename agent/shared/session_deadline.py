@@ -57,6 +57,16 @@ def normalize_deadline_at(value: Any) -> str | None:
     return serialize_deadline_at(parsed) if parsed is not None else None
 
 
+def is_deadline_reached(
+    deadline_at: datetime,
+    now: Clock = lambda: datetime.now(timezone.utc),
+) -> bool:
+    """Return whether an absolute deadline has arrived without clock coercion."""
+    deadline = _as_utc(deadline_at, "deadline_at")
+    current = _as_utc(now(), "now")
+    return current >= deadline
+
+
 class DeadlineEnforcer:
     """Share one immediate-close operation across duplicate watchdog tasks."""
 

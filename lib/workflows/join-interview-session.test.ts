@@ -152,6 +152,31 @@ test("join workflow rejects expired sessions even if their status was never fina
   }
 });
 
+test("join workflow allows one millisecond before the deadline and rejects at the deadline", async () => {
+  const session = createSession({
+    startedAt: new Date("2026-07-09T12:00:00.000Z"),
+    config: { duration: 30 },
+  });
+  const before = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () => session,
+      now: () => new Date("2026-07-09T12:29:59.999Z"),
+    })
+  );
+  const at = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () => session,
+      now: () => new Date("2026-07-09T12:30:00.000Z"),
+    })
+  );
+
+  assert.equal(before.ok, true);
+  assert.equal(at.ok, false);
+  if (!at.ok) assert.equal(at.body.error, "session_not_joinable");
+});
+
 test("join workflow rejects sessions without voice-room entitlement", async () => {
   for (const session of [
     createSession({ mode: "text" }),
