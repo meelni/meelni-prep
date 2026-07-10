@@ -84,6 +84,18 @@ export const interviewSession = pgTable(
     terminalReason: text("terminal_reason").$type<InterviewTerminalReason>(),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     endingAt: timestamp("ending_at", { withTimezone: true }),
+    reconnectDeadlineAt: timestamp("reconnect_deadline_at", {
+      withTimezone: true,
+    }),
+    roomCleanupPending: boolean("room_cleanup_pending")
+      .default(false)
+      .notNull(),
+    runtimeReadyAt: timestamp("runtime_ready_at", { withTimezone: true }),
+    lastTransportEventAt: timestamp("last_transport_event_at", {
+      withTimezone: true,
+    }),
+    lastTransportEventId: text("last_transport_event_id"),
+    lastTransportEventName: text("last_transport_event_name"),
     lastTransitionAt: timestamp("last_transition_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -139,6 +151,10 @@ export const interviewSession = pgTable(
     lifecycleStateTransitionIdx: index(
       "interview_session_lifecycle_state_transition_idx"
     ).on(table.lifecycleState, table.lastTransitionAt),
+    reconnectDeadlineIdx: index("interview_session_reconnect_deadline_idx").on(
+      table.lifecycleState,
+      table.reconnectDeadlineAt
+    ),
     userLifecycleStateIdx: index(
       "interview_session_user_lifecycle_state_idx"
     ).on(table.userId, table.lifecycleState),

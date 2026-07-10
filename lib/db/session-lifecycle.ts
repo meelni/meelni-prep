@@ -98,6 +98,7 @@ export function createDrizzleInterviewSessionLifecycleStore(
           ...(input.nextState === "active"
             ? {
                 activatedAt: sql`COALESCE(${interviewSession.activatedAt}, ${transitionedAt})`,
+                reconnectDeadlineAt: null,
               }
             : {}),
           ...(input.nextState === "ending"
@@ -109,6 +110,7 @@ export function createDrizzleInterviewSessionLifecycleStore(
             ? {
                 endingAt: sql`COALESCE(${interviewSession.endingAt}, ${transitionedAt})`,
                 endedAt: sql`COALESCE(${interviewSession.endedAt}, ${transitionedAt})`,
+                reconnectDeadlineAt: null,
               }
             : {}),
         })
