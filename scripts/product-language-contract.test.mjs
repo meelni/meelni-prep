@@ -5,16 +5,14 @@ import test from "node:test";
 
 const ROOT = process.cwd();
 const UI_ROOTS = ["app", "components"];
-const ACTIVE_GUIDANCE_ROOTS = [
-  ".agents/skills/meelni-product-strategy",
-  ".agents/skills/meelni-design-review-orchestrator",
-];
+const ACTIVE_GUIDANCE_ROOTS = [".agents/skills"];
 const ACTIVE_GUIDANCE_FILES = [
   "AGENTS.md",
   "DESIGN.md",
   ".claude/PRD.md",
   "openspec/config.yaml",
   "docs/operations/skills.md",
+  "docs/architecture/codebase-principles.md",
   "docs/SEO_QUICK_WINS.md",
 ];
 const SUPERSEDED_GUIDANCE_FILES = [
@@ -49,7 +47,9 @@ const PROHIBITION_CONTEXT =
 const MARKDOWN_LIST_ITEM = /^\s*(?:[-+*]|\d+[.)])\s+/;
 const FITNESS_LANGUAGE = /\b(?:gym|rep|reps|workout|workouts|drill|drills)\b/i;
 const UNSUPPORTED_FEEDBACK_TIMING =
-  /\b(?:real[- ]time|instant)\b.{0,30}\bfeedback\b|\bfeedback\b.{0,30}\b(?:real[- ]time|instant)\b/i;
+  /\b(?:real[- ]time|instant|immediate)\b.{0,30}\bfeedback\b|\bfeedback\b.{0,30}\b(?:real[- ]time|instant|immediate)\b/i;
+const LEGACY_COMPATIBILITY_CONTEXT =
+  /\b(?:legacy|compatibility|compatible|identifier|field|schema)\b/i;
 const FORBIDDEN_CANONICAL_CLAIMS = [
   ["fitness positioning", /PM(?:-focused)? interview gym|live voice reps/i],
   ["legacy launch action", /\bNew Rep\b/i],
@@ -239,13 +239,25 @@ test("canonical product guidance no longer defines Meelni as a gym", async () =>
   assert.deepEqual(violations, []);
 });
 
-test("canonical product strategy guidance uses focused-practice vocabulary", async () => {
-  const files = await markdownFiles(".agents/skills/meelni-product-strategy");
+test("active product guidance uses focused-practice vocabulary", async () => {
+  const files = [
+    ...ACTIVE_GUIDANCE_FILES,
+    ...(await Promise.all(ACTIVE_GUIDANCE_ROOTS.map(markdownFiles))).flat(),
+  ];
   const violations = [];
 
   for (const file of files) {
     const source = await readFile(path.join(ROOT, file), "utf8");
-    if (FITNESS_LANGUAGE.test(source)) violations.push(file);
+    const lines = source.split("\n");
+    for (const [index, line] of lines.entries()) {
+      if (
+        FITNESS_LANGUAGE.test(line) &&
+        !hasProhibitionContext(lines, index) &&
+        !LEGACY_COMPATIBILITY_CONTEXT.test(line)
+      ) {
+        violations.push(`${file}:${index + 1}`);
+      }
+    }
   }
 
   assert.deepEqual(violations, []);
@@ -266,13 +278,17 @@ test("compatibility fields are ignored without hiding customer-facing copy", () 
   );
 });
 
-test("feedback timing guard rejects real-time and instant product claims", () => {
+test("feedback timing guard rejects real-time, instant, and immediate product claims", () => {
   assert.match(
     "Get real-time feedback after every interview.",
     UNSUPPORTED_FEEDBACK_TIMING
   );
   assert.match(
     "Instant feedback on your PM answer.",
+    UNSUPPORTED_FEEDBACK_TIMING
+  );
+  assert.match(
+    "Focused practice with immediate feedback.",
     UNSUPPORTED_FEEDBACK_TIMING
   );
   assert.doesNotMatch(
