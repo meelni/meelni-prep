@@ -98,6 +98,10 @@ import {
   getLiveKitAgentName,
   getLiveKitEnvironment,
 } from "@/lib/internal/integrations";
+import {
+  readOperationalRequestId,
+  reportOperationalFailure,
+} from "@/lib/operations/operational-events";
 import { startInterviewSessionWorkflow } from "@/lib/workflows/start-session";
 
 export async function POST(req: NextRequest) {
@@ -118,10 +122,13 @@ export async function POST(req: NextRequest) {
     // Validate required environment variables
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (!livekitEnv.ok) {
-      console.error(
-        "Missing LiveKit environment variables:",
-        livekitEnv.error.message
-      );
+      reportOperationalFailure({
+        operation: "interview_start",
+        errorCode: "livekit_config_missing",
+        severity: "critical",
+        retryable: false,
+        requestId: readOperationalRequestId(req),
+      });
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
@@ -130,10 +137,13 @@ export async function POST(req: NextRequest) {
 
     const interviewAgentName = getLiveKitAgentName("interview", process.env);
     if (!interviewAgentName.ok) {
-      console.error(
-        "Missing LiveKit interview agent name:",
-        interviewAgentName.error.message
-      );
+      reportOperationalFailure({
+        operation: "interview_start",
+        errorCode: "livekit_agent_config_missing",
+        severity: "critical",
+        retryable: false,
+        requestId: readOperationalRequestId(req),
+      });
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
@@ -152,12 +162,26 @@ export async function POST(req: NextRequest) {
     });
 
     if (!result.ok) {
+      if (result.status >= 500) {
+        reportOperationalFailure({
+          operation: "interview_start",
+          errorCode: "interview_start_rejected",
+          retryable: true,
+          requestId: readOperationalRequestId(req),
+        });
+      }
       return NextResponse.json(result.body, { status: result.status });
     }
 
     return NextResponse.json(result.body);
-  } catch (error) {
-    console.error("Error starting session:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "interview_start",
+      errorCode: "interview_start_failed",
+      severity: "critical",
+      retryable: true,
+      requestId: readOperationalRequestId(req),
+    });
     return NextResponse.json(
       { error: "Failed to start session" },
       { status: 500 }

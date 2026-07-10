@@ -17,6 +17,10 @@ import {
   getStripeCatalogIdForPrice,
   isStripeCheckoutCatalogId,
 } from "@/lib/billing/stripe-catalog";
+import {
+  readOperationalRequestId,
+  reportOperationalFailure,
+} from "@/lib/operations/operational-events";
 
 /**
  * Stripe Webhook Handler with Idempotency
@@ -47,8 +51,14 @@ export async function POST(req: NextRequest) {
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-    } catch (err) {
-      console.error("Webhook signature verification failed:", err);
+    } catch {
+      reportOperationalFailure({
+        operation: "stripe_webhook",
+        errorCode: "stripe_signature_invalid",
+        severity: "warning",
+        retryable: false,
+        requestId: readOperationalRequestId(req),
+      });
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
@@ -69,7 +79,6 @@ export async function POST(req: NextRequest) {
 
       // If already processed, return success (idempotent)
       if (eventLog.status === "processed") {
-        console.log(`Event ${event.id} already processed, skipping`);
         return NextResponse.json({
           received: true,
           status: "already_processed",
@@ -150,7 +159,7 @@ export async function POST(req: NextRequest) {
           break;
 
         default:
-          console.log(`Unhandled event type: ${event.type}`);
+          break;
       }
 
       // Mark event as processed
@@ -175,8 +184,14 @@ export async function POST(req: NextRequest) {
 
       throw error;
     }
-  } catch (error) {
-    console.error("Webhook error:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "stripe_webhook",
+      errorCode: "stripe_webhook_failed",
+      severity: "critical",
+      retryable: true,
+      requestId: readOperationalRequestId(req),
+    });
     return NextResponse.json(
       { error: "Webhook handler failed" },
       { status: 500 }
@@ -264,9 +279,6 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 
   // Prevent stale updates: Only process if event is newer than last processed event
   if (lastEventTime && eventTimestamp <= lastEventTime) {
-    console.log(
-      `Skipping stale event ${event.id} (${eventTimestamp} <= ${lastEventTime})`
-    );
     return;
   }
 
@@ -374,9 +386,6 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
   const catalogId = session.metadata?.catalogId;
 
   if (!userId || !catalogId || !isStripeCheckoutCatalogId(catalogId)) {
-    console.warn("Missing Checkout metadata for credit grant", {
-      sessionId: session.id,
-    });
     return;
   }
 
@@ -439,7 +448,6 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
     : invoice.metadata?.userId;
 
   if (!userId) {
-    console.warn("Missing userId in invoice metadata");
     return;
   }
 
@@ -506,7 +514,6 @@ async function handlePaymentFailed(event: Stripe.Event) {
     : invoice.metadata?.userId;
 
   if (!userId) {
-    console.warn("Missing userId in invoice metadata");
     return;
   }
 
@@ -563,8 +570,7 @@ async function handleTrialWillEnd(event: Stripe.Event) {
     throw new Error("Missing userId in subscription metadata");
   }
 
-  // TODO: Send trial ending email notification (Phase 1)
-  console.log(`Trial ending soon for user ${userId}`);
+  // TODO: Send trial ending email notification (Phase 1).
 }
 
 /**
@@ -577,7 +583,6 @@ async function handleRefund(event: Stripe.Event) {
   const paymentIntentId = charge.payment_intent as string;
 
   if (!paymentIntentId) {
-    console.warn("Missing payment_intent in refund event");
     return;
   }
 

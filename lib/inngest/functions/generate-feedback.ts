@@ -14,6 +14,10 @@ import {
 import { generateFeedback as generateFeedbackWithGPT4 } from "@/lib/evaluation/scorer";
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import { resolveFeedbackGenerationEligibility } from "@/lib/workflows/feedback-generation-evidence";
+import {
+  readOpaqueCorrelationId,
+  reportOperationalFailure,
+} from "@/lib/operations/operational-events";
 
 /**
  * Feedback generation event payload
@@ -90,6 +94,13 @@ export const generateFeedback = inngest.createFunction(
       const failedEvent = event.data.event;
       const sessionId = String(failedEvent.data?.sessionId ?? "");
       const eventId = String(failedEvent.id ?? "");
+      reportOperationalFailure({
+        operation: "feedback_queue",
+        errorCode: "feedback_dispatch_exhausted",
+        severity: "critical",
+        retryable: false,
+        correlationId: readOpaqueCorrelationId(sessionId),
+      });
       if (!sessionId || !eventId) return;
       await step.run("mark-feedback-generation-exhausted", async () => {
         await db

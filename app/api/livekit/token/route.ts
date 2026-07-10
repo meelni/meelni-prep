@@ -9,10 +9,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
+import {
+  readOpaqueCorrelationId,
+  readOperationalRequestId,
+  reportOperationalFailure,
+  type SessionCorrelationId,
+} from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
 import { joinInterviewSessionWorkflow } from "@/lib/workflows/join-interview-session";
 
 export async function POST(req: NextRequest) {
+  let correlationId: SessionCorrelationId | null = null;
   try {
     const supabase = await createClient();
     const {
@@ -25,9 +32,19 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
+    correlationId = readOpaqueCorrelationId(
+      isRecord(body) ? body.sessionId : null
+    );
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (!livekitEnv.ok) {
-      console.error("Missing LiveKit environment variables");
+      reportOperationalFailure({
+        operation: "interview_token",
+        errorCode: "livekit_config_missing",
+        severity: "critical",
+        retryable: false,
+        requestId: readOperationalRequestId(req),
+        correlationId,
+      });
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
@@ -49,8 +66,14 @@ export async function POST(req: NextRequest) {
       status: result.ok ? 200 : result.status,
       headers,
     });
-  } catch (error) {
-    console.error("Error issuing LiveKit participant token:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "interview_token",
+      errorCode: "livekit_token_issue_failed",
+      retryable: true,
+      requestId: readOperationalRequestId(req),
+      correlationId,
+    });
     return NextResponse.json(
       { error: "Failed to issue LiveKit token" },
       { status: 500 }
