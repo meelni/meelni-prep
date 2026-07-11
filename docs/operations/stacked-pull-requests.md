@@ -188,15 +188,18 @@ same exact head is reused, bounding Check Run churn. The workflow still checks
 out only default-branch code; it reads PR metadata and file names but never
 fetches or executes PR files for collision detection.
 
-All event and scheduled migration publishers use one global, non-canceling
-running concurrency group. This orders publication so an older run cannot land
+Topology event, scheduled, and manual runs inherit the workflow's one global,
+non-canceling `queue: max` boundary. Each parent event fans out to the triggering
+PR and its open registered dependents, so topology publication is not scoped to
+per-PR concurrency. Migration jobs run inside that globally queued workflow and
+also share the `migration-collision-audit` serialization boundary across event
+and scheduled publishers. This prevents an older migration audit from landing
 green after a newer run has detected a collision. The publisher also rechecks
 the full inventory and exact PR head before lookup, after lookup, and after
 Check Run creation immediately before completion. Check output records a
 deterministic SHA-256 inventory generation, and reuse requires that same
 generation. A moved or unverifiable PR set gets failure instead of stale
-success. Stack-topology jobs retain their separate per-PR concurrency because
-they publish only the triggering stack result.
+success.
 
 This gate prevents new duplicate ownership; it does not make independently
 generated journals composable. Merge one migration-bearing PR at a time in the
