@@ -23,7 +23,11 @@ import {
   fingerprintStripeSubject,
 } from "../lib/billing/stripe-privacy";
 import { ACCOUNT_IDENTITY_LOCK_NAMESPACE } from "../lib/db/account-identity-lock";
-import { stripeSubscriptionEventCursor } from "../lib/billing/stripe-subscription-event-order";
+import {
+  compareStripeSubscriptionEventCursors,
+  mayApplyStripeSubscriptionResource,
+  stripeSubscriptionEventCursor,
+} from "../lib/billing/stripe-subscription-event-order";
 import { stripeSubscriptionCursorIsNewer } from "../lib/db/stripe-subscription-event-order";
 import { subscription } from "../lib/db/schema";
 
@@ -519,6 +523,170 @@ async function verifyStripeSubscriptionOrdering(sql: postgres.Sql) {
         : "evt_updated",
     });
   }
+
+  await verifyStripeSubscriptionReplacement(database, sql, userId);
+}
+
+async function verifyStripeSubscriptionReplacement(
+  database: ReturnType<typeof drizzle>,
+  sql: postgres.Sql,
+  userId: string
+) {
+  const created = 1_784_035_200;
+  const oldDeletion = stripeSubscriptionEventCursor({
+    type: "customer.subscription.deleted",
+    id: "evt_old_deleted",
+    created,
+  } as never);
+  const replacementCreation = stripeSubscriptionEventCursor({
+    type: "customer.subscription.created",
+    id: "evt_new_created",
+    created,
+  } as never);
+  const replacementUpdate = stripeSubscriptionEventCursor({
+    type: "customer.subscription.updated",
+    id: "evt_new_updated",
+    created: created + 1,
+  } as never);
+  const replacementInvoice = stripeSubscriptionEventCursor({
+    type: "invoice.payment_succeeded",
+    id: "evt_new_invoice",
+    created: created + 2,
+  } as never);
+  const staleOldUpdate = stripeSubscriptionEventCursor({
+    type: "customer.subscription.updated",
+    id: "evt_old_late",
+    created: created + 3,
+  } as never);
+  const staleOldInvoice = stripeSubscriptionEventCursor({
+    type: "invoice.payment_failed",
+    id: "evt_old_invoice_late",
+    created: created + 4,
+  } as never);
+
+  await sql`DELETE FROM subscription WHERE user_id = ${userId}::uuid`;
+  await sql`
+    INSERT INTO subscription (
+      user_id, tier, status, stripe_subscription_id,
+      last_event_timestamp, last_event_priority, last_event_id
+    ) VALUES (
+      ${userId}::uuid, 'starter', 'canceled', 'sub_old',
+      ${oldDeletion.createdAt.toISOString()}::timestamptz,
+      ${oldDeletion.priority}, ${oldDeletion.eventId}
+    )
+  `;
+
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      currentResourceId: "sub_old",
+      currentStatus: "canceled",
+      candidateResourceId: "sub_new",
+      eventType: "customer.subscription.created",
+    }),
+    true
+  );
+  assert.ok(
+    compareStripeSubscriptionEventCursors(replacementCreation, oldDeletion) < 0
+  );
+
+  await database
+    .update(subscription)
+    .set({
+      stripeSubscriptionId: "sub_new",
+      status: "trialing",
+      lastEventTimestamp: replacementCreation.createdAt,
+      lastEventPriority: replacementCreation.priority,
+      lastEventId: replacementCreation.eventId,
+    })
+    .where(
+      and(
+        eq(subscription.userId, userId),
+        eq(subscription.stripeSubscriptionId, "sub_old")
+      )
+    );
+
+  await database
+    .update(subscription)
+    .set({
+      status: "past_due",
+      gracePeriodEnd: new Date("2026-07-20T00:00:00.000Z"),
+      lastEventTimestamp: staleOldInvoice.createdAt,
+      lastEventPriority: staleOldInvoice.priority,
+      lastEventId: staleOldInvoice.eventId,
+    })
+    .where(
+      and(
+        eq(subscription.userId, userId),
+        eq(subscription.stripeSubscriptionId, "sub_old"),
+        stripeSubscriptionCursorIsNewer(staleOldInvoice)
+      )
+    );
+
+  await database
+    .update(subscription)
+    .set({
+      status: "active",
+      lastEventTimestamp: replacementUpdate.createdAt,
+      lastEventPriority: replacementUpdate.priority,
+      lastEventId: replacementUpdate.eventId,
+    })
+    .where(
+      and(
+        eq(subscription.userId, userId),
+        eq(subscription.stripeSubscriptionId, "sub_new"),
+        stripeSubscriptionCursorIsNewer(replacementUpdate)
+      )
+    );
+
+  await database
+    .update(subscription)
+    .set({
+      status: "active",
+      gracePeriodEnd: null,
+      lastEventTimestamp: replacementInvoice.createdAt,
+      lastEventPriority: replacementInvoice.priority,
+      lastEventId: replacementInvoice.eventId,
+    })
+    .where(
+      and(
+        eq(subscription.userId, userId),
+        eq(subscription.stripeSubscriptionId, "sub_new"),
+        stripeSubscriptionCursorIsNewer(replacementInvoice)
+      )
+    );
+
+  await database
+    .update(subscription)
+    .set({
+      status: "past_due",
+      lastEventTimestamp: staleOldUpdate.createdAt,
+      lastEventPriority: staleOldUpdate.priority,
+      lastEventId: staleOldUpdate.eventId,
+    })
+    .where(
+      and(
+        eq(subscription.userId, userId),
+        eq(subscription.stripeSubscriptionId, "sub_old"),
+        stripeSubscriptionCursorIsNewer(staleOldUpdate)
+      )
+    );
+
+  const [row] = await sql<
+    Array<{
+      stripe_subscription_id: string;
+      status: string;
+      last_event_id: string;
+    }>
+  >`
+    SELECT stripe_subscription_id, status, last_event_id
+    FROM subscription
+    WHERE user_id = ${userId}::uuid
+  `;
+  assert.deepEqual(row, {
+    stripe_subscription_id: "sub_new",
+    status: "active",
+    last_event_id: "evt_new_invoice",
+  });
 }
 
 async function seedDivergentLegacyInvoiceDuplicate(sql: postgres.Sql) {

@@ -60,7 +60,10 @@ Before the index is created, legacy duplicates are deterministically ranked by
 IDs in preflight output. A successful attempt supersedes failed attempts for
 customer payment-history display. Subscription status and grace converge by
 provider event time, so success wins a same-second conflict and later delivery
-cannot reintroduce stale dunning state.
+cannot reintroduce stale dunning state. Cursor ordering is scoped to one Stripe
+subscription resource: an explicitly allowed `customer.subscription.created`
+replacement for a canceled resource seeds the replacement cursor atomically,
+and later events from the superseded resource cannot mutate it.
 
 Account-deletion tombstones include hashed customer, subscription,
 payment-intent, and charge identifiers. Stored and late refund/dispute payloads

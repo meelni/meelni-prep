@@ -57,7 +57,8 @@ import { reconcileStripeBillingAdjustment } from "@/lib/billing/stripe-billing-a
 import { normalizeStripeBillingAdjustmentEvent } from "@/lib/billing/stripe-adjustment-events";
 import { getStripeLogicalEventKey } from "@/lib/billing/stripe-event-identity";
 import {
-  compareStripeSubscriptionEventCursors,
+  mayApplyStripeSubscriptionResource,
+  stripeSubscriptionCursorMayApply,
   stripeSubscriptionEventCursor,
   type StripeSubscriptionEventCursor,
 } from "@/lib/billing/stripe-subscription-event-order";
@@ -506,6 +507,38 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 
   const eventTimestamp = new Date(event.created * 1000);
   const eventCursor = stripeSubscriptionEventCursor(event);
+
+  // Get current subscription (for optimistic locking)
+  const currentSub = await db
+    .select()
+    .from(subscription)
+    .where(eq(subscription.userId, userId))
+    .limit(1);
+
+  const currentResourceId = currentSub[0]?.stripeSubscriptionId ?? null;
+  if (
+    !mayApplyStripeSubscriptionResource({
+      currentResourceId,
+      currentStatus: currentSub[0]?.status ?? null,
+      candidateResourceId: stripeSubscription.id,
+      eventType: event.type,
+    })
+  ) {
+    console.log("Stripe event skipped for superseded subscription resource");
+    return;
+  }
+  const currentCursor = subscriptionEventCursorFromRow(currentSub[0]);
+  if (
+    !stripeSubscriptionCursorMayApply({
+      currentResourceId,
+      candidateResourceId: stripeSubscription.id,
+      currentCursor,
+      candidateCursor: eventCursor,
+    })
+  ) {
+    console.log("Stripe subscription event skipped as stale");
+    return;
+  }
 
   const catalogId = getStripeCatalogIdForPrice(
     stripeSubscription.items.data[0]?.price.id
