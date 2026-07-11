@@ -17,7 +17,7 @@
   "errorCode": "interview_start_failed",
   "severity": "critical",
   "retryable": true,
-  "requestId": "sfo1::request-123",
+  "requestId": null,
   "correlationId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
@@ -34,7 +34,10 @@ The event is constructed from a closed schema. Callers cannot attach an exceptio
 - `errorCode` must be a member of the versioned
   `OPERATIONAL_FAILURE_ERROR_CODES` catalog. Unknown, dynamic, and merely
   snake_case values fail before serialization.
-- `requestId` accepts only a bounded Vercel-style opaque identifier.
+- `requestId` remains `null`. Incoming headers, including `x-vercel-id`, are
+  caller-controlled at the application boundary and are not a trusted source.
+  A future platform integration may populate this field only through a
+  provenance-verified API with a separately reviewed structural contract.
 - `correlationId` accepts only a branded interview-session correlation value.
 - The correlation factory requires an ownership-validated interview-session
   record plus the authenticated user ID. It verifies the stored owner matches

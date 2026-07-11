@@ -14,7 +14,7 @@ import {
   readOperationalRequestId,
   reportOperationalFailure,
 } from "@/lib/operations/operational-events";
-import { readBoundedJson } from "@/lib/http/read-bounded-json";
+import { readBoundedJsonObject } from "@/lib/http/read-bounded-json";
 import { createClient } from "@/lib/supabase/server";
 import { joinInterviewSessionWorkflow } from "@/lib/workflows/join-interview-session";
 
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const parsed = await readBoundedJson(req, 16 * 1024);
+    const parsed = await readBoundedJsonObject(req, 16 * 1024);
     if (!parsed.ok)
       return NextResponse.json(
         { error: "Invalid request" },
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     const result = await joinInterviewSessionWorkflow({
       user: { id: user.id },
-      sessionId: isRecord(body) ? body.sessionId : undefined,
+      sessionId: body.sessionId,
       env: livekitEnv.data,
     });
 
@@ -101,8 +101,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
