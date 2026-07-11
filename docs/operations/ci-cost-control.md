@@ -41,7 +41,8 @@ The live `main` branch protection requires the GitHub Actions `Validate`
 context with strict, up-to-date head enforcement. Protection applies to admins,
 blocks force pushes, and blocks branch deletion. It does not currently require
 an approving review; independent agent audit evidence is tracked in the PR and
-Linear workflow instead.
+Linear workflow instead. This is classic branch protection; no repository
+ruleset is currently configured.
 
 Verify the live configuration before a merge window:
 
