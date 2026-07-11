@@ -37,6 +37,7 @@ import {
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
   CREDIT_RECOVERY_SCHEMA_FINGERPRINT,
   BILLING_TRUTH_SCHEMA_FINGERPRINT,
+  WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT,
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
@@ -171,7 +172,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, BILLING_TRUTH_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -4126,7 +4127,7 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(refundedPreflight.startingContract, "billing_truth");
+    assert.equal(refundedPreflight.startingContract, "webhook_convergence");
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -4390,7 +4391,7 @@ async function verifyProviderCreditRecovery(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 17);
+  assert.equal(await migrationCount(sql), 18);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name

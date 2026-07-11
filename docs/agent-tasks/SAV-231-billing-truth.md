@@ -20,8 +20,8 @@
 
 ## Scope
 
-- In scope: Interview Pass and subscription payment/grant correlation; full and cumulative partial refunds; refund failure/cancellation; dispute withdrawal/reinstatement/closure; immediate cancellation provider semantics; durable grant revocation; active-reservation settlement; idempotency, event reordering, and concurrency; payment history and billing UI truth; support evidence; analytics; additive migration; test-mode fixtures.
-- Out of scope: Live Stripe or Production mutation, catalog or pricing changes, forced cancellation of in-flight interviews, and clawing credits from unrelated grants.
+- In scope: Interview Pass and subscription payment/grant correlation; full and cumulative partial refunds; refund failure/cancellation; dispute withdrawal/reinstatement/closure; durable grant revocation; active-reservation settlement; idempotency, event reordering, and concurrency; deletion privacy; payment history and billing UI truth; support evidence; analytics; additive migration; test-mode fixtures.
+- Out of scope: Live Stripe or Production mutation, catalog or pricing changes, forced cancellation of in-flight interviews, clawing credits from unrelated grants, and cancellation-provider behavior until the product owner selects immediate cancellation or paid-period access.
 - Assumptions: Any refund/dispute against a paid source revokes the source's remaining funded credits. Ordinary cancellation without a payment reversal preserves granted credits. Active reservations settle normally but cannot restore revoked credits to spendable balance.
 
 ## Product Lens
@@ -49,3 +49,4 @@
 - Backward compatibility: Additive schema; legacy payment rows without correlation or rollover grants without durable source lots require support review rather than guessed mutation.
 - Metrics/events: `billing_credit_payment_adjusted`, reconciliation-required failures, revoked/unrecovered quantities, duplicate events.
 - Follow-up slice: Preview Stripe rehearsal after environment isolation and before enabling the relaunch flag.
+- Policy blocker: Cancellation economics and customer promise require an explicit product-owner choice; this branch intentionally makes no cancellation change.

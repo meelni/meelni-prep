@@ -60,7 +60,8 @@ export function normalizeStripeBillingAdjustmentEvent(
       adjustmentType: "dispute",
       direction:
         event.type === "charge.dispute.funds_reinstated" ||
-        (event.type === "charge.dispute.closed" && dispute.status === "won")
+        (event.type === "charge.dispute.closed" &&
+          (dispute.status === "won" || dispute.status === "warning_closed"))
           ? "reinstate"
           : "withdraw",
       paymentIntentId: getExpandableId(dispute.payment_intent),

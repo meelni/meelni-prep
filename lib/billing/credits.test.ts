@@ -1451,6 +1451,34 @@ test("out-of-order reinstatement prevents a later withdrawal from freezing credi
   );
 });
 
+test("dispute withdrawal followed by reinstatement restores available credits", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  const userId = "user-dispute-normal-order";
+  const grantKey = "stripe:checkout:cs_dispute_normal:interview_pass";
+  await ledger.grantCredits({
+    userId,
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: grantKey,
+  });
+  const base = {
+    userId,
+    grantIdempotencyKey: grantKey,
+    providerAdjustmentId: "dp_normal_order",
+    adjustmentType: "dispute" as const,
+    amountInCents: 900,
+    sourcePaymentAmountInCents: 900,
+  };
+  await ledger.revokePaidGrant({ ...base, stripeEventId: "evt_withdraw" });
+  assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 0);
+  await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt_reinstate",
+  });
+  assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 1);
+});
+
 test("payment status reflects all active refund and dispute adjustments", async () => {
   const store = createMemoryCreditLedgerStore();
   const statuses: string[] = [];

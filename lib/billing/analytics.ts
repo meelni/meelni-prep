@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { BillingCatalogId } from "@meelni/core";
 
 import { trackServerEvent } from "@/lib/analytics/posthog-server";
@@ -57,7 +59,34 @@ export function trackBillingNoCredits(input: BillingCreditEventInput) {
 }
 
 export function trackBillingPaymentAdjusted(input: BillingCreditEventInput) {
-  trackBillingEvent("billing_credit_payment_adjusted", input);
+  if (!process.env.POSTHOG_SERVER_KEY && !process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+    return;
+  }
+  const event = buildBillingPaymentAdjustedAnalytics(input);
+  trackServerEvent(event.event, event.properties, event.distinctId);
+}
+
+export function buildBillingPaymentAdjustedAnalytics(
+  input: BillingCreditEventInput
+) {
+  return {
+    event: "billing_credit_payment_adjusted",
+    distinctId: pseudonymizeBillingUser(input.userId),
+    properties: {
+      credits: input.credits,
+      reason: input.reason,
+      duplicate: input.duplicate,
+      reserved_credits: input.reservedCredits,
+      consumed_credits: input.consumedCredits,
+      unrecoverable_credits: input.unrecoverableCredits,
+    },
+  };
+}
+
+function pseudonymizeBillingUser(userId: string) {
+  return createHash("sha256")
+    .update(`meelni:billing-settlement-analytics:v1:${userId}`)
+    .digest("hex");
 }
 
 function trackBillingEvent(event: string, input: BillingCreditEventInput) {

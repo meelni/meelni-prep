@@ -45,6 +45,20 @@ Expired nonterminal active reservations release, while expired nonterminal
 consumed reservations refund; this also closes the fallback path when a fatal
 runtime report could not settle before the runtime exited.
 
+Migration `0015` adds a nullable, unique logical transition key to the Stripe
+event log. Exact Event ID retries are acknowledged without replay. Distinct
+Stripe Event objects for the same immutable object/type transition replay the
+idempotent handler and must match persisted payment truth before they are
+acknowledged. Mutable `customer.subscription.updated` events are intentionally
+excluded from logical deduplication.
+
+Account-deletion tombstones include hashed customer, subscription,
+payment-intent, and charge identifiers. Stored and late refund/dispute payloads
+for a deleted subject must be replaced with `{}` and acknowledged without
+running billing reconciliation. Settlement analytics use a stable one-way user
+pseudonym and aggregate quantities only; provider adjustment IDs, grant IDs,
+and raw user UUIDs are prohibited.
+
 ## Migration And Backfill Plan
 
 Do not run production data changes until the preview checks below pass and an owner has reviewed current paid-user state.
@@ -139,7 +153,7 @@ Stripe manual checks:
 - Pro Checkout creates subscription state and one 12-credit renewal grant.
 - Replayed `checkout.session.completed` and `invoice.payment_succeeded` events do not duplicate grants.
 - `refund.created`, `refund.updated`, and legacy `charge.refunded` converge on one provider-object withdrawal; `refund.failed` or canceled status reinstates eligible value once.
-- `charge.dispute.created` and `charge.dispute.funds_withdrawn` converge on one withdrawal; `charge.dispute.funds_reinstated` and `charge.dispute.closed` with `won` converge on one reinstatement.
+- `charge.dispute.created` and `charge.dispute.funds_withdrawn` converge on one withdrawal; `charge.dispute.funds_reinstated` and `charge.dispute.closed` with `won` or `warning_closed` converge on one reinstatement.
 - Reversed event order does not leave a stale freeze, and a second same-direction event ID does not produce an idempotency conflict.
 - Multiple partial refunds use cumulative floor rounding and never revoke more than the payment-funded source credits.
 - Reinstating one adjustment preserves `partially_refunded` or `disputed` payment status while another withdrawal remains active.
@@ -147,6 +161,11 @@ Stripe manual checks:
 - A credit consumed while frozen remains unrecoverable after a later session refund; overlapping withdrawal/reinstatement order cannot recreate it.
 - `invoice.payment_failed` creates failed payment history and no credit grant.
 - `/api/billing/sync` never maps unknown Stripe prices to Pro.
+
+Cancellation launch remains blocked on an explicit product-policy decision:
+whether cancellation is immediate or remains active through the paid period.
+Do not change provider behavior or customer-facing promises until one policy is
+accepted and implemented end to end.
 
 Credit enforcement checks:
 

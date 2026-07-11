@@ -9,7 +9,7 @@ import {
   paymentHistory,
   stripeCustomerMapping,
 } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
@@ -54,6 +54,7 @@ import {
 } from "@/lib/billing/stripe-catalog";
 import { reconcileStripeBillingAdjustment } from "@/lib/billing/stripe-billing-adjustment";
 import { normalizeStripeBillingAdjustmentEvent } from "@/lib/billing/stripe-adjustment-events";
+import { getStripeLogicalEventKey } from "@/lib/billing/stripe-event-identity";
 
 /**
  * Stripe Webhook Handler with Idempotency
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
     }
 
     const subject = getStripeEventSubject(event);
+    const logicalEventKey = getStripeLogicalEventKey(event);
     const metadataUserId = stripeEventMetadataUserId(event);
     const checkoutCorrelation = getCheckoutCorrelation(event, metadataUserId);
     const eventUserId =
@@ -123,29 +125,30 @@ export async function POST(req: NextRequest) {
       deletionTombstone && isDeletedBillingReconciliationEvent(event.type);
 
     // CRITICAL: Idempotency check using stripe_event_log
-    const existingEvent = await db
+    let existingEvent = await db
       .select()
       .from(stripeEventLog)
-      .where(eq(stripeEventLog.stripeEventId, event.id))
+      .where(
+        logicalEventKey
+          ? or(
+              eq(stripeEventLog.stripeEventId, event.id),
+              eq(stripeEventLog.logicalEventKey, logicalEventKey)
+            )
+          : eq(stripeEventLog.stripeEventId, event.id)
+      )
       .limit(1);
 
-    if (existingEvent.length > 0) {
-      const eventLog = existingEvent[0];
+    let eventLog = existingEvent[0];
+    let logicalReplay = false;
+
+    if (eventLog) {
+      logicalReplay = eventLog.stripeEventId !== event.id;
       // Upgrade legacy rows before any early return or retry transition. This
       // prevents a process interruption from leaving an old raw payload behind.
       await db
         .update(stripeEventLog)
         .set({ payload: "{}", lastError: null })
         .where(eq(stripeEventLog.id, eventLog.id));
-
-      // If already processed, return success (idempotent)
-      if (eventLog.status === "processed" && !reconcileDeletedBilling) {
-        console.log(`Event ${event.id} already processed, skipping`);
-        return NextResponse.json({
-          received: true,
-          status: "already_processed",
-        });
-      }
 
       if (deletionTombstone && !reconcileDeletedBilling) {
         await db
@@ -159,6 +162,17 @@ export async function POST(req: NextRequest) {
           })
           .where(eq(stripeEventLog.id, eventLog.id));
         return NextResponse.json({ received: true, status: "deleted_subject" });
+      }
+
+      // Exact duplicate Event deliveries require no state validation. A new
+      // Event object with the same logical key replays the idempotent handler,
+      // which verifies the already-persisted payment truth below.
+      if (eventLog.status === "processed" && !logicalReplay) {
+        console.log(`Event ${event.id} already processed, skipping`);
+        return NextResponse.json({
+          received: true,
+          status: "already_processed",
+        });
       }
 
       // If failed, allow retry (increment attempts)
@@ -180,22 +194,44 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // Log new event
-      await db.insert(stripeEventLog).values({
-        stripeEventId: event.id,
-        eventType: event.type,
-        subjectFingerprint: subject.fingerprint,
-        // Raw Stripe payloads are never persisted. The verified event remains
-        // in memory for this request; durable logs retain only operational
-        // metadata so deletion cannot race a PII-bearing insert.
-        payload: "{}",
-        status:
-          deletionTombstone && !reconcileDeletedBilling
-            ? "processed"
-            : "pending",
-        attempts: 1,
-        processedAt:
-          deletionTombstone && !reconcileDeletedBilling ? new Date() : null,
-      });
+      const inserted = await db
+        .insert(stripeEventLog)
+        .values({
+          stripeEventId: event.id,
+          logicalEventKey,
+          eventType: event.type,
+          subjectFingerprint: subject.fingerprint,
+          // Never persist raw Stripe payloads. The verified event is scoped to
+          // this request; durable logs retain only operational metadata.
+          payload: "{}",
+          status:
+            deletionTombstone && !reconcileDeletedBilling
+              ? "processed"
+              : "pending",
+          attempts: 1,
+          processedAt:
+            deletionTombstone && !reconcileDeletedBilling ? new Date() : null,
+        })
+        .onConflictDoNothing()
+        .returning();
+      eventLog = inserted[0];
+      if (!eventLog) {
+        existingEvent = await db
+          .select()
+          .from(stripeEventLog)
+          .where(
+            logicalEventKey
+              ? or(
+                  eq(stripeEventLog.stripeEventId, event.id),
+                  eq(stripeEventLog.logicalEventKey, logicalEventKey)
+                )
+              : eq(stripeEventLog.stripeEventId, event.id)
+          )
+          .limit(1);
+        eventLog = existingEvent[0];
+        if (!eventLog) throw new Error("stripe_event_log_conflict_unresolved");
+        logicalReplay = eventLog.stripeEventId !== event.id;
+      }
     }
 
     if (deletionTombstone) {
@@ -299,9 +335,12 @@ export async function POST(req: NextRequest) {
           payload: "{}",
           processedAt: new Date(),
         })
-        .where(eq(stripeEventLog.stripeEventId, event.id));
+        .where(eq(stripeEventLog.id, eventLog.id));
 
-      return NextResponse.json({ received: true });
+      return NextResponse.json({
+        received: true,
+        ...(logicalReplay ? { status: "logical_replay" } : {}),
+      });
     } catch (error) {
       if (
         isAccountDeletionPendingError(error) &&
@@ -351,7 +390,7 @@ export async function POST(req: NextRequest) {
           payload: "{}",
           lastError: safeStripeWebhookErrorCode(error),
         })
-        .where(eq(stripeEventLog.stripeEventId, event.id));
+        .where(eq(stripeEventLog.id, eventLog.id));
 
       throw error;
     }
@@ -630,7 +669,21 @@ async function handleCheckoutCompleted(
       status: "succeeded",
       tier: catalogId,
     })
-    .onConflictDoNothing({ target: paymentHistory.stripeEventId });
+    .onConflictDoNothing();
+  const persisted = await db
+    .select()
+    .from(paymentHistory)
+    .where(eq(paymentHistory.stripeCheckoutSessionId, session.id))
+    .limit(1);
+  assertPersistedPayment(persisted[0], {
+    userId,
+    stripePaymentIntentId: paymentIntentId,
+    creditGrantId: grant.id,
+    catalogId,
+    amountInCents: session.amount_total,
+    currency: session.currency,
+    status: "succeeded",
+  });
   return "processed";
 }
 
@@ -745,6 +798,27 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
       })
       .onConflictDoNothing({ target: paymentHistory.stripeEventId });
 
+    const persisted = await tx
+      .select()
+      .from(paymentHistory)
+      .where(
+        and(
+          eq(paymentHistory.stripeInvoiceId, invoice.id),
+          eq(paymentHistory.status, "succeeded")
+        )
+      )
+      .limit(1);
+    assertPersistedPayment(persisted[0], {
+      userId,
+      stripePaymentIntentId: invoicePayment.paymentIntentId,
+      stripeChargeId: invoicePayment.chargeId,
+      creditGrantId,
+      catalogId,
+      amountInCents: invoice.amount_paid,
+      currency: invoice.currency,
+      status: "succeeded",
+    });
+
     const [currentSub] = await tx
       .select()
       .from(subscription)
@@ -793,6 +867,22 @@ async function handlePaymentFailed(event: Stripe.Event) {
 
   if (!userId) {
     console.warn("Missing userId in invoice metadata");
+    return;
+  }
+
+  const settledPayment = await db
+    .select({ id: paymentHistory.id })
+    .from(paymentHistory)
+    .where(
+      and(
+        eq(paymentHistory.stripeInvoiceId, invoice.id),
+        eq(paymentHistory.status, "succeeded")
+      )
+    )
+    .limit(1);
+  if (settledPayment[0]) {
+    // Stripe does not guarantee delivery order. A delayed failure must not
+    // overwrite a later successful settlement for the same invoice.
     return;
   }
 
@@ -881,6 +971,32 @@ async function handleRefundOrDispute(event: Stripe.Event) {
   await reconcileStripeBillingAdjustment(
     normalizeStripeBillingAdjustmentEvent(event)
   );
+}
+
+type PersistedPayment = typeof paymentHistory.$inferSelect;
+
+function assertPersistedPayment(
+  actual: PersistedPayment | undefined,
+  expected: Partial<
+    Pick<
+      PersistedPayment,
+      | "userId"
+      | "stripePaymentIntentId"
+      | "stripeChargeId"
+      | "creditGrantId"
+      | "catalogId"
+      | "amountInCents"
+      | "currency"
+      | "status"
+    >
+  >
+) {
+  if (!actual) throw new Error("billing_payment_persistence_conflict");
+  for (const [field, value] of Object.entries(expected)) {
+    if (actual[field as keyof PersistedPayment] !== value) {
+      throw new Error(`billing_payment_truth_mismatch:${field}`);
+    }
+  }
 }
 
 /**

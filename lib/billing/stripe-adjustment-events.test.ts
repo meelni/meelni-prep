@@ -106,6 +106,12 @@ test("dispute funds and closed events normalize reversible directions", () => {
       status: "lost",
     })
   );
+  const warningClosed = normalizeStripeBillingAdjustmentEvent(
+    stripeEvent("evt_dp_warning_closed", "charge.dispute.closed", {
+      ...dispute,
+      status: "warning_closed",
+    })
+  );
 
   assert.equal(created.providerAdjustmentId, "dp_test");
   assert.equal(withdrawn.providerAdjustmentId, "dp_test");
@@ -114,4 +120,5 @@ test("dispute funds and closed events normalize reversible directions", () => {
   assert.equal(reinstated.direction, "reinstate");
   assert.equal(closedWon.direction, "reinstate");
   assert.equal(closedLost.direction, "withdraw");
+  assert.equal(warningClosed.direction, "reinstate");
 });

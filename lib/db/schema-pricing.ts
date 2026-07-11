@@ -654,6 +654,7 @@ export const stripeEventLog = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     stripeEventId: text("stripe_event_id").unique().notNull(),
+    logicalEventKey: text("logical_event_key"),
     eventType: text("event_type").notNull(),
     subjectFingerprint: text("subject_fingerprint"),
     payload: text("payload").notNull(), // Always "{}"; raw provider payloads are not retained.
@@ -676,6 +677,9 @@ export const stripeEventLog = pgTable(
     stripeEventIdIdx: index("stripe_event_log_stripe_event_id_idx").on(
       table.stripeEventId
     ),
+    logicalEventKeyIdx: uniqueIndex("stripe_event_log_logical_event_key_unique")
+      .on(table.logicalEventKey)
+      .where(sql`${table.logicalEventKey} IS NOT NULL`),
     statusIdx: index("stripe_event_log_status_idx").on(table.status),
     eventTypeIdx: index("stripe_event_log_event_type_idx").on(table.eventType),
     subjectFingerprintIdx: index("stripe_event_log_subject_fingerprint_idx").on(
