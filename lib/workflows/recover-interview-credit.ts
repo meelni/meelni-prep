@@ -2,11 +2,9 @@ import {
   createDrizzleInterviewCreditRecoveryStore,
   type InterviewCreditRecoveryStore,
 } from "@/lib/db/interview-credit-recovery";
-import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
 
 export interface RecoverInterviewCreditDeps {
   store: InterviewCreditRecoveryStore;
-  settleCredit(sessionId: string): Promise<{ disposition: string }>;
   now(): Date;
 }
 export async function recoverInterviewCreditWorkflow(
@@ -17,17 +15,34 @@ export async function recoverInterviewCreditWorkflow(
   | { disposition: "recovered"; creditDisposition: string }
 > {
   const prepared = await deps.store.prepare({ sessionId, now: deps.now() });
-  if (prepared === "no_longer_recoverable") {
+  if (prepared.disposition === "no_longer_recoverable") {
     return { disposition: "no_longer_recoverable" };
   }
-  const credit = await deps.settleCredit(sessionId);
-  return { disposition: "recovered", creditDisposition: credit.disposition };
+  return prepared;
 }
 
 function createRecoverInterviewCreditDeps(): RecoverInterviewCreditDeps {
   return {
     store: createDrizzleInterviewCreditRecoveryStore(),
-    settleCredit: convergeDrizzleInterviewCreditSettlement,
     now: () => new Date(),
   };
+}
+
+export async function recoverInterviewCreditCandidates(
+  candidates: Array<{ sessionId: string }>,
+  recover: (sessionId: string) => Promise<unknown>
+): Promise<unknown[]> {
+  const results: unknown[] = [];
+  for (const candidate of candidates) {
+    try {
+      results.push(await recover(candidate.sessionId));
+    } catch {
+      results.push({
+        disposition: "failed",
+        sessionId: candidate.sessionId,
+        errorCode: "interview_credit_recovery_failed",
+      });
+    }
+  }
+  return results;
 }

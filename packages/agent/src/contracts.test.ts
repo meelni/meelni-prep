@@ -14,6 +14,7 @@ import {
   createInterviewRuntimeEvent,
   createTranscriptEvent,
   getTranscriptEventTiming,
+  isInterviewRuntimeEvent,
   isTranscriptEvent,
   isTranscriptInterruptionMarker,
   isTranscriptRuntimeSettlement,
@@ -605,4 +606,36 @@ test("runtime lifecycle events reject provider payload leakage", () => {
   ]) {
     assert.equal(parseInterviewRuntimeEvent(JSON.stringify(leaked)), null);
   }
+});
+
+test("provider failures accept only deployed runtimes and normalized codes", () => {
+  const valid = {
+    contract_version: 1,
+    event_id: "provider-failure:session-1:llm_provider_failed",
+    session_id: "session-1",
+    type: "provider_failed",
+    occurred_at: "2026-07-10T12:00:00.000Z",
+    runtime_ref: { provider: "livekit", id: "interview-session-1" },
+    failure: {
+      reason: "provider_failure",
+      code: "llm_provider_failed",
+      retryable: false,
+    },
+  } as const;
+
+  assert.equal(isInterviewRuntimeEvent(valid), true);
+  assert.equal(
+    isInterviewRuntimeEvent({
+      ...valid,
+      runtime_ref: { ...valid.runtime_ref, provider: "invented-runtime" },
+    }),
+    false
+  );
+  assert.equal(
+    isInterviewRuntimeEvent({
+      ...valid,
+      failure: { ...valid.failure, code: "plausible_but_unknown" },
+    }),
+    false
+  );
 });

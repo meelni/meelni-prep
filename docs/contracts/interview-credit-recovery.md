@@ -19,6 +19,8 @@ Provider failure events use `interview.lifecycle.v1`, carry a stable event ID,
 session ID, runtime reference, allowlisted failure code, retryability, and event
 time, and arrive through the signed internal ingest endpoint. Raw provider error
 messages, stack traces, tokens, or customer transcript content are forbidden.
+Provider-failure ingress accepts only the deployed `livekit` runtime and the
+normalized failure-code set shared by the TypeScript and Python contracts.
 The first accepted terminal claim is immutable; an equivalent replay is
 idempotent and a conflicting claim fails closed.
 
@@ -63,6 +65,8 @@ normal convergence. Active reservations release; consumed reservations refund.
 Each candidate is rechecked under the canonical locks, so
 stale scans and concurrent terminal commands become harmless no-ops. Provider
 room cleanup remains independent durable intent and never delays credit repair.
+One corrupt candidate is recorded as a redacted failed result and cannot stop
+later candidates in the same bounded scan.
 
 ## Support Evidence
 

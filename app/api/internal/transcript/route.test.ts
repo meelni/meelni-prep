@@ -184,6 +184,33 @@ describe("POST /api/internal/transcript", () => {
     }
   });
 
+  it("cancels a chunked body as soon as it crosses 64 KiB", async () => {
+    let canceled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(33 * 1024));
+      },
+      cancel() {
+        canceled = true;
+      },
+    });
+    const oversized = new NextRequest(
+      "http://localhost/api/internal/transcript",
+      {
+        method: "POST",
+        body: stream,
+        duplex: "half",
+        headers: { "content-type": "application/json" },
+      }
+    );
+
+    const response = await POST(oversized);
+
+    expect(response.status).toBe(413);
+    expect(canceled).toBe(true);
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+  });
+
   it("uses the voice-runtime principal and returns only acknowledgement metadata", async () => {
     vi.mocked(ingestTranscriptEvent).mockResolvedValue({
       ok: true,

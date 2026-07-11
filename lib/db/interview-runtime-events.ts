@@ -7,12 +7,14 @@ import {
   type CreditLedgerDatabase,
   type CreditLedgerTransactionDatabase,
 } from "@/lib/billing/credit-ledger-store";
+import { createDrizzleInterviewCreditSettlementStore } from "./interview-credit-settlement";
+import { convergeInterviewCreditSettlement } from "@/lib/workflows/converge-interview-credit-settlement";
 import type {
   InterviewRuntimeFailureStore,
   PersistInterviewRuntimeFailureResult,
 } from "@/lib/workflows/ingest-interview-runtime-event";
 import { db } from "./index";
-import { interviewSession } from "./schema";
+import { feedback, interviewSession } from "./schema";
 
 type ProviderFailureEvent = InterviewRuntimeEvent & { type: "provider_failed" };
 
@@ -31,8 +33,22 @@ export function createDrizzleInterviewRuntimeFailureStore(
 
       return withDrizzleCreditLedgerUserTransaction(
         owner.userId,
-        async ({ database: transaction }) =>
-          persistProviderFailureLocked(transaction, event, owner.userId),
+        async ({ database: transaction }) => {
+          const persisted = await persistProviderFailureLocked(
+            transaction,
+            event,
+            owner.userId
+          );
+          if (!persisted.ok) return persisted;
+          await ensureProviderFailureFeedback(transaction, event.session_id);
+          const credit = await convergeInterviewCreditSettlement({
+            sessionId: event.session_id,
+            store: createDrizzleInterviewCreditSettlementStore(
+              transaction as unknown as CreditLedgerDatabase
+            ),
+          });
+          return { ...persisted, creditDisposition: credit.disposition };
+        },
         database
       );
     },
@@ -72,7 +88,12 @@ async function persistProviderFailureLocked(
       session.runtimeFailureCode === failure.code &&
       session.runtimeFailureRetryable === failure.retryable &&
       session.runtimeFailedAt?.getTime() === occurredAt.getTime()
-      ? { ok: true, disposition: "existing", sessionId: session.id }
+      ? {
+          ok: true,
+          disposition: "existing",
+          sessionId: session.id,
+          creditDisposition: "pending",
+        }
       : { ok: false, reason: "event_conflict" };
   }
   if (
@@ -122,8 +143,29 @@ async function persistProviderFailureLocked(
     )
     .returning({ id: interviewSession.id });
   return updated[0]
-    ? { ok: true, disposition: "created", sessionId: updated[0].id }
+    ? {
+        ok: true,
+        disposition: "created",
+        sessionId: updated[0].id,
+        creditDisposition: "pending",
+      }
     : { ok: false, reason: "event_conflict" };
+}
+
+async function ensureProviderFailureFeedback(
+  transaction: CreditLedgerTransactionDatabase,
+  sessionId: string
+): Promise<void> {
+  await transaction
+    .insert(feedback)
+    .values({
+      sessionId,
+      status: "skipped",
+      statusReason: "Interview ended because the voice service failed",
+      rubricVersion: "1.0.0",
+      dispatchStatus: "not_required",
+    })
+    .onConflictDoNothing({ target: feedback.sessionId });
 }
 
 function inTerminalState(state: string): boolean {

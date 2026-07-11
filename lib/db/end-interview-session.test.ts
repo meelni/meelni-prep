@@ -5,6 +5,7 @@ import {
   applyTranscriptIntegrityValidation,
   finalizeInterviewSession,
   resolveInterviewTerminalReason,
+  shouldPreservePostUsableDisconnectCharge,
   shouldRefineProvisionalTerminalReason,
   type EndInterviewSessionDatabase,
 } from "./end-interview-session";
@@ -28,6 +29,37 @@ test("insufficient durable signal wins before a deadline claim is committed", ()
   assert.equal(
     resolveInterviewTerminalReason({ isValid: false }, "time_limit"),
     "insufficient_signal"
+  );
+});
+
+test("a missing settlement after a usable disconnect remains a user charge", () => {
+  const usableAt = new Date("2026-01-01T00:00:00.000Z");
+  assert.equal(
+    shouldPreservePostUsableDisconnectCharge({
+      requestedTerminalReason: "disconnect_timeout",
+      usableAt,
+      missingRuntimeSettlement: true,
+      unavailableInterruptions: 0,
+    }),
+    true
+  );
+  assert.equal(
+    shouldPreservePostUsableDisconnectCharge({
+      requestedTerminalReason: "disconnect_timeout",
+      usableAt,
+      missingRuntimeSettlement: true,
+      unavailableInterruptions: 1,
+    }),
+    false
+  );
+  assert.equal(
+    shouldPreservePostUsableDisconnectCharge({
+      requestedTerminalReason: "user_end",
+      usableAt,
+      missingRuntimeSettlement: true,
+      unavailableInterruptions: 0,
+    }),
+    false
   );
 });
 

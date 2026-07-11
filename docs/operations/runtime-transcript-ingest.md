@@ -17,6 +17,9 @@ Both services derive a domain-separated signing key from the server-only
 `<timestamp>.<raw-body>`. Requests outside the five-minute clock window,
 malformed signatures, weak/missing server configuration, or body mutation fail
 closed. Never log the secret, signature, raw body, or transcript text.
+The server reads the request as an abort-aware byte stream, cancels it as soon
+as it exceeds 64 KiB, and never buffers an unbounded body even when
+`Content-Length` is absent or false.
 
 The room metadata contains the exact ingest URL. It must use HTTPS and the
 literal `/api/internal/transcript` path without credentials, query, or fragment.

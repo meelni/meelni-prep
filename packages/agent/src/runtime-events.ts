@@ -6,6 +6,19 @@ import {
 export const INTERVIEW_RUNTIME_EVENT_CONTRACT_VERSION = 1 as const;
 export const INTERVIEW_RUNTIME_EVENT_TOPIC = "interview.lifecycle.v1";
 
+export const INTERVIEW_RUNTIME_PROVIDERS = ["livekit"] as const;
+export const INTERVIEW_RUNTIME_FAILURE_CODES = [
+  "stt_provider_failed",
+  "llm_provider_failed",
+  "tts_provider_failed",
+  "realtime_model_provider_failed",
+  "turn_detection_provider_failed",
+  "voice_runtime_provider_failed",
+  "voice_session_failed",
+  "voice_session_construction_failed",
+  "voice_session_start_failed",
+] as const;
+
 export const INTERVIEW_RUNTIME_EVENT_TYPES = [
   "runtime_provisioned",
   "runtime_activated",
@@ -86,25 +99,43 @@ export function isInterviewRuntimeEvent(
 
   if (
     value.runtime_ref !== undefined &&
-    (!isRecord(value.runtime_ref) ||
-      !hasOnlyKeys(value.runtime_ref, ["provider", "id"]) ||
-      !isNonEmptyString(value.runtime_ref.provider) ||
-      !isNonEmptyString(value.runtime_ref.id))
+    !isInterviewRuntimeReference(value.runtime_ref)
   ) {
     return false;
   }
 
   if (value.type === "provider_failed") {
+    const failure = value.failure;
     return (
-      isRecord(value.failure) &&
-      hasOnlyKeys(value.failure, ["reason", "code", "retryable"]) &&
-      value.failure.reason === "provider_failure" &&
-      isSafeInterviewBillingFaultCode(value.failure.code) &&
-      typeof value.failure.retryable === "boolean"
+      isAllowedProviderFailureRuntime(value.runtime_ref) &&
+      isRecord(failure) &&
+      hasOnlyKeys(failure, ["reason", "code", "retryable"]) &&
+      failure.reason === "provider_failure" &&
+      isSafeInterviewBillingFaultCode(failure.code) &&
+      INTERVIEW_RUNTIME_FAILURE_CODES.some((code) => code === failure.code) &&
+      typeof failure.retryable === "boolean"
     );
   }
 
   return value.failure === undefined;
+}
+
+function isAllowedProviderFailureRuntime(value: unknown): boolean {
+  return (
+    isInterviewRuntimeReference(value) &&
+    INTERVIEW_RUNTIME_PROVIDERS.some((provider) => provider === value.provider)
+  );
+}
+
+function isInterviewRuntimeReference(
+  value: unknown
+): value is InterviewRuntimeReference {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ["provider", "id"]) &&
+    isNonEmptyString(value.provider) &&
+    isNonEmptyString(value.id)
+  );
 }
 
 export function parseInterviewRuntimeEvent(

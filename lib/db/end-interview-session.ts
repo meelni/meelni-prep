@@ -146,8 +146,17 @@ export async function finalizeInterviewSession(
       const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
       const runtimeSettlementState =
         (settlements[0]?.state as "settled" | "degraded" | undefined) ?? null;
+      const preservePostUsableDisconnectCharge =
+        shouldPreservePostUsableDisconnectCharge({
+          requestedTerminalReason: input.requestedTerminalReason,
+          usableAt: stored.usableAt,
+          missingRuntimeSettlement: runtimeSettlementState === null,
+          unavailableInterruptions,
+        });
       hasIntegrityFault =
-        unavailableInterruptions > 0 || runtimeSettlementState !== "settled";
+        (unavailableInterruptions > 0 ||
+          runtimeSettlementState !== "settled") &&
+        !preservePostUsableDisconnectCharge;
       validation = applyTranscriptIntegrityValidation({
         baseValidation,
         interruptionCount: unavailableInterruptions,
@@ -488,4 +497,18 @@ export function resolveInterviewTerminalReason(
     return "provider_failure";
   }
   return validation.isValid ? requestedTerminalReason : "insufficient_signal";
+}
+
+export function shouldPreservePostUsableDisconnectCharge(input: {
+  requestedTerminalReason: "user_end" | "time_limit" | "disconnect_timeout";
+  usableAt: Date | null;
+  missingRuntimeSettlement: boolean;
+  unavailableInterruptions: number;
+}): boolean {
+  return (
+    input.requestedTerminalReason === "disconnect_timeout" &&
+    input.usableAt !== null &&
+    input.missingRuntimeSettlement &&
+    input.unavailableInterruptions === 0
+  );
 }

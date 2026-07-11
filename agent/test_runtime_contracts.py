@@ -609,6 +609,24 @@ class RuntimeContractTests(unittest.TestCase):
                 occurred_at="2026-07-09T21:00:00.000Z",
             )
 
+        for provider, code in [
+            ("invented-runtime", "llm_provider_failed"),
+            ("livekit", "plausible_but_unknown"),
+        ]:
+            with self.assertRaisesRegex(ValueError, "malformed"):
+                create_runtime_event(
+                    event_id=f"runtime-event-{provider}-{code}",
+                    session_id="session-1",
+                    event_type="provider_failed",
+                    occurred_at="2026-07-09T21:00:00.000Z",
+                    runtime_ref={"provider": provider, "id": "runtime-1"},
+                    failure={
+                        "reason": "provider_failure",
+                        "code": code,
+                        "retryable": False,
+                    },
+                )
+
         with self.assertRaisesRegex(ValueError, "malformed"):
             create_runtime_event(
                 event_id="runtime-event-3",

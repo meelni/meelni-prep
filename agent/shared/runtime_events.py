@@ -22,6 +22,13 @@ PROVIDER_FAILURE_CODES = {
     "realtime_model_error": "realtime_model_provider_failed",
     "interruption_detection_error": "turn_detection_provider_failed",
 }
+ALLOWED_PROVIDER_FAILURE_RUNTIMES = {"livekit"}
+ALLOWED_PROVIDER_FAILURE_CODES = set(PROVIDER_FAILURE_CODES.values()) | {
+    "voice_runtime_provider_failed",
+    "voice_session_failed",
+    "voice_session_construction_failed",
+    "voice_session_start_failed",
+}
 
 
 def provider_failure_code(error_type: object) -> str:
@@ -97,11 +104,14 @@ def is_runtime_event(value: object) -> bool:
     failure = value.get("failure")
     if value.get("type") == "provider_failed":
         return (
-            isinstance(failure, dict)
+            isinstance(runtime_ref, dict)
+            and runtime_ref.get("provider") in ALLOWED_PROVIDER_FAILURE_RUNTIMES
+            and isinstance(failure, dict)
             and set(failure) == {"reason", "code", "retryable"}
             and failure.get("reason") == "provider_failure"
             and isinstance(failure.get("code"), str)
             and SAFE_FAILURE_CODE.fullmatch(failure["code"]) is not None
+            and failure["code"] in ALLOWED_PROVIDER_FAILURE_CODES
             and isinstance(failure.get("retryable"), bool)
         )
     return failure is None
