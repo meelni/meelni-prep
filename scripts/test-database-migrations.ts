@@ -47,6 +47,7 @@ const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const SESSION_RECONNECT_ORDER = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
@@ -106,6 +107,7 @@ async function run() {
     await verifyDatabase(clean);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
+    await verifyReconnectTransportOrdering(clean, cleanUrl);
     await verifyAtomicSessionCompletion(clean, cleanUrl);
     await verifyAuthorization(clean);
     await verifyDeletionTombstone(clean);
@@ -824,6 +826,81 @@ async function verifyLifecycleConcurrency(sql: postgres.Sql) {
     lifecycle_version: 4,
     terminal_reason: winners[0]?.terminal_reason,
   });
+}
+
+async function verifyReconnectTransportOrdering(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    { createDrizzleInterviewReconnectStore },
+    { handleLiveKitInterviewEventWorkflow },
+  ] = await Promise.all([
+    import("../lib/db/session-reconnects"),
+    import("../lib/workflows/handle-livekit-interview-event"),
+  ]);
+  const occurredAt = new Date("2026-07-10T08:00:00.000Z");
+  const roomName = "migration-reconnect-order-room";
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, livekit_room_name, config,
+      lifecycle_state, lifecycle_version, activated_at, runtime_ready_at,
+      started_at
+    ) VALUES (
+      ${SESSION_RECONNECT_ORDER}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      ${roomName},
+      '{"duration": 30}'::jsonb,
+      'active',
+      3,
+      ${"2026-07-10T07:45:02.000Z"}::timestamptz,
+      ${"2026-07-10T07:45:01.000Z"}::timestamptz,
+      ${"2026-07-10T07:45:00.000Z"}::timestamptz
+    )
+  `;
+
+  const store = createDrizzleInterviewReconnectStore(drizzle(sql));
+  const joined = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "joined-at-tie",
+      eventName: "participant_joined",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    {
+      store,
+      scheduleReconnect: async () => undefined,
+      now: () => occurredAt,
+    }
+  );
+  assert.equal(joined.disposition, "ignored");
+  assert.equal(joined.lifecycle?.lastTransportEventName, "participant_joined");
+
+  const delayedLeave = await store.applyTransportTransition({
+    sessionId: SESSION_RECONNECT_ORDER,
+    expectedState: "active",
+    expectedVersion: 3,
+    nextState: "reconnecting",
+    reconnectDeadlineAt: new Date(occurredAt.getTime() + 30_000),
+    transportEventAt: occurredAt,
+    transportEventId: "delayed-left-at-tie",
+    transportEventName: "participant_left",
+    recordTransportEvent: true,
+    transitionedAt: occurredAt,
+  });
+  assert.equal(delayedLeave.applied, false);
+
+  const stored = await store.getById(SESSION_RECONNECT_ORDER);
+  assert.equal(stored?.state, "active");
+  assert.equal(stored?.version, 3);
+  assert.equal(stored?.lastTransportEventName, "participant_joined");
+  assert.equal(stored?.lastTransportEventId, "joined-at-tie");
 }
 
 async function verifyAtomicSessionCompletion(

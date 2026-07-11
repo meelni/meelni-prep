@@ -4,16 +4,15 @@ import {
   normalizeInterviewDurationMinutes,
 } from "@/lib/internal/core";
 import {
+  compareInterviewTransportEvents,
   createDrizzleInterviewReconnectStore,
+  type InterviewTransportEventName,
   type InterviewReconnectSession,
   type InterviewReconnectStore,
 } from "@/lib/db/session-reconnects";
 import { scheduleInterviewReconnect } from "./schedule-interview-reconnect";
 
-export type LiveKitInterviewTransportEventName =
-  | "participant_joined"
-  | "participant_left"
-  | "participant_connection_aborted";
+export type LiveKitInterviewTransportEventName = InterviewTransportEventName;
 
 export interface HandleLiveKitInterviewEventInput {
   eventId: string;
@@ -86,8 +85,18 @@ export async function handleLiveKitInterviewEventWorkflow(
     }
     if (
       isCandidate &&
-      current.lastTransportEventAt &&
-      input.occurredAt.getTime() < current.lastTransportEventAt.getTime()
+      compareInterviewTransportEvents(
+        {
+          occurredAt: input.occurredAt,
+          eventId: input.eventId,
+          eventName: input.eventName,
+        },
+        {
+          occurredAt: current.lastTransportEventAt,
+          eventId: current.lastTransportEventId,
+          eventName: current.lastTransportEventName,
+        }
+      ) <= 0
     ) {
       return { ok: true, disposition: "ignored", lifecycle: current };
     }

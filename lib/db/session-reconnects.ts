@@ -26,6 +26,17 @@ export interface InterviewReconnectSession {
   lastTransportEventName: string | null;
 }
 
+export type InterviewTransportEventName =
+  | "participant_joined"
+  | "participant_left"
+  | "participant_connection_aborted";
+
+export interface InterviewTransportEventCursor {
+  occurredAt: Date;
+  eventId: string;
+  eventName: InterviewTransportEventName;
+}
+
 export interface ApplyInterviewTransportTransitionInput {
   sessionId: string;
   expectedState: "connecting" | "active" | "reconnecting";
@@ -34,7 +45,7 @@ export interface ApplyInterviewTransportTransitionInput {
   reconnectDeadlineAt: Date | null;
   transportEventAt: Date;
   transportEventId: string;
-  transportEventName: string;
+  transportEventName: InterviewTransportEventName;
   recordTransportEvent: boolean;
   runtimeReadyAt?: Date;
   transitionedAt: Date;
@@ -60,7 +71,7 @@ export interface InterviewReconnectStore {
     expectedVersion: number;
     transportEventAt: Date;
     transportEventId: string;
-    transportEventName: string;
+    transportEventName: InterviewTransportEventName;
   }): Promise<ApplyInterviewTransportTransitionResult>;
   recordRuntimeReady(input: {
     sessionId: string;
@@ -142,7 +153,11 @@ export function createDrizzleInterviewReconnectStore(
             eq(interviewSession.lifecycleVersion, input.expectedVersion),
             ...(input.recordTransportEvent
               ? [
-                  sql`(${interviewSession.lastTransportEventAt} IS NULL OR ${interviewSession.lastTransportEventAt} <= ${input.transportEventAt})`,
+                  transportEventIsNewerThanStored({
+                    occurredAt: input.transportEventAt,
+                    eventId: input.transportEventId,
+                    eventName: input.transportEventName,
+                  }),
                 ]
               : [])
           )
@@ -173,7 +188,11 @@ export function createDrizzleInterviewReconnectStore(
             eq(interviewSession.id, input.sessionId),
             eq(interviewSession.lifecycleState, input.expectedState),
             eq(interviewSession.lifecycleVersion, input.expectedVersion),
-            sql`(${interviewSession.lastTransportEventAt} IS NULL OR ${interviewSession.lastTransportEventAt} <= ${input.transportEventAt})`
+            transportEventIsNewerThanStored({
+              occurredAt: input.transportEventAt,
+              eventId: input.transportEventId,
+              eventName: input.transportEventName,
+            })
           )
         )
         .returning();
@@ -296,6 +315,69 @@ export function createDrizzleInterviewReconnectStore(
   };
 
   return store;
+}
+
+export function compareInterviewTransportEvents(
+  candidate: InterviewTransportEventCursor,
+  current: {
+    occurredAt: Date | null;
+    eventId: string | null;
+    eventName: string | null;
+  }
+): number {
+  if (!current.occurredAt) return 1;
+
+  const timeDifference =
+    candidate.occurredAt.getTime() - current.occurredAt.getTime();
+  if (timeDifference !== 0) return timeDifference;
+
+  const precedenceDifference =
+    transportEventPrecedence(candidate.eventName) -
+    transportEventPrecedence(current.eventName);
+  if (precedenceDifference !== 0) return precedenceDifference;
+
+  return candidate.eventId.localeCompare(current.eventId ?? "");
+}
+
+function transportEventPrecedence(eventName: string | null): number {
+  switch (eventName) {
+    case "participant_joined":
+      return 3;
+    case "participant_connection_aborted":
+      return 2;
+    case "participant_left":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function transportEventIsNewerThanStored(
+  candidate: InterviewTransportEventCursor
+) {
+  const candidateOccurredAt = sql`${candidate.occurredAt.toISOString()}::timestamptz`;
+  const storedPrecedence = sql<number>`CASE ${interviewSession.lastTransportEventName}
+    WHEN 'participant_joined' THEN 3
+    WHEN 'participant_connection_aborted' THEN 2
+    WHEN 'participant_left' THEN 1
+    ELSE 0
+  END`;
+  const candidatePrecedence = transportEventPrecedence(candidate.eventName);
+
+  return sql`(
+    ${interviewSession.lastTransportEventAt} IS NULL
+    OR ${interviewSession.lastTransportEventAt} < ${candidateOccurredAt}
+    OR (
+      ${interviewSession.lastTransportEventAt} = ${candidateOccurredAt}
+      AND (
+        ${storedPrecedence} < ${candidatePrecedence}
+        OR (
+          ${storedPrecedence} = ${candidatePrecedence}
+          AND COALESCE(${interviewSession.lastTransportEventId}, '') < ${candidate.eventId}
+        )
+      )
+    )
+  )`;
 }
 
 export async function listInterviewReconnectSchedules(limit = 250): Promise<

@@ -6,6 +6,7 @@ import type {
   InterviewReconnectSession,
   InterviewReconnectStore,
 } from "@/lib/db/session-reconnects";
+import { compareInterviewTransportEvents } from "@/lib/db/session-reconnects";
 import {
   handleLiveKitInterviewEventWorkflow,
   type HandleLiveKitInterviewEventDeps,
@@ -288,6 +289,32 @@ test("a later join watermark makes an earlier delayed leave inert", async () => 
   assert.equal(fixture.schedules.length, 0);
 });
 
+for (const delayedEventName of [
+  "participant_left",
+  "participant_connection_aborted",
+] as const) {
+  test(`an equal-time delayed ${delayedEventName} cannot reverse a candidate join`, async () => {
+    const fixture = createFixture(createSession());
+    const joined = await handleLiveKitInterviewEventWorkflow(
+      event("participant_joined", USER_ID, "joined-at-tie", NOW),
+      fixture.deps
+    );
+    const delayedDisconnect = await handleLiveKitInterviewEventWorkflow(
+      event(delayedEventName, USER_ID, `delayed-${delayedEventName}`, NOW),
+      fixture.deps
+    );
+
+    assert.equal(joined.disposition, "ignored");
+    assert.equal(delayedDisconnect.disposition, "ignored");
+    assert.equal(delayedDisconnect.lifecycle?.state, "active");
+    assert.equal(
+      delayedDisconnect.lifecycle?.lastTransportEventName,
+      "participant_joined"
+    );
+    assert.equal(fixture.schedules.length, 0);
+  });
+}
+
 function event(
   eventName:
     | "participant_joined"
@@ -358,9 +385,18 @@ function createFixture(
         current.state !== input.expectedState ||
         current.version !== input.expectedVersion ||
         (input.recordTransportEvent &&
-          current.lastTransportEventAt &&
-          current.lastTransportEventAt.getTime() >
-            input.transportEventAt.getTime())
+          compareInterviewTransportEvents(
+            {
+              occurredAt: input.transportEventAt,
+              eventId: input.transportEventId,
+              eventName: input.transportEventName,
+            },
+            {
+              occurredAt: current.lastTransportEventAt,
+              eventId: current.lastTransportEventId,
+              eventName: current.lastTransportEventName,
+            }
+          ) <= 0)
       ) {
         return { applied: false, reason: "conflict", current };
       }
@@ -372,9 +408,18 @@ function createFixture(
       if (
         current.state !== input.expectedState ||
         current.version !== input.expectedVersion ||
-        (current.lastTransportEventAt &&
-          current.lastTransportEventAt.getTime() >
-            input.transportEventAt.getTime())
+        compareInterviewTransportEvents(
+          {
+            occurredAt: input.transportEventAt,
+            eventId: input.transportEventId,
+            eventName: input.transportEventName,
+          },
+          {
+            occurredAt: current.lastTransportEventAt,
+            eventId: current.lastTransportEventId,
+            eventName: current.lastTransportEventName,
+          }
+        ) <= 0
       ) {
         return { applied: false, reason: "conflict", current };
       }
