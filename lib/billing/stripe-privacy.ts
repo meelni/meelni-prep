@@ -125,6 +125,7 @@ export function getStripeEventSubject(event: Stripe.Event): {
   subscriptionId: string | null;
   paymentIntentId: string | null;
   chargeId: string | null;
+  fingerprints: string[];
   fingerprint: string | null;
 } {
   const object = event.data.object as unknown;
@@ -132,14 +133,20 @@ export function getStripeEventSubject(event: Stripe.Event): {
   const subscriptionId = providerId(object, "subscription");
   const paymentIntentId = providerId(object, "payment_intent");
   const chargeId = providerId(object, "charge");
+  const fingerprints = Array.from(
+    new Set(
+      [customerId, subscriptionId, paymentIntentId, chargeId]
+        .map(fingerprintStripeSubject)
+        .filter((value): value is string => value !== null)
+    )
+  );
   return {
     customerId,
     subscriptionId,
     paymentIntentId,
     chargeId,
-    fingerprint: fingerprintStripeSubject(
-      customerId ?? subscriptionId ?? paymentIntentId ?? chargeId
-    ),
+    fingerprints,
+    fingerprint: fingerprints[0] ?? null,
   };
 }
 

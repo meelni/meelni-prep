@@ -407,9 +407,10 @@ export const creditRolloverLotAllocation = pgTable(
       .notNull(),
   },
   (table) => ({
-    allocationLotUnique: unique(
-      "credit_rollover_lot_allocation_uniq"
-    ).on(table.reservationGrantId, table.rolloverLotId),
+    allocationLotUnique: unique("credit_rollover_lot_allocation_uniq").on(
+      table.reservationGrantId,
+      table.rolloverLotId
+    ),
     lotIdx: index("credit_rollover_lot_allocation_lot_id_idx").on(
       table.rolloverLotId
     ),
@@ -527,6 +528,11 @@ export const paymentHistory = pgTable(
     invoiceIdx: index("payment_history_stripe_invoice_id_idx").on(
       table.stripeInvoiceId
     ),
+    invoiceStatusUnique: uniqueIndex(
+      "payment_history_stripe_invoice_status_unique"
+    )
+      .on(table.stripeInvoiceId, table.status)
+      .where(sql`${table.stripeInvoiceId} IS NOT NULL`),
     grantIdx: index("payment_history_credit_grant_id_idx").on(
       table.creditGrantId
     ),

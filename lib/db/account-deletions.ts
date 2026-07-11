@@ -328,6 +328,15 @@ export async function getAccountDeletionRequestByStripeFingerprint(
   return row ? toDeletionRecord(row) : undefined;
 }
 
+export async function findStripeDeletionTombstoneFingerprint(
+  fingerprints: string[]
+): Promise<string | null> {
+  for (const fingerprint of new Set(fingerprints)) {
+    if (await hasStripeDeletionTombstone(fingerprint)) return fingerprint;
+  }
+  return null;
+}
+
 export async function redactStripeEventLogs(request: AccountDeletionRecord) {
   const fingerprints = new Set(
     request.stripeSubjects.map(({ fingerprint }) => fingerprint)

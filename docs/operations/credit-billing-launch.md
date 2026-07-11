@@ -52,12 +52,22 @@ idempotent handler and must match persisted payment truth before they are
 acknowledged. Mutable `customer.subscription.updated` events are intentionally
 excluded from logical deduplication.
 
+Migration `0016` makes `(stripe_invoice_id, status)` unique for non-null
+invoice IDs. This keeps distinct Stripe Event objects for one failed or
+successful invoice transition from creating duplicate payment-history rows.
+Failed-invoice grace is derived from the first persisted provider event time,
+so replay can repair state without extending the deadline.
+
 Account-deletion tombstones include hashed customer, subscription,
 payment-intent, and charge identifiers. Stored and late refund/dispute payloads
 for a deleted subject must be replaced with `{}` and acknowledged without
-running billing reconciliation. Settlement analytics use a stable one-way user
-pseudonym and aggregate quantities only; provider adjustment IDs, grant IDs,
-and raw user UUIDs are prohibited.
+running billing reconciliation. Every identifier present on a webhook is
+checked, while payment-intent and charge subjects remain correlation-only and
+are never passed to customer deletion. Customer mappings take precedence over
+webhook metadata and disagreement fails closed. Stripe webhook bodies are
+limited to 64 KiB before signature verification. Settlement analytics use a
+stable one-way user pseudonym and aggregate quantities only; provider
+adjustment IDs, grant IDs, and raw user UUIDs are prohibited.
 
 ## Migration And Backfill Plan
 
@@ -160,6 +170,11 @@ Stripe manual checks:
 - Reinstating one of multiple withdrawals recomputes the aggregate payment target and does not restore more value than all still-active withdrawals permit.
 - A credit consumed while frozen remains unrecoverable after a later session refund; overlapping withdrawal/reinstatement order cannot recreate it.
 - `invoice.payment_failed` creates failed payment history and no credit grant.
+- Distinct `invoice.payment_failed` Event IDs produce one failed payment row
+  and preserve the original grace deadline.
+- Customer metadata disagreement with a durable mapping fails closed.
+- A deleted payment-intent or charge is redacted and acknowledged even when
+  another identifier appears first in the Stripe object.
 - `/api/billing/sync` never maps unknown Stripe prices to Pro.
 
 Cancellation launch remains blocked on an explicit product-policy decision:

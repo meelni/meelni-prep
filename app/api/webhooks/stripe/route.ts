@@ -32,6 +32,7 @@ import {
 } from "@/lib/billing/stripe-privacy";
 import {
   clearLateStripeDeletionSubjects,
+  findStripeDeletionTombstoneFingerprint,
   getAccountDeletionRequestByStripeFingerprint,
   hasAccountDeletionTombstone,
   getAccountDeletionRequest,
@@ -56,6 +57,9 @@ import { reconcileStripeBillingAdjustment } from "@/lib/billing/stripe-billing-a
 import { normalizeStripeBillingAdjustmentEvent } from "@/lib/billing/stripe-adjustment-events";
 import { getStripeLogicalEventKey } from "@/lib/billing/stripe-event-identity";
 
+const MAX_STRIPE_WEBHOOK_BODY_BYTES = 64 * 1024;
+const PAYMENT_FAILURE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
  * Stripe Webhook Handler with Idempotency
  *
@@ -71,7 +75,6 @@ export async function POST(req: NextRequest) {
   try {
     const stripe = getStripe();
     const webhookSecret = getStripeWebhookSecret();
-    const body = await req.text();
     const signature = req.headers.get("stripe-signature");
 
     if (!signature) {
@@ -81,10 +84,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const contentLength = req.headers.get("content-length");
+    if (
+      contentLength !== null &&
+      (!/^\d+$/.test(contentLength) ||
+        Number(contentLength) > MAX_STRIPE_WEBHOOK_BODY_BYTES)
+    ) {
+      return NextResponse.json({ error: "Webhook too large" }, { status: 413 });
+    }
+    const body = await readBoundedStripeWebhookBody(req);
+    if (!body.ok) {
+      return NextResponse.json(
+        {
+          error:
+            body.reason === "too_large"
+              ? "Webhook too large"
+              : "Invalid webhook",
+        },
+        { status: body.reason === "too_large" ? 413 : 400 }
+      );
+    }
+
     // Verify webhook signature
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      event = stripe.webhooks.constructEvent(
+        body.value,
+        signature,
+        webhookSecret
+      );
     } catch {
       console.error("Webhook signature verification failed");
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
@@ -100,8 +128,12 @@ export async function POST(req: NextRequest) {
             event.data.object as Stripe.Checkout.Session
           )
         : metadataUserId;
-    const subjectDeletionRequest = subject.fingerprint
-      ? await getAccountDeletionRequestByStripeFingerprint(subject.fingerprint)
+    const matchedDeletionFingerprint =
+      await findStripeDeletionTombstoneFingerprint(subject.fingerprints);
+    const subjectDeletionRequest = matchedDeletionFingerprint
+      ? await getAccountDeletionRequestByStripeFingerprint(
+          matchedDeletionFingerprint
+        )
       : undefined;
     const mappedUserId = await getMappedStripeCustomerUserId(
       subject.customerId
@@ -158,7 +190,7 @@ export async function POST(req: NextRequest) {
             payload: "{}",
             lastError: null,
             processedAt: new Date(),
-            subjectFingerprint: subject.fingerprint,
+            subjectFingerprint: matchedDeletionFingerprint,
           })
           .where(eq(stripeEventLog.id, eventLog.id));
         return NextResponse.json({ received: true, status: "deleted_subject" });
@@ -168,7 +200,7 @@ export async function POST(req: NextRequest) {
       // Event object with the same logical key replays the idempotent handler,
       // which verifies the already-persisted payment truth below.
       if (eventLog.status === "processed" && !logicalReplay) {
-        console.log(`Event ${event.id} already processed, skipping`);
+        console.log("Stripe webhook duplicate skipped");
         return NextResponse.json({
           received: true,
           status: "already_processed",
@@ -200,7 +232,7 @@ export async function POST(req: NextRequest) {
           stripeEventId: event.id,
           logicalEventKey,
           eventType: event.type,
-          subjectFingerprint: subject.fingerprint,
+          subjectFingerprint: matchedDeletionFingerprint ?? subject.fingerprint,
           // Never persist raw Stripe payloads. The verified event is scoped to
           // this request; durable logs retain only operational metadata.
           payload: "{}",
@@ -444,7 +476,9 @@ async function getUserIdFromStripe(
   });
   if (userId) return userId;
 
-  throw new Error(`Cannot find userId for Stripe customer ${customerId}`);
+  if (fallbackMetadata) return fallbackMetadata;
+
+  throw new Error("stripe_customer_owner_not_found");
 }
 
 /**
@@ -561,9 +595,7 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 
       // If no rows updated, version mismatch (concurrent update detected)
       if (result.length === 0) {
-        throw new Error(
-          `Optimistic lock failure: subscription version mismatch for user ${userId}`
-        );
+        throw new Error("stripe_subscription_version_conflict");
       }
     }
 
@@ -887,8 +919,6 @@ async function handlePaymentFailed(event: Stripe.Event) {
   }
 
   // Set a 7-day grace period without persisting raw provider errors.
-  const gracePeriodEnd = new Date();
-  gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 7);
   const eventTimestamp = new Date(event.created * 1000);
   await db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, userId);
@@ -910,8 +940,29 @@ async function handlePaymentFailed(event: Stripe.Event) {
           ? new Date(invoice.period_end * 1000)
           : null,
         failureReason: "payment_failed",
+        createdAt: stripeEventCreatedAt(event),
       })
-      .onConflictDoNothing({ target: paymentHistory.stripeEventId });
+      .onConflictDoNothing();
+    const persisted = await tx
+      .select()
+      .from(paymentHistory)
+      .where(
+        and(
+          eq(paymentHistory.stripeInvoiceId, invoice.id),
+          eq(paymentHistory.status, "failed")
+        )
+      )
+      .limit(1);
+    assertPersistedPayment(persisted[0], {
+      userId,
+      catalogId: getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
+      amountInCents: invoice.amount_due,
+      currency: invoice.currency,
+      status: "failed",
+    });
+    const gracePeriodEnd = new Date(
+      persisted[0]!.createdAt.getTime() + PAYMENT_FAILURE_GRACE_MS
+    );
 
     const [currentSub] = await tx
       .select()
@@ -959,7 +1010,7 @@ async function handleTrialWillEnd(event: Stripe.Event) {
   }
 
   // TODO: Send trial ending email notification (Phase 1)
-  console.log(`Trial ending soon for user ${userId}`);
+  console.log("Stripe trial ending event accepted");
 }
 
 /**
@@ -1564,4 +1615,59 @@ function getCheckoutCorrelation(
   if (!metadataUserId && !session.client_reference_id) return "not_applicable";
   if (!correlatedUserId) throw stripeSubjectOwnerMismatch();
   return "valid";
+}
+
+async function readBoundedStripeWebhookBody(
+  req: NextRequest
+): Promise<
+  | { ok: true; value: string }
+  | { ok: false; reason: "too_large" | "unreadable" }
+> {
+  if (!req.body) return { ok: true, value: "" };
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytesRead = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytesRead += value.byteLength;
+      if (bytesRead > MAX_STRIPE_WEBHOOK_BODY_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The size verdict is final; cancellation is best-effort.
+        }
+        return { ok: false, reason: "too_large" };
+      }
+      chunks.push(value);
+    }
+    const body = new Uint8Array(bytesRead);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { ok: true, value: new TextDecoder().decode(body) };
+  } catch {
+    return { ok: false, reason: "unreadable" };
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function stripeWebhookErrorCode(error: unknown) {
+  if (!(error instanceof Error)) return "stripe_webhook_processing_failed";
+  const code = error.message.split(":", 1)[0];
+  return /^(billing_|credit_|stripe_)[a-z0-9_]+$/.test(code)
+    ? code
+    : "stripe_webhook_processing_failed";
+}
+
+function stripeEventCreatedAt(event: Stripe.Event) {
+  const value = new Date(event.created * 1000);
+  if (!Number.isFinite(value.getTime())) {
+    throw new Error("stripe_event_timestamp_invalid");
+  }
+  return value;
 }
