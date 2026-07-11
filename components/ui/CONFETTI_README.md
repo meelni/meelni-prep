@@ -207,7 +207,7 @@ const animate = () => {
 
 ## Testing
 
-Visit `/test-celebration` to test confetti:
+Render the celebration modal in a temporary local-only harness to test confetti:
 
 1. Select "First Session" scenario
 2. Click "Show Celebration Modal"

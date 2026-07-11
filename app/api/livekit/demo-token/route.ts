@@ -42,7 +42,7 @@
  * // Response (200 OK)
  * {
  *   "token": "eyJhbGciOiJIUzI1NiIs...",
- *   "url": "wss://mockmate.livekit.cloud",
+ *   "url": "wss://meelni-ek4vaisp.livekit.cloud",
  *   "roomName": "demo-1699999999999-abc123"
  * }
  *

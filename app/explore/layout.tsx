@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { publicUrl } from "@/lib/seo/public-metadata";
 
 export const metadata: Metadata = {
   title: "PM Interview Practice Questions by Company and Round | Meelni",
@@ -54,11 +55,11 @@ export const metadata: Metadata = {
     title: "Explore PM Interview Practice Questions | Meelni",
     description:
       "Browse curated PM practice questions by company and round type, then practice a selected question out loud.",
-    url: "https://meelni.com/explore",
+    url: publicUrl("/explore"),
     siteName: "Meelni",
     images: [
       {
-        url: "/og-image-explore.png",
+        url: "/opengraph-image",
         width: 1200,
         height: 630,
         alt: "Meelni - Explore Interview Questions",
@@ -72,10 +73,10 @@ export const metadata: Metadata = {
     title: "Explore PM Interview Practice Questions | Meelni",
     description:
       "Browse curated PM practice questions by company and round type. Free to explore.",
-    images: ["/og-image-explore.png"],
+    images: ["/opengraph-image"],
   },
   alternates: {
-    canonical: "https://meelni.com/explore",
+    canonical: publicUrl("/explore"),
   },
   robots: {
     index: true,

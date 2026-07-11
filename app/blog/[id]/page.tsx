@@ -25,6 +25,8 @@ import {
   MarketingProse,
 } from "@/components/marketing/marketing-surface";
 import { Button } from "@/components/ui/button";
+import { PUBLIC_ORIGIN, publicMetadata } from "@/lib/seo/public-metadata";
+import { JsonLd } from "@/components/seo/json-ld";
 
 export async function generateStaticParams() {
   return blogPosts.map((post) => ({
@@ -46,15 +48,15 @@ export async function generateMetadata({
     };
   }
 
-  return {
+  return publicMetadata(`/blog/${post.id}`, {
     title: `${post.title} | Meelni Blog`,
     description: post.excerpt,
-  };
+  });
 }
 
 // Structured Data for SEO
 function BlogPostStructuredData({ post }: { post: BlogPostType }) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+  const baseUrl = PUBLIC_ORIGIN;
 
   const breadcrumbSchema = {
     "@context": "https://schema.org",
@@ -112,14 +114,8 @@ function BlogPostStructuredData({ post }: { post: BlogPostType }) {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }}
-      />
+      <JsonLd id="blog-post-breadcrumb-schema" data={breadcrumbSchema} />
+      <JsonLd id="blog-post-article-schema" data={articleSchema} />
     </>
   );
 }

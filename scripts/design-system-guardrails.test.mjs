@@ -1960,19 +1960,8 @@ test("pricing result pages use shared marketing state surfaces", async () => {
   assert.deepEqual(violations, []);
 });
 
-test("docs and pricing pages use shared public-page status surfaces", async () => {
+test("pricing pages use shared public-page status surfaces", async () => {
   const expectations = [
-    {
-      file: "app/docs/page.tsx",
-      requiredImports: [
-        "MarketingPage",
-        "MarketingHero",
-        "MarketingEyebrow",
-        "AppSurface",
-        "StatusPill",
-        "@/components/ui/button",
-      ],
-    },
     {
       file: "app/pricing/page.tsx",
       requiredImports: [
@@ -2373,7 +2362,7 @@ test("blog detail page uses shared marketing article primitives", async () => {
   assert.deepEqual([...missingExports, ...violations], []);
 });
 
-test("contact page uses shared marketing and form primitives", async () => {
+test("contact unavailable state uses shared marketing and action primitives", async () => {
   const file = "app/contact/page.tsx";
   const content = await readFile(file, "utf8");
   const violations = [];
@@ -2382,10 +2371,7 @@ test("contact page uses shared marketing and form primitives", async () => {
     "MarketingPage",
     "MarketingHero",
     "MarketingEyebrow",
-    "MarketingCtaCard",
     "MarketingCard",
-    "SelectableCard",
-    "@/components/ui/textarea",
     "@/components/ui/button",
   ];
 
@@ -2400,8 +2386,8 @@ test("contact page uses shared marketing and form primitives", async () => {
   if (content.includes("<button")) {
     violations.push(`${file}:button`);
   }
-  if (content.includes("<textarea")) {
-    violations.push(`${file}:textarea`);
+  if (content.includes("<form")) {
+    violations.push(`${file}:form`);
   }
   if (/\b(?:bg|text|border)-(?:red|green)-500/.test(content)) {
     violations.push(`${file}:raw-status-color`);

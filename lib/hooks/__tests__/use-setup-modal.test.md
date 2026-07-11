@@ -5,12 +5,12 @@
 ### Test Case 1: localStorage Persistence ✓
 
 **Steps:**
-1. Open browser to http://localhost:3001/test-modal
+1. Render `SetupModal` in a temporary local-only harness
 2. Click "Open Setup Modal"
 3. Select "Product Sense" → Next
 4. Select "Mock Interview" → Next
 5. Change speed to 1.2x → Next → Start Interview (will redirect)
-6. Go back to /test-modal
+6. Re-open the local-only harness
 7. Click "Open Setup Modal" again
 
 **Expected Result:**
@@ -29,7 +29,7 @@ localStorage.getItem('meelni:setup-modal:last-config')
 ### Test Case 2: Smart Defaults ✓
 
 **Steps:**
-1. Open http://localhost:3001/test-modal
+1. Open the temporary local-only `SetupModal` harness
 2. Click "Open Setup Modal"
 3. Click "Use Smart Defaults" button (lightning bolt card)
 
@@ -48,7 +48,7 @@ localStorage.getItem('meelni:setup-modal:last-config')
 ### Test Case 3: Validation ✓
 
 **Steps:**
-1. Open http://localhost:3001/test-modal
+1. Open the temporary local-only `SetupModal` harness
 2. Click "Open Setup Modal"
 3. Try clicking "Next" without selecting interview type
 
@@ -76,7 +76,7 @@ localStorage.getItem('meelni:setup-modal:last-config')
 ### Test Case 4: Config Reset ✓
 
 **Steps:**
-1. Open http://localhost:3001/test-modal
+1. Open the temporary local-only `SetupModal` harness
 2. Configure a complete interview setup
 3. Click "Reset Config" button
 4. Open localStorage in browser console:
@@ -109,7 +109,7 @@ localStorage.getItem('meelni:setup-modal:last-config')
 ### Test Case 6: Voice Settings Update ✓
 
 **Steps:**
-1. Open http://localhost:3001/test-modal
+1. Open the temporary local-only `SetupModal` harness
 2. Open setup modal
 3. Navigate to Step 3 (voice settings)
 4. Click "Show Advanced Settings"
@@ -180,7 +180,7 @@ localStorage.setItem('meelni:setup-modal:last-config', JSON.stringify({
 - `/components/dashboard/setup-modal.tsx` (removed local state, using hook props)
 - `/app/dashboard/page.tsx` (integrated hook, added modal)
 - `/components/dashboard/first-time-user-experience.tsx` (added onStartInterview prop)
-- `/app/test-modal/page.tsx` (updated to use new hook API)
+- Temporary local-only `SetupModal` harness (updated to use the hook API)
 
 **Key Features:**
 1. **localStorage Key**: `'meelni:setup-modal:last-config'`

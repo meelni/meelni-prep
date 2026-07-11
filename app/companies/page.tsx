@@ -18,12 +18,20 @@ import {
   MarketingPage,
 } from "@/components/marketing/marketing-surface";
 import { Button } from "@/components/ui/button";
+import { PUBLIC_ORIGIN, publicMetadata } from "@/lib/seo/public-metadata";
+import { JsonLd } from "@/components/seo/json-ld";
 
 const publicCompanies = companies.map(toPublicCompanyGuide);
 
+export const metadata = publicMetadata("/companies", {
+  title: "PM Interview Company Guides",
+  description:
+    "Explore PM interview practice guides with illustrative questions organized by company and round type.",
+});
+
 // Structured Data for SEO
 function CompaniesStructuredData() {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+  const baseUrl = PUBLIC_ORIGIN;
 
   const breadcrumbSchema = {
     "@context": "https://schema.org",
@@ -84,18 +92,9 @@ function CompaniesStructuredData() {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageSchema) }}
-      />
+      <JsonLd id="companies-breadcrumb-schema" data={breadcrumbSchema} />
+      <JsonLd id="companies-item-list-schema" data={itemListSchema} />
+      <JsonLd id="companies-page-schema" data={webPageSchema} />
     </>
   );
 }
