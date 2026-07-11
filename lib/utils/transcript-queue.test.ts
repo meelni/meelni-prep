@@ -231,6 +231,31 @@ test("expired retry entries are purged instead of retaining transcript text inde
   }
 });
 
+test("malformed storage is deleted instead of retaining unknown raw text", () => {
+  const storage = new MemoryStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  storage.setItem(
+    "transcript_queue_v2",
+    '{"items":[{"raw":"private malformed transcript"}]'
+  );
+
+  try {
+    const queue = new TranscriptQueue();
+    assert.equal(queue.getStatus().queueLength, 0);
+    assert.equal(storage.getItem("transcript_queue_v2"), null);
+    queue.stop();
+  } finally {
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
 test("an unresolved old-owner save cannot rebind or delete the new owner's queue", async () => {
   const storage = new MemoryStorage();
   const originalStorage = Object.getOwnPropertyDescriptor(
@@ -330,6 +355,28 @@ test("a never-resolving old-owner retry cannot block a new owner's flush", async
   }
 });
 
+test("flush returns at its deadline when the current request never resolves", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Promise<Response>(() => {});
+  const queue = boundQueue();
+
+  try {
+    queue.add(request());
+    const startedAt = Date.now();
+    const settlement = await queue.flush("user-1", SESSION_ID, 30);
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(settlement.settled, false);
+    assert.equal(settlement.pending, 1);
+    assert.ok(elapsedMs >= 20, `flush returned too early after ${elapsedMs}ms`);
+    assert.ok(elapsedMs < 250, `flush exceeded its deadline: ${elapsedMs}ms`);
+  } finally {
+    queue.clearSession("user-1", SESSION_ID);
+    queue.stop();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("terminal cleanup detaches a hung retry before the owner's next session", async () => {
   const originalFetch = globalThis.fetch;
   let requests = 0;
@@ -352,6 +399,70 @@ test("terminal cleanup detaches a hung retry before the owner's next session", a
       failed: 0,
     });
     assert.equal(requests, 2);
+  } finally {
+    queue.stop();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("clearing one session does not abort another session's direct save", async () => {
+  const originalFetch = globalThis.fetch;
+  let resolveFirst!: (response: Response) => void;
+  let resolveSecond!: (response: Response) => void;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return new Promise<Response>((resolve) => {
+      if (requests === 1) resolveFirst = resolve;
+      else resolveSecond = resolve;
+    });
+  };
+  const queue = boundQueue();
+
+  try {
+    const first = queue.save(request());
+    const second = queue.save(request({ sessionId: SECOND_SESSION_ID }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    queue.clearSession("user-1", SESSION_ID);
+
+    resolveSecond(Response.json({ disposition: "created" }));
+    assert.deepEqual(await second, {
+      success: true,
+      disposition: "created",
+      turn: undefined,
+    });
+    assert.equal(queue.getStatus().queueLength, 0);
+
+    resolveFirst(Response.json({ disposition: "created" }));
+    assert.deepEqual(await first, {
+      success: false,
+      error: "transcript_owner_changed",
+    });
+  } finally {
+    queue.stop();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("an old owner's successful response is generation-fenced", async () => {
+  const originalFetch = globalThis.fetch;
+  let resolveRequest!: (response: Response) => void;
+  globalThis.fetch = async () =>
+    new Promise<Response>((resolve) => {
+      resolveRequest = resolve;
+    });
+  const queue = boundQueue();
+
+  try {
+    const stale = queue.save(request());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    queue.bindOwner("user-2");
+    resolveRequest(Response.json({ disposition: "created" }));
+
+    assert.deepEqual(await stale, {
+      success: false,
+      error: "transcript_owner_changed",
+    });
   } finally {
     queue.stop();
     globalThis.fetch = originalFetch;
@@ -438,12 +549,13 @@ function request(
 }
 
 function serializedQueueItem(value: ReturnType<typeof request>) {
+  const queuedAt = new Date().toISOString();
   return {
     id: `${value.ownerId}:${value.sessionId}:${value.event.event_id}`,
     request: value,
     attemptCount: 1,
-    enqueuedAt: "2026-07-10T05:00:05.000Z",
-    lastAttempt: "2026-07-10T05:00:05.000Z",
+    enqueuedAt: queuedAt,
+    lastAttempt: queuedAt,
   };
 }
 

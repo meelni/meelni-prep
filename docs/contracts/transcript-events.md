@@ -142,3 +142,7 @@ a packet durable until the server acknowledges it. SAV-193 owns removal of raw
 browser persistence and the longer-term server-side ingest trust boundary.
 The retry queue binds to the authenticated owner as soon as interview auth
 resolves, before processing or retaining restored events for that account.
+Signed-out bootstrap, sign-out events, and direct account replacement purge
+retained raw queue state before another owner can be admitted. Malformed stored
+state is deleted rather than retained, and terminal cleanup aborts only the
+closed session so another session's acknowledged write cannot be discarded.
