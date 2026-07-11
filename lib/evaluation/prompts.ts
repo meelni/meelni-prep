@@ -30,11 +30,17 @@ Return your analysis as a JSON object with this exact structure:
     "Another improvement with concrete next step"
   ],
   "drills": [
-    "Practice drill or exercise to improve weakness",
-    "Another targeted drill"
+    "Focused practice exercise to improve a weakness",
+    "Another targeted practice recommendation"
   ],
   "summary": "2-3 sentence overall assessment of performance"
-}`;
+}
+
+Use focused-practice language in every recommendation.
+Never describe Meelni or the candidate's practice as a gym.
+Never call a practice attempt a rep.
+Never call a practice plan a workout.
+Never call a focused exercise a drill.`;
 
 export const ROUND_TYPE_PROMPTS = {
   product_sense: `

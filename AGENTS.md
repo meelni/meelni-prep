@@ -62,7 +62,7 @@ packages/
 - Edit `.agents/skills/*` first; do not hand-edit symlinked copies.
 - Use `meelni-codebase-architecture` for module boundaries, package migration, adapter shape, and agent-friendly refactors.
 - Use `meelni-livekit-interview-runtime` for LiveKit, voice interviews, turn-taking, transcript events, room metadata, and runtime config.
-- Use `meelni-feedback-evaluation` for scoring, rubrics, feedback generation, insights, drills, and transcript evaluation.
+- Use `meelni-feedback-evaluation` for scoring, rubrics, feedback generation, insights, practice exercises, and transcript evaluation.
 - Use `meelni-ui-design-system` for UI components, pages, surfaces, styling, motion, responsive states, design tokens, prototypes, and visual guardrails.
 - Use `meelni-question-bank-seo` for explore pages, company pages, question pages, structured data, Google Sheets sync, and conversion from content to practice.
 - Use `meelni-product-strategy` when explicitly asked for product direction, positioning, relaunch strategy, pricing, or growth.

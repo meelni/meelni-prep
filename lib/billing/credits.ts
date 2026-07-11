@@ -169,7 +169,24 @@ export interface CreditBalance {
 export interface CreateCreditLedgerServiceInput {
   store: CreditLedgerStore;
   now?: () => Date;
+  trackTerminalSettlement?: CreditTerminalSettlementTracker;
 }
+
+export interface CreditTerminalSettlementEvent {
+  transactionType: "consume" | "release" | "refund";
+  userId: string;
+  catalogId?: BillingCatalogId;
+  creditSource?: CreditGrantSource;
+  credits: number;
+  idempotencyKey: string;
+  sessionId: string | null;
+  reservationId: string;
+  grantId?: string;
+}
+
+export type CreditTerminalSettlementTracker = (
+  event: CreditTerminalSettlementEvent
+) => void | Promise<void>;
 
 export interface GrantCreditsInput {
   userId: string;
@@ -217,6 +234,7 @@ export interface CompleteReservationInput {
 
 export interface CompleteReservationResult {
   reservation: LedgerCreditReservation;
+  duplicate: boolean;
 }
 
 export interface RolloverSubscriptionCreditsInput {
@@ -250,6 +268,7 @@ export interface RenewSubscriptionCreditsResult {
 export function createCreditLedgerService({
   store,
   now = () => new Date(),
+  trackTerminalSettlement = trackCompletedReservationEvent,
 }: CreateCreditLedgerServiceInput) {
   return {
     async grantCredits(input: GrantCreditsInput): Promise<GrantCreditsResult> {
@@ -567,6 +586,7 @@ export function createCreditLedgerService({
     ): Promise<CompleteReservationResult> {
       return completeReservation({
         store,
+        trackTerminalSettlement,
         reservationKey: input.reservationKey,
         idempotencyKey: input.idempotencyKey,
         nextStatus: "consumed",
@@ -583,6 +603,7 @@ export function createCreditLedgerService({
     ): Promise<CompleteReservationResult> {
       return completeReservation({
         store,
+        trackTerminalSettlement,
         reservationKey: input.reservationKey,
         idempotencyKey: input.idempotencyKey,
         nextStatus: "released",
@@ -599,6 +620,7 @@ export function createCreditLedgerService({
     ): Promise<CompleteReservationResult> {
       return completeReservation({
         store,
+        trackTerminalSettlement,
         reservationKey: input.reservationKey,
         idempotencyKey: input.idempotencyKey,
         nextStatus: "refunded",
@@ -1734,6 +1756,7 @@ function canonicalJson(value: unknown): string {
 
 async function completeReservation({
   store,
+  trackTerminalSettlement,
   reservationKey,
   idempotencyKey,
   nextStatus,
@@ -1741,10 +1764,11 @@ async function completeReservation({
   applyAllocation,
 }: {
   store: CreditLedgerStore;
+  trackTerminalSettlement: CreditTerminalSettlementTracker;
   reservationKey: string;
   idempotencyKey: string;
   nextStatus: CreditReservationStatus;
-  transactionType: CreditTransactionType;
+  transactionType: CreditTerminalSettlementEvent["transactionType"];
   applyAllocation(input: {
     grant: LedgerCreditGrant;
     credits: number;
@@ -1819,6 +1843,7 @@ async function completeReservation({
         }
         return {
           reservation,
+          duplicate: true,
           firstGrant: allocations[0]
             ? (grantsById.get(allocations[0].grantId) ?? null)
             : null,
@@ -1864,6 +1889,7 @@ async function completeReservation({
 
       return {
         reservation: updatedReservation,
+        duplicate: false,
         firstGrant: allocations[0]
           ? (grantsById.get(allocations[0].grantId) ?? null)
           : null,
@@ -1871,19 +1897,33 @@ async function completeReservation({
     }
   );
 
-  trackCompletedReservationEvent({
-    transactionType,
-    userId: outcome.reservation.userId,
-    catalogId: outcome.firstGrant?.catalogId,
-    creditSource: outcome.firstGrant?.source,
-    credits: outcome.reservation.credits,
-    idempotencyKey,
-    sessionId: outcome.reservation.sessionId,
-    reservationId: outcome.reservation.id,
-    grantId: outcome.firstGrant?.id,
-  });
+  if (!outcome.duplicate) {
+    try {
+      const tracking = trackTerminalSettlement({
+        transactionType,
+        userId: outcome.reservation.userId,
+        catalogId: outcome.firstGrant?.catalogId,
+        creditSource: outcome.firstGrant?.source,
+        credits: outcome.reservation.credits,
+        idempotencyKey,
+        sessionId: outcome.reservation.sessionId,
+        reservationId: outcome.reservation.id,
+        grantId: outcome.firstGrant?.id,
+      });
+      if (tracking) {
+        void tracking.catch(() => {
+          console.error("billing_terminal_settlement_analytics_failed");
+        });
+      }
+    } catch {
+      console.error("billing_terminal_settlement_analytics_failed");
+    }
+  }
 
-  return { reservation: outcome.reservation };
+  return {
+    reservation: outcome.reservation,
+    duplicate: outcome.duplicate,
+  };
 }
 
 function trackCompletedReservationEvent({
@@ -1896,17 +1936,7 @@ function trackCompletedReservationEvent({
   sessionId,
   reservationId,
   grantId,
-}: {
-  transactionType: CreditTransactionType;
-  userId: string;
-  catalogId?: BillingCatalogId;
-  creditSource?: CreditGrantSource;
-  credits: number;
-  idempotencyKey: string;
-  sessionId: string | null;
-  reservationId: string;
-  grantId?: string;
-}) {
+}: CreditTerminalSettlementEvent) {
   const input = {
     userId,
     catalogId,

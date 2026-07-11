@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "2,879+ Real PM Interview Questions from Google, Meta, Amazon | Meelni",
+  title: "PM Interview Practice Questions by Company and Round | Meelni",
   description:
-    "Search and practice 2,879+ real Product Manager interview questions asked at Google, Meta, Amazon, Apple, Netflix, and 100+ top tech companies. Free to browse. Includes Product Sense, Behavioral, Execution, and Strategy questions with AI coaching. Updated daily with new questions from actual PM interviews.",
+    "Browse curated Product Sense, Behavioral, Execution, and Strategy practice questions. Filter by company or round, then carry a selected question into a mock interview.",
   keywords: [
     // Primary keywords
     "PM interview questions",
@@ -37,10 +37,6 @@ export const metadata: Metadata = {
     "how to prepare for PM interview",
     "product manager interview practice",
     "mock PM interview questions",
-    "real PM interview questions",
-    "actual interview questions from google",
-    "what questions are asked in PM interviews",
-    "common PM interview questions",
     "PM interview question bank",
     "free PM interview questions",
 
@@ -55,9 +51,9 @@ export const metadata: Metadata = {
     "product metrics questions",
   ],
   openGraph: {
-    title: "Explore 2,879+ Real Interview Questions | Meelni",
+    title: "Explore PM Interview Practice Questions | Meelni",
     description:
-      "Browse real interview questions from top companies. Free to explore, sign up to practice with AI coaching.",
+      "Browse curated PM practice questions by company and round type, then practice a selected question out loud.",
     url: "https://meelni.com/explore",
     siteName: "Meelni",
     images: [
@@ -73,9 +69,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Explore 2,879+ Real Interview Questions | Meelni",
+    title: "Explore PM Interview Practice Questions | Meelni",
     description:
-      "Browse real interview questions from Google, Meta, Amazon, and 100+ top companies. Free to explore.",
+      "Browse curated PM practice questions by company and round type. Free to explore.",
     images: ["/og-image-explore.png"],
   },
   alternates: {
