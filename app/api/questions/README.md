@@ -236,14 +236,16 @@ const { questions, total } = await getQuestions({
 });
 ```
 
-### `getQuestionById(questionId)`
+### `getActiveQuestionById(questionId)`
 
 Fetches a specific question by ID.
 
 ```typescript
-import { getQuestionById } from "@/lib/db/questions";
+import { getActiveQuestionById } from "@/lib/db/questions";
 
-const question = await getQuestionById("550e8400-e29b-41d4-a716-446655440000");
+const question = await getActiveQuestionById(
+  "550e8400-e29b-41d4-a716-446655440000"
+);
 ```
 
 ### `getActiveQuestionCount(questionType?)`

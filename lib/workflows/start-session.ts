@@ -16,7 +16,7 @@ import {
 } from "@/lib/internal/integrations";
 import { createSession, type CreateSessionInput } from "@/lib/db/sessions";
 import {
-  getQuestionById,
+  getActiveQuestionById,
   getRandomQuestion,
   getRandomRecentQuestion,
   type QuestionBankRecord,
@@ -78,7 +78,7 @@ export interface StartInterviewSessionDeps {
   createSession(
     input: CreateSessionInput
   ): Promise<{ id: string; config: unknown }>;
-  getQuestionById(questionId: string): Promise<QuestionBankRecord | null>;
+  getActiveQuestionById(questionId: string): Promise<QuestionBankRecord | null>;
   getRandomQuestion(
     questionTypes: string[]
   ): Promise<QuestionBankRecord | null>;
@@ -306,7 +306,7 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
   return {
     buildRoomName: buildInterviewRoomName,
     createSession,
-    getQuestionById,
+    getActiveQuestionById,
     getRandomQuestion,
     getRandomRecentQuestion,
     ensureTrialGrant: async (userId) => {
@@ -501,9 +501,9 @@ async function selectQuestion({
   | StartInterviewSessionErrorResult
 > {
   if (questionId) {
-    const question = await deps.getQuestionById(questionId);
+    const question = await deps.getActiveQuestionById(questionId);
 
-    if (!question) {
+    if (!question || !question.isActive) {
       return {
         ok: false,
         status: 404,

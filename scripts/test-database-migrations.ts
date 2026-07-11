@@ -109,6 +109,7 @@ async function run() {
     await verifyDatabase(clean);
     await verifyQuestionProvenance(clean, false);
     await verifyQuestionSyncTransactionAdapter(cleanUrl);
+    await verifyQuestionLookupAdapters(cleanUrl);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
     await verifyAtomicSessionCompletion(clean, cleanUrl);
@@ -1126,19 +1127,61 @@ async function verifyQuestionProvenance(
       )
   `;
 
-  const publicRows = await asRole(
+  const internalColumns = [
+    "source_kind",
+    "source_category",
+    "source_fingerprint",
+    "quality_status",
+    "duplicate_of_question_id",
+  ] as const;
+  for (const role of ["anon", "authenticated"] as const) {
+    const publicRows = await asRole(
+      sql,
+      role,
+      (tx) => tx`
+        SELECT id, company, question_text, question_type, difficulty, asked_at,
+          is_active, created_at
+        FROM interview_question
+        WHERE id IN (
+          ${QUESTION_PROVENANCE_ACTIVE}::uuid,
+          ${QUESTION_PROVENANCE_INACTIVE}::uuid
+        )
+        ORDER BY id
+      `
+    );
+    assert.equal(publicRows.length, 1);
+    assert.equal(publicRows[0]?.id, QUESTION_PROVENANCE_ACTIVE);
+    assert.equal(publicRows[0]?.company, "Meta");
+    assert.equal(
+      publicRows[0]?.question_text,
+      "Design a trustworthy search experience"
+    );
+    assert.equal(publicRows[0]?.question_type, "Product Sense");
+    assert.equal(publicRows[0]?.is_active, true);
+
+    for (const column of internalColumns) {
+      await assert.rejects(
+        asRole(sql, role, (tx) =>
+          tx.unsafe(
+            `SELECT ${column} FROM interview_question WHERE id = '${QUESTION_PROVENANCE_ACTIVE}'::uuid`
+          )
+        ),
+        /permission denied/
+      );
+    }
+  }
+
+  const serviceProvenance = await asRole(
     sql,
-    "anon",
+    "service_role",
     (tx) => tx`
-      SELECT id FROM interview_question
-      WHERE id IN (
-        ${QUESTION_PROVENANCE_ACTIVE}::uuid,
-        ${QUESTION_PROVENANCE_INACTIVE}::uuid
-      )
-      ORDER BY id
+      SELECT source_kind, source_category, source_fingerprint, quality_status,
+        duplicate_of_question_id
+      FROM interview_question
+      WHERE id = ${QUESTION_PROVENANCE_ACTIVE}::uuid
     `
   );
-  assert.deepEqual([...publicRows], [{ id: QUESTION_PROVENANCE_ACTIVE }]);
+  assert.equal(serviceProvenance[0]?.source_kind, "google_sheets");
 
   await assert.rejects(
     sql`
@@ -1176,6 +1219,31 @@ async function verifyQuestionSyncTransactionAdapter(databaseUrl: string) {
     );
     assert.equal(result.acquired, true);
     assert.equal(result.value, 2);
+  } finally {
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+  }
+}
+
+async function verifyQuestionLookupAdapters(databaseUrl: string) {
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = databaseUrl;
+  try {
+    const { getActiveQuestionById, getQuestionByIdForHistory } = await import(
+      "../lib/db/questions"
+    );
+    assert.equal(
+      (await getActiveQuestionById(QUESTION_PROVENANCE_ACTIVE))?.id,
+      QUESTION_PROVENANCE_ACTIVE
+    );
+    assert.equal(
+      await getActiveQuestionById(QUESTION_PROVENANCE_INACTIVE),
+      null
+    );
+    assert.equal(
+      (await getQuestionByIdForHistory(QUESTION_PROVENANCE_INACTIVE))?.id,
+      QUESTION_PROVENANCE_INACTIVE
+    );
   } finally {
     if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousDatabaseUrl;
