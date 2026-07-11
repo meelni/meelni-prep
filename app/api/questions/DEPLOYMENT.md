@@ -119,10 +119,13 @@ curl http://localhost:3000/api/questions?limit=10
 
 ```bash
 # Check that each type has questions
-curl http://localhost:3000/api/questions?type=behavioral&activeOnly=true
-curl http://localhost:3000/api/questions?type=product_sense&activeOnly=true
-curl http://localhost:3000/api/questions?type=execution&activeOnly=true
-curl http://localhost:3000/api/questions?type=strategy&activeOnly=true
+curl http://localhost:3000/api/questions?type=behavioral
+curl http://localhost:3000/api/questions?type=product_sense
+curl http://localhost:3000/api/questions?type=execution
+curl http://localhost:3000/api/questions?type=strategy
+
+# The public list is always the active published projection. Historical and
+# quality-state review requires a separate authenticated internal workflow.
 ```
 
 ### Step 8: Integration with Interview Agent
