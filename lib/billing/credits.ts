@@ -1476,6 +1476,10 @@ async function rolloverSubscriptionCreditsInTransaction({
   }
 
   const rolledCredits = remainingToRoll;
+  const rolloverExpiresAt = addDaysOrNull(
+    currentTime,
+    catalogItem.rolloverExpiresAfterDays
+  );
   const rolloverGrant = await store.createGrant({
     userId: input.userId,
     catalogId: input.catalogId,
@@ -1485,7 +1489,7 @@ async function rolloverSubscriptionCreditsInTransaction({
     originalCredits: rolledCredits,
     remainingCredits: rolledCredits,
     reservedCredits: 0,
-    expiresAt: addDaysOrNull(currentTime, catalogItem.rolloverExpiresAfterDays),
+    expiresAt: rolloverExpiresAt,
     rolloverEligible: false,
     rolloverSourceGrantId: sourceGrants[0]?.id ?? null,
     metadata: input.metadata ?? null,
@@ -1546,7 +1550,8 @@ async function rolloverSubscriptionCreditsInTransaction({
   const sourceAllocations = await assertRolloverReplayEvidence(
     store,
     rolloverGrant,
-    input
+    input,
+    rolloverExpiresAt
   );
 
   return {
@@ -1778,20 +1783,17 @@ function assertRolloverGrantMatchesRequest(
 async function assertRolloverReplayEvidence(
   store: CreditLedgerTransaction,
   rolloverGrant: LedgerCreditGrant,
-  input: RolloverSubscriptionCreditsInput
+  input: RolloverSubscriptionCreditsInput,
+  expectedExpiresAt?: Date | null
 ): Promise<RolloverSourceEvidence[]> {
   const grants = await store.listUserGrantsForUpdate(input.userId);
   let sourceCredits = 0;
   const sourceAllocations: RolloverSourceEvidence[] = [];
 
-  const approximateExpiryDays = rolloverGrant.expiresAt
-    ? (rolloverGrant.expiresAt.getTime() - rolloverGrant.createdAt.getTime()) /
-      86_400_000
-    : null;
   if (
-    approximateExpiryDays === null ||
-    approximateExpiryDays < 59 ||
-    approximateExpiryDays > 61 ||
+    rolloverGrant.expiresAt === null ||
+    (expectedExpiresAt !== undefined &&
+      !datesEqual(rolloverGrant.expiresAt, expectedExpiresAt)) ||
     rolloverGrant.rolloverSourceGrantId === null
   ) {
     throw new Error("credit_rollover_incomplete");

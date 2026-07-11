@@ -1993,7 +1993,9 @@ test("provider refund creates one usable make-good when the source grant expired
 
 test("subscription renewal respects the rollover cap and 60 day expiration", async () => {
   const store = createMemoryCreditLedgerStore();
-  const renewedAt = new Date();
+  // Keep the domain clock independent from wall time so replay validation never
+  // relies on storage timestamps created by a different clock.
+  const renewedAt = new Date("2026-07-10T12:00:00.000Z");
   const ledger = createCreditLedgerService({
     store,
     now: () => renewedAt,
