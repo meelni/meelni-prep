@@ -1220,6 +1220,49 @@ interface CompositeRenewalEvidence {
   sourceAllocations: RolloverSourceEvidence[];
 }
 
+interface RolloverExpiryEvidence extends Record<string, unknown> {
+  version: 1;
+  rolloverGrantId: string;
+  issuedAt: string;
+  expiresAt: string;
+}
+
+function buildRolloverExpiryEvidence(
+  rolloverGrantId: string,
+  issuedAt: Date,
+  expiresAt: Date
+): RolloverExpiryEvidence {
+  return {
+    version: 1,
+    rolloverGrantId,
+    issuedAt: issuedAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+function readCanonicalEvidenceDate(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
+    return null;
+  }
+  return parsed;
+}
+
+function readRolloverExpiryEvidence(
+  metadata: Record<string, unknown> | null
+): RolloverExpiryEvidence | null {
+  if (
+    metadata?.version !== 1 ||
+    typeof metadata.rolloverGrantId !== "string" ||
+    !readCanonicalEvidenceDate(metadata.issuedAt) ||
+    !readCanonicalEvidenceDate(metadata.expiresAt)
+  ) {
+    return null;
+  }
+  return metadata as unknown as RolloverExpiryEvidence;
+}
+
 function buildCompositeRenewalTransactionMetadata(
   metadata: Record<string, unknown> | null,
   evidence: CompositeRenewalEvidence
@@ -1480,6 +1523,9 @@ async function rolloverSubscriptionCreditsInTransaction({
     currentTime,
     catalogItem.rolloverExpiresAfterDays
   );
+  if (!rolloverExpiresAt) {
+    throw new Error("credit_rollover_incomplete");
+  }
   const rolloverGrant = await store.createGrant({
     userId: input.userId,
     catalogId: input.catalogId,
@@ -1494,6 +1540,11 @@ async function rolloverSubscriptionCreditsInTransaction({
     rolloverSourceGrantId: sourceGrants[0]?.id ?? null,
     metadata: input.metadata ?? null,
   });
+  const expiryEvidence = buildRolloverExpiryEvidence(
+    rolloverGrant.id,
+    currentTime,
+    rolloverExpiresAt
+  );
   assertRolloverGrantMatchesRequest(rolloverGrant, input, rolledCredits);
 
   for (const sourceGrant of sourceGrants) {
@@ -1527,7 +1578,7 @@ async function rolloverSubscriptionCreditsInTransaction({
       idempotencyKey: `${input.idempotencyKey}:source:${sourceGrant.id}`,
       sourceId: input.sourceId ?? null,
       balanceAfter: updatedGrant.remainingCredits,
-      metadata: { rolloverGrantId: rolloverGrant.id },
+      metadata: expiryEvidence,
     });
     remainingToRoll -= creditsFromGrant;
   }
@@ -1787,6 +1838,8 @@ async function assertRolloverReplayEvidence(
   expectedExpiresAt?: Date | null
 ): Promise<RolloverSourceEvidence[]> {
   const grants = await store.listUserGrantsForUpdate(input.userId);
+  const rolloverExpiresAfterDays =
+    BILLING_CATALOG[input.catalogId].rolloverExpiresAfterDays;
   let sourceCredits = 0;
   const sourceAllocations: RolloverSourceEvidence[] = [];
 
@@ -1806,7 +1859,21 @@ async function assertRolloverReplayEvidence(
       await store.findTransactionByIdempotencyKeyForUpdate(key);
     if (!transaction) continue;
 
+    const expiryEvidence = readRolloverExpiryEvidence(transaction.metadata);
+    const issuedAt = readCanonicalEvidenceDate(expiryEvidence?.issuedAt);
+    const evidenceExpiresAt = readCanonicalEvidenceDate(
+      expiryEvidence?.expiresAt
+    );
+
     if (
+      rolloverExpiresAfterDays === null ||
+      !expiryEvidence ||
+      !issuedAt ||
+      !evidenceExpiresAt ||
+      expiryEvidence.rolloverGrantId !== rolloverGrant.id ||
+      evidenceExpiresAt.getTime() - issuedAt.getTime() !==
+        rolloverExpiresAfterDays * 86_400_000 ||
+      !datesEqual(rolloverGrant.expiresAt, evidenceExpiresAt) ||
       grant.catalogId !== input.catalogId ||
       !grant.rolloverEligible ||
       !Number.isSafeInteger(transaction.credits) ||
@@ -1828,7 +1895,7 @@ async function assertRolloverReplayEvidence(
       idempotencyKey: key,
       sourceId: input.sourceId ?? null,
       balanceAfter: transaction.balanceAfter,
-      metadata: { rolloverGrantId: rolloverGrant.id },
+      metadata: expiryEvidence,
     });
     sourceCredits += transaction.credits;
     sourceAllocations.push({
