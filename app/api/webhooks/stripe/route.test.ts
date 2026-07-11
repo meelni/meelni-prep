@@ -521,6 +521,12 @@ function failedInvoiceEvent(
         metadata: { userId: "invoice_user" },
         amount_due: 900,
         currency: "usd",
+        parent: {
+          type: "subscription_details",
+          subscription_details: {
+            subscription: "sub_route_test",
+          },
+        },
         period_start: created,
         period_end: created + 2_592_000,
         lines: {
