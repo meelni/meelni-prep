@@ -53,3 +53,19 @@ export function compareStripeSubscriptionEventCursors(
     Buffer.from(right.eventId, "utf8")
   );
 }
+
+export function stripeSubscriptionCursorMayApply(input: {
+  currentResourceId: string | null;
+  candidateResourceId: string;
+  currentCursor: StripeSubscriptionEventCursor | null;
+  candidateCursor: StripeSubscriptionEventCursor;
+}): boolean {
+  if (input.currentResourceId !== input.candidateResourceId) return true;
+  if (!input.currentCursor) return true;
+  return (
+    compareStripeSubscriptionEventCursors(
+      input.candidateCursor,
+      input.currentCursor
+    ) > 0
+  );
+}

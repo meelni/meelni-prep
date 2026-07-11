@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   compareStripeSubscriptionEventCursors,
   mayApplyStripeSubscriptionResource,
+  stripeSubscriptionCursorMayApply,
   stripeSubscriptionEventCursor,
 } from "./stripe-subscription-event-order";
 
@@ -53,6 +54,49 @@ test("only a created event may replace a canceled subscription resource", () => 
       eventType: "customer.subscription.created",
     }),
     true
+  );
+});
+
+test("a canceled resource cursor cannot suppress a same-second replacement", () => {
+  const oldDeletion = cursor(
+    "customer.subscription.deleted",
+    "evt_old_deleted"
+  );
+  const replacementCreation = cursor(
+    "customer.subscription.created",
+    "evt_new_created"
+  );
+
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      currentResourceId: "sub_old",
+      currentStatus: "canceled",
+      candidateResourceId: "sub_new",
+      eventType: "customer.subscription.created",
+    }),
+    true
+  );
+  assert.ok(
+    compareStripeSubscriptionEventCursors(replacementCreation, oldDeletion) < 0,
+    "the old cursor would suppress the replacement if compared across resources"
+  );
+  assert.equal(
+    stripeSubscriptionCursorMayApply({
+      currentResourceId: "sub_old",
+      candidateResourceId: "sub_new",
+      currentCursor: oldDeletion,
+      candidateCursor: replacementCreation,
+    }),
+    true
+  );
+  assert.equal(
+    stripeSubscriptionCursorMayApply({
+      currentResourceId: "sub_old",
+      candidateResourceId: "sub_old",
+      currentCursor: oldDeletion,
+      candidateCursor: replacementCreation,
+    }),
+    false
   );
 });
 
