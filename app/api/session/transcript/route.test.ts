@@ -29,14 +29,73 @@ describe("POST /api/session/transcript", () => {
     expect(ingestTranscriptEvent).not.toHaveBeenCalled();
   });
 
-  it("rejects empty or aborted JSON as a malformed event", async () => {
+  it("rejects empty JSON as a malformed event", async () => {
     const response = await POST(
       new NextRequest("http://localhost/api/session/transcript", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: "{",
       })
     );
     expect(response.status).toBe(400);
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects an aborted body read without leaking the transport error", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await POST({
+      headers: new Headers({ "Content-Type": "application/json" }),
+      body: {
+        getReader: () => ({
+          read: vi.fn().mockRejectedValue(new Error("private aborted body")),
+        }),
+      },
+    } as unknown as NextRequest);
+
+    expect(response.status).toBe(400);
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(
+      "private aborted body"
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("rejects simple cross-origin media types before ingest", async () => {
+    const response = await POST(
+      new NextRequest("http://localhost/api/session/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ sessionId: SESSION_ID, event: {} }),
+      })
+    );
+
+    expect(response.status).toBe(415);
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects media types that merely prefix-match JSON", async () => {
+    const response = await POST(
+      new NextRequest("http://localhost/api/session/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json-evil" },
+        body: JSON.stringify({ sessionId: SESSION_ID, event: {} }),
+      })
+    );
+
+    expect(response.status).toBe(415);
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized bodies before ingest", async () => {
+    const response = await POST(
+      new NextRequest("http://localhost/api/session/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ padding: "x".repeat(66_000) }),
+      })
+    );
+
+    expect(response.status).toBe(413);
     expect(ingestTranscriptEvent).not.toHaveBeenCalled();
   });
 
@@ -46,19 +105,37 @@ describe("POST /api/session/transcript", () => {
     expect(ingestTranscriptEvent).not.toHaveBeenCalled();
   });
 
-  it.each(["invalid_event", "session_mismatch", "room_mismatch"])(
-    "maps %s to a safe 400 response",
-    async (reason) => {
-      vi.mocked(ingestTranscriptEvent).mockResolvedValue({
-        ok: false,
-        reason,
-      } as never);
-      const response = await POST(
-        request({ sessionId: SESSION_ID, event: {} })
-      );
-      expect(response.status).toBe(400);
-    }
-  );
+  it.each([
+    "invalid_event",
+    "session_mismatch",
+    "room_mismatch",
+    "event_time_out_of_bounds",
+  ])("maps %s to a safe 400 response", async (reason) => {
+    vi.mocked(ingestTranscriptEvent).mockResolvedValue({
+      ok: false,
+      reason,
+    } as never);
+    const response = await POST(request({ sessionId: SESSION_ID, event: {} }));
+    expect(response.status).toBe(400);
+  });
+
+  it("redacts persistence exceptions that may contain transcript text", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(ingestTranscriptEvent).mockRejectedValue(
+      new Error("Failing row contains private transcript text")
+    );
+
+    const response = await POST(request({ sessionId: SESSION_ID, event: {} }));
+
+    expect(response.status).toBe(500);
+    expect(errorSpy).toHaveBeenCalledWith("[Transcript] Persistence failed", {
+      code: "transcript_persistence_failed",
+    });
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(
+      "private transcript text"
+    );
+    errorSpy.mockRestore();
+  });
 
   it("keeps missing and cross-user sessions indistinguishable", async () => {
     vi.mocked(ingestTranscriptEvent).mockResolvedValue({

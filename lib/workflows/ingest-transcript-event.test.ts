@@ -6,6 +6,7 @@ import { createTranscriptEvent, type TranscriptEvent } from "@meelni/agent";
 import {
   compareTranscriptOrdering,
   ingestTranscriptEvent,
+  isTranscriptEventWithinSessionWindow,
   type TranscriptIngestStore,
 } from "./ingest-transcript-event";
 
@@ -71,6 +72,38 @@ test("out-of-order arrivals sort by measured time and canonical tie-breakers", (
   assert.deepEqual(
     turns.map((turn) => turn.eventId),
     ["event-1", "event-2", "event-3"]
+  );
+});
+
+test("canonical timing must stay inside the server-owned session window", () => {
+  const window = {
+    startedAt: new Date("2026-07-10T05:00:00.000Z"),
+    deadlineAt: new Date("2026-07-10T05:30:00.000Z"),
+  };
+
+  assert.equal(
+    isTranscriptEventWithinSessionWindow(transcriptEvent(), window),
+    true
+  );
+  assert.equal(
+    isTranscriptEventWithinSessionWindow(
+      transcriptEvent({
+        started_at: "2026-07-10T04:59:59.999Z",
+        ended_at: "2026-07-10T05:00:03.999Z",
+      }),
+      window
+    ),
+    false
+  );
+  assert.equal(
+    isTranscriptEventWithinSessionWindow(
+      transcriptEvent({
+        started_at: "2026-07-10T05:29:56.001Z",
+        ended_at: "2026-07-10T05:30:00.001Z",
+      }),
+      window
+    ),
+    false
   );
 });
 
@@ -164,6 +197,27 @@ test("event IDs are globally unique and writer sequence collisions fail closed",
   });
 });
 
+test("ending closes distinct writes while preserving an exact replay", async () => {
+  const store = createMemoryStore();
+  const event = transcriptEvent();
+  assert.equal((await ingest(store, event)).ok, true);
+  store.sessions.get(SESSION_ID)!.lifecycleState = "ending";
+
+  const replay = await ingest(store, event);
+  const distinct = await ingest(
+    store,
+    transcriptEvent({
+      event_id: "writer-1:message-2",
+      sequence: 2,
+      started_at: "2026-07-10T05:00:05.000Z",
+      ended_at: "2026-07-10T05:00:09.000Z",
+    })
+  );
+
+  assert.equal(replay.ok && replay.disposition, "existing");
+  assert.deepEqual(distinct, { ok: false, reason: "session_closed" });
+});
+
 function transcriptEvent(
   overrides: Partial<TranscriptEvent> = {}
 ): TranscriptEvent {
@@ -199,14 +253,26 @@ function createMemoryStore() {
   const events = new Map<string, TranscriptEvent>();
   const writerSequences = new Map<string, string>();
   const sessions = new Map([
-    [SESSION_ID, { userId: USER_ID, roomName: ROOM_NAME }],
-    [OTHER_SESSION_ID, { userId: USER_ID, roomName: "other-session-room" }],
+    [
+      SESSION_ID,
+      { userId: USER_ID, roomName: ROOM_NAME, lifecycleState: "active" },
+    ],
+    [
+      OTHER_SESSION_ID,
+      {
+        userId: USER_ID,
+        roomName: "other-session-room",
+        lifecycleState: "active",
+      },
+    ],
   ]);
 
   const store: TranscriptIngestStore<TranscriptEvent> & {
     events: typeof events;
+    sessions: typeof sessions;
   } = {
     events,
+    sessions,
     async persist({ userId, event }) {
       const session = sessions.get(event.session_id);
       if (!session || session.userId !== userId) {
@@ -221,6 +287,10 @@ function createMemoryStore() {
         return JSON.stringify(existing) === JSON.stringify(event)
           ? { ok: true, disposition: "existing", turn: existing }
           : { ok: false, reason: "event_conflict" };
+      }
+
+      if (session.lifecycleState === "ending") {
+        return { ok: false, reason: "session_closed" };
       }
 
       const writerKey = `${event.session_id}:${event.writer_id}:${event.sequence}`;

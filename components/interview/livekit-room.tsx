@@ -204,8 +204,6 @@ function RoomContent({
           return;
         }
 
-        console.log("[Transcript] Received:", transcriptData);
-
         const isLegacyEvent = !("contract_version" in transcriptData);
         const timing = getTranscriptEventTiming(transcriptData);
 

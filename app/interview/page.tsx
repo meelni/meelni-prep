@@ -138,6 +138,10 @@ function InterviewPageContent() {
   const [recoveringConnection, setRecoveringConnection] = useState(false);
   const [disconnectTimedOut, setDisconnectTimedOut] = useState(false);
   const [credentialGeneration, setCredentialGeneration] = useState(0);
+
+  useEffect(() => {
+    if (user?.id) transcriptQueue.bindOwner(user.id);
+  }, [transcriptQueue, user?.id]);
   const initializedRef = useRef(false);
   const deadlineReachedRef = useRef(false);
   const credentialRequestInFlightRef = useRef(false);

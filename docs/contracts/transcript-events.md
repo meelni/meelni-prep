@@ -118,6 +118,11 @@ canonical identity fields null. Canonical rows
 require the entire version 2 identity/timing tuple and are immutable through
 the legacy correction helpers.
 
+The endpoint accepts only bounded JSON request bodies. Canonical measured time
+must remain within the server-owned interval from the stored session start
+through its absolute hard deadline. Operational failures log only a fixed code;
+database errors and transcript content are never written to server logs.
+
 Within one writer, measured start times must remain monotonic with sequence.
 The ingest transaction rejects an inversion. Readers therefore order by
 `started_at`, then `writer_id`, `sequence`, `event_id`, and row ID; this obeys
@@ -127,10 +132,13 @@ Transcript insert and terminalization transactions lock the same session row.
 Explicit browser end establishes a client cutoff, stops accepting later packet
 arrivals, and performs a bounded retry/in-flight flush. Once the terminal
 transaction owns the row, it calculates feedback eligibility from the durable
-turns in that transaction and closes new distinct writes. Equivalent replays
-remain idempotent after terminalization. System deadlines use the durable
-evidence available when they acquire the same lock.
+turns in that transaction and closes new distinct writes. A separately claimed
+`ending` state, including reconnect-timeout cleanup, also closes distinct
+writes. Equivalent replays remain idempotent after the cutoff. System deadlines
+use the durable evidence available when they acquire the same lock.
 
 The browser remains a temporary authenticated transport bridge and cannot make
 a packet durable until the server acknowledges it. SAV-193 owns removal of raw
 browser persistence and the longer-term server-side ingest trust boundary.
+The retry queue binds to the authenticated owner as soon as interview auth
+resolves, before processing or retaining restored events for that account.

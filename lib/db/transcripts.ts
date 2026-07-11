@@ -2,8 +2,15 @@ import { db } from "./index";
 import { interviewSession, transcriptTurn } from "./schema";
 import { and, asc, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import type { TranscriptEvent } from "@meelni/agent";
-import { isInterviewTerminalState } from "@meelni/core";
-import type { TranscriptIngestStore } from "@/lib/workflows/ingest-transcript-event";
+import {
+  deriveInterviewDeadlineAt,
+  isInterviewTerminalState,
+  normalizeInterviewDurationMinutes,
+} from "@meelni/core";
+import {
+  isTranscriptEventWithinSessionWindow,
+  type TranscriptIngestStore,
+} from "@/lib/workflows/ingest-transcript-event";
 
 export interface CreateTranscriptTurnInput {
   sessionId: string;
@@ -38,6 +45,8 @@ export function createDrizzleTranscriptIngestStore(
           .select({
             roomName: interviewSession.livekitRoomName,
             lifecycleState: interviewSession.lifecycleState,
+            startedAt: interviewSession.startedAt,
+            config: interviewSession.config,
           })
           .from(interviewSession)
           .where(
@@ -70,7 +79,25 @@ export function createDrizzleTranscriptIngestStore(
           } as const;
         }
 
-        if (isInterviewTerminalState(session.lifecycleState)) {
+        if (
+          !session.startedAt ||
+          !isTranscriptEventWithinSessionWindow(event, {
+            startedAt: session.startedAt,
+            deadlineAt: deriveInterviewDeadlineAt({
+              startedAt: session.startedAt,
+              durationMinutes: normalizeInterviewDurationMinutes(
+                isRecord(session.config) ? session.config.duration : undefined
+              ),
+            }),
+          })
+        ) {
+          return { ok: false, reason: "event_time_out_of_bounds" } as const;
+        }
+
+        if (
+          session.lifecycleState === "ending" ||
+          isInterviewTerminalState(session.lifecycleState)
+        ) {
           return { ok: false, reason: "session_closed" } as const;
         }
 
@@ -169,6 +196,10 @@ export function createDrizzleTranscriptIngestStore(
       });
     },
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function transcriptEventValues(event: TranscriptEvent) {
