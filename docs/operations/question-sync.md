@@ -50,7 +50,11 @@ Provider fetch and validation finish before the database transaction opens. The 
 
 An overlapping request may finish its provider fetch, but returns `409 question_sync_in_progress` with `Retry-After: 60` before database reads or writes begin. Wait until the active mutation finishes, then retry.
 
-The current schema has no provider row id. Its accepted stable source identity is the normalized tuple of question text, company, canonical storage type, and `askedAt` instant. Timestamp parsing is independent of the CLI or Vercel process timezone. Only exact composite duplicates collapse. An inactive exact match is reactivated; a provenance change creates a new identity and deactivates the old active identity. Multiple active rows for the same identity converge deterministically on the lexicographically lowest UUID. Sequential retries converge on that composite identity.
+The provider has no durable row ID. The sync therefore hashes normalized non-private source fields into `source_fingerprint`, retains the original category in `source_category`, and records only the provider class in `source_kind`. Logs and responses expose aggregate counts, never those values.
+
+Exact fingerprints collapse before planning. A near duplicate must have the same normalized prompt, company, and canonical PM round while differing only in provenance or harmless formatting. One existing active row remains canonical whenever possible; additional occurrences are stored inactive with `quality_status = quarantined_near_duplicate` and a canonical link. The database enforces that only `published` rows are active. Fuzzy semantic matching is intentionally out of scope and must not silently quarantine questions.
+
+Dry-run and live responses report `invalidRows`, `exactDuplicateRows`, `nearDuplicateRowsQuarantined`, and `duplicateRecordsRetired` alongside the existing add/update/deactivate totals. Repeating the same source snapshot must produce no new rows or canonical IDs.
 
 ## Responses and audit events
 
@@ -73,9 +77,11 @@ The server emits a `question_sync_audit` JSON event containing trigger, dry-run 
 1. Keep the global relaunch feature gate off while validating the sync path.
 2. Generate independent Preview credentials and configure the Preview cron and operator secrets.
 3. Deploy to Preview. Verify unauthenticated and ordinary signed-in manual requests fail, then run a manual dry run with the operator credential.
-4. Run one Preview live sync in a disposable or approved non-production dataset. Start a second request concurrently and confirm it receives `409` before database work; confirm a sequential retry converges without duplicate composite identities and an inactive exact identity is reactivated.
+4. Run one Preview live sync in a disposable or approved non-production dataset. Start a second request concurrently and confirm it receives `409` before database work; confirm a sequential retry adds no rows, retains canonical IDs, and reports stable exact/near-duplicate aggregate counts.
 5. Generate new, independent Production credentials, configure the Production schedule, deploy, and run a Production dry run. Review only aggregate counts before enabling the schedule.
 6. Monitor the first scheduled Production outcome and question-bank quality. Turn on the relaunch feature gate only after the broader launch checklist is complete.
+
+The current question-provenance migration number is provisional and blocked by SAV-241. Regenerate its SQL, journal entry, snapshot, preflight count, and schema fingerprint from the actual merged predecessor before any Preview or Production migration rehearsal.
 
 The concurrency rehearsal and live data verification require an approved environment and operator authority; local automated tests cover the fail-closed and overlap branches without touching a provider or remote database.
 
