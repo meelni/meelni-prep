@@ -963,8 +963,14 @@ async function getBillingAdjustmentIntegrity(tx: postgres.TransactionSql) {
             SELECT 1 FROM credit_transaction source_txn
             WHERE source_txn.type = 'rollover'
               AND source_txn.grant_id = source_grant.id
-              AND source_txn.metadata =
-                jsonb_build_object('rolloverGrantId', destination.id)
+              AND source_txn.metadata->>'rolloverGrantId' = destination.id::text
+              AND source_txn.metadata->>'version' = '1'
+              AND source_txn.metadata->>'expiresAt' =
+                to_char(destination.expires_at AT TIME ZONE 'UTC',
+                  'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+              AND source_txn.metadata->>'issuedAt' =
+                to_char((destination.expires_at - interval '60 days')
+                  AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
               AND source_txn.credits = lot.original_credits
           )) + (SELECT count(*)
         FROM credit_rollover_lot_allocation lot_allocation
@@ -1224,9 +1230,6 @@ async function getCreditLedgerIntegrity(
         WHERE grant_row.source = 'rollover'
           AND NOT (
             grant_row.expires_at IS NOT NULL
-            AND grant_row.expires_at BETWEEN
-              grant_row.created_at + interval '59 days 23 hours'
-              AND grant_row.created_at + interval '60 days 1 hour'
             AND
             (SELECT count(*) FROM credit_transaction destination
              WHERE destination.grant_id = grant_row.id
@@ -1276,8 +1279,13 @@ async function getCreditLedgerIntegrity(
                   AND source_txn.balance_after >= 0
                   AND source_txn.balance_after + source_txn.credits
                     <= source_grant.original_credits
-                  AND source_txn.metadata =
-                    jsonb_build_object('rolloverGrantId', grant_row.id)
+                  AND source_txn.metadata->>'version' = '1'
+                  AND source_txn.metadata->>'expiresAt' =
+                    to_char(grant_row.expires_at AT TIME ZONE 'UTC',
+                      'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                  AND source_txn.metadata->>'issuedAt' =
+                    to_char((grant_row.expires_at - interval '60 days')
+                      AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
                 )
             )
             AND EXISTS (
@@ -1312,8 +1320,14 @@ async function getCreditLedgerIntegrity(
               FROM credit_grant destination
               JOIN credit_grant source_grant ON source_grant.id = ledger_txn.grant_id
               WHERE destination.source = 'rollover'
-                AND ledger_txn.metadata =
-                  jsonb_build_object('rolloverGrantId', destination.id)
+                AND ledger_txn.metadata->>'rolloverGrantId' = destination.id::text
+                AND ledger_txn.metadata->>'version' = '1'
+                AND ledger_txn.metadata->>'expiresAt' =
+                  to_char(destination.expires_at AT TIME ZONE 'UTC',
+                    'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                AND ledger_txn.metadata->>'issuedAt' =
+                  to_char((destination.expires_at - interval '60 days')
+                    AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
                 AND ledger_txn.reservation_id IS NULL
                 AND ledger_txn.user_id = destination.user_id
                 AND source_grant.user_id = destination.user_id
@@ -1487,8 +1501,15 @@ async function getCreditLedgerIntegrity(
                         )
                         FROM credit_transaction source_txn
                         WHERE source_txn.type = 'rollover'
-                          AND source_txn.metadata =
-                            jsonb_build_object('rolloverGrantId', rollover.id)
+                          AND source_txn.metadata->>'rolloverGrantId' = rollover.id::text
+                          AND source_txn.metadata->>'version' = '1'
+                          AND source_txn.metadata->>'expiresAt' =
+                            to_char(rollover.expires_at AT TIME ZONE 'UTC',
+                              'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                          AND source_txn.metadata->>'issuedAt' =
+                            to_char((rollover.expires_at - interval '60 days')
+                              AT TIME ZONE 'UTC',
+                              'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
                       )
                 )
             END

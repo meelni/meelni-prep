@@ -1152,7 +1152,7 @@ function assertLegacyCreditLedgerIntegrity(result: MigrationPreflightResult) {
     terminal_evidence_mismatches: 2,
     reserved_balance_mismatches: 1,
     rollover_evidence_mismatches: 1,
-    orphan_or_mismatched_rollover_transactions: 1,
+    orphan_or_mismatched_rollover_transactions: 2,
     orphan_rollover_grants: 1,
     subscription_renewal_evidence_mismatches: 1,
     cross_user_references: 1,
