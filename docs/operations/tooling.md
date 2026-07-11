@@ -207,7 +207,7 @@ it uses provider-neutral fakes. LiveKit Agents and its plugins are pinned as one
 tested version family in `agent/requirements.txt`; update them together and
 rerun TypeScript/Python golden contract fixtures before deployment.
 
-## Stacked Pull Request Verification
+## Relaunch Pull Request Verification
 
 Stack relationships and exact expected parent heads live in the trusted
 default-branch copy of `.github/stacked-prs.json`. The read-only
@@ -218,8 +218,10 @@ code. The deterministic core remains offline and verifies that the child
 contains the current parent and that PR-body evidence names the exact child
 head, parent head, and merge-base.
 
-The workflow publishes the required `Stack Topology / Verify` Check Run on the
-verified PR head rather than relying on the default-branch workflow job. Every
+The workflow publishes a custom `Stack Topology / Verify` Check Run on the
+verified PR head for exact audit evidence. Classic protection requires the
+stable GitHub Actions `Trusted Publisher` job because the repository did not
+reliably enforce REST-created checks. Every
 same-repository PR event also fans out to its open registered children. The
 globally serialized, maximum-depth pending queue retains parent movement and
 closure events. The publisher refreshes exact child and parent refs just before
@@ -227,11 +229,65 @@ success; a deleted parent ref fails the child closed. A five-minute trusted
 schedule and manual dispatch remain backstops for manifest movement and
 operator recovery.
 
-Unregistered PRs targeting `main` publish an explicit successful required check
-whose output says the PR is not a registered stack child. Classic branch
-protection does not treat GitHub's `neutral` conclusion as satisfying this
-required context. Registered children and undeclared non-default stacks retain
-the exact fail-closed behavior described in the runbook.
+Unregistered PRs targeting `main` publish an explicit successful custom check
+whose output says the PR is not a registered stack child. The required
+`Trusted Publisher` job succeeds after safe publication. Registered children
+and undeclared non-default stacks retain the exact fail-closed behavior
+described in the runbook.
+
+The same trusted workflow inventories every open same-repository PR and all of
+its paginated file diffs. Every non-removed change to a direct
+`lib/db/migrations/<numeric>_*.sql` file claims that numeric sequence. Removed
+or renamed-away migration history fails as an immutable-history violation. The
+workflow publishes a separate exact-head `Migration Collision / Verify` Check
+Run: unique owners pass, every owner of a duplicate sequence fails, and the
+triggering PR receives a neutral result when it changes no Drizzle migration.
+Fork PRs do not enter the repository migration inventory.
+Fork events also skip the migration fan-out so untrusted contributors cannot
+consume the same-repository audit budget.
+
+Classic protection requires `Migration Collision Publisher`, the stable Actions
+job context. The job fails for any global inventory, publication, or freshness
+error, or when the triggering open PR owns a collision/violation. It succeeds
+for an unrelated trigger even while custom failure checks are published to
+other collision owners. Closed triggers do not inherit peer failures. Forks
+cannot enter the same-repository inventory and fail the required job closed;
+private-repository changes must be moved to a maintainer-owned branch. The
+custom Check Run remains the detailed exact-head audit record and is not the
+enforceable classic-protection context.
+
+The inventory fails closed. A malformed response, incomplete PR/file page,
+moving PR head, GitHub API error, or Check Run error prevents the workflow from
+claiming that collision absence was proved. When the open PR list is known, an
+incomplete file inventory publishes failure to every known migration or
+immutable-history owner, every PR whose diff failed, and the triggering PR. Any
+missing diff could collide with a known migration owner. On a PR event where
+the list itself fails, the triggering exact head receives failure. The
+scheduled job also fails so an operator cannot mistake missing checks for a
+clean inventory.
+
+GitHub caps the pull-request files API at 3,000 files. Reaching that ceiling is
+treated as incomplete rather than assuming the unseen tail has no migration.
+
+Opened, reopened, synchronized, edited, closed, draft-conversion, and
+ready-for-review events refresh affected owners immediately. The five-minute
+schedule is a recovery path for missed events and parent/default-branch
+movement. Scheduled runs publish only migration or immutable-history owners,
+not every open PR, and reuse the latest completed Check Run when its exact head,
+GitHub Actions app identity, conclusion, and summary are unchanged.
+
+Event-driven and scheduled migration publishers share the global
+`migration-collision-audit` concurrency group with running-run cancellation
+disabled. An older inventory therefore cannot finish after a newer audit and
+overwrite its collision failure with stale success. Immediately before each
+publication phase, the publisher re-lists the complete same-repository PR set
+and verifies the recorded inventory generation, head, head ref, repository, and
+base ref. Freshness is checked before lookup, after lookup before reuse/create,
+and after Check Run creation immediately before completion. Check summaries
+include the SHA-256 inventory generation, so reuse cannot cross snapshots. If
+publication is deferred across a PR-set or head change, or any freshness read
+fails, the run creates or patches failure rather than reusing or completing
+success from the stale result.
 
 Run the offline regression fixtures with:
 
@@ -239,7 +295,7 @@ Run the offline regression fixtures with:
 npm run test:stack
 ```
 
-The reconvergence procedure and manual audit command are documented in
+The reconvergence, migration serialization, and manual audit procedures are documented in
 [Stacked Pull Requests](./stacked-pull-requests.md).
 
 ## Database Migration Verification

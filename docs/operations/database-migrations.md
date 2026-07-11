@@ -4,6 +4,17 @@ Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
 
+Open PRs do not reserve sequence numbers independently. Before merging a
+migration-bearing PR, require the stable GitHub Actions
+`Migration Collision Publisher` job and inspect its exact-head
+`Migration Collision / Verify` audit record, then serialize it behind the
+actual latest merged migration. Rebase,
+regenerate the SQL, `_journal.json`, and snapshot from that predecessor, and
+record the exact migration predecessor in the PR body. A green collision check
+proves unique open ownership only; it does not prove that a journal or snapshot
+was generated from the merged predecessor. See
+[Stacked Pull Requests](./stacked-pull-requests.md#cross-pr-migration-ownership).
+
 ## Connection rules
 
 - Runtime serverless clients use `prepare: false` and at most one connection per

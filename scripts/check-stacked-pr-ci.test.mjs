@@ -679,20 +679,18 @@ test("the authoritative workflow checks out default-branch code and never PR cod
   assert.match(workflow, /permissions:\n  contents: read/);
   assert.match(
     workflow,
-    /verify:[^]*permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
+    /verify-stack:[^]*?permissions:\n      contents: read\n      checks: write/
   );
+  assert.match(workflow, /verify-stack:[^]*?name: Trusted Publisher/);
   assert.match(
     workflow,
-    /revalidate:[^]*permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
+    /verify-migrations:[^]*?permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
   );
   assert.match(workflow, /cron: "\*\/5 \* \* \* \*"/);
   assert.match(workflow, /group: stack-topology-publisher/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /queue: max/);
-  assert.match(
-    workflow,
-    /types: \[opened, reopened, synchronize, edited, closed\]/
-  );
+  assert.match(workflow, /pull_request_target:[^]*types:[^]*closed/);
   assert.match(workflow, /persist-credentials: true/);
   assert.match(
     workflow,

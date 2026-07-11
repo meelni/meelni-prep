@@ -1,8 +1,17 @@
-name: Stack Topology
+name: Relaunch Integration Gates
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize, edited, closed]
+    types:
+      [
+        opened,
+        reopened,
+        synchronize,
+        edited,
+        closed,
+        converted_to_draft,
+        ready_for_review,
+      ]
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
@@ -18,8 +27,9 @@ concurrency:
   queue: max
 
 jobs:
-  verify:
+  verify-stack:
     if: github.event_name == 'pull_request_target'
+    # Classic protection requires this stable GitHub Actions job context.
     name: Trusted Publisher
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -43,12 +53,43 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify exact stacked PR topology and evidence
+      - name: Verify exact stacked PR topology and dependents
         run: node scripts/revalidate-stacked-prs-ci.mjs --event-path "$GITHUB_EVENT_PATH"
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-  revalidate:
+  verify-migrations:
+    if: github.event_name == 'pull_request_target'
+    # Classic protection requires this stable GitHub Actions job context.
+    name: Migration Collision Publisher
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: migration-collision-audit
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: read
+    steps:
+      - name: Check out trusted default-branch verifier
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+
+      - name: Verify open-PR migration ownership
+        run: node scripts/check-migration-collisions-event-ci.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  revalidate-stacks:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: Revalidate Open Stacks
     runs-on: ubuntu-latest
@@ -75,3 +116,34 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+  revalidate-migrations:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Revalidate Migration Ownership
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: migration-collision-audit
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: read
+    steps:
+      - name: Check out trusted default-branch verifier
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+
+      - name: Revalidate open migration owners
+        run: node scripts/check-migration-collisions-ci.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
