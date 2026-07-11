@@ -7,7 +7,9 @@ Meelni emits one-line JSON operational-failure events to server stderr. Vercel c
 The reporter is failure-isolated: an invalid clock or throwing log sink returns
 a fixed redacted fallback and must never replace the product workflow failure.
 Instrumented JSON request boundaries reject declared or streamed bodies above
-16 KiB and never include rejected body content in logs.
+16 KiB, cancel pending reads when the request aborts, and never include rejected
+body content in logs. The signed Stripe webhook preserves raw signature bytes
+behind the same bounded reader with a 256 KiB ceiling.
 
 The relaunch gate must remain off until a controlled isolated-Preview failure proves that the selected operator can receive and act on alerts. Do not generate that failure against the current shared Production database.
 

@@ -131,6 +131,37 @@ test("unknown and secret-shaped error codes fail closed without throwing", () =>
   );
 });
 
+test("every dynamic event field is runtime-closed before serialization", () => {
+  for (const input of [
+    {
+      operation: "customer@example.com",
+      errorCode: "interview_start_failed",
+      retryable: true,
+    },
+    {
+      operation: "interview_start",
+      errorCode: "interview_start_failed",
+      severity: "token-secret",
+      retryable: true,
+    },
+    {
+      operation: "interview_start",
+      errorCode: "interview_start_failed",
+      retryable: "user@example.com",
+    },
+  ]) {
+    const writes: string[] = [];
+    const event = reportOperationalFailure(input as never, {
+      now: () => new Date(),
+      env: {},
+      write: (value) => writes.push(value),
+    });
+    assert.equal(event.errorCode, "operational_reporter_failed");
+    assert.deepEqual(writes, []);
+    assert.doesNotMatch(JSON.stringify(event), /customer|token|user@example/);
+  }
+});
+
 test("throwing clocks and sinks cannot mask the product failure", () => {
   const base = {
     operation: "interview_start" as const,

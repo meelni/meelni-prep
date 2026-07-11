@@ -57,3 +57,6 @@
 - Open launch gate: SAV-226 isolation, an approved operator/destination, and a
   controlled Preview receipt rehearsal remain required. Code and hosted build
   checks do not prove alert readiness.
+- Exact-head hardening additionally bounds the unauthenticated raw Stripe body,
+  makes shared JSON reads responsive to mid-read aborts, and runtime-validates
+  every dynamic operational-event field before serialization.

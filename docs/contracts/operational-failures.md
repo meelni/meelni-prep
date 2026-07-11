@@ -28,6 +28,9 @@ Allowed operations are `auth_callback`, `interview_token`, `interview_start`, `i
 
 The event is constructed from a closed schema. Callers cannot attach an exception, stack, message, arbitrary context, provider payload, user ID, email, transcript, token, room credential, payment identifier, or secret.
 
+- `operation`, `severity`, and `retryable` are runtime-validated against their
+  closed enums/boolean contract before any write; TypeScript types are not the
+  privacy boundary.
 - `errorCode` must be a member of the versioned
   `OPERATIONAL_FAILURE_ERROR_CODES` catalog. Unknown, dynamic, and merely
   snake_case values fail before serialization.

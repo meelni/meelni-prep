@@ -40,6 +40,25 @@ describe("POST /api/interview/end", () => {
     expect(endInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 
+  it("rejects oversized bodies without logging or invoking the workflow", async () => {
+    mockAuth({ id: "user-oversize" });
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const response = await POST(
+      new NextRequest("http://localhost/api/interview/end", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": String(16 * 1024 + 1),
+        },
+        body: "{}",
+      })
+    );
+    expect(response.status).toBe(413);
+    expect(stderr).not.toHaveBeenCalled();
+    expect(endInterviewSessionWorkflow).not.toHaveBeenCalled();
+    stderr.mockRestore();
+  });
+
   it("returns stored terminal truth when dispatch remains retryable", async () => {
     mockAuth({ id: "user-dispatch-failure" });
     vi.mocked(endInterviewSessionWorkflow).mockResolvedValue(

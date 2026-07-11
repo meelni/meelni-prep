@@ -58,6 +58,7 @@ import {
   readOperationalRequestId,
   reportOperationalFailure,
 } from "@/lib/operations/operational-events";
+import { readBoundedBody } from "@/lib/http/read-bounded-json";
 
 /**
  * Stripe Webhook Handler with Idempotency
@@ -72,9 +73,16 @@ import {
  */
 export async function POST(req: NextRequest) {
   try {
+    const parsedBody = await readBoundedBody(req, 256 * 1024);
+    if (!parsedBody.ok) {
+      return NextResponse.json(
+        { error: "Invalid webhook body" },
+        { status: parsedBody.reason === "too_large" ? 413 : 400 }
+      );
+    }
+    const body = Buffer.from(parsedBody.value);
     const stripe = getStripe();
     const webhookSecret = getStripeWebhookSecret();
-    const body = await req.text();
     const signature = req.headers.get("stripe-signature");
 
     if (!signature) {
