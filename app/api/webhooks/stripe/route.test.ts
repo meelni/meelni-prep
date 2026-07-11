@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   payments: [] as Array<Record<string, unknown>>,
   updates: [] as Array<Record<string, unknown>>,
   subscriptionWrites: [] as Array<Record<string, unknown>>,
+  transactionUpdateResults: [] as boolean[],
   selectResponses: [] as Array<Array<Record<string, unknown>>>,
   tombstoneFingerprints: new Set<string>(),
   signatureCalls: 0,
@@ -101,6 +102,8 @@ vi.mock("@/lib/db", () => ({
           set: (value: Record<string, unknown>) => ({
             where: () => ({
               returning: async () => {
+                const applies = state.transactionUpdateResults.shift() ?? true;
+                if (!applies) return [];
                 state.subscriptionWrites.push(value);
                 return [{ id: "subscription-route" }];
               },
@@ -142,6 +145,7 @@ describe("POST /api/webhooks/stripe", () => {
     state.payments.length = 0;
     state.updates.length = 0;
     state.subscriptionWrites.length = 0;
+    state.transactionUpdateResults.length = 0;
     state.selectResponses.length = 0;
     state.tombstoneFingerprints.clear();
     state.signatureCalls = 0;
@@ -559,6 +563,64 @@ describe("POST /api/webhooks/stripe", () => {
     expect(response.status).toBe(200);
     expect(state.subscriptionWrites).toHaveLength(0);
     expect(state.logs[0]).toMatchObject({ status: "processed" });
+  });
+
+  it("retries a CAS loss against an active winner and converges to maximal proof", async () => {
+    const old = subscriptionRow({
+      stripeSubscriptionId: "sub_old",
+      status: "canceled",
+      version: 1,
+      stripeResourceCreatedAt: new Date(900_000),
+      stripeResourceCreatedEventTimestamp: new Date(900_000),
+      stripeResourceCreatedEventId: "evt_old_created",
+    });
+    state.transactionUpdateResults.push(false);
+    state.selectResponses.push([], [], [old]);
+
+    const candidate = subscriptionCreatedEvent(
+      "evt_maximal_created",
+      "sub_maximal",
+      1_002,
+      1_002
+    );
+    const conflicted = await POST(request(candidate));
+    expect(conflicted.status).toBe(500);
+    expect(state.logs[0]).toMatchObject({
+      status: "failed",
+      lastError: "stripe_subscription_version_conflict",
+    });
+
+    state.selectResponses.push(
+      [state.logs[0]!],
+      [],
+      [
+        subscriptionRow({
+          stripeSubscriptionId: "sub_first_winner",
+          status: "active",
+          version: 2,
+          stripeResourceCreatedAt: new Date(1_001_000),
+          stripeResourceCreatedEventTimestamp: new Date(1_001_000),
+          stripeResourceCreatedEventId: "evt_first_winner_created",
+          retiredStripeSubscriptionIds: ["sub_old"],
+        }),
+      ]
+    );
+    const retried = await POST(request(candidate));
+
+    expect(retried.status).toBe(200);
+    expect(state.subscriptionWrites.at(-1)).toMatchObject({
+      stripeSubscriptionId: "sub_maximal",
+      status: "active",
+      version: 3,
+      stripeResourceCreatedAt: new Date(1_002_000),
+    });
+
+    const replay = await POST(request(candidate));
+    expect(await replay.json()).toEqual({
+      received: true,
+      status: "already_processed",
+    });
+    expect(state.subscriptionWrites).toHaveLength(1);
   });
 });
 
