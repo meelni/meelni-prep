@@ -108,7 +108,7 @@ test("provider failure after usable evidence refunds exactly once", async () => 
     usableAt: new Date("2026-07-10T08:00:01.000Z"),
     usableTranscriptEventId: DELIVERED_EVENT_ID,
     billingFault: "provider",
-    billingFaultCode: "voice_session_failed",
+    billingFaultCode: "voice_runtime_provider_failed",
   });
   fixture.turns.push(qualifyingTurn());
   fixture.seedConsumed();

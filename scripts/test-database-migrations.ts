@@ -4052,14 +4052,14 @@ async function verifyProviderCreditRecovery(
 
     const failure = {
       contract_version: 1 as const,
-      event_id: "provider-failure:pg:voice_session_failed",
+      event_id: "provider-failure:pg:voice_runtime_provider_failed",
       session_id: providerAttempt,
       type: "provider_failed" as const,
       occurred_at: new Date(now.getTime() + 2_000).toISOString(),
       runtime_ref: { provider: "livekit", id: `interview-${providerAttempt}` },
       failure: {
         reason: "provider_failure" as const,
-        code: "voice_session_failed",
+        code: "voice_runtime_provider_failed",
         retryable: true,
       },
     };
