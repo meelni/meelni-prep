@@ -51,6 +51,7 @@ interface SerializedTranscriptQueueState {
 
 const QUEUE_CONFIG = {
   retryDelayMs: 2_000,
+  requestTimeoutMs: 10_000,
   maxQueueSize: 1_000,
   retentionMs: 24 * 60 * 60 * 1_000,
   storageKey: "transcript_queue_v2",
@@ -77,7 +78,8 @@ class TranscriptHttpError extends Error {
 
 export class TranscriptQueue {
   private queue: QueuedTranscriptSave[] = [];
-  private isProcessing = false;
+  private processing: { generation: number; promise: Promise<void> } | null =
+    null;
   private processTimer: ReturnType<typeof setInterval> | null = null;
   private inFlight = new Map<string, Promise<TranscriptSaveResult>>();
   private overflowedSessions = new Set<string>();
@@ -85,6 +87,7 @@ export class TranscriptQueue {
   private closedSessions = new Set<string>();
   private boundOwnerId: string | null = null;
   private ownerGeneration = 0;
+  private ownerAbortController = new AbortController();
 
   constructor() {
     this.loadFromStorage();
@@ -155,7 +158,10 @@ export class TranscriptQueue {
   ): Promise<TranscriptSaveResult> {
     const id = queueIdentity(request);
     try {
-      const result = await postTranscriptEvent(request);
+      const result = await postTranscriptEvent(
+        request,
+        this.ownerAbortController.signal
+      );
       if (this.isCurrentRequest(request, generation)) {
         this.removeQueuedItem(id);
         this.removeFailure(id);
@@ -184,12 +190,20 @@ export class TranscriptQueue {
   }
 
   private async processQueue(): Promise<void> {
-    if (this.isProcessing || this.queue.length === 0) return;
+    if (this.queue.length === 0) return;
     const generation = this.ownerGeneration;
+    if (this.processing?.generation === generation) {
+      return this.processing.promise;
+    }
     const ownerId = this.boundOwnerId;
-    this.isProcessing = true;
+    const signal = this.ownerAbortController.signal;
+    const processing = {
+      generation,
+      promise: Promise.resolve(),
+    };
+    this.processing = processing;
 
-    try {
+    processing.promise = (async () => {
       this.pruneExpired();
       while (this.queue.length > 0) {
         if (!ownerId || !this.isCurrentOwner(ownerId, generation)) break;
@@ -197,7 +211,7 @@ export class TranscriptQueue {
         item.attemptCount += 1;
         item.lastAttempt = new Date();
         try {
-          await postTranscriptEvent(item.request);
+          await postTranscriptEvent(item.request, signal);
           if (
             !this.isCurrentOwner(ownerId, generation) ||
             this.closedSessions.has(ownerSessionIdentity(item.request))
@@ -224,9 +238,10 @@ export class TranscriptQueue {
           break;
         }
       }
-    } finally {
-      this.isProcessing = false;
-    }
+    })().finally(() => {
+      if (this.processing === processing) this.processing = null;
+    });
+    return processing.promise;
   }
 
   async flush(
@@ -293,7 +308,7 @@ export class TranscriptQueue {
   } {
     return {
       queueLength: this.queue.length,
-      isProcessing: this.isProcessing,
+      isProcessing: this.processing !== null,
       failed: this.failures.length + this.overflowedSessions.size,
     };
   }
@@ -301,7 +316,7 @@ export class TranscriptQueue {
   clear(): void {
     this.stop();
     this.boundOwnerId = null;
-    this.ownerGeneration += 1;
+    this.advanceGeneration();
     this.queue = [];
     this.overflowedSessions.clear();
     this.failures = [];
@@ -321,7 +336,12 @@ export class TranscriptQueue {
         failure.ownerId !== ownerId || failure.sessionId !== sessionId
     );
     this.overflowedSessions.delete(`${ownerId}:${sessionId}`);
+    this.advanceGeneration();
     this.saveToStorage();
+    if (this.boundOwnerId) {
+      this.startBackgroundProcessing();
+      void this.processQueue();
+    }
   }
 
   private saveToStorage(): void {
@@ -420,13 +440,21 @@ export class TranscriptQueue {
       (failure) => failure.ownerId === ownerId
     );
     this.boundOwnerId = ownerId;
-    this.ownerGeneration += 1;
+    this.advanceGeneration();
     this.closedSessions = new Set(
       [...this.closedSessions].filter((key) => key.startsWith(`${ownerId}:`))
     );
     this.saveToStorage();
     this.startBackgroundProcessing();
     void this.processQueue();
+  }
+
+  private advanceGeneration(): void {
+    this.ownerAbortController.abort();
+    this.ownerAbortController = new AbortController();
+    this.ownerGeneration += 1;
+    this.processing = null;
+    this.inFlight.clear();
   }
 
   private recordFailure(
@@ -501,21 +529,41 @@ export class TranscriptQueue {
 }
 
 async function postTranscriptEvent(
-  request: TranscriptPersistenceRequest
+  request: TranscriptPersistenceRequest,
+  ownerSignal: AbortSignal
 ): Promise<TranscriptSaveResult> {
-  const response = await fetch("/api/session/transcript", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: request.sessionId,
-      event: request.event,
-    }),
-  });
-  const data = (await response.json().catch(() => ({}))) as {
+  const controller = new AbortController();
+  const abort = () => {
+    clearTimeout(timeout);
+    controller.abort(ownerSignal.reason);
+  };
+  const timeout = setTimeout(
+    () => controller.abort(),
+    QUEUE_CONFIG.requestTimeoutMs
+  );
+  if (ownerSignal.aborted) abort();
+  else ownerSignal.addEventListener("abort", abort, { once: true });
+  let response: Response;
+  let data: {
     error?: string;
     disposition?: "created" | "existing";
     turn?: unknown;
   };
+  try {
+    response = await fetch("/api/session/transcript", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: request.sessionId,
+        event: request.event,
+      }),
+      signal: controller.signal,
+    });
+    data = (await response.json().catch(() => ({}))) as typeof data;
+  } finally {
+    clearTimeout(timeout);
+    ownerSignal.removeEventListener("abort", abort);
+  }
   if (!response.ok) {
     throw new TranscriptHttpError(
       response.status,
