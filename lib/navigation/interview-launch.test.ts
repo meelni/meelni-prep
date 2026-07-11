@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildInterviewHrefWithoutQuestion,
   buildNewInterviewHref,
   buildQuestionInterviewHref,
   parseInterviewLaunchContext,
@@ -74,5 +75,14 @@ test("launch context treats the first repeated or empty question ID safely", () 
       new URLSearchParams("questionId=&questionId=question-2")
     ).questionId,
     null
+  );
+});
+
+test("clearing stale question intent preserves every other launch parameter", () => {
+  assert.equal(
+    buildInterviewHrefWithoutQuestion(
+      "questionId=stale&company=Stripe&interview_type=strategy&difficulty=advanced&returnTo=%2Fexplore%3Ftype%3DStrategy&tag=first&tag=second"
+    ),
+    "/dashboard/new-interview?company=Stripe&interview_type=strategy&difficulty=advanced&returnTo=%2Fexplore%3Ftype%3DStrategy&tag=first&tag=second"
   );
 });

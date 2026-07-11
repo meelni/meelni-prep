@@ -10,6 +10,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getQuestionById } from "@/lib/db/questions";
 
+const QUESTION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -17,16 +20,16 @@ export async function GET(
   try {
     const { id } = await params;
 
-    if (!id) {
+    if (!QUESTION_ID_PATTERN.test(id)) {
       return NextResponse.json(
-        { error: "Question ID is required" },
+        { error: "Invalid question ID" },
         { status: 400 }
       );
     }
 
     const question = await getQuestionById(id);
 
-    if (!question) {
+    if (!question || !question.isActive) {
       return NextResponse.json(
         { error: "Question not found" },
         { status: 404 }

@@ -99,6 +99,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     livekitProvider: {
       startInterviewRoom: async (input) => {
         const metadata = input.metadata as InterviewRoomMetadata;
+        assert.equal(metadata.round_type, "product_sense");
         assert.equal(
           metadata.question?.askedAt,
           productFixture.session.startedAt.toISOString()
@@ -116,7 +117,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     {
       user,
       body: {
-        roundType: "product_sense",
+        roundType: "strategy",
         mode: "voice_video",
         role: "pm",
         config: productFixture.roomMetadata.config,
@@ -158,6 +159,171 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     "transition:connecting",
     "consumeReservation",
   ]);
+});
+
+test("selected question converges conflicting round identities before persistence and LiveKit", async () => {
+  const productFixture = createProductSenseInterviewFixture();
+  const liveKitFixture = createLiveKitStartFixture();
+  const conflictingConfig = {
+    ...productFixture.roomMetadata.config,
+    roundType: "strategy",
+    round_type: "behavioral",
+    interviewType: "execution",
+    interview_type: "strategy",
+  };
+  const roundIdentityKeys = [
+    "roundType",
+    "round_type",
+    "interviewType",
+    "interview_type",
+  ];
+
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: {
+        roundType: "strategy",
+        config: conflictingConfig,
+        questionId: productFixture.question.questionId,
+      },
+      env: liveKitFixture.input.env,
+      interviewAgentName: liveKitFixture.input.agentName,
+    },
+    createDeps({
+      getQuestionById: async () => ({
+        id: productFixture.question.questionId,
+        company: productFixture.question.company,
+        questionText: productFixture.question.questionText,
+        questionType: productFixture.question.questionType,
+        askedAt: productFixture.session.startedAt,
+        isActive: true,
+        createdAt: productFixture.session.startedAt,
+      }),
+      createSession: async (input) => {
+        assert.equal(input.roundType, "product_sense");
+        assert.ok(input.config);
+        for (const key of roundIdentityKeys) {
+          assert.equal((input.config as Record<string, unknown>)[key], undefined);
+        }
+        return { id: productFixture.session.id, config: input.config };
+      },
+      livekitProvider: {
+        startInterviewRoom: async (input) => {
+          const metadata = input.metadata as InterviewRoomMetadata;
+          assert.equal(metadata.round_type, "product_sense");
+          for (const key of roundIdentityKeys) {
+            assert.equal(
+              (metadata.config as unknown as Record<string, unknown>)[key],
+              undefined
+            );
+          }
+          return {
+            ok: true,
+            provider: "livekit",
+            data: liveKitFixture.expectedStartedRoom,
+          };
+        },
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    for (const key of roundIdentityKeys) {
+      assert.equal(
+        (result.body.config as unknown as Record<string, unknown>)[key],
+        undefined
+      );
+    }
+  }
+});
+
+test("startInterviewSessionWorkflow rejects an unmappable selected question before side effects", async () => {
+  const fixture = createProductSenseInterviewFixture();
+  const calls: string[] = [];
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: {
+        roundType: "strategy",
+        questionId: fixture.question.questionId,
+      },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      getQuestionById: async () => {
+        calls.push("getQuestionById");
+        return {
+          id: fixture.question.questionId,
+          company: fixture.question.company,
+          questionText: fixture.question.questionText,
+          questionType: "Unknown legacy category",
+          askedAt: fixture.session.startedAt,
+          isActive: true,
+          createdAt: fixture.session.startedAt,
+        };
+      },
+      upsertUser: async () => {
+        calls.push("upsertUser");
+      },
+      reserveCredit: async () => {
+        calls.push("reserveCredit");
+        throw new Error("must not reserve");
+      },
+      createSession: async (input) => {
+        calls.push("createSession");
+        return { id: fixture.session.id, config: input.config };
+      },
+    })
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.status, 409);
+    assert.deepEqual(result.body, {
+      error: "selected_question_round_unavailable",
+      message:
+        "This question cannot be started because its interview round is unavailable.",
+    });
+  }
+  assert.deepEqual(calls, ["getQuestionById"]);
+});
+
+test("startInterviewSessionWorkflow rejects a selected question that became inactive", async () => {
+  const fixture = createProductSenseInterviewFixture();
+  let upserted = false;
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: {
+        roundType: "product_sense",
+        mode: "voice_video",
+        config: fixture.roomMetadata.config,
+        questionId: fixture.question.questionId,
+      },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      getQuestionById: async () => ({
+        id: fixture.question.questionId,
+        company: fixture.question.company,
+        questionText: fixture.question.questionText,
+        questionType: fixture.question.questionType,
+        askedAt: fixture.session.startedAt,
+        isActive: false,
+        createdAt: fixture.session.startedAt,
+      }),
+      upsertUser: async () => {
+        upserted = true;
+      },
+    })
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.status, 404);
+  assert.equal(upserted, false);
 });
 
 test("startInterviewSessionWorkflow carries hint mode through session config", async () => {
@@ -328,6 +494,11 @@ test("startInterviewSessionWorkflow allows all PM round types when a credit is a
     createDeps({
       createSession: async (input) => {
         assert.equal(input.roundType, "execution");
+        assert.ok(input.config);
+        assert.equal(
+          (input.config as Record<string, unknown>).roundType,
+          undefined
+        );
         return {
           id: createProductSenseInterviewFixture().session.id,
           config: input.config,
