@@ -42,11 +42,11 @@
 
 - Required commands: Billing tests, typecheck, boundary checks, `npm run check:ci`, and build.
 - Optional/manual checks: Inspect the production adapter's runtime keys.
-- Fixtures or regression tests needed: Assert every low-level mutation key is absent from the production adapter, retained or returned callback objects are revoked after asynchronous settlement without issuing queries, and existing fault-injection tests remain green.
+- Fixtures or regression tests needed: Assert every low-level mutation key is absent from the production adapter; retained or returned callback objects are revoked after asynchronous settlement without issuing queries; unawaited in-flight operations drain before commit and roll back on rejection; and existing fault-injection tests remain green.
 
 ## Rollout
 
 - Risk level: Low.
-- Backward compatibility: Top-level production reads and legitimate `withUserTransaction` calls are unchanged; unsupported direct access, cross-user callback operations, and operations attempted after callback settlement fail closed.
+- Backward compatibility: Top-level production reads and legitimate `withUserTransaction` calls are unchanged; in-flight operations are drained before callback commit; unsupported direct access, cross-user callback operations, and operations first attempted after callback settlement fail closed.
 - Metrics/events to watch: None beyond existing billing failures.
 - Follow-up slice: SAV-218 can split larger ledger workflows after behavior stabilizes.
