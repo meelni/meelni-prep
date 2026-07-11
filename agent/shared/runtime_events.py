@@ -1,5 +1,6 @@
 """Provider-neutral lifecycle fact contract emitted by interview runtimes."""
 
+import asyncio
 from datetime import datetime
 import re
 from typing import Any, Awaitable, Callable, Dict, Optional
@@ -50,6 +51,8 @@ async def stop_provider_runtime_then_report(
     terminate_room: Callable[[], Awaitable[None]],
     shutdown: Callable[[], None],
     report_failure: Callable[[], Awaitable[bool]],
+    stop_timeout_seconds: float = 2.0,
+    report_timeout_seconds: float = 6.0,
 ) -> bool:
     """Stop every local runtime boundary before awaiting durable reporting."""
     stop_error: BaseException | None = None
@@ -58,12 +61,12 @@ async def stop_provider_runtime_then_report(
     except BaseException as error:
         stop_error = error
     try:
-        await close_session()
+        await asyncio.wait_for(close_session(), timeout=stop_timeout_seconds)
     except BaseException as error:
         if stop_error is None:
             stop_error = error
     try:
-        await terminate_room()
+        await asyncio.wait_for(terminate_room(), timeout=stop_timeout_seconds)
     except BaseException as error:
         if stop_error is None:
             stop_error = error
@@ -76,7 +79,9 @@ async def stop_provider_runtime_then_report(
     report_error: BaseException | None = None
     persisted = False
     try:
-        persisted = await report_failure()
+        persisted = await asyncio.wait_for(
+            report_failure(), timeout=report_timeout_seconds
+        )
     except BaseException as error:
         report_error = error
 

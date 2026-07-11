@@ -23,10 +23,14 @@ Provider-failure ingress accepts only the deployed `livekit` runtime and the
 normalized failure-code set shared by the TypeScript and Python contracts.
 The first accepted terminal claim is immutable; an equivalent replay is
 idempotent and a conflicting claim fails closed.
-Fatal runtime and deadline-watchdog failures use one tracked stop sequence:
-disable input, close the agent session, terminate the room, and shut down the
-job before awaiting the bounded provider-neutral failure report. Persistence
-latency or failure cannot leave the voice runtime accepting turns beyond the
+Fatal runtime failures use one tracked stop sequence: disable input, close the
+agent session, terminate the room, and shut down the job before awaiting the
+bounded provider-neutral failure report. Session close and room termination
+each have an independent timeout, so a blocked stop cannot prevent the later
+safety steps. The normal hard deadline uses the same sequence, interrupting
+active speech before bounded close, room termination, and guaranteed shutdown;
+only then does it attempt bounded transcript settlement cleanup. Persistence or
+provider-stop latency cannot leave the voice runtime accepting turns beyond the
 hard-stop boundary.
 
 ## Versioned Billing Policy
