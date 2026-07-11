@@ -9,6 +9,7 @@ import { githubApi } from "./check-stacked-pr-ci.mjs";
 export const MIGRATION_COLLISION_CHECK_NAME = "Migration Collision / Verify";
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const GITHUB_PULL_FILES_LIMIT = 3_000;
 
 function appendQuery(path, query) {
   return `${path}${path.includes("?") ? "&" : "?"}${query}`;
@@ -104,6 +105,9 @@ export async function inventoryOpenMigrationPullRequests({
         perPage,
         maxPages,
       });
+      if (files.length >= GITHUB_PULL_FILES_LIMIT) {
+        throw new Error("migration_collision_file_inventory_limit_exceeded");
+      }
       const currentPullRequest = validatePullRequest(
         await api({
           token,
@@ -233,6 +237,7 @@ export async function hasMatchingMigrationCheck({
   return response.check_runs.some(
     (check) =>
       check?.name === MIGRATION_COLLISION_CHECK_NAME &&
+      check.app?.slug === "github-actions" &&
       check.status === "completed" &&
       check.conclusion === conclusionForResult(result) &&
       check.output?.summary === expectedSummary

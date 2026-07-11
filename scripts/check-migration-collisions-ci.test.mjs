@@ -191,6 +191,33 @@ test("a final open-PR recheck failure retains known owners but marks the invento
   ]);
 });
 
+test("the GitHub 3000-file diff ceiling fails closed", async () => {
+  const owner = pullRequest(14);
+  let listCalls = 0;
+  const result = await inventoryOpenMigrationPullRequests({
+    token: "token",
+    repository,
+    paginate: async ({ path }) => {
+      if (path === "/pulls?state=open") {
+        listCalls += 1;
+        return [owner];
+      }
+      return Array.from({ length: 3_000 }, (_, index) => ({
+        filename: `app/generated-${index}.ts`,
+        status: "added",
+      }));
+    },
+    api: async () => {
+      throw new Error("head recheck must not run after a truncated diff");
+    },
+  });
+  assert.equal(listCalls, 2);
+  assert.deepEqual(result.inventories, []);
+  assert.deepEqual(result.errors, [
+    { pr: 14, error: "migration_collision_file_inventory_limit_exceeded" },
+  ]);
+});
+
 test("audit publishes exact-head failure to every collision owner and neutral to unrelated PRs", async () => {
   const prs = [pullRequest(20), pullRequest(21), pullRequest(22)];
   const calls = [];
@@ -415,6 +442,7 @@ test("an identical completed exact-head result is reused without a write", async
         check_runs: [
           {
             name: MIGRATION_COLLISION_CHECK_NAME,
+            app: { slug: "github-actions" },
             status: "completed",
             conclusion: "neutral",
             output: {

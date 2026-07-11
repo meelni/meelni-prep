@@ -254,12 +254,15 @@ the list itself fails, the triggering exact head receives failure. The
 scheduled job also fails so an operator cannot mistake missing checks for a
 clean inventory.
 
+GitHub caps the pull-request files API at 3,000 files. Reaching that ceiling is
+treated as incomplete rather than assuming the unseen tail has no migration.
+
 Opened, reopened, synchronized, edited, closed, draft-conversion, and
 ready-for-review events refresh affected owners immediately. The five-minute
 schedule is a recovery path for missed events and parent/default-branch
 movement. Scheduled runs publish only migration or immutable-history owners,
 not every open PR, and reuse the latest completed Check Run when its exact head,
-conclusion, and summary are unchanged.
+GitHub Actions app identity, conclusion, and summary are unchanged.
 
 Run the offline regression fixtures with:
 
