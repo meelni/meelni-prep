@@ -85,12 +85,6 @@
       "headRef": "codex/sav-201-deterministic-recommendations",
       "parentRef": "codex/sav-198-evaluation-calibration",
       "expectedParentHead": "32ab83c42c4f89f8741eb9ff3f7873858557475f"
-    },
-    {
-      "pr": 293,
-      "headRef": "codex/sav-241-migration-collision-gate",
-      "parentRef": "codex/sav-239-stacked-pr-gate",
-      "expectedParentHead": "1a88a447b40b5b3e15181620024c75713a9a9633"
     }
   ]
 }
