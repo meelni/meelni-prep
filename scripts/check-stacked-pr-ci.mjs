@@ -222,6 +222,7 @@ export async function completeStackCheck({
   fetchImpl,
 }) {
   const errors = result?.errors ?? (error ? [error] : []);
+  const isNotStacked = result?.status === "not_stacked";
   await githubApi({
     token,
     repository,
@@ -232,16 +233,15 @@ export async function completeStackCheck({
       conclusion,
       completed_at: new Date().toISOString(),
       output: {
-        title:
-          conclusion === "success"
+        title: isNotStacked
+          ? "PR is not a registered stack child"
+          : conclusion === "success"
             ? "Exact stack topology verified"
-            : conclusion === "neutral"
-              ? "PR is not a registered stack child"
-              : "Stack topology verification failed",
+            : "Stack topology verification failed",
         summary:
           errors.length > 0
             ? errors.join("\n")
-            : conclusion === "neutral"
+            : isNotStacked
               ? "This exact PR head is not a registered stack child."
               : `The exact child ${result.head} contains parent ${result.actualParentHead}; both refs were refreshed immediately before publication and the PR-body evidence is current.`,
       },
@@ -351,7 +351,7 @@ export async function runStackCiAndPublish({
         result.status === "pass"
           ? "success"
           : result.status === "not_stacked"
-            ? "neutral"
+            ? "success"
             : "failure",
       result,
       fetchImpl,
