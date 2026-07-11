@@ -43,6 +43,7 @@ export interface IssueInterviewParticipantTokenInput {
   participantName: string;
   roomName: string;
   ttlSeconds: number;
+  expiresAt: Date;
   env: LiveKitEnvironment;
 }
 
@@ -72,6 +73,7 @@ export interface LiveKitProviderDependencies {
   accessTokenFactory?: AccessTokenFactory;
   agentDispatchClientFactory?: AgentDispatchClientFactory;
   roomServiceClientFactory?: RoomServiceClientFactory;
+  now?: () => Date;
 }
 
 interface AccessTokenLike {
@@ -254,16 +256,32 @@ export function createLiveKitInterviewProvider({
 
 export async function issueInterviewParticipantToken(
   input: IssueInterviewParticipantTokenInput,
-  { accessTokenFactory = AccessToken }: LiveKitProviderDependencies = {}
+  {
+    accessTokenFactory = AccessToken,
+    now = () => new Date(),
+  }: LiveKitProviderDependencies = {}
 ): Promise<ProviderResult<IssuedInterviewParticipantToken>> {
   try {
+    const signingAtSeconds = Math.floor(now().getTime() / 1_000);
+    const deadlineSeconds = Math.floor(input.expiresAt.getTime() / 1_000);
+    const expirationSeconds = Math.min(
+      deadlineSeconds,
+      signingAtSeconds + input.ttlSeconds
+    );
+    if (
+      !Number.isSafeInteger(deadlineSeconds) ||
+      !Number.isSafeInteger(expirationSeconds) ||
+      expirationSeconds <= signingAtSeconds
+    ) {
+      return invalidTokenExpiration();
+    }
     const token = new accessTokenFactory(
       input.env.apiKey,
       input.env.apiSecret,
       {
         identity: input.identity,
         name: input.participantName,
-        ttl: input.ttlSeconds,
+        ttl: expirationSeconds - signingAtSeconds,
       }
     );
 
@@ -276,9 +294,19 @@ export async function issueInterviewParticipantToken(
       canSubscribe: true,
     });
 
+    const signedToken = await token.toJwt();
+    const actualExpiration = readJwtExpiration(signedToken);
+    if (
+      actualExpiration === null ||
+      actualExpiration > expirationSeconds ||
+      actualExpiration <= Math.floor(now().getTime() / 1_000)
+    ) {
+      return invalidTokenExpiration();
+    }
+
     return providerSuccess("livekit", {
       roomName: input.roomName,
-      token: await token.toJwt(),
+      token: signedToken,
       url: input.env.url,
     });
   } catch (error) {
@@ -289,6 +317,27 @@ export async function issueInterviewParticipantToken(
       cause: error,
     });
   }
+}
+
+function readJwtExpiration(token: string): number | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8")
+    ) as { exp?: unknown };
+    return Number.isSafeInteger(parsed.exp) ? (parsed.exp as number) : null;
+  } catch {
+    return null;
+  }
+}
+
+function invalidTokenExpiration(): ProviderResult<IssuedInterviewParticipantToken> {
+  return providerFailure("livekit", {
+    code: "livekit_token_expiry_invalid",
+    message: "The signed LiveKit token exceeded its authorization window.",
+    retryable: true,
+  });
 }
 
 export async function terminateInterviewRoom(

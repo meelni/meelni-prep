@@ -22,9 +22,10 @@ Never place an intermediary in front of the route that rewrites the body.
 - LiveKit room departure timeout: 60 seconds.
 - Agent behavior: keep the existing agent session open when the linked
   candidate disconnects.
-- Resume behavior: use the same session ID and room, mint a fresh five-minute
-  participant token, and never reserve another credit or dispatch another
-  agent.
+- Resume behavior: use the same session ID and room, mint a fresh participant
+  token with a maximum five-minute lifetime, and never reserve another credit
+  or dispatch another agent. Decode the signed JWT and withhold it unless its
+  actual `exp` is no later than the earlier reconnect or hard deadline.
 - Hard deadline: continues during reconnect and wins when earlier than or equal
   to reconnect expiry.
 - Every terminal path persists `room_cleanup_pending`; user end attempts
@@ -54,6 +55,12 @@ ready:
    absolute deadline is earlier or equal.
 8. Exercise a room-delete failure. Confirm the accepted timeout claim remains
    immutable and a retry completes deletion and settlement.
+9. Race two retries with divergent durable-signal validation. Confirm the first
+   completed or abandoned settlement remains immutable and the loser cannot
+   rewrite `disconnect_timeout` or `insufficient_signal`.
+10. Delay real LiveKit token signing across the computed TTL window. Confirm
+    the adapter withholds a JWT whose actual `exp` exceeds the server-owned
+    authorization deadline.
 
 SAV-194 transcript event identity must be deployed before this ticket can be
 declared launch-ready; repeated packets across reload must not create duplicate

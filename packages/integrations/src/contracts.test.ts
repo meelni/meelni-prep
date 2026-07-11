@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AccessToken } from "livekit-server-sdk";
 
 import { createLiveKitStartFixture } from "@meelni/test-fixtures";
 
@@ -354,12 +355,15 @@ test("LiveKit leave ordering stays after the participant join within one provide
 test("LiveKit reconnect tokens use a short TTL and the authorized room grant", async () => {
   const constructorCalls: unknown[] = [];
   const grants: unknown[] = [];
+  const signingAt = new Date("2026-07-10T08:00:00.000Z");
+  const expiresAt = new Date("2026-07-10T08:05:00.000Z");
   const result = await issueInterviewParticipantToken(
     {
       identity: "authenticated-user-id",
       participantName: "owner@example.com",
       roomName: "interview-server-owned-room",
       ttlSeconds: 300,
+      expiresAt,
       env: {
         apiKey: "key",
         apiSecret: "secret",
@@ -377,9 +381,10 @@ test("LiveKit reconnect tokens use a short TTL and the authorized room grant", a
         }
 
         async toJwt() {
-          return "short-lived-token";
+          return jwtWithExpiration(Math.floor(expiresAt.getTime() / 1_000));
         }
       },
+      now: () => signingAt,
     }
   );
 
@@ -405,6 +410,67 @@ test("LiveKit reconnect tokens use a short TTL and the authorized room grant", a
       canSubscribe: true,
     },
   ]);
+});
+
+test("a delayed real LiveKit token is withheld when its actual exp crosses the authorization deadline", async () => {
+  let signedToken = "";
+  class DelayedAccessToken extends AccessToken {
+    override async toJwt() {
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      signedToken = await super.toJwt();
+      return signedToken;
+    }
+  }
+
+  const expiresAt = new Date(Date.now() + 2_500);
+  const result = await issueInterviewParticipantToken(
+    {
+      identity: "authenticated-user-id",
+      participantName: "Candidate",
+      roomName: "interview-server-owned-room",
+      ttlSeconds: 300,
+      expiresAt,
+      env: {
+        apiKey: "key",
+        apiSecret: "test-secret-with-enough-entropy-for-hs256",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    { accessTokenFactory: DelayedAccessToken }
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_token_expiry_invalid");
+  }
+  assert.ok(signedToken);
+  assert.ok(
+    decodeJwtExpiration(signedToken) > Math.floor(expiresAt.getTime() / 1_000)
+  );
+});
+
+test("a real LiveKit token is bounded by the absolute authorization deadline", async () => {
+  const issuedAtSeconds = Math.floor(Date.now() / 1_000);
+  const expiresAt = new Date((issuedAtSeconds + 90) * 1_000);
+  const result = await issueInterviewParticipantToken({
+    identity: "authenticated-user-id",
+    participantName: "Candidate",
+    roomName: "interview-server-owned-room",
+    ttlSeconds: 300,
+    expiresAt,
+    env: {
+      apiKey: "key",
+      apiSecret: "test-secret-with-enough-entropy-for-hs256",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    const actualExpiration = decodeJwtExpiration(result.data.token);
+    assert.ok(actualExpiration <= Math.floor(expiresAt.getTime() / 1_000));
+    assert.ok(actualExpiration <= issuedAtSeconds + 300);
+  }
 });
 
 test("LiveKit room termination deletes once and treats missing rooms as success", async () => {
@@ -485,3 +551,23 @@ test("LiveKit room termination normalizes retryable provider failures", async ()
     assert.equal(result.error.retryable, true);
   }
 });
+
+function jwtWithExpiration(exp: number): string {
+  return [
+    Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
+      "base64url"
+    ),
+    Buffer.from(JSON.stringify({ exp })).toString("base64url"),
+    "signature",
+  ].join(".");
+}
+
+function decodeJwtExpiration(token: string): number {
+  const payload = token.split(".")[1];
+  assert.ok(payload);
+  const parsed = JSON.parse(
+    Buffer.from(payload, "base64url").toString("utf8")
+  ) as { exp?: unknown };
+  assert.equal(typeof parsed.exp, "number");
+  return parsed.exp as number;
+}

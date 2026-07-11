@@ -80,7 +80,8 @@ export interface InterviewReconnectStore {
     sessionId: string;
     expectedVersion: number;
     deadlineAt: Date;
-    terminalReason: "disconnect_timeout" | "insufficient_signal";
+    expectedTerminalReason: "disconnect_timeout";
+    terminalReason: "insufficient_signal";
   }): Promise<ApplyInterviewTransportTransitionResult>;
 }
 
@@ -274,10 +275,10 @@ export function createDrizzleInterviewReconnectStore(
             eq(interviewSession.lifecycleState, "ending"),
             eq(interviewSession.lifecycleVersion, input.expectedVersion),
             eq(interviewSession.reconnectDeadlineAt, input.deadlineAt),
-            inArray(interviewSession.terminalReason, [
-              "disconnect_timeout",
-              "insufficient_signal",
-            ])
+            eq(
+              interviewSession.terminalReason,
+              input.expectedTerminalReason
+            )
           )
         )
         .returning();

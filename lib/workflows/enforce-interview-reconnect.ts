@@ -120,11 +120,15 @@ export async function enforceInterviewReconnectWorkflow(
   const terminalReason = validation.isValid
     ? "disconnect_timeout"
     : "insufficient_signal";
-  if (current.terminalReason !== terminalReason) {
+  if (
+    current.terminalReason === "disconnect_timeout" &&
+    terminalReason === "insufficient_signal"
+  ) {
     const refined = await deps.store.refineTimeoutClaim({
       sessionId: input.sessionId,
       expectedVersion: input.expectedVersion + 1,
       deadlineAt,
+      expectedTerminalReason: "disconnect_timeout",
       terminalReason,
     });
     if (!refined.applied) {

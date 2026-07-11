@@ -16,7 +16,7 @@ A lifecycle-aware session exposes these domain facts:
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `lifecycleState`                                                           | One canonical state from the state machine below.                                                                                                                                                               |
 | `lifecycleVersion`                                                         | Monotonically increasing compare-and-set version. A newly created row starts at `1`; the first accepted transition writes `2`, and every later accepted transition increments once.                             |
-| `terminalReason`                                                           | Required from the accepted transition into `ending` onward; immutable after the first accepted terminal claim.                                                                                                  |
+| `terminalReason`                                                           | Required from the accepted transition into `ending` onward. A reconnect timeout's provisional `disconnect_timeout` may refine once to `insufficient_signal` by prior-reason/version CAS before terminalization; every other accepted reason and all terminal outcomes are immutable. |
 | `activatedAt`                                                              | Set once when the session first reaches `active`; never cleared.                                                                                                                                                |
 | `endingAt`                                                                 | Set once when the first terminal claim reaches `ending`.                                                                                                                                                        |
 | `endedAt`                                                                  | Set once when terminalization reaches `completed`, `abandoned`, or `failed`.                                                                                                                                    |
@@ -166,8 +166,13 @@ overriding a later join.
 
 The accepted reconnecting lifecycle version is the generation fence. The
 grace event carries that version and the exact stored deadline. At expiry the
-worker atomically claims `ending (disconnect_timeout)` only while all three
-facts still match, then deletes the room and runs the shared completion path.
+worker atomically claims provisional `ending (disconnect_timeout)` only while
+all three facts still match. Before terminalization, insufficient durable
+signal may refine that provisional reason exactly once through a compare-and-set
+that also matches the prior `disconnect_timeout` reason and lifecycle version.
+It can never refine `insufficient_signal` back to `disconnect_timeout`.
+Concurrent retries with divergent validation therefore preserve whichever
+completed or abandoned terminal settlement commits first.
 A restored session, later disconnect generation, user end, or hard deadline
 makes the old event stale before any room deletion. Inngest sleeps to the exact
 deadline, and a five-minute recovery scan re-emits distinct deliveries for
@@ -188,6 +193,10 @@ Browser history contains only `sessionId`. Reload requests a fresh short-lived
 participant token from the owned session; it never creates a room, redispatches
 the agent, or consumes another credit. Transcript ingest remains independently
 governed by SAV-194 and must be complete before reconnect readiness is closed.
+The token adapter recomputes its relative TTL at signing, decodes the signed
+JWT, and withholds it unless the actual `exp` is both still usable and no later
+than the earlier reconnect or hard deadline. A delayed signer cannot extend a
+credential past the server-owned authorization window.
 
 ## Legacy Compatibility And Backfill
 
