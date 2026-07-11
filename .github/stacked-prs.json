@@ -30,7 +30,7 @@
       "pr": 263,
       "headRef": "codex/sav-229-stable-start-attempt",
       "parentRef": "codex/sav-193-transcript-privacy",
-      "expectedParentHead": "807032befd8271125b6bd984a4510610fb66ffe0"
+      "expectedParentHead": "55a33ea2a33128422283a7f75e4b8f8ff72bef7d"
     },
     {
       "pr": 265,
@@ -54,7 +54,7 @@
       "pr": 270,
       "headRef": "codex/sav-231-billing-truth",
       "parentRef": "codex/sav-230-provider-credit-recovery",
-      "expectedParentHead": "b729a3fc7e78698c6b39fabd23de3b644089489f"
+      "expectedParentHead": "ca57e592109d7cbcde2637ed18ba3f4880542d5c"
     },
     {
       "pr": 272,
