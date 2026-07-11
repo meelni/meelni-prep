@@ -90,7 +90,7 @@
       "pr": 293,
       "headRef": "codex/sav-241-migration-collision-gate",
       "parentRef": "codex/sav-239-stacked-pr-gate",
-      "expectedParentHead": "288fdd15cc80f548ffb37d3e145452d4587e02dc"
+      "expectedParentHead": "1a88a447b40b5b3e15181620024c75713a9a9633"
     }
   ]
 }

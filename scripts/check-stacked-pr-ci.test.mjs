@@ -697,7 +697,7 @@ test("the authoritative workflow checks out default-branch code and never PR cod
   );
   assert.match(
     workflow,
-    /run: node scripts\/check-stacked-pr-ci\.mjs --publish-check/
+    /run: node scripts\/revalidate-stacked-prs-ci\.mjs --event-path "\$GITHUB_EVENT_PATH"/
   );
   assert.match(workflow, /run: node scripts\/revalidate-stacked-prs-ci\.mjs/);
   assert.doesNotMatch(workflow, /pull_request\.head\.sha/);
