@@ -62,7 +62,6 @@ export function QuestionSignInModal({
       setGoogleError(null);
     }
   }, [isOpen]);
-
   const handleGoogleSignIn = async () => {
     setIsStartingGoogle(true);
     setGoogleError(null);
@@ -84,31 +83,36 @@ export function QuestionSignInModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent
-        className="bg-background/95 max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto rounded-2xl p-6 shadow-2xl sm:p-8"
+        overlayClassName="bg-overlay/80"
+        closeClassName="flex h-11 w-11 items-center justify-center"
         onCloseAutoFocus={(event) => {
           if (!returnFocusRef?.current) return;
           event.preventDefault();
           returnFocusRef.current.focus();
         }}
+        className="bg-background/95 max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-md overflow-y-auto rounded-2xl p-5 shadow-2xl sm:p-8"
       >
-        <DialogHeader className="mb-2 text-center sm:text-center">
-          <DialogTitle className="text-foreground text-2xl font-semibold">
-            Ready to practice?
-          </DialogTitle>
+        <DialogHeader className="pr-12 text-left">
+          <DialogTitle className="text-2xl">Ready to practice?</DialogTitle>
           <DialogDescription>
             Sign in to practice the selected interview question.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="from-primary/5 to-primary/10 border-primary/20 rounded-xl border bg-gradient-to-br p-5 sm:p-6">
-          <p className="text-foreground line-clamp-2 text-base leading-relaxed font-semibold">
+        <div className="border-primary/20 bg-primary/5 max-h-32 overflow-y-auto rounded-xl border p-4 sm:p-6">
+          <p className="text-foreground text-sm leading-relaxed font-semibold [overflow-wrap:anywhere] break-words sm:text-base">
             &ldquo;{questionText}&rdquo;
           </p>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <Button
             type="button"
             variant="outline"
@@ -116,7 +120,7 @@ export function QuestionSignInModal({
             onClick={handleGoogleSignIn}
             disabled={isStartingGoogle}
             aria-busy={isStartingGoogle}
-            className="h-14 w-full rounded-xl border-2 font-semibold"
+            className="min-h-12 w-full rounded-xl border-2 font-semibold whitespace-normal"
           >
             <span className="flex items-center justify-center gap-3">
               {isStartingGoogle ? (
@@ -141,14 +145,13 @@ export function QuestionSignInModal({
             size="lg"
             onClick={handleEmailSignIn}
             disabled={isStartingGoogle}
-            className="h-14 w-full rounded-xl border-2 font-semibold"
+            className="min-h-12 w-full rounded-xl border-2 font-semibold whitespace-normal"
           >
             Continue with Email
           </Button>
         </div>
 
         {googleError && <AuthMessage tone="error">{googleError}</AuthMessage>}
-
         <div className="text-muted-foreground text-center text-sm">
           Don&apos;t have an account?{" "}
           <Button
@@ -156,7 +159,7 @@ export function QuestionSignInModal({
             variant="link"
             onClick={handleSignUp}
             disabled={isStartingGoogle}
-            className="h-auto p-0 font-medium"
+            className="h-auto min-h-11 p-0 font-medium whitespace-normal"
           >
             Sign up free
           </Button>
