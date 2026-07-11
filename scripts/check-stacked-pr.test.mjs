@@ -40,6 +40,7 @@ function fixture() {
 function manifest(expectedParentHead) {
   return {
     version: 1,
+    repository: "saviii/meelni-prep",
     stacks: [
       {
         pr: 999,
@@ -134,8 +135,14 @@ test("evidence is superseded when the child head changes", (t) => {
 
 test("a non-main PR cannot omit its stack declaration", () => {
   const result = validatePullRequestDeclaration({
-    manifest: { version: 1, stacks: [] },
+    manifest: {
+      version: 1,
+      repository: "saviii/meelni-prep",
+      stacks: [],
+    },
+    prNumber: 998,
     headRef: "undeclared-child",
+    headRepository: "saviii/meelni-prep",
     baseRef: "parent",
   });
   assert.deepEqual(result.errors, ["stack_relationship_missing_from_manifest"]);
@@ -144,10 +151,48 @@ test("a non-main PR cannot omit its stack declaration", () => {
 test("the GitHub base must match the declared parent ref", () => {
   const result = validatePullRequestDeclaration({
     manifest: manifest("a".repeat(40)),
+    prNumber: 999,
     headRef: "child",
+    headRepository: "saviii/meelni-prep",
     baseRef: "different-parent",
   });
   assert.deepEqual(result.errors, ["github_base_differs_from_declared_parent"]);
+});
+
+test("the manifest PR number is part of the declaration identity", () => {
+  const result = validatePullRequestDeclaration({
+    manifest: manifest("a".repeat(40)),
+    prNumber: 998,
+    headRef: "child",
+    headRepository: "saviii/meelni-prep",
+    baseRef: "parent",
+  });
+  assert.deepEqual(result.errors, ["github_pr_differs_from_manifest_entry"]);
+});
+
+test("a fork head-name collision does not consume a main PR declaration", () => {
+  const result = validatePullRequestDeclaration({
+    manifest: manifest("a".repeat(40)),
+    prNumber: 998,
+    headRef: "child",
+    headRepository: "contributor/meelni-prep",
+    baseRef: "main",
+  });
+  assert.equal(result.entry, null);
+  assert.deepEqual(result.errors, []);
+});
+
+test("a fork cannot declare a stack against a non-main branch", () => {
+  const result = validatePullRequestDeclaration({
+    manifest: manifest("a".repeat(40)),
+    prNumber: 999,
+    headRef: "child",
+    headRepository: "contributor/meelni-prep",
+    baseRef: "parent",
+  });
+  assert.deepEqual(result.errors, [
+    "stacked_pr_must_originate_from_manifest_repository",
+  ]);
 });
 
 test("the repository manifest and GitHub-event evidence are machine-readable", () => {
