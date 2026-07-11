@@ -23,6 +23,10 @@ export interface QuestionSyncSummary {
   questionsUpdated: number;
   questionsDeactivated: number;
   questionsSkipped: number;
+  invalidRows: number;
+  exactDuplicateRows: number;
+  nearDuplicateRowsQuarantined: number;
+  duplicateRecordsRetired: number;
   totalProcessed: number;
   errors: number;
 }
@@ -171,6 +175,10 @@ function safeSummary(result: SyncResult): QuestionSyncSummary {
     questionsUpdated: result.questionsUpdated,
     questionsDeactivated: result.questionsDeactivated,
     questionsSkipped: result.questionsSkipped,
+    invalidRows: result.invalidRows,
+    exactDuplicateRows: result.exactDuplicateRows,
+    nearDuplicateRowsQuarantined: result.nearDuplicateRowsQuarantined,
+    duplicateRecordsRetired: result.duplicateRecordsRetired,
     totalProcessed: result.totalProcessed,
     errors: result.errors,
   };

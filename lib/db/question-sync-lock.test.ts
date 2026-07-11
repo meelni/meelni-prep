@@ -6,7 +6,10 @@ import {
   runQuestionSyncTransaction,
   type QuestionSyncTransactionScope,
 } from "./question-sync-lock";
-import type { StoredQuestionSyncQuestion } from "@/lib/question-sync/source";
+import type {
+  PlannedQuestionSyncRecord,
+  StoredQuestionSyncQuestion,
+} from "@/lib/question-sync/source";
 import type { QuestionSyncStore } from "@/lib/question-sync/store";
 import { mutatePreparedQuestionSync } from "@/lib/question-sync/mutation";
 import type {
@@ -20,7 +23,7 @@ test("a connection loss after writes rolls back the transaction-bound store", as
 
   await assert.rejects(
     runQuestionSyncTransaction(begin, async (store) => {
-      await store.insertQuestions([question()]);
+      await store.writeQuestions([planned(question(), "new")]);
       return "done";
     }),
     /connection lost/
@@ -34,7 +37,7 @@ test("callback failures roll back all writes on the lock-owning transaction", as
 
   await assert.rejects(
     runQuestionSyncTransaction(begin, async (store) => {
-      await store.insertQuestions([question()]);
+      await store.writeQuestions([planned(question(), "new")]);
       throw new Error("mutation failed");
     }),
     /mutation failed/
@@ -44,20 +47,31 @@ test("callback failures roll back all writes on the lock-owning transaction", as
 
 test("a later insert-batch failure rolls back earlier inserts and every deactivation", async () => {
   const retained = Array.from({ length: 4 }, (_, index) =>
-    question({ questionText: `Retained ${index}` })
+    question({
+      questionText: `Retained ${index}`,
+      sourceFingerprint: fingerprint(index),
+    })
   );
-  const removed = question({ questionText: "Removed" });
+  const removed = question({
+    questionText: "Removed",
+    sourceFingerprint: fingerprint(10),
+  });
   const committed: StoredQuestionSyncQuestion[] = [...retained, removed].map(
-    (row, index) => ({ ...row, id: `existing-${index}`, isActive: true })
+    (row, index) => stored(row, `existing-${index}`)
   );
   const before = committed.map((row) => ({ ...row }));
   const added = Array.from({ length: 501 }, (_, index) =>
-    question({ questionText: `Added ${index}` })
+    question({
+      questionText: `Added ${index}`,
+      sourceFingerprint: fingerprint(index + 100),
+    })
   );
   const prepared: PreparedQuestionSync = {
     questions: [...retained, ...added],
     sourceRows: retained.length + added.length,
     validRows: retained.length + added.length,
+    invalidRows: 0,
+    exactDuplicateRows: 0,
     questionsSkipped: 0,
   };
 
@@ -107,25 +121,18 @@ function memoryStore(
   rows: StoredQuestionSyncQuestion[],
   options: { failInsertCall?: number } = {}
 ): QuestionSyncStore {
-  let insertCalls = 0;
+  let writeCalls = 0;
   return {
     listQuestions: async () => rows,
-    insertQuestions: async (questions) => {
-      insertCalls++;
-      if (insertCalls === options.failInsertCall) {
+    writeQuestions: async (questions) => {
+      writeCalls++;
+      if (writeCalls === options.failInsertCall) {
         throw new Error("insert batch failed");
       }
-      rows.push(
-        ...questions.map((item, index) => ({
-          ...item,
-          id: `new-${index}`,
-          isActive: true,
-        }))
-      );
-    },
-    setQuestionsActive: async (ids, isActive) => {
-      for (const row of rows) {
-        if (ids.includes(row.id)) row.isActive = isActive;
+      for (const question of questions) {
+        const index = rows.findIndex((row) => row.id === question.id);
+        if (index === -1) rows.push({ ...question });
+        else rows[index] = { ...question };
       }
     },
   };
@@ -139,6 +146,33 @@ function question(
     questionText: "Improve Search",
     questionType: "Product Sense",
     askedAt: null,
+    sourceKind: "google_sheets",
+    sourceCategory: "Product Design",
+    sourceFingerprint: "f".repeat(64),
     ...overrides,
   };
+}
+
+function planned(
+  source: ProcessedQuestion,
+  id: string
+): PlannedQuestionSyncRecord {
+  return {
+    ...source,
+    id,
+    isActive: true,
+    qualityStatus: "published",
+    duplicateOfQuestionId: null,
+  };
+}
+
+function stored(
+  source: ProcessedQuestion,
+  id: string
+): StoredQuestionSyncQuestion {
+  return planned(source, id);
+}
+
+function fingerprint(index: number): string {
+  return index.toString(16).padStart(64, "0");
 }

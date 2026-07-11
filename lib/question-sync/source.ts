@@ -1,35 +1,70 @@
+import { randomUUID } from "node:crypto";
+
+import type {
+  QuestionQualityStatus,
+  QuestionSourceKind,
+} from "@/lib/question-sync/types";
+
 export interface QuestionSyncQuestion {
   company: string | null;
   questionText: string;
   questionType: string;
   askedAt: Date | null;
+  sourceKind: QuestionSourceKind;
+  sourceCategory: string | null;
+  sourceFingerprint: string | null;
 }
 
 export interface StoredQuestionSyncQuestion extends QuestionSyncQuestion {
   id: string;
   isActive: boolean;
+  qualityStatus: QuestionQualityStatus;
+  duplicateOfQuestionId: string | null;
 }
 
+export type PlannedQuestionSyncRecord = StoredQuestionSyncQuestion;
+
 export interface QuestionSyncPlan {
-  questionsToInsert: QuestionSyncQuestion[];
-  questionIdsToReactivate: string[];
-  questionIdsToDeactivate: string[];
+  questionsToInsert: PlannedQuestionSyncRecord[];
+  questionsToUpdate: PlannedQuestionSyncRecord[];
   sourceMissingQuestionIdsToDeactivate: string[];
+  nearDuplicateRowsQuarantined: number;
+  duplicateRecordsRetired: number;
 }
 
 /**
- * The current schema has no provider row id. Until provenance gets a dedicated
- * column, identity is the normalized tuple of every persisted source field:
- * question text, company, canonical storage type, and asked-at instant.
+ * Exact duplicate identity retains all non-private source provenance. A source
+ * fingerprint is preferred once available; the legacy tuple keeps rollout
+ * behavior deterministic while old rows are backfilled by a live sync.
  */
 export function questionSyncSourceIdentity(
   question: QuestionSyncQuestion
 ): string {
+  return (
+    cleanFingerprint(question.sourceFingerprint) ??
+    JSON.stringify([
+      normalizeText(question.questionText),
+      normalizeNullableText(question.company),
+      normalizeText(question.questionType),
+      question.askedAt?.toISOString() ?? null,
+      normalizeNullableText(question.sourceCategory),
+    ])
+  );
+}
+
+/**
+ * Near-duplicate identity is deliberately conservative: it ignores source
+ * occurrence time and harmless case, spacing, quote, and punctuation drift,
+ * but requires the same company and canonical PM round. It does not attempt
+ * semantic or edit-distance matching.
+ */
+export function questionSyncContentIdentity(
+  question: QuestionSyncQuestion
+): string {
   return JSON.stringify([
-    normalizeText(question.questionText),
+    normalizePrompt(question.questionText),
     normalizeNullableText(question.company),
     normalizeText(question.questionType),
-    question.askedAt?.toISOString() ?? null,
   ]);
 }
 
@@ -56,68 +91,250 @@ export function deduplicateQuestionSyncSource<T extends QuestionSyncQuestion>(
 
 export function planQuestionSync(
   sourceQuestions: readonly QuestionSyncQuestion[],
-  existingQuestions: readonly StoredQuestionSyncQuestion[]
+  existingQuestions: readonly StoredQuestionSyncQuestion[],
+  createId: () => string = randomUUID
 ): QuestionSyncPlan {
-  const existingByIdentity = new Map<string, StoredQuestionSyncQuestion[]>();
+  const sourceByContent = groupBy(sourceQuestions, questionSyncContentIdentity);
+  const existingByContent = groupBy(
+    existingQuestions,
+    questionSyncContentIdentity
+  );
+  const existingByFingerprint = new Map<string, StoredQuestionSyncQuestion[]>();
   for (const question of existingQuestions) {
-    const identity = questionSyncSourceIdentity(question);
-    const matches = existingByIdentity.get(identity) ?? [];
+    const fingerprint = cleanFingerprint(question.sourceFingerprint);
+    if (!fingerprint) continue;
+    const matches = existingByFingerprint.get(fingerprint) ?? [];
     matches.push(question);
-    existingByIdentity.set(identity, matches);
+    existingByFingerprint.set(fingerprint, matches);
   }
 
-  const sourceIdentities = new Set<string>();
-  const questionsToInsert: QuestionSyncQuestion[] = [];
-  const questionIdsToReactivate: string[] = [];
-  const surplusActiveIds = new Set<string>();
+  const questionsToInsert: PlannedQuestionSyncRecord[] = [];
+  const questionsToUpdate: PlannedQuestionSyncRecord[] = [];
+  const consumedExistingIds = new Set<string>();
+  const sourceContentIdentities = new Set(sourceByContent.keys());
+  const sourceMissingQuestionIdsToDeactivate: string[] = [];
+  let nearDuplicateRowsQuarantined = 0;
+  let duplicateRecordsRetired = 0;
 
-  for (const question of sourceQuestions) {
-    const identity = questionSyncSourceIdentity(question);
-    sourceIdentities.add(identity);
-    const matches = existingByIdentity.get(identity) ?? [];
-    const activeMatches = matches
-      .filter((match) => match.isActive)
-      .sort((left, right) => compareStableIds(left.id, right.id));
-    if (activeMatches.length > 0) {
-      for (const surplus of activeMatches.slice(1)) {
-        surplusActiveIds.add(surplus.id);
+  for (const [contentIdentity, unsortedSourceGroup] of sortedEntries(
+    sourceByContent
+  )) {
+    const sourceGroup = [...unsortedSourceGroup].sort(compareSourceProvenance);
+    const canonicalSource = sourceGroup[0]!;
+    const existingContentGroup = [
+      ...(existingByContent.get(contentIdentity) ?? []),
+    ].sort(compareStableIds);
+    const canonicalExisting = selectCanonicalExisting(
+      canonicalSource,
+      existingContentGroup
+    );
+    const canonicalId = canonicalExisting?.id ?? createId();
+    if (canonicalExisting) consumedExistingIds.add(canonicalExisting.id);
+
+    addDesiredRecord(
+      desiredRecord(canonicalId, canonicalSource, {
+        isActive: true,
+        qualityStatus: "published",
+        duplicateOfQuestionId: null,
+      }),
+      canonicalExisting,
+      questionsToInsert,
+      questionsToUpdate
+    );
+
+    for (const duplicateSource of sourceGroup.slice(1)) {
+      nearDuplicateRowsQuarantined++;
+      const duplicateExisting = selectFingerprintMatch(
+        duplicateSource,
+        existingByFingerprint,
+        consumedExistingIds
+      );
+      const duplicateId = duplicateExisting?.id ?? createId();
+      if (duplicateExisting) consumedExistingIds.add(duplicateExisting.id);
+      addDesiredRecord(
+        desiredRecord(duplicateId, duplicateSource, {
+          isActive: false,
+          qualityStatus: "quarantined_near_duplicate",
+          duplicateOfQuestionId: canonicalId,
+        }),
+        duplicateExisting,
+        questionsToInsert,
+        questionsToUpdate
+      );
+    }
+
+    for (const surplus of existingContentGroup) {
+      if (consumedExistingIds.has(surplus.id)) continue;
+      consumedExistingIds.add(surplus.id);
+      const desired = {
+        ...surplus,
+        isActive: false,
+        qualityStatus: "retired_exact_duplicate" as const,
+        duplicateOfQuestionId: canonicalId,
+      };
+      if (!sameStoredRecord(desired, surplus)) {
+        questionsToUpdate.push(desired);
+        duplicateRecordsRetired++;
       }
+    }
+  }
+
+  for (const existing of [...existingQuestions].sort(compareStableIds)) {
+    if (
+      consumedExistingIds.has(existing.id) ||
+      sourceContentIdentities.has(questionSyncContentIdentity(existing))
+    ) {
       continue;
     }
 
-    const inactiveMatch = matches
-      .filter((match) => !match.isActive)
-      .sort((left, right) => compareStableIds(left.id, right.id))[0];
-    if (inactiveMatch) questionIdsToReactivate.push(inactiveMatch.id);
-    else questionsToInsert.push(question);
+    consumedExistingIds.add(existing.id);
+    if (existing.isActive) {
+      sourceMissingQuestionIdsToDeactivate.push(existing.id);
+    }
+    const desired = {
+      ...existing,
+      isActive: false,
+      qualityStatus: "retired_source_missing" as const,
+      duplicateOfQuestionId: null,
+    };
+    if (!sameStoredRecord(desired, existing)) questionsToUpdate.push(desired);
   }
-
-  const sourceMissingQuestionIdsToDeactivate = existingQuestions
-    .filter(
-      (question) =>
-        question.isActive &&
-        !sourceIdentities.has(questionSyncSourceIdentity(question))
-    )
-    .map((question) => question.id);
-  const questionIdsToDeactivate = [
-    ...sourceMissingQuestionIdsToDeactivate,
-    ...[...surplusActiveIds].sort(compareStableIds),
-  ];
 
   return {
     questionsToInsert,
-    questionIdsToReactivate,
-    questionIdsToDeactivate,
+    questionsToUpdate,
     sourceMissingQuestionIdsToDeactivate,
+    nearDuplicateRowsQuarantined,
+    duplicateRecordsRetired,
   };
 }
 
-function compareStableIds(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
+function desiredRecord(
+  id: string,
+  source: QuestionSyncQuestion,
+  disposition: Pick<
+    PlannedQuestionSyncRecord,
+    "isActive" | "qualityStatus" | "duplicateOfQuestionId"
+  >
+): PlannedQuestionSyncRecord {
+  return { id, ...source, ...disposition };
+}
+
+function addDesiredRecord(
+  desired: PlannedQuestionSyncRecord,
+  existing: StoredQuestionSyncQuestion | undefined,
+  inserts: PlannedQuestionSyncRecord[],
+  updates: PlannedQuestionSyncRecord[]
+): void {
+  if (!existing) inserts.push(desired);
+  else if (!sameStoredRecord(desired, existing)) updates.push(desired);
+}
+
+function selectCanonicalExisting(
+  source: QuestionSyncQuestion,
+  existing: readonly StoredQuestionSyncQuestion[]
+): StoredQuestionSyncQuestion | undefined {
+  return (
+    existing.find(
+      (question) => question.isActive && question.qualityStatus === "published"
+    ) ??
+    existing.find(
+      (question) =>
+        cleanFingerprint(question.sourceFingerprint) ===
+        cleanFingerprint(source.sourceFingerprint)
+    ) ??
+    existing[0]
+  );
+}
+
+function selectFingerprintMatch(
+  source: QuestionSyncQuestion,
+  existingByFingerprint: ReadonlyMap<
+    string,
+    readonly StoredQuestionSyncQuestion[]
+  >,
+  consumedIds: ReadonlySet<string>
+): StoredQuestionSyncQuestion | undefined {
+  const fingerprint = cleanFingerprint(source.sourceFingerprint);
+  if (!fingerprint) return undefined;
+  return [...(existingByFingerprint.get(fingerprint) ?? [])]
+    .sort(compareStableIds)
+    .find((question) => !consumedIds.has(question.id));
+}
+
+function sameStoredRecord(
+  left: StoredQuestionSyncQuestion,
+  right: StoredQuestionSyncQuestion
+): boolean {
+  return (
+    left.id === right.id &&
+    left.company === right.company &&
+    left.questionText === right.questionText &&
+    left.questionType === right.questionType &&
+    left.askedAt?.toISOString() === right.askedAt?.toISOString() &&
+    left.sourceKind === right.sourceKind &&
+    left.sourceCategory === right.sourceCategory &&
+    left.sourceFingerprint === right.sourceFingerprint &&
+    left.isActive === right.isActive &&
+    left.qualityStatus === right.qualityStatus &&
+    left.duplicateOfQuestionId === right.duplicateOfQuestionId
+  );
+}
+
+function compareSourceProvenance(
+  left: QuestionSyncQuestion,
+  right: QuestionSyncQuestion
+): number {
+  const leftTime = left.askedAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
+  const rightTime = right.askedAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
+  if (leftTime !== rightTime) return leftTime - rightTime;
+  return questionSyncSourceIdentity(left).localeCompare(
+    questionSyncSourceIdentity(right),
+    "en"
+  );
+}
+
+function compareStableIds(left: { id: string }, right: { id: string }): number {
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
+function groupBy<T>(
+  values: readonly T[],
+  identity: (value: T) => string
+): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const value of values) {
+    const key = identity(value);
+    const group = groups.get(key) ?? [];
+    group.push(value);
+    groups.set(key, group);
+  }
+  return groups;
+}
+
+function sortedEntries<T>(groups: ReadonlyMap<string, T[]>): [string, T[]][] {
+  return [...groups.entries()].sort(([left], [right]) =>
+    left.localeCompare(right, "en")
+  );
+}
+
+function cleanFingerprint(value: string | null): string | null {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return normalized || null;
+}
+
+function normalizePrompt(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[’']/gu, "")
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 function normalizeText(value: string): string {
-  return value.toLowerCase().trim().replace(/\s+/g, " ");
+  return value.normalize("NFKC").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 function normalizeNullableText(value: string | null): string | null {

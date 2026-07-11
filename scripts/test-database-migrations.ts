@@ -21,14 +21,15 @@ import {
   fingerprintStripeSubject,
 } from "../lib/billing/stripe-privacy";
 import { ACCOUNT_IDENTITY_LOCK_NAMESPACE } from "../lib/db/account-identity-lock";
+import { withQuestionSyncLock } from "../lib/db/question-sync-lock";
 
 import {
-  ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
+  QUESTION_PROVENANCE_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -49,6 +50,8 @@ const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const QUESTION_PROVENANCE_ACTIVE = "f3333333-3333-4333-8333-333333333333";
+const QUESTION_PROVENANCE_INACTIVE = "f4444444-4444-4444-8444-444444444444";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -104,6 +107,8 @@ async function run() {
     runPreflight(cleanUrl, true, "reconciled");
     await seedAuthorizationFixtures(clean);
     await verifyDatabase(clean);
+    await verifyQuestionProvenance(clean, false);
+    await verifyQuestionSyncTransactionAdapter(cleanUrl);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
     await verifyAtomicSessionCompletion(clean, cleanUrl);
@@ -118,10 +123,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, QUESTION_PROVENANCE_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -171,6 +173,7 @@ async function run() {
       await seedAuthorizationFixtures(upgrade);
       await seedLifecycleBackfillFixtures(upgrade);
       await seedLegacyCreditLedgerIntegrityFixtures(upgrade);
+      await seedQuestionProvenanceBackfillFixtures(upgrade);
       const lifecyclePreview = runPreflight(
         upgradeUrl,
         true,
@@ -186,6 +189,7 @@ async function run() {
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl);
+      await verifyQuestionProvenance(upgrade, true);
       await verifyAuthorization(upgrade);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
       assertLegacyCreditLedgerIntegrity(
@@ -1039,8 +1043,147 @@ function lifecycleOutcome(
   return [row.lifecycle_state, row.terminal_reason];
 }
 
+async function seedQuestionProvenanceBackfillFixtures(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO interview_question (
+      id, company, question_text, question_type, is_active
+    ) VALUES
+      (
+        ${QUESTION_PROVENANCE_ACTIVE}::uuid, 'Meta',
+        'Design a trustworthy search experience', 'Product Sense', true
+      ),
+      (
+        ${QUESTION_PROVENANCE_INACTIVE}::uuid, 'Meta',
+        'Retired duplicate search question', 'Product Sense', false
+      )
+  `;
+}
+
+async function verifyQuestionProvenance(
+  sql: postgres.Sql,
+  expectBackfilledRows: boolean
+) {
+  const backfilled = await sql<
+    {
+      id: string;
+      source_kind: string;
+      source_fingerprint: string | null;
+      quality_status: string;
+      is_active: boolean;
+    }[]
+  >`
+    SELECT id, source_kind, source_fingerprint, quality_status, is_active
+    FROM interview_question
+    WHERE id IN (
+      ${QUESTION_PROVENANCE_ACTIVE}::uuid,
+      ${QUESTION_PROVENANCE_INACTIVE}::uuid
+    )
+    ORDER BY id
+  `;
+
+  if (expectBackfilledRows) {
+    assert.deepEqual(
+      [...backfilled],
+      [
+        {
+          id: QUESTION_PROVENANCE_ACTIVE,
+          source_kind: "legacy",
+          source_fingerprint: null,
+          quality_status: "published",
+          is_active: true,
+        },
+        {
+          id: QUESTION_PROVENANCE_INACTIVE,
+          source_kind: "legacy",
+          source_fingerprint: null,
+          quality_status: "retired_source_missing",
+          is_active: false,
+        },
+      ]
+    );
+    return;
+  }
+
+  await sql`
+    INSERT INTO interview_question (
+      id, company, question_text, question_type, asked_at, source_kind,
+      source_category, source_fingerprint, quality_status,
+      duplicate_of_question_id, is_active
+    ) VALUES
+      (
+        ${QUESTION_PROVENANCE_ACTIVE}::uuid, 'Meta',
+        'Design a trustworthy search experience', 'Product Sense',
+        '2026-01-01T00:00:00.000Z'::timestamptz, 'google_sheets',
+        'Product Design', ${"a".repeat(64)}, 'published', null, true
+      ),
+      (
+        ${QUESTION_PROVENANCE_INACTIVE}::uuid, 'Meta',
+        'Design a trustworthy search experience!', 'Product Sense',
+        '2026-02-01T00:00:00.000Z'::timestamptz, 'google_sheets',
+        'Product Design', ${"b".repeat(64)},
+        'quarantined_near_duplicate', ${QUESTION_PROVENANCE_ACTIVE}::uuid,
+        false
+      )
+  `;
+
+  const publicRows = await asRole(
+    sql,
+    "anon",
+    (tx) => tx`
+      SELECT id FROM interview_question
+      WHERE id IN (
+        ${QUESTION_PROVENANCE_ACTIVE}::uuid,
+        ${QUESTION_PROVENANCE_INACTIVE}::uuid
+      )
+      ORDER BY id
+    `
+  );
+  assert.deepEqual([...publicRows], [{ id: QUESTION_PROVENANCE_ACTIVE }]);
+
+  await assert.rejects(
+    sql`
+      INSERT INTO interview_question (
+        company, question_text, question_type, source_kind,
+        source_fingerprint, quality_status, is_active
+      ) VALUES (
+        'Meta', 'Invalid active quarantine', 'Product Sense',
+        'google_sheets', ${"c".repeat(64)},
+        'quarantined_near_duplicate', true
+      )
+    `,
+    /publication_projection|duplicate_disposition/
+  );
+  await assert.rejects(
+    sql`
+      INSERT INTO interview_question (
+        company, question_text, question_type, source_kind,
+        source_fingerprint, quality_status, is_active
+      ) VALUES (
+        'Meta', 'Malformed fingerprint', 'Product Sense',
+        'google_sheets', 'not-a-fingerprint', 'published', true
+      )
+    `,
+    /source_fingerprint_check/
+  );
+}
+
+async function verifyQuestionSyncTransactionAdapter(databaseUrl: string) {
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = databaseUrl;
+  try {
+    const result = await withQuestionSyncLock(
+      async (store) => (await store.listQuestions()).length
+    );
+    assert.equal(result.acquired, true);
+    assert.equal(result.value, 2);
+  } finally {
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+  }
+}
+
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 8);
+  assert.equal(await migrationCount(sql), 9);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -1123,6 +1266,46 @@ async function verifyDatabase(sql: postgres.Sql) {
     ORDER BY indexname
   `;
   assert.equal(completionIndexes.length, 2);
+
+  const questionQualityColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'interview_question'
+      AND column_name IN (
+        'source_kind', 'source_category', 'source_fingerprint',
+        'quality_status', 'duplicate_of_question_id'
+      )
+    ORDER BY column_name
+  `;
+  assert.equal(questionQualityColumns.length, 5);
+
+  const questionQualityConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname IN (
+      'interview_question_duplicate_disposition_check',
+      'interview_question_duplicate_not_self_check',
+      'interview_question_duplicate_of_question_id_fk',
+      'interview_question_publication_projection_check',
+      'interview_question_quality_status_check',
+      'interview_question_source_fingerprint_check',
+      'interview_question_source_kind_check'
+    )
+    ORDER BY conname
+  `;
+  assert.equal(questionQualityConstraints.length, 7);
+
+  const questionQualityIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'interview_question_quality_status_idx'
+      )
+    ORDER BY indexname
+  `;
+  assert.equal(questionQualityIndexes.length, 1);
 
   const tierConstraint = await sql<{ definition: string }[]>`
     SELECT pg_get_constraintdef(oid) AS definition
@@ -2201,12 +2384,14 @@ async function protectedRowCounts(sql: postgres.Sql) {
       users: number;
       subscriptions: number;
       sessions: number;
+      questions: number;
     }[]
   >`
     SELECT
       (SELECT count(*)::int FROM app_user) AS users,
       (SELECT count(*)::int FROM subscription) AS subscriptions,
-      (SELECT count(*)::int FROM interview_session) AS sessions
+      (SELECT count(*)::int FROM interview_session) AS sessions,
+      (SELECT count(*)::int FROM interview_question) AS questions
   `;
   return rows[0];
 }

@@ -35,6 +35,10 @@ test("completed question sync exposes only safe aggregate results", async () => 
     questionsUpdated: 0,
     questionsDeactivated: 0,
     questionsSkipped: 0,
+    invalidRows: 0,
+    exactDuplicateRows: 0,
+    nearDuplicateRowsQuarantined: 0,
+    duplicateRecordsRetired: 0,
     totalProcessed: 2,
     errors: 0,
   });
@@ -172,6 +176,8 @@ function prepared(): PreparedQuestionSync {
     questions: [],
     sourceRows: 0,
     validRows: 0,
+    invalidRows: 0,
+    exactDuplicateRows: 0,
     questionsSkipped: 0,
   };
 }
@@ -183,6 +189,10 @@ function syncResult(overrides: Partial<SyncResult> = {}): SyncResult {
     questionsUpdated: 0,
     questionsDeactivated: 0,
     questionsSkipped: 0,
+    invalidRows: 0,
+    exactDuplicateRows: 0,
+    nearDuplicateRowsQuarantined: 0,
+    duplicateRecordsRetired: 0,
     totalProcessed: overrides.questionsAdded ?? 0,
     errors: 0,
     timestamp: "2026-07-10T12:00:00.000Z",
@@ -207,7 +217,6 @@ function memoryLock(): QuestionSyncWorkflowDependencies["withLock"] {
 function emptyStore(): QuestionSyncStore {
   return {
     listQuestions: async () => [],
-    insertQuestions: async () => undefined,
-    setQuestionsActive: async () => undefined,
+    writeQuestions: async () => undefined,
   };
 }
