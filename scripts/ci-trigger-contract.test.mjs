@@ -9,15 +9,26 @@ const triggerBlock = workflow.slice(
 );
 
 test("hosted Validate runs only for merge-ready PRs, main, or manual dispatch", () => {
-  assert.match(
-    triggerBlock,
-    /pull_request:\n\s+types: \[opened, reopened, ready_for_review, converted_to_draft, synchronize\]/
-  );
+  assert.match(triggerBlock, /pull_request:\n\s+types:/);
+  for (const event of [
+    "opened",
+    "reopened",
+    "ready_for_review",
+    "converted_to_draft",
+    "synchronize",
+    "closed",
+  ]) {
+    assert.match(triggerBlock, new RegExp(`\\b${event}\\b`));
+  }
   assert.match(triggerBlock, /push:\n\s+branches: \[main\]/);
   assert.match(triggerBlock, /workflow_dispatch:/);
   assert.match(
     workflow,
-    /validate:\n\s+if: github\.event_name != 'pull_request' \|\| github\.event\.pull_request\.draft == false/
+    /github\.event\.action != 'closed' && github\.event\.pull_request\.draft == false/
+  );
+  assert.match(
+    workflow,
+    /'PR lifecycle \/ No hosted validation' \|\| 'Validate'/
   );
 });
 
@@ -41,4 +52,17 @@ test("cost control preserves exact-head cancellation and the complete validation
 test("feature branches cannot reintroduce a duplicate push-triggered Validate run", () => {
   assert.equal(triggerBlock.match(/^  push:$/gm)?.length, 1);
   assert.doesNotMatch(triggerBlock, /branches:\s*\[[^\]]*(?:\*\*|codex\/)/);
+});
+
+test("draft and closed lifecycle events cannot publish the required Validate context", () => {
+  assert.match(
+    workflow,
+    /github\.event\.action == 'closed' \|\| github\.event\.pull_request\.draft/
+  );
+  assert.match(triggerBlock, /\bsynchronize\b/);
+  assert.match(triggerBlock, /\bclosed\b/);
+  assert.doesNotMatch(
+    workflow,
+    /name: Validate[\s\S]*if: github\.event_name != 'pull_request' \|\| github\.event\.pull_request\.draft == false/
+  );
 });
