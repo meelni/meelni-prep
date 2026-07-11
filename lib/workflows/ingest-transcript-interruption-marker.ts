@@ -17,6 +17,7 @@ export type PersistTranscriptInterruptionMarkerResult<TMarker> =
         | "event_conflict"
         | "writer_sequence_conflict"
         | "runtime_settled"
+        | "event_time_out_of_bounds"
         | "session_closed"
         | "session_capacity_exceeded";
     };
