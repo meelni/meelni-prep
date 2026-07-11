@@ -99,6 +99,25 @@ const SESSION_RECONNECT_INTEGRITY_VALID =
 const STABLE_START_ATTEMPT = "f1111111-1111-4111-8111-111111111111";
 const STABLE_START_QUESTION = "f2222222-2222-4222-8222-222222222222";
 
+type StripeResourceWinnerRow = {
+  stripe_subscription_id: string;
+  stripe_resource_created_at: Date | string;
+  stripe_resource_created_event_timestamp: Date | string;
+  stripe_resource_created_event_id: string;
+  retired_stripe_subscription_ids: string[];
+  status: string;
+  version: number;
+};
+
+function databaseTimestamp(value: Date | string): Date {
+  const timestamp = value instanceof Date ? value : new Date(value);
+  assert.ok(
+    Number.isFinite(timestamp.getTime()),
+    "database timestamp must normalize to a valid Date"
+  );
+  return timestamp;
+}
+
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
   throw new Error("MIGRATION_TEST_DATABASE_URL is required");
@@ -822,17 +841,7 @@ async function verifyConcurrentStripeSubscriptionReplacement(
     "the first CAS round must elect one concurrent resource"
   );
 
-  let [winner] = await sql<
-    Array<{
-      stripe_subscription_id: string;
-      stripe_resource_created_at: Date;
-      stripe_resource_created_event_timestamp: Date;
-      stripe_resource_created_event_id: string;
-      retired_stripe_subscription_ids: string[];
-      status: string;
-      version: number;
-    }>
-  >`
+  let [winner] = await sql<Array<StripeResourceWinnerRow>>`
     SELECT stripe_subscription_id, stripe_resource_created_at,
            stripe_resource_created_event_timestamp,
            stripe_resource_created_event_id, retired_stripe_subscription_ids,
@@ -846,9 +855,11 @@ async function verifyConcurrentStripeSubscriptionReplacement(
     currentResourceId: winner!.stripe_subscription_id,
     currentStatus: winner!.status,
     currentResourceProof: {
-      resourceCreatedAt: new Date(winner!.stripe_resource_created_at),
+      resourceCreatedAt: databaseTimestamp(winner!.stripe_resource_created_at),
       createdEventCursor: {
-        createdAt: new Date(winner!.stripe_resource_created_event_timestamp),
+        createdAt: databaseTimestamp(
+          winner!.stripe_resource_created_event_timestamp
+        ),
         priority: 30,
         eventId: winner!.stripe_resource_created_event_id,
       },
@@ -870,7 +881,7 @@ async function verifyConcurrentStripeSubscriptionReplacement(
     assert.equal(retry.length, 1);
   }
 
-  [winner] = await sql`
+  [winner] = await sql<Array<StripeResourceWinnerRow>>`
     SELECT stripe_subscription_id, stripe_resource_created_at,
            stripe_resource_created_event_timestamp,
            stripe_resource_created_event_id, retired_stripe_subscription_ids,
@@ -899,7 +910,9 @@ async function verifyConcurrentStripeSubscriptionReplacement(
       currentResourceId: winner!.stripe_subscription_id,
       currentStatus: winner!.status,
       currentResourceProof: {
-        resourceCreatedAt: winner!.stripe_resource_created_at,
+        resourceCreatedAt: databaseTimestamp(
+          winner!.stripe_resource_created_at
+        ),
         createdEventCursor: candidates[1].proof,
       },
       retiredResourceIds: winner!.retired_stripe_subscription_ids,
