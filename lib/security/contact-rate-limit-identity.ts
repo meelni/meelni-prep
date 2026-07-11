@@ -21,17 +21,44 @@ export function createContactRateLimitIdentities(
   normalizedEmail: string,
   environment: ContactRateLimitEnvironment = process.env
 ): ContactRateLimitIdentities {
-  const secret = environment.CONTACT_RATE_LIMIT_HMAC_SECRET;
-  if (!isValidServerSecret(secret)) {
-    throw new Error("contact_rate_limit_secret_unavailable");
-  }
-
-  const clientAddress = trustedClientAddress(headers, environment);
+  const { clientAddress, secret } = contactRateLimitIdentityContext(
+    headers,
+    environment
+  );
   return {
     attempt: hmacIdentity(secret, `attempt-client:${clientAddress}`),
     client: hmacIdentity(secret, `client:${clientAddress}`),
     email: hmacIdentity(secret, `email:${normalizedEmail}`),
     global: hmacIdentity(secret, "global:contact-submission"),
+  };
+}
+
+/**
+ * Derives the PII-free client budget before any contact body is read. This
+ * keeps malformed and oversized requests inside the durable attempt budget.
+ */
+export function createContactAttemptRateLimitIdentity(
+  headers: Headers,
+  environment: ContactRateLimitEnvironment = process.env
+): string {
+  const { clientAddress, secret } = contactRateLimitIdentityContext(
+    headers,
+    environment
+  );
+  return hmacIdentity(secret, `attempt-client:${clientAddress}`);
+}
+
+function contactRateLimitIdentityContext(
+  headers: Headers,
+  environment: ContactRateLimitEnvironment
+) {
+  const secret = environment.CONTACT_RATE_LIMIT_HMAC_SECRET;
+  if (!isValidServerSecret(secret)) {
+    throw new Error("contact_rate_limit_secret_unavailable");
+  }
+  return {
+    clientAddress: trustedClientAddress(headers, environment),
+    secret,
   };
 }
 

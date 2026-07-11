@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createContactRateLimitIdentities } from "./contact-rate-limit-identity";
+import {
+  createContactAttemptRateLimitIdentity,
+  createContactRateLimitIdentities,
+} from "./contact-rate-limit-identity";
 
 const secret = "a-dedicated-contact-secret-with-32-chars";
 
@@ -28,6 +31,10 @@ test("derives stable opaque identities from Vercel's trusted client header", () 
   );
 
   assert.deepEqual(first, second);
+  assert.equal(
+    first.attempt,
+    createContactAttemptRateLimitIdentity(headers, environment)
+  );
   assert.match(first.client, /^[0-9a-f]{64}$/);
   assert.match(first.email, /^[0-9a-f]{64}$/);
   assert.notEqual(first.attempt, first.client);
@@ -39,6 +46,14 @@ test("derives stable opaque identities from Vercel's trusted client header", () 
 test("fails closed without trusted production edge context or a strong secret", () => {
   const headers = new Headers({ "x-forwarded-for": "203.0.113.7" });
 
+  assert.throws(
+    () =>
+      createContactAttemptRateLimitIdentity(headers, {
+        CONTACT_RATE_LIMIT_HMAC_SECRET: secret,
+        NODE_ENV: "production",
+      }),
+    /contact_trusted_edge_unavailable/
+  );
   assert.throws(
     () =>
       createContactRateLimitIdentities(headers, "person@example.invalid", {

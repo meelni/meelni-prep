@@ -4,9 +4,10 @@ import type {
   ContactSubmissionStore,
   ContactSubmissionStoreInput,
 } from "@/lib/workflows/submit-contact-request";
+import { lockAccountIdentity } from "@/lib/db/account-identity-lock";
 
 import { db } from "./index";
-import { contactSubmission } from "./schema";
+import { accountDeletionRequest, appUser, contactSubmission } from "./schema";
 
 const EMAIL_REQUESTS_PER_HOUR = 3;
 const CLIENT_REQUESTS_PER_HOUR = 10;
@@ -29,6 +30,12 @@ class ContactRateLimitExceeded extends Error {
   }
 }
 
+class ContactAccountUnavailable extends Error {
+  constructor() {
+    super("contact_account_unavailable");
+  }
+}
+
 export function createDrizzleContactSubmissionStore(
   database: ContactSubmissionDatabase = db
 ): ContactSubmissionStore {
@@ -36,6 +43,25 @@ export function createDrizzleContactSubmissionStore(
     async accept(input) {
       try {
         return await database.transaction(async (transaction) => {
+          if (input.userId) {
+            await lockAccountIdentity(transaction, input.userId);
+            const [user] = await transaction
+              .select({ id: appUser.id })
+              .from(appUser)
+              .where(eq(appUser.id, input.userId))
+              .limit(1)
+              .for("update");
+            const [deletion] = await transaction
+              .select({ userId: accountDeletionRequest.userId })
+              .from(accountDeletionRequest)
+              .where(eq(accountDeletionRequest.userId, input.userId))
+              .limit(1);
+
+            if (!user || deletion) {
+              throw new ContactAccountUnavailable();
+            }
+          }
+
           await transaction.execute(sql`
             SELECT pg_advisory_xact_lock(
               hashtextextended(${input.idempotencyKey}, 0)

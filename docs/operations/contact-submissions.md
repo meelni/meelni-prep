@@ -14,9 +14,11 @@ Status: local implementation and rehearsal only; no Preview/Production mutation 
 8. Assign a support owner and test the audited queue/read/claim/resolve procedure below.
 9. Preserve direct email fallbacks until target-environment storage, triage, cleanup, and monitoring evidence is accepted.
 
+Linked contact acceptance and account deletion share the account-identity/application-user lock order. Do not remove that serialization or replace the deletion-tombstone check with an email comparison: concurrent deletion must either remove a contact row that committed first or prevent a later linked insert.
+
 ## Migration convergence
 
-This independent branch generates one complete contact migration as `0008_durable_contact_submission` because it is based directly on the reviewed `origin/main`. The separately reviewed feedback/consent stack already occupies future sequence numbers 0008–0012. Final convergence must regenerate/renumber this single contact migration as the next migration (expected `0013`) with a fresh snapshot and schema fingerprint. Do not hand-merge journals or snapshots, and do not treat this branch's numeric order as final.
+This independent branch currently carries one complete contact migration as `0008_durable_contact_submission` because it was generated from its reviewed parent. Other open migration stacks also occupy that number and later numbers. Final convergence must regenerate this single contact migration as the next number from the final canonical parent, with a fresh snapshot and schema fingerprint. Do not hand-merge journals or snapshots, predict the final number before the preceding stacks land, or treat this branch's current numeric order as final.
 
 ## Least-privilege triage
 
