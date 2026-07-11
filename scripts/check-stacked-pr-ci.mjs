@@ -9,6 +9,8 @@ import {
   validatePullRequestDeclaration,
 } from "./check-stacked-pr.mjs";
 
+export const STACK_TOPOLOGY_CHECK_NAME = "Stack Topology / Verify";
+
 function git(repo, args) {
   return execFileSync("git", ["-C", repo, ...args], {
     encoding: "utf8",
@@ -50,32 +52,34 @@ function fetchParent(repo, remote, parentRef) {
   return revision;
 }
 
-export function runStackCi({
-  env = process.env,
-  repo = process.cwd(),
-  remote = "origin",
-} = {}) {
-  if (env.GITHUB_EVENT_NAME !== "pull_request_target") {
-    throw new Error("stack_gate_requires_pull_request_target");
-  }
-  if (!env.GITHUB_EVENT_PATH) {
-    throw new Error("stack_gate_event_path_required");
-  }
-
-  const eventContent = readFileSync(env.GITHUB_EVENT_PATH, "utf8");
+export function parseStackEvent(eventContent) {
   const event = JSON.parse(eventContent);
   const pullRequest = event.pull_request;
   const prNumber = pullRequest?.number ?? event.number;
   if (!Number.isInteger(prNumber) || prNumber < 1) {
     throw new Error("stack_gate_pr_number_invalid");
   }
-
-  const manifest = loadStackManifest();
-  const headRef = pullRequest?.head?.ref;
   const headSha = pullRequest?.head?.sha;
+  const repository = event.repository?.full_name;
+  if (!/^[0-9a-f]{40}$/.test(headSha ?? "") || typeof repository !== "string") {
+    throw new Error("stack_gate_event_invalid");
+  }
+  return { event, pullRequest, prNumber, headSha, repository };
+}
+
+export function runStackCiForEvent({
+  eventContent,
+  repo = process.cwd(),
+  remote = "origin",
+  manifestPath,
+} = {}) {
+  const { event, pullRequest, prNumber, headSha, repository } =
+    parseStackEvent(eventContent);
+
+  const manifest = loadStackManifest(manifestPath);
+  const headRef = pullRequest?.head?.ref;
   const headRepository = pullRequest?.head?.repo?.full_name;
   const baseRef = pullRequest?.base?.ref;
-  const repository = event.repository?.full_name;
   if (
     repository !== manifest.repository ||
     typeof headRef !== "string" ||
@@ -133,9 +137,177 @@ export function runStackCi({
   });
 }
 
-function main() {
+export function runStackCi({
+  env = process.env,
+  repo = process.cwd(),
+  remote = "origin",
+} = {}) {
+  if (env.GITHUB_EVENT_NAME !== "pull_request_target") {
+    throw new Error("stack_gate_requires_pull_request_target");
+  }
+  if (!env.GITHUB_EVENT_PATH) {
+    throw new Error("stack_gate_event_path_required");
+  }
+  return runStackCiForEvent({
+    eventContent: readFileSync(env.GITHUB_EVENT_PATH, "utf8"),
+    repo,
+    remote,
+  });
+}
+
+export async function githubApi({
+  token,
+  repository,
+  path,
+  method = "GET",
+  body,
+  fetchImpl = fetch,
+}) {
+  if (!token) throw new Error("stack_gate_github_token_required");
+  const response = await fetchImpl(
+    `https://api.github.com/repos/${repository}${path}`,
+    {
+      method,
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${token}`,
+        "x-github-api-version": "2022-11-28",
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`stack_gate_github_api_failed:${response.status}`);
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+export async function createStackCheck({
+  token,
+  repository,
+  headSha,
+  fetchImpl,
+}) {
+  const check = await githubApi({
+    token,
+    repository,
+    path: "/check-runs",
+    method: "POST",
+    body: {
+      name: STACK_TOPOLOGY_CHECK_NAME,
+      head_sha: headSha,
+      status: "in_progress",
+      started_at: new Date().toISOString(),
+      output: {
+        title: "Stack topology verification is running",
+        summary:
+          "Trusted default-branch code is verifying the exact PR and parent refs.",
+      },
+    },
+    fetchImpl,
+  });
+  if (!Number.isInteger(check?.id)) {
+    throw new Error("stack_gate_check_run_id_missing");
+  }
+  return check.id;
+}
+
+export async function completeStackCheck({
+  token,
+  repository,
+  checkId,
+  conclusion,
+  result,
+  error,
+  fetchImpl,
+}) {
+  const errors = result?.errors ?? (error ? [error] : []);
+  await githubApi({
+    token,
+    repository,
+    path: `/check-runs/${checkId}`,
+    method: "PATCH",
+    body: {
+      status: "completed",
+      conclusion,
+      completed_at: new Date().toISOString(),
+      output: {
+        title:
+          conclusion === "success"
+            ? "Exact stack topology verified"
+            : conclusion === "neutral"
+              ? "PR is not a registered stack child"
+              : "Stack topology verification failed",
+        summary:
+          errors.length > 0
+            ? errors.join("\n")
+            : "The exact PR head contains the declared current parent and the PR-body evidence is current.",
+      },
+    },
+    fetchImpl,
+  });
+}
+
+export async function runStackCiAndPublish({
+  eventContent,
+  env = process.env,
+  repo = process.cwd(),
+  remote = "origin",
+  fetchImpl,
+  manifestPath,
+} = {}) {
+  const { repository, headSha } = parseStackEvent(eventContent);
+  const token = env.GITHUB_TOKEN;
+  const checkId = await createStackCheck({
+    token,
+    repository,
+    headSha,
+    fetchImpl,
+  });
   try {
-    const result = runStackCi();
+    const result = runStackCiForEvent({
+      eventContent,
+      repo,
+      remote,
+      manifestPath,
+    });
+    await completeStackCheck({
+      token,
+      repository,
+      checkId,
+      conclusion:
+        result.status === "pass"
+          ? "success"
+          : result.status === "not_stacked"
+            ? "neutral"
+            : "failure",
+      result,
+      fetchImpl,
+    });
+    return result;
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "stack_check_failed";
+    await completeStackCheck({
+      token,
+      repository,
+      checkId,
+      conclusion: "failure",
+      error: code,
+      fetchImpl,
+    });
+    throw error;
+  }
+}
+
+async function main() {
+  try {
+    const publish = process.argv.includes("--publish-check");
+    const eventContent = process.env.GITHUB_EVENT_PATH
+      ? readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")
+      : null;
+    const result = publish
+      ? await runStackCiAndPublish({ eventContent })
+      : runStackCi();
     console.log(JSON.stringify(result, null, 2));
     if (result.status === "fail") process.exitCode = 1;
   } catch (error) {
@@ -149,4 +321,4 @@ function main() {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) void main();
