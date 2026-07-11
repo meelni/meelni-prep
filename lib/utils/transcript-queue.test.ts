@@ -3,12 +3,16 @@ import test from "node:test";
 
 import { createTranscriptEvent } from "@meelni/agent";
 
-import { TranscriptQueue } from "./transcript-queue";
+import {
+  clearTranscriptQueueStorage,
+  getTranscriptQueue,
+  TranscriptQueue,
+} from "./transcript-queue";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 test("concurrent duplicate saves share one event-ID request", async () => {
-  const queue = new TranscriptQueue();
+  const queue = boundQueue();
   let requests = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
@@ -33,7 +37,7 @@ test("concurrent duplicate saves share one event-ID request", async () => {
 });
 
 test("retryable failures remain queued until explicit settlement succeeds", async () => {
-  const queue = new TranscriptQueue();
+  const queue = boundQueue();
   let available = false;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () =>
@@ -54,7 +58,7 @@ test("retryable failures remain queued until explicit settlement succeeds", asyn
 });
 
 test("identity conflicts are permanent and block transcript settlement", async () => {
-  const queue = new TranscriptQueue();
+  const queue = boundQueue();
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () =>
     Response.json(
@@ -90,7 +94,7 @@ test("terminal session closure discards raw transcript content without blocking 
     Response.json({ error: "transcript_session_closed" }, { status: 409 });
 
   try {
-    const queue = new TranscriptQueue();
+    const queue = boundQueue();
     const result = await queue.save(request());
     assert.deepEqual(result, {
       success: false,
@@ -176,6 +180,7 @@ test("permanent failures survive reload and continue blocking settlement", async
   );
 
   const queue = new TranscriptQueue();
+  queue.bindOwner("user-1");
   try {
     const settlement = await queue.flush("user-1", SESSION_ID, 20);
     assert.deepEqual(settlement, { settled: false, pending: 0, failed: 1 });
@@ -247,7 +252,7 @@ test("an unresolved old-owner save cannot rebind or delete the new owner's queue
     return Response.json({ error: "unavailable" }, { status: 503 });
   };
 
-  const queue = new TranscriptQueue();
+  const queue = boundQueue();
   try {
     const staleSave = queue.save(request());
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -270,6 +275,55 @@ test("an unresolved old-owner save cannot rebind or delete the new owner's queue
     assert.match(persisted, /New owner's private answer/);
     assert.doesNotMatch(persisted, /clarifying the goal/);
     assert.equal(queue.getStatus().queueLength, 1);
+  } finally {
+    queue.stop();
+    globalThis.fetch = originalFetch;
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
+test("sign-out or deletion cleanup fences in-flight failure and stale callbacks", async () => {
+  const storage = new MemoryStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  let resolveRequest!: (response: Response) => void;
+  globalThis.fetch = async () =>
+    new Promise<Response>((resolve) => {
+      resolveRequest = resolve;
+    });
+
+  const queue = getTranscriptQueue();
+  queue.bindOwner("user-1");
+  try {
+    const inFlight = queue.save(request());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    clearTranscriptQueueStorage();
+    resolveRequest(Response.json({ error: "unavailable" }, { status: 503 }));
+
+    assert.deepEqual(await inFlight, {
+      success: false,
+      error: "transcript_owner_changed",
+    });
+    assert.equal(storage.getItem("transcript_queue_v2"), null);
+
+    let staleRequests = 0;
+    globalThis.fetch = async () => {
+      staleRequests += 1;
+      return Response.json({ error: "unavailable" }, { status: 503 });
+    };
+    assert.deepEqual(await queue.save(request()), {
+      success: false,
+      error: "transcript_owner_changed",
+    });
+    assert.equal(staleRequests, 0);
+    assert.equal(storage.getItem("transcript_queue_v2"), null);
   } finally {
     queue.stop();
     globalThis.fetch = originalFetch;
@@ -309,6 +363,12 @@ function serializedQueueItem(value: ReturnType<typeof request>) {
     enqueuedAt: "2026-07-10T05:00:05.000Z",
     lastAttempt: "2026-07-10T05:00:05.000Z",
   };
+}
+
+function boundQueue(ownerId = "user-1") {
+  const queue = new TranscriptQueue();
+  queue.bindOwner(ownerId);
+  return queue;
 }
 
 function restoreGlobal(

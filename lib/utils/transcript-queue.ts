@@ -82,6 +82,7 @@ export class TranscriptQueue {
   private inFlight = new Map<string, Promise<TranscriptSaveResult>>();
   private overflowedSessions = new Set<string>();
   private failures: TranscriptQueueFailure[] = [];
+  private closedSessions = new Set<string>();
   private boundOwnerId: string | null = null;
   private ownerGeneration = 0;
 
@@ -90,11 +91,12 @@ export class TranscriptQueue {
   }
 
   add(request: TranscriptPersistenceRequest): boolean {
-    this.bindOwner(request.ownerId);
+    if (this.boundOwnerId !== request.ownerId) return false;
     return this.enqueueForRetry(request);
   }
 
   private enqueueForRetry(request: TranscriptPersistenceRequest): boolean {
+    if (this.closedSessions.has(ownerSessionIdentity(request))) return false;
     this.pruneExpired();
     const id = queueIdentity(request);
     const existing = this.queue.find((item) => item.id === id);
@@ -129,7 +131,12 @@ export class TranscriptQueue {
   async save(
     request: TranscriptPersistenceRequest
   ): Promise<TranscriptSaveResult> {
-    this.bindOwner(request.ownerId);
+    if (
+      this.boundOwnerId !== request.ownerId ||
+      this.closedSessions.has(ownerSessionIdentity(request))
+    ) {
+      return { success: false, error: "transcript_owner_changed" };
+    }
     const generation = this.ownerGeneration;
     const id = queueIdentity(request);
     const existing = this.inFlight.get(id);
@@ -149,13 +156,13 @@ export class TranscriptQueue {
     const id = queueIdentity(request);
     try {
       const result = await postTranscriptEvent(request);
-      if (this.isCurrentOwner(request.ownerId, generation)) {
+      if (this.isCurrentRequest(request, generation)) {
         this.removeQueuedItem(id);
         this.removeFailure(id);
       }
       return result;
     } catch (error) {
-      if (!this.isCurrentOwner(request.ownerId, generation)) {
+      if (!this.isCurrentRequest(request, generation)) {
         return { success: false, error: "transcript_owner_changed" };
       }
       if (isRetryable(error)) {
@@ -191,12 +198,20 @@ export class TranscriptQueue {
         item.lastAttempt = new Date();
         try {
           await postTranscriptEvent(item.request);
-          if (!this.isCurrentOwner(ownerId, generation)) break;
+          if (
+            !this.isCurrentOwner(ownerId, generation) ||
+            this.closedSessions.has(ownerSessionIdentity(item.request))
+          )
+            break;
           this.removeQueuedItem(item.id);
           this.removeFailure(item.id);
           this.saveToStorage();
         } catch (error) {
-          if (!this.isCurrentOwner(ownerId, generation)) break;
+          if (
+            !this.isCurrentOwner(ownerId, generation) ||
+            this.closedSessions.has(ownerSessionIdentity(item.request))
+          )
+            break;
           if (!isRetryable(error)) {
             this.removeQueuedItem(item.id);
             if (!isClosedSessionError(error)) {
@@ -219,7 +234,9 @@ export class TranscriptQueue {
     sessionId: string,
     timeoutMs = 5_000
   ): Promise<{ settled: boolean; pending: number; failed: number }> {
-    this.bindOwner(ownerId);
+    if (this.boundOwnerId !== ownerId) {
+      return { settled: false, pending: 0, failed: 1 };
+    }
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       await this.processQueue();
@@ -282,13 +299,19 @@ export class TranscriptQueue {
   }
 
   clear(): void {
+    this.stop();
+    this.boundOwnerId = null;
+    this.ownerGeneration += 1;
     this.queue = [];
     this.overflowedSessions.clear();
     this.failures = [];
+    this.closedSessions.clear();
+    this.inFlight.clear();
     this.saveToStorage();
   }
 
   clearSession(ownerId: string, sessionId: string): void {
+    this.closedSessions.add(`${ownerId}:${sessionId}`);
     this.queue = this.queue.filter(
       (item) =>
         item.request.ownerId !== ownerId || item.request.sessionId !== sessionId
@@ -398,6 +421,9 @@ export class TranscriptQueue {
     );
     this.boundOwnerId = ownerId;
     this.ownerGeneration += 1;
+    this.closedSessions = new Set(
+      [...this.closedSessions].filter((key) => key.startsWith(`${ownerId}:`))
+    );
     this.saveToStorage();
     this.startBackgroundProcessing();
     void this.processQueue();
@@ -443,6 +469,16 @@ export class TranscriptQueue {
 
   private isCurrentOwner(ownerId: string, generation: number): boolean {
     return this.boundOwnerId === ownerId && this.ownerGeneration === generation;
+  }
+
+  private isCurrentRequest(
+    request: TranscriptPersistenceRequest,
+    generation: number
+  ): boolean {
+    return (
+      this.isCurrentOwner(request.ownerId, generation) &&
+      !this.closedSessions.has(ownerSessionIdentity(request))
+    );
   }
 
   private pruneExpired(): void {
