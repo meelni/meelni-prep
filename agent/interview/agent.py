@@ -38,7 +38,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.config import parse_room_metadata
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.runtime_config import get_model_config, get_tts_config
-from shared.runtime_events import create_runtime_event, provider_failure_code
+from shared.runtime_events import (
+    create_runtime_event,
+    provider_failure_code,
+    report_provider_failure_and_stop,
+)
 from shared.session_deadline import (
     DeadlineEnforcer,
     cancel_deadline_watchdog,
@@ -248,9 +252,16 @@ async def entrypoint(ctx: JobContext):
 
         async def report_and_shutdown() -> None:
             try:
-                persisted = await report_provider_failure(
-                    code,
-                    retryable=retryable,
+                persisted = await report_provider_failure_and_stop(
+                    report_failure=lambda: report_provider_failure(
+                        code,
+                        retryable=retryable,
+                    ),
+                    close_session=session.aclose,
+                    terminate_room=lambda: terminate_livekit_room(ctx, room_name),
+                    shutdown=lambda: ctx.shutdown(
+                        "voice runtime provider failure"
+                    ),
                 )
                 if not persisted:
                     logger.error(
@@ -265,8 +276,6 @@ async def entrypoint(ctx: JobContext):
                         "error_type": type(error).__name__,
                     },
                 )
-            finally:
-                ctx.shutdown("voice runtime provider failure")
 
         task = asyncio.create_task(report_and_shutdown())
         background_transcript_tasks.add(task)
@@ -681,10 +690,9 @@ async def entrypoint(ctx: JobContext):
                     "Hard-deadline enforcement failed",
                     exc_info=(type(error), error, error.__traceback__),
                 )
-                asyncio.create_task(
-                    report_provider_failure(
-                        "deadline_enforcement_failed", retryable=True
-                    )
+                schedule_provider_failure_report(
+                    "deadline_enforcement_failed",
+                    retryable=True,
                 )
 
         deadline_task.add_done_callback(on_deadline_task_done)

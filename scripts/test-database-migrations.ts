@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 
 import {
@@ -3943,8 +3944,11 @@ async function verifyProviderCreditRecovery(
   process.env.DATABASE_URL = databaseUrl;
   const [
     { createCreditLedgerService },
-    { createDrizzleCreditLedgerStore },
-    { createDrizzleInterviewCreditSettlementStore },
+    { createDrizzleCreditLedgerStore, withDrizzleCreditLedgerUserTransaction },
+    {
+      createDrizzleInterviewCreditSettlementStore,
+      withDeferredInterviewCreditSettlementTracking,
+    },
     { createDrizzleInterviewRuntimeFailureStore },
     { createDrizzleInterviewCreditRecoveryStore },
     { convergeInterviewCreditSettlement },
@@ -3967,6 +3971,7 @@ async function verifyProviderCreditRecovery(
   const recoveryAttempt = "54000000-0000-4000-8000-000000000003";
   const recoveryConsumedAttempt = "54000000-0000-4000-8000-000000000004";
   const atomicFailureAttempt = "54000000-0000-4000-8000-000000000005";
+  const analyticsRollbackAttempt = "54000000-0000-4000-8000-000000000006";
   const now = new Date("2026-07-10T14:00:00.000Z");
   const clients = Array.from({ length: 10 }, () =>
     postgres(databaseUrl, { max: 1, prepare: false })
@@ -4234,6 +4239,63 @@ async function verifyProviderCreditRecovery(
       dispatch_status: "not_required",
     });
 
+    await insertSession(analyticsRollbackAttempt, recoveryUser);
+    await reserve(analyticsRollbackAttempt, recoveryUser);
+    const trackedAfterRollback: unknown[] = [];
+    await assert.rejects(
+      withDeferredInterviewCreditSettlementTracking(
+        (defer) =>
+          withDrizzleCreditLedgerUserTransaction(
+            recoveryUser,
+            async ({ database: transaction }) => {
+              await transaction
+                .update(schema.interviewSession)
+                .set({
+                  lifecycleState: "failed",
+                  lifecycleVersion: 4,
+                  terminalReason: "provider_failure",
+                  status: "error",
+                  billingFault: "provider",
+                  billingFaultCode: "forced_outer_rollback",
+                  endingAt: now,
+                  endedAt: now,
+                  lastTransitionAt: now,
+                })
+                .where(
+                  eq(schema.interviewSession.id, analyticsRollbackAttempt)
+                );
+              const credit = await convergeInterviewCreditSettlement({
+                sessionId: analyticsRollbackAttempt,
+                store: createDrizzleInterviewCreditSettlementStore(
+                  transaction as unknown as (typeof databases)[number],
+                  defer
+                ),
+                now,
+              });
+              assert.equal(credit.disposition, "released");
+              throw new Error("forced_outer_commit_rollback");
+            },
+            databases[0]!
+          ),
+        (evidence) => trackedAfterRollback.push(evidence)
+      ),
+      /forced_outer_commit_rollback/
+    );
+    assert.deepEqual(trackedAfterRollback, []);
+    const [analyticsRollbackState] = await sql<
+      { lifecycle_state: string; reservation_status: string }[]
+    >`
+      SELECT session.lifecycle_state,
+        reservation.status AS reservation_status
+      FROM interview_session session
+      JOIN credit_reservation reservation ON reservation.session_id = session.id
+      WHERE session.id = ${analyticsRollbackAttempt}::uuid
+    `;
+    assert.deepEqual(analyticsRollbackState, {
+      lifecycle_state: "active",
+      reservation_status: "active",
+    });
+
     await insertSession(atomicFailureAttempt, recoveryUser);
     await reserve(atomicFailureAttempt, recoveryUser);
     await sql`
@@ -4296,7 +4358,7 @@ async function verifyProviderCreditRecovery(
       WHERE session_id IN (
         ${providerAttempt}::uuid, ${retainAttempt}::uuid,
         ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
-        ${atomicFailureAttempt}::uuid
+        ${atomicFailureAttempt}::uuid, ${analyticsRollbackAttempt}::uuid
       )
     `;
     await sql`
@@ -4304,7 +4366,7 @@ async function verifyProviderCreditRecovery(
       WHERE session_id IN (
         ${providerAttempt}::uuid, ${retainAttempt}::uuid,
         ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
-        ${atomicFailureAttempt}::uuid
+        ${atomicFailureAttempt}::uuid, ${analyticsRollbackAttempt}::uuid
       )
     `;
     await sql`
@@ -4312,7 +4374,7 @@ async function verifyProviderCreditRecovery(
       WHERE id IN (
         ${providerAttempt}::uuid, ${retainAttempt}::uuid,
         ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
-        ${atomicFailureAttempt}::uuid
+        ${atomicFailureAttempt}::uuid, ${analyticsRollbackAttempt}::uuid
       )
     `;
     await sql`

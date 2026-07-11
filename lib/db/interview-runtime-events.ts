@@ -7,7 +7,10 @@ import {
   type CreditLedgerDatabase,
   type CreditLedgerTransactionDatabase,
 } from "@/lib/billing/credit-ledger-store";
-import { createDrizzleInterviewCreditSettlementStore } from "./interview-credit-settlement";
+import {
+  createDrizzleInterviewCreditSettlementStore,
+  withDeferredInterviewCreditSettlementTracking,
+} from "./interview-credit-settlement";
 import { convergeInterviewCreditSettlement } from "@/lib/workflows/converge-interview-credit-settlement";
 import type {
   InterviewRuntimeFailureStore,
@@ -31,25 +34,28 @@ export function createDrizzleInterviewRuntimeFailureStore(
       const owner = owners[0];
       if (!owner) return { ok: false, reason: "not_found" };
 
-      return withDrizzleCreditLedgerUserTransaction(
-        owner.userId,
-        async ({ database: transaction }) => {
-          const persisted = await persistProviderFailureLocked(
-            transaction,
-            event,
-            owner.userId
-          );
-          if (!persisted.ok) return persisted;
-          await ensureProviderFailureFeedback(transaction, event.session_id);
-          const credit = await convergeInterviewCreditSettlement({
-            sessionId: event.session_id,
-            store: createDrizzleInterviewCreditSettlementStore(
-              transaction as unknown as CreditLedgerDatabase
-            ),
-          });
-          return { ...persisted, creditDisposition: credit.disposition };
-        },
-        database
+      return withDeferredInterviewCreditSettlementTracking((defer) =>
+        withDrizzleCreditLedgerUserTransaction(
+          owner.userId,
+          async ({ database: transaction }) => {
+            const persisted = await persistProviderFailureLocked(
+              transaction,
+              event,
+              owner.userId
+            );
+            if (!persisted.ok) return persisted;
+            await ensureProviderFailureFeedback(transaction, event.session_id);
+            const credit = await convergeInterviewCreditSettlement({
+              sessionId: event.session_id,
+              store: createDrizzleInterviewCreditSettlementStore(
+                transaction as unknown as CreditLedgerDatabase,
+                defer
+              ),
+            });
+            return { ...persisted, creditDisposition: credit.disposition };
+          },
+          database
+        )
       );
     },
   };

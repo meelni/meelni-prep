@@ -5,7 +5,10 @@ import {
   withDrizzleCreditLedgerUserTransaction,
   type CreditLedgerDatabase,
 } from "@/lib/billing/credit-ledger-store";
-import { createDrizzleInterviewCreditSettlementStore } from "./interview-credit-settlement";
+import {
+  createDrizzleInterviewCreditSettlementStore,
+  withDeferredInterviewCreditSettlementTracking,
+} from "./interview-credit-settlement";
 import { convergeInterviewCreditSettlement } from "@/lib/workflows/converge-interview-credit-settlement";
 import { db } from "./index";
 import { creditReservation, feedback, interviewSession } from "./schema";
@@ -98,114 +101,120 @@ export function createDrizzleInterviewCreditRecoveryStore(
       const owner = owners[0];
       if (!owner) return { disposition: "no_longer_recoverable" };
 
-      return withDrizzleCreditLedgerUserTransaction(
-        owner.userId,
-        async ({ database: transaction, ledger }) => {
-          const rows = await transaction
-            .select()
-            .from(interviewSession)
-            .where(
-              and(
-                eq(interviewSession.id, sessionId),
-                eq(interviewSession.userId, owner.userId),
-                eq(interviewSession.startContractVersion, 1)
+      return withDeferredInterviewCreditSettlementTracking((defer) =>
+        withDrizzleCreditLedgerUserTransaction(
+          owner.userId,
+          async ({ database: transaction, ledger }) => {
+            const rows = await transaction
+              .select()
+              .from(interviewSession)
+              .where(
+                and(
+                  eq(interviewSession.id, sessionId),
+                  eq(interviewSession.userId, owner.userId),
+                  eq(interviewSession.startContractVersion, 1)
+                )
               )
-            )
-            .limit(1)
-            .for("update");
-          const session = rows[0];
-          if (!session || session.creditSettledAt) {
-            return { disposition: "no_longer_recoverable" } as const;
-          }
-          const reservationKey = `interview-start:${owner.userId}:${session.startAttemptId}`;
-          const reservation =
-            await ledger.findReservationByKeyForUpdate(reservationKey);
-          if (
-            !reservation ||
-            reservation.sessionId !== sessionId ||
-            reservation.startAttemptId !== sessionId ||
-            !recoverableReservationStatuses.includes(
-              reservation.status as (typeof recoverableReservationStatuses)[number]
-            )
-          ) {
-            return { disposition: "no_longer_recoverable" } as const;
-          }
+              .limit(1)
+              .for("update");
+            const session = rows[0];
+            if (!session || session.creditSettledAt) {
+              return { disposition: "no_longer_recoverable" } as const;
+            }
+            const reservationKey = `interview-start:${owner.userId}:${session.startAttemptId}`;
+            const reservation =
+              await ledger.findReservationByKeyForUpdate(reservationKey);
+            if (
+              !reservation ||
+              reservation.sessionId !== sessionId ||
+              reservation.startAttemptId !== sessionId ||
+              !recoverableReservationStatuses.includes(
+                reservation.status as (typeof recoverableReservationStatuses)[number]
+              )
+            ) {
+              return { disposition: "no_longer_recoverable" } as const;
+            }
 
-          const alreadyTerminal = terminalStates.includes(
-            session.lifecycleState as (typeof terminalStates)[number]
-          );
-          if (
-            (!alreadyTerminal &&
-              !nonterminalStates.includes(
-                session.lifecycleState as (typeof nonterminalStates)[number]
-              )) ||
-            (!alreadyTerminal &&
-              (!["active", "consumed"].includes(reservation.status) ||
-                reservation.expiresAt > now))
-          ) {
-            return { disposition: "no_longer_recoverable" } as const;
-          }
+            const alreadyTerminal = terminalStates.includes(
+              session.lifecycleState as (typeof terminalStates)[number]
+            );
+            if (
+              (!alreadyTerminal &&
+                !nonterminalStates.includes(
+                  session.lifecycleState as (typeof nonterminalStates)[number]
+                )) ||
+              (!alreadyTerminal &&
+                (!["active", "consumed"].includes(reservation.status) ||
+                  reservation.expiresAt > now))
+            ) {
+              return { disposition: "no_longer_recoverable" } as const;
+            }
 
-          const updated = alreadyTerminal
-            ? [{ id: session.id }]
-            : await transaction
-                .update(interviewSession)
-                .set({
-                  lifecycleState: "failed",
-                  lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 2`,
-                  terminalReason: "provider_failure",
-                  status: projectLegacyInterviewSessionStatus({
-                    state: "failed",
+            const updated = alreadyTerminal
+              ? [{ id: session.id }]
+              : await transaction
+                  .update(interviewSession)
+                  .set({
+                    lifecycleState: "failed",
+                    lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 2`,
                     terminalReason: "provider_failure",
-                  }),
-                  billingFault: "provider",
-                  billingFaultCode: "reservation_expired",
-                  endingAt: sql`COALESCE(${interviewSession.endingAt}, ${now.toISOString()}::timestamptz)`,
-                  endedAt: sql`COALESCE(${interviewSession.endedAt}, ${now.toISOString()}::timestamptz)`,
-                  lastTransitionAt: now,
-                  reconnectDeadlineAt: null,
-                  roomCleanupPending: true,
-                })
-                .where(
-                  and(
-                    eq(interviewSession.id, sessionId),
-                    eq(interviewSession.lifecycleState, session.lifecycleState),
-                    eq(
-                      interviewSession.lifecycleVersion,
-                      session.lifecycleVersion
+                    status: projectLegacyInterviewSessionStatus({
+                      state: "failed",
+                      terminalReason: "provider_failure",
+                    }),
+                    billingFault: "provider",
+                    billingFaultCode: "reservation_expired",
+                    endingAt: sql`COALESCE(${interviewSession.endingAt}, ${now.toISOString()}::timestamptz)`,
+                    endedAt: sql`COALESCE(${interviewSession.endedAt}, ${now.toISOString()}::timestamptz)`,
+                    lastTransitionAt: now,
+                    reconnectDeadlineAt: null,
+                    roomCleanupPending: true,
+                  })
+                  .where(
+                    and(
+                      eq(interviewSession.id, sessionId),
+                      eq(
+                        interviewSession.lifecycleState,
+                        session.lifecycleState
+                      ),
+                      eq(
+                        interviewSession.lifecycleVersion,
+                        session.lifecycleVersion
+                      )
                     )
                   )
-                )
-                .returning({ id: interviewSession.id });
-          if (!updated[0]) {
-            return { disposition: "no_longer_recoverable" } as const;
-          }
-          if (!alreadyTerminal) {
-            await transaction
-              .insert(feedback)
-              .values({
-                sessionId,
-                status: "skipped",
-                statusReason:
-                  "Interview ended because its recovery window expired",
-                rubricVersion: "1.0.0",
-                dispatchStatus: "not_required",
-              })
-              .onConflictDoNothing({ target: feedback.sessionId });
-          }
-          const credit = await convergeInterviewCreditSettlement({
-            sessionId,
-            store: createDrizzleInterviewCreditSettlementStore(
-              transaction as unknown as CreditLedgerDatabase
-            ),
-            now,
-          });
-          return {
-            disposition: "recovered",
-            creditDisposition: credit.disposition,
-          } as const;
-        },
-        database
+                  .returning({ id: interviewSession.id });
+            if (!updated[0]) {
+              return { disposition: "no_longer_recoverable" } as const;
+            }
+            if (!alreadyTerminal) {
+              await transaction
+                .insert(feedback)
+                .values({
+                  sessionId,
+                  status: "skipped",
+                  statusReason:
+                    "Interview ended because its recovery window expired",
+                  rubricVersion: "1.0.0",
+                  dispatchStatus: "not_required",
+                })
+                .onConflictDoNothing({ target: feedback.sessionId });
+            }
+            const credit = await convergeInterviewCreditSettlement({
+              sessionId,
+              store: createDrizzleInterviewCreditSettlementStore(
+                transaction as unknown as CreditLedgerDatabase,
+                defer
+              ),
+              now,
+            });
+            return {
+              disposition: "recovered",
+              creditDisposition: credit.disposition,
+            } as const;
+          },
+          database
+        )
       );
     },
   };

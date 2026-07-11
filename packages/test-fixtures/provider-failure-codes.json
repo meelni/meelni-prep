@@ -14,10 +14,9 @@
   "direct_report_codes": [
     "voice_session_construction_failed",
     "voice_session_start_failed",
-    "deadline_enforcement_failed",
     "initial_greeting_failed"
   ],
-  "scheduled_report_codes": [],
+  "scheduled_report_codes": ["deadline_enforcement_failed"],
   "mapper_codes": [
     "stt_provider_failed",
     "llm_provider_failed",
