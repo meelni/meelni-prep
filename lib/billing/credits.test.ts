@@ -4,6 +4,7 @@ import { createDrizzleCreditLedgerStore } from "./credit-ledger-store";
 import {
   createCreditLedgerService,
   createMemoryCreditLedgerStore,
+  type CreditLedgerTransaction,
   type CreditLedgerStore,
 } from "./credits";
 
@@ -192,6 +193,55 @@ test("unique-key conflict fallbacks cannot return another user's ledger rows", a
       /credit_ledger_user_scope_mismatch/
     );
   });
+});
+
+test("a retained production transaction rejects every operation after callback closure", async () => {
+  let queryCount = 0;
+  let retainedTransaction: CreditLedgerTransaction | null = null;
+  const database = createScopedLedgerDatabase({
+    selectRows: [],
+    onQuery: () => {
+      queryCount += 1;
+    },
+  });
+  const store = createDrizzleCreditLedgerStore(database);
+
+  await store.withUserTransaction("user-1", async (transaction) => {
+    retainedTransaction = transaction;
+  });
+
+  assert.ok(retainedTransaction);
+  const queriesAfterCallback = queryCount;
+  for (const operation of closedTransactionOperations(retainedTransaction)) {
+    await assert.rejects(operation, /credit_ledger_transaction_closed/);
+  }
+  assert.equal(queryCount, queriesAfterCallback);
+});
+
+test("a returned production transaction closes after asynchronous callback settlement", async () => {
+  let queryCount = 0;
+  const database = createScopedLedgerDatabase({
+    selectRows: [[]],
+    onQuery: () => {
+      queryCount += 1;
+    },
+  });
+  const store = createDrizzleCreditLedgerStore(database);
+
+  const returnedTransaction = await store.withUserTransaction(
+    "user-1",
+    async (transaction) => {
+      await Promise.resolve();
+      assert.deepEqual(await transaction.listUserGrants("user-1"), []);
+      return transaction;
+    }
+  );
+
+  const queriesAfterCallback = queryCount;
+  for (const operation of closedTransactionOperations(returnedTransaction)) {
+    await assert.rejects(operation, /credit_ledger_transaction_closed/);
+  }
+  assert.equal(queryCount, queriesAfterCallback);
 });
 
 test("grantCredits is idempotent and balance ignores expired grants", async () => {
@@ -1288,9 +1338,11 @@ test("impossible reserve balance evidence fails closed", async () => {
 function createScopedLedgerDatabase({
   selectRows,
   insertRows = [],
+  onQuery = () => {},
 }: {
   selectRows: unknown[][];
   insertRows?: unknown[][];
+  onQuery?: () => void;
 }) {
   return {
     async transaction(
@@ -1300,6 +1352,7 @@ function createScopedLedgerDatabase({
       const pendingInsertRows = [...insertRows];
       const transaction = {
         select() {
+          onQuery();
           const rows = pendingSelectRows.shift() ?? [];
           const result = Promise.resolve(rows);
           const builder = {
@@ -1325,6 +1378,7 @@ function createScopedLedgerDatabase({
           return builder;
         },
         insert() {
+          onQuery();
           const rows = pendingInsertRows.shift() ?? [];
           const builder = {
             values() {
@@ -1339,8 +1393,88 @@ function createScopedLedgerDatabase({
           };
           return builder;
         },
+        update() {
+          onQuery();
+          throw new Error("unexpected_update");
+        },
       };
       return work(transaction);
     },
   } as never;
+}
+
+function closedTransactionOperations(transaction: CreditLedgerTransaction) {
+  const grantInput = {
+    userId: "user-1",
+    catalogId: "trial" as const,
+    source: "trial" as const,
+    sourceId: null,
+    idempotencyKey: "closed:grant",
+    originalCredits: 2,
+    remainingCredits: 2,
+    reservedCredits: 0,
+    expiresAt: null,
+    rolloverEligible: false,
+    rolloverSourceGrantId: null,
+    metadata: null,
+  };
+  const reservationInput = {
+    userId: "user-1",
+    reservationKey: "closed:reservation",
+    status: "active" as const,
+    credits: 1,
+    sessionId: null,
+    expiresAt: new Date("2026-07-12T00:00:00.000Z"),
+    metadata: null,
+  };
+
+  return [
+    () => transaction.createGrant(grantInput),
+    () => transaction.findGrantByIdempotencyKey("closed:grant"),
+    () => transaction.findGrantByIdempotencyKeyForUpdate("closed:grant"),
+    () => transaction.findTransactionByIdempotencyKey("closed:transaction"),
+    () =>
+      transaction.findTransactionByIdempotencyKeyForUpdate(
+        "closed:transaction"
+      ),
+    () => transaction.listSpendableGrants("user-1", new Date()),
+    () => transaction.listSpendableGrantsForUpdate("user-1", new Date()),
+    () => transaction.listUserGrants("user-1"),
+    () => transaction.listUserGrantsForUpdate("user-1"),
+    () => transaction.listUserReservationsForUpdate("user-1"),
+    () =>
+      transaction.updateGrantBalances("closed-grant-id", {
+        remainingCredits: 0,
+        reservedCredits: 0,
+      }),
+    () => transaction.createReservation(reservationInput),
+    () => transaction.findReservationByKey("closed:reservation"),
+    () => transaction.findReservationByKeyForUpdate("closed:reservation"),
+    () =>
+      transaction.updateReservationStatus("closed-reservation-id", "released"),
+    () =>
+      transaction.createAllocation({
+        reservationId: "closed-reservation-id",
+        grantId: "closed-grant-id",
+        credits: 1,
+      }),
+    () => transaction.listAllocations("closed-reservation-id"),
+    () => transaction.listAllocationsForUpdate("closed-reservation-id"),
+    () =>
+      transaction.listTerminalTransactionsByReservationForUpdate(
+        "closed-reservation-id"
+      ),
+    () =>
+      transaction.createTransaction({
+        userId: "user-1",
+        grantId: null,
+        reservationId: null,
+        type: "adjustment",
+        credits: 1,
+        idempotencyKey: "closed:transaction",
+        sourceId: null,
+        balanceAfter: null,
+        metadata: null,
+      }),
+  ];
 }
