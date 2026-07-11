@@ -57,6 +57,18 @@ export const subscription = pgTable(
     stripeCustomerId: text("stripe_customer_id").unique(),
     stripeSubscriptionId: text("stripe_subscription_id").unique(),
     stripePriceId: text("stripe_price_id"),
+    stripeResourceCreatedAt: timestamp("stripe_resource_created_at", {
+      withTimezone: true,
+    }),
+    stripeResourceCreatedEventTimestamp: timestamp(
+      "stripe_resource_created_event_timestamp",
+      { withTimezone: true }
+    ),
+    stripeResourceCreatedEventId: text("stripe_resource_created_event_id"),
+    retiredStripeSubscriptionIds: text("retired_stripe_subscription_ids")
+      .array()
+      .default(sql`ARRAY[]::text[]`)
+      .notNull(),
 
     // Billing dates (NOT NULL for active subscriptions - FIX from team review)
     currentPeriodStart: timestamp("current_period_start", {

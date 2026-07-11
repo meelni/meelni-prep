@@ -60,6 +60,7 @@ import {
   mayApplyStripeSubscriptionResource,
   stripeSubscriptionCursorMayApply,
   stripeSubscriptionEventCursor,
+  type StripeSubscriptionResourceProof,
   type StripeSubscriptionEventCursor,
 } from "@/lib/billing/stripe-subscription-event-order";
 import { stripeSubscriptionCursorIsNewer } from "@/lib/db/stripe-subscription-event-order";
@@ -507,6 +508,11 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 
   const eventTimestamp = new Date(event.created * 1000);
   const eventCursor = stripeSubscriptionEventCursor(event);
+  const candidateResourceProof = subscriptionResourceProofFromEvent(
+    stripeSubscription,
+    eventCursor,
+    event.type
+  );
 
   // Get current subscription (for optimistic locking)
   const currentSub = await db
@@ -516,11 +522,18 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     .limit(1);
 
   const currentResourceId = currentSub[0]?.stripeSubscriptionId ?? null;
+  const currentResourceProof = subscriptionResourceProofFromRow(currentSub[0]);
+  const replacingResource = Boolean(
+    currentResourceId && currentResourceId !== stripeSubscription.id
+  );
   if (
     !mayApplyStripeSubscriptionResource({
       currentResourceId,
       currentStatus: currentSub[0]?.status ?? null,
+      currentResourceProof,
+      retiredResourceIds: currentSub[0]?.retiredStripeSubscriptionIds ?? [],
       candidateResourceId: stripeSubscription.id,
+      candidateResourceProof,
       eventType: event.type,
     })
   ) {
@@ -570,6 +583,19 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     stripeCustomerId: stripeSubscription.customer as string,
     stripeSubscriptionId: stripeSubscription.id,
     stripePriceId: firstItem?.price.id,
+    stripeResourceCreatedAt: candidateResourceProof.resourceCreatedAt,
+    stripeResourceCreatedEventTimestamp:
+      candidateResourceProof.createdEventCursor?.createdAt ??
+      currentSub[0]?.stripeResourceCreatedEventTimestamp ??
+      null,
+    stripeResourceCreatedEventId:
+      candidateResourceProof.createdEventCursor?.eventId ??
+      currentSub[0]?.stripeResourceCreatedEventId ??
+      null,
+    retiredStripeSubscriptionIds:
+      replacingResource && currentResourceId
+        ? sql`array_append(${subscription.retiredStripeSubscriptionIds}, ${currentResourceId})`
+        : (currentSub[0]?.retiredStripeSubscriptionIds ?? []),
     currentPeriodStart: firstItem?.current_period_start
       ? new Date(firstItem.current_period_start * 1000)
       : null,
@@ -1054,6 +1080,46 @@ function subscriptionEventCursorFromRow(
     createdAt: row.lastEventTimestamp,
     priority: row.lastEventPriority ?? -1,
     eventId: row.lastEventId ?? "",
+  };
+}
+
+function subscriptionResourceProofFromEvent(
+  stripeSubscription: Stripe.Subscription,
+  eventCursor: StripeSubscriptionEventCursor,
+  eventType: string
+): StripeSubscriptionResourceProof {
+  const resourceCreatedAt = new Date(stripeSubscription.created * 1000);
+  if (!Number.isFinite(resourceCreatedAt.getTime())) {
+    throw new Error("stripe_subscription_created_at_invalid");
+  }
+  return {
+    resourceCreatedAt,
+    createdEventCursor:
+      eventType === "customer.subscription.created" ? eventCursor : null,
+  };
+}
+
+function subscriptionResourceProofFromRow(
+  row:
+    | {
+        stripeResourceCreatedAt: Date | null;
+        stripeResourceCreatedEventTimestamp: Date | null;
+        stripeResourceCreatedEventId: string | null;
+      }
+    | undefined
+): StripeSubscriptionResourceProof | null {
+  if (!row?.stripeResourceCreatedAt) return null;
+  return {
+    resourceCreatedAt: row.stripeResourceCreatedAt,
+    createdEventCursor:
+      row.stripeResourceCreatedEventTimestamp &&
+      row.stripeResourceCreatedEventId
+        ? {
+            createdAt: row.stripeResourceCreatedEventTimestamp,
+            priority: 30,
+            eventId: row.stripeResourceCreatedEventId,
+          }
+        : null,
   };
 }
 
