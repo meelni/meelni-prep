@@ -9,6 +9,8 @@ test("package scripts expose the aggregate quality gates", () => {
   for (const scriptName of [
     "check",
     "check:ci",
+    "check:stack",
+    "check:stack:ci",
     "quality",
     "quality:biome",
     "quality:biome:all",
@@ -20,6 +22,7 @@ test("package scripts expose the aggregate quality gates", () => {
     "typecheck:tests",
     "typecheck:tests:all",
     "test:quality",
+    "test:stack",
   ]) {
     assert.equal(
       typeof scripts[scriptName],
@@ -27,6 +30,10 @@ test("package scripts expose the aggregate quality gates", () => {
       `${scriptName} should be defined in package.json`
     );
   }
+});
+
+test("CI includes deterministic stacked PR regression fixtures", () => {
+  assert.match(scripts["check:ci"], /npm\s+run\s+test:stack/);
 });
 
 test("the default check runs linting, formatting, type checks, and quality gates", () => {

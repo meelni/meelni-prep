@@ -207,6 +207,23 @@ it uses provider-neutral fakes. LiveKit Agents and its plugins are pinned as one
 tested version family in `agent/requirements.txt`; update them together and
 rerun TypeScript/Python golden contract fixtures before deployment.
 
+## Stacked Pull Request Verification
+
+Stack relationships and exact expected parent heads live in
+`.github/stacked-prs.json`. Hosted pull-request CI verifies that a declared
+child contains the current parent and that its PR-body evidence names the exact
+child head, parent head, and merge-base. The deterministic verifier performs no
+network access; its CI adapter fetches only the declared parent ref.
+
+Run the offline regression fixtures with:
+
+```bash
+npm run test:stack
+```
+
+The reconvergence procedure and manual audit command are documented in
+[Stacked Pull Requests](./stacked-pull-requests.md).
+
 ## Database Migration Verification
 
 The Drizzle migration chain must support both an empty database and the
