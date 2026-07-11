@@ -23,7 +23,7 @@ import {
   type LiveKitInterviewProvider,
 } from "@/lib/internal/integrations";
 import {
-  getQuestionById,
+  getActiveQuestionById,
   getRandomQuestion,
   getRandomRecentQuestion,
   type QuestionBankRecord,
@@ -957,7 +957,7 @@ async function selectQuestion({
   | StartInterviewSessionErrorResult
 > {
   if (questionId) {
-    const question = await deps.getQuestionById(questionId);
+    const question = await deps.getActiveQuestionById(questionId);
 
     if (!question || !question.isActive) {
       return {

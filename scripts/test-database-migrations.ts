@@ -5867,6 +5867,31 @@ async function verifyAnalyticsConsentSchema(sql: postgres.Sql) {
   await sql`DELETE FROM app_user WHERE id = ${userId}::uuid`;
 }
 
+async function verifyQuestionLookupAdapters(databaseUrl: string) {
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = databaseUrl;
+  try {
+    const { getActiveQuestionById, getQuestionByIdForHistory } = await import(
+      "../lib/db/questions"
+    );
+    assert.equal(
+      (await getActiveQuestionById(QUESTION_PROVENANCE_ACTIVE))?.id,
+      QUESTION_PROVENANCE_ACTIVE
+    );
+    assert.equal(
+      await getActiveQuestionById(QUESTION_PROVENANCE_INACTIVE),
+      null
+    );
+    assert.equal(
+      (await getQuestionByIdForHistory(QUESTION_PROVENANCE_INACTIVE))?.id,
+      QUESTION_PROVENANCE_INACTIVE
+    );
+  } finally {
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+  }
+}
+
 async function verifyDatabase(sql: postgres.Sql) {
   assert.equal(await migrationCount(sql), 24);
 

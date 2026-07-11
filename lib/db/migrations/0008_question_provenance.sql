@@ -3,6 +3,11 @@ ALTER TABLE "interview_question" ADD COLUMN "source_category" text;--> statement
 ALTER TABLE "interview_question" ADD COLUMN "source_fingerprint" text;--> statement-breakpoint
 ALTER TABLE "interview_question" ADD COLUMN "quality_status" text DEFAULT 'published' NOT NULL;--> statement-breakpoint
 ALTER TABLE "interview_question" ADD COLUMN "duplicate_of_question_id" uuid;--> statement-breakpoint
+REVOKE SELECT ON TABLE "interview_question" FROM anon, authenticated;--> statement-breakpoint
+GRANT SELECT (
+	"id", "company", "question_text", "question_type", "difficulty",
+	"asked_at", "is_active", "created_at"
+) ON TABLE "interview_question" TO anon, authenticated;--> statement-breakpoint
 UPDATE "interview_question"
 SET "quality_status" = 'retired_source_missing'
 WHERE "is_active" = false;--> statement-breakpoint

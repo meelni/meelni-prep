@@ -71,22 +71,12 @@ export function questionSyncContentIdentity(
 export function deduplicateQuestionSyncSource<T extends QuestionSyncQuestion>(
   questions: readonly T[]
 ): { questions: T[]; duplicates: number } {
-  const seen = new Set<string>();
-  const unique: T[] = [];
-  let duplicates = 0;
+  const groups = groupBy(questions, questionSyncSourceIdentity);
+  const unique = sortedEntries(groups).map(
+    ([, matches]) => [...matches].sort(compareExactSourceRepresentation)[0]!
+  );
 
-  for (const question of questions) {
-    const key = questionSyncSourceIdentity(question);
-    if (seen.has(key)) {
-      duplicates++;
-      continue;
-    }
-
-    seen.add(key);
-    unique.push(question);
-  }
-
-  return { questions: unique, duplicates };
+  return { questions: unique, duplicates: questions.length - unique.length };
 }
 
 export function planQuestionSync(
@@ -294,6 +284,46 @@ function compareSourceProvenance(
   );
 }
 
+function compareExactSourceRepresentation(
+  left: QuestionSyncQuestion,
+  right: QuestionSyncQuestion
+): number {
+  return (
+    compareStrings(
+      stableSourceRepresentation(left),
+      stableSourceRepresentation(right)
+    ) ||
+    compareStrings(
+      rawSourceRepresentation(left),
+      rawSourceRepresentation(right)
+    )
+  );
+}
+
+function stableSourceRepresentation(question: QuestionSyncQuestion): string {
+  return JSON.stringify([
+    normalizePresentationText(question.questionText),
+    normalizePresentationText(question.company ?? "") || null,
+    normalizePresentationText(question.questionType),
+    question.askedAt?.toISOString() ?? null,
+    normalizePresentationText(question.sourceCategory ?? "") || null,
+    question.sourceKind,
+    cleanFingerprint(question.sourceFingerprint),
+  ]);
+}
+
+function rawSourceRepresentation(question: QuestionSyncQuestion): string {
+  return JSON.stringify([
+    question.questionText,
+    question.company,
+    question.questionType,
+    question.askedAt?.toISOString() ?? null,
+    question.sourceCategory,
+    question.sourceKind,
+    question.sourceFingerprint,
+  ]);
+}
+
 function compareStableIds(left: { id: string }, right: { id: string }): number {
   return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
@@ -314,7 +344,7 @@ function groupBy<T>(
 
 function sortedEntries<T>(groups: ReadonlyMap<string, T[]>): [string, T[]][] {
   return [...groups.entries()].sort(([left], [right]) =>
-    left.localeCompare(right, "en")
+    compareStrings(left, right)
   );
 }
 
@@ -327,10 +357,21 @@ function normalizePrompt(value: string): string {
   return value
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[’']/gu, "")
-    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/[\u2018\u2019\u201a\u201b]/gu, "'")
+    .replace(/[\u201c\u201d\u201e\u201f]/gu, '"')
+    .replace(/[\u2010-\u2015](?=\p{L})/gu, " ")
+    .trim()
+    .replace(/[.!?…]+$/gu, "")
     .trim()
     .replace(/\s+/g, " ");
+}
+
+function normalizePresentationText(value: string): string {
+  return value.normalize("NFKC").trim().replace(/\s+/g, " ");
+}
+
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function normalizeText(value: string): string {
