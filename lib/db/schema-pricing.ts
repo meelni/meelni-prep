@@ -85,6 +85,8 @@ export const subscription = pgTable(
     lastEventTimestamp: timestamp("last_event_timestamp", {
       withTimezone: true,
     }),
+    lastEventPriority: integer("last_event_priority"),
+    lastEventId: text("last_event_id"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

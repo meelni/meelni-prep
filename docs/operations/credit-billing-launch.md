@@ -191,6 +191,10 @@ whether cancellation is immediate or remains active through the paid period.
 Do not change provider behavior or customer-facing promises until one policy is
 accepted and implemented end to end.
 
+Until SAV-237 is decided, the immediate-cancellation response must describe any
+billing adjustment as a separately processed outcome. It must not promise that
+the customer will receive a prorated card refund.
+
 Credit enforcement checks:
 
 - Historical and newly created accounts without `trial:<user_id>` see
