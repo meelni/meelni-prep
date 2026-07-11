@@ -320,6 +320,7 @@ controls. They are stripped or rejected before persistence and room creation.
   "roomName": "interview-1699999999999-abc123",
   "token": "eyJhbGciOiJIUzI1NiIs...",
   "url": "wss://meelni-ek4vaisp.livekit.cloud",
+  "deadlineAt": "2026-07-11T20:30:00.000Z",
   "config": {
     "difficulty": "intermediate",
     "duration": 45,
@@ -328,9 +329,14 @@ controls. They are stripped or rejected before persistence and room creation.
       "recency": "very_recent",
       "recentDays": 365
     }
-  }
+  },
+  "question": null
 }
 ```
+
+`deadlineAt` is the server-owned absolute cutoff used by the browser,
+reconnect authorization, LiveKit room metadata, the voice runtime, and the
+durable completion workflow. Clients must not recompute or extend it.
 
 **Errors**:
 

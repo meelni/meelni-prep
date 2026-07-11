@@ -64,28 +64,32 @@ export async function listInterviewDeadlineSchedules(
       )
     );
 
-  return buildInterviewDeadlineSchedules(sessions, limit);
+  return buildInterviewDeadlineSchedules(sessions, limit, new Date());
 }
 
 export function buildInterviewDeadlineSchedules(
   sessions: InterviewDeadlineScheduleRow[],
-  limit: number
+  limit: number,
+  now: Date
 ): Array<{ sessionId: string; deadlineAt: string }> {
+  const nowMs = now.getTime();
+  if (!Number.isFinite(nowMs)) {
+    throw new RangeError("now must be a valid Date");
+  }
+
   return sessions
     .flatMap((session) => {
       if (!session.startedAt) return [];
       const config = isRecord(session.config) ? session.config : {};
+      const deadlineAt = deriveInterviewDeadlineAt({
+        startedAt: session.startedAt,
+        durationMinutes: normalizeInterviewDurationMinutes(config.duration),
+      });
+      if (deadlineAt.getTime() > nowMs) return [];
       return [
         {
           sessionId: session.id,
-          deadlineAt: serializeInterviewDeadlineAt(
-            deriveInterviewDeadlineAt({
-              startedAt: session.startedAt,
-              durationMinutes: normalizeInterviewDurationMinutes(
-                config.duration
-              ),
-            })
-          ),
+          deadlineAt: serializeInterviewDeadlineAt(deadlineAt),
         },
       ];
     })
