@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   compareStripeSubscriptionEventCursors,
+  mayApplyStripeSubscriptionResource,
   stripeSubscriptionEventCursor,
 } from "./stripe-subscription-event-order";
 
@@ -26,6 +27,33 @@ test("subscription cursors impose one total order inside a Stripe second", () =>
       ) < 0
     );
   }
+});
+
+test("only a created event may replace a canceled subscription resource", () => {
+  for (const eventType of [
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+    "invoice.payment_failed",
+  ]) {
+    assert.equal(
+      mayApplyStripeSubscriptionResource({
+        currentResourceId: "sub_new",
+        currentStatus: "active",
+        candidateResourceId: "sub_old",
+        eventType,
+      }),
+      false
+    );
+  }
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      currentResourceId: "sub_old",
+      currentStatus: "canceled",
+      candidateResourceId: "sub_new",
+      eventType: "customer.subscription.created",
+    }),
+    true
+  );
 });
 
 test("a later Stripe second always wins over event-type precedence", () => {
