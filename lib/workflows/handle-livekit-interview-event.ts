@@ -75,16 +75,23 @@ export async function handleLiveKitInterviewEventWorkflow(
       input.eventName === "participant_joined" &&
       current.state === "connecting" &&
       current.runtimeReadyAt !== null;
-    if (
-      isCandidate &&
-      current.lastTransportEventId === input.eventId &&
-      !canCompleteInitialActivation
-    ) {
-      await reschedulePersistedReconnect(current, deps);
-      return { ok: true, disposition: "duplicate", lifecycle: current };
+    const replaysStoredCandidateEvent =
+      isCandidate && current.lastTransportEventId === input.eventId;
+    if (replaysStoredCandidateEvent) {
+      if (!storedTransportEventMatchesInput(current, input)) {
+        return { ok: false, disposition: "conflict", lifecycle: current };
+      }
+      if (canCompleteInitialActivation) {
+        // Candidate presence may be stored before runtime readiness. The exact
+        // replay is still allowed to complete that two-signal activation.
+      } else {
+        await reschedulePersistedReconnect(current, deps);
+        return { ok: true, disposition: "duplicate", lifecycle: current };
+      }
     }
     if (
       isCandidate &&
+      !(replaysStoredCandidateEvent && canCompleteInitialActivation) &&
       compareInterviewTransportEvents(
         {
           occurredAt: input.occurredAt,
@@ -154,7 +161,7 @@ export async function handleLiveKitInterviewEventWorkflow(
       transportEventAt: input.occurredAt,
       transportEventId: input.eventId,
       transportEventName: input.eventName,
-      recordTransportEvent: isCandidate,
+      recordTransportEvent: isCandidate && !replaysStoredCandidateEvent,
       runtimeReadyAt: desired.runtimeReadyAt,
       transitionedAt: desired.transitionedAt,
     });
@@ -174,6 +181,16 @@ export async function handleLiveKitInterviewEventWorkflow(
   }
 
   return { ok: false, disposition: "conflict", lifecycle: current };
+}
+
+function storedTransportEventMatchesInput(
+  current: InterviewReconnectSession,
+  input: HandleLiveKitInterviewEventInput
+): boolean {
+  return (
+    current.lastTransportEventAt?.getTime() === input.occurredAt.getTime() &&
+    current.lastTransportEventName === input.eventName
+  );
 }
 
 function deriveDesiredTransition(

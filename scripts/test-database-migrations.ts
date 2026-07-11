@@ -120,10 +120,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -864,28 +861,98 @@ async function verifyReconnectTransportOrdering(
   `;
 
   const store = createDrizzleInterviewReconnectStore(drizzle(sql));
+  const workflowDeps = {
+    store,
+    scheduleReconnect: async () => undefined,
+    now: () => occurredAt,
+  };
+  const disconnected = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01-left",
+      eventName: "participant_left",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(disconnected.disposition, "reconnecting");
+
   const joined = await handleLiveKitInterviewEventWorkflow(
     {
-      eventId: "joined-at-tie",
+      eventId: "EV_01_Z",
       eventName: "participant_joined",
       roomName,
       participantIdentity: USER_ONE,
       participantKind: 0,
       occurredAt,
     },
-    {
-      store,
-      scheduleReconnect: async () => undefined,
-      now: () => occurredAt,
-    }
+    workflowDeps
   );
-  assert.equal(joined.disposition, "ignored");
+  assert.equal(joined.disposition, "recovered");
+  assert.equal(joined.lifecycle?.state, "active");
   assert.equal(joined.lifecycle?.lastTransportEventName, "participant_joined");
+
+  const ordinalLater = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01_a",
+      eventName: "participant_joined",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(ordinalLater.disposition, "ignored");
+  assert.equal(ordinalLater.lifecycle?.lastTransportEventId, "EV_01_a");
+
+  const ordinalEarlier = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01-A",
+      eventName: "participant_joined",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(ordinalEarlier.disposition, "ignored");
+  assert.equal(ordinalEarlier.lifecycle?.lastTransportEventId, "EV_01_a");
+
+  const exactReplay = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01_a",
+      eventName: "participant_joined",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(exactReplay.disposition, "duplicate");
+
+  const divergentReuse = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01_a",
+      eventName: "participant_left",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(divergentReuse.ok, false);
+  assert.equal(divergentReuse.disposition, "conflict");
 
   const delayedLeave = await store.applyTransportTransition({
     sessionId: SESSION_RECONNECT_ORDER,
     expectedState: "active",
-    expectedVersion: 3,
+    expectedVersion: 5,
     nextState: "reconnecting",
     reconnectDeadlineAt: new Date(occurredAt.getTime() + 30_000),
     transportEventAt: occurredAt,
@@ -898,9 +965,24 @@ async function verifyReconnectTransportOrdering(
 
   const stored = await store.getById(SESSION_RECONNECT_ORDER);
   assert.equal(stored?.state, "active");
-  assert.equal(stored?.version, 3);
+  assert.equal(stored?.version, 5);
   assert.equal(stored?.lastTransportEventName, "participant_joined");
-  assert.equal(stored?.lastTransportEventId, "joined-at-tie");
+  assert.equal(stored?.lastTransportEventId, "EV_01_a");
+
+  const [ordinalOrder] = await sql<{ ids: string[] }[]>`
+    SELECT array_agg(value ORDER BY value COLLATE "C") AS ids
+    FROM unnest(ARRAY[
+      'EV_01-A', 'EV_01-Z', 'EV_01_A', 'EV_01_Z', 'EV_01_a', 'EV_01_ä'
+    ]::text[]) AS value
+  `;
+  assert.deepEqual(ordinalOrder?.ids, [
+    "EV_01-A",
+    "EV_01-Z",
+    "EV_01_A",
+    "EV_01_Z",
+    "EV_01_a",
+    "EV_01_ä",
+  ]);
 }
 
 async function verifyAtomicSessionCompletion(

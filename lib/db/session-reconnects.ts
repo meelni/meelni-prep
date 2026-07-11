@@ -137,12 +137,12 @@ export function createDrizzleInterviewReconnectStore(
             : {}),
           ...(input.runtimeReadyAt
             ? {
-                runtimeReadyAt: sql`COALESCE(${interviewSession.runtimeReadyAt}, ${input.runtimeReadyAt})`,
+                runtimeReadyAt: sql`COALESCE(${interviewSession.runtimeReadyAt}, ${input.runtimeReadyAt.toISOString()}::timestamptz)`,
               }
             : {}),
           ...(input.nextState === "active"
             ? {
-                activatedAt: sql`COALESCE(${interviewSession.activatedAt}, ${input.transitionedAt})`,
+                activatedAt: sql`COALESCE(${interviewSession.activatedAt}, ${input.transitionedAt.toISOString()}::timestamptz)`,
               }
             : {}),
         })
@@ -211,7 +211,7 @@ export function createDrizzleInterviewReconnectStore(
       const rows = await database
         .update(interviewSession)
         .set({
-          runtimeReadyAt: sql`COALESCE(${interviewSession.runtimeReadyAt}, ${input.runtimeReadyAt})`,
+          runtimeReadyAt: sql`COALESCE(${interviewSession.runtimeReadyAt}, ${input.runtimeReadyAt.toISOString()}::timestamptz)`,
         })
         .where(
           and(
@@ -254,7 +254,7 @@ export function createDrizzleInterviewReconnectStore(
             state: "ending",
             terminalReason: input.terminalReason,
           }),
-          endingAt: sql`COALESCE(${interviewSession.endingAt}, ${input.transitionedAt})`,
+          endingAt: sql`COALESCE(${interviewSession.endingAt}, ${input.transitionedAt.toISOString()}::timestamptz)`,
           lastTransitionAt: input.transitionedAt,
           roomCleanupPending: true,
         })
@@ -294,10 +294,7 @@ export function createDrizzleInterviewReconnectStore(
             eq(interviewSession.lifecycleState, "ending"),
             eq(interviewSession.lifecycleVersion, input.expectedVersion),
             eq(interviewSession.reconnectDeadlineAt, input.deadlineAt),
-            eq(
-              interviewSession.terminalReason,
-              input.expectedTerminalReason
-            )
+            eq(interviewSession.terminalReason, input.expectedTerminalReason)
           )
         )
         .returning();
@@ -336,7 +333,24 @@ export function compareInterviewTransportEvents(
     transportEventPrecedence(current.eventName);
   if (precedenceDifference !== 0) return precedenceDifference;
 
-  return candidate.eventId.localeCompare(current.eventId ?? "");
+  return compareUtf8Bytes(candidate.eventId, current.eventId ?? "");
+}
+
+/**
+ * PostgreSQL's C collation orders UTF-8 text by encoded bytes. Mirror that
+ * order here so workflow preflight and the database CAS choose the same event.
+ */
+export function compareUtf8Bytes(left: string, right: string): number {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  const sharedLength = Math.min(leftBytes.length, rightBytes.length);
+
+  for (let index = 0; index < sharedLength; index += 1) {
+    const difference = leftBytes[index]! - rightBytes[index]!;
+    if (difference !== 0) return difference;
+  }
+
+  return leftBytes.length - rightBytes.length;
 }
 
 function transportEventPrecedence(eventName: string | null): number {
@@ -373,7 +387,8 @@ function transportEventIsNewerThanStored(
         ${storedPrecedence} < ${candidatePrecedence}
         OR (
           ${storedPrecedence} = ${candidatePrecedence}
-          AND COALESCE(${interviewSession.lastTransportEventId}, '') < ${candidate.eventId}
+          AND COALESCE(${interviewSession.lastTransportEventId}, '') COLLATE "C"
+            < (${candidate.eventId}::text COLLATE "C")
         )
       )
     )
