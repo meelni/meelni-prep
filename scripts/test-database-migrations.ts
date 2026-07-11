@@ -33,6 +33,7 @@ import {
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
   INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT,
   getStableStartDatabaseSchemaContract,
+  INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
   CREDIT_RECOVERY_SCHEMA_FINGERPRINT,
@@ -172,7 +173,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -4391,7 +4392,7 @@ async function verifyProviderCreditRecovery(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 18);
+  assert.equal(await migrationCount(sql), 19);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name

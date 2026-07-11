@@ -181,6 +181,8 @@ Expected:
 
 - `stripe_event_log` has one processed row for the event ID.
 - `credit_grant` still has one row for the purchase idempotency key.
+- A distinct Event ID for the same immutable invoice transition creates no
+  second payment-history row and does not move the failed-payment grace date.
 
 Verification:
 
@@ -257,6 +259,8 @@ Expected:
 
 - Webhook resolves the user through `stripe_customer_mapping`.
 - Subscription update processes successfully.
+- If metadata and the durable mapping name different users, processing fails
+  closed without changing the mapping, subscription, payment, or credits.
 
 Verification:
 

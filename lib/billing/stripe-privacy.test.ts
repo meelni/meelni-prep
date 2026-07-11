@@ -41,6 +41,24 @@ test("refund and dispute events resolve durable payment subjects", () => {
   assert.equal(dispute.fingerprint, fingerprintStripeSubject("ch_deleted"));
 });
 
+test("events expose every subject fingerprint without priority masking", () => {
+  const subject = getStripeEventSubject({
+    data: {
+      object: {
+        object: "charge",
+        id: "ch_deleted",
+        customer: "cus_untracked",
+        payment_intent: "pi_deleted",
+      },
+    },
+  } as never);
+  assert.deepEqual(subject.fingerprints, [
+    fingerprintStripeSubject("cus_untracked"),
+    fingerprintStripeSubject("pi_deleted"),
+    fingerprintStripeSubject("ch_deleted"),
+  ]);
+});
+
 test("Stripe subject fingerprints are stable and do not retain provider IDs", () => {
   const fingerprint = fingerprintStripeSubject("cus_sensitive");
   assert.equal(fingerprint?.length, 64);
