@@ -21,7 +21,7 @@
 
 ## Scope
 
-- In scope: Separate provider-neutral reads from transaction-scoped mutations; narrow the runtime Drizzle adapter object; enforce that transaction mutations stay within the locked user; preserve explicit mutation access in the in-memory test adapter.
+- In scope: Separate provider-neutral reads from transaction-scoped mutations; narrow the runtime Drizzle adapter object; enforce that every transaction callback operation stays within the locked user; preserve explicit mutation access in the in-memory test adapter.
 - Out of scope: Ledger behavior, persistence schema, catalog policy, package relocation, or provider work.
 - Assumptions: All production writes already enter through `withUserTransaction`; direct mutation callers are test-only.
 
@@ -47,6 +47,6 @@
 ## Rollout
 
 - Risk level: Low.
-- Backward compatibility: Production reads and legitimate `withUserTransaction` calls are unchanged; unsupported direct and cross-user writes fail closed.
+- Backward compatibility: Top-level production reads and legitimate `withUserTransaction` calls are unchanged; unsupported direct access and cross-user callback reads or writes fail closed.
 - Metrics/events to watch: None beyond existing billing failures.
 - Follow-up slice: SAV-218 can split larger ledger workflows after behavior stabilizes.

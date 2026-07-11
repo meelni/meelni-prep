@@ -111,6 +111,89 @@ test("production transaction mutations cannot escape the locked user scope", asy
   assert.equal(attemptedWrites, 0);
 });
 
+test("every inherited transaction read stays inside the locked user scope", async () => {
+  const database = createScopedLedgerDatabase({
+    selectRows: [
+      [{ userId: "user-2" }],
+      [{ userId: "user-2" }],
+      [{ userId: "user-2" }],
+      [],
+    ],
+  });
+  const store = createDrizzleCreditLedgerStore(database);
+
+  await store.withUserTransaction("user-1", async (transaction) => {
+    for (const operation of [
+      () => transaction.findGrantByIdempotencyKey("grant:user-2"),
+      () => transaction.findTransactionByIdempotencyKey("txn:user-2"),
+      () => transaction.listSpendableGrants("user-2", new Date()),
+      () => transaction.listUserGrants("user-2"),
+      () => transaction.findReservationByKey("reservation:user-2"),
+      () => transaction.listAllocations("reservation-owned-by-user-2"),
+    ]) {
+      await assert.rejects(operation, /credit_ledger_user_scope_mismatch/);
+    }
+  });
+});
+
+test("unique-key conflict fallbacks cannot return another user's ledger rows", async () => {
+  const database = createScopedLedgerDatabase({
+    selectRows: [
+      [{ userId: "user-2" }],
+      [{ userId: "user-2" }],
+      [{ userId: "user-2" }],
+    ],
+    insertRows: [[], [], []],
+  });
+  const store = createDrizzleCreditLedgerStore(database);
+
+  await store.withUserTransaction("user-1", async (transaction) => {
+    await assert.rejects(
+      transaction.createGrant({
+        userId: "user-1",
+        catalogId: "trial",
+        source: "trial",
+        sourceId: null,
+        idempotencyKey: "grant-collision",
+        originalCredits: 2,
+        remainingCredits: 2,
+        reservedCredits: 0,
+        expiresAt: null,
+        rolloverEligible: false,
+        rolloverSourceGrantId: null,
+        metadata: null,
+      }),
+      /credit_ledger_user_scope_mismatch/
+    );
+    await assert.rejects(
+      transaction.createReservation({
+        userId: "user-1",
+        reservationKey: "reservation-collision",
+        status: "active",
+        credits: 1,
+        sessionId: null,
+        expiresAt: new Date("2026-07-11T01:00:00.000Z"),
+        metadata: null,
+      }),
+      /credit_ledger_user_scope_mismatch/
+    );
+    await assert.rejects(
+      transaction.createTransaction({
+        userId: "user-1",
+        grantId: null,
+        reservationId: null,
+        type: "adjustment",
+        credits: 1,
+        idempotencyKey: "transaction-collision",
+        sourceId: null,
+        balanceAfter: null,
+        metadata: null,
+      }),
+      /credit_ledger_user_scope_mismatch/
+    );
+  });
+});
+
 test("grantCredits is idempotent and balance ignores expired grants", async () => {
   const store = createMemoryCreditLedgerStore();
   const ledger = createCreditLedgerService({
@@ -1201,3 +1284,63 @@ test("impossible reserve balance evidence fails closed", async () => {
     /credit_ledger_reconciliation_required/
   );
 });
+
+function createScopedLedgerDatabase({
+  selectRows,
+  insertRows = [],
+}: {
+  selectRows: unknown[][];
+  insertRows?: unknown[][];
+}) {
+  return {
+    async transaction(
+      work: (transaction: unknown) => Promise<unknown>
+    ): Promise<unknown> {
+      const pendingSelectRows = [[{ id: "user-1" }], [], ...selectRows];
+      const pendingInsertRows = [...insertRows];
+      const transaction = {
+        select() {
+          const rows = pendingSelectRows.shift() ?? [];
+          const result = Promise.resolve(rows);
+          const builder = {
+            from() {
+              return builder;
+            },
+            where() {
+              return builder;
+            },
+            limit() {
+              return builder;
+            },
+            orderBy() {
+              return builder;
+            },
+            async for() {
+              return rows;
+            },
+            then: result.then.bind(result),
+            catch: result.catch.bind(result),
+            finally: result.finally.bind(result),
+          };
+          return builder;
+        },
+        insert() {
+          const rows = pendingInsertRows.shift() ?? [];
+          const builder = {
+            values() {
+              return builder;
+            },
+            onConflictDoNothing() {
+              return builder;
+            },
+            async returning() {
+              return rows;
+            },
+          };
+          return builder;
+        },
+      };
+      return work(transaction);
+    },
+  } as never;
+}
