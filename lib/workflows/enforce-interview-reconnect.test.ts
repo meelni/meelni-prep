@@ -130,6 +130,61 @@ test("insufficient durable signal refines the claimed timeout reason", async () 
   assert.equal(fixture.current.terminalReason, "insufficient_signal");
 });
 
+test("the first completed timeout settlement survives a divergent retry", async () => {
+  const fixture = createFixture(new Date(DEADLINE));
+  let releaseFirstValidation!: () => void;
+  let validationCalls = 0;
+  fixture.deps.validate = async () => {
+    validationCalls += 1;
+    if (validationCalls === 1) {
+      return new Promise((resolve) => {
+        releaseFirstValidation = () => resolve(invalidValidation());
+      });
+    }
+    return validValidation();
+  };
+
+  const first = run(fixture.deps);
+  await waitFor(() => validationCalls === 1);
+  const retry = await run(fixture.deps);
+  assert.equal(retry.ok, true);
+  assert.equal(fixture.current.state, "completed");
+  assert.equal(fixture.current.terminalReason, "disconnect_timeout");
+
+  releaseFirstValidation();
+  assert.deepEqual(await first, { ok: false, disposition: "stale_event" });
+  assert.equal(fixture.current.state, "completed");
+  assert.equal(fixture.current.terminalReason, "disconnect_timeout");
+});
+
+test("the first abandoned timeout settlement survives a divergent retry", async () => {
+  const fixture = createFixture(new Date(DEADLINE));
+  let releaseFirstValidation!: () => void;
+  let validationCalls = 0;
+  fixture.deps.validate = async () => {
+    validationCalls += 1;
+    if (validationCalls === 1) {
+      return new Promise((resolve) => {
+        releaseFirstValidation = () => resolve(validValidation());
+      });
+    }
+    return invalidValidation();
+  };
+
+  const first = run(fixture.deps);
+  await waitFor(() => validationCalls === 1);
+  const retry = await run(fixture.deps);
+  assert.equal(retry.ok, true);
+  assert.equal(fixture.current.state, "abandoned");
+  assert.equal(fixture.current.terminalReason, "insufficient_signal");
+
+  releaseFirstValidation();
+  const resumed = await first;
+  assert.equal(resumed.ok, true);
+  assert.equal(fixture.current.state, "abandoned");
+  assert.equal(fixture.current.terminalReason, "insufficient_signal");
+});
+
 test("room deletion retries after terminal settlement commits", async () => {
   const fixture = createFixture(new Date(DEADLINE));
   let attempts = 0;
@@ -229,7 +284,8 @@ function createFixture(
       if (
         current.state !== "ending" ||
         current.version !== input.expectedVersion ||
-        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime()
+        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime() ||
+        current.terminalReason !== input.expectedTerminalReason
       ) {
         return { applied: false, reason: "conflict", current };
       }
@@ -290,6 +346,34 @@ function emptyStats(): SessionValidation["stats"] {
     durationSeconds: 0,
     substantiveResponses: 0,
   };
+}
+
+function validValidation(): SessionValidation {
+  return {
+    isValid: true,
+    reasons: [],
+    stats: emptyStats(),
+    tier: SessionTier.FULL,
+    recommendations: [],
+  };
+}
+
+function invalidValidation(): SessionValidation {
+  return {
+    isValid: false,
+    reasons: ["not enough signal"],
+    stats: emptyStats(),
+    tier: SessionTier.INSUFFICIENT,
+    recommendations: [],
+  };
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Timed out waiting for concurrent reconnect state");
 }
 
 function createSession(

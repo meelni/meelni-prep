@@ -60,6 +60,7 @@ export interface JoinInterviewSessionDeps {
     participantName: string;
     roomName: string;
     ttlSeconds: number;
+    expiresAt: Date;
     env: LiveKitEnvironment;
   }): ReturnType<typeof issueInterviewParticipantToken>;
   now(): Date;
@@ -182,6 +183,7 @@ export async function joinInterviewSessionWorkflow(
     participantName: "Candidate",
     roomName: session.livekitRoomName!,
     ttlSeconds: authorization.ttlSeconds,
+    expiresAt: authorization.expiresAt,
     env: input.env,
   });
 

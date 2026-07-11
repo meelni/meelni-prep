@@ -61,6 +61,7 @@ test("join workflow derives token identity and room from authenticated server re
       participantName: "Candidate",
       roomName: "interview-server-owned-room",
       ttlSeconds: 300,
+      expiresAt: new Date("2026-07-09T12:30:00.000Z"),
       env: ENV,
     },
   ]);
