@@ -42,6 +42,7 @@ export type PersistTranscriptEventResult<TTurn> =
         | "event_conflict"
         | "writer_sequence_conflict"
         | "writer_order_conflict"
+        | "event_time_out_of_bounds"
         | "session_closed"
         | "session_capacity_exceeded";
     };
@@ -89,5 +90,17 @@ export function isPersistableTranscriptEvent(
     event.text.length <= TRANSCRIPT_PERSISTENCE_LIMITS.text &&
     event.section.length <= TRANSCRIPT_PERSISTENCE_LIMITS.section &&
     event.audio_duration_ms <= TRANSCRIPT_PERSISTENCE_LIMITS.audioDurationMs
+  );
+}
+
+export function isTranscriptEventWithinSessionWindow(
+  event: TranscriptEvent,
+  window: { startedAt: Date; deadlineAt: Date }
+): boolean {
+  const eventStartedAt = Date.parse(event.started_at);
+  const eventEndedAt = Date.parse(event.ended_at);
+  return (
+    eventStartedAt >= window.startedAt.getTime() &&
+    eventEndedAt <= window.deadlineAt.getTime()
   );
 }
