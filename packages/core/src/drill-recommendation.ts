@@ -405,7 +405,7 @@ function compareGroundedFindings(
   if (left.confidence !== right.confidence) {
     return right.confidence - left.confidence;
   }
-  return findingKey(left).localeCompare(findingKey(right));
+  return compareOrdinal(findingKey(left), findingKey(right));
 }
 
 function findingKey(item: FeedbackV2Item): string {
@@ -413,6 +413,11 @@ function findingKey(item: FeedbackV2Item): string {
     .map(({ turnRef, quote }) => `${turnRef}\u0000${quote}`)
     .sort()
     .join("\u0001");
+}
+
+function compareOrdinal(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }
 
 function isValidScore(value: unknown): value is number {

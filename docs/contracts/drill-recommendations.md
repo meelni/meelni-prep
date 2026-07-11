@@ -47,7 +47,11 @@ Exact quote-to-transcript validation remains owned by `parseFeedbackV2`, which h
 2. Collect every dimension tied at that exact score.
 3. Keep only tied dimensions with at least one grounded improvement finding.
 4. Choose among those dimensions using the round-specific order below.
-5. Choose the highest-confidence grounded finding for the dimension; an exact tie uses the finding's sorted evidence identity, not array order.
+5. Choose the highest-confidence grounded finding for the dimension; an exact
+   tie uses the finding's sorted evidence identity in ordinal UTF-16 string
+   order, not locale collation or array order. Byte-distinct evidence
+   identities therefore never compare as equal, including canonically
+   equivalent NFC and NFD Unicode strings.
 
 | PM round      | Tie order                                              |
 | ------------- | ------------------------------------------------------ |
