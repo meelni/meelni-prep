@@ -22,10 +22,10 @@ PROVIDER_FAILURE_CODES = {
     "realtime_model_error": "realtime_model_provider_failed",
     "interruption_detection_error": "turn_detection_provider_failed",
 }
+DEFAULT_PROVIDER_FAILURE_CODE = "voice_runtime_provider_failed"
 ALLOWED_PROVIDER_FAILURE_RUNTIMES = {"livekit"}
 ALLOWED_PROVIDER_FAILURE_CODES = set(PROVIDER_FAILURE_CODES.values()) | {
-    "voice_runtime_provider_failed",
-    "voice_session_failed",
+    DEFAULT_PROVIDER_FAILURE_CODE,
     "voice_session_construction_failed",
     "voice_session_start_failed",
     "deadline_enforcement_failed",
@@ -36,10 +36,10 @@ ALLOWED_PROVIDER_FAILURE_CODES = set(PROVIDER_FAILURE_CODES.values()) | {
 def provider_failure_code(error_type: object) -> str:
     """Map LiveKit's typed error category without retaining provider payloads."""
     if not isinstance(error_type, str):
-        return "voice_runtime_provider_failed"
+        return DEFAULT_PROVIDER_FAILURE_CODE
     return PROVIDER_FAILURE_CODES.get(
         error_type,
-        "voice_runtime_provider_failed",
+        DEFAULT_PROVIDER_FAILURE_CODE,
     )
 
 

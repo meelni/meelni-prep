@@ -1,0 +1,30 @@
+{
+  "deployed_codes": [
+    "stt_provider_failed",
+    "llm_provider_failed",
+    "tts_provider_failed",
+    "realtime_model_provider_failed",
+    "turn_detection_provider_failed",
+    "voice_runtime_provider_failed",
+    "voice_session_construction_failed",
+    "voice_session_start_failed",
+    "deadline_enforcement_failed",
+    "initial_greeting_failed"
+  ],
+  "direct_report_codes": [
+    "voice_session_construction_failed",
+    "voice_session_start_failed",
+    "deadline_enforcement_failed",
+    "initial_greeting_failed"
+  ],
+  "scheduled_report_codes": [],
+  "mapper_codes": [
+    "stt_provider_failed",
+    "llm_provider_failed",
+    "tts_provider_failed",
+    "realtime_model_provider_failed",
+    "turn_detection_provider_failed"
+  ],
+  "fallback_code": "voice_runtime_provider_failed",
+  "reserved_codes": []
+}

@@ -14,7 +14,6 @@ export const INTERVIEW_RUNTIME_FAILURE_CODES = [
   "realtime_model_provider_failed",
   "turn_detection_provider_failed",
   "voice_runtime_provider_failed",
-  "voice_session_failed",
   "voice_session_construction_failed",
   "voice_session_start_failed",
   "deadline_enforcement_failed",

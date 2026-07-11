@@ -2,6 +2,7 @@
 """Runtime contract tests for the LiveKit interview agent."""
 
 import asyncio
+import ast
 import hashlib
 import hmac
 import json
@@ -21,6 +22,8 @@ from shared.utils.prompt_builder import build_agent_prompt
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.runtime_events import (
     ALLOWED_PROVIDER_FAILURE_CODES,
+    DEFAULT_PROVIDER_FAILURE_CODE,
+    PROVIDER_FAILURE_CODES,
     create_runtime_event,
     provider_failure_code,
 )
@@ -87,38 +90,78 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertIn('getattr(event.error, "recoverable", False)', source)
         self.assertIn("schedule_provider_failure_report(", source)
 
-    def test_every_literal_provider_failure_callsite_is_allowlisted(self):
-        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
-        literal_codes = set(
-            re.findall(r'report_provider_failure\(\s*"([a-z0-9_]+)"', source)
+    def test_provider_failure_callsites_and_mapper_match_shared_vocabulary(self):
+        fixture_path = (
+            Path(__file__).parent.parent
+            / "packages"
+            / "test-fixtures"
+            / "provider-failure-codes.json"
         )
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+        tree = ast.parse(source)
+        literal_codes = {
+            "report_provider_failure": set(),
+            "schedule_provider_failure_report": set(),
+        }
+        dynamic_calls = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            reporter = node.func.id
+            if reporter not in literal_codes or not node.args:
+                continue
+            code_argument = node.args[0]
+            if isinstance(code_argument, ast.Constant) and isinstance(
+                code_argument.value, str
+            ):
+                literal_codes[reporter].add(code_argument.value)
+            else:
+                dynamic_calls.append((reporter, code_argument))
 
         self.assertEqual(
-            literal_codes,
-            {
-                "deadline_enforcement_failed",
-                "initial_greeting_failed",
-                "voice_session_construction_failed",
-                "voice_session_start_failed",
-            },
+            literal_codes["report_provider_failure"],
+            set(fixture["direct_report_codes"]),
         )
-        self.assertTrue(literal_codes.issubset(ALLOWED_PROVIDER_FAILURE_CODES))
         self.assertEqual(
-            ALLOWED_PROVIDER_FAILURE_CODES,
+            literal_codes["schedule_provider_failure_report"],
+            set(fixture["scheduled_report_codes"]),
+        )
+        dynamic_by_reporter = {
+            reporter: [
+                argument
+                for dynamic_reporter, argument in dynamic_calls
+                if dynamic_reporter == reporter
+            ]
+            for reporter in literal_codes
+        }
+        self.assertEqual(
+            {reporter: len(calls) for reporter, calls in dynamic_by_reporter.items()},
             {
-                "stt_provider_failed",
-                "llm_provider_failed",
-                "tts_provider_failed",
-                "realtime_model_provider_failed",
-                "turn_detection_provider_failed",
-                "voice_runtime_provider_failed",
-                "voice_session_failed",
-                "voice_session_construction_failed",
-                "voice_session_start_failed",
-                "deadline_enforcement_failed",
-                "initial_greeting_failed",
+                "report_provider_failure": 1,
+                "schedule_provider_failure_report": 1,
             },
         )
+        forwarded_code = dynamic_by_reporter["report_provider_failure"][0]
+        self.assertIsInstance(forwarded_code, ast.Name)
+        self.assertEqual(forwarded_code.id, "code")
+        scheduled_code = dynamic_by_reporter["schedule_provider_failure_report"][0]
+        self.assertIsInstance(scheduled_code, ast.Call)
+        self.assertIsInstance(scheduled_code.func, ast.Name)
+        self.assertEqual(scheduled_code.func.id, "provider_failure_code")
+        self.assertEqual(
+            set(PROVIDER_FAILURE_CODES.values()), set(fixture["mapper_codes"])
+        )
+        self.assertEqual(DEFAULT_PROVIDER_FAILURE_CODE, fixture["fallback_code"])
+        self.assertEqual(fixture["reserved_codes"], [])
+        deployed_codes = (
+            set(PROVIDER_FAILURE_CODES.values())
+            | {DEFAULT_PROVIDER_FAILURE_CODE}
+            | literal_codes["report_provider_failure"]
+            | literal_codes["schedule_provider_failure_report"]
+        )
+        self.assertEqual(deployed_codes, set(fixture["deployed_codes"]))
+        self.assertEqual(ALLOWED_PROVIDER_FAILURE_CODES, deployed_codes)
 
     def test_interview_agent_keeps_room_io_open_for_reconnect_grace(self):
         source = (Path(__file__).parent / "interview" / "agent.py").read_text()

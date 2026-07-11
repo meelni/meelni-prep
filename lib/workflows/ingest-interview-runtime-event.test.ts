@@ -100,7 +100,7 @@ function providerFailure(): InterviewRuntimeEvent {
     runtime_ref: { provider: "livekit", id: `interview-${SESSION_ID}` },
     failure: {
       reason: "provider_failure",
-      code: "voice_session_failed",
+      code: "voice_runtime_provider_failed",
       retryable: true,
     },
   };

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import transcriptGoldenCases from "../../test-fixtures/transcript-events.json";
 import runtimeConfigEnvGoldenCases from "../../test-fixtures/runtime-config-env.json";
+import providerFailureCodes from "../../test-fixtures/provider-failure-codes.json";
 
 import {
   createLiveKitStartFixture,
@@ -642,17 +643,9 @@ test("provider failures accept only deployed runtimes and normalized codes", () 
 });
 
 test("provider failure vocabulary matches every deployed runtime callsite", () => {
-  assert.deepEqual(INTERVIEW_RUNTIME_FAILURE_CODES, [
-    "stt_provider_failed",
-    "llm_provider_failed",
-    "tts_provider_failed",
-    "realtime_model_provider_failed",
-    "turn_detection_provider_failed",
-    "voice_runtime_provider_failed",
-    "voice_session_failed",
-    "voice_session_construction_failed",
-    "voice_session_start_failed",
-    "deadline_enforcement_failed",
-    "initial_greeting_failed",
-  ]);
+  assert.deepEqual(
+    INTERVIEW_RUNTIME_FAILURE_CODES,
+    providerFailureCodes.deployed_codes
+  );
+  assert.deepEqual(providerFailureCodes.reserved_codes, []);
 });
