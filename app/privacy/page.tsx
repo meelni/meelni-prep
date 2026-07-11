@@ -1,4 +1,5 @@
-import { ShieldCheck } from "lucide-react";
+import { AlertTriangle, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 import {
   MarketingArticleHeader,
@@ -7,241 +8,102 @@ import {
   MarketingProse,
 } from "@/components/marketing/marketing-surface";
 import { Header } from "@/components/sections/header";
+import { Button } from "@/components/ui/button";
+import {
+  createLegalDraftMetadata,
+  LEGAL_DRAFT_NOTICE,
+  LEGAL_DRAFT_REVIEWED_ON,
+} from "@/lib/legal/public-legal-content";
 
-export default function PrivacyPolicy() {
+export const metadata = createLegalDraftMetadata(
+  "Privacy Draft | Meelni",
+  "A temporary privacy holding page while Meelni completes accountable owner and legal review before relaunch."
+);
+
+export default function PrivacyPolicyDraft() {
   return (
     <MarketingPage>
       <Header />
-      <main className="mx-auto max-w-4xl px-6 py-16">
-        <MarketingArticleHeader
-          eyebrow={<MarketingEyebrow icon={ShieldCheck}>Legal</MarketingEyebrow>}
-          title="Privacy Policy"
-          meta={
-            <p className="text-sm text-muted-foreground">
-              Last Updated: November 8, 2025
-            </p>
-          }
-        />
-
-        <MarketingProse className="mt-10">
-          <div className="space-y-8">
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">1. Introduction</h2>
-            <p>
-              Meelni ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how
-              we collect, use, disclose, and safeguard your information when you use our AI-powered mock interview
-              service.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">2. Information We Collect</h2>
-
-            <h3 className="text-xl font-semibold mt-6 mb-3">2.1 Information You Provide</h3>
-            <ul className="list-disc pl-6 space-y-2 mb-4">
-              <li>Account information (name, email address) when you sign up via Google OAuth</li>
-              <li>Profile information you choose to provide</li>
-              <li>Communication data when you contact us for support</li>
-            </ul>
-
-            <h3 className="text-xl font-semibold mt-6 mb-3">2.2 Automatically Collected Information</h3>
-            <ul className="list-disc pl-6 space-y-2 mb-4">
-              <li>Interview session data (audio recordings, transcripts, timestamps)</li>
-              <li>Performance metrics and feedback scores</li>
-              <li>Usage data (features used, session duration, interaction patterns)</li>
-              <li>Device information (browser type, operating system, IP address)</li>
-              <li>Cookies and similar tracking technologies</li>
-            </ul>
-
-            <h3 className="text-xl font-semibold mt-6 mb-3">2.3 Voice and Audio Data</h3>
-            <p>
-              When you participate in mock interviews, we collect and process:
-            </p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Real-time audio recordings of your interview sessions</li>
-              <li>Speech-to-text transcriptions of your responses</li>
-              <li>AI-generated feedback and performance analysis</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">3. How We Use Your Information</h2>
-            <p className="mb-4">We use the information we collect to:</p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Provide and maintain our interview coaching service</li>
-              <li>Generate personalized feedback and performance analytics</li>
-              <li>Improve our AI models and service quality</li>
-              <li>Communicate with you about your account and service updates</li>
-              <li>Respond to your inquiries and provide customer support</li>
-              <li>Monitor and analyze usage patterns and trends</li>
-              <li>Detect, prevent, and address technical issues and fraudulent activity</li>
-              <li>Comply with legal obligations and enforce our Terms of Service</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">4. Data Storage and Security</h2>
-            <p className="mb-4">
-              We implement industry-standard security measures to protect your data:
-            </p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Encryption of data in transit using TLS/SSL protocols</li>
-              <li>Encryption of sensitive data at rest in our databases</li>
-              <li>Row-level security policies to isolate user data</li>
-              <li>Regular security audits and vulnerability assessments</li>
-              <li>Access controls limiting employee access to personal data</li>
-            </ul>
-            <p className="mt-4">
-              Your interview data is stored on secure servers hosted by Supabase (database) and LiveKit (real-time
-              infrastructure). We retain your data for as long as your account is active or as needed to provide
-              services.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">5. Data Sharing and Disclosure</h2>
-            <p className="mb-4">We do not sell your personal information. We may share your information with:</p>
-
-            <h3 className="text-xl font-semibold mt-6 mb-3">5.1 Service Providers</h3>
-            <ul className="list-disc pl-6 space-y-2 mb-4">
-              <li>Supabase (authentication and database hosting)</li>
-              <li>LiveKit (real-time voice infrastructure)</li>
-              <li>OpenAI (AI language model processing)</li>
-              <li>Deepgram (speech recognition)</li>
-              <li>Cartesia (text-to-speech synthesis)</li>
-              <li>Vercel (application hosting)</li>
-            </ul>
-
-            <h3 className="text-xl font-semibold mt-6 mb-3">5.2 Legal Requirements</h3>
-            <p>
-              We may disclose your information if required by law or in response to valid requests by public
-              authorities (e.g., court orders, subpoenas).
-            </p>
-
-            <h3 className="text-xl font-semibold mt-6 mb-3">5.3 Business Transfers</h3>
-            <p>
-              If Meelni is involved in a merger, acquisition, or sale of assets, your information may be transferred
-              as part of that transaction.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">6. Your Privacy Rights</h2>
-            <p className="mb-4">You have the right to:</p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li><strong>Access:</strong> Request a copy of your personal data</li>
-              <li><strong>Correction:</strong> Update or correct inaccurate information</li>
-              <li><strong>Deletion:</strong> Request deletion of your account and associated data</li>
-              <li><strong>Portability:</strong> Receive your data in a structured, machine-readable format</li>
-              <li><strong>Objection:</strong> Object to processing of your personal data</li>
-              <li><strong>Restriction:</strong> Request restriction of processing in certain circumstances</li>
-            </ul>
-            <p className="mt-4">
-              To exercise these rights, please contact us at{" "}
-              <a href="mailto:contact@meelni.com" className="text-primary hover:underline">
-                contact@meelni.com
-              </a>
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">7. Data Retention</h2>
-            <p>
-              We retain your personal information for as long as necessary to provide our services and fulfill the
-              purposes outlined in this Privacy Policy. You may request deletion of your account at any time, after
-              which we will delete or anonymize your data within 30 days, except where retention is required by law.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">8. International Data Transfers</h2>
-            <p>
-              Your information may be transferred to and processed in countries other than your country of residence.
-              We ensure appropriate safeguards are in place to protect your data in accordance with this Privacy
-              Policy and applicable laws.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">9. Cookies and Tracking Technologies</h2>
-            <p className="mb-4">We use cookies and similar technologies to:</p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Maintain your session and authentication state</li>
-              <li>Remember your preferences and settings</li>
-              <li>Analyze usage patterns and improve our service</li>
-            </ul>
-            <p className="mt-4">
-              You can control cookies through your browser settings. Note that disabling cookies may affect the
-              functionality of our service.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">10. Children's Privacy</h2>
-            <p>
-              Our service is not intended for individuals under the age of 18. We do not knowingly collect personal
-              information from children. If you believe we have inadvertently collected data from a child, please
-              contact us immediately.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">11. AI and Automated Decision-Making</h2>
-            <p>
-              We use AI to analyze your interview performance and provide feedback. While our AI generates automated
-              assessments, these are intended as coaching tools, not employment decisions. You have the right to
-              request human review of AI-generated feedback.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">12. Changes to This Privacy Policy</h2>
-            <p>
-              We may update this Privacy Policy from time to time. We will notify you of any changes by posting the
-              new Privacy Policy on this page and updating the "Last Updated" date. We encourage you to review this
-              Privacy Policy periodically.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">13. California Privacy Rights (CCPA)</h2>
-            <p className="mb-4">
-              If you are a California resident, you have additional rights under the California Consumer Privacy Act:
-            </p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Right to know what personal information we collect and how it's used</li>
-              <li>Right to request deletion of personal information</li>
-              <li>Right to opt-out of the sale of personal information (we do not sell your data)</li>
-              <li>Right to non-discrimination for exercising your privacy rights</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">14. European Privacy Rights (GDPR)</h2>
-            <p>
-              If you are in the European Economic Area, you have rights under the General Data Protection Regulation,
-              including the rights listed in Section 6, as well as the right to lodge a complaint with a supervisory
-              authority.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">15. Contact Us</h2>
-            <p>
-              If you have questions or concerns about this Privacy Policy or our data practices, please contact us at:
-            </p>
-            <ul className="list-none space-y-2 mt-4">
-              <li>
-                Email:{" "}
-                <a href="mailto:contact@meelni.com" className="text-primary hover:underline">
-                  contact@meelni.com
-                </a>
-              </li>
-            </ul>
-          </section>
-          </div>
-        </MarketingProse>
-      </main>
+      <PrivacyHoldingContent />
     </MarketingPage>
+  );
+}
+
+export function PrivacyHoldingContent() {
+  return (
+    <main className="mx-auto max-w-4xl px-6 py-16">
+      <MarketingArticleHeader
+        eyebrow={
+          <MarketingEyebrow icon={ShieldCheck}>Review Draft</MarketingEyebrow>
+        }
+        title="Privacy notice under review"
+        meta={
+          <p className="text-muted-foreground text-sm">
+            Engineering review: {LEGAL_DRAFT_REVIEWED_ON} · No effective date
+          </p>
+        }
+      />
+
+      <div className="border-warning/40 bg-warning/5 mt-8 rounded-xl border p-5">
+        <div className="flex items-start gap-3">
+          <AlertTriangle
+            className="text-warning mt-0.5 h-5 w-5 shrink-0"
+            aria-hidden="true"
+          />
+          <div>
+            <h2 className="text-foreground font-semibold">Draft status</h2>
+            <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+              {LEGAL_DRAFT_NOTICE}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <MarketingProse className="mt-10">
+        <div className="space-y-10">
+          <section>
+            <h2 className="font-display text-2xl font-semibold">
+              Policy review in progress
+            </h2>
+            <p>
+              Meelni is reviewing its privacy notice before relaunch. The final
+              notice will identify the accountable entity and privacy contact,
+              explain applicable data practices and choices, and include an
+              approved effective date.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-display text-2xl font-semibold">
+              Account data requests
+            </h2>
+            <p>
+              An authenticated account can request a JSON export or submit an
+              account-deletion request from settings. A successful
+              account-deletion response means a durable deletion request exists.
+              Cleanup runs or retries asynchronously; it does not mean every
+              provider, backup, log, or legally retained record was erased
+              immediately.
+            </p>
+            <p>
+              For privacy questions while review is open, use the contact page.
+              The final notice will publish the approved privacy contact and
+              request process.
+            </p>
+            <div className="not-prose mt-6 flex flex-wrap gap-3">
+              <Button asChild variant="outline">
+                <Link href="/dashboard/settings">Open account settings</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/contact">Contact Meelni</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/terms">Review terms draft</Link>
+              </Button>
+            </div>
+          </section>
+        </div>
+      </MarketingProse>
+    </main>
   );
 }
