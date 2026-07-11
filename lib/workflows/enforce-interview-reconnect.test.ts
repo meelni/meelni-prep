@@ -63,6 +63,45 @@ test("atomic timeout claim prevents a concurrent restore before room deletion", 
   assert.deepEqual(fixture.calls, ["claim", "terminate", "end"]);
 });
 
+test("timeout claims the authorization fence before transcript validation resolves", async () => {
+  const fixture = createFixture(new Date(DEADLINE));
+  let releaseValidation!: () => void;
+  fixture.deps.validate = () =>
+    new Promise((resolve) => {
+      releaseValidation = () =>
+        resolve({
+          isValid: true,
+          reasons: [],
+          stats: emptyStats(),
+          tier: SessionTier.FULL,
+          recommendations: [],
+        });
+    });
+
+  const enforcement = run(fixture.deps);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(fixture.current.state, "ending");
+  assert.equal(fixture.current.version, 5);
+  assert.deepEqual(fixture.calls, ["claim"]);
+
+  const restore = await fixture.deps.store.applyTransportTransition({
+    sessionId: SESSION_ID,
+    expectedState: "reconnecting",
+    expectedVersion: 4,
+    nextState: "active",
+    reconnectDeadlineAt: null,
+    transportEventAt: new Date(DEADLINE),
+    transportEventId: "late-restore",
+    transportEventName: "participant_joined",
+    recordTransportEvent: true,
+    transitionedAt: new Date(DEADLINE),
+  });
+  assert.equal(restore.applied, false);
+
+  releaseValidation();
+  assert.equal((await enforcement).ok, true);
+});
+
 test("retry resumes an already-claimed timeout without claiming twice", async () => {
   const fixture = createFixture(new Date(DEADLINE), {
     state: "ending",
@@ -75,7 +114,7 @@ test("retry resumes an already-claimed timeout without claiming twice", async ()
   assert.deepEqual(fixture.calls, ["terminate", "end"]);
 });
 
-test("insufficient durable signal is selected before the timeout claim", async () => {
+test("insufficient durable signal refines the claimed timeout reason", async () => {
   const fixture = createFixture(new Date(DEADLINE));
   fixture.deps.validate = async () => ({
     isValid: false,
@@ -184,6 +223,18 @@ function createFixture(
         roomCleanupPending: true,
       };
       onClaim?.();
+      return { applied: true, current };
+    },
+    refineTimeoutClaim: async (input) => {
+      if (
+        current.state !== "ending" ||
+        current.version !== input.expectedVersion ||
+        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime()
+      ) {
+        return { applied: false, reason: "conflict", current };
+      }
+      calls.push("refine");
+      current = { ...current, terminalReason: input.terminalReason };
       return { applied: true, current };
     },
   };

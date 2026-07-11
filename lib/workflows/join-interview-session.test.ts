@@ -51,6 +51,8 @@ test("join workflow derives token identity and room from authenticated server re
       token: "signed-token",
       url: ENV.url,
       roomName: "interview-server-owned-room",
+      authorizationVersion: 3,
+      expiresAt: "2026-07-09T12:30:00.000Z",
     },
   });
   assert.deepEqual(issued, [
@@ -152,7 +154,7 @@ test("join workflow rejects expired sessions even if their status was never fina
   }
 });
 
-test("join workflow allows one millisecond before the deadline and rejects at the deadline", async () => {
+test("join workflow allows one token-second before the deadline and rejects at the deadline", async () => {
   const session = createSession({
     startedAt: new Date("2026-07-09T12:00:00.000Z"),
     config: { duration: 30 },
@@ -161,7 +163,7 @@ test("join workflow allows one millisecond before the deadline and rejects at th
     { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
     createDeps({
       getSession: async () => session,
-      now: () => new Date("2026-07-09T12:29:59.999Z"),
+      now: () => new Date("2026-07-09T12:29:59.000Z"),
     })
   );
   const at = await joinInterviewSessionWorkflow(
@@ -177,7 +179,7 @@ test("join workflow allows one millisecond before the deadline and rejects at th
   if (!at.ok) assert.equal(at.body.error, "session_not_joinable");
 });
 
-test("join workflow allows 1ms before reconnect expiry and rejects at expiry", async () => {
+test("join workflow binds token lifetime to reconnect expiry", async () => {
   const reconnectDeadlineAt = new Date("2026-07-09T12:20:30.000Z");
   const session = createSession({
     lifecycleState: "reconnecting",
@@ -187,7 +189,7 @@ test("join workflow allows 1ms before reconnect expiry and rejects at expiry", a
     { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
     createDeps({
       getSession: async () => session,
-      now: () => new Date(reconnectDeadlineAt.getTime() - 1),
+      now: () => new Date(reconnectDeadlineAt.getTime() - 1_000),
     })
   );
   const at = await joinInterviewSessionWorkflow(
@@ -199,8 +201,64 @@ test("join workflow allows 1ms before reconnect expiry and rejects at expiry", a
   );
 
   assert.equal(before.ok, true);
+  if (before.ok) {
+    assert.equal(before.body.expiresAt, reconnectDeadlineAt.toISOString());
+    assert.equal(before.body.authorizationVersion, 3);
+  }
   assert.equal(at.ok, false);
   if (!at.ok) assert.equal(at.body.error, "session_not_joinable");
+});
+
+test("a token completed after timeout is discarded when authorization generation changes", async () => {
+  const reconnectDeadlineAt = new Date("2026-07-09T12:20:30.000Z");
+  let current = createSession({
+    lifecycleState: "reconnecting",
+    lifecycleVersion: 4,
+    reconnectDeadlineAt,
+  });
+  let releaseToken!: () => void;
+  let issuedTtl = 0;
+  const tokenPending = new Promise<void>((resolve) => {
+    releaseToken = resolve;
+  });
+  const audits: Parameters<JoinInterviewSessionDeps["audit"]>[0][] = [];
+  const resultPending = joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      audit: (event) => audits.push(event),
+      getSession: async () => current,
+      issueToken: async (input) => {
+        issuedTtl = input.ttlSeconds;
+        await tokenPending;
+        return {
+          ok: true,
+          provider: "livekit",
+          data: {
+            token: "late-token",
+            url: input.env.url,
+            roomName: input.roomName,
+          },
+        };
+      },
+    })
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  current = createSession({
+    lifecycleState: "ending",
+    lifecycleVersion: 5,
+    reconnectDeadlineAt,
+  });
+  releaseToken();
+  const result = await resultPending;
+
+  assert.equal(issuedTtl, 30);
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error, "session_not_joinable");
+  }
+  assert.equal(audits.at(-1)?.reason, "reconnect_authorization_changed");
 });
 
 test("join workflow rejects sessions without voice-room entitlement", async () => {
@@ -292,7 +350,7 @@ test("distinct session IDs share one authenticated-user reconnect budget", async
   assert.equal(results.filter((result) => result.ok).length, 10);
   assert.equal(results[10]?.ok, false);
   if (!results[10]?.ok) assert.equal(results[10].status, 429);
-  assert.equal(queried, 10);
+  assert.equal(queried, 20);
   assert.deepEqual(limitedUserIds, Array(11).fill(USER_ID));
 });
 
@@ -391,6 +449,7 @@ function createSession(
     endedAt: null,
     status: "in_progress",
     lifecycleState: "active",
+    lifecycleVersion: 3,
     ...overrides,
   };
 }

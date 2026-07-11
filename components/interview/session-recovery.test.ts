@@ -54,6 +54,44 @@ test("room credentials must be complete and correlated to the persisted room", (
   );
 });
 
+test("reconnect credentials require a live authorization generation", () => {
+  const now = new Date("2026-07-10T08:00:00.000Z");
+  assert.deepEqual(
+    parseInterviewRoomCredentials(
+      {
+        token: "short-lived-token",
+        url: "wss://preview.livekit.cloud",
+        roomName: "interview-owned-room",
+        authorizationVersion: 4,
+        expiresAt: "2026-07-10T08:00:30.000Z",
+      },
+      "interview-owned-room",
+      now
+    ),
+    {
+      token: "short-lived-token",
+      url: "wss://preview.livekit.cloud",
+      roomName: "interview-owned-room",
+      authorizationVersion: 4,
+      expiresAt: "2026-07-10T08:00:30.000Z",
+    }
+  );
+  assert.equal(
+    parseInterviewRoomCredentials(
+      {
+        token: "late-token",
+        url: "wss://preview.livekit.cloud",
+        roomName: "interview-owned-room",
+        authorizationVersion: 4,
+        expiresAt: now.toISOString(),
+      },
+      "interview-owned-room",
+      now
+    ),
+    null
+  );
+});
+
 test("credential retries are bounded and limited to transient responses", () => {
   assert.equal(getCredentialRetryDelayMs(429, "3"), 3_000);
   assert.equal(getCredentialRetryDelayMs(429, "120"), 10_000);
