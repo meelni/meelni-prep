@@ -14,6 +14,7 @@ import {
   readOperationalRequestId,
   reportOperationalFailure,
 } from "@/lib/operations/operational-events";
+import { readBoundedJson } from "@/lib/http/read-bounded-json";
 import { createClient } from "@/lib/supabase/server";
 import { joinInterviewSessionWorkflow } from "@/lib/workflows/join-interview-session";
 
@@ -29,7 +30,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const parsed = await readBoundedJson(req, 16 * 1024);
+    if (!parsed.ok)
+      return NextResponse.json(
+        { error: "Invalid request" },
+        { status: parsed.reason === "too_large" ? 413 : 400 }
+      );
+    const body = parsed.value;
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (!livekitEnv.ok) {
       reportOperationalFailure({

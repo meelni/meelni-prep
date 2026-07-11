@@ -102,6 +102,7 @@ import {
   reportOperationalFailure,
   type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
+import { readBoundedJson } from "@/lib/http/read-bounded-json";
 
 export async function POST(req: NextRequest) {
   let correlationId: InterviewSessionCorrelationId | null = null;
@@ -118,8 +119,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse request body
-    const body = await req.json();
-    const { sessionId } = body;
+    const parsed = await readBoundedJson(req, 16 * 1024);
+    if (!parsed.ok)
+      return NextResponse.json(
+        { error: "Invalid request" },
+        { status: parsed.reason === "too_large" ? 413 : 400 }
+      );
+    const body = parsed.value as { sessionId?: unknown };
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
 
     // Validate required fields
     if (!sessionId) {
