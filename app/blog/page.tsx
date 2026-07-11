@@ -1,6 +1,7 @@
 import { blogPosts } from "@/lib/blog-data";
 import { ArrowRight, Calendar, ChevronRight, Clock, Home } from "lucide-react";
 import Link from "next/link";
+import { JsonLd } from "@/components/seo/json-ld";
 import { Header } from "@/components/sections/header";
 import {
   MarketingCard,
@@ -85,18 +86,9 @@ function BlogStructuredData() {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
-      />
+      <JsonLd id="blog-breadcrumb-schema" data={breadcrumbSchema} />
+      <JsonLd id="blog-schema" data={blogSchema} />
+      <JsonLd id="blog-item-list-schema" data={itemListSchema} />
     </>
   );
 }

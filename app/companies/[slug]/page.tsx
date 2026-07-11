@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { JsonLd } from "@/components/seo/json-ld";
 import { getCompanyBySlug } from "@/lib/data/companies";
 import {
   toPublicCompanyGuide,
@@ -42,14 +43,8 @@ function CompanyStructuredData({ company }: { company: PublicCompanyGuide }) {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(pageSchema) }}
-      />
+      <JsonLd id="company-breadcrumb-schema" data={breadcrumbSchema} />
+      <JsonLd id="company-page-schema" data={pageSchema} />
     </>
   );
 }

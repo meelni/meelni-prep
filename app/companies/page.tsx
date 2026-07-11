@@ -8,6 +8,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
+import { JsonLd } from "@/components/seo/json-ld";
 import { Header } from "@/components/sections/header";
 import {
   MarketingCard,
@@ -84,18 +85,9 @@ function CompaniesStructuredData() {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageSchema) }}
-      />
+      <JsonLd id="companies-breadcrumb-schema" data={breadcrumbSchema} />
+      <JsonLd id="companies-item-list-schema" data={itemListSchema} />
+      <JsonLd id="companies-page-schema" data={webPageSchema} />
     </>
   );
 }

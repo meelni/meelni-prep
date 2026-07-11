@@ -10,6 +10,8 @@
  * public-question response and the visible Explore page.
  */
 
+import { JsonLd } from "@/components/seo/json-ld";
+
 interface Question {
   id: string;
   company: string | null;
@@ -125,45 +127,11 @@ export function ExploreStructuredData({
 
   return (
     <>
-      {/* ItemList Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(itemListSchema),
-        }}
-      />
-
-      {/* BreadcrumbList Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(breadcrumbSchema),
-        }}
-      />
-
-      {/* WebPage Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(webPageSchema),
-        }}
-      />
-
-      {/* CollectionPage Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(collectionPageSchema),
-        }}
-      />
-
-      {/* Dataset Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(datasetSchema),
-        }}
-      />
+      <JsonLd id="explore-item-list-schema" data={itemListSchema} />
+      <JsonLd id="explore-breadcrumb-schema" data={breadcrumbSchema} />
+      <JsonLd id="explore-web-page-schema" data={webPageSchema} />
+      <JsonLd id="explore-collection-page-schema" data={collectionPageSchema} />
+      <JsonLd id="explore-dataset-schema" data={datasetSchema} />
     </>
   );
 }

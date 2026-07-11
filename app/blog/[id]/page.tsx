@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { JsonLd } from "@/components/seo/json-ld";
 import { Header } from "@/components/sections/header";
 import {
   MarketingArticleHeader,
@@ -112,14 +113,8 @@ function BlogPostStructuredData({ post }: { post: BlogPostType }) {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }}
-      />
+      <JsonLd id="blog-post-breadcrumb-schema" data={breadcrumbSchema} />
+      <JsonLd id="blog-post-article-schema" data={articleSchema} />
     </>
   );
 }
