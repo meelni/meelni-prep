@@ -1151,7 +1151,7 @@ function assertLegacyCreditLedgerIntegrity(result: MigrationPreflightResult) {
     orphan_or_mismatched_reserve_transactions: 1,
     terminal_evidence_mismatches: 2,
     reserved_balance_mismatches: 1,
-    rollover_evidence_mismatches: 1,
+    rollover_evidence_mismatches: 2,
     orphan_or_mismatched_rollover_transactions: 2,
     orphan_rollover_grants: 1,
     subscription_renewal_evidence_mismatches: 1,
@@ -1576,7 +1576,7 @@ async function seedLegacyCreditLedgerIntegrityFixtures(sql: postgres.Sql) {
         NULL, 'rollover', 1,
         'legacy:complete-orphan-rollover:source:10000000-0000-4000-8000-000000000009',
         'legacy:complete-orphan-provider', 0,
-        '{"rolloverGrantId": "10000000-0000-4000-8000-000000000008"}'::jsonb,
+        '{"version": "1", "rolloverGrantId": "10000000-0000-4000-8000-000000000008", "issuedAt": "2026-07-01T00:07:00.000Z", "expiresAt": "2026-08-30T00:07:00.000Z"}'::jsonb,
         '2026-07-01T01:07:00Z'
       ),
       (

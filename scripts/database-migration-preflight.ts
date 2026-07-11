@@ -964,6 +964,7 @@ async function getBillingAdjustmentIntegrity(tx: postgres.TransactionSql) {
             WHERE source_txn.type = 'rollover'
               AND source_txn.grant_id = source_grant.id
               AND source_txn.metadata->>'rolloverGrantId' = destination.id::text
+              AND jsonb_typeof(source_txn.metadata->'version') = 'number'
               AND source_txn.metadata->>'version' = '1'
               AND source_txn.metadata->>'expiresAt' =
                 to_char(destination.expires_at AT TIME ZONE 'UTC',
@@ -1280,6 +1281,7 @@ async function getCreditLedgerIntegrity(
                   AND source_txn.balance_after + source_txn.credits
                     <= source_grant.original_credits
                   AND source_txn.metadata->>'version' = '1'
+                  AND jsonb_typeof(source_txn.metadata->'version') = 'number'
                   AND source_txn.metadata->>'expiresAt' =
                     to_char(grant_row.expires_at AT TIME ZONE 'UTC',
                       'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
@@ -1321,6 +1323,7 @@ async function getCreditLedgerIntegrity(
               JOIN credit_grant source_grant ON source_grant.id = ledger_txn.grant_id
               WHERE destination.source = 'rollover'
                 AND ledger_txn.metadata->>'rolloverGrantId' = destination.id::text
+                AND jsonb_typeof(ledger_txn.metadata->'version') = 'number'
                 AND ledger_txn.metadata->>'version' = '1'
                 AND ledger_txn.metadata->>'expiresAt' =
                   to_char(destination.expires_at AT TIME ZONE 'UTC',
@@ -1502,6 +1505,7 @@ async function getCreditLedgerIntegrity(
                         FROM credit_transaction source_txn
                         WHERE source_txn.type = 'rollover'
                           AND source_txn.metadata->>'rolloverGrantId' = rollover.id::text
+                          AND jsonb_typeof(source_txn.metadata->'version') = 'number'
                           AND source_txn.metadata->>'version' = '1'
                           AND source_txn.metadata->>'expiresAt' =
                             to_char(rollover.expires_at AT TIME ZONE 'UTC',
