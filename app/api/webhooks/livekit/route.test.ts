@@ -61,6 +61,30 @@ describe("POST /api/webhooks/livekit", () => {
     expect(mocks.receiveLiveKitParticipantWebhook).not.toHaveBeenCalled();
   });
 
+  it("keeps the oversized verdict when stream cancellation rejects", async () => {
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(40 * 1024));
+      },
+      cancel() {
+        throw new Error("cancel failed");
+      },
+    });
+    const response = await POST(
+      new NextRequest("http://localhost/api/webhooks/livekit", {
+        method: "POST",
+        body,
+        duplex: "half",
+      } as never)
+    );
+
+    expect(response.status).toBe(413);
+    expect(pulls).toBe(2);
+    expect(mocks.receiveLiveKitParticipantWebhook).not.toHaveBeenCalled();
+  });
+
   it("fails closed when the body stream aborts", async () => {
     const body = new ReadableStream<Uint8Array>({
       start(controller) {

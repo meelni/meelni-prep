@@ -209,6 +209,26 @@ test("join workflow binds token lifetime to reconnect expiry", async () => {
   if (!at.ok) assert.equal(at.body.error, "session_not_joinable");
 });
 
+test("a corrupt reconnect deadline cannot extend credentials past the hard deadline", async () => {
+  const result = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      now: () => new Date("2026-07-09T12:29:50.000Z"),
+      getSession: async () =>
+        createSession({
+          lifecycleState: "reconnecting",
+          lifecycleVersion: 4,
+          reconnectDeadlineAt: new Date("2026-07-09T12:31:00.000Z"),
+        }),
+    })
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.body.expiresAt, "2026-07-09T12:30:00.000Z");
+  }
+});
+
 test("a token completed after timeout is discarded when authorization generation changes", async () => {
   const reconnectDeadlineAt = new Date("2026-07-09T12:20:30.000Z");
   let current = createSession({
