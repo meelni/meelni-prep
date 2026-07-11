@@ -97,9 +97,9 @@ const question = await fetchInterviewQuestion("product_sense");
 
 ### 2. GET /api/questions
 
-Lists all questions with pagination and filtering. This will be used for the admin UI to manage the question bank.
+Lists the active published question collection with pagination and filtering. Historical, quarantined, and retired rows are never available from this public endpoint.
 
-**Use Case**: Admin panel to view, filter, and manage questions.
+**Use Case**: Public Explore, company-question browsing, and question selection before live practice.
 
 **Query Parameters**:
 
@@ -108,8 +108,7 @@ Lists all questions with pagination and filtering. This will be used for the adm
 - `search` (optional): Case-insensitive text search across the question and company
 - `limit` (optional): Results per page (1-500, default: 100)
 - `offset` (optional): Number of results to skip (default: 0)
-- `activeOnly` (optional): Return only active questions (default: false)
-  - Values: `true`, `false`
+- `activeOnly` (retired compatibility parameter): Ignored. Public results are always active and published, including when an older client sends `activeOnly=false`.
 
 **Response** (200 OK):
 
@@ -156,17 +155,14 @@ curl http://localhost:3000/api/questions
 # List product sense questions only
 curl http://localhost:3000/api/questions?type=product_sense
 
-# List active questions only
-curl http://localhost:3000/api/questions?activeOnly=true
-
 # Search the complete active corpus before pagination
-curl 'http://localhost:3000/api/questions?search=pricing&activeOnly=true&limit=20'
+curl 'http://localhost:3000/api/questions?search=pricing&limit=20'
 
 # Pagination example (page 2, 50 per page)
 curl http://localhost:3000/api/questions?limit=50&offset=50
 
-# Complex filter: Active behavioral questions, 20 per page
-curl http://localhost:3000/api/questions?type=behavioral&activeOnly=true&limit=20
+# Complex filter: Behavioral questions, 20 per page
+curl http://localhost:3000/api/questions?type=behavioral&limit=20
 ```
 
 **Frontend Usage**:
@@ -176,7 +172,6 @@ curl http://localhost:3000/api/questions?type=behavioral&activeOnly=true&limit=2
 async function listQuestions(filters: {
   type?: string;
   search?: string;
-  activeOnly?: boolean;
   limit?: number;
   offset?: number;
 }) {
@@ -184,7 +179,6 @@ async function listQuestions(filters: {
 
   if (filters.type) params.set("type", filters.type);
   if (filters.search) params.set("search", filters.search);
-  if (filters.activeOnly) params.set("activeOnly", "true");
   if (filters.limit) params.set("limit", filters.limit.toString());
   if (filters.offset) params.set("offset", filters.offset.toString());
 
@@ -201,7 +195,6 @@ async function listQuestions(filters: {
 // Usage
 const { questions, pagination } = await listQuestions({
   type: "product_sense",
-  activeOnly: true,
   limit: 50,
   offset: 0,
 });
@@ -221,16 +214,15 @@ import { getRandomQuestion } from "@/lib/db/questions";
 const question = await getRandomQuestion("product_sense");
 ```
 
-### `getQuestions(options)`
+### `getPublishedQuestions(options)`
 
-Lists questions with pagination, active filtering, and optional round filtering. The row and count queries use the same filters before pagination.
+Lists active published questions with pagination and optional round filtering. Publication is enforced by the adapter; callers cannot opt into inactive history. The row and count queries use the same filters before pagination.
 
 ```typescript
-import { getQuestions } from "@/lib/db/questions";
+import { getPublishedQuestions } from "@/lib/db/questions";
 
-const { questions, total } = await getQuestions({
+const { questions, total } = await getPublishedQuestions({
   roundType: "behavioral",
-  activeOnly: true,
   limit: 50,
   offset: 0,
 });
@@ -287,12 +279,12 @@ curl http://localhost:3000/api/questions?limit=10
 
 ## Future Enhancements
 
-1. **Authentication**: Add admin authentication to `/api/questions` endpoint
-2. **POST/PUT/DELETE**: Add endpoints for creating, updating, and deleting questions
-3. **Search**: Add full-text search capability
-4. **Tags**: Add tagging system for better categorization
-5. **Difficulty**: Add difficulty levels (junior, mid, senior)
-6. **Usage Tracking**: Track which questions are used most frequently
+1. **Admin surface**: Add a separately authenticated internal workflow for historical and quality-state review; never overload the public list.
+2. **POST/PUT/DELETE**: Add authenticated operator workflows for managing questions.
+3. **Search**: Add full-text search capability.
+4. **Tags**: Add tagging for better categorization.
+5. **Difficulty**: Add difficulty levels (junior, mid, senior).
+6. **Usage Tracking**: Track which questions are used most frequently.
 
 ## Integration with Interview Agent
 

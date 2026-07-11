@@ -20,7 +20,6 @@ export interface QuestionBankRecord {
 
 export interface QuestionListOptions {
   roundType?: RoundType;
-  activeOnly?: boolean;
   limit?: number;
   offset?: number;
   search?: string;
@@ -28,7 +27,6 @@ export interface QuestionListOptions {
 
 export interface QuestionListFilter {
   questionTypes?: readonly string[];
-  activeOnly: boolean;
   search?: string;
 }
 
@@ -43,9 +41,7 @@ export interface QuestionListStore {
 function buildQuestionListConditions(filter: QuestionListFilter) {
   const conditions = [];
 
-  if (filter.activeOnly) {
-    conditions.push(eq(interviewQuestion.isActive, true));
-  }
+  conditions.push(eq(interviewQuestion.isActive, true));
 
   if (filter.questionTypes?.length === 1) {
     conditions.push(
@@ -176,14 +172,13 @@ export async function getRandomQuestion(
 /**
  * Get all questions with optional filtering and pagination
  */
-export async function getQuestions(
+export async function getPublishedQuestions(
   options: QuestionListOptions = {},
   store: QuestionListStore = drizzleQuestionListStore
 ): Promise<{ questions: QuestionBankRecord[]; total: number }> {
   const limit = options.limit ?? 100;
   const offset = options.offset ?? 0;
   const filter: QuestionListFilter = {
-    activeOnly: options.activeOnly ?? false,
     search: options.search,
     questionTypes: options.roundType
       ? questionTypeStorageAliasesForRound(options.roundType)
