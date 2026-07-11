@@ -7,7 +7,6 @@ import {
   createDrizzleTranscriptRuntimeSettlementStore,
 } from "@/lib/db/transcripts";
 import { createDrizzleInterviewRuntimeFailureStore } from "@/lib/db/interview-runtime-events";
-import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
 import { authorizeRuntimeTranscriptRequest } from "@/lib/security/transcript-ingest-authorization";
 import { ingestTranscriptEvent } from "@/lib/workflows/ingest-transcript-event";
 import { ingestTranscriptInterruptionMarker } from "@/lib/workflows/ingest-transcript-interruption-marker";
@@ -29,9 +28,7 @@ const RuntimeTranscriptRequestSchema = z
         body.interruptionMarker,
         body.settlement,
         body.runtimeEvent,
-      ].filter(
-        (value) => value !== undefined
-      ).length === 1,
+      ].filter((value) => value !== undefined).length === 1,
     "exactly one runtime transcript payload is required"
   );
 const MAX_RUNTIME_TRANSCRIPT_BODY_BYTES = 64 * 1024;
@@ -51,17 +48,17 @@ export async function POST(req: NextRequest) {
   ) {
     return response({ error: "runtime_transcript_payload_too_large" }, 413);
   }
-  const body = await readBoundedRawBody(req);
-  if (!body.ok) {
-    if (body.reason === "too_large") {
-      return response({ error: "runtime_transcript_payload_too_large" }, 413);
-    }
-    return response({ error: "invalid_runtime_transcript_payload" }, 400);
-  }
-  const rawBody = body.rawBody;
-  if (Buffer.byteLength(rawBody, "utf8") > MAX_RUNTIME_TRANSCRIPT_BODY_BYTES) {
+  const body = await readBoundedRuntimeBody(req);
+  if (body.disposition === "too_large") {
     return response({ error: "runtime_transcript_payload_too_large" }, 413);
   }
+  if (body.disposition === "aborted") {
+    return response({ error: "runtime_transcript_request_aborted" }, 400);
+  }
+  if (!("rawBody" in body)) {
+    return response({ error: "runtime_transcript_request_aborted" }, 400);
+  }
+  const rawBody = body.rawBody;
   const authorization = authorizeRuntimeTranscriptRequest({
     rawBody,
     timestampHeader: req.headers.get("x-meelni-timestamp"),
@@ -116,7 +113,6 @@ export async function POST(req: NextRequest) {
         requestSessionId: parsed.data.sessionId,
         event: parsed.data.runtimeEvent,
         store: createDrizzleInterviewRuntimeFailureStore(),
-        settleCredit: convergeDrizzleInterviewCreditSettlement,
       });
       return mapIngestResult(result, "runtime_event");
     }
@@ -188,32 +184,40 @@ function isJsonContentType(value: string | null): boolean {
   return value?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
 }
 
-async function readBoundedRawBody(
+async function readBoundedRuntimeBody(
   req: NextRequest
 ): Promise<
-  | { ok: true; rawBody: string }
-  | { ok: false; reason: "too_large" | "unreadable" }
+  | { disposition: "ok"; rawBody: string }
+  | { disposition: "too_large" | "aborted" }
 > {
-  if (!req.body) return { ok: true, rawBody: "" };
+  if (!req.body) return { disposition: "ok", rawBody: "" };
 
-  const chunks: Buffer[] = [];
-  let bytesRead = 0;
   const reader = req.body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let rawBody = "";
+  const abort = () => {
+    void reader.cancel("request_aborted");
+  };
+  req.signal.addEventListener("abort", abort, { once: true });
   try {
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bytesRead += value.byteLength;
+      if (req.signal.aborted) return { disposition: "aborted" };
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytesRead += chunk.value.byteLength;
       if (bytesRead > MAX_RUNTIME_TRANSCRIPT_BODY_BYTES) {
-        await reader.cancel();
-        return { ok: false, reason: "too_large" };
+        await reader.cancel("payload_too_large");
+        return { disposition: "too_large" };
       }
-      chunks.push(Buffer.from(value));
+      rawBody += decoder.decode(chunk.value, { stream: true });
     }
-    return { ok: true, rawBody: Buffer.concat(chunks).toString("utf8") };
+    rawBody += decoder.decode();
+    return { disposition: "ok", rawBody };
   } catch {
-    return { ok: false, reason: "unreadable" };
+    return { disposition: "aborted" };
   } finally {
+    req.signal.removeEventListener("abort", abort);
     reader.releaseLock();
   }
 }

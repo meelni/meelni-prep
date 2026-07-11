@@ -1965,6 +1965,7 @@ export async function settleReservationInTransaction({
         transactionType === "refund"
           ? await findRefundMakeGoodGrant({
               store,
+              reservation,
               allocations,
               grantsById,
               idempotencyKey,
@@ -2089,6 +2090,7 @@ async function createRefundMakeGoodGrant(input: {
 
 async function findRefundMakeGoodGrant(input: {
   store: CreditLedgerTransaction;
+  reservation: LedgerCreditReservation;
   allocations: LedgerReservationAllocation[];
   grantsById: Map<string, LedgerCreditGrant>;
   idempotencyKey: string;
@@ -2099,7 +2101,46 @@ async function findRefundMakeGoodGrant(input: {
     if (!source) throw new Error("credit_ledger_reconciliation_required");
     const key = `make-good:${input.idempotencyKey}:${source.id}`;
     const grant = await input.store.findGrantByIdempotencyKeyForUpdate(key);
-    if (grant) matches.push(grant);
+    if (grant) {
+      const metadata = {
+        policyVersion: "interview-credit-recovery.v1",
+        reservationId: input.reservation.id,
+        sourceGrantId: source.id,
+      };
+      assertMakeGoodGrantMatches(grant, {
+        userId: input.reservation.userId,
+        catalogId: source.catalogId,
+        source: "refund",
+        sourceId: input.reservation.sessionId,
+        idempotencyKey: key,
+        originalCredits: allocation.credits,
+        remainingCredits: allocation.credits,
+        reservedCredits: 0,
+        expiresAt: null,
+        rolloverEligible: false,
+        rolloverSourceGrantId: null,
+        metadata,
+      });
+      const transaction =
+        await input.store.findTransactionByIdempotencyKeyForUpdate(
+          `${key}:grant`
+        );
+      if (!transaction) {
+        throw new Error("credit_ledger_reconciliation_required");
+      }
+      assertTransactionMatchesRequest(transaction, {
+        userId: grant.userId,
+        grantId: grant.id,
+        reservationId: null,
+        type: "grant",
+        credits: grant.originalCredits,
+        idempotencyKey: `${key}:grant`,
+        sourceId: input.reservation.sessionId,
+        balanceAfter: grant.remainingCredits,
+        metadata,
+      });
+      matches.push(grant);
+    }
   }
   if (matches.length > 1) throw new Error("credit_refund_make_good_ambiguous");
   return matches[0] ?? null;

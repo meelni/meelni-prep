@@ -3966,6 +3966,7 @@ async function verifyProviderCreditRecovery(
   const recoveryUser = "53000000-0000-4000-8000-000000000002";
   const recoveryAttempt = "54000000-0000-4000-8000-000000000003";
   const recoveryConsumedAttempt = "54000000-0000-4000-8000-000000000004";
+  const atomicFailureAttempt = "54000000-0000-4000-8000-000000000005";
   const now = new Date("2026-07-10T14:00:00.000Z");
   const clients = Array.from({ length: 10 }, () =>
     postgres(databaseUrl, { max: 1, prepare: false })
@@ -4064,13 +4065,11 @@ async function verifyProviderCreditRecovery(
     };
     const providerResults = await runConcurrently(
       databases.map(
-        (database, index) => () =>
+        (database) => () =>
           ingestInterviewRuntimeEvent({
             requestSessionId: providerAttempt,
             event: failure,
             store: createDrizzleInterviewRuntimeFailureStore(database),
-            settleCredit: (sessionId) =>
-              converge(sessionId, index, new Date(now.getTime() + 2_000)),
           })
       )
     );
@@ -4093,6 +4092,7 @@ async function verifyProviderCreditRecovery(
         make_goods: number;
         action: string;
         fault: string;
+        skipped_feedback: number;
       }[]
     >`
       SELECT reservation.status,
@@ -4103,7 +4103,11 @@ async function verifyProviderCreditRecovery(
           WHERE grant_row.user_id = session.user_id
             AND grant_row.source = 'refund') AS make_goods,
         session.credit_settlement_action AS action,
-        session.billing_fault AS fault
+        session.billing_fault AS fault,
+        (SELECT count(*)::int FROM feedback feedback_row
+          WHERE feedback_row.session_id = session.id
+            AND feedback_row.status = 'skipped'
+            AND feedback_row.dispatch_status = 'not_required') AS skipped_feedback
       FROM interview_session session
       JOIN credit_reservation reservation ON reservation.session_id = session.id
       WHERE session.id = ${providerAttempt}::uuid
@@ -4114,6 +4118,7 @@ async function verifyProviderCreditRecovery(
       make_goods: 1,
       action: "refund",
       fault: "provider",
+      skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(refundedPreflight.startingContract, "credit_recovery");
@@ -4176,7 +4181,7 @@ async function verifyProviderCreditRecovery(
       catalogId: "interview_pass",
       source: "admin",
       idempotencyKey: "postgres:credit-recovery:expired-grant",
-      includedCredits: 2,
+      includedCredits: 3,
       expiresAt: null,
     });
     await insertSession(recoveryAttempt, recoveryUser);
@@ -4190,16 +4195,12 @@ async function verifyProviderCreditRecovery(
         await recoveryStore.listCandidates({ now: recoveryAt, limit: 250 })
       ).some(({ sessionId }) => sessionId === recoveryAttempt)
     );
-    assert.equal(
+    assert.deepEqual(
       await recoveryStore.prepare({
         sessionId: recoveryAttempt,
         now: recoveryAt,
       }),
-      "terminalized"
-    );
-    assert.equal(
-      (await converge(recoveryAttempt, 0, recoveryAt)).disposition,
-      "released"
+      { disposition: "recovered", creditDisposition: "released" }
     );
 
     await insertSession(recoveryConsumedAttempt, recoveryUser);
@@ -4214,17 +4215,67 @@ async function verifyProviderCreditRecovery(
         await recoveryStore.listCandidates({ now: recoveryAt, limit: 250 })
       ).some(({ sessionId }) => sessionId === recoveryConsumedAttempt)
     );
-    assert.equal(
+    assert.deepEqual(
       await recoveryStore.prepare({
         sessionId: recoveryConsumedAttempt,
         now: recoveryAt,
       }),
-      "terminalized"
+      { disposition: "recovered", creditDisposition: "refunded" }
     );
-    assert.equal(
-      (await converge(recoveryConsumedAttempt, 0, recoveryAt)).disposition,
-      "refunded"
+    const [recoveryFeedback] = await sql<
+      { status: string; dispatch_status: string }[]
+    >`
+      SELECT status, dispatch_status
+      FROM feedback
+      WHERE session_id = ${recoveryConsumedAttempt}::uuid
+    `;
+    assert.deepEqual(recoveryFeedback, {
+      status: "skipped",
+      dispatch_status: "not_required",
+    });
+
+    await insertSession(atomicFailureAttempt, recoveryUser);
+    await reserve(atomicFailureAttempt, recoveryUser);
+    await sql`
+      DELETE FROM credit_reservation_grant allocation
+      USING credit_reservation reservation
+      WHERE allocation.reservation_id = reservation.id
+        AND reservation.session_id = ${atomicFailureAttempt}::uuid
+    `;
+    await assert.rejects(
+      ingestInterviewRuntimeEvent({
+        requestSessionId: atomicFailureAttempt,
+        event: {
+          ...failure,
+          event_id: "provider-failure:pg:atomic-rollback",
+          session_id: atomicFailureAttempt,
+          runtime_ref: {
+            provider: "livekit",
+            id: `interview-${atomicFailureAttempt}`,
+          },
+        },
+        store: createDrizzleInterviewRuntimeFailureStore(databases[0]!),
+      }),
+      /credit_/
     );
+    const [rolledBackFailure] = await sql<
+      {
+        lifecycle_state: string;
+        billing_fault: string | null;
+        feedback_rows: number;
+      }[]
+    >`
+      SELECT lifecycle_state, billing_fault,
+        (SELECT count(*)::int FROM feedback
+          WHERE session_id = session.id) AS feedback_rows
+      FROM interview_session session
+      WHERE id = ${atomicFailureAttempt}::uuid
+    `;
+    assert.deepEqual(rolledBackFailure, {
+      lifecycle_state: "active",
+      billing_fault: null,
+      feedback_rows: 0,
+    });
   } finally {
     await sql`
       DELETE FROM credit_transaction
@@ -4244,14 +4295,24 @@ async function verifyProviderCreditRecovery(
       DELETE FROM transcript_turn
       WHERE session_id IN (
         ${providerAttempt}::uuid, ${retainAttempt}::uuid,
-        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid
+        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
+        ${atomicFailureAttempt}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM feedback
+      WHERE session_id IN (
+        ${providerAttempt}::uuid, ${retainAttempt}::uuid,
+        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
+        ${atomicFailureAttempt}::uuid
       )
     `;
     await sql`
       DELETE FROM interview_session
       WHERE id IN (
         ${providerAttempt}::uuid, ${retainAttempt}::uuid,
-        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid
+        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
+        ${atomicFailureAttempt}::uuid
       )
     `;
     await sql`

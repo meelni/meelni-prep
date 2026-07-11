@@ -11,50 +11,40 @@ const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 test("provider failure persists then converges credit on every replay", async () => {
   let persisted = false;
-  let settlements = 0;
   const store: InterviewRuntimeFailureStore = {
     async persistProviderFailure() {
       const disposition = persisted ? "existing" : "created";
       persisted = true;
-      return { ok: true, disposition, sessionId: SESSION_ID };
+      return {
+        ok: true,
+        disposition,
+        sessionId: SESSION_ID,
+        creditDisposition: "released",
+      };
     },
-  };
-  const settleCredit = async () => {
-    settlements += 1;
-    return { disposition: "released" };
   };
 
   const first = await ingestInterviewRuntimeEvent({
     requestSessionId: SESSION_ID,
     event: providerFailure(),
     store,
-    settleCredit,
   });
   const replay = await ingestInterviewRuntimeEvent({
     requestSessionId: SESSION_ID,
     event: providerFailure(),
     store,
-    settleCredit,
   });
 
   assert.equal(first.ok && first.disposition, "created");
   assert.equal(replay.ok && replay.disposition, "existing");
-  assert.equal(settlements, 2);
+  assert.equal(first.ok && first.creditDisposition, "released");
+  assert.equal(replay.ok && replay.creditDisposition, "released");
 });
-test("settlement failure remains retryable behind immutable failure evidence", async () => {
-  let persisted = false;
-  let settlementAttempts = 0;
+test("atomic store failures reject the runtime request for a safe replay", async () => {
   const store: InterviewRuntimeFailureStore = {
     async persistProviderFailure() {
-      const disposition = persisted ? "existing" : "created";
-      persisted = true;
-      return { ok: true, disposition, sessionId: SESSION_ID };
+      throw new Error("database unavailable");
     },
-  };
-  const settleCredit = async () => {
-    settlementAttempts += 1;
-    if (settlementAttempts === 1) throw new Error("database unavailable");
-    return { disposition: "refunded" };
   };
 
   await assert.rejects(
@@ -62,17 +52,9 @@ test("settlement failure remains retryable behind immutable failure evidence", a
       requestSessionId: SESSION_ID,
       event: providerFailure(),
       store,
-      settleCredit,
     }),
     /database unavailable/
   );
-  const repaired = await ingestInterviewRuntimeEvent({
-    requestSessionId: SESSION_ID,
-    event: providerFailure(),
-    store,
-    settleCredit,
-  });
-  assert.equal(repaired.ok && repaired.creditDisposition, "refunded");
 });
 
 test("runtime failure rejects missing correlation and cross-session claims", async () => {
@@ -80,7 +62,12 @@ test("runtime failure rejects missing correlation and cross-session claims", asy
   const store: InterviewRuntimeFailureStore = {
     async persistProviderFailure() {
       writes += 1;
-      return { ok: true, disposition: "created", sessionId: SESSION_ID };
+      return {
+        ok: true,
+        disposition: "created",
+        sessionId: SESSION_ID,
+        creditDisposition: "released",
+      };
     },
   };
 
@@ -89,7 +76,6 @@ test("runtime failure rejects missing correlation and cross-session claims", asy
       requestSessionId: SESSION_ID,
       event: { ...providerFailure(), runtime_ref: undefined },
       store,
-      settleCredit: async () => ({ disposition: "released" }),
     }),
     { ok: false, reason: "invalid_event" }
   );
@@ -98,7 +84,6 @@ test("runtime failure rejects missing correlation and cross-session claims", asy
       requestSessionId: "660e8400-e29b-41d4-a716-446655440000",
       event: providerFailure(),
       store,
-      settleCredit: async () => ({ disposition: "released" }),
     }),
     { ok: false, reason: "session_mismatch" }
   );

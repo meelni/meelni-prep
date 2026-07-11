@@ -6,6 +6,7 @@ import {
   createMemoryCreditLedgerStore,
   type CreditLedgerTransaction,
   settleReservationInTransaction,
+  type CreditLedgerTransaction,
   type CreditLedgerStore,
 } from "./credits";
 
@@ -830,6 +831,48 @@ test("provider refund creates one usable make-good when the source grant expired
     (await createCreditLedgerService({ store }).getCreditBalance("user-1"))
       .availableCredits,
     1
+  );
+
+  await assert.rejects(
+    store.withUserTransaction("user-1", async (transaction) => {
+      const corrupted = Object.create(transaction) as CreditLedgerTransaction;
+      corrupted.findGrantByIdempotencyKeyForUpdate = async (key) => {
+        const grant = await transaction.findGrantByIdempotencyKeyForUpdate(key);
+        return grant?.source === "refund"
+          ? { ...grant, remainingCredits: grant.remainingCredits + 1 }
+          : grant;
+      };
+      return settleReservationInTransaction({
+        store: corrupted,
+        expectedUserId: "user-1",
+        reservationKey: "session:expired-refund",
+        idempotencyKey:
+          "refund:interview-credit-recovery.v1:session:expired-refund",
+        action: "refund",
+        currentTime: new Date("2026-08-01T00:00:00.000Z"),
+      });
+    }),
+    /credit_grant_idempotency_conflict/
+  );
+
+  await assert.rejects(
+    store.withUserTransaction("user-1", async (transaction) => {
+      const corrupted = Object.create(transaction) as CreditLedgerTransaction;
+      corrupted.findTransactionByIdempotencyKeyForUpdate = async (key) =>
+        key.endsWith(":grant")
+          ? null
+          : transaction.findTransactionByIdempotencyKeyForUpdate(key);
+      return settleReservationInTransaction({
+        store: corrupted,
+        expectedUserId: "user-1",
+        reservationKey: "session:expired-refund",
+        idempotencyKey:
+          "refund:interview-credit-recovery.v1:session:expired-refund",
+        action: "refund",
+        currentTime: new Date("2026-08-01T00:00:00.000Z"),
+      });
+    }),
+    /credit_ledger_reconciliation_required/
   );
 });
 

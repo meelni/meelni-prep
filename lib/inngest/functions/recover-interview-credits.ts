@@ -3,7 +3,10 @@ import {
   listInterviewCreditRecoveryCandidates,
 } from "@/lib/db/interview-credit-recovery";
 import { inngest } from "@/lib/inngest/client";
-import { recoverInterviewCreditWorkflow } from "@/lib/workflows/recover-interview-credit";
+import {
+  recoverInterviewCreditCandidates,
+  recoverInterviewCreditWorkflow,
+} from "@/lib/workflows/recover-interview-credit";
 
 export const recoverInterviewCredits = inngest.createFunction(
   {
@@ -20,14 +23,17 @@ export const recoverInterviewCredits = inngest.createFunction(
         INTERVIEW_CREDIT_RECOVERY_LIMIT
       )
     );
-    const results = [];
-    for (const candidate of candidates) {
-      results.push(
-        await step.run(`recover-interview-credit-${candidate.sessionId}`, () =>
-          recoverInterviewCreditWorkflow(candidate.sessionId)
+    const results = await recoverInterviewCreditCandidates(
+      candidates,
+      (sessionId) =>
+        step.run(`recover-interview-credit-${sessionId}`, () =>
+          recoverInterviewCreditWorkflow(sessionId)
         )
-      );
-    }
-    return { attempted: candidates.length, limit: INTERVIEW_CREDIT_RECOVERY_LIMIT, results };
+    );
+    return {
+      attempted: candidates.length,
+      limit: INTERVIEW_CREDIT_RECOVERY_LIMIT,
+      results,
+    };
   }
 );
