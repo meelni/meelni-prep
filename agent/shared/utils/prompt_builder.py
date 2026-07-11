@@ -21,7 +21,6 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
             - role: "interviewee" | "interviewer"
             - mode: Interview mode (mock_interview, practice, learning, etc.)
             - skill_level: For candidate persona - "junior" | "mid" | "senior"
-            - persona: Optional custom persona modifier
             - duration: Interview duration in minutes (optional)
         question: Optional question dict from question bank with:
             - question_text: The interview question to ask
@@ -188,10 +187,5 @@ DO NOT wait for them to speak first. YOU initiate the conversation.
         if question_text:
             base_prompt += f"\n\nYour PRIMARY interview question:\n\"{question_text}\""
             base_prompt += "\n\nIMPORTANT: Use this exact question as the main question in your interview. After your opening, ask this question and guide the candidate through their response using the framework appropriate to this interview type."
-
-    # Add persona modifier if specified (backward compatibility)
-    persona = config.get("persona")
-    if persona:
-        base_prompt += f"\n\nPersona Modifier: {persona}"
 
     return base_prompt

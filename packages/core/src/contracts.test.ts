@@ -33,13 +33,12 @@ test("buildFullConfig applies system defaults and smart duration", () => {
   assert.equal(config.roundType, "strategy");
   assert.equal(config.difficulty, "advanced");
   assert.equal(config.duration, 45);
-  assert.equal(config.feedback_mode, "end_only");
-  assert.equal(config.stt_model, "deepgram/nova-3");
-  assert.equal(config.llm_model, "openai/gpt-4.1-mini");
-  assert.equal(
-    config.tts_model,
-    "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9"
-  );
+  assert.equal(config.hintMode, "off");
+  assert.deepEqual(config.questionPreference, {
+    recency: "very_recent",
+    recentDays: 365,
+  });
+  assert.equal("stt_model" in config, false);
 });
 
 test("billing catalog exposes accepted credit products", () => {

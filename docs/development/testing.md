@@ -53,11 +53,12 @@ curl -X POST ${BASE_URL}/api/session/start \
   -H "Content-Type: application/json" \
   -d '{
     "roundType": "product_sense",
-    "persona": "Friendly Google PM interviewer",
+    "role": "pm",
     "config": {
-      "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-      "speed": 1.0,
-      "emotion": "Calm"
+      "difficulty": "intermediate",
+      "duration": 45,
+      "hintMode": "off",
+      "questionPreference": {"recency": "very_recent", "recentDays": 365}
     }
   }'
 ```
@@ -201,10 +202,10 @@ curl -X GET ${BASE_URL}/api/cartesia/voices
 ### Setup
 
 ```typescript
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = "http://localhost:3000";
 
 // Get token from Supabase
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -212,7 +213,9 @@ const supabase = createClient(
 );
 
 async function getToken() {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   return session?.access_token;
 }
 ```
@@ -224,54 +227,56 @@ async function testFullInterviewFlow() {
   const token = await getToken();
 
   if (!token) {
-    console.error('Not authenticated');
+    console.error("Not authenticated");
     return;
   }
 
   try {
     // 1. Start session
-    console.log('Starting session...');
+    console.log("Starting session...");
     const startResponse = await fetch(`${BASE_URL}/api/session/start`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        roundType: 'product_sense',
+        roundType: "product_sense",
         config: {
-          voice: '6ccbfb76-1fc6-48f7-b71d-91ac6298247b',
-          speed: 1.0,
+          difficulty: "intermediate",
+          duration: 45,
+          hintMode: "off",
+          questionPreference: { recency: "very_recent", recentDays: 365 },
         },
       }),
     });
 
     const sessionData = await startResponse.json();
-    console.log('Session started:', sessionData.sessionId);
+    console.log("Session started:", sessionData.sessionId);
 
     const { sessionId } = sessionData;
 
     // 2. Save transcript turns
-    console.log('Saving transcript...');
+    console.log("Saving transcript...");
     await fetch(`${BASE_URL}/api/session/transcript`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         sessionId,
         turns: [
           {
-            speaker: 'interviewer',
-            text: 'Tell me about a product you launched.',
+            speaker: "interviewer",
+            text: "Tell me about a product you launched.",
             startedAt: new Date().toISOString(),
             endedAt: new Date(Date.now() + 8000).toISOString(),
             audioMs: 8000,
           },
           {
-            speaker: 'user',
-            text: 'I launched a mobile checkout feature...',
+            speaker: "user",
+            text: "I launched a mobile checkout feature...",
             startedAt: new Date(Date.now() + 10000).toISOString(),
             endedAt: new Date(Date.now() + 75000).toISOString(),
             audioMs: 65000,
@@ -279,52 +284,52 @@ async function testFullInterviewFlow() {
         ],
       }),
     });
-    console.log('Transcript saved');
+    console.log("Transcript saved");
 
     // 3. End session
-    console.log('Ending session...');
+    console.log("Ending session...");
     await fetch(`${BASE_URL}/api/session/end`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({ sessionId }),
     });
-    console.log('Session ended');
+    console.log("Session ended");
 
     // 4. Generate feedback
-    console.log('Generating feedback...');
+    console.log("Generating feedback...");
     const feedbackResponse = await fetch(`${BASE_URL}/api/feedback/generate`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({ sessionId }),
     });
 
     const feedbackData = await feedbackResponse.json();
-    console.log('Feedback generated:', feedbackData.feedback.overallScore);
+    console.log("Feedback generated:", feedbackData.feedback.overallScore);
 
     // 5. Retrieve feedback
-    console.log('Retrieving feedback...');
+    console.log("Retrieving feedback...");
     const getFeedbackResponse = await fetch(
       `${BASE_URL}/api/feedback/${sessionId}`,
       {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       }
     );
 
     const feedback = await getFeedbackResponse.json();
-    console.log('Strengths:', feedback.feedback.strengths);
-    console.log('Improvements:', feedback.feedback.improvements);
+    console.log("Strengths:", feedback.feedback.strengths);
+    console.log("Improvements:", feedback.feedback.improvements);
 
-    console.log('✅ Full interview flow test complete');
+    console.log("✅ Full interview flow test complete");
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error("❌ Test failed:", error);
   }
 }
 
@@ -343,21 +348,21 @@ async function makeAPIRequest(endpoint: string, options: RequestInit) {
 
       switch (response.status) {
         case 401:
-          console.error('Unauthorized - refresh token or sign in again');
+          console.error("Unauthorized - refresh token or sign in again");
           // Redirect to sign-in
           break;
         case 403:
-          console.error('Forbidden - user does not own this resource');
+          console.error("Forbidden - user does not own this resource");
           break;
         case 404:
-          console.error('Not found:', error.error);
+          console.error("Not found:", error.error);
           break;
         case 500:
-          console.error('Server error:', error.details);
+          console.error("Server error:", error.details);
           // Retry with exponential backoff
           break;
         default:
-          console.error('API error:', error.error);
+          console.error("API error:", error.error);
       }
 
       throw new Error(error.error);
@@ -365,7 +370,7 @@ async function makeAPIRequest(endpoint: string, options: RequestInit) {
 
     return response.json();
   } catch (error) {
-    console.error('Request failed:', error);
+    console.error("Request failed:", error);
     throw error;
   }
 }
@@ -402,9 +407,10 @@ def start_interview_session(round_type: str) -> Dict[str, Any]:
     payload = {
         'roundType': round_type,
         'config': {
-            'voice': '6ccbfb76-1fc6-48f7-b71d-91ac6298247b',
-            'speed': 1.0,
-            'emotion': 'Calm'
+            'difficulty': 'intermediate',
+            'duration': 45,
+            'hintMode': 'off',
+            'questionPreference': {'recency': 'very_recent', 'recentDays': 365}
         }
     }
 
@@ -601,7 +607,7 @@ if __name__ == '__main__':
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"roundType\": \"product_sense\",\n  \"config\": {\n    \"voice\": \"6ccbfb76-1fc6-48f7-b71d-91ac6298247b\",\n    \"speed\": 1.0\n  }\n}"
+              "raw": "{\n  \"roundType\": \"product_sense\",\n  \"config\": {\n    \"difficulty\": \"intermediate\",\n    \"duration\": 45,\n    \"hintMode\": \"off\",\n    \"questionPreference\": {\"recency\": \"very_recent\", \"recentDays\": 365}\n  }\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/session/start",
@@ -723,10 +729,10 @@ npm install -D vitest @vitest/ui
 
 ```typescript
 // tests/api/sessions.test.ts
-import { describe, it, expect, beforeAll } from 'vitest';
-import { createClient } from '@supabase/supabase-js';
+import { describe, it, expect, beforeAll } from "vitest";
+import { createClient } from "@supabase/supabase-js";
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = "http://localhost:3000";
 
 let authToken: string;
 
@@ -737,22 +743,24 @@ beforeAll(async () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   authToken = session!.access_token;
 });
 
-describe('Session API', () => {
+describe("Session API", () => {
   let sessionId: string;
 
-  it('should start a new session', async () => {
+  it("should start a new session", async () => {
     const response = await fetch(`${BASE_URL}/api/session/start`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${authToken}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        roundType: 'product_sense',
+        roundType: "product_sense",
       }),
     });
 
@@ -766,12 +774,12 @@ describe('Session API', () => {
     sessionId = data.sessionId;
   });
 
-  it('should end a session', async () => {
+  it("should end a session", async () => {
     const response = await fetch(`${BASE_URL}/api/session/end`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${authToken}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({ sessionId }),
     });
@@ -783,10 +791,10 @@ describe('Session API', () => {
     expect(data.session.endedAt).toBeDefined();
   });
 
-  it('should retrieve session details', async () => {
+  it("should retrieve session details", async () => {
     const response = await fetch(`${BASE_URL}/api/session/${sessionId}`, {
       headers: {
-        'Authorization': `Bearer ${authToken}`,
+        Authorization: `Bearer ${authToken}`,
       },
     });
 
@@ -794,7 +802,7 @@ describe('Session API', () => {
 
     const data = await response.json();
     expect(data.session.id).toBe(sessionId);
-    expect(data.session.roundType).toBe('product_sense');
+    expect(data.session.roundType).toBe("product_sense");
   });
 });
 ```
@@ -815,11 +823,11 @@ TEST_SESSION_ID=test-session-id
 ### 2. Test Error Handling
 
 ```typescript
-it('should return 401 for unauthenticated request', async () => {
+it("should return 401 for unauthenticated request", async () => {
   const response = await fetch(`${BASE_URL}/api/sessions`);
   expect(response.status).toBe(401);
   const data = await response.json();
-  expect(data.error).toBe('Unauthorized');
+  expect(data.error).toBe("Unauthorized");
 });
 ```
 
@@ -837,8 +845,8 @@ afterAll(async () => {
 ```typescript
 const mockTranscriptTurns = [
   {
-    speaker: 'interviewer',
-    text: 'Tell me about yourself.',
+    speaker: "interviewer",
+    text: "Tell me about yourself.",
     startedAt: new Date().toISOString(),
     endedAt: new Date(Date.now() + 5000).toISOString(),
     audioMs: 5000,
@@ -850,15 +858,15 @@ const mockTranscriptTurns = [
 ### 5. Test Rate Limiting
 
 ```typescript
-it('should respect rate limits', async () => {
+it("should respect rate limits", async () => {
   const requests = Array.from({ length: 110 }, (_, i) =>
     fetch(`${BASE_URL}/api/sessions`, {
-      headers: { 'Authorization': `Bearer ${authToken}` },
+      headers: { Authorization: `Bearer ${authToken}` },
     })
   );
 
   const responses = await Promise.all(requests);
-  const rateLimited = responses.filter(r => r.status === 429);
+  const rateLimited = responses.filter((r) => r.status === 429);
 
   expect(rateLimited.length).toBeGreaterThan(0);
 });

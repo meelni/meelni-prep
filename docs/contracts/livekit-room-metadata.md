@@ -28,12 +28,32 @@ Full interview rooms receive JSON metadata with this shape:
     "volume": 1,
     "duration": 30,
     "feedback_mode": "end_only",
+    "hintMode": "off",
+    "questionPreference": { "recency": "very_recent", "recentDays": 365 },
     "stt_model": "deepgram/nova-3",
     "llm_model": "openai/gpt-4.1-mini",
     "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
   }
 }
 ```
+
+### Configuration ownership
+
+The public session-start boundary accepts only `difficulty`, `duration`,
+`hintMode`, and `questionPreference`. Provider names, model names, voice IDs,
+speed, emotion, volume, and feedback timing are operational settings. The web
+workflow strips legacy or malicious copies of those fields before persistence
+and room creation, then resolves trusted settings from server environment.
+
+Free-form persona text is not part of the public request or room contract and
+is never appended to the agent prompt. The optional public `role` field accepts
+only the canonical `pm` value; any other value is rejected before persistence.
+
+Room metadata carries the web server's resolved snapshot for observability and
+session history. The Python voice runtime treats all provider/model/voice
+fields in metadata as untrusted and independently resolves them from its own
+environment. Web and voice-agent deployments therefore must use matching
+`MEELNI_INTERVIEW_*` values. No setting in this contract is a credential.
 
 `packages/agent/src/room-metadata.ts` is the TypeScript source of truth for the
 serialized shape. `contract_version` and `session_id` are required. The web

@@ -1,5 +1,9 @@
 # Meelni API Documentation
 
+> Internal application-route reference. Meelni does not offer a public
+> developer API. Provider, model, and voice tuning are operator-owned and are
+> never accepted by the session-start route.
+
 **Version**: 1.0.0
 **Base URL**: `https://mockmate.vercel.app` (production) | `http://localhost:3000` (development)
 **Authentication**: Supabase Auth (JWT bearer tokens)
@@ -19,7 +23,7 @@
    - [Transcript Management](#transcript-management)
    - [Feedback & Evaluation](#feedback--evaluation)
    - [LiveKit Integration](#livekit-integration)
-   - [Voice Configuration](#voice-configuration)
+   - [Legacy Voice Catalog](#legacy-voice-catalog)
 6. [Code Examples](#code-examples)
 7. [Webhooks](#webhooks)
 8. [Changelog](#changelog)
@@ -33,7 +37,7 @@ The Meelni API provides programmatic access to real-time AI-powered mock intervi
 - **Start and manage interview sessions** with AI coaches
 - **Save and retrieve conversation transcripts** turn-by-turn
 - **Generate AI feedback** with dimension scores and improvement recommendations
-- **Configure voice models and interview parameters**
+- **Choose bounded interview preferences** such as difficulty and duration
 - **Integrate LiveKit** for real-time audio/video communication
 
 ### Key Features
@@ -41,7 +45,7 @@ The Meelni API provides programmatic access to real-time AI-powered mock intervi
 - **Real-time voice interviews** via LiveKit Cloud infrastructure
 - **AI-powered feedback** using GPT-4 Turbo evaluation engine
 - **Multiple interview types**: Product Sense, Behavioral, Execution, Strategy
-- **Flexible voice configuration**: 150+ Cartesia TTS voices available
+- **Server-owned voice runtime**: provider and voice settings are operator-controlled
 - **Session persistence**: Full transcript and metadata storage
 - **User-scoped data**: Row-level security for multi-tenant isolation
 
@@ -114,7 +118,7 @@ All protected endpoints require authentication via Supabase Auth JWT tokens.
 These endpoints do **not** require authentication:
 
 - `POST /api/livekit/demo-token` - Demo token generation
-- `GET /api/cartesia/voices` - Voice model list
+- `GET /api/cartesia/voices` - Legacy informational voice catalog; not a session-start control
 
 ---
 
@@ -275,17 +279,14 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
   "roundType": "product_sense",
   "mode": "voice_video",
   "role": "pm",
-  "persona": "Friendly Google PM interviewer",
   "config": {
-    "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-    "stt_model": "deepgram/nova-3",
-    "llm_model": "openai/gpt-5",
-    "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-    "speed": 1.0,
-    "emotion": "Calm",
-    "volume": 1.0,
-    "skill_level": "intermediate",
-    "difficulty": "medium"
+    "difficulty": "intermediate",
+    "duration": 45,
+    "hintMode": "off",
+    "questionPreference": {
+      "recency": "very_recent",
+      "recentDays": 365
+    }
   }
 }
 ```
@@ -296,23 +297,20 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
 | ----------- | ------ | -------- | ------------- | ------------------------------------------------------------------------------ |
 | `roundType` | string | ✅ Yes   | -             | Interview type. One of: `behavioral`, `product_sense`, `execution`, `strategy` |
 | `mode`      | string | No       | `voice_video` | Interview mode. One of: `voice_video`, `text`                                  |
-| `role`      | string | No       | `pm`          | User's role (e.g., `pm`, `designer`, `engineer`)                               |
-| `persona`   | string | No       | `null`        | Custom interviewer persona description                                         |
-| `config`    | object | No       | `{}`          | Session configuration object (see below)                                       |
+| `role`      | string | No       | `pm`          | Canonical candidate role; only `pm` is accepted                                |
+| `config`    | object | No       | `{}`          | Client-safe interview preferences (see below)                                  |
 
 **Config Object**:
 
-| Field         | Type   | Required | Default                       | Description                                         |
-| ------------- | ------ | -------- | ----------------------------- | --------------------------------------------------- |
-| `voice`       | string | No       | Tessa voice ID                | Cartesia voice ID                                   |
-| `stt_model`   | string | No       | `deepgram/nova-3`             | Speech-to-Text model                                |
-| `llm_model`   | string | No       | `openai/gpt-5`                | Language model for dialogue                         |
-| `tts_model`   | string | No       | `cartesia/sonic-3:{voice_id}` | Text-to-Speech model with voice                     |
-| `speed`       | number | No       | `1.0`                         | Voice speed multiplier (0.6 - 1.5)                  |
-| `emotion`     | string | No       | `null`                        | Voice emotion (Happy, Calm, Confident, etc.)        |
-| `volume`      | number | No       | `1.0`                         | Voice volume multiplier (0.5 - 2.0)                 |
-| `skill_level` | string | No       | `intermediate`                | User skill level (beginner, intermediate, advanced) |
-| `difficulty`  | string | No       | `medium`                      | Interview difficulty (easy, medium, hard)           |
+| Field                | Type   | Required | Default         | Description                                      |
+| -------------------- | ------ | -------- | --------------- | ------------------------------------------------ |
+| `difficulty`         | string | No       | `intermediate`  | `beginner`, `intermediate`, or `advanced`        |
+| `duration`           | number | No       | `30`            | 15, 30, or 45 minutes                            |
+| `hintMode`           | string | No       | `off`           | `off`, `gentle`, or `coach`                      |
+| `questionPreference` | object | No       | recent defaults | Bounded recency choice and optional `recentDays` |
+
+Provider, model, voice, persona, and voice-tuning fields are not public
+controls. They are stripped or rejected before persistence and room creation.
 
 **Response** (200 OK):
 
@@ -323,12 +321,13 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
   "token": "eyJhbGciOiJIUzI1NiIs...",
   "url": "wss://meelni-ek4vaisp.livekit.cloud",
   "config": {
-    "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-    "stt_model": "deepgram/nova-3",
-    "llm_model": "openai/gpt-5",
-    "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-    "speed": 1.0,
-    "emotion": "Calm"
+    "difficulty": "intermediate",
+    "duration": 45,
+    "hintMode": "off",
+    "questionPreference": {
+      "recency": "very_recent",
+      "recentDays": 365
+    }
   }
 }
 ```
@@ -421,17 +420,17 @@ Retrieves complete information about a specific interview session including conf
     "roundType": "product_sense",
     "mode": "voice_video",
     "role": "pm",
-    "persona": "Friendly Google PM interviewer",
     "startedAt": "2025-11-05T10:30:00Z",
     "endedAt": "2025-11-05T11:15:00Z",
     "livekitRoomName": "interview-1699999999-abc123",
     "config": {
-      "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-      "stt_model": "deepgram/nova-3",
-      "llm_model": "openai/gpt-5",
-      "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-      "speed": 1.0,
-      "emotion": "Calm"
+      "difficulty": "intermediate",
+      "duration": 45,
+      "hintMode": "off",
+      "questionPreference": {
+        "recency": "very_recent",
+        "recentDays": 365
+      }
     }
   }
 }
@@ -878,11 +877,13 @@ Generates LiveKit access tokens specifically for 60-second demo conversations on
 
 ---
 
-## Voice Configuration
+## Legacy Voice Catalog
 
 ### GET /api/cartesia/voices
 
-Returns a curated list of popular Cartesia TTS voice models available through LiveKit Inference. These voices are pre-selected for optimal interview coaching experience with diverse gender, accent, and tone options.
+Returns a legacy informational catalog. It is retained for compatibility and
+operator diagnostics; candidates cannot submit these IDs to
+`POST /api/session/start`, and the current product exposes no voice selector.
 
 **Authentication**: Public (no authentication required)
 
@@ -919,7 +920,7 @@ Returns a curated list of popular Cartesia TTS voice models available through Li
 
 | Field         | Type   | Description                                           |
 | ------------- | ------ | ----------------------------------------------------- |
-| `id`          | string | Voice UUID (use in `config.voice`)                    |
+| `id`          | string | Legacy voice UUID                                     |
 | `name`        | string | Display name (e.g., "British Lady", "Confident Lady") |
 | `description` | string | Voice characteristics description                     |
 | `gender`      | string | Voice gender (`male` \| `female`)                     |
@@ -930,8 +931,9 @@ Returns a curated list of popular Cartesia TTS voice models available through Li
 - No Cartesia API key required when using LiveKit Inference
 - LiveKit handles authentication with Cartesia on backend
 - Voices are hardcoded for consistent UX (no external API dependency)
-- Full Cartesia voice library (150+ voices) available via: `GET https://api.cartesia.ai/voices`
-- Default voice: Tessa (`6ccbfb76-1fc6-48f7-b71d-91ac6298247b`) - not in this list but used in agent
+- Runtime voice selection is configured through server-only
+  `MEELNI_INTERVIEW_*` environment variables.
+- Catalog entries are not accepted session-start preferences.
 
 ---
 
@@ -967,11 +969,12 @@ async function startInterview() {
     },
     body: JSON.stringify({
       roundType: "product_sense",
-      persona: "Friendly Google PM interviewer",
+      role: "pm",
       config: {
-        voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-        speed: 1.0,
-        emotion: "Calm",
+        difficulty: "intermediate",
+        duration: 45,
+        hintMode: "off",
+        questionPreference: { recency: "very_recent", recentDays: 365 },
       },
     }),
   });
@@ -1098,30 +1101,6 @@ async function getProductSenseSessions(limit = 10) {
 }
 ```
 
-### Fetching Available Voices
-
-```typescript
-async function getVoices() {
-  const response = await fetch("/api/cartesia/voices");
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch voices");
-  }
-
-  const voices = await response.json();
-
-  // Filter by gender
-  const femaleVoices = voices.filter((v) => v.gender === "female");
-  const maleVoices = voices.filter((v) => v.gender === "male");
-
-  console.log(`Available voices: ${voices.length}`);
-  console.log(`Female voices: ${femaleVoices.length}`);
-  console.log(`Male voices: ${maleVoices.length}`);
-
-  return voices;
-}
-```
-
 ### Full Interview Flow Example
 
 ```typescript
@@ -1198,7 +1177,7 @@ Planned webhook events:
 - Transcript storage endpoints (`POST /api/session/transcript`, `GET /api/session/:sessionId/transcript`)
 - Feedback generation endpoints (`POST /api/feedback/generate`, `GET /api/feedback/:sessionId`)
 - LiveKit token generation (`POST /api/livekit/token`, `POST /api/livekit/demo-token`)
-- Cartesia voice selection (`GET /api/cartesia/voices`)
+- Legacy informational Cartesia voice catalog (`GET /api/cartesia/voices`)
 - Supabase Auth integration (Google OAuth)
 - TypeScript type definitions (`/types/api.ts`)
 

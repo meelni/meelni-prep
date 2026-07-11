@@ -222,15 +222,15 @@ await session.start(agent=InterviewAgent(instructions=prompt), room=room)
 
 ## 🎛️ Configuration Options
 
-The agent accepts dynamic configuration via room metadata (passed from frontend setup page):
+The agent accepts only validated interview preferences from room metadata.
+Provider, model, and voice settings are resolved from server-only
+`MEELNI_INTERVIEW_*` environment variables; the frontend cannot select them.
 
 ### Interview Configuration
 
-- **Role**: `interviewee` (user being interviewed) or `interviewer` (user conducting interview)
 - **Interview Type**: `product_sense`, `analytical`, `leadership`, `strategy`
-- **Mode**: `mock_interview`, `practice`, `learning`, etc.
-- **Voice Model**: Cartesia voice ID (default: Tessa)
-- **Advanced**: Speed, emotion, volume, difficulty, time limits
+- **Candidate preferences**: difficulty, hint mode, question recency, time limit
+- **Operator settings**: STT/LLM/TTS model, voice, speed, emotion, and volume
 
 ### Dynamic Prompt System
 
@@ -317,30 +317,15 @@ CMD ["python", "agent.py", "start"]
 
 ### Changing Voice Model
 
-Edit `agent.py` and update the TTS configuration:
-
-```python
-tts_model = "cartesia/sonic-3:<VOICE_ID>"
-```
-
-Find voice IDs:
-
-- [Cartesia Voice Library](https://docs.cartesia.ai/voices) (150+ voices)
-- API: `GET https://api.cartesia.ai/voices`
+Set `MEELNI_INTERVIEW_TTS_MODEL` and `MEELNI_INTERVIEW_VOICE` on both the web
+and voice-agent deployments. See
+`docs/operations/interview-runtime-configuration.md`.
 
 ### Adjusting Speech Speed/Emotion
 
-Modify TTS parameters in session config:
-
-```python
-tts = {
-    "model": "sonic-3",
-    "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-    "speed": 1.0,      # 0.6 to 1.5
-    "emotion": ["Confident", "Calm"],
-    "volume": 1.0,     # 0.5 to 2.0
-}
-```
+Set the server-only `MEELNI_INTERVIEW_TTS_SPEED`,
+`MEELNI_INTERVIEW_TTS_EMOTION`, and `MEELNI_INTERVIEW_TTS_VOLUME` variables.
+The shared runtime normalizer enforces their accepted ranges.
 
 ### Custom Interviewer Instructions
 
@@ -468,7 +453,8 @@ Assesses business acumen, market understanding, competitive analysis, long-term 
 
 ### Room Metadata Configuration
 
-Pass configuration via room metadata (JSON):
+The web server writes a resolved runtime snapshot to room metadata. This is an
+internal transport contract, not a client request shape:
 
 ```json
 {
@@ -477,7 +463,6 @@ Pass configuration via room metadata (JSON):
     "difficulty": "intermediate",
     "duration": 45,
     "feedback_mode": "end_only",
-    "persona": null,
     "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
     "speed": 1.0,
     "emotion": "professional",
