@@ -15,9 +15,11 @@ test("selected question confirmation renders question, company, and round access
           company: "Stripe",
           type: "Product Sense",
         },
+        roundType: "product_sense",
       }}
       changeQuestionHref="/explore?type=Product+Sense"
       continueWithoutQuestionHref="/dashboard/new-interview?company=Stripe"
+      onRetry={() => {}}
     />
   );
 
@@ -39,6 +41,7 @@ test("stale question intent offers two clear recovery paths", () => {
       state={{ status: "unavailable" }}
       changeQuestionHref="/explore?company=Meta"
       continueWithoutQuestionHref="/dashboard/new-interview?company=Meta"
+      onRetry={() => {}}
     />
   );
 
@@ -56,10 +59,28 @@ test("question validation has a polite loading state", () => {
       state={{ status: "loading" }}
       changeQuestionHref="/explore"
       continueWithoutQuestionHref="/dashboard/new-interview"
+      onRetry={() => {}}
     />
   );
 
   assert.match(html, /aria-live="polite"/);
   assert.match(html, /aria-busy="true"/);
   assert.match(html, /Checking your selected question/);
+});
+
+test("temporary verification failure keeps intent and offers retry", () => {
+  const html = renderToStaticMarkup(
+    <SelectedQuestionConfirmation
+      state={{ status: "temporary_error" }}
+      changeQuestionHref="/explore"
+      continueWithoutQuestionHref="/dashboard/new-interview"
+      onRetry={() => {}}
+    />
+  );
+
+  assert.match(html, /couldn’t verify this question yet/i);
+  assert.match(html, /still attached to this interview/i);
+  assert.match(html, /starting is paused/i);
+  assert.match(html, />Retry</);
+  assert.doesNotMatch(html, /This question is no longer available/);
 });

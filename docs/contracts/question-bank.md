@@ -37,11 +37,25 @@ same `404` response. The practice setup surface validates a non-empty selected
 question before enabling interview start and renders its question text,
 company tag, and canonical round label for confirmation.
 
+For a selected question, the active database record is authoritative for the
+round. Setup disables round changes while that intent is attached, and session
+start normalizes the persisted question type before user, credit, session,
+usage, or LiveKit side effects. A conflicting compatibility query is ignored;
+an active question whose stored type cannot map to a canonical round fails with
+the stable `selected_question_round_unavailable` response. Question-free
+launches continue to use the candidate-selected or query-provided round.
+
 If selected intent becomes unavailable, setup presents explicit recovery. The
 candidate can choose another question from the safe `returnTo` origin or remove
 only `questionId` and continue with all other canonical and compatibility query
 parameters intact. Session start repeats the active-record check so a question
 deactivated after setup validation cannot be used.
+
+Malformed, missing, inactive, and semantically invalid question intent is
+terminal and uses the unavailable recovery state. A `5xx`, network failure, or
+response parse failure is temporary: setup retains `questionId`, disables
+start, explains that verification is paused, and offers Retry without changing
+the rest of the launch query.
 
 ## Data rollout
 

@@ -65,7 +65,7 @@
     "test:legal": "tsx --test lib/legal/*.test.ts app/legal-pages.test.ts && node --test scripts/legal-content-contract.test.mjs",
     "test:workflows": "tsx --test lib/workflows/*.test.ts lib/db/*.test.ts lib/question-sync/*.test.ts lib/security/*.test.ts lib/supabase/*.test.ts lib/auth/*.test.ts lib/navigation/*.test.ts lib/analytics/*.test.ts lib/dashboard/*.test.ts",
     "test:api": "vitest run app/auth/callback/route.test.ts app/api/contact/route.test.ts app/api/questions/[id]/route.test.ts app/api/interview/end/__tests__/route.test.ts app/api/feedback/[sessionId]/route.test.ts app/api/checkout/create-session/route.test.ts app/api/webhooks/stripe/route.test.ts app/api/user/export/route.test.ts app/api/user/delete/route.test.ts",
-    "test:auth-ui": "tsx --test components/auth/*.test.tsx app/setup/components/*.test.tsx && vitest run components/explore/question-signin-modal.test.tsx app/auth/*.test.tsx",
+    "test:auth-ui": "tsx --test components/auth/*.test.tsx app/setup/components/*.test.tsx && vitest run components/explore/question-signin-modal.test.tsx app/auth/*.test.tsx app/setup/use-selected-question-intent.test.tsx",
     "test:billing": "tsx --test lib/billing/*.test.ts",
     "test:operations": "tsx --test lib/operations/*.test.ts && node --test scripts/check-service-health.test.mjs",
     "test:packages": "tsx --test scripts/package-entrypoints.test.ts",

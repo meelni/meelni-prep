@@ -99,6 +99,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     livekitProvider: {
       startInterviewRoom: async (input) => {
         const metadata = input.metadata as InterviewRoomMetadata;
+        assert.equal(metadata.round_type, "product_sense");
         assert.equal(
           metadata.question?.askedAt,
           productFixture.session.startedAt.toISOString()
@@ -116,7 +117,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     {
       user,
       body: {
-        roundType: "product_sense",
+        roundType: "strategy",
         mode: "voice_video",
         role: "pm",
         config: productFixture.roomMetadata.config,
@@ -158,6 +159,58 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     "transition:connecting",
     "consumeReservation",
   ]);
+});
+
+test("startInterviewSessionWorkflow rejects an unmappable selected question before side effects", async () => {
+  const fixture = createProductSenseInterviewFixture();
+  const calls: string[] = [];
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: {
+        roundType: "strategy",
+        questionId: fixture.question.questionId,
+      },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      getQuestionById: async () => {
+        calls.push("getQuestionById");
+        return {
+          id: fixture.question.questionId,
+          company: fixture.question.company,
+          questionText: fixture.question.questionText,
+          questionType: "Unknown legacy category",
+          askedAt: fixture.session.startedAt,
+          isActive: true,
+          createdAt: fixture.session.startedAt,
+        };
+      },
+      upsertUser: async () => {
+        calls.push("upsertUser");
+      },
+      reserveCredit: async () => {
+        calls.push("reserveCredit");
+        throw new Error("must not reserve");
+      },
+      createSession: async (input) => {
+        calls.push("createSession");
+        return { id: fixture.session.id, config: input.config };
+      },
+    })
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.status, 409);
+    assert.deepEqual(result.body, {
+      error: "selected_question_round_unavailable",
+      message:
+        "This question cannot be started because its interview round is unavailable.",
+    });
+  }
+  assert.deepEqual(calls, ["getQuestionById"]);
 });
 
 test("startInterviewSessionWorkflow rejects a selected question that became inactive", async () => {

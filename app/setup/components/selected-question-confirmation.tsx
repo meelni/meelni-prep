@@ -9,29 +9,25 @@ import {
 
 import { StatusPill } from "@/components/ui/app-surface";
 import { Button } from "@/components/ui/button";
+import type { SelectedQuestionIntentState } from "../use-selected-question-intent";
 
-export interface SelectedQuestionDetails {
-  text: string;
-  company: string | null;
-  type: string;
-}
-
-export type SelectedQuestionIntentState =
-  | { status: "none" }
-  | { status: "loading" }
-  | { status: "ready"; question: SelectedQuestionDetails }
-  | { status: "unavailable" };
+export type {
+  SelectedQuestionDetails,
+  SelectedQuestionIntentState,
+} from "../use-selected-question-intent";
 
 interface SelectedQuestionConfirmationProps {
   state: Exclude<SelectedQuestionIntentState, { status: "none" }>;
   changeQuestionHref: string;
   continueWithoutQuestionHref: string;
+  onRetry: () => void;
 }
 
 export function SelectedQuestionConfirmation({
   state,
   changeQuestionHref,
   continueWithoutQuestionHref,
+  onRetry,
 }: SelectedQuestionConfirmationProps) {
   if (state.status === "loading") {
     return (
@@ -43,6 +39,41 @@ export function SelectedQuestionConfirmation({
         <div className="text-dashboard-muted flex min-h-20 items-center gap-3 text-sm">
           <Loader2 className="text-primary h-5 w-5 shrink-0 animate-spin" />
           <span>Checking your selected question…</span>
+        </div>
+      </section>
+    );
+  }
+
+  if (state.status === "temporary_error") {
+    return (
+      <section
+        aria-labelledby="selected-question-temporary-title"
+        className="border-dashboard-panel-border bg-dashboard-panel rounded-lg border p-5"
+      >
+        <div className="flex items-start gap-3">
+          <AlertCircle
+            className="text-dashboard-muted mt-0.5 h-5 w-5 shrink-0"
+            aria-hidden="true"
+          />
+          <div className="min-w-0 flex-1 space-y-4">
+            <div className="space-y-1">
+              <h2
+                id="selected-question-temporary-title"
+                className="text-dashboard-foreground text-base font-semibold"
+              >
+                We couldn’t verify this question yet
+              </h2>
+              <p className="text-dashboard-muted max-w-2xl text-sm leading-6">
+                Your selected question is still attached to this interview. We
+                couldn’t check it right now, so starting is paused until the
+                check succeeds.
+              </p>
+            </div>
+            <Button type="button" variant="outline" onClick={onRetry}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry
+            </Button>
+          </div>
         </div>
       </section>
     );

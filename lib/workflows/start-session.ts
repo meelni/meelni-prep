@@ -8,6 +8,7 @@ import {
 } from "@/lib/internal/agent";
 import {
   isValidRoundType,
+  normalizeQuestionRound,
   questionTypeStorageAliasesForRound,
   type RoundType,
 } from "@/lib/internal/core";
@@ -158,6 +159,7 @@ export async function startInterviewSessionWorkflow(
   if (!question.ok) {
     return question;
   }
+  const resolvedRoundType = question.roundType;
 
   await deps.upsertUser({
     id: input.user.id,
@@ -190,7 +192,7 @@ export async function startInterviewSessionWorkflow(
     session = await deps.createSession({
       userId: input.user.id,
       role,
-      roundType,
+      roundType: resolvedRoundType,
       mode,
       livekitRoomName: roomName,
       config: { ...runtimeConfig },
@@ -219,7 +221,7 @@ export async function startInterviewSessionWorkflow(
 
   const roomMetadata = buildInterviewRoomMetadata({
     session_id: session.id,
-    round_type: roundType,
+    round_type: resolvedRoundType,
     mode,
     config: runtimeConfig,
     question: question.value
@@ -511,7 +513,11 @@ async function selectQuestion({
   recentDays?: number;
   deps: StartInterviewSessionDeps;
 }): Promise<
-  | { ok: true; value: QuestionBankRecord | null }
+  | {
+      ok: true;
+      value: QuestionBankRecord | null;
+      roundType: RoundType;
+    }
   | StartInterviewSessionErrorResult
 > {
   if (questionId) {
@@ -525,8 +531,27 @@ async function selectQuestion({
       };
     }
 
+    const selectedQuestionRoundType = normalizeQuestionRound(
+      question.questionType
+    );
+    if (!selectedQuestionRoundType) {
+      return {
+        ok: false,
+        status: 409,
+        body: {
+          error: "selected_question_round_unavailable",
+          message:
+            "This question cannot be started because its interview round is unavailable.",
+        },
+      };
+    }
+
     logQuestion("Using pre-selected question", question);
-    return { ok: true, value: question };
+    return {
+      ok: true,
+      value: question,
+      roundType: selectedQuestionRoundType,
+    };
   }
 
   const dbQuestionTypes = QUESTION_TYPE_MAP[roundType];
@@ -554,7 +579,7 @@ async function selectQuestion({
     total_available_types: dbQuestionTypes.length,
   });
 
-  return { ok: true, value: question };
+  return { ok: true, value: question, roundType };
 }
 
 function getRecentDays(config: InterviewClientPreferences): number | undefined {

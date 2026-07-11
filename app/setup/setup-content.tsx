@@ -22,7 +22,6 @@ import {
   buildFullConfig,
   DIFFICULTY_LEVELS,
   INTERVIEW_TYPE_LABELS,
-  mapQuestionTypeToRoundType,
   type DifficultyLevel,
   type MinimalInterviewConfig,
   type RoundType,
@@ -30,10 +29,8 @@ import {
 import { validateSessionStart } from "@/lib/validation/setup-schema";
 import { RoundSelector } from "./components/round-selector";
 import { DifficultySelector } from "./components/difficulty-selector";
-import {
-  SelectedQuestionConfirmation,
-  type SelectedQuestionIntentState,
-} from "./components/selected-question-confirmation";
+import { SelectedQuestionConfirmation } from "./components/selected-question-confirmation";
+import { useSelectedQuestionIntent } from "./use-selected-question-intent";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import { QuotaExceededModal } from "@/components/dashboard/quota-exceeded-modal";
 import { TierUpgradeModal } from "@/components/dashboard/tier-upgrade-modal";
@@ -92,15 +89,19 @@ export function SetupContent() {
     fallbackRecommendation.difficulty
   );
 
-  // Question from explore page
-  const [questionId, setQuestionId] = useState<string | null>(null);
-  const [questionData, setQuestionData] = useState<{
-    text: string;
-    company: string | null;
-    type: string;
-  } | null>(null);
-  const [questionIntentState, setQuestionIntentState] =
-    useState<SelectedQuestionIntentState>({ status: "none" });
+  const { state: questionIntentState, retry: retryQuestionVerification } =
+    useSelectedQuestionIntent(questionIdParam);
+  const questionId =
+    questionIntentState.status === "ready" ? questionIdParam : null;
+  const questionData =
+    questionIntentState.status === "ready"
+      ? questionIntentState.question
+      : null;
+  const selectedQuestionRoundType =
+    questionIntentState.status === "ready"
+      ? questionIntentState.roundType
+      : null;
+  const effectiveRoundType = selectedQuestionRoundType ?? roundType;
   const launcherViewKey = questionIdParam ?? "dashboard";
   const trackedLauncherViewKey = useRef<string | null>(null);
 
@@ -176,78 +177,19 @@ export function SetupContent() {
     }
   }, [launchContext.difficulty, launchContext.roundType]);
 
-  // Fetch question from URL parameter if provided
   useEffect(() => {
-    if (!questionIdParam) {
-      setQuestionId(null);
-      setQuestionData(null);
-      setQuestionIntentState({ status: "none" });
+    if (questionIntentState.status !== "ready" || !questionIdParam) {
       return;
     }
-    const selectedQuestionId = questionIdParam;
 
-    let isCurrent = true;
-    setQuestionId(null);
-    setQuestionData(null);
-    setQuestionIntentState({ status: "loading" });
-
-    async function fetchQuestion() {
-      try {
-        const response = await fetch(
-          `/api/questions/${encodeURIComponent(selectedQuestionId)}`
-        );
-        if (!response.ok) {
-          if (isCurrent) setQuestionIntentState({ status: "unavailable" });
-          return;
-        }
-
-        const data = await response.json();
-        if (!isCurrent) return;
-        if (
-          typeof data.questionText !== "string" ||
-          !data.questionText.trim() ||
-          typeof data.questionType !== "string" ||
-          !data.questionType.trim() ||
-          (data.company !== null && typeof data.company !== "string")
-        ) {
-          setQuestionIntentState({ status: "unavailable" });
-          return;
-        }
-
-        setQuestionId(selectedQuestionId);
-        const selectedQuestion = {
-          text: data.questionText,
-          company: data.company,
-          type: data.questionType,
-        };
-        setQuestionData(selectedQuestion);
-        setQuestionIntentState({
-          status: "ready",
-          question: selectedQuestion,
-        });
-
-        const mappedRoundType = mapQuestionTypeToRoundType(data.questionType);
-        if (mappedRoundType && !launchContext.roundType) {
-          setRoundType(mappedRoundType);
-          defaultRoundType.current = mappedRoundType;
-        }
-
-        // Track that user came from explore page
-        track(AnalyticsEvents.SETUP_PAGE_VIEWED, {
-          source: "explore",
-          questionId: selectedQuestionId,
-          questionType: data.questionType,
-        });
-      } catch {
-        if (isCurrent) setQuestionIntentState({ status: "unavailable" });
-      }
-    }
-
-    fetchQuestion();
-    return () => {
-      isCurrent = false;
-    };
-  }, [launchContext.roundType, questionIdParam]);
+    setRoundType(questionIntentState.roundType);
+    defaultRoundType.current = questionIntentState.roundType;
+    track(AnalyticsEvents.SETUP_PAGE_VIEWED, {
+      source: "explore",
+      questionId: questionIdParam,
+      questionType: questionIntentState.question.type,
+    });
+  }, [questionIdParam, questionIntentState]);
 
   useEffect(() => {
     const isLauncherViewReady =
@@ -337,7 +279,7 @@ export function SetupContent() {
       return;
     }
 
-    if (!roundType || !difficulty) {
+    if (!effectiveRoundType || !difficulty) {
       setError("Please complete all required fields");
       return;
     }
@@ -348,23 +290,23 @@ export function SetupContent() {
     // Track setup completion
     const timeToComplete = (Date.now() - pageLoadTime.current) / 1000;
     const selectionsChanged =
-      (roundType !== defaultRoundType.current ? 1 : 0) +
+      (effectiveRoundType !== defaultRoundType.current ? 1 : 0) +
       (difficulty !== defaultDifficulty.current ? 1 : 0);
 
     analytics.track("setup_completed", {
       user_id: user!.id,
-      interview_type: roundType,
+      interview_type: effectiveRoundType,
       skill_level: difficulty,
       mode: "voice_video",
       time_to_complete_seconds: Math.floor(timeToComplete),
       selections_changed: selectionsChanged,
     });
     const startAttemptedProperties = {
-      interview_type: roundType,
+      interview_type: effectiveRoundType,
       skill_level: difficulty,
       recommendation_source: recommendation.source,
       accepted_recommendation:
-        roundType === recommendation.roundType &&
+        effectiveRoundType === recommendation.roundType &&
         difficulty === recommendation.difficulty,
       question_id: questionId || undefined,
       ...analyticsLaunchContext,
@@ -390,7 +332,7 @@ export function SetupContent() {
 
       // Build minimal user config
       const minimalConfig: MinimalInterviewConfig = {
-        roundType,
+        roundType: effectiveRoundType,
         difficulty,
       };
 
@@ -399,7 +341,7 @@ export function SetupContent() {
 
       // Prepare session data
       const sessionData = {
-        roundType,
+        roundType: effectiveRoundType,
         mode: "voice_video" as const,
         config: fullConfig,
         questionId: questionId || undefined, // Include pre-selected question if available
@@ -429,7 +371,7 @@ export function SetupContent() {
           errorData.error === "interview_type_locked"
         ) {
           setTierUpgradeInfo({
-            requestedType: roundType,
+            requestedType: effectiveRoundType,
             currentTier: errorData.currentTier || "free",
             message:
               errorData.message ||
@@ -463,7 +405,7 @@ export function SetupContent() {
 
       const startSucceededProperties = {
         session_id: sessionId,
-        interview_type: roundType,
+        interview_type: effectiveRoundType,
         skill_level: difficulty,
         question_id: questionId || undefined,
         ...analyticsLaunchContext,
@@ -487,7 +429,7 @@ export function SetupContent() {
     } catch (err) {
       console.error("Failed to start session:", err);
       const startFailedProperties = {
-        interview_type: roundType,
+        interview_type: effectiveRoundType,
         skill_level: difficulty,
         error: err instanceof Error ? err.message : "unknown",
         ...analyticsLaunchContext,
@@ -587,6 +529,7 @@ export function SetupContent() {
                 state={questionIntentState}
                 changeQuestionHref={changeQuestionHref}
                 continueWithoutQuestionHref={continueWithoutQuestionHref}
+                onRetry={retryQuestionVerification}
               />
             </motion.div>
           )}
@@ -665,7 +608,9 @@ export function SetupContent() {
                 Customize
               </h2>
               <p className="text-dashboard-muted text-sm">
-                Change the round or seniority bar before starting.
+                {selectedQuestionRoundType
+                  ? "The selected question sets the interview round. You can still change the seniority bar."
+                  : "Change the round or seniority bar before starting."}
               </p>
             </div>
 
@@ -680,7 +625,8 @@ export function SetupContent() {
               </div>
             ) : (
               <RoundSelector
-                selected={roundType}
+                selected={effectiveRoundType}
+                disabled={Boolean(selectedQuestionRoundType)}
                 onSelect={(type) => {
                   if (defaultRoundType.current === null) {
                     defaultRoundType.current = type;
@@ -695,7 +641,7 @@ export function SetupContent() {
                     "new_interview_recommendation_changed",
                     properties
                   );
-                  setRoundType(type);
+                  if (!selectedQuestionRoundType) setRoundType(type);
                 }}
                 lockedTypes={[]}
               />
@@ -710,7 +656,7 @@ export function SetupContent() {
 
                 analytics.track("skill_level_selected", {
                   skill_level: level,
-                  interview_type: roundType || "unknown",
+                  interview_type: effectiveRoundType || "unknown",
                   is_default_selection: defaultDifficulty.current === level,
                 });
                 const properties = {
@@ -737,8 +683,9 @@ export function SetupContent() {
               <div className="text-dashboard-muted flex items-center gap-3 text-sm">
                 <Mic className="text-primary h-4 w-4" />
                 <span>
-                  {roundType && INTERVIEW_TYPE_LABELS[roundType]} ·{" "}
-                  {difficulty && DIFFICULTY_LEVELS[difficulty].label} · hints
+                  {effectiveRoundType &&
+                    INTERVIEW_TYPE_LABELS[effectiveRoundType]}{" "}
+                  · {difficulty && DIFFICULTY_LEVELS[difficulty].label} · hints
                   off by default
                 </span>
               </div>
@@ -746,7 +693,7 @@ export function SetupContent() {
                 onClick={handleStartInterview}
                 disabled={
                   isCreatingSession ||
-                  !roundType ||
+                  !effectiveRoundType ||
                   !difficulty ||
                   (questionIdParam !== null &&
                     questionIntentState.status !== "ready")
