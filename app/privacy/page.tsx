@@ -1,4 +1,5 @@
-import { ShieldCheck } from "lucide-react";
+import { AlertTriangle, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 import {
   MarketingArticleHeader,
@@ -7,238 +8,231 @@ import {
   MarketingProse,
 } from "@/components/marketing/marketing-surface";
 import { Header } from "@/components/sections/header";
+import { Button } from "@/components/ui/button";
+import {
+  createLegalDraftMetadata,
+  LEGAL_DRAFT_NOTICE,
+  LEGAL_DRAFT_REVIEWED_ON,
+  PRIVACY_OWNER_DECISIONS,
+} from "@/lib/legal/public-legal-content";
 
-export default function PrivacyPolicy() {
+export const metadata = createLegalDraftMetadata(
+  "Privacy Draft | Meelni",
+  "An unapproved engineering draft describing current Meelni data behavior for accountable owner and legal review."
+);
+
+export default function PrivacyPolicyDraft() {
   return (
     <MarketingPage>
       <Header />
       <main className="mx-auto max-w-4xl px-6 py-16">
         <MarketingArticleHeader
-          eyebrow={<MarketingEyebrow icon={ShieldCheck}>Legal</MarketingEyebrow>}
-          title="Privacy Policy"
+          eyebrow={
+            <MarketingEyebrow icon={ShieldCheck}>Review Draft</MarketingEyebrow>
+          }
+          title="Privacy draft for owner review"
           meta={
-            <p className="text-sm text-muted-foreground">
-              Last Updated: November 8, 2025
+            <p className="text-muted-foreground text-sm">
+              Engineering review: {LEGAL_DRAFT_REVIEWED_ON} · No effective date
             </p>
           }
         />
 
+        <div className="border-warning/40 bg-warning/5 mt-8 rounded-xl border p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle
+              className="text-warning mt-0.5 h-5 w-5 shrink-0"
+              aria-hidden="true"
+            />
+            <div>
+              <h2 className="text-foreground font-semibold">Draft status</h2>
+              <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                {LEGAL_DRAFT_NOTICE} It describes the repository behavior
+                reviewed on the date above and marks unresolved privacy policy
+                choices rather than inventing guarantees.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <MarketingProse className="mt-10">
-          <div className="space-y-8">
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">1. Introduction</h2>
-            <p>
-              Meelni ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how
-              we collect, use, disclose, and safeguard your information when you use our AI-powered mock interview
-              service.
-            </p>
-          </section>
+          <div className="space-y-10">
+            <section>
+              <h2 className="font-display text-2xl font-semibold">
+                1. Data the current product handles
+              </h2>
+              <h3>Account and authentication</h3>
+              <p>
+                Meelni supports Google sign-in and email with a password.
+                Supabase authentication supplies account identifiers, email,
+                sign-in metadata, and provider metadata. The application can
+                store a display name, preferences, and practice settings.
+              </p>
 
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">2. Information We Collect</h2>
+              <h3>Live PM interview practice</h3>
+              <p>
+                The application stores mock-interview lifecycle and timing data,
+                selected questions, transcript text and turn timing, generated
+                feedback and scores, practice history, bookmarks, practice sets,
+                achievements, and progress insights.
+              </p>
+              <p>
+                Live voice audio is transmitted to real-time speech and voice
+                services while an interview is running. The application data
+                model reviewed for this draft stores transcript text and audio
+                duration metadata, not replayable audio files. Provider-side
+                processing and retention still require owner review against the
+                applicable provider agreements.
+              </p>
 
-            <h3 className="text-xl font-semibold mt-6 mb-3">2.1 Information You Provide</h3>
-            <ul className="list-disc pl-6 space-y-2 mb-4">
-              <li>Account information (name, email address) when you sign up via Google OAuth</li>
-              <li>Profile information you choose to provide</li>
-              <li>Communication data when you contact us for support</li>
-            </ul>
+              <h3>Billing</h3>
+              <p>
+                Stripe handles checkout and payment processing. Meelni stores
+                the subscription, payment summary, usage, credit-ledger, and
+                provider references needed to grant access, reconcile billing,
+                and perform account cleanup. Raw payment-card details are not
+                part of the reviewed application database model.
+              </p>
 
-            <h3 className="text-xl font-semibold mt-6 mb-3">2.2 Automatically Collected Information</h3>
-            <ul className="list-disc pl-6 space-y-2 mb-4">
-              <li>Interview session data (audio recordings, transcripts, timestamps)</li>
-              <li>Performance metrics and feedback scores</li>
-              <li>Usage data (features used, session duration, interaction patterns)</li>
-              <li>Device information (browser type, operating system, IP address)</li>
-              <li>Cookies and similar tracking technologies</li>
-            </ul>
+              <h3>Analytics and browser storage</h3>
+              <p>
+                When configured, PostHog and Statsig browser clients can process
+                an anonymous identifier, page and feature events, and—after
+                sign-in—the account identifier, email domain, signup method, and
+                account creation time. The current repository also contains
+                automatic-capture and session-replay paths. The PostHog banner
+                defaults to tracking until decline; Statsig initialization is
+                separate and does not read that choice. Consent, replay, cookie
+                classification, and retention behavior are separate launch
+                blockers and are not approved by this draft.
+              </p>
 
-            <h3 className="text-xl font-semibold mt-6 mb-3">2.3 Voice and Audio Data</h3>
-            <p>
-              When you participate in mock interviews, we collect and process:
-            </p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Real-time audio recordings of your interview sessions</li>
-              <li>Speech-to-text transcriptions of your responses</li>
-              <li>AI-generated feedback and performance analysis</li>
-            </ul>
-          </section>
+              <h3>Support</h3>
+              <p>
+                Information a person submits through contact or support paths is
+                processed to respond to that request. The accountable owner must
+                confirm the monitored support and privacy contacts before final
+                publication.
+              </p>
+            </section>
 
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">3. How We Use Your Information</h2>
-            <p className="mb-4">We use the information we collect to:</p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Provide and maintain our interview coaching service</li>
-              <li>Generate personalized feedback and performance analytics</li>
-              <li>Improve our AI models and service quality</li>
-              <li>Communicate with you about your account and service updates</li>
-              <li>Respond to your inquiries and provide customer support</li>
-              <li>Monitor and analyze usage patterns and trends</li>
-              <li>Detect, prevent, and address technical issues and fraudulent activity</li>
-              <li>Comply with legal obligations and enforce our Terms of Service</li>
-            </ul>
-          </section>
+            <section>
+              <h2 className="font-display text-2xl font-semibold">
+                2. Why the product processes this data
+              </h2>
+              <ul>
+                <li>Authenticate accounts and preserve account settings.</li>
+                <li>Run live PM mock interviews and maintain session state.</li>
+                <li>
+                  Persist transcripts and generate feedback and progress views.
+                </li>
+                <li>
+                  Manage finite interview credits, checkout, and billing
+                  recovery.
+                </li>
+                <li>
+                  Operate, secure, diagnose, and improve the product experience.
+                </li>
+                <li>Measure feature usage when analytics is configured.</li>
+              </ul>
+              <p>
+                The reviewed repository does not establish a separate pipeline
+                that trains provider foundation models on interview content.
+                Provider data-use terms and any future internal model-training
+                purpose require explicit owner approval before being stated.
+              </p>
+            </section>
 
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">4. Data Storage and Security</h2>
-            <p className="mb-4">
-              We implement industry-standard security measures to protect your data:
-            </p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Encryption of data in transit using TLS/SSL protocols</li>
-              <li>Encryption of sensitive data at rest in our databases</li>
-              <li>Row-level security policies to isolate user data</li>
-              <li>Regular security audits and vulnerability assessments</li>
-              <li>Access controls limiting employee access to personal data</li>
-            </ul>
-            <p className="mt-4">
-              Your interview data is stored on secure servers hosted by Supabase (database) and LiveKit (real-time
-              infrastructure). We retain your data for as long as your account is active or as needed to provide
-              services.
-            </p>
-          </section>
+            <section>
+              <h2 className="font-display text-2xl font-semibold">
+                3. Service-provider boundaries
+              </h2>
+              <p>
+                Current code integrates categories of providers for hosting,
+                authentication and database storage, real-time voice rooms,
+                speech recognition, language-model processing, voice synthesis,
+                billing, analytics and feature flags, and background jobs. The
+                exact subprocessor list, provider roles, regions, and transfer
+                terms must be verified against deployed configuration and
+                contracts before this draft is approved.
+              </p>
+              <p>
+                Meelni does not intentionally expose passwords, access tokens,
+                API keys, service-role credentials, raw billing webhooks, or
+                provider-only identifiers in the account export. Operational
+                providers still receive the information necessary to perform
+                their configured function.
+              </p>
+            </section>
 
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">5. Data Sharing and Disclosure</h2>
-            <p className="mb-4">We do not sell your personal information. We may share your information with:</p>
+            <section>
+              <h2 className="font-display text-2xl font-semibold">
+                4. Current account controls
+              </h2>
+              <p>
+                An authenticated account can request a JSON export containing
+                allowlisted account, settings, practice, transcript, feedback,
+                progress, and billing-summary data. The export excludes secrets,
+                raw provider operations, logs, deletion tombstones, and other
+                users.
+              </p>
+              <p>
+                Account deletion requires a recent server-verified sign-in and
+                explicit confirmation. A successful response records a durable
+                request and queues asynchronous local, authentication, and
+                billing cleanup. It does not claim that every external system,
+                backup, log, or legally retained record was erased at that
+                moment.
+              </p>
+            </section>
 
-            <h3 className="text-xl font-semibold mt-6 mb-3">5.1 Service Providers</h3>
-            <ul className="list-disc pl-6 space-y-2 mb-4">
-              <li>Supabase (authentication and database hosting)</li>
-              <li>LiveKit (real-time voice infrastructure)</li>
-              <li>OpenAI (AI language model processing)</li>
-              <li>Deepgram (speech recognition)</li>
-              <li>Cartesia (text-to-speech synthesis)</li>
-              <li>Vercel (application hosting)</li>
-            </ul>
+            <section>
+              <h2 className="font-display text-2xl font-semibold">
+                5. Retention boundaries
+              </h2>
+              <p>
+                The repository does not define one approved retention period for
+                all account, transcript, feedback, analytics, billing, log, and
+                backup data. Completed deletion tombstones retain a user
+                identifier, status and attempt timestamps, and one-way provider
+                fingerprints until a separate retention decision approves
+                removal. This draft therefore promises no exact erasure date.
+              </p>
+            </section>
 
-            <h3 className="text-xl font-semibold mt-6 mb-3">5.2 Legal Requirements</h3>
-            <p>
-              We may disclose your information if required by law or in response to valid requests by public
-              authorities (e.g., court orders, subpoenas).
-            </p>
+            <section>
+              <h2 className="font-display text-2xl font-semibold">
+                6. Decisions required before approval
+              </h2>
+              <ul>
+                {PRIVACY_OWNER_DECISIONS.map((decision) => (
+                  <li key={decision}>{decision}</li>
+                ))}
+              </ul>
+            </section>
 
-            <h3 className="text-xl font-semibold mt-6 mb-3">5.3 Business Transfers</h3>
-            <p>
-              If Meelni is involved in a merger, acquisition, or sale of assets, your information may be transferred
-              as part of that transaction.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">6. Your Privacy Rights</h2>
-            <p className="mb-4">You have the right to:</p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li><strong>Access:</strong> Request a copy of your personal data</li>
-              <li><strong>Correction:</strong> Update or correct inaccurate information</li>
-              <li><strong>Deletion:</strong> Request deletion of your account and associated data</li>
-              <li><strong>Portability:</strong> Receive your data in a structured, machine-readable format</li>
-              <li><strong>Objection:</strong> Object to processing of your personal data</li>
-              <li><strong>Restriction:</strong> Request restriction of processing in certain circumstances</li>
-            </ul>
-            <p className="mt-4">
-              To exercise these rights, please contact us at{" "}
-              <a href="mailto:contact@meelni.com" className="text-primary hover:underline">
-                contact@meelni.com
-              </a>
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">7. Data Retention</h2>
-            <p>
-              We retain your personal information for as long as necessary to provide our services and fulfill the
-              purposes outlined in this Privacy Policy. You may request deletion of your account at any time, after
-              which we will delete or anonymize your data within 30 days, except where retention is required by law.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">8. International Data Transfers</h2>
-            <p>
-              Your information may be transferred to and processed in countries other than your country of residence.
-              We ensure appropriate safeguards are in place to protect your data in accordance with this Privacy
-              Policy and applicable laws.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">9. Cookies and Tracking Technologies</h2>
-            <p className="mb-4">We use cookies and similar technologies to:</p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Maintain your session and authentication state</li>
-              <li>Remember your preferences and settings</li>
-              <li>Analyze usage patterns and improve our service</li>
-            </ul>
-            <p className="mt-4">
-              You can control cookies through your browser settings. Note that disabling cookies may affect the
-              functionality of our service.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">10. Children's Privacy</h2>
-            <p>
-              Our service is not intended for individuals under the age of 18. We do not knowingly collect personal
-              information from children. If you believe we have inadvertently collected data from a child, please
-              contact us immediately.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">11. AI and Automated Decision-Making</h2>
-            <p>
-              We use AI to analyze your interview performance and provide feedback. While our AI generates automated
-              assessments, these are intended as coaching tools, not employment decisions. You have the right to
-              request human review of AI-generated feedback.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">12. Changes to This Privacy Policy</h2>
-            <p>
-              We may update this Privacy Policy from time to time. We will notify you of any changes by posting the
-              new Privacy Policy on this page and updating the "Last Updated" date. We encourage you to review this
-              Privacy Policy periodically.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">13. California Privacy Rights (CCPA)</h2>
-            <p className="mb-4">
-              If you are a California resident, you have additional rights under the California Consumer Privacy Act:
-            </p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Right to know what personal information we collect and how it's used</li>
-              <li>Right to request deletion of personal information</li>
-              <li>Right to opt-out of the sale of personal information (we do not sell your data)</li>
-              <li>Right to non-discrimination for exercising your privacy rights</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">14. European Privacy Rights (GDPR)</h2>
-            <p>
-              If you are in the European Economic Area, you have rights under the General Data Protection Regulation,
-              including the rights listed in Section 6, as well as the right to lodge a complaint with a supervisory
-              authority.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-display font-semibold mb-4">15. Contact Us</h2>
-            <p>
-              If you have questions or concerns about this Privacy Policy or our data practices, please contact us at:
-            </p>
-            <ul className="list-none space-y-2 mt-4">
-              <li>
-                Email:{" "}
-                <a href="mailto:contact@meelni.com" className="text-primary hover:underline">
-                  contact@meelni.com
-                </a>
-              </li>
-            </ul>
-          </section>
+            <section>
+              <h2 className="font-display text-2xl font-semibold">
+                7. Review and contact paths
+              </h2>
+              <p>
+                The settings area provides the implemented export and deletion
+                controls. Policy or privacy questions can be sent through the
+                contact page while the accountable owner confirms a final legal
+                contact and request process.
+              </p>
+              <div className="not-prose mt-6 flex flex-wrap gap-3">
+                <Button asChild variant="outline">
+                  <Link href="/dashboard/settings">Open account settings</Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/terms">Review terms draft</Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/contact">Contact Meelni</Link>
+                </Button>
+              </div>
+            </section>
           </div>
         </MarketingProse>
       </main>
