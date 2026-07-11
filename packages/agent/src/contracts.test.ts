@@ -15,6 +15,8 @@ import {
   getTranscriptEventTiming,
   isTranscriptEvent,
   normalizeInterviewRuntimeConfig,
+  normalizeInterviewClientPreferences,
+  interviewRuntimeSettingsFromEnv,
   normalizeAgentState,
   parseInterviewRuntimeEvent,
   parseInterviewRoomMetadata,
@@ -69,7 +71,7 @@ test("parseInterviewRoomMetadata keeps question and config defaults", () => {
   assert.equal(metadata.config.stt_model, "deepgram/nova-3");
 });
 
-test("runtime config rejects arbitrary provider model overrides", () => {
+test("room parsing preserves the web server's resolved runtime snapshot", () => {
   const metadata = parseInterviewRoomMetadata(
     JSON.stringify({
       contract_version: 1,
@@ -83,12 +85,57 @@ test("runtime config rejects arbitrary provider model overrides", () => {
     })
   );
 
-  assert.equal(metadata.config.stt_model, "deepgram/nova-3");
-  assert.equal(metadata.config.llm_model, "openai/gpt-4.1-mini");
-  assert.equal(
-    metadata.config.tts_model,
-    "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
-  );
+  assert.equal(metadata.config.stt_model, "unknown/stt");
+  assert.equal(metadata.config.llm_model, "openai/very-expensive-model");
+  assert.equal(metadata.config.tts_model, "custom/tts:voice");
+});
+
+test("public preferences strip every legacy runtime control alias", () => {
+  const preferences = normalizeInterviewClientPreferences({
+    difficulty: "advanced",
+    duration: 45,
+    hintMode: "coach",
+    questionPreference: { recency: "recent", recentDays: 730 },
+    stt_model: "attacker/stt",
+    llm_model: "attacker/llm",
+    tts_model: "attacker/tts",
+    sttModel: "legacy/stt",
+    llmModel: "legacy/llm",
+    ttsModel: "legacy/tts",
+    provider: "attacker",
+    stt_provider: "attacker",
+    llm_provider: "attacker",
+    tts_provider: "attacker",
+    voice: "attacker",
+    speed: 99,
+    emotion: "attacker",
+    volume: 99,
+    feedback_mode: "real_time",
+    arbitrary: true,
+  });
+
+  assert.deepEqual(preferences, {
+    difficulty: "advanced",
+    duration: 45,
+    hintMode: "coach",
+    questionPreference: { recency: "recent", recentDays: 730 },
+  });
+});
+
+test("server environment resolves trusted runtime settings", () => {
+  const settings = interviewRuntimeSettingsFromEnv({
+    MEELNI_INTERVIEW_STT_MODEL: "operator/stt",
+    MEELNI_INTERVIEW_LLM_MODEL: "operator/llm",
+    MEELNI_INTERVIEW_TTS_MODEL: "operator/tts",
+    MEELNI_INTERVIEW_VOICE: "operator-voice",
+    MEELNI_INTERVIEW_TTS_SPEED: "1.2",
+  });
+
+  assert.equal(settings.stt_model, "operator/stt");
+  assert.equal(settings.llm_model, "operator/llm");
+  assert.equal(settings.tts_model, "operator/tts");
+  assert.equal(settings.voice, "operator-voice");
+  assert.equal(settings.speed, 1.2);
 });
 
 test("full interview metadata requires versioned session correlation", () => {

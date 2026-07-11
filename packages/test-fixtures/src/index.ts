@@ -136,6 +136,7 @@ const productSenseInterviewFixture: ProductSenseInterviewFixture = {
       duration: 45,
       feedback_mode: "end_only",
       hintMode: "off",
+      questionPreference: { recency: "very_recent", recentDays: 365 },
       stt_model: "deepgram/nova-3",
       llm_model: "openai/gpt-4.1-mini",
       tts_model: "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",

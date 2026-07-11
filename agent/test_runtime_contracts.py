@@ -2,8 +2,10 @@
 """Runtime contract tests for the LiveKit interview agent."""
 
 import json
+import os
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,7 +13,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from shared.config import parse_room_metadata
 from shared.runtime_events import create_runtime_event
-from shared.runtime_config import DEFAULT_INTERVIEW_RUNTIME_CONFIG, get_model_config, get_tts_config
+from shared.runtime_config import (
+    DEFAULT_INTERVIEW_RUNTIME_CONFIG,
+    get_model_config,
+    get_tts_config,
+    normalize_runtime_config,
+)
 from shared.transcript_events import (
     TRANSCRIPT_DATA_TOPIC,
     create_transcript_event,
@@ -86,10 +93,10 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(get_model_config(config), {
             "stt_model": DEFAULT_INTERVIEW_RUNTIME_CONFIG["stt_model"],
             "llm_model": DEFAULT_INTERVIEW_RUNTIME_CONFIG["llm_model"],
-            "tts_model": "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
+            "tts_model": DEFAULT_INTERVIEW_RUNTIME_CONFIG["tts_model"],
         })
-        self.assertEqual(get_tts_config(config)["voice"], "voice-1")
-        self.assertEqual(get_tts_config(config)["speed"], 1.15)
+        self.assertEqual(get_tts_config(config)["voice"], DEFAULT_INTERVIEW_RUNTIME_CONFIG["voice"])
+        self.assertEqual(get_tts_config(config)["speed"], 1.0)
 
     def test_runtime_helpers_reject_unknown_model_overrides(self):
         config = {
@@ -104,6 +111,35 @@ class RuntimeContractTests(unittest.TestCase):
             "llm_model": DEFAULT_INTERVIEW_RUNTIME_CONFIG["llm_model"],
             "tts_model": DEFAULT_INTERVIEW_RUNTIME_CONFIG["tts_model"],
         })
+
+    def test_runtime_helpers_use_server_environment_and_strip_metadata_controls(self):
+        metadata_config = {
+            "difficulty": "advanced",
+            "stt_model": "attacker/stt",
+            "llm_model": "attacker/llm",
+            "tts_model": "attacker/tts",
+            "voice": "attacker-voice",
+            "speed": 99,
+            "provider": "attacker",
+            "arbitrary": {"nested": True},
+        }
+        with patch.dict(os.environ, {
+            "MEELNI_INTERVIEW_STT_MODEL": "operator/stt",
+            "MEELNI_INTERVIEW_LLM_MODEL": "operator/llm",
+            "MEELNI_INTERVIEW_TTS_MODEL": "operator/tts",
+            "MEELNI_INTERVIEW_VOICE": "operator-voice",
+            "MEELNI_INTERVIEW_TTS_SPEED": "1.2",
+        }, clear=False):
+            normalized = normalize_runtime_config(metadata_config)
+
+        self.assertEqual(normalized["difficulty"], "advanced")
+        self.assertEqual(normalized["stt_model"], "operator/stt")
+        self.assertEqual(normalized["llm_model"], "operator/llm")
+        self.assertEqual(normalized["tts_model"], "operator/tts")
+        self.assertEqual(normalized["voice"], "operator-voice")
+        self.assertEqual(normalized["speed"], 1.2)
+        self.assertNotIn("provider", normalized)
+        self.assertNotIn("arbitrary", normalized)
 
     def test_runtime_config_normalizes_invalid_cross_runtime_values(self):
         metadata = parse_room_metadata(json.dumps({

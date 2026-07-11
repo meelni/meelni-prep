@@ -1,6 +1,9 @@
 import {
   buildInterviewRoomMetadata,
-  normalizeInterviewRuntimeConfig,
+  interviewRuntimeSettingsFromEnv,
+  normalizeInterviewClientPreferences,
+  resolveInterviewRuntimeConfig,
+  type InterviewClientPreferences,
   type InterviewRuntimeConfig,
 } from "@/lib/internal/agent";
 import {
@@ -100,6 +103,9 @@ export interface StartInterviewSessionDeps {
     email: string;
     name: string | null;
   }): Promise<unknown>;
+  resolveRuntimeConfig(
+    preferences: InterviewClientPreferences
+  ): InterviewRuntimeConfig;
 }
 
 export type StartInterviewSessionResult =
@@ -110,7 +116,7 @@ export type StartInterviewSessionResult =
         roomName: string;
         token: string;
         url: string;
-        config: unknown;
+        config: InterviewClientPreferences;
         question: {
           id: string;
           text: string;
@@ -140,9 +146,11 @@ export async function startInterviewSessionWorkflow(
   }
 
   const { roundType, mode, role, persona, config, questionId } = parsed;
-  const runtimeConfig = normalizeInterviewRuntimeConfig(
-    config as Partial<InterviewRuntimeConfig>
-  );
+  const preferences = normalizeInterviewClientPreferences(config);
+  const runtimeConfig = {
+    ...deps.resolveRuntimeConfig(preferences),
+    persona: persona ?? null,
+  };
 
   const question = await selectQuestion({
     roundType,
@@ -283,7 +291,7 @@ export async function startInterviewSessionWorkflow(
       roomName,
       token: livekitResult.data.token,
       url: livekitResult.data.url,
-      config: session.config,
+      config: preferences,
       question: question.value
         ? {
             id: question.value.id,
@@ -322,6 +330,11 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
     transitionLifecycle: transitionInterviewSessionWorkflow,
     recordQuestionUsage,
     upsertUser,
+    resolveRuntimeConfig: (preferences) =>
+      resolveInterviewRuntimeConfig(
+        preferences,
+        interviewRuntimeSettingsFromEnv(process.env)
+      ),
   };
 }
 
