@@ -2227,6 +2227,93 @@ test("subscription renewal rejects legacy rollover without durable source lots",
   );
 });
 
+test("subscription renewal rejects orphan rollover with an invalid durable expiry contract", async () => {
+  const issuedAt = new Date("2026-08-01T00:00:00.000Z");
+  const invalidExpiry = new Date("2099-01-01T00:00:00.000Z");
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store, now: () => issuedAt });
+  const source = await ledger.grantCredits({
+    userId: "user-invalid-orphan-expiry",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    sourceId: "in_prior_invalid_expiry",
+    idempotencyKey: "stripe:invoice:prior-invalid-expiry:starter",
+  });
+  const rollover = await store.createGrant({
+    userId: "user-invalid-orphan-expiry",
+    catalogId: "starter",
+    source: "rollover",
+    sourceId: "in_invalid_expiry",
+    idempotencyKey: "stripe:rollover:invalid-expiry:starter",
+    originalCredits: 4,
+    remainingCredits: 4,
+    reservedCredits: 0,
+    expiresAt: invalidExpiry,
+    rolloverEligible: false,
+    rolloverSourceGrantId: source.grant.id,
+    metadata: null,
+  });
+  await store.updateGrantBalances(source.grant.id, {
+    remainingCredits: 0,
+    reservedCredits: 0,
+  });
+  await store.createRolloverLot({
+    userId: "user-invalid-orphan-expiry",
+    rolloverGrantId: rollover.id,
+    sourceGrantId: source.grant.id,
+    originalCredits: 4,
+    remainingCredits: 4,
+    reservedCredits: 0,
+    consumedCredits: 0,
+    revokedCredits: 0,
+  });
+  await store.createTransaction({
+    userId: "user-invalid-orphan-expiry",
+    grantId: source.grant.id,
+    reservationId: null,
+    type: "rollover",
+    credits: 4,
+    idempotencyKey: `stripe:rollover:invalid-expiry:starter:source:${source.grant.id}`,
+    sourceId: "in_invalid_expiry",
+    balanceAfter: 0,
+    metadata: {
+      version: 1,
+      rolloverGrantId: rollover.id,
+      issuedAt: issuedAt.toISOString(),
+      expiresAt: invalidExpiry.toISOString(),
+    },
+  });
+  await store.createTransaction({
+    userId: "user-invalid-orphan-expiry",
+    grantId: rollover.id,
+    reservationId: null,
+    type: "rollover",
+    credits: 4,
+    idempotencyKey: "stripe:rollover:invalid-expiry:starter:grant",
+    sourceId: "in_invalid_expiry",
+    balanceAfter: 4,
+    metadata: null,
+  });
+
+  await assert.rejects(
+    () =>
+      ledger.renewSubscriptionCredits({
+        userId: "user-invalid-orphan-expiry",
+        catalogId: "starter",
+        sourceId: "in_invalid_expiry",
+        renewalIdempotencyKey: "stripe:invoice:invalid-expiry:starter",
+        rolloverIdempotencyKey: "stripe:rollover:invalid-expiry:starter",
+      }),
+    /credit_rollover_incomplete/
+  );
+  assert.equal(
+    await store.findGrantByIdempotencyKey(
+      "stripe:invoice:invalid-expiry:starter"
+    ),
+    null
+  );
+});
+
 test("subscription renewal rejects corrupt legacy rollover expiry, source, and debit evidence", async (t) => {
   for (const scenario of [
     "expiry",
