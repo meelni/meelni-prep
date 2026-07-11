@@ -15,7 +15,12 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
-import { buildStripeDeletionSubjects } from "../lib/billing/stripe-privacy";
+import {
+  buildStripeDeletionSubject,
+  buildStripeDeletionSubjects,
+  fingerprintStripeSubject,
+} from "../lib/billing/stripe-privacy";
+import { ACCOUNT_IDENTITY_LOCK_NAMESPACE } from "../lib/db/account-identity-lock";
 
 import {
   PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
@@ -32,6 +37,7 @@ const CLEAN_DATABASE = "meelni_clean_test";
 const UPGRADE_DATABASE = "meelni_upgrade_test";
 const USER_ONE = "11111111-1111-4111-8111-111111111111";
 const USER_TWO = "22222222-2222-4222-8222-222222222222";
+const SESSION_DELETION = "22222222-3333-4333-8333-222222222222";
 const SESSION_ONE = "33333333-3333-4333-8333-333333333333";
 const SESSION_ENDED_IN_PROGRESS = "44444444-4444-4444-8444-444444444444";
 const SESSION_COMPLETED = "55555555-5555-4555-8555-555555555555";
@@ -41,6 +47,8 @@ const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -2493,26 +2501,117 @@ function demoSessionId(value: number): string {
 async function verifyDeletionTombstone(sql: postgres.Sql) {
   process.env.DATABASE_URL = databaseUrl(baseUrl, CLEAN_DATABASE);
   const {
+    clearLateStripeDeletionSubjects,
     deleteUserApplicationData,
+    getAccountDeletionRequest,
+    listRecoverableAccountDeletions,
     markAccountDeletionCompleted,
+    recordLateStripeDeletionSubjects,
     redactStripeEventLogs,
-    requestAccountDeletion,
+    requestAccountDeletionWithCurrentSubjects,
   } = await import("../lib/db/account-deletions");
   const { AccountDeletionPendingError, upsertUser } = await import(
     "../lib/db/users"
   );
   await sql`
     INSERT INTO app_user (id, email)
+    VALUES (${USER_RECREATION_RACE}::uuid, 'deletion-race@example.invalid')
+  `;
+  let racingUpsert: Promise<unknown> | undefined;
+  await sql.begin(async (tx) => {
+    await tx`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(
+          ${USER_RECREATION_RACE},
+          ${ACCOUNT_IDENTITY_LOCK_NAMESPACE}::bigint
+        )
+      )
+    `;
+    await tx`
+      SELECT id FROM app_user
+      WHERE id = ${USER_RECREATION_RACE}::uuid
+      FOR UPDATE
+    `;
+    racingUpsert = upsertUser({
+      id: USER_RECREATION_RACE,
+      email: "must-not-recreate@example.invalid",
+    });
+    // Give the concurrent upsert time to reach the identity lock. Without the
+    // shared lock it passes the tombstone check and waits on app_user instead.
+    await tx`SELECT pg_sleep(0.1)`;
+    await tx`
+      INSERT INTO account_deletion_request (user_id, status, stripe_subjects)
+      VALUES (${USER_RECREATION_RACE}::uuid, 'completed', '[]'::jsonb)
+    `;
+    await tx`
+      DELETE FROM app_user WHERE id = ${USER_RECREATION_RACE}::uuid
+    `;
+  });
+  await assert.rejects(racingUpsert!, AccountDeletionPendingError);
+  const [recreatedUser] = await sql<{ exists: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1 FROM app_user WHERE id = ${USER_RECREATION_RACE}::uuid
+    ) AS exists
+  `;
+  assert.equal(recreatedUser?.exists, false);
+
+  await sql`
+    INSERT INTO app_user (id, email)
     VALUES (${USER_TWO}::uuid, 'deletion-user@example.invalid')
   `;
-  const deletionRequest = await requestAccountDeletion({
-    userId: USER_TWO,
-    stripeSubjects: buildStripeDeletionSubjects({
-      subscriptionId: "sub_private",
-      subscriptionCustomerId: null,
-      mappedCustomerIds: ["cus_private", "cus_second_private"],
-    }),
-  });
+  await sql`
+    INSERT INTO interview_session (id, user_id, round_type, mode)
+    VALUES (
+      ${SESSION_DELETION}::uuid,
+      ${USER_TWO}::uuid,
+      'product_sense',
+      'voice_video'
+    )
+  `;
+  await sql`
+    INSERT INTO user_insights (
+      user_id,
+      overall_stats,
+      by_interview_type,
+      by_difficulty,
+      trends,
+      competency_breakdown,
+      last_session_id
+    ) VALUES (
+      ${USER_TWO}::uuid,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      ${SESSION_DELETION}::uuid
+    )
+  `;
+  await sql`
+    INSERT INTO stripe_customer_mapping (stripe_customer_id, user_id)
+    VALUES
+      ('cus_private', ${USER_TWO}::uuid),
+      ('cus_second_private', ${USER_TWO}::uuid)
+  `;
+  const deletionRequest =
+    await requestAccountDeletionWithCurrentSubjects(USER_TWO);
+  const { createDrizzleCreditLedgerStore } = await import(
+    "../lib/billing/credit-ledger-store"
+  );
+  const { createCreditLedgerService } = await import("../lib/billing/credits");
+  await assert.rejects(
+    () =>
+      createCreditLedgerService({
+        store: createDrizzleCreditLedgerStore(),
+      }).grantCredits({
+        userId: USER_TWO,
+        catalogId: "interview_pass",
+        source: "checkout",
+        sourceId: "cs_deleted_account",
+        idempotencyKey: "stripe:checkout:deleted-account",
+      }),
+    /account_deletion_pending/
+  );
   await sql`
     INSERT INTO stripe_event_log (
       stripe_event_id, event_type, payload, status, attempts, last_error
@@ -2535,14 +2634,79 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
   );
   await redactStripeEventLogs(deletionRequest);
   await deleteUserApplicationData(USER_TWO);
-  await markAccountDeletionCompleted(USER_TWO);
+  const lateSubjects = [
+    ...buildStripeDeletionSubjects({
+      subscriptionId: null,
+      subscriptionCustomerId: "cus_late_after_completion",
+      mappedCustomerIds: [],
+    }),
+    buildStripeDeletionSubject("invoice", "in_late_after_completion")!,
+    buildStripeDeletionSubject("payment_intent", "pi_late_after_completion")!,
+  ];
+  await recordLateStripeDeletionSubjects(USER_TWO, lateSubjects);
+  assert.equal(
+    (await listRecoverableAccountDeletions(new Date())).includes(USER_TWO),
+    true
+  );
+  await markAccountDeletionCompleted(
+    USER_TWO,
+    deletionRequest.stripeSubjects.map(({ fingerprint }) => fingerprint)
+  );
+  const [pendingLateCleanup] = await sql<{ raw_provider_ids: number }[]>`
+    SELECT count(*)::int AS raw_provider_ids
+    FROM account_deletion_request
+    CROSS JOIN LATERAL jsonb_array_elements(stripe_subjects) subject
+    WHERE user_id = ${USER_TWO}::uuid
+      AND subject->>'providerId' IS NOT NULL
+  `;
+  assert.equal(pendingLateCleanup?.raw_provider_ids, 3);
+  const [failedLateCleanup] = await sql<
+    { status: string; last_error_code: string | null }[]
+  >`
+    SELECT status, last_error_code
+    FROM account_deletion_request
+    WHERE user_id = ${USER_TWO}::uuid
+  `;
+  assert.deepEqual(failedLateCleanup, {
+    status: "failed",
+    last_error_code: "stripe_late_reconciliation_failed",
+  });
+  assert.equal(
+    (await listRecoverableAccountDeletions(new Date())).includes(USER_TWO),
+    true
+  );
+  await clearLateStripeDeletionSubjects(USER_TWO, [
+    lateSubjects[0]!.fingerprint,
+  ]);
+  const [partiallyCleared] = await sql<
+    { status: string; raw_provider_ids: number }[]
+  >`
+    SELECT
+      status,
+      (SELECT count(*)::int
+        FROM jsonb_array_elements(stripe_subjects) subject
+        WHERE subject->>'providerId' IS NOT NULL) AS raw_provider_ids
+    FROM account_deletion_request
+    WHERE user_id = ${USER_TWO}::uuid
+  `;
+  assert.deepEqual(partiallyCleared, {
+    status: "failed",
+    raw_provider_ids: 2,
+  });
+  await clearLateStripeDeletionSubjects(
+    USER_TWO,
+    lateSubjects.slice(1).map(({ fingerprint }) => fingerprint)
+  );
 
   const [state] = await sql<
     {
       app_user_exists: boolean;
+      interview_session_exists: boolean;
+      user_insights_exists: boolean;
       tombstone_exists: boolean;
       raw_provider_ids: number;
       provider_fingerprints: number;
+      deletion_status: string;
       redacted_payload: string;
       redacted_error: string | null;
     }[]
@@ -2550,6 +2714,14 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     SELECT
       EXISTS (SELECT 1 FROM app_user WHERE id = ${USER_TWO}::uuid)
         AS app_user_exists,
+      EXISTS (
+        SELECT 1 FROM interview_session
+        WHERE user_id = ${USER_TWO}::uuid
+      ) AS interview_session_exists,
+      EXISTS (
+        SELECT 1 FROM user_insights
+        WHERE user_id = ${USER_TWO}::uuid
+      ) AS user_insights_exists,
       EXISTS (
         SELECT 1 FROM account_deletion_request
         WHERE user_id = ${USER_TWO}::uuid
@@ -2561,6 +2733,8 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       (SELECT jsonb_array_length(stripe_subjects)::int
         FROM account_deletion_request
         WHERE user_id = ${USER_TWO}::uuid) AS provider_fingerprints,
+      (SELECT status FROM account_deletion_request
+        WHERE user_id = ${USER_TWO}::uuid) AS deletion_status,
       (SELECT payload FROM stripe_event_log
         WHERE stripe_event_id = 'evt_private') AS redacted_payload,
       (SELECT last_error FROM stripe_event_log
@@ -2568,12 +2742,57 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
   `;
   assert.deepEqual(state, {
     app_user_exists: false,
+    interview_session_exists: false,
+    user_insights_exists: false,
     tombstone_exists: true,
     raw_provider_ids: 0,
-    provider_fingerprints: 3,
+    provider_fingerprints: 5,
+    deletion_status: "completed",
     redacted_payload: "{}",
     redacted_error: null,
   });
+
+  await sql`
+    INSERT INTO account_deletion_request (user_id, status, stripe_subjects)
+    VALUES (
+      ${USER_CORRUPT_DELETION}::uuid,
+      'failed',
+      '[{"kind":"unknown","providerId":"unsafe","fingerprint":"bad"}]'::jsonb
+    )
+  `;
+  await assert.rejects(
+    () => getAccountDeletionRequest(USER_CORRUPT_DELETION),
+    (error: unknown) =>
+      (error as { code?: string }).code === "account_deletion_subjects_invalid"
+  );
+  await sql`
+    DELETE FROM account_deletion_request
+    WHERE user_id = ${USER_CORRUPT_DELETION}::uuid
+  `;
+  const wrongKindId = "sub_wrong_kind";
+  await sql`
+    INSERT INTO account_deletion_request (user_id, status, stripe_subjects)
+    VALUES (
+      ${USER_CORRUPT_DELETION}::uuid,
+      'failed',
+      ${JSON.stringify([
+        {
+          kind: "customer",
+          providerId: wrongKindId,
+          fingerprint: fingerprintStripeSubject(wrongKindId),
+        },
+      ])}::jsonb
+    )
+  `;
+  await assert.rejects(
+    () => getAccountDeletionRequest(USER_CORRUPT_DELETION),
+    (error: unknown) =>
+      (error as { code?: string }).code === "account_deletion_subjects_invalid"
+  );
+  await sql`
+    DELETE FROM account_deletion_request
+    WHERE user_id = ${USER_CORRUPT_DELETION}::uuid
+  `;
 }
 
 async function consumeRateLimit(sql: postgres.Sql, userId: string) {

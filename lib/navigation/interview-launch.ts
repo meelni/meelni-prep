@@ -50,8 +50,15 @@ export function buildNewInterviewHref(
   return `${NEW_INTERVIEW_PATH}${query ? `?${query}` : ""}`;
 }
 
-export function buildQuestionInterviewHref(questionId: string): string {
+export function buildQuestionInterviewHref(
+  questionId: string,
+  returnTo?: string | null
+): string {
   const searchParams = new URLSearchParams({ questionId });
+  const safeReturnTo = getSafeInternalRedirect(returnTo, null);
+  if (safeReturnTo) {
+    searchParams.set("returnTo", safeReturnTo);
+  }
   return buildNewInterviewHref(searchParams);
 }
 
