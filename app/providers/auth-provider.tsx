@@ -134,6 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Non-blocking - don't fail login if sync fails
           });
       } else if (event === "SIGNED_OUT") {
+        clearTranscriptQueueStorage();
         analytics.track("auth_signout_completed", {});
         analytics.reset();
       }

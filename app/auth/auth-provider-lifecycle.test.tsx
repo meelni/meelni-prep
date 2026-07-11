@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   unsubscribe: vi.fn(),
+  clearTranscriptQueueStorage: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/client", () => ({
@@ -20,6 +21,10 @@ vi.mock("@/lib/analytics/analytics-service", () => ({
     reset: vi.fn(),
     track: vi.fn(),
   },
+}));
+
+vi.mock("@/lib/utils/transcript-queue", () => ({
+  clearTranscriptQueueStorage: mocks.clearTranscriptQueueStorage,
 }));
 
 import { AuthProvider, useAuth } from "@/app/providers/auth-provider";
@@ -62,5 +67,31 @@ describe("AuthProvider client lifecycle", () => {
 
     view.unmount();
     expect(mocks.unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears queued transcript text for every signed-out auth event", async () => {
+    let authChange: ((event: string, session: null) => void) | undefined;
+    mocks.createClient.mockImplementation(() => ({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+        onAuthStateChange: vi.fn((listener) => {
+          authChange = listener;
+          return {
+            data: { subscription: { unsubscribe: mocks.unsubscribe } },
+          };
+        }),
+      },
+    }));
+
+    render(
+      <AuthProvider>
+        <AuthStatus />
+      </AuthProvider>
+    );
+    expect(await screen.findByText("ready")).toBeInTheDocument();
+
+    authChange?.("SIGNED_OUT", null);
+
+    expect(mocks.clearTranscriptQueueStorage).toHaveBeenCalledTimes(1);
   });
 });

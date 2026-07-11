@@ -10,6 +10,7 @@ import {
 } from "./transcript-queue";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const SECOND_SESSION_ID = "550e8400-e29b-41d4-a716-446655440001";
 
 test("concurrent duplicate saves share one event-ID request", async () => {
   const queue = boundQueue();
@@ -282,6 +283,81 @@ test("an unresolved old-owner save cannot rebind or delete the new owner's queue
   }
 });
 
+test("a never-resolving old-owner retry cannot block a new owner's flush", async () => {
+  const storage = new MemoryStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    if (requests === 1) return new Promise<Response>(() => {});
+    return Response.json({ disposition: "created" });
+  };
+
+  const queue = boundQueue();
+  try {
+    queue.add(request());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    queue.bindOwner("user-2");
+    queue.add(
+      request({
+        ownerId: "user-2",
+        text: "New owner's durable answer.",
+        eventId: "writer-2:message-1",
+      })
+    );
+
+    assert.deepEqual(await queue.flush("user-2", SESSION_ID, 1_000), {
+      settled: true,
+      pending: 0,
+      failed: 0,
+    });
+    assert.equal(requests, 2);
+    const persisted = storage.getItem("transcript_queue_v2") ?? "";
+    assert.doesNotMatch(persisted, /clarifying the goal/);
+    assert.doesNotMatch(persisted, /New owner's durable answer/);
+  } finally {
+    queue.stop();
+    globalThis.fetch = originalFetch;
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
+test("terminal cleanup detaches a hung retry before the owner's next session", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    if (requests === 1) return new Promise<Response>(() => {});
+    return Response.json({ disposition: "created" });
+  };
+
+  const queue = boundQueue();
+  try {
+    queue.add(request());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    queue.clearSession("user-1", SESSION_ID);
+    queue.add(request({ sessionId: SECOND_SESSION_ID }));
+
+    assert.deepEqual(await queue.flush("user-1", SECOND_SESSION_ID, 1_000), {
+      settled: true,
+      pending: 0,
+      failed: 0,
+    });
+    assert.equal(requests, 2);
+  } finally {
+    queue.stop();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("sign-out or deletion cleanup fences in-flight failure and stale callbacks", async () => {
   const storage = new MemoryStorage();
   const originalStorage = Object.getOwnPropertyDescriptor(
@@ -332,17 +408,23 @@ test("sign-out or deletion cleanup fences in-flight failure and stale callbacks"
 });
 
 function request(
-  overrides: { ownerId?: string; text?: string; eventId?: string } = {}
+  overrides: {
+    ownerId?: string;
+    sessionId?: string;
+    text?: string;
+    eventId?: string;
+  } = {}
 ) {
   const ownerId = overrides.ownerId ?? "user-1";
+  const sessionId = overrides.sessionId ?? SESSION_ID;
   return {
     ownerId,
-    sessionId: SESSION_ID,
+    sessionId,
     event: createTranscriptEvent({
       event_id: overrides.eventId ?? "writer-1:message-1",
       writer_id: "writer-1",
       sequence: 1,
-      session_id: SESSION_ID,
+      session_id: sessionId,
       room_name: "interview-room",
       speaker: "user",
       text: overrides.text ?? "I would begin by clarifying the goal.",
