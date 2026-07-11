@@ -24,9 +24,10 @@ normalized failure-code set shared by the TypeScript and Python contracts.
 The first accepted terminal claim is immutable; an equivalent replay is
 idempotent and a conflicting claim fails closed.
 Fatal runtime and deadline-watchdog failures use one tracked stop sequence:
-persist the provider-neutral fact, close the agent session, terminate the room,
-and shut down the job. Persistence failure cannot leave the voice runtime
-accepting turns after server truth has failed and refunded the interview.
+disable input, close the agent session, terminate the room, and shut down the
+job before awaiting the bounded provider-neutral failure report. Persistence
+latency or failure cannot leave the voice runtime accepting turns beyond the
+hard-stop boundary.
 
 ## Versioned Billing Policy
 

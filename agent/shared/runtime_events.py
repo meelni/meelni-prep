@@ -43,24 +43,50 @@ def provider_failure_code(error_type: object) -> str:
     )
 
 
-async def report_provider_failure_and_stop(
+async def stop_provider_runtime_then_report(
     *,
-    report_failure: Callable[[], Awaitable[bool]],
+    disable_input: Callable[[], None],
     close_session: Callable[[], Awaitable[None]],
     terminate_room: Callable[[], Awaitable[None]],
     shutdown: Callable[[], None],
+    report_failure: Callable[[], Awaitable[bool]],
 ) -> bool:
-    """Persist one fatal fact and guarantee every local runtime stop boundary."""
+    """Stop every local runtime boundary before awaiting durable reporting."""
+    stop_error: BaseException | None = None
     try:
-        return await report_failure()
-    finally:
-        try:
-            await close_session()
-        finally:
-            try:
-                await terminate_room()
-            finally:
-                shutdown()
+        disable_input()
+    except BaseException as error:
+        stop_error = error
+    try:
+        await close_session()
+    except BaseException as error:
+        if stop_error is None:
+            stop_error = error
+    try:
+        await terminate_room()
+    except BaseException as error:
+        if stop_error is None:
+            stop_error = error
+    try:
+        shutdown()
+    except BaseException as error:
+        if stop_error is None:
+            stop_error = error
+
+    report_error: BaseException | None = None
+    persisted = False
+    try:
+        persisted = await report_failure()
+    except BaseException as error:
+        report_error = error
+
+    if stop_error is not None:
+        if report_error is not None:
+            raise stop_error from report_error
+        raise stop_error
+    if report_error is not None:
+        raise report_error
+    return persisted
 
 
 def create_runtime_event(
