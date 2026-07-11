@@ -103,12 +103,12 @@ Use marketing/content primitives instead of the authenticated product container.
 Current route families:
 
 - Landing and marketing: `/`, `/pricing`, `/pricing/success`, `/pricing/canceled`.
-- Question/content discovery: `/explore`, `/blog`, `/blog/[id]`, `/companies`, `/companies/[slug]`, `/docs`.
+- Question/content discovery: `/explore`, `/blog`, `/blog/[id]`, `/companies`, `/companies/[slug]`.
 - Utility and legal: `/contact`, `/privacy`, `/terms`.
 
 ## Production Route Inventory
 
-Every production `app/**/page.tsx` route is classified here so future agents can audit shell decisions by file, not only by visual memory. Dev-only `app/test-*` routes are excluded from this production inventory.
+Every production `app/**/page.tsx` route is classified here so future agents can audit shell decisions by file, not only by visual memory. Internal visual test routes and the unsupported public docs route were removed in SAV-217 and are guarded from production builds.
 
 | Route File                                  | Route                           | Family                    | Required Shell/Primitive                                  |
 | ------------------------------------------- | ------------------------------- | ------------------------- | --------------------------------------------------------- |
@@ -121,7 +121,6 @@ Every production `app/**/page.tsx` route is classified here so future agents can
 | `app/blog/[id]/page.tsx`                    | `/blog/[id]`                    | Public/content            | Marketing article primitives                              |
 | `app/companies/page.tsx`                    | `/companies`                    | Public/content            | Marketing/content listing primitives                      |
 | `app/companies/[slug]/page.tsx`             | `/companies/[slug]`             | Public/content            | Marketing article primitives                              |
-| `app/docs/page.tsx`                         | `/docs`                         | Public/content            | Public docs/status surfaces                               |
 | `app/contact/page.tsx`                      | `/contact`                      | Public/content            | Marketing and shared form primitives                      |
 | `app/privacy/page.tsx`                      | `/privacy`                      | Public/content            | Marketing article primitives                              |
 | `app/terms/page.tsx`                        | `/terms`                        | Public/content            | Marketing article primitives                              |

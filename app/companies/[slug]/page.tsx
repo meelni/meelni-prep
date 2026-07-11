@@ -6,9 +6,25 @@ import {
   type PublicCompanyGuide,
 } from "@/lib/data/public-company";
 import { CompanyDetailClient } from "./company-detail-client";
+import { PUBLIC_ORIGIN, publicMetadata } from "@/lib/seo/public-metadata";
+import { JsonLd } from "@/components/seo/json-ld";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const company = getCompanyBySlug(slug);
+  if (!company) return { title: "Company Guide Not Found" };
+  return publicMetadata(`/companies/${slug}`, {
+    title: `${company.name} PM Interview Guide`,
+    description: `Illustrative PM practice questions associated with ${company.name}.`,
+  });
+}
 
 function CompanyStructuredData({ company }: { company: PublicCompanyGuide }) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+  const baseUrl = PUBLIC_ORIGIN;
   const url = `${baseUrl}/companies/${company.slug}`;
 
   const breadcrumbSchema = {
@@ -42,14 +58,8 @@ function CompanyStructuredData({ company }: { company: PublicCompanyGuide }) {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(pageSchema) }}
-      />
+      <JsonLd id="company-breadcrumb-schema" data={breadcrumbSchema} />
+      <JsonLd id="company-page-schema" data={pageSchema} />
     </>
   );
 }

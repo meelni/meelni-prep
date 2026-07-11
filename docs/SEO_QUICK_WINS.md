@@ -83,18 +83,18 @@
    - Verify FAQ, Organization, and SoftwareApplication schemas are detected
 
 2. **Check robots.txt**
-   - Visit: `https://meelni.com/robots.txt`
+   - Visit: `https://www.meelni.com/robots.txt`
    - Verify it loads correctly
 
 3. **Verify Sitemap**
-   - Visit: `https://meelni.com/sitemap.xml`
+   - Visit: `https://www.meelni.com/sitemap.xml`
    - Should show all pages in XML format
 
 ### B. Google Search Console Setup
 1. Go to [Google Search Console](https://search.google.com/search-console)
-2. Add property: `https://meelni.com`
+2. Add property: `https://www.meelni.com`
 3. Verify ownership (add verification code to `app/layout.tsx` metadata)
-4. Submit sitemap: `https://meelni.com/sitemap.xml`
+4. Submit sitemap: `https://www.meelni.com/sitemap.xml`
 5. Request indexing for key pages
 
 ### C. Content Quick Wins

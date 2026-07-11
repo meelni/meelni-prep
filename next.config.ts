@@ -1,13 +1,37 @@
 import type { NextConfig } from "next";
 
+import { ROBOTS_NOINDEX_HEADER } from "./lib/seo/robots-header";
+
+const NOINDEX_ROUTE_SOURCES = [
+  "/api",
+  "/auth",
+  "/auth/:path*",
+  "/dashboard",
+  "/dashboard/:path*",
+  "/feedback",
+  "/feedback/:path*",
+  "/interview",
+  "/interview/:path*",
+  "/pricing/canceled",
+  "/pricing/success",
+  "/setup",
+  "/setup/:path*",
+] as const;
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@meelni/agent", "@meelni/core", "@meelni/integrations"],
   async headers() {
+    const globalHeaders = [
+      ...(process.env.VERCEL_ENV === "production"
+        ? []
+        : [{ key: "X-Robots-Tag", value: ROBOTS_NOINDEX_HEADER }]),
+    ];
     return [
       {
         // Apply security headers to all routes
         source: "/:path*",
         headers: [
+          ...globalHeaders,
           {
             key: "Content-Security-Policy",
             value: [
@@ -40,7 +64,8 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(self), geolocation=(), interest-cohort=()",
+            value:
+              "camera=(), microphone=(self), geolocation=(), interest-cohort=()",
           },
           {
             key: "X-DNS-Prefetch-Control",
@@ -54,7 +79,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Access-Control-Allow-Origin",
-            value: process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com",
+            value: process.env.NEXT_PUBLIC_APP_URL || "https://www.meelni.com",
           },
           {
             key: "Access-Control-Allow-Methods",
@@ -72,8 +97,21 @@ const nextConfig: NextConfig = {
             key: "Access-Control-Max-Age",
             value: "86400", // 24 hours
           },
+          {
+            key: "X-Robots-Tag",
+            value: ROBOTS_NOINDEX_HEADER,
+          },
         ],
       },
+      ...NOINDEX_ROUTE_SOURCES.map((source) => ({
+        source,
+        headers: [
+          {
+            key: "X-Robots-Tag",
+            value: ROBOTS_NOINDEX_HEADER,
+          },
+        ],
+      })),
     ];
   },
   // Configure API route body size limits

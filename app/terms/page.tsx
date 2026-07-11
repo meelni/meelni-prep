@@ -79,14 +79,11 @@ export function TermsHoldingContent() {
               Questions during review
             </h2>
             <p>
-              For questions while review is open, use the contact page. No final
-              legal contact or acceptance process is represented by this
-              temporary page.
+              A monitored legal contact is not published while review is open.
+              No final legal contact or acceptance process is represented by
+              this temporary page.
             </p>
             <div className="not-prose mt-6 flex flex-wrap gap-3">
-              <Button asChild variant="outline">
-                <Link href="/contact">Contact Meelni</Link>
-              </Button>
               <Button asChild variant="outline">
                 <Link href="/privacy">Review privacy draft</Link>
               </Button>

@@ -1,30 +1,27 @@
 import { MetadataRoute } from "next";
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+import { blogPosts } from "@/lib/blog-data";
+import { companies } from "@/lib/data/companies";
+import { publicUrl } from "@/lib/seo/public-metadata";
 
+const STATIC_PUBLIC_ROUTES = [
+  "",
+  "/explore",
+  "/companies",
+  "/pricing",
+  "/blog",
+] as const;
+
+export default function sitemap(): MetadataRoute.Sitemap {
   return [
-    {
-      url: baseUrl,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 1,
-    },
-    {
-      url: `${baseUrl}/pricing`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/explore`,
-      lastModified: new Date(),
-      changeFrequency: "daily",
-      priority: 0.9,
-    },
-    // Add more pages as they're created:
-    // - Blog posts
-    // - Question categories
-    // - Company-specific guides
+    ...STATIC_PUBLIC_ROUTES.map((route) => ({
+      url: publicUrl(route || "/"),
+    })),
+    ...companies.map((company) => ({
+      url: publicUrl(`/companies/${company.slug}`),
+    })),
+    ...blogPosts.map((post) => ({
+      url: publicUrl(`/blog/${post.id}`),
+    })),
   ];
 }
