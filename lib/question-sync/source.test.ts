@@ -4,11 +4,15 @@ import test from "node:test";
 import {
   deduplicateQuestionSyncSource,
   planQuestionSync,
+  questionSyncContentIdentity,
   questionSyncSourceIdentity,
   type QuestionSyncQuestion,
   type StoredQuestionSyncQuestion,
 } from "./source";
-import { parseGoogleSheetTimestamp } from "@/scripts/sync-questions-from-sheet";
+import {
+  parseGoogleSheetTimestamp,
+  questionSourceFingerprint,
+} from "@/scripts/sync-questions-from-sheet";
 
 test("offset-less Google Forms timestamps are stable across process timezones", () => {
   const originalTimeZone = process.env.TZ;
@@ -20,10 +24,6 @@ test("offset-less Google Forms timestamps are stable across process timezones", 
 
     assert.equal(utc?.toISOString(), "2026-07-09T21:30:15.000Z");
     assert.equal(losAngeles?.toISOString(), utc?.toISOString());
-    assert.equal(
-      questionSyncSourceIdentity(question({ askedAt: utc ?? null })),
-      questionSyncSourceIdentity(question({ askedAt: losAngeles ?? null }))
-    );
   } finally {
     if (originalTimeZone === undefined) delete process.env.TZ;
     else process.env.TZ = originalTimeZone;
@@ -39,95 +39,183 @@ test("timestamp parser rejects ambiguous named zones and invalid calendar dates"
   assert.equal(parseGoogleSheetTimestamp("2/30/2026 10:00:00", "UTC"), null);
 });
 
-test("composite source identity normalizes values without discarding provenance", () => {
-  const base = question();
+test("source fingerprints retain safe provenance without private source data", () => {
+  const base = {
+    company: "Meta",
+    questionText: "Improve Search",
+    sourceCategory: "Product Design",
+    askedAt: new Date("2026-01-01T00:00:00.000Z"),
+  };
+  const fingerprint = questionSourceFingerprint(base);
+
+  assert.match(fingerprint, /^[0-9a-f]{64}$/);
   assert.equal(
-    questionSyncSourceIdentity(base),
-    questionSyncSourceIdentity({
+    fingerprint,
+    questionSourceFingerprint({
       ...base,
       company: "  META ",
-      questionText: "  improve   SEARCH ",
-      questionType: "product sense",
+      questionText: " improve   SEARCH ",
     })
   );
-
-  for (const variant of [
-    { ...base, company: "Google" },
-    { ...base, questionType: "Execution" },
-    { ...base, askedAt: new Date("2026-02-01T00:00:00.000Z") },
-  ]) {
-    assert.notEqual(
-      questionSyncSourceIdentity(base),
-      questionSyncSourceIdentity(variant)
-    );
-  }
+  assert.notEqual(
+    fingerprint,
+    questionSourceFingerprint({
+      ...base,
+      sourceCategory: "Product Execution",
+    })
+  );
 });
 
-test("dedupe removes only exact composite duplicates", () => {
+test("exact and near-duplicate identities have separate conservative policies", () => {
+  const base = question();
+  const laterPunctuationVariant = question({
+    questionText: "Improve—Search!",
+    askedAt: new Date("2026-02-01T00:00:00.000Z"),
+    sourceFingerprint: "b".repeat(64),
+  });
+
+  assert.notEqual(
+    questionSyncSourceIdentity(base),
+    questionSyncSourceIdentity(laterPunctuationVariant)
+  );
+  assert.equal(
+    questionSyncContentIdentity(base),
+    questionSyncContentIdentity(laterPunctuationVariant)
+  );
+  assert.notEqual(
+    questionSyncContentIdentity(base),
+    questionSyncContentIdentity(
+      question({ questionText: "Improve Search for new sellers" })
+    )
+  );
+});
+
+test("dedupe removes only exact source fingerprints", () => {
   const base = question();
   const result = deduplicateQuestionSyncSource([
     base,
-    { ...base, questionText: "  IMPROVE   search " },
-    { ...base, company: "Google" },
-    { ...base, questionType: "Execution" },
-    { ...base, askedAt: new Date("2026-02-01T00:00:00.000Z") },
+    { ...base, questionText: "different formatting is still exact upstream" },
+    question({ sourceFingerprint: "b".repeat(64) }),
   ]);
 
   assert.equal(result.duplicates, 1);
-  assert.equal(result.questions.length, 4);
+  assert.equal(result.questions.length, 2);
 });
 
-test("plan reactivates an exact inactive source identity", () => {
-  const base = question();
-  const existing: StoredQuestionSyncQuestion = {
-    ...base,
-    id: "inactive",
-    isActive: false,
-  };
-
-  assert.deepEqual(planQuestionSync([base], [existing]), {
-    questionsToInsert: [],
-    questionIdsToReactivate: ["inactive"],
-    questionIdsToDeactivate: [],
-    sourceMissingQuestionIdsToDeactivate: [],
+test("near duplicates preserve the active canonical id and are quarantined", () => {
+  const canonical = question();
+  const later = question({
+    askedAt: new Date("2026-02-01T00:00:00.000Z"),
+    sourceFingerprint: "b".repeat(64),
   });
-});
+  const existing = stored(canonical, { id: "selected-question" });
+  const ids = ["quarantine-id"];
 
-test("duplicate active identities converge on the lowest stable id", () => {
-  const base = question();
-  const result = planQuestionSync(
-    [base],
-    [
-      { ...base, id: "z-surplus", isActive: true },
-      { ...base, id: "a-survivor", isActive: true },
-      { ...base, id: "m-surplus", isActive: true },
-    ]
+  const plan = planQuestionSync(
+    [later, canonical],
+    [existing],
+    () => ids.shift()!
   );
 
-  assert.deepEqual(result, {
-    questionsToInsert: [],
-    questionIdsToReactivate: [],
-    questionIdsToDeactivate: ["m-surplus", "z-surplus"],
-    sourceMissingQuestionIdsToDeactivate: [],
+  assert.equal(plan.nearDuplicateRowsQuarantined, 1);
+  assert.equal(plan.questionsToInsert.length, 1);
+  assert.deepEqual(plan.questionsToInsert[0], {
+    id: "quarantine-id",
+    ...later,
+    isActive: false,
+    qualityStatus: "quarantined_near_duplicate",
+    duplicateOfQuestionId: "selected-question",
   });
+  assert.equal(
+    plan.questionsToUpdate.some(
+      (record) => record.id === "selected-question" && record.isActive
+    ),
+    false
+  );
 });
 
-test("changed provenance inserts a new identity and retires the old one", () => {
-  const old = question();
-  const replacement = { ...old, company: "Google" };
-  const existing: StoredQuestionSyncQuestion = {
-    ...old,
-    id: "old",
-    isActive: true,
+test("source order and replay converge on one deterministic plan", () => {
+  const earlier = question();
+  const later = question({
+    askedAt: new Date("2026-02-01T00:00:00.000Z"),
+    sourceFingerprint: "b".repeat(64),
+  });
+  const ids = () => {
+    const values = ["canonical", "quarantine"];
+    return () => values.shift()!;
   };
 
-  assert.deepEqual(planQuestionSync([replacement], [existing]), {
-    questionsToInsert: [replacement],
-    questionIdsToReactivate: [],
-    questionIdsToDeactivate: ["old"],
-    sourceMissingQuestionIdsToDeactivate: ["old"],
-  });
+  const left = planQuestionSync([later, earlier], [], ids());
+  const right = planQuestionSync([earlier, later], [], ids());
+  assert.deepEqual(left, right);
+
+  const replay = planQuestionSync(
+    [later, earlier],
+    left.questionsToInsert,
+    () => "must-not-insert"
+  );
+  assert.deepEqual(replay.questionsToInsert, []);
+  assert.deepEqual(replay.questionsToUpdate, []);
+  assert.equal(replay.nearDuplicateRowsQuarantined, 1);
 });
+
+test("legacy active duplicates converge on the lowest stable id", () => {
+  const source = question();
+  const legacy = { sourceKind: "legacy" as const, sourceFingerprint: null };
+  const plan = planQuestionSync(
+    [source],
+    [
+      stored(source, { ...legacy, id: "z-surplus" }),
+      stored(source, { ...legacy, id: "a-survivor" }),
+    ],
+    () => "unused"
+  );
+
+  assert.equal(
+    plan.questionsToUpdate.find((record) => record.id === "a-survivor")
+      ?.qualityStatus,
+    "published"
+  );
+  assert.deepEqual(
+    plan.questionsToUpdate.find((record) => record.id === "z-surplus"),
+    {
+      ...stored(source, { ...legacy, id: "z-surplus" }),
+      isActive: false,
+      qualityStatus: "retired_exact_duplicate",
+      duplicateOfQuestionId: "a-survivor",
+    }
+  );
+  assert.equal(plan.duplicateRecordsRetired, 1);
+});
+
+test("source removal retires publication without deleting selected-question rows", () => {
+  const existing = stored(question(), { id: "preserved-id" });
+  const plan = planQuestionSync([], [existing]);
+
+  assert.deepEqual(plan.sourceMissingQuestionIdsToDeactivate, ["preserved-id"]);
+  assert.deepEqual(plan.questionsToUpdate, [
+    {
+      ...existing,
+      isActive: false,
+      qualityStatus: "retired_source_missing",
+      duplicateOfQuestionId: null,
+    },
+  ]);
+});
+
+function stored(
+  source: QuestionSyncQuestion,
+  overrides: Partial<StoredQuestionSyncQuestion> = {}
+): StoredQuestionSyncQuestion {
+  return {
+    ...source,
+    id: "existing",
+    isActive: true,
+    qualityStatus: "published",
+    duplicateOfQuestionId: null,
+    ...overrides,
+  };
+}
 
 function question(
   overrides: Partial<QuestionSyncQuestion> = {}
@@ -137,6 +225,9 @@ function question(
     questionText: "Improve Search",
     questionType: "Product Sense",
     askedAt: new Date("2026-01-01T00:00:00.000Z"),
+    sourceKind: "google_sheets",
+    sourceCategory: "Product Design",
+    sourceFingerprint: "a".repeat(64),
     ...overrides,
   };
 }

@@ -288,6 +288,7 @@ async function run() {
       await seedAuthorizationFixtures(upgrade);
       await seedLifecycleBackfillFixtures(upgrade);
       await seedLegacyCreditLedgerIntegrityFixtures(upgrade);
+      await seedQuestionProvenanceBackfillFixtures(upgrade);
       const lifecyclePreview = runPreflight(
         upgradeUrl,
         true,
@@ -8522,12 +8523,14 @@ async function protectedRowCounts(sql: postgres.Sql) {
       users: number;
       subscriptions: number;
       sessions: number;
+      questions: number;
     }[]
   >`
     SELECT
       (SELECT count(*)::int FROM app_user) AS users,
       (SELECT count(*)::int FROM subscription) AS subscriptions,
-      (SELECT count(*)::int FROM interview_session) AS sessions
+      (SELECT count(*)::int FROM interview_session) AS sessions,
+      (SELECT count(*)::int FROM interview_question) AS questions
   `;
   return rows[0];
 }
