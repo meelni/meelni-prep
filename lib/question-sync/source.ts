@@ -4,6 +4,11 @@ import type {
   QuestionQualityStatus,
   QuestionSourceKind,
 } from "@/lib/question-sync/types";
+import {
+  normalizeQuestionIdentityText,
+  normalizeQuestionPresentationText,
+  normalizeQuestionPromptForNearDuplicate,
+} from "@/lib/question-sync/normalization";
 
 export interface QuestionSyncQuestion {
   company: string | null;
@@ -43,11 +48,11 @@ export function questionSyncSourceIdentity(
   return (
     cleanFingerprint(question.sourceFingerprint) ??
     JSON.stringify([
-      normalizeText(question.questionText),
-      normalizeNullableText(question.company),
-      normalizeText(question.questionType),
+      normalizeQuestionIdentityText(question.questionText),
+      normalizeNullableIdentityText(question.company),
+      normalizeQuestionIdentityText(question.questionType),
       question.askedAt?.toISOString() ?? null,
-      normalizeNullableText(question.sourceCategory),
+      normalizeNullableIdentityText(question.sourceCategory),
     ])
   );
 }
@@ -62,9 +67,9 @@ export function questionSyncContentIdentity(
   question: QuestionSyncQuestion
 ): string {
   return JSON.stringify([
-    normalizePrompt(question.questionText),
-    normalizeNullableText(question.company),
-    normalizeText(question.questionType),
+    normalizeQuestionPromptForNearDuplicate(question.questionText),
+    normalizeNullableIdentityText(question.company),
+    normalizeQuestionIdentityText(question.questionType),
   ]);
 }
 
@@ -302,11 +307,11 @@ function compareExactSourceRepresentation(
 
 function stableSourceRepresentation(question: QuestionSyncQuestion): string {
   return JSON.stringify([
-    normalizePresentationText(question.questionText),
-    normalizePresentationText(question.company ?? "") || null,
-    normalizePresentationText(question.questionType),
+    normalizeQuestionPresentationText(question.questionText),
+    normalizeQuestionPresentationText(question.company ?? "") || null,
+    normalizeQuestionPresentationText(question.questionType),
     question.askedAt?.toISOString() ?? null,
-    normalizePresentationText(question.sourceCategory ?? "") || null,
+    normalizeQuestionPresentationText(question.sourceCategory ?? "") || null,
     question.sourceKind,
     cleanFingerprint(question.sourceFingerprint),
   ]);
@@ -353,32 +358,11 @@ function cleanFingerprint(value: string | null): string | null {
   return normalized || null;
 }
 
-function normalizePrompt(value: string): string {
-  return value
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[\u2018\u2019\u201a\u201b]/gu, "'")
-    .replace(/[\u201c\u201d\u201e\u201f]/gu, '"')
-    .replace(/[\u2010-\u2015](?=\p{L})/gu, " ")
-    .trim()
-    .replace(/[.!?…]+$/gu, "")
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-function normalizePresentationText(value: string): string {
-  return value.normalize("NFKC").trim().replace(/\s+/g, " ");
-}
-
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function normalizeText(value: string): string {
-  return value.normalize("NFKC").toLowerCase().trim().replace(/\s+/g, " ");
-}
-
-function normalizeNullableText(value: string | null): string | null {
-  const normalized = value ? normalizeText(value) : "";
+function normalizeNullableIdentityText(value: string | null): string | null {
+  const normalized = value ? normalizeQuestionIdentityText(value) : "";
   return normalized || null;
 }

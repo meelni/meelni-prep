@@ -22,6 +22,7 @@ import {
 } from "@/lib/google-sheets-client";
 import { fetchSheetViaAPI } from "@/lib/google-sheets-api";
 import { deduplicateQuestionSyncSource } from "@/lib/question-sync/source";
+import { normalizeQuestionIdentityText } from "@/lib/question-sync/normalization";
 import type {
   PreparedQuestionSync,
   ProcessedQuestion,
@@ -566,16 +567,12 @@ export function questionSourceFingerprint(input: {
   askedAt: Date | null;
 }): string {
   const normalized = JSON.stringify([
-    normalizeFingerprintText(input.questionText),
-    normalizeFingerprintText(input.company ?? "") || null,
-    normalizeFingerprintText(input.sourceCategory),
+    normalizeQuestionIdentityText(input.questionText),
+    normalizeQuestionIdentityText(input.company ?? "") || null,
+    normalizeQuestionIdentityText(input.sourceCategory),
     input.askedAt?.toISOString() ?? null,
   ]);
   return createHash("sha256").update(normalized, "utf8").digest("hex");
-}
-
-function normalizeFingerprintText(value: string): string {
-  return value.normalize("NFKC").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 /**

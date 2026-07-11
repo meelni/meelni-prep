@@ -23,9 +23,9 @@ Unknown types are rejected at the API boundary or skipped by ingestion; they are
 
 ## List and pagination semantics
 
-`GET /api/questions` applies round and `activeOnly` filters before `limit` and `offset`. The response has these invariants:
+`GET /api/questions` is always the active published projection. The retired `activeOnly` query parameter is ignored for backward compatibility and can never opt a public caller into inactive history. Round and search filters apply before `limit` and `offset`. The response has these invariants:
 
-- `questions` contains only rows matching the complete filter.
+- `questions` contains only active published rows matching the complete filter.
 - `pagination.total` is the count of the complete filtered set, not the count of the current page.
 - `pagination.hasMore` is true when the current offset and returned row count have not reached that total.
 
@@ -79,7 +79,7 @@ The question-provenance migration generated from the current mainline is provisi
 - The only accepted manual option is an optional boolean `dryRun`. Unknown options and malformed payloads are rejected.
 - Provider rows are fetched and validated before the database transaction opens. The workflow then holds a PostgreSQL transaction-scoped advisory lock while the same transaction reads existing questions, builds the mutation plan, inserts, reactivates, and deactivates. An overlapping request receives `409 question_sync_in_progress` before database reads or writes begin.
 - Source provenance is internal-only: `source_kind` identifies the normalized provider class, `source_category` retains the upstream category before taxonomy mapping, and `source_fingerprint` is a SHA-256 digest of normalized non-private source fields. The fingerprint does not contain sheet IDs, URLs, comments, notes, credentials, or user identifiers. PostgreSQL grants anonymous and authenticated roles only the established public question columns; source, quality, and duplicate-link columns require the service role even for published rows.
-- Exact duplicates share one source fingerprint and collapse deterministically before planning, independent of provider row order. Near-duplicate automation is intentionally conservative: prompts must have the same company and canonical PM round and differ only by source occurrence time or explicitly normalized prose dash, quote, sentence-ending punctuation, case, or spacing variation. Comparison operators, percentages, currency symbols, arithmetic signs, and other meaning-bearing punctuation remain part of identity. Semantic similarity and edit-distance matching are not automatic quarantine signals.
+- Exact duplicates share one source fingerprint and collapse deterministically before planning, independent of provider row order. Near-duplicate automation is intentionally conservative: prompts must have the same company and canonical PM round and differ only by source occurrence time or explicitly normalized quote, sentence-ending punctuation, case, or spacing variation. Normalization uses Unicode NFC, not compatibility folding. Dashes, superscripts, circled numbers, comparison operators, percentages, currency symbols, arithmetic signs, and other meaning-bearing notation remain part of identity. Semantic similarity and edit-distance matching are not automatic quarantine signals.
 - One row per near-duplicate content group remains `published` and active. Additional occurrences are stored as inactive `quarantined_near_duplicate` rows linked to the canonical question. Legacy surplus rows become `retired_exact_duplicate`; rows absent upstream become `retired_source_missing`.
 - An existing active canonical row wins over a new ID. This preserves bookmarks, session evidence, public question selection, and authentication handoff while its safe provenance fields are refreshed. If multiple legacy active rows match, the lexicographically lowest UUID remains canonical.
 - Offset-less Google Forms timestamps are converted using `GOOGLE_SHEET_TIME_ZONE`, which accepts only `UTC` or a fixed `±HH:MM` offset; named zones are rejected to avoid daylight-saving ambiguity.
