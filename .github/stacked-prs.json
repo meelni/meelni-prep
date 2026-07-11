@@ -54,7 +54,7 @@
       "pr": 270,
       "headRef": "codex/sav-231-billing-truth",
       "parentRef": "codex/sav-230-provider-credit-recovery",
-      "expectedParentHead": "ca57e592109d7cbcde2637ed18ba3f4880542d5c"
+      "expectedParentHead": "c456eb436171cc80794b27cb84dfea88173e4e84"
     },
     {
       "pr": 272,
