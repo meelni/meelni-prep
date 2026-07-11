@@ -27,10 +27,10 @@ export function DiscontinuedHome() {
           <span>&copy; {new Date().getFullYear()} Meelni</span>
           <div className="flex items-center gap-5">
             <Link className="hover:text-foreground" href="/terms">
-              Terms
+              Terms draft
             </Link>
             <Link className="hover:text-foreground" href="/privacy">
-              Privacy
+              Privacy draft
             </Link>
           </div>
         </div>

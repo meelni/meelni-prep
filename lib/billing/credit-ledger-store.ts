@@ -36,14 +36,28 @@ type CreditReservationRow = typeof creditReservation.$inferSelect;
 type CreditReservationGrantRow = typeof creditReservationGrant.$inferSelect;
 type CreditTransactionRow = typeof creditTransaction.$inferSelect;
 
+interface CreditLedgerTransactionLease {
+  active: boolean;
+  accepting: boolean;
+  inFlight: Set<Promise<unknown>>;
+}
+
 export function createDrizzleCreditLedgerStore(
   database: CreditLedgerDatabase = db
 ): CreditLedgerStore {
-  const operations = createDrizzleCreditLedgerOperations(database);
+  const operations = createDrizzleCreditLedgerTransaction(database);
 
   return {
-    ...operations,
-    async withUserTransaction(userId, work) {
+    findGrantByIdempotencyKey: operations.findGrantByIdempotencyKey,
+    findTransactionByIdempotencyKey: operations.findTransactionByIdempotencyKey,
+    listSpendableGrants: operations.listSpendableGrants,
+    listUserGrants: operations.listUserGrants,
+    findReservationByKey: operations.findReservationByKey,
+    listAllocations: operations.listAllocations,
+    async withUserTransaction<T>(
+      userId: string,
+      work: (transaction: CreditLedgerTransaction) => Promise<T>
+    ): Promise<T> {
       return database.transaction(async (transaction) => {
         const users = await transaction
           .select({ id: appUser.id })
@@ -60,17 +74,169 @@ export function createDrizzleCreditLedgerStore(
           .limit(1);
         if (tombstones[0]) throw new Error("account_deletion_pending");
 
-        return work(createDrizzleCreditLedgerOperations(transaction));
+        const lease: CreditLedgerTransactionLease = {
+          active: true,
+          accepting: true,
+          inFlight: new Set(),
+        };
+        const transactionOperations = createDrizzleCreditLedgerTransaction(
+          transaction,
+          userId,
+          lease
+        );
+        const scopedTransaction = createCallbackScopedTransaction(
+          transactionOperations,
+          lease
+        );
+        let callbackResult: T | undefined;
+        let callbackError: unknown;
+        let callbackFailed = false;
+        try {
+          callbackResult = await work(scopedTransaction);
+        } catch (error) {
+          callbackFailed = true;
+          callbackError = error;
+        } finally {
+          lease.accepting = false;
+          const operationResults = await Promise.allSettled([
+            ...lease.inFlight,
+          ]);
+          lease.active = false;
+          if (callbackFailed) throw callbackError;
+
+          const failedOperation = operationResults.find(
+            (result) => result.status === "rejected"
+          );
+          if (failedOperation?.status === "rejected") {
+            throw failedOperation.reason;
+          }
+        }
+        return callbackResult as T;
       });
     },
   };
 }
 
-function createDrizzleCreditLedgerOperations(
-  database: CreditLedgerExecutor
+function createCallbackScopedTransaction(
+  transaction: CreditLedgerTransaction,
+  lease: CreditLedgerTransactionLease
 ): CreditLedgerTransaction {
+  return new Proxy(transaction, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== "function") return value;
+
+      return (...args: unknown[]) => {
+        if (!lease.accepting) {
+          return Promise.reject(new Error("credit_ledger_transaction_closed"));
+        }
+
+        const operation = Promise.resolve().then(() =>
+          Reflect.apply(value, target, args)
+        );
+        lease.inFlight.add(operation);
+        void operation.catch(() => {});
+        return operation;
+      };
+    },
+  });
+}
+
+function createDrizzleCreditLedgerTransaction(
+  database: CreditLedgerExecutor,
+  lockedUserId?: string,
+  lease?: CreditLedgerTransactionLease
+): CreditLedgerTransaction {
+  function requireActiveTransaction(): void {
+    if (lease && !lease.active) {
+      throw new Error("credit_ledger_transaction_closed");
+    }
+  }
+
+  function requireLockedUser(candidateUserId?: string): string {
+    requireActiveTransaction();
+    if (
+      !lockedUserId ||
+      (candidateUserId !== undefined && candidateUserId !== lockedUserId)
+    ) {
+      throw new Error("credit_ledger_user_scope_mismatch");
+    }
+    return lockedUserId;
+  }
+
+  async function assertGrantOwnership(grantId: string): Promise<void> {
+    const userId = requireLockedUser();
+    const rows = await database
+      .select({ id: creditGrant.id })
+      .from(creditGrant)
+      .where(and(eq(creditGrant.id, grantId), eq(creditGrant.userId, userId)))
+      .limit(1)
+      .for("update");
+    if (!rows[0]) throw new Error("credit_ledger_user_scope_mismatch");
+  }
+
+  async function assertReservationOwnership(
+    reservationId: string
+  ): Promise<void> {
+    const userId = requireLockedUser();
+    const rows = await database
+      .select({ id: creditReservation.id })
+      .from(creditReservation)
+      .where(
+        and(
+          eq(creditReservation.id, reservationId),
+          eq(creditReservation.userId, userId)
+        )
+      )
+      .limit(1)
+      .for("update");
+    if (!rows[0]) throw new Error("credit_ledger_user_scope_mismatch");
+  }
+
+  function assertOwnedGrantRows(rows: CreditGrantRow[]): void {
+    if (lockedUserId && rows.some((row) => row.userId !== lockedUserId)) {
+      throw new Error("credit_ledger_user_scope_mismatch");
+    }
+  }
+
+  function assertOwnedReservationRows(rows: CreditReservationRow[]): void {
+    if (lockedUserId && rows.some((row) => row.userId !== lockedUserId)) {
+      throw new Error("credit_ledger_user_scope_mismatch");
+    }
+  }
+
+  function assertOwnedTransactionRows(rows: CreditTransactionRow[]): void {
+    if (lockedUserId && rows.some((row) => row.userId !== lockedUserId)) {
+      throw new Error("credit_ledger_user_scope_mismatch");
+    }
+  }
+
+  async function assertAllocationGrantOwnership(
+    rows: CreditReservationGrantRow[]
+  ): Promise<void> {
+    const userId = requireLockedUser();
+    const grantIds = [...new Set(rows.map((row) => row.grantId))].sort();
+    if (grantIds.length === 0) return;
+
+    const grants = await database
+      .select()
+      .from(creditGrant)
+      .where(
+        and(inArray(creditGrant.id, grantIds), eq(creditGrant.userId, userId))
+      )
+      .orderBy(asc(creditGrant.id));
+
+    assertOwnedGrantRows(grants);
+    const ownedGrantIds = new Set(grants.map((grant) => grant.id));
+    if (grantIds.some((grantId) => !ownedGrantIds.has(grantId))) {
+      throw new Error("credit_ledger_user_scope_mismatch");
+    }
+  }
+
   const store: CreditLedgerTransaction = {
     async createGrant(input) {
+      requireActiveTransaction();
+      requireLockedUser(input.userId);
       const inserted = await database
         .insert(creditGrant)
         .values(input)
@@ -89,20 +255,37 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async findGrantByIdempotencyKey(idempotencyKey) {
+      requireActiveTransaction();
+      const userId = lockedUserId;
       const rows = await database
         .select()
         .from(creditGrant)
-        .where(eq(creditGrant.idempotencyKey, idempotencyKey))
+        .where(
+          userId
+            ? and(
+                eq(creditGrant.idempotencyKey, idempotencyKey),
+                eq(creditGrant.userId, userId)
+              )
+            : eq(creditGrant.idempotencyKey, idempotencyKey)
+        )
         .limit(1);
 
+      assertOwnedGrantRows(rows);
       return rows[0] ? mapGrant(rows[0]) : null;
     },
 
     async findGrantByIdempotencyKeyForUpdate(idempotencyKey) {
+      requireActiveTransaction();
+      const userId = requireLockedUser();
       const rows = await database
         .select()
         .from(creditGrant)
-        .where(eq(creditGrant.idempotencyKey, idempotencyKey))
+        .where(
+          and(
+            eq(creditGrant.idempotencyKey, idempotencyKey),
+            eq(creditGrant.userId, userId)
+          )
+        )
         .limit(1)
         .for("update");
 
@@ -110,20 +293,37 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async findTransactionByIdempotencyKey(idempotencyKey) {
+      requireActiveTransaction();
+      const userId = lockedUserId;
       const rows = await database
         .select()
         .from(creditTransaction)
-        .where(eq(creditTransaction.idempotencyKey, idempotencyKey))
+        .where(
+          userId
+            ? and(
+                eq(creditTransaction.idempotencyKey, idempotencyKey),
+                eq(creditTransaction.userId, userId)
+              )
+            : eq(creditTransaction.idempotencyKey, idempotencyKey)
+        )
         .limit(1);
 
+      assertOwnedTransactionRows(rows);
       return rows[0] ? mapTransaction(rows[0]) : null;
     },
 
     async findTransactionByIdempotencyKeyForUpdate(idempotencyKey) {
+      requireActiveTransaction();
+      const userId = requireLockedUser();
       const rows = await database
         .select()
         .from(creditTransaction)
-        .where(eq(creditTransaction.idempotencyKey, idempotencyKey))
+        .where(
+          and(
+            eq(creditTransaction.idempotencyKey, idempotencyKey),
+            eq(creditTransaction.userId, userId)
+          )
+        )
         .limit(1)
         .for("update");
 
@@ -131,6 +331,8 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async listSpendableGrants(userId, now) {
+      requireActiveTransaction();
+      if (lockedUserId) requireLockedUser(userId);
       const rows = await database
         .select()
         .from(creditGrant)
@@ -147,10 +349,13 @@ function createDrizzleCreditLedgerOperations(
           asc(creditGrant.id)
         );
 
+      assertOwnedGrantRows(rows);
       return rows.map(mapGrant);
     },
 
     async listSpendableGrantsForUpdate(userId, now) {
+      requireActiveTransaction();
+      requireLockedUser(userId);
       const rows = await database
         .select()
         .from(creditGrant)
@@ -172,15 +377,20 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async listUserGrants(userId) {
+      requireActiveTransaction();
+      if (lockedUserId) requireLockedUser(userId);
       const rows = await database
         .select()
         .from(creditGrant)
         .where(eq(creditGrant.userId, userId));
 
+      assertOwnedGrantRows(rows);
       return rows.map(mapGrant);
     },
 
     async listUserGrantsForUpdate(userId) {
+      requireActiveTransaction();
+      requireLockedUser(userId);
       const rows = await database
         .select()
         .from(creditGrant)
@@ -192,6 +402,8 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async listUserReservationsForUpdate(userId) {
+      requireActiveTransaction();
+      requireLockedUser(userId);
       const rows = await database
         .select()
         .from(creditReservation)
@@ -203,6 +415,8 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async updateGrantBalances(grantId, balances) {
+      requireActiveTransaction();
+      await assertGrantOwnership(grantId);
       const rows = await database
         .update(creditGrant)
         .set({ ...balances, updatedAt: new Date() })
@@ -217,6 +431,8 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async createReservation(input) {
+      requireActiveTransaction();
+      requireLockedUser(input.userId);
       const inserted = await database
         .insert(creditReservation)
         .values(input)
@@ -235,20 +451,37 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async findReservationByKey(reservationKey) {
+      requireActiveTransaction();
+      const userId = lockedUserId;
       const rows = await database
         .select()
         .from(creditReservation)
-        .where(eq(creditReservation.reservationKey, reservationKey))
+        .where(
+          userId
+            ? and(
+                eq(creditReservation.reservationKey, reservationKey),
+                eq(creditReservation.userId, userId)
+              )
+            : eq(creditReservation.reservationKey, reservationKey)
+        )
         .limit(1);
 
+      assertOwnedReservationRows(rows);
       return rows[0] ? mapReservation(rows[0]) : null;
     },
 
     async findReservationByKeyForUpdate(reservationKey) {
+      requireActiveTransaction();
+      const userId = requireLockedUser();
       const rows = await database
         .select()
         .from(creditReservation)
-        .where(eq(creditReservation.reservationKey, reservationKey))
+        .where(
+          and(
+            eq(creditReservation.reservationKey, reservationKey),
+            eq(creditReservation.userId, userId)
+          )
+        )
         .limit(1)
         .for("update");
 
@@ -256,6 +489,8 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async updateReservationStatus(reservationId, status) {
+      requireActiveTransaction();
+      await assertReservationOwnership(reservationId);
       const rows = await database
         .update(creditReservation)
         .set({ status, updatedAt: new Date() })
@@ -270,6 +505,9 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async createAllocation(input) {
+      requireActiveTransaction();
+      await assertReservationOwnership(input.reservationId);
+      await assertGrantOwnership(input.grantId);
       const rows = await database
         .insert(creditReservationGrant)
         .values(input)
@@ -283,16 +521,21 @@ function createDrizzleCreditLedgerOperations(
     },
 
     async listAllocations(reservationId) {
+      requireActiveTransaction();
+      if (lockedUserId) await assertReservationOwnership(reservationId);
       const rows = await database
         .select()
         .from(creditReservationGrant)
         .where(eq(creditReservationGrant.reservationId, reservationId))
         .orderBy(asc(creditReservationGrant.grantId));
 
+      if (lockedUserId) await assertAllocationGrantOwnership(rows);
       return rows.map(mapAllocation);
     },
 
     async listAllocationsForUpdate(reservationId) {
+      requireActiveTransaction();
+      await assertReservationOwnership(reservationId);
       const rows = await database
         .select()
         .from(creditReservationGrant)
@@ -300,10 +543,13 @@ function createDrizzleCreditLedgerOperations(
         .orderBy(asc(creditReservationGrant.grantId))
         .for("update");
 
+      await assertAllocationGrantOwnership(rows);
       return rows.map(mapAllocation);
     },
 
     async listTerminalTransactionsByReservationForUpdate(reservationId) {
+      requireActiveTransaction();
+      await assertReservationOwnership(reservationId);
       const rows = await database
         .select()
         .from(creditTransaction)
@@ -316,10 +562,17 @@ function createDrizzleCreditLedgerOperations(
         .orderBy(asc(creditTransaction.id))
         .for("update");
 
+      assertOwnedTransactionRows(rows);
       return rows.map(mapTransaction);
     },
 
     async createTransaction(input) {
+      requireActiveTransaction();
+      requireLockedUser(input.userId);
+      if (input.grantId) await assertGrantOwnership(input.grantId);
+      if (input.reservationId) {
+        await assertReservationOwnership(input.reservationId);
+      }
       const inserted = await database
         .insert(creditTransaction)
         .values(input)
