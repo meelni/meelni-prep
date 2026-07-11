@@ -240,6 +240,32 @@ test("candidate recovery is accepted 1ms before grace and rejected at grace", as
   assert.equal(at.lifecycle?.state, "reconnecting");
 });
 
+test("a delayed pre-deadline join cannot restore after the server deadline", async () => {
+  const deadlineAt = new Date("2026-07-10T08:00:30.000Z");
+  const fixture = createFixture(
+    createSession({
+      state: "reconnecting",
+      version: 4,
+      reconnectDeadlineAt: deadlineAt,
+    }),
+    new Date(deadlineAt.getTime())
+  );
+
+  const result = await handleLiveKitInterviewEventWorkflow(
+    event(
+      "participant_joined",
+      USER_ID,
+      "delayed-pre-deadline-join",
+      new Date(deadlineAt.getTime() - 1)
+    ),
+    fixture.deps
+  );
+
+  assert.equal(result.disposition, "ignored");
+  assert.equal(result.lifecycle?.state, "reconnecting");
+  assert.equal(fixture.writes, 0);
+});
+
 test("a later join watermark makes an earlier delayed leave inert", async () => {
   const fixture = createFixture(createSession());
   const joined = await handleLiveKitInterviewEventWorkflow(
@@ -305,7 +331,10 @@ function createSession(
   };
 }
 
-function createFixture(initial: InterviewReconnectSession): {
+function createFixture(
+  initial: InterviewReconnectSession,
+  now = NOW
+): {
   deps: HandleLiveKitInterviewEventDeps;
   schedules: Array<{
     sessionId: string;
@@ -372,6 +401,11 @@ function createFixture(initial: InterviewReconnectSession): {
     },
     markRoomCleanupComplete: async () => undefined,
     claimTimeout: async () => ({ applied: false, reason: "conflict", current }),
+    refineTimeoutClaim: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
   };
   return {
     deps: {
@@ -379,7 +413,7 @@ function createFixture(initial: InterviewReconnectSession): {
       scheduleReconnect: async (input) => {
         schedules.push(input);
       },
-      now: () => NOW,
+      now: () => now,
     },
     schedules,
     get writes() {

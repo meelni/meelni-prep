@@ -100,15 +100,11 @@ export async function enforceInterviewReconnectWorkflow(
       return { ok: false, disposition: "not_due" };
     }
 
-    const validation = await deps.validate(input.sessionId);
-    const terminalReason = validation.isValid
-      ? "disconnect_timeout"
-      : "insufficient_signal";
     const claim = await deps.store.claimTimeout({
       sessionId: input.sessionId,
       expectedVersion: input.expectedVersion,
       deadlineAt,
-      terminalReason,
+      terminalReason: "disconnect_timeout",
       transitionedAt: deps.now(),
     });
     if (!claim.applied) {
@@ -118,6 +114,27 @@ export async function enforceInterviewReconnectWorkflow(
       };
     }
     current = claim.current;
+  }
+
+  const validation = await deps.validate(input.sessionId);
+  const terminalReason = validation.isValid
+    ? "disconnect_timeout"
+    : "insufficient_signal";
+  if (current.terminalReason !== terminalReason) {
+    const refined = await deps.store.refineTimeoutClaim({
+      sessionId: input.sessionId,
+      expectedVersion: input.expectedVersion + 1,
+      deadlineAt,
+      terminalReason,
+    });
+    if (!refined.applied) {
+      return {
+        ok: false,
+        disposition:
+          refined.reason === "not_found" ? "not_found" : "stale_event",
+      };
+    }
+    current = refined.current;
   }
 
   let room: TerminatedInterviewRoom | null = null;

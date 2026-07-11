@@ -76,6 +76,12 @@ export interface InterviewReconnectStore {
     terminalReason: "disconnect_timeout" | "insufficient_signal";
     transitionedAt: Date;
   }): Promise<ApplyInterviewTransportTransitionResult>;
+  refineTimeoutClaim(input: {
+    sessionId: string;
+    expectedVersion: number;
+    deadlineAt: Date;
+    terminalReason: "disconnect_timeout" | "insufficient_signal";
+  }): Promise<ApplyInterviewTransportTransitionResult>;
 }
 
 export type InterviewReconnectDatabase = Pick<typeof db, "select" | "update">;
@@ -238,6 +244,40 @@ export function createDrizzleInterviewReconnectStore(
             eq(interviewSession.lifecycleState, "reconnecting"),
             eq(interviewSession.lifecycleVersion, input.expectedVersion),
             eq(interviewSession.reconnectDeadlineAt, input.deadlineAt)
+          )
+        )
+        .returning();
+
+      if (rows[0]) {
+        return { applied: true, current: mapReconnectSession(rows[0]) };
+      }
+      const current = await store.getById(input.sessionId);
+      return {
+        applied: false,
+        reason: current ? "conflict" : "not_found",
+        current,
+      };
+    },
+    async refineTimeoutClaim(input) {
+      const rows = await database
+        .update(interviewSession)
+        .set({
+          terminalReason: input.terminalReason,
+          status: projectLegacyInterviewSessionStatus({
+            state: "ending",
+            terminalReason: input.terminalReason,
+          }),
+        })
+        .where(
+          and(
+            eq(interviewSession.id, input.sessionId),
+            eq(interviewSession.lifecycleState, "ending"),
+            eq(interviewSession.lifecycleVersion, input.expectedVersion),
+            eq(interviewSession.reconnectDeadlineAt, input.deadlineAt),
+            inArray(interviewSession.terminalReason, [
+              "disconnect_timeout",
+              "insufficient_signal",
+            ])
           )
         )
         .returning();

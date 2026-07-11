@@ -9,6 +9,8 @@ export interface InterviewRoomCredentials {
   token: string;
   url: string;
   roomName: string;
+  authorizationVersion?: number;
+  expiresAt?: string;
 }
 
 export type RealtimeConnectionState =
@@ -71,11 +73,12 @@ export function getCanonicalInterviewHref(sessionId: string): string {
 
 export function parseInterviewRoomCredentials(
   value: unknown,
-  expectedRoomName: string
+  expectedRoomName: string,
+  now = new Date()
 ): InterviewRoomCredentials | null {
   if (!isRecord(value)) return null;
 
-  const { token, url, roomName } = value;
+  const { token, url, roomName, authorizationVersion, expiresAt } = value;
   if (
     typeof token !== "string" ||
     token.length === 0 ||
@@ -85,6 +88,28 @@ export function parseInterviewRoomCredentials(
     roomName !== expectedRoomName
   ) {
     return null;
+  }
+
+  const hasAuthorizationFence =
+    authorizationVersion !== undefined || expiresAt !== undefined;
+  if (hasAuthorizationFence) {
+    const parsedExpiry =
+      typeof expiresAt === "string" ? Date.parse(expiresAt) : Number.NaN;
+    if (
+      !Number.isSafeInteger(authorizationVersion) ||
+      Number(authorizationVersion) < 1 ||
+      !Number.isFinite(parsedExpiry) ||
+      parsedExpiry <= now.getTime()
+    ) {
+      return null;
+    }
+    return {
+      token,
+      url,
+      roomName,
+      authorizationVersion: Number(authorizationVersion),
+      expiresAt: new Date(parsedExpiry).toISOString(),
+    };
   }
 
   return { token, url, roomName };

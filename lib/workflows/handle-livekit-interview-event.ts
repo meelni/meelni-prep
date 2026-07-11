@@ -220,7 +220,8 @@ function deriveDesiredTransition(
     }
     if (isCandidate && current.state === "reconnecting") {
       if (
-        current.reconnectDeadlineAt &&
+        !current.reconnectDeadlineAt ||
+        now.getTime() >= current.reconnectDeadlineAt.getTime() ||
         input.occurredAt.getTime() >= current.reconnectDeadlineAt.getTime()
       ) {
         return null;

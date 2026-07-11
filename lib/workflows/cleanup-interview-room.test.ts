@@ -91,6 +91,11 @@ function createFixture(): {
       reason: "conflict",
       current,
     }),
+    refineTimeoutClaim: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
     markRoomCleanupComplete: async () => {
       calls.push("clear");
       current = {
