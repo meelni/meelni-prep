@@ -766,58 +766,166 @@ async function verifyConcurrentStripeSubscriptionReplacement(
     )
   `;
 
-  const replace = (resourceId: string, offset: number) =>
+  const candidates = [
+    {
+      resourceId: "sub_concurrent_a",
+      proof: stripeSubscriptionEventCursor({
+        type: "customer.subscription.created",
+        id: "evt_concurrent_a_created",
+        created: created + 1,
+      } as never),
+    },
+    {
+      resourceId: "sub_concurrent_b",
+      proof: stripeSubscriptionEventCursor({
+        type: "customer.subscription.created",
+        id: "evt_concurrent_b_created",
+        created: created + 2,
+      } as never),
+    },
+  ] as const;
+  const replace = (
+    candidate: (typeof candidates)[number],
+    expectedResourceId: string,
+    expectedVersion: number
+  ) =>
     database
       .update(subscription)
       .set({
-        stripeSubscriptionId: resourceId,
-        status: "canceled",
-        version: 2,
-        stripeResourceCreatedAt: new Date((created + offset) * 1_000),
-        stripeResourceCreatedEventTimestamp: new Date(
-          (created + offset) * 1_000
-        ),
-        stripeResourceCreatedEventId: `evt_${resourceId}_created`,
-        retiredStripeSubscriptionIds: drizzleSql`array_append(${subscription.retiredStripeSubscriptionIds}, 'sub_concurrent_old')`,
+        stripeSubscriptionId: candidate.resourceId,
+        status: "active",
+        version: expectedVersion + 1,
+        stripeResourceCreatedAt: candidate.proof.createdAt,
+        stripeResourceCreatedEventTimestamp: candidate.proof.createdAt,
+        stripeResourceCreatedEventId: candidate.proof.eventId,
+        lastEventTimestamp: candidate.proof.createdAt,
+        lastEventPriority: candidate.proof.priority,
+        lastEventId: candidate.proof.eventId,
+        retiredStripeSubscriptionIds: drizzleSql`array_append(${subscription.retiredStripeSubscriptionIds}, ${expectedResourceId})`,
       })
       .where(
         and(
           eq(subscription.userId, userId),
-          eq(subscription.stripeSubscriptionId, "sub_concurrent_old"),
-          eq(subscription.version, 1)
+          eq(subscription.stripeSubscriptionId, expectedResourceId),
+          eq(subscription.version, expectedVersion)
         )
       )
       .returning({ id: subscription.id });
 
   const results = await Promise.all([
-    replace("sub_concurrent_a", 1),
-    replace("sub_concurrent_b", 2),
+    replace(candidates[0], "sub_concurrent_old", 1),
+    replace(candidates[1], "sub_concurrent_old", 1),
   ]);
   assert.equal(
     results.filter((result) => result.length === 1).length,
     1,
-    "optimistic replacement must elect one concurrent resource"
+    "the first CAS round must elect one concurrent resource"
   );
 
-  const [winner] = await sql<
+  let [winner] = await sql<
     Array<{
       stripe_subscription_id: string;
+      stripe_resource_created_at: Date;
+      stripe_resource_created_event_timestamp: Date;
+      stripe_resource_created_event_id: string;
       retired_stripe_subscription_ids: string[];
+      status: string;
       version: number;
     }>
   >`
-    SELECT stripe_subscription_id, retired_stripe_subscription_ids, version
+    SELECT stripe_subscription_id, stripe_resource_created_at,
+           stripe_resource_created_event_timestamp,
+           stripe_resource_created_event_id, retired_stripe_subscription_ids,
+           status, version
     FROM subscription WHERE user_id = ${userId}::uuid
   `;
+  const loser = candidates.find(
+    (candidate) => candidate.resourceId !== winner!.stripe_subscription_id
+  )!;
+  const loserMaySupersede = mayApplyStripeSubscriptionResource({
+    currentResourceId: winner!.stripe_subscription_id,
+    currentStatus: winner!.status,
+    currentResourceProof: {
+      resourceCreatedAt: new Date(winner!.stripe_resource_created_at),
+      createdEventCursor: {
+        createdAt: new Date(winner!.stripe_resource_created_event_timestamp),
+        priority: 30,
+        eventId: winner!.stripe_resource_created_event_id,
+      },
+    },
+    retiredResourceIds: winner!.retired_stripe_subscription_ids,
+    candidateResourceId: loser.resourceId,
+    candidateResourceProof: {
+      resourceCreatedAt: loser.proof.createdAt,
+      createdEventCursor: loser.proof,
+    },
+    eventType: "customer.subscription.created",
+  });
+  if (loserMaySupersede) {
+    const retry = await replace(
+      loser,
+      winner!.stripe_subscription_id,
+      winner!.version
+    );
+    assert.equal(retry.length, 1);
+  }
+
+  [winner] = await sql`
+    SELECT stripe_subscription_id, stripe_resource_created_at,
+           stripe_resource_created_event_timestamp,
+           stripe_resource_created_event_id, retired_stripe_subscription_ids,
+           status, version
+    FROM subscription WHERE user_id = ${userId}::uuid
+  `;
+  assert.equal(winner!.stripe_subscription_id, "sub_concurrent_b");
+  assert.equal(winner!.status, "active");
   assert.ok(
-    ["sub_concurrent_a", "sub_concurrent_b"].includes(
-      winner!.stripe_subscription_id
-    )
+    winner!.retired_stripe_subscription_ids.includes("sub_concurrent_old")
   );
-  assert.deepEqual(winner!.retired_stripe_subscription_ids, [
-    "sub_concurrent_old",
-  ]);
-  assert.equal(winner!.version, 2);
+  if (results[0].length === 1) {
+    assert.ok(
+      winner!.retired_stripe_subscription_ids.includes("sub_concurrent_a")
+    );
+    assert.equal(winner!.version, 3);
+  } else {
+    assert.deepEqual(winner!.retired_stripe_subscription_ids, [
+      "sub_concurrent_old",
+    ]);
+    assert.equal(winner!.version, 2);
+  }
+
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      currentResourceId: winner!.stripe_subscription_id,
+      currentStatus: winner!.status,
+      currentResourceProof: {
+        resourceCreatedAt: winner!.stripe_resource_created_at,
+        createdEventCursor: candidates[1].proof,
+      },
+      retiredResourceIds: winner!.retired_stripe_subscription_ids,
+      candidateResourceId: candidates[0].resourceId,
+      candidateResourceProof: {
+        resourceCreatedAt: candidates[0].proof.createdAt,
+        createdEventCursor: candidates[0].proof,
+      },
+      eventType: "customer.subscription.created",
+    }),
+    false,
+    "the older concurrent candidate must be a no-op after convergence"
+  );
+
+  const maximalReplay = await database
+    .update(subscription)
+    .set({ status: "past_due" })
+    .where(
+      and(
+        eq(subscription.userId, userId),
+        eq(subscription.stripeSubscriptionId, candidates[1].resourceId),
+        stripeSubscriptionCursorIsNewer(candidates[1].proof)
+      )
+    )
+    .returning({ id: subscription.id });
+  assert.equal(maximalReplay.length, 0);
 }
 
 async function seedDivergentLegacyInvoiceDuplicate(sql: postgres.Sql) {

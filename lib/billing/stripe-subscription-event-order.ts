@@ -27,7 +27,6 @@ export function mayApplyStripeSubscriptionResource(input: {
   if (input.currentResourceId === input.candidateResourceId) return true;
   if (
     input.eventType !== "customer.subscription.created" ||
-    input.currentStatus !== "canceled" ||
     !input.currentResourceProof
   ) {
     return false;

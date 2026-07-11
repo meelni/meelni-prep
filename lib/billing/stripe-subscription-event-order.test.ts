@@ -45,7 +45,7 @@ test("subscription cursors impose one total order inside a Stripe second", () =>
   }
 });
 
-test("only a created event may replace a canceled subscription resource", () => {
+test("only a created event with newer proof may replace another resource", () => {
   for (const eventType of [
     "customer.subscription.updated",
     "customer.subscription.deleted",
@@ -75,6 +75,19 @@ test("only a created event may replace a canceled subscription resource", () => 
       eventType: "customer.subscription.created",
     }),
     true
+  );
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      currentResourceId: "sub_first_winner",
+      currentStatus: "active",
+      currentResourceProof: proof(1_000, "evt_first_winner"),
+      retiredResourceIds: ["sub_old"],
+      candidateResourceId: "sub_maximal_winner",
+      candidateResourceProof: proof(1_001, "evt_maximal_winner"),
+      eventType: "customer.subscription.created",
+    }),
+    true,
+    "a retry must supersede an active but older concurrent winner"
   );
 });
 

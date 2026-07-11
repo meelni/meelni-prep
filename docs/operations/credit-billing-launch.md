@@ -61,9 +61,9 @@ IDs in preflight output. A successful attempt supersedes failed attempts for
 customer payment-history display. Subscription status and grace converge by
 provider event time, so success wins a same-second conflict and later delivery
 cannot reintroduce stale dunning state. Cursor ordering is scoped to one Stripe
-subscription resource: an explicitly allowed `customer.subscription.created`
-replacement for a canceled resource seeds the replacement cursor atomically,
-and later events from the superseded resource cannot mutate it.
+subscription resource: an allowed `customer.subscription.created` replacement
+seeds the replacement cursor atomically, and later events from the superseded
+resource cannot mutate it.
 
 Migration `0017` makes cross-resource replacement durable rather than relying
 on delivery order. Each row stores the Stripe resource creation time and its
@@ -72,8 +72,11 @@ must be a `customer.subscription.created` event for a provably newer resource;
 same-second resources use the stored created-event cursor as the deterministic
 tie-breaker. Rows without durable creation proof fail closed on replacement
 until provider reconciliation supplies that proof. Retired identities can
-never be resurrected by a delayed created event, and optimistic versioning
-elects one winner when replacement events race.
+never be resurrected by a delayed created event. If replacements race, the
+first compare-and-swap winner is provisional: a losing event retry compares
+against that active winner and a provably newer generation supersedes it. The
+result therefore converges to maximal durable creation proof, independent of
+which write won first.
 
 Account-deletion tombstones include hashed customer, subscription,
 payment-intent, and charge identifiers. Stored and late refund/dispute payloads

@@ -160,8 +160,8 @@ export async function POST(req: NextRequest) {
           accessUntil: sub.currentPeriodEnd?.toISOString(),
         });
       }
-    } catch (stripeError) {
-      console.error("Stripe cancellation error:", stripeError);
+    } catch {
+      console.error("billing_cancel_provider_failed");
       return NextResponse.json(
         {
           error:
@@ -170,8 +170,8 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
-  } catch (error) {
-    console.error("Cancellation error:", error);
+  } catch {
+    console.error("billing_cancel_unexpected");
     return NextResponse.json(
       { error: "Failed to process cancellation request" },
       { status: 500 }
@@ -261,15 +261,15 @@ export async function DELETE() {
         message: "Your subscription has been reactivated.",
         status: "active",
       });
-    } catch (stripeError) {
-      console.error("Stripe reactivation error:", stripeError);
+    } catch {
+      console.error("billing_reactivate_provider_failed");
       return NextResponse.json(
         { error: "Failed to reactivate subscription. Please contact support." },
         { status: 500 }
       );
     }
-  } catch (error) {
-    console.error("Reactivation error:", error);
+  } catch {
+    console.error("billing_reactivate_unexpected");
     return NextResponse.json(
       { error: "Failed to process reactivation request" },
       { status: 500 }
