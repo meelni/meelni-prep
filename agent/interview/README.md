@@ -103,14 +103,14 @@ Uses shared modules from `../shared/`:
     "type": "Product Sense"
   },
   "config": {
-    "role": "interviewee",
-    "mode": "mock_interview",
     "difficulty": "intermediate",
+    "hintMode": "off",
+    "questionPreference": { "recency": "very_recent", "recentDays": 365 },
     "feedback_mode": "end_only",
     "duration": 30,
     "stt_model": "deepgram/nova-3",
     "llm_model": "openai/gpt-4.1-mini",
-    "tts_model": "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
+    "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
     "voice": "cgSgspJ2msm6clMCkdW9",
     "speed": 1.0,
     "emotion": "professional",

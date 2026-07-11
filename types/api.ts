@@ -14,39 +14,40 @@
  */
 export interface StartSessionRequest {
   /** Interview round type - determines question framework and evaluation criteria */
-  roundType: 'behavioral' | 'product_sense' | 'execution' | 'strategy';
+  roundType: "behavioral" | "product_sense" | "execution" | "strategy";
   /** Interview mode - defaults to voice_video */
-  mode?: 'voice_video' | 'text';
-  /** User's role - defaults to 'pm' */
-  role?: string;
-  /** Custom interviewer persona description */
-  persona?: string;
-  /** Session configuration (voice settings, models, etc.) */
-  config?: SessionConfig;
+  mode?: "voice_video" | "text";
+  /** Canonical candidate role - only 'pm' is accepted */
+  role?: "pm";
+  /** Client-safe interview preferences */
+  config?: InterviewPreferenceInput;
+  /** Optional pre-selected question UUID */
+  questionId?: string;
 }
 
 /**
- * Session configuration options
+ * Client-safe preferences accepted by session start
  */
-export interface SessionConfig {
-  /** Cartesia voice ID (default: Tessa voice) */
-  voice?: string;
-  /** Speech-to-Text model (default: deepgram/nova-3) */
-  stt_model?: string;
-  /** Language model (default: openai/gpt-4.1-mini) */
-  llm_model?: string;
-  /** Text-to-Speech model with voice (default: cartesia/sonic-3:tessa-id) */
-  tts_model?: string;
-  /** Voice speed multiplier (0.6 - 1.5) */
-  speed?: number;
-  /** Voice emotion (Happy, Calm, Confident, etc.) */
-  emotion?: string;
-  /** Voice volume multiplier (0.5 - 2.0) */
-  volume?: number;
-  /** User skill level (beginner, intermediate, advanced) */
-  skill_level?: string;
-  /** Interview difficulty (easy, medium, hard) */
-  difficulty?: string;
+export interface InterviewPreferenceInput {
+  difficulty?: "beginner" | "intermediate" | "advanced";
+  duration?: 15 | 30 | 45;
+  hintMode?: "off" | "gentle" | "coach";
+  questionPreference?: InterviewQuestionPreference;
+}
+
+export interface InterviewQuestionPreference {
+  recency: "all" | "recent" | "very_recent";
+  recentDays?: number;
+}
+
+/**
+ * Validated preferences returned by session start
+ */
+export interface InterviewPreferences {
+  difficulty: "beginner" | "intermediate" | "advanced";
+  duration: 15 | 30 | 45;
+  hintMode: "off" | "gentle" | "coach";
+  questionPreference: InterviewQuestionPreference;
 }
 
 /**
@@ -61,9 +62,15 @@ export interface StartSessionResponse {
   token: string;
   /** LiveKit server URL */
   url: string;
-  /** Session configuration used */
-  config: SessionConfig;
+  /** Validated client-safe preferences; runtime settings remain server-owned */
+  config: InterviewPreferences;
 }
+
+/**
+ * Legacy persisted session snapshot returned by session history endpoints.
+ * This is never accepted by POST /api/session/start.
+ */
+export type SessionConfig = Record<string, unknown>;
 
 /**
  * Request body for ending a session
@@ -96,9 +103,9 @@ export interface Session {
   /** User's role (e.g., 'pm', 'designer', 'engineer') */
   role: string;
   /** Interview round type */
-  roundType: 'behavioral' | 'product_sense' | 'execution' | 'strategy';
+  roundType: "behavioral" | "product_sense" | "execution" | "strategy";
   /** Interview mode */
-  mode: 'voice_video' | 'text';
+  mode: "voice_video" | "text";
   /** Custom interviewer persona */
   persona?: string;
   /** ISO 8601 timestamp when session started */
@@ -120,9 +127,9 @@ export interface ListSessionsQuery {
   /** Number of sessions to skip (default: 0) */
   offset?: number;
   /** Filter by round type */
-  roundType?: 'behavioral' | 'product_sense' | 'execution' | 'strategy';
+  roundType?: "behavioral" | "product_sense" | "execution" | "strategy";
   /** Filter by mode */
-  mode?: 'voice_video' | 'text';
+  mode?: "voice_video" | "text";
 }
 
 /**
@@ -152,7 +159,7 @@ export interface TranscriptTurn {
   /** Foreign key to interview_session table */
   sessionId: string;
   /** Speaker identifier */
-  speaker: 'user' | 'interviewer';
+  speaker: "user" | "interviewer";
   /** ISO 8601 timestamp when turn started */
   startedAt?: Date | string;
   /** ISO 8601 timestamp when turn ended */
@@ -402,6 +409,11 @@ export function isAPIError(response: unknown): response is APIError {
 /**
  * Type guard to check if response is a validation error
  */
-export function isValidationError(response: unknown): response is ValidationError {
-  return isAPIError(response) && ('fields' in response ? typeof response.fields === 'object' : true);
+export function isValidationError(
+  response: unknown
+): response is ValidationError {
+  return (
+    isAPIError(response) &&
+    ("fields" in response ? typeof response.fields === "object" : true)
+  );
 }
