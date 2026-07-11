@@ -43,9 +43,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let observedOwnerId: string | null | undefined;
+
+    const protectTranscriptQueueForSession = (nextSession: Session | null) => {
+      const nextOwnerId = nextSession?.user.id ?? null;
+      if (
+        nextOwnerId === null ||
+        (observedOwnerId !== undefined && observedOwnerId !== nextOwnerId)
+      ) {
+        clearTranscriptQueueStorage();
+      }
+      observedOwnerId = nextOwnerId;
+    };
 
     const applySession = (nextSession: Session | null) => {
       if (!active) return;
+      protectTranscriptQueueForSession(nextSession);
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
 
@@ -86,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
+      protectTranscriptQueueForSession(session);
       setSession(session);
       setUser(session?.user ?? null);
       setIsLoading(false);
@@ -134,7 +148,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Non-blocking - don't fail login if sync fails
           });
       } else if (event === "SIGNED_OUT") {
-        clearTranscriptQueueStorage();
         analytics.track("auth_signout_completed", {});
         analytics.reset();
       }

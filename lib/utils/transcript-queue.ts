@@ -49,6 +49,17 @@ interface SerializedTranscriptQueueState {
   failures?: SerializedTranscriptQueueFailure[];
 }
 
+interface InFlightTranscriptSave {
+  promise: Promise<TranscriptSaveResult>;
+  sessionKey: string;
+}
+
+interface TranscriptQueueProcessing {
+  generation: number;
+  sessionKey: string | null;
+  promise: Promise<void>;
+}
+
 const QUEUE_CONFIG = {
   retryDelayMs: 2_000,
   requestTimeoutMs: 10_000,
@@ -78,16 +89,16 @@ class TranscriptHttpError extends Error {
 
 export class TranscriptQueue {
   private queue: QueuedTranscriptSave[] = [];
-  private processing: { generation: number; promise: Promise<void> } | null =
-    null;
+  private processing: TranscriptQueueProcessing | null = null;
   private processTimer: ReturnType<typeof setInterval> | null = null;
-  private inFlight = new Map<string, Promise<TranscriptSaveResult>>();
+  private inFlight = new Map<string, InFlightTranscriptSave>();
   private overflowedSessions = new Set<string>();
   private failures: TranscriptQueueFailure[] = [];
   private closedSessions = new Set<string>();
   private boundOwnerId: string | null = null;
   private ownerGeneration = 0;
   private ownerAbortController = new AbortController();
+  private sessionAbortControllers = new Map<string, AbortController>();
 
   constructor() {
     this.loadFromStorage();
@@ -143,12 +154,15 @@ export class TranscriptQueue {
     const generation = this.ownerGeneration;
     const id = queueIdentity(request);
     const existing = this.inFlight.get(id);
-    if (existing) return existing;
+    if (existing) return existing.promise;
 
     const save = this.saveOnce(request, generation).finally(() => {
-      if (this.inFlight.get(id) === save) this.inFlight.delete(id);
+      if (this.inFlight.get(id)?.promise === save) this.inFlight.delete(id);
     });
-    this.inFlight.set(id, save);
+    this.inFlight.set(id, {
+      promise: save,
+      sessionKey: ownerSessionIdentity(request),
+    });
     return save;
   }
 
@@ -160,12 +174,13 @@ export class TranscriptQueue {
     try {
       const result = await postTranscriptEvent(
         request,
-        this.ownerAbortController.signal
+        this.requestSignals(request)
       );
-      if (this.isCurrentRequest(request, generation)) {
-        this.removeQueuedItem(id);
-        this.removeFailure(id);
+      if (!this.isCurrentRequest(request, generation)) {
+        return { success: false, error: "transcript_owner_changed" };
       }
+      this.removeQueuedItem(id);
+      this.removeFailure(id);
       return result;
     } catch (error) {
       if (!this.isCurrentRequest(request, generation)) {
@@ -196,9 +211,9 @@ export class TranscriptQueue {
       return this.processing.promise;
     }
     const ownerId = this.boundOwnerId;
-    const signal = this.ownerAbortController.signal;
-    const processing = {
+    const processing: TranscriptQueueProcessing = {
       generation,
+      sessionKey: null,
       promise: Promise.resolve(),
     };
     this.processing = processing;
@@ -208,10 +223,14 @@ export class TranscriptQueue {
       while (this.queue.length > 0) {
         if (!ownerId || !this.isCurrentOwner(ownerId, generation)) break;
         const item = this.queue[0];
+        processing.sessionKey = ownerSessionIdentity(item.request);
         item.attemptCount += 1;
         item.lastAttempt = new Date();
         try {
-          await postTranscriptEvent(item.request, signal);
+          await postTranscriptEvent(
+            item.request,
+            this.requestSignals(item.request)
+          );
           if (
             !this.isCurrentOwner(ownerId, generation) ||
             this.closedSessions.has(ownerSessionIdentity(item.request))
@@ -254,13 +273,15 @@ export class TranscriptQueue {
     }
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      await this.processQueue();
+      const remainingMs = deadline - Date.now();
+      await waitForPromiseWithin(this.processQueue(), remainingMs);
       const pending = this.pendingCount(ownerId, sessionId);
       const failed = this.failureCount(ownerId, sessionId);
       if (pending === 0 && failed === 0) {
         return { settled: true, pending: 0, failed: 0 };
       }
-      await wait(100);
+      const retryDelayMs = Math.min(100, deadline - Date.now());
+      if (retryDelayMs > 0) await wait(retryDelayMs);
     }
 
     const pending = this.pendingCount(ownerId, sessionId);
@@ -273,8 +294,9 @@ export class TranscriptQueue {
       (item) =>
         item.request.ownerId === ownerId && item.request.sessionId === sessionId
     ).length;
-    const inFlight = [...this.inFlight.keys()].filter((id) =>
-      id.startsWith(`${ownerId}:${sessionId}:`)
+    const sessionKey = `${ownerId}:${sessionId}`;
+    const inFlight = [...this.inFlight.values()].filter(
+      (item) => item.sessionKey === sessionKey
     ).length;
     return queued + inFlight;
   }
@@ -326,7 +348,8 @@ export class TranscriptQueue {
   }
 
   clearSession(ownerId: string, sessionId: string): void {
-    this.closedSessions.add(`${ownerId}:${sessionId}`);
+    const sessionKey = `${ownerId}:${sessionId}`;
+    this.closedSessions.add(sessionKey);
     this.queue = this.queue.filter(
       (item) =>
         item.request.ownerId !== ownerId || item.request.sessionId !== sessionId
@@ -335,8 +358,13 @@ export class TranscriptQueue {
       (failure) =>
         failure.ownerId !== ownerId || failure.sessionId !== sessionId
     );
-    this.overflowedSessions.delete(`${ownerId}:${sessionId}`);
-    this.advanceGeneration();
+    this.overflowedSessions.delete(sessionKey);
+    this.sessionAbortControllers.get(sessionKey)?.abort();
+    this.sessionAbortControllers.delete(sessionKey);
+    for (const [id, inFlight] of this.inFlight) {
+      if (inFlight.sessionKey === sessionKey) this.inFlight.delete(id);
+    }
+    if (this.processing?.sessionKey === sessionKey) this.processing = null;
     this.saveToStorage();
     if (this.boundOwnerId) {
       this.startBackgroundProcessing();
@@ -419,6 +447,10 @@ export class TranscriptQueue {
     } catch (error) {
       console.error("[TranscriptQueue] Failed to load retry queue", error);
       this.queue = [];
+      this.overflowedSessions.clear();
+      this.failures = [];
+      localStorage.removeItem(QUEUE_CONFIG.storageKey);
+      localStorage.removeItem("transcript_queue");
     }
   }
 
@@ -452,9 +484,23 @@ export class TranscriptQueue {
   private advanceGeneration(): void {
     this.ownerAbortController.abort();
     this.ownerAbortController = new AbortController();
+    for (const controller of this.sessionAbortControllers.values()) {
+      controller.abort();
+    }
+    this.sessionAbortControllers.clear();
     this.ownerGeneration += 1;
     this.processing = null;
     this.inFlight.clear();
+  }
+
+  private requestSignals(request: TranscriptPersistenceRequest): AbortSignal[] {
+    const sessionKey = ownerSessionIdentity(request);
+    let sessionController = this.sessionAbortControllers.get(sessionKey);
+    if (!sessionController) {
+      sessionController = new AbortController();
+      this.sessionAbortControllers.set(sessionKey, sessionController);
+    }
+    return [this.ownerAbortController.signal, sessionController.signal];
   }
 
   private recordFailure(
@@ -530,19 +576,23 @@ export class TranscriptQueue {
 
 async function postTranscriptEvent(
   request: TranscriptPersistenceRequest,
-  ownerSignal: AbortSignal
+  cancellationSignals: AbortSignal[]
 ): Promise<TranscriptSaveResult> {
   const controller = new AbortController();
-  const abort = () => {
+  const abort = (signal: AbortSignal) => {
     clearTimeout(timeout);
-    controller.abort(ownerSignal.reason);
+    controller.abort(signal.reason);
   };
   const timeout = setTimeout(
     () => controller.abort(),
     QUEUE_CONFIG.requestTimeoutMs
   );
-  if (ownerSignal.aborted) abort();
-  else ownerSignal.addEventListener("abort", abort, { once: true });
+  const listeners = cancellationSignals.map((signal) => {
+    const listener = () => abort(signal);
+    if (signal.aborted) listener();
+    else signal.addEventListener("abort", listener, { once: true });
+    return { signal, listener };
+  });
   let response: Response;
   let data: {
     error?: string;
@@ -562,7 +612,9 @@ async function postTranscriptEvent(
     data = (await response.json().catch(() => ({}))) as typeof data;
   } finally {
     clearTimeout(timeout);
-    ownerSignal.removeEventListener("abort", abort);
+    for (const { signal, listener } of listeners) {
+      signal.removeEventListener("abort", listener);
+    }
   }
   if (!response.ok) {
     throw new TranscriptHttpError(
@@ -616,6 +668,25 @@ function safeFailureStatus(error: unknown): string {
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function waitForPromiseWithin(
+  promise: Promise<void>,
+  timeoutMs: number
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(resolve, timeoutMs);
+    promise.then(
+      () => {
+        clearTimeout(timeout);
+        resolve();
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
 }
 
 function isTranscriptPersistenceRequest(

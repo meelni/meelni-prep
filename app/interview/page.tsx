@@ -42,6 +42,7 @@ import {
   type InterviewConnectionStatus,
   type InterviewRoomCredentials,
 } from "@/components/interview/session-recovery";
+import { establishTranscriptEndCutoff } from "@/lib/utils/transcript-end-settlement";
 
 const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 
@@ -677,11 +678,13 @@ function InterviewPageContent() {
     setIsEndingSession(true);
     setEndSessionError(null);
     try {
-      const transcriptSettlement = await transcriptQueue.flush(
-        user!.id,
-        activeSessionId,
-        5_000
-      );
+      const transcriptSettlement = await establishTranscriptEndCutoff({
+        setEndIntent: (value) => {
+          endIntentRef.current = value;
+        },
+        flush: () =>
+          transcriptQueue.flush(user!.id, activeSessionId, 5_000),
+      });
       if (!transcriptSettlement.settled) {
         throw new Error(
           transcriptSettlement.failed > 0
@@ -689,8 +692,6 @@ function InterviewPageContent() {
             : "We're still saving your latest response. You're still connected; please retry in a moment."
         );
       }
-      endIntentRef.current = true;
-
       const duration = sessionStartTime
         ? (Date.now() - sessionStartTime) / 1000
         : 0;
@@ -706,6 +707,10 @@ function InterviewPageContent() {
       } | null;
 
       if (!response.ok) {
+        // A definitive server rejection means no terminal handoff occurred;
+        // reopen packet acceptance before presenting the retry path. Network
+        // ambiguity keeps the cutoff in place because the end may have committed.
+        endIntentRef.current = false;
         throw new Error(
           data?.message ||
             "We couldn't end the interview yet. You're still connected and can try again."
@@ -731,7 +736,6 @@ function InterviewPageContent() {
         : `/feedback/${activeSessionId}/loading`;
       router.push(nextHref);
     } catch (error) {
-      endIntentRef.current = false;
       console.error("Failed to end session:", error);
       setEndSessionError(
         error instanceof Error
