@@ -82,7 +82,6 @@ DECLARE
 	ip_accepted timestamp with time zone[];
 	device_accepted timestamp with time zone[];
 	global_limit integer;
-	global_retry integer := 0;
 	ip_retry integer := 0;
 	device_retry integer := 0;
 	active_device_retry integer := 0;
@@ -186,46 +185,46 @@ BEGIN
 		DELETE FROM public_demo_session WHERE id = requested_session_id;
 	END IF;
 
+	-- Check broad scopes before creating narrower identifier rows. Besides
+	-- serializing accepted reservations, this prevents denied cookie-less
+	-- traffic from manufacturing unbounded device rows after an IP or global
+	-- budget is already exhausted. The lock order is global -> ip -> device.
 	INSERT INTO public_demo_rate_limit (deployment_scope, scope, identifier_hash)
-	VALUES
-		(requested_deployment_scope, 'device', device_identifier_hash),
-		(requested_deployment_scope, 'global', global_hash),
-		(requested_deployment_scope, 'ip', ip_identifier_hash)
+	VALUES (requested_deployment_scope, 'global', global_hash)
 	ON CONFLICT (deployment_scope, scope, identifier_hash) DO NOTHING;
-
-	-- Global lock order is device -> global -> ip for every reservation.
-	SELECT accepted_at INTO device_accepted
-	FROM public_demo_rate_limit
-	WHERE deployment_scope = requested_deployment_scope
-		AND scope = 'device' AND identifier_hash = device_identifier_hash
-	FOR UPDATE;
 	SELECT accepted_at INTO global_accepted
 	FROM public_demo_rate_limit
 	WHERE deployment_scope = requested_deployment_scope
 		AND scope = 'global' AND identifier_hash = global_hash
 	FOR UPDATE;
+	SELECT COALESCE(array_agg(value ORDER BY value), ARRAY[]::timestamptz[])
+	INTO global_accepted FROM unnest(global_accepted) AS value
+	WHERE value > now_at - interval '24 hours';
+
+	global_limit := CASE WHEN requested_deployment_scope = 'production' THEN 100 ELSE 20 END;
+	IF cardinality(global_accepted) >= global_limit THEN
+		decision := 'rate_limited';
+		room_name := NULL;
+		limiting_scope := 'global';
+		retry_after_seconds := GREATEST(1, CEIL(EXTRACT(EPOCH FROM (
+			global_accepted[1] + interval '24 hours' - now_at
+		)))::integer);
+		remaining := 0;
+		RETURN NEXT;
+		RETURN;
+	END IF;
+
+	INSERT INTO public_demo_rate_limit (deployment_scope, scope, identifier_hash)
+	VALUES (requested_deployment_scope, 'ip', ip_identifier_hash)
+	ON CONFLICT (deployment_scope, scope, identifier_hash) DO NOTHING;
 	SELECT accepted_at INTO ip_accepted
 	FROM public_demo_rate_limit
 	WHERE deployment_scope = requested_deployment_scope
 		AND scope = 'ip' AND identifier_hash = ip_identifier_hash
 	FOR UPDATE;
-
-	SELECT COALESCE(array_agg(value ORDER BY value), ARRAY[]::timestamptz[])
-	INTO global_accepted FROM unnest(global_accepted) AS value
-	WHERE value > now_at - interval '24 hours';
 	SELECT COALESCE(array_agg(value ORDER BY value), ARRAY[]::timestamptz[])
 	INTO ip_accepted FROM unnest(ip_accepted) AS value
 	WHERE value > now_at - interval '24 hours';
-	SELECT COALESCE(array_agg(value ORDER BY value), ARRAY[]::timestamptz[])
-	INTO device_accepted FROM unnest(device_accepted) AS value
-	WHERE value > now_at - interval '24 hours';
-
-	global_limit := CASE WHEN requested_deployment_scope = 'production' THEN 100 ELSE 20 END;
-	IF cardinality(global_accepted) >= global_limit THEN
-		global_retry := GREATEST(1, CEIL(EXTRACT(EPOCH FROM (
-			global_accepted[1] + interval '24 hours' - now_at
-		)))::integer);
-	END IF;
 	IF cardinality(ip_accepted) >= 20 THEN
 		ip_retry := GREATEST(1, CEIL(EXTRACT(EPOCH FROM (
 			ip_accepted[1] + interval '24 hours' - now_at
@@ -241,6 +240,28 @@ BEGIN
 		FROM unnest(ip_accepted) AS value
 		WHERE value > now_at - interval '10 minutes';
 	END IF;
+	IF ip_retry > 0 THEN
+		decision := 'rate_limited';
+		room_name := NULL;
+		limiting_scope := 'ip';
+		retry_after_seconds := ip_retry;
+		remaining := 0;
+		RETURN NEXT;
+		RETURN;
+	END IF;
+
+	INSERT INTO public_demo_rate_limit (deployment_scope, scope, identifier_hash)
+	VALUES (requested_deployment_scope, 'device', device_identifier_hash)
+	ON CONFLICT (deployment_scope, scope, identifier_hash) DO NOTHING;
+	SELECT accepted_at INTO device_accepted
+	FROM public_demo_rate_limit
+	WHERE deployment_scope = requested_deployment_scope
+		AND scope = 'device' AND identifier_hash = device_identifier_hash
+	FOR UPDATE;
+	SELECT COALESCE(array_agg(value ORDER BY value), ARRAY[]::timestamptz[])
+	INTO device_accepted FROM unnest(device_accepted) AS value
+	WHERE value > now_at - interval '24 hours';
+
 	IF cardinality(device_accepted) >= 2 THEN
 		device_retry := GREATEST(1, CEIL(EXTRACT(EPOCH FROM (
 			device_accepted[1] + interval '24 hours' - now_at
@@ -259,9 +280,7 @@ BEGIN
 		)))::integer);
 	END IF;
 
-	retry_after_seconds := GREATEST(
-		global_retry, ip_retry, device_retry, active_device_retry
-	);
+	retry_after_seconds := GREATEST(device_retry, active_device_retry);
 	IF retry_after_seconds > 0 THEN
 		decision := 'rate_limited';
 		room_name := NULL;
@@ -269,8 +288,6 @@ BEGIN
 		limiting_scope := CASE
 			WHEN active_device_retry > 0
 				AND retry_after_seconds = active_device_retry THEN 'active_device'
-			WHEN retry_after_seconds = global_retry THEN 'global'
-			WHEN retry_after_seconds = ip_retry THEN 'ip'
 			ELSE 'device'
 		END;
 	ELSE

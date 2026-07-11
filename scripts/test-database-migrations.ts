@@ -2194,6 +2194,16 @@ async function verifyPublicDemoLimits(sql: postgres.Sql, url: string) {
     ).length,
     9
   );
+  assert.equal(
+    (
+      await sql<{ count: number }[]>`
+        SELECT count(*)::int AS count FROM public_demo_rate_limit
+        WHERE deployment_scope = 'production' AND scope = 'device'
+      `
+    )[0]?.count,
+    3,
+    "IP-denied requests must not manufacture device limiter rows"
+  );
 
   await sql`DELETE FROM public_demo_session`;
   await sql`DELETE FROM public_demo_rate_limit`;
@@ -2240,6 +2250,20 @@ async function verifyPublicDemoLimits(sql: postgres.Sql, url: string) {
         decision === "rate_limited" && limiting_scope === "global"
     ).length,
     20
+  );
+  assert.deepEqual(
+    (
+      await sql<{ scope: string; count: number }[]>`
+        SELECT scope, count(*)::int AS count FROM public_demo_rate_limit
+        WHERE deployment_scope = 'preview' AND scope IN ('ip', 'device')
+        GROUP BY scope ORDER BY scope
+      `
+    ).map(({ scope, count }) => ({ scope, count })),
+    [
+      { scope: "device", count: 20 },
+      { scope: "ip", count: 20 },
+    ],
+    "global-denied requests must not manufacture IP or device limiter rows"
   );
 
   await sql`DELETE FROM public_demo_session`;
@@ -2383,6 +2407,18 @@ async function verifyPublicDemoLimits(sql: postgres.Sql, url: string) {
   });
   assert.equal(ipDailyLimited.decision, "rate_limited");
   assert.equal(ipDailyLimited.limiting_scope, "ip");
+  assert.equal(
+    (
+      await sql<{ count: number }[]>`
+        SELECT count(*)::int AS count FROM public_demo_rate_limit
+        WHERE deployment_scope = 'production'
+          AND scope = 'device'
+          AND identifier_hash = ${demoHash(6001)}
+      `
+    )[0]?.count,
+    0,
+    "an IP-denied request must not create its device limiter row"
+  );
 }
 
 interface DemoReservationRow {
