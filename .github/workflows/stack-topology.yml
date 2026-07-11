@@ -29,7 +29,8 @@ concurrency:
 jobs:
   verify-stack:
     if: github.event_name == 'pull_request_target'
-    name: Stack Topology Publisher
+    # Classic protection requires this stable GitHub Actions job context.
+    name: Trusted Publisher
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -59,6 +60,7 @@ jobs:
 
   verify-migrations:
     if: github.event_name == 'pull_request_target'
+    # Classic protection requires this stable GitHub Actions job context.
     name: Migration Collision Publisher
     runs-on: ubuntu-latest
     timeout-minutes: 10

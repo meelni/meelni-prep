@@ -5,8 +5,10 @@ both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
 
 Open PRs do not reserve sequence numbers independently. Before merging a
-migration-bearing PR, require its exact-head `Migration Collision / Verify`
-check, then serialize it behind the actual latest merged migration. Rebase,
+migration-bearing PR, require the stable GitHub Actions
+`Migration Collision Publisher` job and inspect its exact-head
+`Migration Collision / Verify` audit record, then serialize it behind the
+actual latest merged migration. Rebase,
 regenerate the SQL, `_journal.json`, and snapshot from that predecessor, and
 record the exact migration predecessor in the PR body. A green collision check
 proves unique open ownership only; it does not prove that a journal or snapshot

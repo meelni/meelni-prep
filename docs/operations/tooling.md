@@ -218,8 +218,10 @@ code. The deterministic core remains offline and verifies that the child
 contains the current parent and that PR-body evidence names the exact child
 head, parent head, and merge-base.
 
-The workflow publishes the required `Stack Topology / Verify` Check Run on the
-verified PR head rather than relying on the default-branch workflow job. Every
+The workflow publishes a custom `Stack Topology / Verify` Check Run on the
+verified PR head for exact audit evidence. Classic protection requires the
+stable GitHub Actions `Trusted Publisher` job because the repository did not
+reliably enforce REST-created checks. Every
 same-repository PR event also fans out to its open registered children. The
 globally serialized, maximum-depth pending queue retains parent movement and
 closure events. The publisher refreshes exact child and parent refs just before
@@ -227,11 +229,11 @@ success; a deleted parent ref fails the child closed. A five-minute trusted
 schedule and manual dispatch remain backstops for manifest movement and
 operator recovery.
 
-Unregistered PRs targeting `main` publish an explicit successful required check
-whose output says the PR is not a registered stack child. Classic branch
-protection does not treat GitHub's `neutral` conclusion as satisfying this
-required context. Registered children and undeclared non-default stacks retain
-the exact fail-closed behavior described in the runbook.
+Unregistered PRs targeting `main` publish an explicit successful custom check
+whose output says the PR is not a registered stack child. The required
+`Trusted Publisher` job succeeds after safe publication. Registered children
+and undeclared non-default stacks retain the exact fail-closed behavior
+described in the runbook.
 
 The same trusted workflow inventories every open same-repository PR and all of
 its paginated file diffs. Every non-removed change to a direct
@@ -243,6 +245,16 @@ triggering PR receives a neutral result when it changes no Drizzle migration.
 Fork PRs do not enter the repository migration inventory.
 Fork events also skip the migration fan-out so untrusted contributors cannot
 consume the same-repository audit budget.
+
+Classic protection requires `Migration Collision Publisher`, the stable Actions
+job context. The job fails for any global inventory, publication, or freshness
+error, or when the triggering open PR owns a collision/violation. It succeeds
+for an unrelated trigger even while custom failure checks are published to
+other collision owners. Closed triggers do not inherit peer failures. Forks
+cannot enter the same-repository inventory and fail the required job closed;
+private-repository changes must be moved to a maintainer-owned branch. The
+custom Check Run remains the detailed exact-head audit record and is not the
+enforceable classic-protection context.
 
 The inventory fails closed. A malformed response, incomplete PR/file page,
 moving PR head, GitHub API error, or Check Run error prevents the workflow from

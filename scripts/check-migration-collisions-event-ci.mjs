@@ -21,22 +21,42 @@ export async function verifyMigrationCollisionsForEvent({
     throw new Error("migration_collision_gate_event_required");
   }
   const { pullRequest, repository } = parseStackEvent(content);
+  const triggeringPrNumber = pullRequest.number;
+  const triggeringOpen = pullRequest.state === "open";
   if (pullRequest.head.repo?.full_name !== repository) {
-    return { status: "skipped_fork" };
+    return { status: "skipped_fork", triggeringPrNumber, triggeringOpen };
   }
-  return audit({
+  const result = await audit({
     env,
     repository,
-    fallbackPullRequest: pullRequest.state === "open" ? pullRequest : undefined,
-    triggeringPrNumber: pullRequest.number,
+    fallbackPullRequest: triggeringOpen ? pullRequest : undefined,
+    triggeringPrNumber,
   });
+  return { ...result, triggeringPrNumber, triggeringOpen };
+}
+
+export function migrationEventJobFailed(result) {
+  if (!result || result.status === "error") return true;
+  if (result.status === "skipped_fork") return true;
+  if (!Number.isInteger(result.triggeringPrNumber)) return true;
+  if (!result.triggeringOpen) return false;
+  if (!Array.isArray(result.results)) return true;
+
+  const triggeringResult = result.results.find(
+    (entry) => entry?.pr === result.triggeringPrNumber
+  );
+  return (
+    !triggeringResult ||
+    triggeringResult.status === "fail" ||
+    triggeringResult.status === "error"
+  );
 }
 
 async function main() {
   try {
     const result = await verifyMigrationCollisionsForEvent();
     console.log(JSON.stringify(result, null, 2));
-    if (result.status === "fail" || result.status === "error") {
+    if (migrationEventJobFailed(result)) {
       process.exitCode = 1;
     }
   } catch (error) {

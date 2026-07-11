@@ -27,14 +27,15 @@ whose local branch name happens to match a registered child. Declared stacks
 must originate in the registered repository and fail closed when the PR number,
 base, ref, head, parent, or evidence differs.
 
-The trusted publisher completes the head-bound check with an explicit GitHub
-`success` conclusion for an unregistered PR targeting `main`, while its title
-and summary continue to say that the PR is not a registered stack child. This
-is required because classic branch protection does not accept a `neutral`
-conclusion for a required check. It does not weaken stack validation: a PR that
-matches a declaration must still pass exact stack verification, and a PR that
-targets a non-default branch without a declaration or has stale topology or
-evidence still fails closed.
+The trusted publisher completes the custom head-bound check with an explicit
+GitHub `success` conclusion for an unregistered PR targeting `main`, while its
+title and summary continue to say that the PR is not a registered stack child.
+The custom check is exact-head audit evidence. Live classic protection did not
+reliably enforce REST-created Check Runs even when their aggregate conclusion
+was successful, so the stable GitHub Actions job context `Trusted Publisher` is
+the required topology gate. It succeeds only when publication and topology
+verification complete safely. This does not weaken stack validation: declared
+stacks and undeclared non-default stacks still fail closed on invalid evidence.
 
 ## Local verification
 
@@ -110,7 +111,7 @@ reconverge after that parent stabilizes.
 ## CI behavior
 
 The verifier itself performs no network access. Unit tests construct temporary
-local Git repositories. The authoritative `Stack Topology / Verify` check uses
+local Git repositories. The authoritative `Trusted Publisher` job uses
 `pull_request_target`, checks out only the repository's default branch, and
 runs the verifier and registry from that trusted checkout. It never checks out
 or executes a pull request's code. On every same-repository PR event the hosted
@@ -118,12 +119,13 @@ adapter revalidates the triggering PR and each open registered child whose
 declared parent ref is the triggering PR's head ref. It fetches each
 server-owned `refs/pull/<n>/head` plus its declared parent and supplies the exact
 PR body to the deterministic verifier. It creates a dedicated
-`Stack Topology / Verify` Check Run on that child head before Git verification,
+custom `Stack Topology / Verify` Check Run on that child head before Git verification,
 then refreshes both exact refs immediately before completing success. A changed
 child or parent generation fails the in-progress check instead of publishing a
-stale success. The workflow's own job has a different name and is not the
-branch-protection context. Push events fail closed in this adapter; local branch
-work uses the command above.
+stale success. Classic protection requires the stable `Trusted Publisher`
+Actions job; the custom Check Run remains the detailed exact-head audit record.
+Push events fail closed in this adapter; local branch work uses the command
+above.
 
 All event, scheduled, and manual publishers share one non-cancelling workflow
 concurrency group with GitHub's maximum pending queue. Parent events are not
@@ -155,10 +157,11 @@ permission and does not expose secrets to PR code.
 Functional, security, Preview, and provider verification remain separate
 requirements.
 
-For an unregistered PR targeting `main`, the required check's explicit success
-is branch-protection compatibility, not stack evidence. Registered stack
-children receive success only after exact child, parent, ancestry, and PR-body
-evidence verification.
+For an unregistered PR targeting `main`, the custom check's explicit success is
+compatibility evidence, not stack evidence. The required `Trusted Publisher`
+job succeeds after the trusted adapter safely publishes that result. Registered
+stack children receive success only after exact child, parent, ancestry, and
+PR-body evidence verification.
 
 ## Cross-PR migration ownership
 
@@ -188,6 +191,16 @@ same exact head is reused, bounding Check Run churn. The workflow still checks
 out only default-branch code; it reads PR metadata and file names but never
 fetches or executes PR files for collision detection.
 
+Classic protection requires the stable `Migration Collision Publisher` Actions
+job, not the REST-created custom Check Run. The event job still inventories all
+open same-repository PRs and publishes custom failure evidence to every
+collision owner. Its required job context fails for global inventory,
+publication, or freshness errors and when the triggering open PR's own result
+is failure/error. A non-migration trigger succeeds despite unrelated existing
+collisions, and a closed trigger does not inherit peer collisions. Fork events
+cannot prove ownership with the same-repository inventory and fail the required
+job closed; private-repository changes must use a maintainer-owned branch.
+
 Topology event, scheduled, and manual runs inherit the workflow's one global,
 non-canceling `queue: max` boundary. Each parent event fans out to the triggering
 PR and its open registered dependents, so topology publication is not scoped to
@@ -216,11 +229,12 @@ Merging the gate to `main` makes the trusted workflow available without copying
 the checker through every existing stack branch. It does not retroactively make
 old green `Validate` runs topology evidence. Before any stacked PR merges:
 
-1. Configure the explicit head-bound `Stack Topology / Verify` and
-   `Migration Collision / Verify` Check Runs as required checks for every
-   protected branch that can receive a relaunch PR. Do not select the workflow
-   jobs `Relaunch Integration Gates / Stack Topology Publisher` or
-   `Relaunch Integration Gates / Migration Collision Publisher`.
+1. Configure the GitHub Actions job contexts `Trusted Publisher` and
+   `Migration Collision Publisher` as required checks for every protected
+   branch that can receive a relaunch PR. Keep `Validate` required on `main`.
+   Do not require the REST-created `Stack Topology / Verify` or
+   `Migration Collision / Verify` Check Runs under classic protection; inspect
+   them as exact-head audit evidence.
 2. Starting at each stack root, fetch the exact current parent and run the local
    command above. Do not change evidence for a failing topology.
 3. Replace the PR-body evidence block with the exact result. The body edit
@@ -235,5 +249,6 @@ old green `Validate` runs topology evidence. Before any stacked PR merges:
    blocked while its default-branch manifest update is under review.
 
 Keep the relaunch and stack merge queue frozen until every open stacked PR has a
-fresh `Stack Topology / Verify` result. If repository rules cannot require the
-check on a non-default target branch, treat its absence as a manual merge block.
+successful `Trusted Publisher` job and fresh `Stack Topology / Verify` audit
+result. If repository rules cannot require the job on a non-default target
+branch, treat its absence as a manual merge block.

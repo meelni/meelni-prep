@@ -681,6 +681,7 @@ test("the authoritative workflow checks out default-branch code and never PR cod
     workflow,
     /verify-stack:[^]*?permissions:\n      contents: read\n      checks: write/
   );
+  assert.match(workflow, /verify-stack:[^]*?name: Trusted Publisher/);
   assert.match(
     workflow,
     /verify-migrations:[^]*?permissions:\n      contents: read\n      checks: write\n      pull-requests: read/

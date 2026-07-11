@@ -28,7 +28,8 @@ missing or superseded evidence automatically.
 - Exact tested head:
 - Exact tested parent head, when stacked:
 - Migration predecessor (exact merged migration/head, or none):
-- [ ] `Migration Collision / Verify` is attached to this exact head.
+- [ ] Required `Migration Collision Publisher` job passed for this exact head.
+- [ ] Custom `Migration Collision / Verify` audit evidence was reviewed.
 - Commands and results:
 - Manual checks:
 
