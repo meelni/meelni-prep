@@ -160,6 +160,42 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
   ]);
 });
 
+test("startInterviewSessionWorkflow rejects a selected question that became inactive", async () => {
+  const fixture = createProductSenseInterviewFixture();
+  let upserted = false;
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: {
+        roundType: "product_sense",
+        mode: "voice_video",
+        config: fixture.roomMetadata.config,
+        questionId: fixture.question.questionId,
+      },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      getQuestionById: async () => ({
+        id: fixture.question.questionId,
+        company: fixture.question.company,
+        questionText: fixture.question.questionText,
+        questionType: fixture.question.questionType,
+        askedAt: fixture.session.startedAt,
+        isActive: false,
+        createdAt: fixture.session.startedAt,
+      }),
+      upsertUser: async () => {
+        upserted = true;
+      },
+    })
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.status, 404);
+  assert.equal(upserted, false);
+});
+
 test("startInterviewSessionWorkflow carries hint mode through session config", async () => {
   const productFixture = createProductSenseInterviewFixture();
   const result = await startInterviewSessionWorkflow(

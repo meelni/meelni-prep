@@ -59,6 +59,16 @@ export function buildQuestionInterviewHref(
   return buildNewInterviewHref(searchParams);
 }
 
+export function buildInterviewHrefWithoutQuestion(
+  searchParams: URLSearchParams | string
+): string {
+  const preserved = new URLSearchParams(
+    typeof searchParams === "string" ? searchParams : searchParams.toString()
+  );
+  preserved.delete("questionId");
+  return buildNewInterviewHref(preserved);
+}
+
 function cleanValue(value: string | null): string | null {
   const cleaned = value?.trim();
   return cleaned ? cleaned : null;

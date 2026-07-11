@@ -29,4 +29,12 @@ session lookup has not settled. A delayed successful lookup may still restore
 the session. While initialization is active, auth pages use one labeled live
 status whose animation stops under reduced-motion preferences.
 
-Query parsing uses the first value for repeated keys, matching `URLSearchParams.get`. Empty or invalid `questionId` values are treated as absent by the launcher. Compatibility routes may preserve raw query strings, but all successful selected-question launches resolve to `/dashboard/new-interview`.
+Query parsing uses the first value for repeated keys, matching
+`URLSearchParams.get`. Empty `questionId` values are treated as absent. A
+non-empty invalid, deleted, inactive, or otherwise stale question ID remains
+visible as recovery intent on `/dashboard/new-interview`; it must not silently
+degrade into a random question. The candidate can return to the safe public
+origin to choose another question or remove only `questionId` while preserving
+the remaining launch query. Compatibility routes may preserve raw query
+strings, but all successful selected-question launches resolve to
+`/dashboard/new-interview`.

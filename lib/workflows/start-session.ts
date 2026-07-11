@@ -517,7 +517,7 @@ async function selectQuestion({
   if (questionId) {
     const question = await deps.getQuestionById(questionId);
 
-    if (!question) {
+    if (!question || !question.isActive) {
       return {
         ok: false,
         status: 404,

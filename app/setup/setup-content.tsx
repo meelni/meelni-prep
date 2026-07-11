@@ -30,6 +30,10 @@ import {
 import { validateSessionStart } from "@/lib/validation/setup-schema";
 import { RoundSelector } from "./components/round-selector";
 import { DifficultySelector } from "./components/difficulty-selector";
+import {
+  SelectedQuestionConfirmation,
+  type SelectedQuestionIntentState,
+} from "./components/selected-question-confirmation";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import { QuotaExceededModal } from "@/components/dashboard/quota-exceeded-modal";
 import { TierUpgradeModal } from "@/components/dashboard/tier-upgrade-modal";
@@ -38,7 +42,10 @@ import { track, AnalyticsEvents } from "@/lib/analytics";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { trackInterviewLaunchEvent } from "@/lib/analytics/interview-launch-compat";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
-import { parseInterviewLaunchContext } from "@/lib/navigation/interview-launch";
+import {
+  buildInterviewHrefWithoutQuestion,
+  parseInterviewLaunchContext,
+} from "@/lib/navigation/interview-launch";
 
 export function SetupContent() {
   const { user, isLoading: authLoading } = useAuth();
@@ -92,6 +99,8 @@ export function SetupContent() {
     company: string | null;
     type: string;
   } | null>(null);
+  const [questionIntentState, setQuestionIntentState] =
+    useState<SelectedQuestionIntentState>({ status: "none" });
   const launcherViewKey = questionIdParam ?? "dashboard";
   const trackedLauncherViewKey = useRef<string | null>(null);
 
@@ -125,6 +134,11 @@ export function SetupContent() {
     }),
     [launchContext.company, launchContext.focus, launchContext.returnTo]
   );
+  const continueWithoutQuestionHref = useMemo(
+    () => buildInterviewHrefWithoutQuestion(searchParams.toString()),
+    [searchParams]
+  );
+  const changeQuestionHref = launchContext.returnTo ?? "/explore";
 
   // Credit state is informational; session start remains the source of truth.
   const [creditBalance, setCreditBalance] = useState<{
@@ -167,29 +181,49 @@ export function SetupContent() {
     if (!questionIdParam) {
       setQuestionId(null);
       setQuestionData(null);
+      setQuestionIntentState({ status: "none" });
       return;
     }
+    const selectedQuestionId = questionIdParam;
 
     let isCurrent = true;
     setQuestionId(null);
     setQuestionData(null);
+    setQuestionIntentState({ status: "loading" });
 
     async function fetchQuestion() {
       try {
-        const response = await fetch(`/api/questions/${questionIdParam}`);
+        const response = await fetch(
+          `/api/questions/${encodeURIComponent(selectedQuestionId)}`
+        );
         if (!response.ok) {
-          console.error("Failed to fetch question");
+          if (isCurrent) setQuestionIntentState({ status: "unavailable" });
           return;
         }
 
         const data = await response.json();
         if (!isCurrent) return;
+        if (
+          typeof data.questionText !== "string" ||
+          !data.questionText.trim() ||
+          typeof data.questionType !== "string" ||
+          !data.questionType.trim() ||
+          (data.company !== null && typeof data.company !== "string")
+        ) {
+          setQuestionIntentState({ status: "unavailable" });
+          return;
+        }
 
-        setQuestionId(questionIdParam);
-        setQuestionData({
+        setQuestionId(selectedQuestionId);
+        const selectedQuestion = {
           text: data.questionText,
           company: data.company,
           type: data.questionType,
+        };
+        setQuestionData(selectedQuestion);
+        setQuestionIntentState({
+          status: "ready",
+          question: selectedQuestion,
         });
 
         const mappedRoundType = mapQuestionTypeToRoundType(data.questionType);
@@ -201,11 +235,11 @@ export function SetupContent() {
         // Track that user came from explore page
         track(AnalyticsEvents.SETUP_PAGE_VIEWED, {
           source: "explore",
-          questionId: questionIdParam,
+          questionId: selectedQuestionId,
           questionType: data.questionType,
         });
-      } catch (error) {
-        console.error("Error fetching question:", error);
+      } catch {
+        if (isCurrent) setQuestionIntentState({ status: "unavailable" });
       }
     }
 
@@ -298,6 +332,11 @@ export function SetupContent() {
   }, [user]);
 
   const handleStartInterview = async () => {
+    if (questionIdParam && questionIntentState.status !== "ready") {
+      setError("Choose an available question before starting.");
+      return;
+    }
+
     if (!roundType || !difficulty) {
       setError("Please complete all required fields");
       return;
@@ -542,6 +581,16 @@ export function SetupContent() {
             )}
           </AnimatePresence>
 
+          {questionIntentState.status !== "none" && (
+            <motion.div variants={fadeInUp}>
+              <SelectedQuestionConfirmation
+                state={questionIntentState}
+                changeQuestionHref={changeQuestionHref}
+                continueWithoutQuestionHref={continueWithoutQuestionHref}
+              />
+            </motion.div>
+          )}
+
           <motion.section
             variants={fadeInUp}
             className="border-primary/25 bg-primary/10 rounded-lg border p-5 shadow-[0_2px_12px_rgb(0_0_0_/_0.2)]"
@@ -570,22 +619,6 @@ export function SetupContent() {
                     {recommendation.rationale}
                   </p>
                 </div>
-                {questionData && (
-                  <div className="border-dashboard-panel-border bg-dashboard-canvas/40 rounded-lg border p-4">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <StatusPill tone="primary">Selected question</StatusPill>
-                      {questionData.company && (
-                        <StatusPill tone="muted">
-                          {questionData.company}
-                        </StatusPill>
-                      )}
-                      <StatusPill tone="muted">{questionData.type}</StatusPill>
-                    </div>
-                    <p className="text-dashboard-foreground text-sm leading-6">
-                      {questionData.text}
-                    </p>
-                  </div>
-                )}
                 {(launchContext.focus || launchContext.company) && (
                   <div className="flex flex-wrap items-center gap-2">
                     {launchContext.company && (
@@ -711,7 +744,13 @@ export function SetupContent() {
               </div>
               <Button
                 onClick={handleStartInterview}
-                disabled={isCreatingSession || !roundType || !difficulty}
+                disabled={
+                  isCreatingSession ||
+                  !roundType ||
+                  !difficulty ||
+                  (questionIdParam !== null &&
+                    questionIntentState.status !== "ready")
+                }
                 className="text-primary-foreground w-full sm:w-auto"
               >
                 {isCreatingSession ? (

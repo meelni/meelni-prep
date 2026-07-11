@@ -29,6 +29,20 @@ Unknown types are rejected at the API boundary or skipped by ingestion; they are
 - `pagination.total` is the count of the complete filtered set, not the count of the current page.
 - `pagination.hasMore` is true when the current offset and returned row count have not reached that total.
 
+## Selected-question launch semantics
+
+`GET /api/questions/[id]` accepts a UUID and returns only an active question.
+Malformed IDs return `400`; deleted, missing, and inactive records share the
+same `404` response. The practice setup surface validates a non-empty selected
+question before enabling interview start and renders its question text,
+company tag, and canonical round label for confirmation.
+
+If selected intent becomes unavailable, setup presents explicit recovery. The
+candidate can choose another question from the safe `returnTo` origin or remove
+only `questionId` and continue with all other canonical and compatibility query
+parameters intact. Session start repeats the active-record check so a question
+deactivated after setup validation cannot be used.
+
 ## Data rollout
 
 The public contract and all application decisions use the four canonical rounds. Until the historical migration baseline is reconciled, the storage adapter persists canonical Strategy questions with the database-compatible `Product Strategy` label. Reads normalize that label back to `Strategy` before it leaves the data boundary.
