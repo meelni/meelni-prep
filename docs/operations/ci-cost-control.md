@@ -35,6 +35,41 @@ Repository rules must require the exact `Validate` context on `main`. A skipped
 lifecycle check is not a substitute. Verify branch protection or a ruleset is
 active before treating the workflow as an enforced merge gate.
 
+## Main protection
+
+The live `main` branch protection requires the GitHub Actions `Validate`
+context with strict, up-to-date head enforcement. Protection applies to admins,
+blocks force pushes, and blocks branch deletion. It does not currently require
+an approving review; independent agent audit evidence is tracked in the PR and
+Linear workflow instead.
+
+Verify the live configuration before a merge window:
+
+```bash
+gh api repos/saviii/meelni-prep/branches/main/protection \
+  --jq '{required_status_checks,enforce_admins,allow_force_pushes,allow_deletions}'
+```
+
+Expected invariants:
+
+- `required_status_checks.strict` is `true`.
+- The required check is `Validate` from GitHub Actions.
+- Admin enforcement is enabled.
+- Force pushes and deletion are disabled.
+
+### Break glass and rollback
+
+Do not disable protection to merge a failing product change. For a GitHub
+Actions outage, record the incident and exact blocked head in Linear, obtain an
+explicit owner decision, and time-box any protection change. Restore the full
+configuration immediately after the emergency action and verify it through the
+API above.
+
+To roll back the cost-control workflow itself, revert its commit through a PR;
+keep `Validate` required and restore the previous trigger policy only long enough
+to prove the replacement workflow. Never leave a skipped lifecycle context named
+`Validate`.
+
 Vercel, GitGuardian, and local results remain complementary evidence; none
 replaces hosted Validate.
 
