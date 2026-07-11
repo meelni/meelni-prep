@@ -20,7 +20,7 @@
 
 ## Scope
 
-- In scope: Audit factual claims, rewrite `/terms` and `/privacy`, explicitly noindex both pages, keep them absent from the sitemap, document open owner/legal decisions, and add regression contracts.
+- In scope: Audit factual claims into an internal engineering contract; replace `/terms` and `/privacy` with concise public holding pages; explicitly noindex both pages; keep them absent from the sitemap; label every public inbound link as a draft; document open owner/legal decisions; and add regression contracts against operational-detail leakage.
 - Out of scope: Legal advice, approving a legal policy, changing analytics consent behavior, changing provider terms, selecting jurisdiction, or enabling the relaunch gate.
 - Assumptions: Repository contracts and implemented behavior are engineering truth; legal applicability and final policy language require accountable owner/legal approval.
 
@@ -32,7 +32,7 @@
 
 ## Technical Plan
 
-- Likely app files: `app/privacy/page.tsx`, `app/terms/page.tsx`, `app/sitemap.ts` tests.
+- Likely app files: `app/privacy/page.tsx`, `app/terms/page.tsx`, public inbound legal links, and `app/sitemap.ts` tests.
 - Likely package/workflow files: Canonical billing presentation and account-privacy contracts remain sources, not duplicated policy.
 - Data/provider dependencies: Supabase/Auth, LiveKit voice processing, transcript persistence, Stripe/credit ledger, PostHog, Statsig, Vercel, Inngest, and model/speech providers.
 - Docs to update: Add a public legal-draft review contract and index it.
@@ -41,7 +41,7 @@
 
 - Required commands: Targeted legal/content tests, product-language tests, typecheck, lint, `npm run check:ci`, and production build.
 - Optional/manual checks: Inspect built `/terms`, `/privacy`, and `/sitemap.xml` metadata/source.
-- Regression fixtures: Unsupported legacy claim denylist, canonical credit facts, explicit noindex metadata, and sitemap exclusion.
+- Regression fixtures: Unsupported legacy claim denylist, canonical credit facts, explicit noindex metadata, sitemap exclusion, rendered non-effective/non-legal-advice status, precise asynchronous deletion wording, operational-detail denylist, and all inbound draft labels.
 - Completed: `npm run check:ci` and `npm run build` passed on Node 22. The production server emitted `noindex, nofollow`, no canonical link, explicit draft status, and no Terms/Privacy sitemap entries.
 - Visual limitation: The in-app browser was unavailable in this task, so desktop/mobile screenshot verification remains an explicit PR review step rather than a claimed result.
 

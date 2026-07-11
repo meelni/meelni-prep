@@ -8,7 +8,7 @@ import {
 export const LEGAL_DRAFT_REVIEWED_ON = "July 10, 2026";
 
 export const LEGAL_DRAFT_NOTICE =
-  "Engineering draft for accountable owner and legal review. It is not an approved or effective legal policy.";
+  "This temporary page is under accountable owner and legal review before relaunch. It is not approved, not effective, and not legal advice.";
 
 export interface LegalBillingFact {
   catalogId: PublicPricingPlan["catalogId"];

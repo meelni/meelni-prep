@@ -77,6 +77,80 @@ change notice, and effective date.
 Engineering tests can prove the draft matches repository behavior and remains
 unindexed. They cannot approve these decisions.
 
+## Internal implementation review inventory
+
+This section is review material for accountable owners and counsel. It must not
+be copied onto the public holding pages merely because those pages are
+`noindex`; indexing controls are not access controls.
+
+### Authentication and account data
+
+- Supabase authentication currently supports Google sign-in and email with a
+  password.
+- Application storage can contain account/profile settings, interview
+  lifecycle and timing data, selected questions, transcript text and turn
+  timing, generated feedback and scores, bookmarks, practice sets,
+  achievements, and progress insights.
+- The account export is an allowlisted JSON projection of account, settings,
+  practice, transcript, feedback, progress, and billing-summary data. It
+  excludes credentials, raw provider operations, logs, deletion tombstones,
+  and other users.
+
+### Voice, transcript, and model processing
+
+- Live voice audio is transmitted through configured real-time speech and
+  voice providers while an interview runs.
+- The reviewed application database stores transcript text and audio-duration
+  metadata, not replayable audio files.
+- Provider processing, data-use, and retention terms require verification
+  against deployed configuration and contracts.
+- The repository does not establish a separate pipeline that trains provider
+  foundation models on interview content. Any future training purpose requires
+  explicit approval before it is represented publicly.
+
+### Billing and deletion
+
+- Stripe handles checkout and payment processing. Application storage contains
+  subscription and payment summaries, usage, finite-credit ledger records, and
+  the provider references needed for billing reconciliation and account
+  cleanup. Raw payment-card details are not part of the reviewed application
+  database model.
+- A successful account-deletion response means the durable deletion request
+  exists. The initial background enqueue can fail while the route still returns
+  `deletion_retry_scheduled`; scheduled recovery then retries the work.
+  Customer-facing wording must therefore say that cleanup runs or retries
+  asynchronously, not that every successful response queued a workflow.
+- Completed deletion tombstones retain the user identifier, status and attempt
+  timestamps, and one-way provider fingerprints until a separate retention
+  decision approves removal.
+
+### Analytics, replay, and browser storage
+
+- When configured, PostHog and Statsig browser clients can process an anonymous
+  identifier, page and feature events, and signed-in account traits such as the
+  account identifier, email domain, signup method, and account creation time.
+- The repository includes automatic-capture and session-replay paths.
+- Current PostHog behavior tracks until the browser user declines. Statsig
+  initialization is separate and does not read that PostHog choice.
+- Consent, replay, cookie classification, provider retention, and launch
+  behavior remain owned by SAV-180 and accountable review. These implementation
+  gaps must not be published as customer-facing policy language.
+
+### Provider and retention review
+
+- Current code integrates provider categories for hosting, authentication and
+  database storage, real-time voice rooms, speech recognition,
+  language-model processing, voice synthesis, billing, analytics and feature
+  flags, and background jobs.
+- The exact subprocessor list, provider roles, regions, international-transfer
+  terms, and provider retention require verification against deployed
+  configuration and contracts.
+- The repository defines no approved universal retention period for account,
+  transcript, feedback, analytics, billing, log, backup, or completed-tombstone
+  data.
+- The relaunch gate remains default-off independently of this legal review. Its
+  operational state is not public legal-page content.
+
 ## Approval and indexing gate
 
 Removing `noindex` or adding either route to the sitemap requires all of:

@@ -56,7 +56,7 @@ test("legal draft metadata is explicitly unindexed and has no canonical or socia
 test("draft content names review status and separates privacy and terms decisions", () => {
   assert.match(
     LEGAL_DRAFT_NOTICE,
-    /not an approved or effective legal policy/i
+    /not approved, not effective, and not legal advice/i
   );
   assert.ok(PRIVACY_OWNER_DECISIONS.length >= 5);
   assert.ok(TERMS_OWNER_DECISIONS.length >= 5);
