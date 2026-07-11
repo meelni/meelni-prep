@@ -241,11 +241,72 @@ export async function completeStackCheck({
         summary:
           errors.length > 0
             ? errors.join("\n")
-            : "The exact PR head contains the declared current parent and the PR-body evidence is current.",
+            : conclusion === "neutral"
+              ? "This exact PR head is not a registered stack child."
+              : `The exact child ${result.head} contains parent ${result.actualParentHead}; both refs were refreshed immediately before publication and the PR-body evidence is current.`,
       },
     },
     fetchImpl,
   });
+}
+
+export function refreshStackGeneration({
+  eventContent,
+  result,
+  repo = process.cwd(),
+  remote = "origin",
+  manifestPath,
+} = {}) {
+  const { pullRequest, prNumber, headSha } = parseStackEvent(eventContent);
+  if (result.status !== "pass") return result;
+
+  const manifest = loadStackManifest(manifestPath);
+  const declaration = validatePullRequestDeclaration({
+    manifest,
+    prNumber,
+    headRef: pullRequest.head.ref,
+    headRepository: pullRequest.head.repo.full_name,
+    baseRef: pullRequest.base.ref,
+    defaultBranch:
+      JSON.parse(eventContent).repository?.default_branch ?? "main",
+  });
+  if (declaration.errors.length > 0 || !declaration.entry) {
+    return {
+      ...result,
+      status: "fail",
+      errors: [
+        ...declaration.errors,
+        "stack_declaration_changed_during_verification",
+      ],
+    };
+  }
+
+  const currentHead = git(repo, [
+    "rev-parse",
+    "--verify",
+    `${fetchExactPullRequest(repo, remote, prNumber)}^{commit}`,
+  ]);
+  const currentParent = git(repo, [
+    "rev-parse",
+    "--verify",
+    `${fetchParent(repo, remote, declaration.entry.parentRef)}^{commit}`,
+  ]);
+  const errors = [];
+  if (currentHead !== headSha || currentHead !== result.head) {
+    errors.push("child_moved_during_verification");
+  }
+  if (
+    currentParent !== declaration.entry.expectedParentHead ||
+    currentParent !== result.actualParentHead
+  ) {
+    errors.push("parent_moved_during_verification");
+  }
+  return errors.length > 0
+    ? { ...result, status: "fail", errors }
+    : {
+        ...result,
+        generation: { child: currentHead, parent: currentParent },
+      };
 }
 
 export async function runStackCiAndPublish({
@@ -255,6 +316,7 @@ export async function runStackCiAndPublish({
   remote = "origin",
   fetchImpl,
   manifestPath,
+  beforeFreshnessBarrier,
 } = {}) {
   const { repository, headSha } = parseStackEvent(eventContent);
   const token = env.GITHUB_TOKEN;
@@ -265,12 +327,22 @@ export async function runStackCiAndPublish({
     fetchImpl,
   });
   try {
-    const result = runStackCiForEvent({
+    let result = runStackCiForEvent({
       eventContent,
       repo,
       remote,
       manifestPath,
     });
+    if (result.status === "pass") {
+      await beforeFreshnessBarrier?.();
+      result = refreshStackGeneration({
+        eventContent,
+        result,
+        repo,
+        remote,
+        manifestPath,
+      });
+    }
     await completeStackCheck({
       token,
       repository,

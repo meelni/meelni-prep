@@ -104,14 +104,22 @@ The verifier itself performs no network access. Unit tests construct temporary
 local Git repositories. The authoritative `Stack Topology / Verify` check uses
 `pull_request_target`, checks out only the repository's default branch, and
 runs the verifier and registry from that trusted checkout. It never checks out
-or executes a pull request's code. The hosted adapter validates the event's PR
-number and repository identity, fetches the server-owned `refs/pull/<n>/head`
-plus the one declared parent ref, and supplies the exact PR body to the
-deterministic verifier. It creates a dedicated `Stack Topology / Verify` Check
-Run on that verified head SHA before the Git work begins, then completes it with
-success, failure, or a neutral unregistered-PR result. The workflow's own job
-has a different name and is not the branch-protection context. Push events fail
-closed in this adapter; local branch work uses the command above.
+or executes a pull request's code. On every same-repository PR event the hosted
+adapter revalidates the triggering PR and each open registered child whose
+declared parent ref is the triggering PR's head ref. It fetches each
+server-owned `refs/pull/<n>/head` plus its declared parent and supplies the exact
+PR body to the deterministic verifier. It creates a dedicated
+`Stack Topology / Verify` Check Run on that child head before Git verification,
+then refreshes both exact refs immediately before completing success. A changed
+child or parent generation fails the in-progress check instead of publishing a
+stale success. The workflow's own job has a different name and is not the
+branch-protection context. Push events fail closed in this adapter; local branch
+work uses the command above.
+
+All event, scheduled, and manual publishers share one non-cancelling workflow
+concurrency group. A parent synchronize event therefore cannot overtake or
+cancel a child publication; the queued parent event subsequently republishes
+each dependent child's exact current generation.
 
 A trusted default-branch schedule re-reads every open manifest entry every five
 minutes. It loads current PR metadata through the read-only API, fetches the
@@ -121,8 +129,9 @@ executing code from either branch. `workflow_dispatch` provides the same fan-out
 for an immediate operator refresh.
 
 Because the repository is private, the trusted checkout retains the job token
-long enough to fetch those two refs. The event job grants only `contents: read`
-and `checks: write`; scheduled fan-out additionally grants `pull-requests: read`.
+long enough to fetch those two refs. Both jobs grant only `contents: read`,
+`checks: write`, and `pull-requests: read`; event fan-out needs the last
+permission to load current dependent-child metadata.
 The token is never made available to PR code because no PR-controlled file is
 checked out or executed, and checkout removes its stored credential during
 cleanup.
