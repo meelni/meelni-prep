@@ -52,7 +52,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_INTERVIEW_PASS_PRICE_ID=price_...
 STRIPE_STARTER_MONTHLY_PRICE_ID=price_...
 STRIPE_PRO_MONTHLY_PRICE_ID=price_...
-NEXT_PUBLIC_APP_URL=https://meelni.com
+NEXT_PUBLIC_APP_URL=https://www.meelni.com
 ```
 
 Configure test-mode equivalents in local and preview environments.
@@ -62,7 +62,7 @@ Configure test-mode equivalents in local and preview environments.
 Production endpoint:
 
 ```text
-https://meelni.com/api/webhooks/stripe
+https://www.meelni.com/api/webhooks/stripe
 ```
 
 Subscribe the endpoint to:

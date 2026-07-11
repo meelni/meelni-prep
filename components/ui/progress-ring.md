@@ -214,10 +214,7 @@ color="oklch(0.68 0.20 240)"
 
 ## Test Harness
 
-Full interactive test harness available at:
-```
-http://localhost:3000/test-progress-ring
-```
+Render the component in a temporary local-only harness for interactive testing.
 
 Test sections:
 1. Basic Examples

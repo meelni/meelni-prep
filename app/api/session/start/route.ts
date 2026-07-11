@@ -57,7 +57,7 @@
  *   "sessionId": "550e8400-e29b-41d4-a716-446655440000",
  *   "roomName": "interview-1699999999999-abc123",
  *   "token": "eyJhbGciOiJIUzI1NiIs...",
- *   "url": "wss://mockmate.livekit.cloud",
+ *   "url": "wss://meelni-ek4vaisp.livekit.cloud",
  *   "config": {
  *     "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
  *     "stt_model": "deepgram/nova-3",

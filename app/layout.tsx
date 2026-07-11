@@ -13,6 +13,7 @@ import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Toaster } from "sonner";
 import { PRODUCT_LANGUAGE } from "@/lib/product-language";
+import { PUBLIC_ORIGIN } from "@/lib/seo/public-metadata";
 
 // Using Outfit as a free alternative to Everett - similar elegant, geometric feel
 const outfit = Outfit({
@@ -50,9 +51,7 @@ export const metadata: Metadata = {
   authors: [{ name: "Meelni" }],
   creator: "Meelni",
   publisher: "Meelni",
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com"
-  ),
+  metadataBase: new URL(PUBLIC_ORIGIN),
   openGraph: {
     type: "website",
     siteName: "Meelni",

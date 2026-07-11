@@ -20,13 +20,6 @@ export const siteConfig = {
     "PM interview questions",
     "interview preparation tool",
   ],
-  links: {
-    email: "support@meelni.com",
-    twitter: "https://twitter.com/meelni",
-    discord: "https://discord.gg/meelni",
-    github: "https://github.com/meelni",
-    instagram: "https://instagram.com/meelni",
-  },
   hero: {
     title: PRODUCT_LANGUAGE.heroPromise,
     description: PRODUCT_LANGUAGE.oneLine,

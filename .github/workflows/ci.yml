@@ -94,3 +94,6 @@ jobs:
 
       - name: Build production application
         run: npm run build
+
+      - name: Crawl production public routes and links
+        run: npm run verify:public-production
