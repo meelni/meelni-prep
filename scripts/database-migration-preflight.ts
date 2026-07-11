@@ -241,6 +241,24 @@ async function run(url: string, environmentIdentity: string) {
         achievement_duplicates: achievementDuplicates,
         bookmark_duplicates: bookmarkDuplicates,
         practice_set_duplicates: practiceSetDuplicates,
+        invoice_status_duplicate_rows:
+          migrations.length >= 15
+            ? Number(
+                (
+                  await tx<{ count: number }[]>`
+                    SELECT count(*)::int AS count FROM (
+                      SELECT id, row_number() OVER (
+                        PARTITION BY stripe_invoice_id, status
+                        ORDER BY created_at ASC, id ASC
+                      ) AS duplicate_rank
+                      FROM payment_history
+                      WHERE stripe_invoice_id IS NOT NULL
+                    ) ranked
+                    WHERE duplicate_rank > 1
+                  `
+                )[0]?.count ?? 0
+              )
+            : 0,
       };
       const creditLedgerIntegrity = optionalTables.credit_ledger
         ? await getCreditLedgerIntegrity(tx)

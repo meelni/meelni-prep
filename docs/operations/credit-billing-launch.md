@@ -55,13 +55,20 @@ excluded from logical deduplication.
 Migration `0016` makes `(stripe_invoice_id, status)` unique for non-null
 invoice IDs. This keeps distinct Stripe Event objects for one failed or
 successful invoice transition from creating duplicate payment-history rows.
-Failed-invoice grace is derived from the first persisted provider event time,
-so replay can repair state without extending the deadline.
+Before the index is created, legacy duplicates are deterministically ranked by
+`created_at, id`; non-canonical rows are quarantined without exposing invoice
+IDs in preflight output. A successful attempt supersedes failed attempts for
+customer payment-history display. Subscription status and grace converge by
+provider event time, so success wins a same-second conflict and later delivery
+cannot reintroduce stale dunning state.
 
 Account-deletion tombstones include hashed customer, subscription,
 payment-intent, and charge identifiers. Stored and late refund/dispute payloads
 for a deleted subject must be replaced with `{}` and acknowledged without
-running billing reconciliation. Every identifier present on a webhook is
+running billing reconciliation. Migration `0016` stores every event subject
+fingerprint and uses transaction-scoped advisory locks plus database triggers
+to serialize tombstone and webhook writes; raw payload persistence therefore
+cannot race tombstone creation. Every identifier present on a webhook is
 checked, while payment-intent and charge subjects remain correlation-only and
 are never passed to customer deletion. Customer mappings take precedence over
 webhook metadata and disagreement fails closed. Stripe webhook bodies are
@@ -172,6 +179,8 @@ Stripe manual checks:
 - `invoice.payment_failed` creates failed payment history and no credit grant.
 - Distinct `invoice.payment_failed` Event IDs produce one failed payment row
   and preserve the original grace deadline.
+- Failure-then-success and success-then-failure delivery both leave the
+  subscription active, clear grace, and show only the settled invoice attempt.
 - Customer metadata disagreement with a durable mapping fails closed.
 - A deleted payment-intent or charge is redacted and acknowledged even when
   another identifier appears first in the Stripe object.

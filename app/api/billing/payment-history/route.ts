@@ -2,7 +2,20 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { paymentHistory } from "@/lib/db/schema";
-import { count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
+
+const VISIBLE_PAYMENT_PREDICATE = sql<boolean>`
+  ${paymentHistory.failureReason} IS DISTINCT FROM 'legacy_duplicate_quarantined'
+  AND NOT (
+    ${paymentHistory.status} = 'failed'
+    AND ${paymentHistory.stripeInvoiceId} IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM payment_history settled
+      WHERE settled.stripe_invoice_id = ${paymentHistory.stripeInvoiceId}
+        AND settled.status = 'succeeded'
+    )
+  )
+`;
 
 /**
  * GET /api/billing/payment-history
@@ -57,7 +70,9 @@ export async function GET(req: Request) {
     const totalCountResult = await db
       .select({ count: count() })
       .from(paymentHistory)
-      .where(eq(paymentHistory.userId, user.id));
+      .where(
+        and(eq(paymentHistory.userId, user.id), VISIBLE_PAYMENT_PREDICATE)
+      );
 
     const total = totalCountResult[0]?.count ?? 0;
 
@@ -77,7 +92,9 @@ export async function GET(req: Request) {
         createdAt: paymentHistory.createdAt,
       })
       .from(paymentHistory)
-      .where(eq(paymentHistory.userId, user.id))
+      .where(
+        and(eq(paymentHistory.userId, user.id), VISIBLE_PAYMENT_PREDICATE)
+      )
       .orderBy(desc(paymentHistory.createdAt))
       .limit(limit)
       .offset(offset);

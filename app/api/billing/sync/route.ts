@@ -96,9 +96,11 @@ export async function POST() {
               message: "Subscription synced from Stripe",
             });
           }
-        } catch (stripeError) {
-          console.error("Error fetching Stripe subscription:", stripeError);
-          throw stripeError;
+        } catch {
+          console.error("Subscription sync provider lookup failed", {
+            code: "stripe_subscription_lookup_failed",
+          });
+          throw new Error("stripe_subscription_lookup_failed");
         }
       }
 
@@ -169,8 +171,10 @@ export async function POST() {
             message: "Found and synced subscription from Stripe",
           });
         }
-      } catch (stripeError) {
-        console.error("Error checking Stripe subscriptions:", stripeError);
+      } catch {
+        console.error("Subscription sync provider lookup failed", {
+          code: "stripe_subscription_lookup_failed",
+        });
       }
     }
 
@@ -192,8 +196,10 @@ export async function POST() {
       },
       message: "No changes needed",
     });
-  } catch (error) {
-    console.error("Subscription sync error:", error);
+  } catch {
+    console.error("Subscription sync failed", {
+      code: "subscription_sync_failed",
+    });
     return NextResponse.json(
       { error: "Failed to sync subscription" },
       { status: 500 }
@@ -230,19 +236,14 @@ async function syncSubscriptionFromStripe(
   let tier: string | null = null;
   try {
     tier = getStripeCatalogIdForPrice(priceId);
-  } catch (error) {
-    console.warn("Skipping Stripe tier sync for unknown price", {
-      userId,
-      stripeSubscriptionId: stripeSubscription.id,
-      priceId,
-      error: getErrorMessage(error),
+  } catch {
+    console.warn("Subscription sync skipped", {
+      code: "stripe_subscription_price_unknown",
     });
   }
 
   if (!tier && existing.length === 0) {
-    throw new Error(
-      `Cannot sync subscription ${stripeSubscription.id} without a known catalog price`
-    );
+    throw new Error("stripe_subscription_price_unknown");
   }
 
   const updateData = {
@@ -307,8 +308,4 @@ function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): string {
     default:
       return "active";
   }
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -156,6 +156,7 @@ async function run() {
     await verifyTranscriptIngest(clean, cleanUrl);
     await verifyReconnectTimeoutRuntimeIntegrity(clean, cleanUrl);
     await verifyAuthorization(clean);
+    await verifyDeletionWebhookConcurrency(clean, cleanUrl);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
     await verifyAtomicCreditLedger(clean, cleanUrl, "clean");
@@ -307,7 +308,17 @@ async function run() {
         databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
         TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
       );
-
+      const preInvoiceFolder = await createMigrationFolderThrough(17);
+      try {
+        await migrate(drizzle(upgrade), {
+          migrationsFolder: preInvoiceFolder,
+        });
+      } finally {
+        await rm(preInvoiceFolder, { recursive: true, force: true });
+      }
+      await seedLegacyInvoiceDuplicateFixtures(upgrade);
+      const duplicatePreview = runPreflight(upgradeUrl, true, "reconciled")!;
+      assert.equal(duplicatePreview.invoice_status_duplicate_rows, 1);
       await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
       const reconnectApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
@@ -327,6 +338,8 @@ async function run() {
       )!;
       assertLegacyCreditLedgerIntegrity(finalUpgradePreflight);
       assertZeroStableStartV1Integrity(finalUpgradePreflight);
+      assert.equal(finalUpgradePreflight.invoice_status_duplicate_rows, 0);
+      await verifyLegacyInvoiceDuplicateQuarantine(upgrade);
       assert.equal(
         databaseSchemaFingerprint(
           await getStableStartDatabaseSchemaContract(upgrade)
@@ -348,6 +361,51 @@ async function run() {
     );
     await admin.end();
   }
+}
+
+async function seedLegacyInvoiceDuplicateFixtures(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO payment_history (
+      user_id, stripe_invoice_id, stripe_event_id, amount_in_cents,
+      currency, status, tier, failure_reason, created_at
+    ) VALUES
+      (${USER_ONE}::uuid, 'in_legacy_duplicate', 'evt_legacy_invoice_a',
+       900, 'usd', 'failed', 'starter', 'Payment failed',
+       '2026-07-10T00:00:00.000Z'::timestamptz),
+      (${USER_ONE}::uuid, 'in_legacy_duplicate', 'evt_legacy_invoice_b',
+       900, 'usd', 'failed', 'starter', 'Payment failed',
+       '2026-07-10T00:00:01.000Z'::timestamptz)
+  `;
+}
+
+async function verifyLegacyInvoiceDuplicateQuarantine(sql: postgres.Sql) {
+  const rows = await sql<
+    Array<{
+      stripe_invoice_id: string | null;
+      status: string;
+      failure_reason: string | null;
+    }>
+  >`
+    SELECT stripe_invoice_id, status, failure_reason
+    FROM payment_history
+    WHERE stripe_event_id IN ('evt_legacy_invoice_a', 'evt_legacy_invoice_b')
+    ORDER BY created_at, id
+  `;
+  assert.deepEqual(
+    rows.map((row) => ({ ...row })),
+    [
+      {
+        stripe_invoice_id: "in_legacy_duplicate",
+        status: "failed",
+        failure_reason: "Payment failed",
+      },
+      {
+        stripe_invoice_id: null,
+        status: "canceled",
+        failure_reason: "legacy_duplicate_quarantined",
+      },
+    ]
+  );
 }
 
 function runCliMigration(databaseUrl: string) {
@@ -416,6 +474,7 @@ interface MigrationPreflightCount {
 
 interface MigrationPreflightResult {
   startingContract: string;
+  invoice_status_duplicate_rows: number;
   lifecycleBackfill: {
     phase: "not_ready" | "preview" | "applied";
     counts: MigrationPreflightCount[];
@@ -6319,18 +6378,32 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       }),
     /account_deletion_pending/
   );
+  const privateCustomerFingerprint = deletionRequest.stripeSubjects.find(
+    (subject) => subject.providerId === "cus_private"
+  )?.fingerprint;
+  assert.ok(privateCustomerFingerprint);
   await sql`
     INSERT INTO stripe_event_log (
-      stripe_event_id, event_type, payload, status, attempts, last_error
+      stripe_event_id, event_type, subject_fingerprint,
+      subject_fingerprints, payload, status, attempts, last_error
     ) VALUES (
       'evt_private',
       'customer.subscription.deleted',
+      ${privateCustomerFingerprint},
+      ${JSON.stringify([privateCustomerFingerprint])}::jsonb,
       ${JSON.stringify({ data: { object: { customer: "cus_private" } } })},
       'failed',
       1,
       'user@example.invalid'
     )
   `;
+  const [triggerRedaction] = await sql<
+    Array<{ payload: string; last_error: string | null }>
+  >`
+    SELECT payload, last_error FROM stripe_event_log
+    WHERE stripe_event_id = 'evt_private'
+  `;
+  assert.deepEqual(triggerRedaction, { payload: "{}", last_error: null });
   await assert.rejects(
     () =>
       upsertUser({
@@ -6514,6 +6587,122 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     DELETE FROM account_deletion_request
     WHERE user_id = ${USER_CORRUPT_DELETION}::uuid
   `;
+}
+
+async function verifyDeletionWebhookConcurrency(
+  sql: postgres.Sql,
+  cleanUrl: string
+) {
+  const writer = postgres(cleanUrl, { max: 1, prepare: false });
+  const fingerprintA = "a".repeat(64);
+  const fingerprintB = "b".repeat(64);
+  let releaseFirst!: () => void;
+  let firstLocked!: () => void;
+  const release = new Promise<void>((resolve) => (releaseFirst = resolve));
+  const locked = new Promise<void>((resolve) => (firstLocked = resolve));
+
+  try {
+    const tombstoneFirst = sql.begin(async (tx) => {
+      await tx`
+        INSERT INTO account_deletion_request (user_id, stripe_subjects)
+        VALUES ('12121212-1212-4212-8212-121212121212'::uuid,
+          jsonb_build_array(jsonb_build_object(
+            'kind', 'customer', 'providerId', NULL,
+            'fingerprint', ${fingerprintA}::text
+          )))
+      `;
+      firstLocked();
+      await release;
+    });
+    await locked;
+    let eventCommitted = false;
+    const eventSecond = writer`
+      INSERT INTO stripe_event_log (
+        stripe_event_id, event_type, subject_fingerprint,
+        subject_fingerprints, payload, status, attempts, last_error
+      ) VALUES (
+        'evt_deletion_race_tombstone_first', 'charge.refunded',
+        ${fingerprintA}, jsonb_build_array(${fingerprintA}::text),
+        '{"secret":"must-not-persist"}', 'failed', 1, 'private error'
+      )
+    `.then(() => {
+      eventCommitted = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(eventCommitted, false);
+    releaseFirst();
+    await Promise.all([tombstoneFirst, eventSecond]);
+
+    let releaseWebhook!: () => void;
+    let webhookLocked!: () => void;
+    const releaseWebhookTransaction = new Promise<void>(
+      (resolve) => (releaseWebhook = resolve)
+    );
+    const webhookHasLock = new Promise<void>(
+      (resolve) => (webhookLocked = resolve)
+    );
+    const webhookFirst = sql.begin(async (tx) => {
+      await tx`
+        INSERT INTO stripe_event_log (
+          stripe_event_id, event_type, subject_fingerprint,
+          subject_fingerprints, payload, status, attempts, last_error
+        ) VALUES (
+          'evt_deletion_race_webhook_first', 'charge.refunded',
+          ${fingerprintB}, jsonb_build_array(${fingerprintB}::text),
+          '{"secret":"must-be-redacted"}', 'failed', 1, 'private error'
+        )
+      `;
+      webhookLocked();
+      await releaseWebhookTransaction;
+    });
+    await webhookHasLock;
+    let deletionCommitted = false;
+    const deletionSecond = writer
+      .begin(async (tx) => {
+        await tx`
+        INSERT INTO account_deletion_request (user_id, stripe_subjects)
+        VALUES ('34343434-3434-4434-8434-343434343434'::uuid,
+          jsonb_build_array(jsonb_build_object(
+            'kind', 'customer', 'providerId', NULL,
+            'fingerprint', ${fingerprintB}::text
+          )))
+      `;
+        await tx`
+        UPDATE stripe_event_log
+        SET payload = '{}', last_error = NULL
+        WHERE subject_fingerprint = ${fingerprintB}
+           OR subject_fingerprints ? ${fingerprintB}
+      `;
+      })
+      .then(() => {
+        deletionCommitted = true;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(deletionCommitted, false);
+    releaseWebhook();
+    await Promise.all([webhookFirst, deletionSecond]);
+
+    const rows = await sql<
+      Array<{ payload: string; last_error: string | null }>
+    >`
+      SELECT payload, last_error
+      FROM stripe_event_log
+      WHERE stripe_event_id IN (
+        'evt_deletion_race_tombstone_first',
+        'evt_deletion_race_webhook_first'
+      )
+      ORDER BY stripe_event_id
+    `;
+    assert.deepEqual(
+      rows.map((row) => ({ ...row })),
+      [
+        { payload: "{}", last_error: null },
+        { payload: "{}", last_error: null },
+      ]
+    );
+  } finally {
+    await writer.end();
+  }
 }
 
 async function consumeRateLimit(sql: postgres.Sql, userId: string) {
