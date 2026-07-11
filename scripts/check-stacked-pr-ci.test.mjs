@@ -427,6 +427,104 @@ test("a same-repository parent event revalidates itself and every open registere
   );
 });
 
+test("a closed parent event still refreshes every open registered child", async () => {
+  const manifest = {
+    version: 1,
+    repository: "saviii/meelni-prep",
+    stacks: [
+      {
+        pr: 999,
+        headRef: "child",
+        parentRef: "parent",
+        expectedParentHead: "a".repeat(40),
+      },
+    ],
+  };
+  const published = [];
+  const results = await revalidateAffectedStacksForEvent({
+    eventContent: JSON.stringify({
+      action: "closed",
+      repository: { full_name: manifest.repository, default_branch: "main" },
+      pull_request: {
+        number: 888,
+        head: {
+          ref: "parent",
+          sha: "a".repeat(40),
+          repo: { full_name: manifest.repository },
+        },
+        base: { ref: "main" },
+      },
+    }),
+    env: { GITHUB_TOKEN: "token", GITHUB_DEFAULT_BRANCH: "main" },
+    manifest,
+    api: async ({ path }) => {
+      const number = Number(path.split("/").at(-1));
+      return {
+        number,
+        state: number === 888 ? "closed" : "open",
+        body: "evidence",
+        head: {
+          ref: number === 888 ? "parent" : "child",
+          sha: number === 888 ? "a".repeat(40) : "c".repeat(40),
+          repo: { full_name: manifest.repository },
+        },
+        base: { ref: number === 888 ? "main" : "parent" },
+      };
+    },
+    verifyAndPublish: async ({ eventContent }) => {
+      const payload = JSON.parse(eventContent);
+      published.push(payload.pull_request.number);
+      return { status: "fail", errors: ["parent_pr_closed"] };
+    },
+  });
+
+  assert.deepEqual(published, [999]);
+  assert.deepEqual(results, [{ status: "fail", errors: ["parent_pr_closed"] }]);
+});
+
+test("a closed event fails an open child when the parent branch was deleted", async (t) => {
+  const state = fixture();
+  t.after(() => rmSync(state.root, { recursive: true, force: true }));
+  git(state.repo, "push", "origin", "--delete", "parent");
+  const calls = [];
+
+  const results = await revalidateAffectedStacksForEvent({
+    eventContent: JSON.stringify({
+      action: "closed",
+      repository: {
+        full_name: "saviii/meelni-prep",
+        default_branch: "main",
+      },
+      pull_request: {
+        number: 888,
+        head: {
+          ref: "parent",
+          sha: state.parent,
+          repo: { full_name: "saviii/meelni-prep" },
+        },
+        base: { ref: "main" },
+      },
+    }),
+    env: { GITHUB_TOKEN: "token", GITHUB_DEFAULT_BRANCH: "main" },
+    repo: state.repo,
+    manifest: JSON.parse(
+      readFileSync(join(state.repo, ".github/stacked-prs.json"), "utf8")
+    ),
+    manifestPath: join(state.repo, ".github/stacked-prs.json"),
+    api: async ({ path }) => {
+      if (path.endsWith("/888")) return { state: "closed" };
+      return { ...event(state).pull_request, state: "open" };
+    },
+    fetchImpl: checkApi(calls),
+  });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].status, "error");
+  assert.equal(results[0].pr, 999);
+  assert.equal(calls[0].body.head_sha, state.head);
+  assert.equal(calls[1].body.conclusion, "failure");
+});
+
 test("scheduled revalidation replaces stale success after parent movement", async (t) => {
   const state = fixture();
   t.after(() => rmSync(state.root, { recursive: true, force: true }));
@@ -582,6 +680,11 @@ test("the authoritative workflow checks out default-branch code and never PR cod
   assert.match(workflow, /cron: "\*\/5 \* \* \* \*"/);
   assert.match(workflow, /group: stack-topology-publisher/);
   assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /queue: max/);
+  assert.match(
+    workflow,
+    /types: \[opened, reopened, synchronize, edited, closed\]/
+  );
   assert.match(workflow, /persist-credentials: true/);
   assert.match(
     workflow,
