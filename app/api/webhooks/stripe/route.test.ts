@@ -160,6 +160,25 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
     );
   });
 
+  it("rejects oversized raw bodies before signature verification without logging", async () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const response = await POST(
+      new NextRequest("http://localhost/api/webhooks/stripe", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(256 * 1024 + 1),
+          "stripe-signature": "signature",
+        },
+        body: "{}",
+      })
+    );
+    expect(response.status).toBe(413);
+    expect(stderr).not.toHaveBeenCalled();
+    expect(state.insertValues).toEqual([]);
+    stderr.mockRestore();
+  });
+
   it("reconciles a checkout already associated with a tombstone without granting", async () => {
     vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(true);
 
@@ -733,8 +752,8 @@ describe("Stripe webhook account-deletion fulfillment barrier", () => {
     expect(retryKey).not.toBe(firstKey);
     expect(state.deleteCustomer).toHaveBeenCalledOnce();
     expect(clearLateStripeDeletionSubjects).toHaveBeenCalledOnce();
+    });
   });
-});
 
 function request() {
   return new NextRequest("http://localhost/api/webhooks/stripe", {

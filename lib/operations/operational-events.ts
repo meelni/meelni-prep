@@ -102,6 +102,14 @@ const RELEASE_PATTERN = /^[0-9a-f]{7,40}$/i;
 const OPERATIONAL_FAILURE_ERROR_CODE_SET = new Set<string>(
   OPERATIONAL_FAILURE_ERROR_CODES
 );
+const OPERATIONAL_FAILURE_OPERATION_SET = new Set<string>(
+  OPERATIONAL_FAILURE_OPERATIONS
+);
+const OPERATIONAL_FAILURE_SEVERITY_SET = new Set<string>([
+  "warning",
+  "error",
+  "critical",
+]);
 
 const defaultDependencies: OperationalEventDependencies = {
   now: () => new Date(),
@@ -123,17 +131,22 @@ export function reportOperationalFailure(
     occurredAt: "1970-01-01T00:00:00.000Z",
     environment: "unknown",
     release: null,
-    operation: OPERATIONAL_FAILURE_OPERATIONS.includes(input.operation)
-      ? input.operation
-      : "interview_start",
+    operation: "interview_start",
     errorCode: "operational_reporter_failed",
     severity: "error",
-    retryable: input.retryable,
+    retryable: false,
     requestId: null,
     correlationId: null,
   };
   try {
-    if (!isOperationalFailureErrorCode(input.errorCode)) return fallback;
+    if (
+      !isOperationalFailureOperation(input.operation) ||
+      !isOperationalFailureErrorCode(input.errorCode) ||
+      !isOperationalFailureSeverity(input.severity ?? "error") ||
+      typeof input.retryable !== "boolean"
+    ) {
+      return fallback;
+    }
     const event: OperationalFailureEvent = {
       ...fallback,
       occurredAt: dependencies.now().toISOString(),
@@ -142,6 +155,7 @@ export function reportOperationalFailure(
       operation: input.operation,
       errorCode: input.errorCode,
       severity: input.severity ?? "error",
+      retryable: input.retryable,
       requestId: sanitizeRequestId(input.requestId),
       correlationId: sanitizeCorrelationId(input.correlationId),
     };
@@ -154,6 +168,22 @@ export function reportOperationalFailure(
   } catch {
     return fallback;
   }
+}
+
+function isOperationalFailureOperation(
+  value: unknown
+): value is OperationalFailureOperation {
+  return (
+    typeof value === "string" && OPERATIONAL_FAILURE_OPERATION_SET.has(value)
+  );
+}
+
+function isOperationalFailureSeverity(
+  value: unknown
+): value is OperationalFailureSeverity {
+  return (
+    typeof value === "string" && OPERATIONAL_FAILURE_SEVERITY_SET.has(value)
+  );
 }
 
 export function readOperationalRequestId(

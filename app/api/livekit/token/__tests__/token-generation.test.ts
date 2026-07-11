@@ -64,6 +64,30 @@ describe("POST /api/livekit/token", () => {
     expect(mocks.joinInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 
+  it("rejects oversized bodies without reporting or invoking authorization", async () => {
+    mocks.createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: userId, email: null } },
+          error: null,
+        }),
+      },
+    });
+    const response = await POST(
+      new NextRequest("http://localhost:3000/api/livekit/token", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(16 * 1024 + 1),
+        },
+        body: "{}",
+      })
+    );
+    expect(response.status).toBe(413);
+    expect(mocks.reportOperationalFailure).not.toHaveBeenCalled();
+    expect(mocks.joinInterviewSessionWorkflow).not.toHaveBeenCalled();
+  });
+
   it("passes only the authenticated user and session ID to authorization", async () => {
     mocks.createClient.mockResolvedValue({
       auth: {

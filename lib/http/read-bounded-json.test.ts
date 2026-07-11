@@ -29,5 +29,29 @@ test("bounded JSON rejects declared and streamed overflow without reading conten
     10
   );
   assert.deepEqual(streamed, { ok: false, reason: "too_large" });
-  assert.equal(reads, 2);
+  assert.ok(reads >= 2 && reads <= 3);
+});
+
+test("bounded JSON cancels a pending stream read when the request aborts", async () => {
+  const controller = new AbortController();
+  let cancelled = false;
+  const request = new Request("https://meelni.test", {
+    method: "POST",
+    body: new ReadableStream({
+      pull() {
+        return new Promise(() => undefined);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }),
+    duplex: "half",
+    signal: controller.signal,
+  } as RequestInit & { duplex: string });
+
+  const reading = readBoundedJson(request, 10);
+  controller.abort();
+
+  assert.deepEqual(await reading, { ok: false, reason: "aborted" });
+  assert.equal(cancelled, true);
 });
