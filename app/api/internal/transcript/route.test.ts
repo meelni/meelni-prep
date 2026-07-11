@@ -63,11 +63,77 @@ describe("POST /api/internal/transcript", () => {
       new NextRequest("http://localhost/api/internal/transcript", {
         method: "POST",
         body: "{}",
-        headers: { "content-length": String(65 * 1024) },
+        headers: {
+          "content-length": String(65 * 1024),
+          "content-type": "application/json",
+        },
       })
     );
     expect(response.status).toBe(413);
     expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported media types before reading signed content", async () => {
+    const response = await POST(
+      new NextRequest("http://localhost/api/internal/transcript", {
+        method: "POST",
+        body: "{}",
+        headers: { "content-type": "text/plain" },
+      })
+    );
+
+    expect(response.status).toBe(415);
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+  });
+
+  it("stops reading a chunked body once the byte limit is exceeded", async () => {
+    let reads = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        reads += 1;
+        controller.enqueue(new Uint8Array(40 * 1024));
+      },
+    });
+    const response = await POST(
+      new NextRequest("http://localhost/api/internal/transcript", {
+        method: "POST",
+        body,
+        headers: { "content-type": "application/json" },
+        duplex: "half",
+      } as never)
+    );
+
+    expect(response.status).toBe(413);
+    expect(reads).toBe(2);
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+  });
+
+  it("fails closed without logging content when the request body aborts", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"sessionId":"secret'));
+        controller.error(new Error("raw transcript text"));
+      },
+    });
+
+    try {
+      const response = await POST(
+        new NextRequest("http://localhost/api/internal/transcript", {
+          method: "POST",
+          body,
+          headers: { "content-type": "application/json" },
+          duplex: "half",
+        } as never)
+      );
+      expect(response.status).toBe(400);
+      expect(consoleError).not.toHaveBeenCalled();
+      expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("uses the voice-runtime principal and returns only acknowledgement metadata", async () => {

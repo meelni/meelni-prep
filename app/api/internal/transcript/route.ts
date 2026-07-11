@@ -28,14 +28,28 @@ const RuntimeTranscriptRequestSchema = z
 const MAX_RUNTIME_TRANSCRIPT_BODY_BYTES = 64 * 1024;
 
 export async function POST(req: NextRequest) {
-  const contentLength = Number(req.headers.get("content-length"));
+  if (!isJsonContentType(req.headers.get("content-type"))) {
+    return response(
+      { error: "unsupported_runtime_transcript_media_type" },
+      415
+    );
+  }
+  const contentLengthHeader = req.headers.get("content-length");
   if (
-    Number.isFinite(contentLength) &&
-    contentLength > MAX_RUNTIME_TRANSCRIPT_BODY_BYTES
+    contentLengthHeader !== null &&
+    (!/^\d+$/.test(contentLengthHeader) ||
+      Number(contentLengthHeader) > MAX_RUNTIME_TRANSCRIPT_BODY_BYTES)
   ) {
     return response({ error: "runtime_transcript_payload_too_large" }, 413);
   }
-  const rawBody = await req.text();
+  const body = await readBoundedRawBody(req);
+  if (!body.ok) {
+    if (body.reason === "too_large") {
+      return response({ error: "runtime_transcript_payload_too_large" }, 413);
+    }
+    return response({ error: "invalid_runtime_transcript_payload" }, 400);
+  }
+  const rawBody = body.rawBody;
   if (Buffer.byteLength(rawBody, "utf8") > MAX_RUNTIME_TRANSCRIPT_BODY_BYTES) {
     return response({ error: "runtime_transcript_payload_too_large" }, 413);
   }
@@ -146,5 +160,39 @@ function safeParseJson(rawBody: string): unknown {
     return JSON.parse(rawBody);
   } catch {
     return null;
+  }
+}
+
+function isJsonContentType(value: string | null): boolean {
+  return value?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
+}
+
+async function readBoundedRawBody(
+  req: NextRequest
+): Promise<
+  | { ok: true; rawBody: string }
+  | { ok: false; reason: "too_large" | "unreadable" }
+> {
+  if (!req.body) return { ok: true, rawBody: "" };
+
+  const chunks: Buffer[] = [];
+  let bytesRead = 0;
+  const reader = req.body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytesRead += value.byteLength;
+      if (bytesRead > MAX_RUNTIME_TRANSCRIPT_BODY_BYTES) {
+        await reader.cancel();
+        return { ok: false, reason: "too_large" };
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return { ok: true, rawBody: Buffer.concat(chunks).toString("utf8") };
+  } catch {
+    return { ok: false, reason: "unreadable" };
+  } finally {
+    reader.releaseLock();
   }
 }
