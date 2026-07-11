@@ -47,6 +47,12 @@ Only `accepted` and `declined` can be written. An outdated version returns `409 
 
 PostHog and Statsig autocapture and replay are always disabled regardless of consent. Statsig IDs, including known legacy IDs, are removed on withdrawal and authentication-subject boundaries.
 
+The same-origin Statsig proxy independently resolves trusted consent and
+forwards only the evaluation `initialize` endpoint. Undecided, declined,
+outdated, or unresolved consent returns without provider traffic; event
+registration and SDK-exception forwarding are not part of the product
+contract.
+
 ## Sensitive Content Boundary
 
 Analytics must not include interview audio, recordings, transcripts, prompt or question text, answer text, feedback excerpts, provider tokens, room names, emails/domains, raw user/session/question identifiers, arbitrary errors, referrers, focus values, or return destinations. Every event uses an explicit property allowlist. Internal locations become paths without query strings or fragments; external locations become origins. Errors use bounded codes.

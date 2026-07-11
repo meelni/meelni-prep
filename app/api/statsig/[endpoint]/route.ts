@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ALLOWED_STATSIG_ENDPOINTS = new Set(["initialize", "rgstr", "sdk_exception"]);
+import {
+  ANALYTICS_CONSENT_COOKIE,
+  isCurrentAnalyticsAcceptance,
+} from "@/lib/analytics/consent-contract";
+import { resolveTrustedAnalyticsConsentState } from "@/lib/analytics/trusted-consent";
+
+const ALLOWED_STATSIG_ENDPOINTS = new Set(["initialize"]);
 const STATSIG_API_BASE_URL = "https://statsigapi.net/v1";
 
 function copyStatsigHeaders(request: NextRequest) {
@@ -33,7 +39,22 @@ export async function POST(
   const { endpoint } = await params;
 
   if (!ALLOWED_STATSIG_ENDPOINTS.has(endpoint)) {
-    return NextResponse.json({ error: "Unsupported Statsig endpoint" }, { status: 404 });
+    return noStore(
+      NextResponse.json(
+        { error: "Unsupported Statsig endpoint" },
+        { status: 404 }
+      )
+    );
+  }
+
+  const consentState = await resolveTrustedAnalyticsConsentState(
+    request.cookies.get(ANALYTICS_CONSENT_COOKIE)?.value
+  );
+  if (
+    !consentState.resolved ||
+    !isCurrentAnalyticsAcceptance(consentState.consent)
+  ) {
+    return noStore(new NextResponse(null, { status: 204 }));
   }
 
   const upstreamUrl = new URL(`${STATSIG_API_BASE_URL}/${endpoint}`);
@@ -67,9 +88,16 @@ export async function POST(
     });
   } catch (error) {
     console.error("[StatsigProxy] Failed to proxy request", error);
-    return NextResponse.json(
-      { error: "Failed to proxy Statsig request" },
-      { status: 502 }
+    return noStore(
+      NextResponse.json(
+        { error: "Failed to proxy Statsig request" },
+        { status: 502 }
+      )
     );
   }
+}
+
+function noStore(response: NextResponse): NextResponse {
+  response.headers.set("cache-control", "private, no-store");
+  return response;
 }
