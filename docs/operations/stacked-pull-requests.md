@@ -117,9 +117,11 @@ branch-protection context. Push events fail closed in this adapter; local branch
 work uses the command above.
 
 All event, scheduled, and manual publishers share one non-cancelling workflow
-concurrency group. A parent synchronize event therefore cannot overtake or
-cancel a child publication; the queued parent event subsequently republishes
-each dependent child's exact current generation.
+concurrency group with GitHub's maximum pending queue. Parent events are not
+replaced by a newer pending run, so each queued movement subsequently
+republishes every dependent child's exact current generation. The workflow also
+subscribes to `closed`: closing or deleting a parent PR revalidates its open
+registered children, and a deleted parent ref fails their checks closed.
 
 A trusted default-branch schedule re-reads every open manifest entry every five
 minutes. It loads current PR metadata through the read-only API, fetches the

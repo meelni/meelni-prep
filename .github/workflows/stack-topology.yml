@@ -2,7 +2,7 @@ name: Stack Topology
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize, edited]
+    types: [opened, reopened, synchronize, edited, closed]
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
@@ -15,6 +15,7 @@ concurrency:
   # scheduled fan-out shares one non-cancelling publisher queue.
   group: stack-topology-publisher
   cancel-in-progress: false
+  queue: max
 
 jobs:
   verify:
