@@ -23,7 +23,9 @@ Keep the relaunch feature default-off. With an authenticated Preview account:
 5. At the deadline, confirm room participants are disconnected before feedback dispatch, the session stores `time_limit`, and feedback is queued or skipped according to durable signal.
 6. Replay the deadline event and confirm the stored terminal result is unchanged.
 7. Exercise a room-delete failure in a safe test environment; confirm terminal truth commits and the Inngest run retries deletion.
-8. Confirm the recovery cron emits a new delivery identity and does not leave an open session beyond the next five-minute recovery window.
+8. Confirm the recovery cron emits a new delivery identity only for an overdue
+   open session and does not leave it open beyond the next five-minute recovery
+   window. Future sessions must not accumulate duplicate scheduled deliveries.
 
 ## Monitoring
 

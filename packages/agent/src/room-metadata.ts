@@ -1,5 +1,4 @@
 import {
-  normalizeInterviewDurationMinutes,
   parseInterviewDeadlineAt,
   serializeInterviewDeadlineAt,
   type DifficultyLevel,

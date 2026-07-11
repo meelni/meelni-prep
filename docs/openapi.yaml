@@ -623,6 +623,7 @@ components:
 
     StartSessionResponse:
       type: object
+      required: [sessionId, roomName, token, url, deadlineAt, config, question]
       properties:
         sessionId:
           type: string
@@ -638,8 +639,23 @@ components:
           type: string
           format: uri
           description: LiveKit server WebSocket URL
+        deadlineAt:
+          type: string
+          format: date-time
+          description: Server-derived absolute UTC interview deadline
         config:
           $ref: "#/components/schemas/InterviewPreferences"
+        question:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            text:
+              type: string
+            company:
+              type: string
+              nullable: true
 
     Session:
       type: object

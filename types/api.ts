@@ -62,8 +62,16 @@ export interface StartSessionResponse {
   token: string;
   /** LiveKit server URL */
   url: string;
+  /** Server-derived absolute UTC deadline for this interview */
+  deadlineAt: string;
   /** Validated client-safe preferences; runtime settings remain server-owned */
   config: InterviewPreferences;
+  /** Selected question snapshot, or null when no question was selected */
+  question: {
+    id: string;
+    text: string;
+    company: string | null;
+  } | null;
 }
 
 /**
