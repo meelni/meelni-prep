@@ -679,11 +679,11 @@ test("the authoritative workflow checks out default-branch code and never PR cod
   assert.match(workflow, /permissions:\n  contents: read/);
   assert.match(
     workflow,
-    /verify:[^]*permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
+    /verify-stack:[^]*?permissions:\n      contents: read\n      checks: write/
   );
   assert.match(
     workflow,
-    /revalidate:[^]*permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
+    /verify-migrations:[^]*?permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
   );
   assert.match(workflow, /cron: "\*\/5 \* \* \* \*"/);
   assert.match(workflow, /group: stack-topology-publisher/);
@@ -695,11 +695,11 @@ test("the authoritative workflow checks out default-branch code and never PR cod
     workflow,
     /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/
   );
-  assert.match(workflow, /run: node scripts\/verify-relaunch-pr-gates-ci\.mjs/);
   assert.match(
     workflow,
-    /run: node scripts\/revalidate-relaunch-pr-gates-ci\.mjs/
+    /run: node scripts\/check-stacked-pr-ci\.mjs --publish-check/
   );
+  assert.match(workflow, /run: node scripts\/revalidate-stacked-prs-ci\.mjs/);
   assert.doesNotMatch(workflow, /pull_request\.head\.sha/);
   assert.doesNotMatch(workflow, /checkout[^]*pull_request\.head/);
   assert.doesNotMatch(generalCi, /check:stack:ci/);

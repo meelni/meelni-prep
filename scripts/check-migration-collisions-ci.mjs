@@ -63,6 +63,10 @@ function validatePullRequest(pullRequest) {
   return pullRequest;
 }
 
+function pullRequestIdentity(pullRequest) {
+  return `${pullRequest.number}:${pullRequest.head.sha}:${pullRequest.head.ref}:${pullRequest.base.ref}`;
+}
+
 export async function inventoryOpenMigrationPullRequests({
   token,
   repository,
@@ -152,13 +156,12 @@ export async function inventoryOpenMigrationPullRequests({
       .map(validatePullRequest)
       .filter((pullRequest) => pullRequest.head.repo.full_name === repository)
       .sort((left, right) => left.number - right.number);
-    const identity = (pullRequest) =>
-      `${pullRequest.number}:${pullRequest.head.sha}:${pullRequest.head.ref}:${pullRequest.base.ref}`;
     if (
       finalPullRequests.length !== sameRepositoryPullRequests.length ||
       finalPullRequests.some(
         (pullRequest, index) =>
-          identity(pullRequest) !== identity(sameRepositoryPullRequests[index])
+          pullRequestIdentity(pullRequest) !==
+          pullRequestIdentity(sameRepositoryPullRequests[index])
       )
     ) {
       throw new Error("migration_collision_open_pr_set_moved_during_inventory");
@@ -173,7 +176,12 @@ export async function inventoryOpenMigrationPullRequests({
     });
   }
 
-  return { pullRequests: sameRepositoryPullRequests, inventories, errors };
+  return {
+    pullRequests: sameRepositoryPullRequests,
+    inventories,
+    errors,
+    snapshot: sameRepositoryPullRequests.map(pullRequestIdentity),
+  };
 }
 
 function collisionSummary(result) {
@@ -242,6 +250,51 @@ export async function hasMatchingMigrationCheck({
       check.conclusion === conclusionForResult(result) &&
       check.output?.summary === expectedSummary
   );
+}
+
+export async function assertMigrationResultFresh({
+  token,
+  repository,
+  result,
+  fetchImpl,
+  api = githubApi,
+}) {
+  if (!Array.isArray(result.inventorySnapshot)) {
+    throw new Error("migration_collision_snapshot_missing");
+  }
+  const currentPullRequests = (
+    await paginateGithubApi({
+      token,
+      repository,
+      path: "/pulls?state=open",
+      fetchImpl,
+      api,
+    })
+  )
+    .map(validatePullRequest)
+    .filter((pullRequest) => pullRequest.head.repo.full_name === repository)
+    .sort((left, right) => left.number - right.number);
+  const currentSnapshot = currentPullRequests.map(pullRequestIdentity);
+  if (
+    currentSnapshot.length !== result.inventorySnapshot.length ||
+    currentSnapshot.some(
+      (identity, index) => identity !== result.inventorySnapshot[index]
+    )
+  ) {
+    throw new Error("migration_collision_global_snapshot_became_stale");
+  }
+  const pullRequest = currentPullRequests.find(
+    (candidate) => candidate.number === result.pr
+  );
+  if (
+    !pullRequest ||
+    pullRequest.head.sha !== result.headSha ||
+    pullRequest.head.ref !== result.headRef ||
+    pullRequest.head.repo.full_name !== repository ||
+    pullRequest.base.ref !== result.baseRef
+  ) {
+    throw new Error("migration_collision_result_became_stale");
+  }
 }
 
 export async function createMigrationCheck({
@@ -315,16 +368,39 @@ export async function publishMigrationResult({
   fetchImpl,
   api = githubApi,
   reuseCheck = hasMatchingMigrationCheck,
+  freshnessCheck = assertMigrationResultFresh,
 }) {
+  let freshnessFailed = false;
+  try {
+    await freshnessCheck({
+      token,
+      repository,
+      result,
+      fetchImpl,
+      api,
+    });
+  } catch (error) {
+    const code =
+      error instanceof Error
+        ? error.message
+        : "migration_collision_freshness_check_failed";
+    result = {
+      ...result,
+      status: "error",
+      inventoryError: `Publication was deferred because the exact PR head could not be proven current (${code}); a failure replaces any stale success.`,
+    };
+    freshnessFailed = true;
+  }
   try {
     if (
-      await reuseCheck({
+      !freshnessFailed &&
+      (await reuseCheck({
         token,
         repository,
         result,
         fetchImpl,
         api,
-      })
+      }))
     ) {
       return { ...result, publication: "reused" };
     }
@@ -365,6 +441,7 @@ export async function auditOpenMigrationPullRequests({
   inventory = inventoryOpenMigrationPullRequests,
   fallbackPullRequest,
   triggeringPrNumber,
+  freshnessCheck = assertMigrationResultFresh,
 } = {}) {
   if (!REPOSITORY_PATTERN.test(repository ?? "")) {
     throw new Error("migration_collision_repository_invalid");
@@ -402,6 +479,7 @@ export async function auditOpenMigrationPullRequests({
         },
         fetchImpl,
         api,
+        freshnessCheck,
       });
     }
     return {
@@ -411,6 +489,8 @@ export async function auditOpenMigrationPullRequests({
     };
   }
   const { pullRequests, inventories, errors } = inventoryResult;
+  const inventorySnapshot =
+    inventoryResult.snapshot ?? pullRequests.map(pullRequestIdentity);
 
   let results;
   if (errors.length > 0) {
@@ -445,17 +525,20 @@ export async function auditOpenMigrationPullRequests({
           migrations: partial?.migrations ?? [],
           violations: partial?.violations ?? [],
           collisions: [],
+          inventorySnapshot,
           status: "error",
           inventoryError: `Open-PR migration inventory is incomplete (${detail}). Collision absence cannot be proven.`,
         };
       });
   } else {
-    results = evaluateMigrationInventories(inventories).filter(
-      (result) =>
-        result.migrations.length > 0 ||
-        result.violations.length > 0 ||
-        result.pr === triggeringPrNumber
-    );
+    results = evaluateMigrationInventories(inventories)
+      .filter(
+        (result) =>
+          result.migrations.length > 0 ||
+          result.violations.length > 0 ||
+          result.pr === triggeringPrNumber
+      )
+      .map((result) => ({ ...result, inventorySnapshot }));
   }
 
   const publishedResults = [];
@@ -469,6 +552,7 @@ export async function auditOpenMigrationPullRequests({
           result,
           fetchImpl,
           api,
+          freshnessCheck,
         })
       );
     } catch (error) {

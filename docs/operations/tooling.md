@@ -264,6 +264,15 @@ movement. Scheduled runs publish only migration or immutable-history owners,
 not every open PR, and reuse the latest completed Check Run when its exact head,
 GitHub Actions app identity, conclusion, and summary are unchanged.
 
+Event-driven and scheduled migration publishers share the global
+`migration-collision-audit` concurrency group with running-run cancellation
+disabled. An older inventory therefore cannot finish after a newer audit and
+overwrite its collision failure with stale success. Immediately before each
+Check Run write, the publisher re-reads that PR and verifies the recorded head,
+head ref, repository, and base ref. If publication was deferred across a head
+move or the freshness read fails, it publishes failure rather than reusing or
+creating success from the stale result.
+
 Run the offline regression fixtures with:
 
 ```bash

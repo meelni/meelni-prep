@@ -31,6 +31,8 @@ function checkApi(calls, { failCreate = false, failComplete = false } = {}) {
     if (input.path.startsWith("/commits/")) {
       return { total_count: 0, check_runs: [] };
     }
+    const pullRequestMatch = input.path.match(/^\/pulls\/(\d+)$/);
+    if (pullRequestMatch) return pullRequest(Number(pullRequestMatch[1]));
     if (input.path === "/check-runs") {
       if (failCreate) throw new Error("check_create_failed");
       nextId += 1;
@@ -225,6 +227,7 @@ test("audit publishes exact-head failure to every collision owner and neutral to
     env: { GITHUB_TOKEN: "token" },
     repository,
     api: checkApi(calls),
+    freshnessCheck: async () => {},
     triggeringPrNumber: 22,
     inventory: async () => ({
       pullRequests: prs,
@@ -291,6 +294,7 @@ test("one incomplete file inventory fails every known exact PR head", async () =
     env: { GITHUB_TOKEN: "token" },
     repository,
     api: checkApi(calls),
+    freshnessCheck: async () => {},
     inventory: async () => ({
       pullRequests: prs,
       inventories: [
@@ -334,6 +338,7 @@ test("scheduled audits publish only migration or immutable-history owners", asyn
     env: { GITHUB_TOKEN: "token" },
     repository,
     api: checkApi(calls),
+    freshnessCheck: async () => {},
     inventory: async () => ({
       pullRequests: prs,
       errors: [],
@@ -379,6 +384,7 @@ test("a list failure on a PR event publishes failure to the triggering exact hea
     repository,
     fallbackPullRequest,
     api: checkApi(calls),
+    freshnessCheck: async () => {},
     inventory: async () => {
       throw new Error("github_pull_list_failed");
     },
@@ -453,6 +459,7 @@ test("an identical completed exact-head result is reused without a write", async
         ],
       };
     },
+    freshnessCheck: async () => {},
   });
   assert.equal(published.publication, "reused");
   assert.equal(calls.length, 1);
@@ -482,9 +489,84 @@ test("a check lookup error replaces possible stale success with failure", async 
       if (input.path === "/check-runs") return { id: 901 };
       return {};
     },
+    freshnessCheck: async () => {},
   });
   assert.equal(published.status, "error");
   const completion = calls.find((call) => call.path.startsWith("/check-runs/"));
   assert.equal(completion.body.conclusion, "failure");
   assert.match(completion.body.output.summary, /check_lookup_failed/);
+});
+
+test("a deferred publication cannot emit stale success after the head moves", async () => {
+  const result = {
+    pr: 62,
+    headSha: "c".repeat(40),
+    headRef: "branch-62",
+    baseRef: "main",
+    migrations: [
+      {
+        sequence: "0012",
+        path: "lib/db/migrations/0012_owner.sql",
+        status: "added",
+      },
+    ],
+    violations: [],
+    collisions: [],
+    inventorySnapshot: [`62:${"c".repeat(40)}:branch-62:main`],
+    status: "pass",
+  };
+  let releaseFreshness;
+  const deferredFreshness = new Promise((resolve) => {
+    releaseFreshness = resolve;
+  });
+  const calls = [];
+  let reuseCalls = 0;
+  const movedPullRequest = {
+    number: 62,
+    state: "open",
+    head: {
+      sha: "d".repeat(40),
+      ref: "branch-62",
+      repo: { full_name: repository },
+    },
+    base: { ref: "main" },
+  };
+  const publication = publishMigrationResult({
+    token: "token",
+    repository,
+    result,
+    api: async (input) => {
+      calls.push(input);
+      if (input.path.startsWith("/pulls?")) {
+        await deferredFreshness;
+        return [movedPullRequest];
+      }
+      if (input.path === "/check-runs") return { id: 902 };
+      if (input.path === "/check-runs/902") return {};
+      throw new Error(`unexpected_api_path:${input.path}`);
+    },
+    reuseCheck: async () => {
+      reuseCalls += 1;
+      return true;
+    },
+  });
+
+  await Promise.resolve();
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].path, /^\/pulls\?/);
+  assert.equal(
+    calls.some((call) => call.path === "/check-runs"),
+    false
+  );
+  releaseFreshness();
+  const published = await publication;
+  assert.equal(reuseCalls, 0);
+  assert.equal(published.status, "error");
+  const completion = calls.find((call) => call.path.startsWith("/check-runs/"));
+  assert.equal(completion.body.conclusion, "failure");
+  assert.doesNotMatch(completion.body.output.summary, /ownership is unique/i);
+  assert.match(
+    completion.body.output.summary,
+    /migration_collision_global_snapshot_became_stale/
+  );
 });

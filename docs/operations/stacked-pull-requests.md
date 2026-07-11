@@ -188,6 +188,13 @@ same exact head is reused, bounding Check Run churn. The workflow still checks
 out only default-branch code; it reads PR metadata and file names but never
 fetches or executes PR files for collision detection.
 
+All event and scheduled migration publishers use one global, non-canceling
+running concurrency group. This orders publication so an older run cannot land
+green after a newer run has detected a collision. The publisher also rechecks
+each exact PR head immediately before writing; a moved or unverifiable head gets
+a failure instead of stale success. Stack-topology jobs retain their separate
+per-PR concurrency because they publish only the triggering stack result.
+
 This gate prevents new duplicate ownership; it does not make independently
 generated journals composable. Merge one migration-bearing PR at a time in the
 canonical SAV-241 order. After each schema merge, rebase the next PR onto the
@@ -206,7 +213,8 @@ old green `Validate` runs topology evidence. Before any stacked PR merges:
 1. Configure the explicit head-bound `Stack Topology / Verify` and
    `Migration Collision / Verify` Check Runs as required checks for every
    protected branch that can receive a relaunch PR. Do not select the workflow
-   job `Relaunch Integration Gates / Trusted Publisher`.
+   jobs `Relaunch Integration Gates / Stack Topology Publisher` or
+   `Relaunch Integration Gates / Migration Collision Publisher`.
 2. Starting at each stack root, fetch the exact current parent and run the local
    command above. Do not change evidence for a failing topology.
 3. Replace the PR-body evidence block with the exact result. The body edit
