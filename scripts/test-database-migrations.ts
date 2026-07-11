@@ -1671,13 +1671,14 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
     UPDATE interview_session
     SET livekit_room_name = 'transcript-room-one',
         lifecycle_state = 'active',
+        started_at = '2026-07-10T04:59:00.000Z'::timestamptz,
         activated_at = COALESCE(activated_at, now())
     WHERE id = ${SESSION_ONE}::uuid
   `;
   await sql`
     INSERT INTO interview_session (
       id, user_id, round_type, mode, status, lifecycle_state,
-      livekit_room_name, activated_at
+      livekit_room_name, started_at, activated_at
     ) VALUES (
       ${SESSION_TRANSCRIPT_TWO}::uuid,
       ${USER_ONE}::uuid,
@@ -1686,10 +1687,12 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       'in_progress',
       'active',
       'transcript-room-two',
+      '2026-07-10T04:59:00.000Z'::timestamptz,
       now()
     ) ON CONFLICT (id) DO UPDATE
       SET livekit_room_name = EXCLUDED.livekit_room_name,
           lifecycle_state = 'active',
+          started_at = EXCLUDED.started_at,
           activated_at = COALESCE(interview_session.activated_at, now())
   `;
 
