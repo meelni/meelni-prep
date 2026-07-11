@@ -38,6 +38,8 @@
 - Required: Targeted question sync tests, database migration clean/upgrade harness, `npm run check:ci`, `npm run build`, and `npm run verify:agent` when feasible.
 - Manual: Provider-backed dry-run aggregate report and Explore desktop/mobile checks with one published row and quarantined duplicates.
 - Regression fixtures: Exact fingerprint duplicate, punctuation/provenance near duplicate, active-ID preservation, source removal, transactional failure, migration backfill, public RLS projection, and fingerprint format enforcement.
+- Current branch evidence: targeted question/sync/route tests pass, including public `activeOnly=false` compatibility behavior and adversarial superscript, circled-number, semantic-dash, relational, percentage, currency, and arithmetic notation. The disposable PostgreSQL clean/upgrade migration harness, `npm run check:ci`, and `npm run build` pass.
+- Pending environment evidence: Provider-backed corpus dry run and Preview browser inspection remain gated on an isolated approved Preview environment. This worktree has no `.env.local`; no remote provider or shared database was contacted.
 
 ## Rollout
 

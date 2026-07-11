@@ -10,6 +10,10 @@ import {
   type StoredQuestionSyncQuestion,
 } from "./source";
 import {
+  normalizeQuestionIdentityText,
+  normalizeQuestionPromptForNearDuplicate,
+} from "./normalization";
+import {
   parseGoogleSheetTimestamp,
   questionSourceFingerprint,
 } from "@/scripts/sync-questions-from-sheet";
@@ -66,10 +70,64 @@ test("source fingerprints retain safe provenance without private source data", (
   );
 });
 
+test("shared identity normalization preserves meaning-bearing Unicode and operators", () => {
+  const distinctPairs = [
+    ["Estimate x² users", "Estimate x2 users"],
+    ["Compare option ①", "Compare option 1"],
+    ["Evaluate A–B", "Evaluate A B"],
+    ["Conversion > 10%", "Conversion < 10%"],
+    ["Price is $10", "Price is 10"],
+    ["Revenue is €10", "Revenue is $10"],
+    ["Add +5 users", "Remove -5 users"],
+  ] as const;
+
+  for (const [left, right] of distinctPairs) {
+    assert.notEqual(
+      normalizeQuestionIdentityText(left),
+      normalizeQuestionIdentityText(right),
+      `${left} must remain distinct from ${right}`
+    );
+    assert.notEqual(
+      normalizeQuestionPromptForNearDuplicate(left),
+      normalizeQuestionPromptForNearDuplicate(right),
+      `${left} must remain distinct from ${right} for near duplicates`
+    );
+  }
+
+  assert.equal(
+    normalizeQuestionIdentityText("Cafe\u0301"),
+    normalizeQuestionIdentityText("Café")
+  );
+  assert.equal(
+    normalizeQuestionPromptForNearDuplicate("Improve ‘Search’!"),
+    normalizeQuestionPromptForNearDuplicate(" improve 'search' ")
+  );
+});
+
+test("source fingerprints preserve meaning-bearing symbols", () => {
+  const fingerprint = (questionText: string) =>
+    questionSourceFingerprint({
+      company: "Meta",
+      questionText,
+      sourceCategory: "Execution",
+      askedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+  for (const [left, right] of [
+    ["Estimate x² users", "Estimate x2 users"],
+    ["Compare option ①", "Compare option 1"],
+    ["Evaluate A–B", "Evaluate A B"],
+    ["Conversion > 10%", "Conversion < 10%"],
+    ["Price is $10", "Price is 10"],
+  ] as const) {
+    assert.notEqual(fingerprint(left), fingerprint(right));
+  }
+});
+
 test("exact and near-duplicate identities have separate conservative policies", () => {
   const base = question();
   const laterPunctuationVariant = question({
-    questionText: "Improve—Search!",
+    questionText: "Improve Search!",
     askedAt: new Date("2026-02-01T00:00:00.000Z"),
     sourceFingerprint: "b".repeat(64),
   });
@@ -104,6 +162,17 @@ test("exact and near-duplicate identities have separate conservative policies", 
       question({ questionText: "Increase retention by 10" })
     )
   );
+  for (const [left, right] of [
+    ["Estimate x² users", "Estimate x2 users"],
+    ["Compare option ①", "Compare option 1"],
+    ["Evaluate A–B", "Evaluate A B"],
+    ["Price is $10", "Price is 10"],
+  ] as const) {
+    assert.notEqual(
+      questionSyncContentIdentity(question({ questionText: left })),
+      questionSyncContentIdentity(question({ questionText: right }))
+    );
+  }
 });
 
 test("dedupe removes only exact source fingerprints", () => {
