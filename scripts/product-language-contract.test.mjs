@@ -36,7 +36,7 @@ const GENERATED_CUSTOMER_COPY_FILES = [
   "lib/evaluation/drill-generator.ts",
 ];
 const FEEDBACK_EXPERIENCE_ROOTS = ["app/feedback", "components/feedback"];
-const PUBLIC_CUSTOMER_CONTENT_ROOTS = ["content", "docs/api", "public/docs"];
+const PUBLIC_CUSTOMER_CONTENT_ROOTS = ["content", "docs/api"];
 const PUBLIC_CUSTOMER_CONTENT_FILES = ["docs/openapi.yaml"];
 const LEGACY_ROUTE_FILE = "app/dashboard/new-rep/page.tsx";
 const LEGACY_ANALYTICS_FILES = new Set([

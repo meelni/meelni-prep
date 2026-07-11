@@ -207,7 +207,7 @@ export function StatsCards({ totalSessions, averageScore }: StatsCardsProps) {
 ## Testing
 
 ### Manual Testing
-Visit `/test-animated-number` in your browser to see the test harness with:
+Render the `AnimatedNumberTest` component in a temporary local-only harness to verify:
 - Basic examples (integer, decimal, suffix, prefix)
 - Staggered animations
 - Performance test (12 numbers)

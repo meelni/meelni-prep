@@ -1,3 +1,6 @@
+import { PUBLIC_ORIGIN } from "@/lib/seo/public-metadata";
+import { JsonLd } from "@/components/seo/json-ld";
+
 /**
  * Structured Data (JSON-LD) for Explore Questions Page
  *
@@ -33,7 +36,7 @@ export function ExploreStructuredData({
   totalPages,
   totalQuestions,
 }: ExploreStructuredDataProps) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+  const baseUrl = PUBLIC_ORIGIN;
   const pageCount = Math.max(1, totalPages);
 
   // 1. ItemList Schema - for the collection of questions
@@ -101,7 +104,7 @@ export function ExploreStructuredData({
     name: `PM Interview Questions - Page ${currentPage} of ${pageCount}`,
     description:
       "Browse PM practice questions organized by company tag and round type.",
-    url: `${baseUrl}/explore?page=${currentPage}`,
+    url: `${baseUrl}/explore`,
     about: {
       "@type": "Thing",
       name: "Product Manager Interviews",
@@ -125,45 +128,11 @@ export function ExploreStructuredData({
 
   return (
     <>
-      {/* ItemList Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(itemListSchema),
-        }}
-      />
-
-      {/* BreadcrumbList Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(breadcrumbSchema),
-        }}
-      />
-
-      {/* WebPage Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(webPageSchema),
-        }}
-      />
-
-      {/* CollectionPage Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(collectionPageSchema),
-        }}
-      />
-
-      {/* Dataset Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(datasetSchema),
-        }}
-      />
+      <JsonLd id="explore-item-list-schema" data={itemListSchema} />
+      <JsonLd id="explore-breadcrumb-schema" data={breadcrumbSchema} />
+      <JsonLd id="explore-web-page-schema" data={webPageSchema} />
+      <JsonLd id="explore-collection-page-schema" data={collectionPageSchema} />
+      <JsonLd id="explore-dataset-schema" data={datasetSchema} />
     </>
   );
 }

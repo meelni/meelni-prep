@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { getAccountAccessDecision } from "@/lib/auth/account-access";
 import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
+import { withNoindexHeader } from "@/lib/seo/robots-header";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -39,13 +40,17 @@ export async function middleware(request: NextRequest) {
     if (decision === "account_deletion_pending") {
       await supabase.auth.signOut();
       if (pathname.startsWith("/api/")) {
-        return NextResponse.json(
-          { error: "account_deletion_pending" },
-          { status: 401 }
+        return withNoindexHeader(
+          NextResponse.json(
+            { error: "account_deletion_pending" },
+            { status: 401 }
+          )
         );
       }
-      return NextResponse.redirect(
-        new URL("/auth/signin?error=account_deletion_pending", request.url)
+      return withNoindexHeader(
+        NextResponse.redirect(
+          new URL("/auth/signin?error=account_deletion_pending", request.url)
+        )
       );
     }
 
@@ -55,11 +60,12 @@ export async function middleware(request: NextRequest) {
         "redirectTo",
         buildInternalRequestDestination(pathname, request.nextUrl.search)
       );
-      return NextResponse.redirect(redirectUrl);
+      return withNoindexHeader(NextResponse.redirect(redirectUrl));
     }
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  return isProtectedRoute ? withNoindexHeader(response) : response;
 }
 
 export const config = {

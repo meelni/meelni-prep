@@ -11,16 +11,18 @@ import {
   MarketingPage,
 } from "@/components/marketing/marketing-surface";
 import { Button } from "@/components/ui/button";
+import { PUBLIC_ORIGIN, publicMetadata } from "@/lib/seo/public-metadata";
+import { JsonLd } from "@/components/seo/json-ld";
 
-export const metadata = {
+export const metadata = publicMetadata("/blog", {
   title: "Blog | Meelni",
   description:
     "PM interview practice frameworks, strategies, and answer walkthroughs",
-};
+});
 
 // Structured Data for SEO
 function BlogStructuredData() {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://meelni.com";
+  const baseUrl = PUBLIC_ORIGIN;
 
   const breadcrumbSchema = {
     "@context": "https://schema.org",
@@ -85,18 +87,9 @@ function BlogStructuredData() {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
-      />
+      <JsonLd id="blog-breadcrumb-schema" data={breadcrumbSchema} />
+      <JsonLd id="blog-schema" data={blogSchema} />
+      <JsonLd id="blog-item-list-schema" data={itemListSchema} />
     </>
   );
 }

@@ -35,6 +35,16 @@ test("Terms and Privacy drafts are absent from the sitemap", () => {
   assert.equal(urls.includes("/privacy"), false);
 });
 
+test("legal holding pages do not direct visitors to unavailable contact", () => {
+  for (const markup of [
+    renderToStaticMarkup(PrivacyHoldingContent()),
+    renderToStaticMarkup(TermsHoldingContent()),
+  ]) {
+    assert.doesNotMatch(markup, /href="\/contact"/);
+    assert.doesNotMatch(visibleText(markup), /use the contact page/i);
+  }
+});
+
 test("rendered legal holding pages are concise, visibly non-effective, and not legal advice", () => {
   for (const markup of [
     renderToStaticMarkup(PrivacyHoldingContent()),

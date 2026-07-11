@@ -4,7 +4,7 @@
 
 The `/api/insights` endpoint provides aggregated analytics for authenticated users, including session stats, performance trends, and competency breakdowns.
 
-**Base URL**: `https://meelni.com/api/insights`
+**Base URL**: `https://www.meelni.com/api/insights`
 **Method**: `GET`
 **Authentication**: Required (Supabase session cookie)
 **Rate Limit**: None (cached 1 hour)
@@ -210,7 +210,7 @@ Currently, there is no automatic cache invalidation. Insights refresh:
 
 ```bash
 curl -X GET \
-  'https://meelni.com/api/insights' \
+  'https://www.meelni.com/api/insights' \
   -H 'Cookie: sb-access-token=your-session-token'
 ```
 
@@ -218,7 +218,7 @@ curl -X GET \
 
 ```bash
 curl -X GET \
-  'https://meelni.com/api/insights' \
+  'https://www.meelni.com/api/insights' \
   -H 'Cookie: sb-access-token=your-session-token' \
   -i  # Show headers
 ```

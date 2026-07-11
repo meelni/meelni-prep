@@ -86,16 +86,13 @@ export function PrivacyHoldingContent() {
               immediately.
             </p>
             <p>
-              For privacy questions while review is open, use the contact page.
+              A monitored privacy contact is not published while review is open.
               The final notice will publish the approved privacy contact and
               request process.
             </p>
             <div className="not-prose mt-6 flex flex-wrap gap-3">
               <Button asChild variant="outline">
                 <Link href="/dashboard/settings">Open account settings</Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/contact">Contact Meelni</Link>
               </Button>
               <Button asChild variant="outline">
                 <Link href="/terms">Review terms draft</Link>
