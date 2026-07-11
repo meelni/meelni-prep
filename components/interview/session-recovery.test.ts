@@ -6,6 +6,7 @@ import {
   getCredentialRetryDelayMs,
   parseInterviewRoomCredentials,
   reduceInterviewConnectionState,
+  shouldDiscardInterviewRoomCredentials,
   type InterviewConnectionTracker,
 } from "./session-recovery";
 
@@ -58,6 +59,12 @@ test("credential retries are bounded and limited to transient responses", () => 
   assert.equal(getCredentialRetryDelayMs(429, "120"), 10_000);
   assert.equal(getCredentialRetryDelayMs(503, null), 2_000);
   assert.equal(getCredentialRetryDelayMs(409, null), null);
+});
+
+test("terminal credential denial discards the mounted room connection", () => {
+  assert.equal(shouldDiscardInterviewRoomCredentials(409), true);
+  assert.equal(shouldDiscardInterviewRoomCredentials(429), false);
+  assert.equal(shouldDiscardInterviewRoomCredentials(503), false);
 });
 
 test("repeated short and final drops recover the same connection flow", () => {

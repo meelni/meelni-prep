@@ -36,6 +36,7 @@ import {
   getCanonicalInterviewHref,
   getCredentialRetryDelayMs,
   parseInterviewRoomCredentials,
+  shouldDiscardInterviewRoomCredentials,
   type InterviewConnectionStatus,
   type InterviewRoomCredentials,
 } from "@/components/interview/session-recovery";
@@ -278,7 +279,9 @@ function InterviewPageContent() {
         normalizedSession.livekit_room_name
       );
       if (!credentialResult.ok) {
-        if (credentialResult.status === 409) {
+        if (shouldDiscardInterviewRoomCredentials(credentialResult.status)) {
+          setToken("");
+          setUrl("");
           setDisconnectTimedOut(true);
           setLoading(false);
           return;
@@ -491,6 +494,8 @@ function InterviewPageContent() {
     );
     credentialRequestInFlightRef.current = false;
 
+    if (deadlineReachedRef.current) return;
+
     if (result.ok) {
       credentialRetryTimerRef.current = undefined;
       setToken(result.credentials.token);
@@ -503,7 +508,9 @@ function InterviewPageContent() {
       status: result.status,
       error: result.error,
     });
-    if (result.status === 409) {
+    if (shouldDiscardInterviewRoomCredentials(result.status)) {
+      setToken("");
+      setUrl("");
       setDisconnectTimedOut(true);
       setRecoveringConnection(false);
       setShowEndModal(false);

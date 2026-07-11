@@ -167,7 +167,7 @@ test("stale restore from drop one cannot recover drop two", async () => {
   assert.equal(stale.lifecycle?.version, 6);
 });
 
-test("hard deadline keeps ownership when it is earlier than reconnect grace", async () => {
+test("events at the hard deadline cannot enter reconnect or reactivate", async () => {
   const fixture = createFixture(
     createSession({ startedAt: new Date("2026-07-10T07:30:00.000Z") })
   );
@@ -176,9 +176,31 @@ test("hard deadline keeps ownership when it is earlier than reconnect grace", as
     fixture.deps
   );
 
-  assert.equal(lost.lifecycle?.state, "reconnecting");
+  assert.equal(lost.disposition, "ignored");
+  assert.equal(lost.lifecycle?.state, "active");
   assert.equal(lost.lifecycle?.reconnectDeadlineAt, null);
   assert.equal(fixture.schedules.length, 0);
+
+  const reconnectingFixture = createFixture(
+    createSession({
+      state: "reconnecting",
+      version: 4,
+      startedAt: new Date("2026-07-10T07:30:00.000Z"),
+      reconnectDeadlineAt: null,
+    })
+  );
+  const restored = await handleLiveKitInterviewEventWorkflow(
+    event(
+      "participant_joined",
+      USER_ID,
+      "event-restored",
+      new Date(NOW.getTime() - 1)
+    ),
+    reconnectingFixture.deps
+  );
+
+  assert.equal(restored.disposition, "ignored");
+  assert.equal(restored.lifecycle?.state, "reconnecting");
 });
 
 test("candidate recovery is accepted 1ms before grace and rejected at grace", async () => {

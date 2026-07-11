@@ -104,6 +104,10 @@ export function getCredentialRetryDelayMs(
   return DEFAULT_RETRY_DELAY_MS;
 }
 
+export function shouldDiscardInterviewRoomCredentials(status: number): boolean {
+  return status === 409;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

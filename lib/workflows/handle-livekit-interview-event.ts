@@ -179,6 +179,18 @@ function deriveDesiredTransition(
   runtimeReadyAt?: Date;
 } | null {
   const isCandidate = input.participantIdentity === current.userId;
+  const config = isRecord(current.config) ? current.config : {};
+  const hardDeadlineAt = deriveInterviewDeadlineAt({
+    startedAt: current.startedAt,
+    durationMinutes: normalizeInterviewDurationMinutes(config.duration),
+  });
+
+  if (
+    now.getTime() >= hardDeadlineAt.getTime() ||
+    input.occurredAt.getTime() >= hardDeadlineAt.getTime()
+  ) {
+    return null;
+  }
 
   if (input.eventName === "participant_joined") {
     if (
@@ -225,11 +237,6 @@ function deriveDesiredTransition(
 
   if (!isCandidate || current.state !== "active") return null;
 
-  const config = isRecord(current.config) ? current.config : {};
-  const hardDeadlineAt = deriveInterviewDeadlineAt({
-    startedAt: current.startedAt,
-    durationMinutes: normalizeInterviewDurationMinutes(config.duration),
-  });
   const reconnect = deriveInterviewReconnectDeadline({
     disconnectedAt: now,
     hardDeadlineAt,
