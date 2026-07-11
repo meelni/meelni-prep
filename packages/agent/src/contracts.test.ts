@@ -9,6 +9,7 @@ import {
 } from "@meelni/test-fixtures";
 
 import {
+  INTERVIEW_RUNTIME_FAILURE_CODES,
   acceptTranscriptEventOnce,
   buildInterviewRoomMetadata,
   createInterviewRuntimeEvent,
@@ -638,4 +639,20 @@ test("provider failures accept only deployed runtimes and normalized codes", () 
     }),
     false
   );
+});
+
+test("provider failure vocabulary matches every deployed runtime callsite", () => {
+  assert.deepEqual(INTERVIEW_RUNTIME_FAILURE_CODES, [
+    "stt_provider_failed",
+    "llm_provider_failed",
+    "tts_provider_failed",
+    "realtime_model_provider_failed",
+    "turn_detection_provider_failed",
+    "voice_runtime_provider_failed",
+    "voice_session_failed",
+    "voice_session_construction_failed",
+    "voice_session_start_failed",
+    "deadline_enforcement_failed",
+    "initial_greeting_failed",
+  ]);
 });

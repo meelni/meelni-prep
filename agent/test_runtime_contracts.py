@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import unittest
 from datetime import datetime, timezone
@@ -18,7 +19,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 from shared.config import parse_room_metadata
 from shared.utils.prompt_builder import build_agent_prompt
 from shared.candidate_presence import wait_for_candidate_before_greeting
-from shared.runtime_events import create_runtime_event, provider_failure_code
+from shared.runtime_events import (
+    ALLOWED_PROVIDER_FAILURE_CODES,
+    create_runtime_event,
+    provider_failure_code,
+)
 from shared.runtime_config import (
     DEFAULT_INTERVIEW_RUNTIME_CONFIG,
     get_model_config,
@@ -81,6 +86,39 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertIn('@session.on("error")', source)
         self.assertIn('getattr(event.error, "recoverable", False)', source)
         self.assertIn("schedule_provider_failure_report(", source)
+
+    def test_every_literal_provider_failure_callsite_is_allowlisted(self):
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+        literal_codes = set(
+            re.findall(r'report_provider_failure\(\s*"([a-z0-9_]+)"', source)
+        )
+
+        self.assertEqual(
+            literal_codes,
+            {
+                "deadline_enforcement_failed",
+                "initial_greeting_failed",
+                "voice_session_construction_failed",
+                "voice_session_start_failed",
+            },
+        )
+        self.assertTrue(literal_codes.issubset(ALLOWED_PROVIDER_FAILURE_CODES))
+        self.assertEqual(
+            ALLOWED_PROVIDER_FAILURE_CODES,
+            {
+                "stt_provider_failed",
+                "llm_provider_failed",
+                "tts_provider_failed",
+                "realtime_model_provider_failed",
+                "turn_detection_provider_failed",
+                "voice_runtime_provider_failed",
+                "voice_session_failed",
+                "voice_session_construction_failed",
+                "voice_session_start_failed",
+                "deadline_enforcement_failed",
+                "initial_greeting_failed",
+            },
+        )
 
     def test_interview_agent_keeps_room_io_open_for_reconnect_grace(self):
         source = (Path(__file__).parent / "interview" / "agent.py").read_text()
