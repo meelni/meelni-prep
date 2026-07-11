@@ -1,0 +1,97 @@
+[
+  {
+    "name": "trims operator strings and decimal whitespace",
+    "env": {
+      "MEELNI_INTERVIEW_VOICE": "  operator-voice  ",
+      "MEELNI_INTERVIEW_TTS_SPEED": " 1.25 ",
+      "MEELNI_INTERVIEW_TTS_EMOTION": " calm ",
+      "MEELNI_INTERVIEW_TTS_VOLUME": " 1.5 ",
+      "MEELNI_INTERVIEW_STT_MODEL": " operator/stt ",
+      "MEELNI_INTERVIEW_LLM_MODEL": " operator/llm ",
+      "MEELNI_INTERVIEW_TTS_MODEL": " operator/tts "
+    },
+    "expected": {
+      "voice": "operator-voice",
+      "speed": 1.25,
+      "emotion": "calm",
+      "volume": 1.5,
+      "feedback_mode": "end_only",
+      "stt_model": "operator/stt",
+      "llm_model": "operator/llm",
+      "tts_model": "operator/tts"
+    }
+  },
+  {
+    "name": "rejects hexadecimal numeric syntax",
+    "env": {
+      "MEELNI_INTERVIEW_TTS_SPEED": "0x1",
+      "MEELNI_INTERVIEW_TTS_VOLUME": "0x1"
+    },
+    "expected": {
+      "voice": "cgSgspJ2msm6clMCkdW9",
+      "speed": 1,
+      "emotion": "professional",
+      "volume": 1,
+      "feedback_mode": "end_only",
+      "stt_model": "deepgram/nova-3",
+      "llm_model": "openai/gpt-4.1-mini",
+      "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
+    }
+  },
+  {
+    "name": "accepts bounded decimal and exponent syntax",
+    "env": {
+      "MEELNI_INTERVIEW_TTS_SPEED": ".75",
+      "MEELNI_INTERVIEW_TTS_VOLUME": "2e0"
+    },
+    "expected": {
+      "voice": "cgSgspJ2msm6clMCkdW9",
+      "speed": 0.75,
+      "emotion": "professional",
+      "volume": 2,
+      "feedback_mode": "end_only",
+      "stt_model": "deepgram/nova-3",
+      "llm_model": "openai/gpt-4.1-mini",
+      "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
+    }
+  },
+  {
+    "name": "falls back for blank and nonfinite values",
+    "env": {
+      "MEELNI_INTERVIEW_VOICE": "   ",
+      "MEELNI_INTERVIEW_TTS_SPEED": "NaN",
+      "MEELNI_INTERVIEW_TTS_EMOTION": "\t",
+      "MEELNI_INTERVIEW_TTS_VOLUME": "Infinity",
+      "MEELNI_INTERVIEW_STT_MODEL": " ",
+      "MEELNI_INTERVIEW_LLM_MODEL": " ",
+      "MEELNI_INTERVIEW_TTS_MODEL": "\n"
+    },
+    "expected": {
+      "voice": "cgSgspJ2msm6clMCkdW9",
+      "speed": 1,
+      "emotion": "professional",
+      "volume": 1,
+      "feedback_mode": "end_only",
+      "stt_model": "deepgram/nova-3",
+      "llm_model": "openai/gpt-4.1-mini",
+      "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
+    }
+  },
+  {
+    "name": "falls back for finite values outside operator ranges",
+    "env": {
+      "MEELNI_INTERVIEW_TTS_SPEED": "0.59",
+      "MEELNI_INTERVIEW_TTS_VOLUME": "2.1"
+    },
+    "expected": {
+      "voice": "cgSgspJ2msm6clMCkdW9",
+      "speed": 1,
+      "emotion": "professional",
+      "volume": 1,
+      "feedback_mode": "end_only",
+      "stt_model": "deepgram/nova-3",
+      "llm_model": "openai/gpt-4.1-mini",
+      "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
+    }
+  }
+]

@@ -23,7 +23,6 @@ export interface InterviewRuntimeSettings {
   emotion: string;
   volume: number;
   feedback_mode: InterviewFeedbackMode;
-  persona?: string | null;
   stt_model: string;
   llm_model: string;
   tts_model: string;
@@ -81,7 +80,6 @@ export const DEFAULT_INTERVIEW_RUNTIME_CONFIG: InterviewRuntimeConfig = {
   feedback_mode: "end_only",
   hintMode: "off",
   questionPreference: { recency: "very_recent", recentDays: 365 },
-  persona: null,
   stt_model: "deepgram/nova-3",
   llm_model: "openai/gpt-4.1-mini",
   tts_model: "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
@@ -93,7 +91,6 @@ export const DEFAULT_INTERVIEW_RUNTIME_SETTINGS: InterviewRuntimeSettings = {
   emotion: DEFAULT_INTERVIEW_RUNTIME_CONFIG.emotion,
   volume: DEFAULT_INTERVIEW_RUNTIME_CONFIG.volume,
   feedback_mode: DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
-  persona: DEFAULT_INTERVIEW_RUNTIME_CONFIG.persona,
   stt_model: DEFAULT_INTERVIEW_RUNTIME_CONFIG.stt_model,
   llm_model: DEFAULT_INTERVIEW_RUNTIME_CONFIG.llm_model,
   tts_model: DEFAULT_INTERVIEW_RUNTIME_CONFIG.tts_model,
@@ -129,28 +126,38 @@ export function interviewRuntimeSettingsFromEnv(
 ): InterviewRuntimeSettings {
   return {
     ...DEFAULT_INTERVIEW_RUNTIME_SETTINGS,
-    voice:
-      env.MEELNI_INTERVIEW_VOICE || DEFAULT_INTERVIEW_RUNTIME_SETTINGS.voice,
+    voice: envString(
+      env.MEELNI_INTERVIEW_VOICE,
+      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.voice
+    ),
     speed: envNumber(
       env.MEELNI_INTERVIEW_TTS_SPEED,
-      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.speed
+      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.speed,
+      0.6,
+      1.5
     ),
-    emotion:
-      env.MEELNI_INTERVIEW_TTS_EMOTION ||
-      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.emotion,
+    emotion: envString(
+      env.MEELNI_INTERVIEW_TTS_EMOTION,
+      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.emotion
+    ),
     volume: envNumber(
       env.MEELNI_INTERVIEW_TTS_VOLUME,
-      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.volume
+      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.volume,
+      0.5,
+      2
     ),
-    stt_model:
-      env.MEELNI_INTERVIEW_STT_MODEL ||
-      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.stt_model,
-    llm_model:
-      env.MEELNI_INTERVIEW_LLM_MODEL ||
-      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.llm_model,
-    tts_model:
-      env.MEELNI_INTERVIEW_TTS_MODEL ||
-      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.tts_model,
+    stt_model: envString(
+      env.MEELNI_INTERVIEW_STT_MODEL,
+      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.stt_model
+    ),
+    llm_model: envString(
+      env.MEELNI_INTERVIEW_LLM_MODEL,
+      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.llm_model
+    ),
+    tts_model: envString(
+      env.MEELNI_INTERVIEW_TTS_MODEL,
+      DEFAULT_INTERVIEW_RUNTIME_SETTINGS.tts_model
+    ),
   };
 }
 
@@ -238,10 +245,6 @@ export function normalizeInterviewRuntimeConfig(
     feedback_mode: isFeedbackMode(config?.feedback_mode)
       ? config.feedback_mode
       : DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
-    persona:
-      typeof config?.persona === "string" || config?.persona === null
-        ? config.persona
-        : DEFAULT_INTERVIEW_RUNTIME_CONFIG.persona,
     stt_model: stringOrDefault(
       config?.stt_model,
       DEFAULT_INTERVIEW_RUNTIME_CONFIG.stt_model
@@ -329,9 +332,28 @@ function numberOrDefault(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function envNumber(value: string | undefined, fallback: number): number {
-  const parsed = value ? Number(value) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : fallback;
+const DECIMAL_NUMBER_PATTERN =
+  /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+function envString(value: string | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : fallback;
+}
+
+function envNumber(
+  value: string | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number
+): number {
+  const trimmed = value?.trim();
+  if (!trimmed || !DECIMAL_NUMBER_PATTERN.test(trimmed)) {
+    return fallback;
+  }
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum
+    ? parsed
+    : fallback;
 }
 
 function isNonEmptyString(value: unknown): value is string {

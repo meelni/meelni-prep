@@ -11,7 +11,11 @@ non-secret variables on both the Next.js and Python voice-agent deployments:
 - `MEELNI_INTERVIEW_TTS_EMOTION`
 - `MEELNI_INTERVIEW_TTS_VOLUME`
 
-Unset or invalid numeric values use the checked-in defaults. Do not create
+String values are trimmed; blank strings use the checked-in defaults. Speed and
+volume accept decimal or exponent syntax only (not hexadecimal), must be finite,
+and must remain within `0.6–1.5` and `0.5–2.0` respectively. Invalid values use
+the checked-in defaults. TypeScript and Python enforce these rules with the same
+shared golden fixtures. Do not create
 `NEXT_PUBLIC_*` equivalents and do not put credentials in these variables.
 Deploy matching values to both runtimes: the web server persists the resolved
 snapshot, while the Python agent independently resolves its effective runtime

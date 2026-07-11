@@ -2,6 +2,7 @@
 
 import math
 import os
+import re
 from typing import Any, Dict
 
 DEFAULT_INTERVIEW_RUNTIME_CONFIG: Dict[str, Any] = {
@@ -14,7 +15,6 @@ DEFAULT_INTERVIEW_RUNTIME_CONFIG: Dict[str, Any] = {
     "feedback_mode": "end_only",
     "hintMode": "off",
     "questionPreference": {"recency": "very_recent", "recentDays": 365},
-    "persona": None,
     "stt_model": "deepgram/nova-3",
     "llm_model": "openai/gpt-4.1-mini",
     "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
@@ -30,6 +30,15 @@ RUNTIME_ENV = {
     "tts_model": "MEELNI_INTERVIEW_TTS_MODEL",
 }
 
+RUNTIME_NUMERIC_RANGES = {
+    "speed": (0.6, 1.5),
+    "volume": (0.5, 2.0),
+}
+
+DECIMAL_NUMBER_PATTERN = re.compile(
+    r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$"
+)
+
 
 def normalize_runtime_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
     """Combine accepted metadata preferences with server-owned runtime settings."""
@@ -42,28 +51,48 @@ def normalize_runtime_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
         normalized["duration"] = source["duration"]
     if source.get("hintMode") in {"off", "gentle", "coach"}:
         normalized["hintMode"] = source["hintMode"]
-    if source.get("persona") is None or isinstance(source.get("persona"), str):
-        normalized["persona"] = source.get("persona")
     normalized["questionPreference"] = _normalize_question_preference(
         source.get("questionPreference")
     )
 
     for key, env_name in RUNTIME_ENV.items():
         value = os.getenv(env_name)
-        if key in {"speed", "volume"}:
-            normalized[key] = _env_number(value, DEFAULT_INTERVIEW_RUNTIME_CONFIG[key])
-        elif value and value.strip():
-            normalized[key] = value.strip()
+        if key in RUNTIME_NUMERIC_RANGES:
+            minimum, maximum = RUNTIME_NUMERIC_RANGES[key]
+            normalized[key] = _env_number(
+                value,
+                DEFAULT_INTERVIEW_RUNTIME_CONFIG[key],
+                minimum,
+                maximum,
+            )
+        else:
+            normalized[key] = _env_string(
+                value, DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
+            )
 
     return normalized
 
 
-def _env_number(value: str | None, fallback: float) -> float:
+def _env_string(value: str | None, fallback: str) -> str:
+    trimmed = value.strip() if value else ""
+    return trimmed or fallback
+
+
+def _env_number(
+    value: str | None, fallback: float, minimum: float, maximum: float
+) -> float:
+    trimmed = value.strip() if value else ""
+    if not DECIMAL_NUMBER_PATTERN.fullmatch(trimmed):
+        return fallback
     try:
-        parsed = float(value) if value else fallback
+        parsed = float(trimmed)
     except ValueError:
         return fallback
-    return parsed if math.isfinite(parsed) else fallback
+    return (
+        parsed
+        if math.isfinite(parsed) and minimum <= parsed <= maximum
+        else fallback
+    )
 
 
 def _normalize_question_preference(value: Any) -> Dict[str, Any]:

@@ -45,6 +45,10 @@ speed, emotion, volume, and feedback timing are operational settings. The web
 workflow strips legacy or malicious copies of those fields before persistence
 and room creation, then resolves trusted settings from server environment.
 
+Free-form persona text is not part of the public request or room contract and
+is never appended to the agent prompt. The optional public `role` field accepts
+only the canonical `pm` value; any other value is rejected before persistence.
+
 Room metadata carries the web server's resolved snapshot for observability and
 session history. The Python voice runtime treats all provider/model/voice
 fields in metadata as untrusted and independently resolves them from its own

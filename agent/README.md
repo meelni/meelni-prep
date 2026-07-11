@@ -477,7 +477,6 @@ Pass configuration via room metadata (JSON):
     "difficulty": "intermediate",
     "duration": 45,
     "feedback_mode": "end_only",
-    "persona": null,
     "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
     "speed": 1.0,
     "emotion": "professional",

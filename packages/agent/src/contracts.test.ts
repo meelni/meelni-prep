@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import transcriptGoldenCases from "../../test-fixtures/transcript-events.json";
+import runtimeConfigEnvGoldenCases from "../../test-fixtures/runtime-config-env.json";
 
 import {
   createLiveKitStartFixture,
@@ -138,6 +139,18 @@ test("server environment resolves trusted runtime settings", () => {
   assert.equal(settings.speed, 1.2);
 });
 
+test("TypeScript matches shared runtime environment golden cases", () => {
+  for (const goldenCase of runtimeConfigEnvGoldenCases) {
+    assert.deepEqual(
+      interviewRuntimeSettingsFromEnv(
+        goldenCase.env as Record<string, string | undefined>
+      ),
+      goldenCase.expected,
+      goldenCase.name
+    );
+  }
+});
+
 test("full interview metadata requires versioned session correlation", () => {
   assert.throws(
     () =>
@@ -188,7 +201,6 @@ test("runtime config normalizes invalid cross-runtime values consistently", () =
     speed: Number.NaN,
     volume: "loud" as never,
     emotion: "" as never,
-    persona: 42 as never,
   });
 
   assert.equal(config.feedback_mode, "end_only");
@@ -196,7 +208,6 @@ test("runtime config normalizes invalid cross-runtime values consistently", () =
   assert.equal(config.speed, 1);
   assert.equal(config.volume, 1);
   assert.equal(config.emotion, "professional");
-  assert.equal(config.persona, null);
 
   const metadata = parseInterviewRoomMetadata(
     JSON.stringify({

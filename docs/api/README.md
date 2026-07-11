@@ -275,17 +275,14 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
   "roundType": "product_sense",
   "mode": "voice_video",
   "role": "pm",
-  "persona": "Friendly Google PM interviewer",
   "config": {
-    "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-    "stt_model": "deepgram/nova-3",
-    "llm_model": "openai/gpt-5",
-    "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-    "speed": 1.0,
-    "emotion": "Calm",
-    "volume": 1.0,
-    "skill_level": "intermediate",
-    "difficulty": "medium"
+    "difficulty": "intermediate",
+    "duration": 45,
+    "hintMode": "off",
+    "questionPreference": {
+      "recency": "very_recent",
+      "recentDays": 365
+    }
   }
 }
 ```
@@ -296,23 +293,20 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
 | ----------- | ------ | -------- | ------------- | ------------------------------------------------------------------------------ |
 | `roundType` | string | ✅ Yes   | -             | Interview type. One of: `behavioral`, `product_sense`, `execution`, `strategy` |
 | `mode`      | string | No       | `voice_video` | Interview mode. One of: `voice_video`, `text`                                  |
-| `role`      | string | No       | `pm`          | User's role (e.g., `pm`, `designer`, `engineer`)                               |
-| `persona`   | string | No       | `null`        | Custom interviewer persona description                                         |
-| `config`    | object | No       | `{}`          | Session configuration object (see below)                                       |
+| `role`      | string | No       | `pm`          | Canonical candidate role; only `pm` is accepted                                |
+| `config`    | object | No       | `{}`          | Client-safe interview preferences (see below)                                  |
 
 **Config Object**:
 
-| Field         | Type   | Required | Default                       | Description                                         |
-| ------------- | ------ | -------- | ----------------------------- | --------------------------------------------------- |
-| `voice`       | string | No       | Tessa voice ID                | Cartesia voice ID                                   |
-| `stt_model`   | string | No       | `deepgram/nova-3`             | Speech-to-Text model                                |
-| `llm_model`   | string | No       | `openai/gpt-5`                | Language model for dialogue                         |
-| `tts_model`   | string | No       | `cartesia/sonic-3:{voice_id}` | Text-to-Speech model with voice                     |
-| `speed`       | number | No       | `1.0`                         | Voice speed multiplier (0.6 - 1.5)                  |
-| `emotion`     | string | No       | `null`                        | Voice emotion (Happy, Calm, Confident, etc.)        |
-| `volume`      | number | No       | `1.0`                         | Voice volume multiplier (0.5 - 2.0)                 |
-| `skill_level` | string | No       | `intermediate`                | User skill level (beginner, intermediate, advanced) |
-| `difficulty`  | string | No       | `medium`                      | Interview difficulty (easy, medium, hard)           |
+| Field                | Type   | Required | Default         | Description                                      |
+| -------------------- | ------ | -------- | --------------- | ------------------------------------------------ |
+| `difficulty`         | string | No       | `intermediate`  | `beginner`, `intermediate`, or `advanced`        |
+| `duration`           | number | No       | `30`            | 15, 30, or 45 minutes                            |
+| `hintMode`           | string | No       | `off`           | `off`, `gentle`, or `coach`                      |
+| `questionPreference` | object | No       | recent defaults | Bounded recency choice and optional `recentDays` |
+
+Provider, model, voice, persona, and voice-tuning fields are not public
+controls. They are stripped or rejected before persistence and room creation.
 
 **Response** (200 OK):
 
@@ -323,12 +317,13 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
   "token": "eyJhbGciOiJIUzI1NiIs...",
   "url": "wss://meelni-ek4vaisp.livekit.cloud",
   "config": {
-    "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-    "stt_model": "deepgram/nova-3",
-    "llm_model": "openai/gpt-5",
-    "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-    "speed": 1.0,
-    "emotion": "Calm"
+    "difficulty": "intermediate",
+    "duration": 45,
+    "hintMode": "off",
+    "questionPreference": {
+      "recency": "very_recent",
+      "recentDays": 365
+    }
   }
 }
 ```
@@ -967,11 +962,12 @@ async function startInterview() {
     },
     body: JSON.stringify({
       roundType: "product_sense",
-      persona: "Friendly Google PM interviewer",
+      role: "pm",
       config: {
-        voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
-        speed: 1.0,
-        emotion: "Calm",
+        difficulty: "intermediate",
+        duration: 45,
+        hintMode: "off",
+        questionPreference: { recency: "very_recent", recentDays: 365 },
       },
     }),
   });

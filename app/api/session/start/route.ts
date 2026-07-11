@@ -11,23 +11,19 @@
  * @request {Object} body - Request payload
  * @request.roundType {string} Required - Interview round type. One of: behavioral, product_sense, execution, strategy
  * @request.mode {string} Optional - Interview mode (default: voice_video). One of: voice_video, text
- * @request.role {string} Optional - User's role (default: pm)
- * @request.persona {string} Optional - Custom interviewer persona description
- * @request.config {Object} Optional - Session configuration (voice settings, models, etc.)
- * @request.config.voice {string} Optional - Cartesia voice ID (default: Tessa voice)
- * @request.config.stt_model {string} Optional - Speech-to-Text model (default: deepgram/nova-3)
- * @request.config.llm_model {string} Optional - Language model (default: openai/gpt-5)
- * @request.config.tts_model {string} Optional - Text-to-Speech model with voice
- * @request.config.speed {number} Optional - Voice speed multiplier (0.6-1.5)
- * @request.config.emotion {string} Optional - Voice emotion (Happy, Calm, Confident, etc.)
- * @request.config.volume {number} Optional - Voice volume multiplier (0.5-2.0)
+ * @request.role {string} Optional - Canonical candidate role; only "pm" is accepted
+ * @request.config {Object} Optional - Client-safe interview preferences
+ * @request.config.difficulty {string} Optional - beginner, intermediate, or advanced
+ * @request.config.duration {number} Optional - 15, 30, or 45 minutes
+ * @request.config.hintMode {string} Optional - off, gentle, or coach
+ * @request.config.questionPreference {Object} Optional - Question recency preference
  *
  * @response {Object} response - Session credentials and info
  * @response.sessionId {string} - UUID of created session
  * @response.roomName {string} - LiveKit room name (format: interview-{timestamp}-{random})
  * @response.token {string} - JWT access token for LiveKit room
  * @response.url {string} - LiveKit server WebSocket URL
- * @response.config {Object} - Session configuration used
+ * @response.config {Object} - Validated client-safe preferences; runtime provider settings are never returned
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
  * @throws {402} Payment Required - No interview credits remaining
@@ -44,11 +40,15 @@
  * Body:
  * {
  *   "roundType": "product_sense",
- *   "persona": "Friendly Google PM interviewer",
+ *   "role": "pm",
  *   "config": {
- *     "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
- *     "speed": 1.0,
- *     "emotion": "Calm"
+ *     "difficulty": "intermediate",
+ *     "duration": 45,
+ *     "hintMode": "off",
+ *     "questionPreference": {
+ *       "recency": "very_recent",
+ *       "recentDays": 365
+ *     }
  *   }
  * }
  *
@@ -59,12 +59,13 @@
  *   "token": "eyJhbGciOiJIUzI1NiIs...",
  *   "url": "wss://meelni-ek4vaisp.livekit.cloud",
  *   "config": {
- *     "voice": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
- *     "stt_model": "deepgram/nova-3",
- *     "llm_model": "openai/gpt-5",
- *     "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
- *     "speed": 1.0,
- *     "emotion": "Calm"
+ *     "difficulty": "intermediate",
+ *     "duration": 45,
+ *     "hintMode": "off",
+ *     "questionPreference": {
+ *       "recency": "very_recent",
+ *       "recentDays": 365
+ *     }
  *   }
  * }
  *

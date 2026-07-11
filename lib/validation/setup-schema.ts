@@ -25,7 +25,7 @@ export const interviewConfigSchema = z.object({
 export const sessionStartSchema = z.object({
   roundType: z.enum(["behavioral", "product_sense", "execution", "strategy"]),
   mode: z.enum(["voice_video", "text"]).default("voice_video"),
-  persona: z.string().optional(),
+  role: z.literal("pm").optional(),
   config: interviewConfigSchema,
   questionId: z.string().uuid().optional(), // Optional pre-selected question from explore page
 });
