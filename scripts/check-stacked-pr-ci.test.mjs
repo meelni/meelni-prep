@@ -16,7 +16,10 @@ import {
   runStackCiAndPublish,
   STACK_TOPOLOGY_CHECK_NAME,
 } from "./check-stacked-pr-ci.mjs";
-import { revalidateRegisteredStacks } from "./revalidate-stacked-prs-ci.mjs";
+import {
+  revalidateAffectedStacksForEvent,
+  revalidateRegisteredStacks,
+} from "./revalidate-stacked-prs-ci.mjs";
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const adapter = join(repositoryRoot, "scripts/check-stacked-pr-ci.mjs");
@@ -199,6 +202,56 @@ test("a moved parent supersedes a prior green head check with failure", async (t
   assert.match(calls[1].body.output.summary, /declared_parent_head_is_stale/);
 });
 
+test("a parent that moves after the initial fetch cannot publish success", async (t) => {
+  const state = fixture();
+  t.after(() => rmSync(state.root, { recursive: true, force: true }));
+  const calls = [];
+
+  const result = await runStackCiAndPublish({
+    eventContent: JSON.stringify(event(state)),
+    env: { GITHUB_TOKEN: "token" },
+    repo: state.repo,
+    manifestPath: join(state.repo, ".github/stacked-prs.json"),
+    fetchImpl: checkApi(calls),
+    beforeFreshnessBarrier: async () => {
+      git(state.repo, "switch", "parent");
+      commit(state.repo, "parent moved during publication");
+      git(state.repo, "push", "--force", "origin", "parent:refs/heads/parent");
+    },
+  });
+
+  assert.equal(result.status, "fail");
+  assert.deepEqual(result.errors, ["parent_moved_during_verification"]);
+  assert.equal(calls[1].body.conclusion, "failure");
+  assert.match(
+    calls[1].body.output.summary,
+    /parent_moved_during_verification/
+  );
+});
+
+test("a child that moves after the initial fetch cannot publish success", async (t) => {
+  const state = fixture();
+  t.after(() => rmSync(state.root, { recursive: true, force: true }));
+  const calls = [];
+
+  const result = await runStackCiAndPublish({
+    eventContent: JSON.stringify(event(state)),
+    env: { GITHUB_TOKEN: "token" },
+    repo: state.repo,
+    manifestPath: join(state.repo, ".github/stacked-prs.json"),
+    fetchImpl: checkApi(calls),
+    beforeFreshnessBarrier: async () => {
+      git(state.repo, "switch", "child");
+      commit(state.repo, "child moved during publication");
+      git(state.repo, "push", "--force", "origin", "child:refs/pull/999/head");
+    },
+  });
+
+  assert.equal(result.status, "fail");
+  assert.deepEqual(result.errors, ["child_moved_during_verification"]);
+  assert.equal(calls[1].body.conclusion, "failure");
+});
+
 test("unrelated main PRs receive a neutral head-bound result", async (t) => {
   const state = fixture();
   t.after(() => rmSync(state.root, { recursive: true, force: true }));
@@ -295,6 +348,83 @@ test("scheduled revalidation fans out from the trusted current manifest", async 
   assert.deepEqual(results, [
     { status: "fail", errors: ["declared_parent_head_is_stale"] },
   ]);
+});
+
+test("a same-repository parent event revalidates itself and every open registered child", async () => {
+  const manifest = {
+    version: 1,
+    repository: "saviii/meelni-prep",
+    stacks: [
+      {
+        pr: 999,
+        headRef: "child",
+        parentRef: "parent",
+        expectedParentHead: "a".repeat(40),
+      },
+      {
+        pr: 1000,
+        headRef: "closed-child",
+        parentRef: "parent",
+        expectedParentHead: "a".repeat(40),
+      },
+      {
+        pr: 1001,
+        headRef: "other-child",
+        parentRef: "other-parent",
+        expectedParentHead: "b".repeat(40),
+      },
+    ],
+  };
+  const parentEvent = {
+    repository: { full_name: manifest.repository, default_branch: "main" },
+    pull_request: {
+      number: 888,
+      head: {
+        ref: "parent",
+        sha: "a".repeat(40),
+        repo: { full_name: manifest.repository },
+      },
+      base: { ref: "main" },
+    },
+  };
+  const published = [];
+
+  const results = await revalidateAffectedStacksForEvent({
+    eventContent: JSON.stringify(parentEvent),
+    env: { GITHUB_TOKEN: "token", GITHUB_DEFAULT_BRANCH: "main" },
+    manifest,
+    api: async ({ path }) => {
+      const number = Number(path.split("/").at(-1));
+      return {
+        number,
+        state: number === 1000 ? "closed" : "open",
+        body: number === 999 ? "child evidence" : "parent body",
+        head: {
+          ref: number === 999 ? "child" : "parent",
+          sha: number === 999 ? "c".repeat(40) : "a".repeat(40),
+          repo: { full_name: manifest.repository },
+        },
+        base: { ref: number === 999 ? "parent" : "main" },
+      };
+    },
+    verifyAndPublish: async ({ eventContent }) => {
+      const payload = JSON.parse(eventContent);
+      published.push(payload.pull_request.number);
+      return {
+        status:
+          payload.pull_request.number === parentEvent.pull_request.number
+            ? "not_stacked"
+            : "pass",
+        errors: [],
+      };
+    },
+  });
+
+  assert.deepEqual(published, [888, 999]);
+  assert.deepEqual(
+    results.map((result) => result.status),
+    ["not_stacked", "pass"]
+  );
 });
 
 test("scheduled revalidation replaces stale success after parent movement", async (t) => {
@@ -443,13 +573,15 @@ test("the authoritative workflow checks out default-branch code and never PR cod
   assert.match(workflow, /permissions:\n  contents: read/);
   assert.match(
     workflow,
-    /verify:[^]*permissions:\n      contents: read\n      checks: write/
+    /verify:[^]*permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
   );
   assert.match(
     workflow,
     /revalidate:[^]*permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
   );
   assert.match(workflow, /cron: "\*\/5 \* \* \* \*"/);
+  assert.match(workflow, /group: stack-topology-publisher/);
+  assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /persist-credentials: true/);
   assert.match(
     workflow,
@@ -457,7 +589,7 @@ test("the authoritative workflow checks out default-branch code and never PR cod
   );
   assert.match(
     workflow,
-    /run: node scripts\/check-stacked-pr-ci\.mjs --publish-check/
+    /run: node scripts\/revalidate-stacked-prs-ci\.mjs --event-path "\$GITHUB_EVENT_PATH"/
   );
   assert.match(workflow, /run: node scripts\/revalidate-stacked-prs-ci\.mjs/);
   assert.doesNotMatch(workflow, /pull_request\.head\.sha/);
