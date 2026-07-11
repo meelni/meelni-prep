@@ -159,7 +159,6 @@ describe("POST /api/session/transcript", () => {
     "event_conflict",
     "writer_sequence_conflict",
     "writer_order_conflict",
-    "session_closed",
   ])("maps %s to an identity conflict", async (reason) => {
     vi.mocked(ingestTranscriptEvent).mockResolvedValue({
       ok: false,
@@ -167,6 +166,18 @@ describe("POST /api/session/transcript", () => {
     } as never);
     const response = await POST(request({ sessionId: SESSION_ID, event: {} }));
     expect(response.status).toBe(409);
+  });
+
+  it("distinguishes a closed session from transcript identity corruption", async () => {
+    vi.mocked(ingestTranscriptEvent).mockResolvedValue({
+      ok: false,
+      reason: "session_closed",
+    });
+    const response = await POST(request({ sessionId: SESSION_ID, event: {} }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "transcript_session_closed",
+    });
   });
 
   it.each(["created", "existing"] as const)(

@@ -20,24 +20,39 @@ interface QueuedTranscriptSave {
   id: string;
   request: TranscriptPersistenceRequest;
   attemptCount: number;
+  enqueuedAt: Date;
   lastAttempt: Date;
-  error?: string;
-  permanent?: boolean;
+  status?: "retrying";
 }
 
 type SerializedQueuedTranscriptSave = Omit<
   QueuedTranscriptSave,
-  "lastAttempt"
-> & { lastAttempt: string };
+  "enqueuedAt" | "lastAttempt"
+> & { enqueuedAt: string; lastAttempt: string };
+
+interface TranscriptQueueFailure {
+  id: string;
+  ownerId: string;
+  sessionId: string;
+  reason: "identity_conflict" | "capacity_exceeded" | "non_retryable";
+  recordedAt: Date;
+}
+
+type SerializedTranscriptQueueFailure = Omit<
+  TranscriptQueueFailure,
+  "recordedAt"
+> & { recordedAt: string };
 
 interface SerializedTranscriptQueueState {
   items: SerializedQueuedTranscriptSave[];
   overflowedSessions: string[];
+  failures?: SerializedTranscriptQueueFailure[];
 }
 
 const QUEUE_CONFIG = {
   retryDelayMs: 2_000,
   maxQueueSize: 1_000,
+  retentionMs: 24 * 60 * 60 * 1_000,
   storageKey: "transcript_queue_v2",
 } as const;
 
@@ -66,7 +81,9 @@ export class TranscriptQueue {
   private processTimer: ReturnType<typeof setInterval> | null = null;
   private inFlight = new Map<string, Promise<TranscriptSaveResult>>();
   private overflowedSessions = new Set<string>();
+  private failures: TranscriptQueueFailure[] = [];
   private boundOwnerId: string | null = null;
+  private ownerGeneration = 0;
 
   constructor() {
     this.loadFromStorage();
@@ -74,11 +91,15 @@ export class TranscriptQueue {
 
   add(request: TranscriptPersistenceRequest): boolean {
     this.bindOwner(request.ownerId);
+    return this.enqueueForRetry(request);
+  }
+
+  private enqueueForRetry(request: TranscriptPersistenceRequest): boolean {
+    this.pruneExpired();
     const id = queueIdentity(request);
     const existing = this.queue.find((item) => item.id === id);
     if (existing) {
-      existing.permanent = false;
-      existing.error = undefined;
+      existing.status = "retrying";
       this.saveToStorage();
       return true;
     }
@@ -96,7 +117,9 @@ export class TranscriptQueue {
       id,
       request,
       attemptCount: 0,
+      enqueuedAt: new Date(),
       lastAttempt: new Date(),
+      status: "retrying",
     });
     this.saveToStorage();
     void this.processQueue();
@@ -107,66 +130,81 @@ export class TranscriptQueue {
     request: TranscriptPersistenceRequest
   ): Promise<TranscriptSaveResult> {
     this.bindOwner(request.ownerId);
+    const generation = this.ownerGeneration;
     const id = queueIdentity(request);
     const existing = this.inFlight.get(id);
     if (existing) return existing;
 
-    const save = this.saveOnce(request).finally(() => {
-      this.inFlight.delete(id);
+    const save = this.saveOnce(request, generation).finally(() => {
+      if (this.inFlight.get(id) === save) this.inFlight.delete(id);
     });
     this.inFlight.set(id, save);
     return save;
   }
 
   private async saveOnce(
-    request: TranscriptPersistenceRequest
+    request: TranscriptPersistenceRequest,
+    generation: number
   ): Promise<TranscriptSaveResult> {
     const id = queueIdentity(request);
     try {
       const result = await postTranscriptEvent(request);
-      this.removeQueuedItem(id);
+      if (this.isCurrentOwner(request.ownerId, generation)) {
+        this.removeQueuedItem(id);
+        this.removeFailure(id);
+      }
       return result;
     } catch (error) {
+      if (!this.isCurrentOwner(request.ownerId, generation)) {
+        return { success: false, error: "transcript_owner_changed" };
+      }
       if (isRetryable(error)) {
-        if (!this.add(request)) {
+        if (!this.enqueueForRetry(request)) {
           this.overflowedSessions.add(ownerSessionIdentity(request));
           this.saveToStorage();
         }
+      } else if (isClosedSessionError(error)) {
+        this.removeQueuedItem(id);
+        this.removeFailure(id);
       } else {
-        this.recordPermanentFailure(
-          request,
-          error instanceof Error ? error.message : String(error)
-        );
+        this.recordFailure(request, permanentFailureReason(error));
       }
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: safeFailureStatus(error),
       };
     }
   }
 
   private async processQueue(): Promise<void> {
     if (this.isProcessing || this.queue.length === 0) return;
+    const generation = this.ownerGeneration;
+    const ownerId = this.boundOwnerId;
     this.isProcessing = true;
 
     try {
+      this.pruneExpired();
       while (this.queue.length > 0) {
-        const itemIndex = this.queue.findIndex((item) => !item.permanent);
-        if (itemIndex < 0) break;
-        const item = this.queue[itemIndex];
+        if (!ownerId || !this.isCurrentOwner(ownerId, generation)) break;
+        const item = this.queue[0];
         item.attemptCount += 1;
         item.lastAttempt = new Date();
         try {
           await postTranscriptEvent(item.request);
-          this.queue.splice(itemIndex, 1);
+          if (!this.isCurrentOwner(ownerId, generation)) break;
+          this.removeQueuedItem(item.id);
+          this.removeFailure(item.id);
           this.saveToStorage();
         } catch (error) {
-          item.error = error instanceof Error ? error.message : String(error);
+          if (!this.isCurrentOwner(ownerId, generation)) break;
           if (!isRetryable(error)) {
-            item.permanent = true;
-            this.saveToStorage();
+            this.removeQueuedItem(item.id);
+            if (!isClosedSessionError(error)) {
+              this.recordFailure(item.request, permanentFailureReason(error));
+            }
             continue;
           }
+          item.status = "retrying";
           this.saveToStorage();
           break;
         }
@@ -201,9 +239,7 @@ export class TranscriptQueue {
   private pendingCount(ownerId: string, sessionId: string): number {
     const queued = this.queue.filter(
       (item) =>
-        !item.permanent &&
-        item.request.ownerId === ownerId &&
-        item.request.sessionId === sessionId
+        item.request.ownerId === ownerId && item.request.sessionId === sessionId
     ).length;
     const inFlight = [...this.inFlight.keys()].filter((id) =>
       id.startsWith(`${ownerId}:${sessionId}:`)
@@ -213,11 +249,9 @@ export class TranscriptQueue {
 
   private failureCount(ownerId: string, sessionId: string): number {
     return (
-      this.queue.filter(
-        (item) =>
-          item.permanent &&
-          item.request.ownerId === ownerId &&
-          item.request.sessionId === sessionId
+      this.failures.filter(
+        (failure) =>
+          failure.ownerId === ownerId && failure.sessionId === sessionId
       ).length +
       (this.overflowedSessions.has(`${ownerId}:${sessionId}`) ? 1 : 0)
     );
@@ -238,18 +272,32 @@ export class TranscriptQueue {
   getStatus(): {
     queueLength: number;
     isProcessing: boolean;
-    items: QueuedTranscriptSave[];
+    failed: number;
   } {
     return {
       queueLength: this.queue.length,
       isProcessing: this.isProcessing,
-      items: [...this.queue],
+      failed: this.failures.length + this.overflowedSessions.size,
     };
   }
 
   clear(): void {
     this.queue = [];
     this.overflowedSessions.clear();
+    this.failures = [];
+    this.saveToStorage();
+  }
+
+  clearSession(ownerId: string, sessionId: string): void {
+    this.queue = this.queue.filter(
+      (item) =>
+        item.request.ownerId !== ownerId || item.request.sessionId !== sessionId
+    );
+    this.failures = this.failures.filter(
+      (failure) =>
+        failure.ownerId !== ownerId || failure.sessionId !== sessionId
+    );
+    this.overflowedSessions.delete(`${ownerId}:${sessionId}`);
     this.saveToStorage();
   }
 
@@ -259,9 +307,14 @@ export class TranscriptQueue {
       const state: SerializedTranscriptQueueState = {
         items: this.queue.map((item) => ({
           ...item,
+          enqueuedAt: item.enqueuedAt.toISOString(),
           lastAttempt: item.lastAttempt.toISOString(),
         })),
         overflowedSessions: [...this.overflowedSessions],
+        failures: this.failures.map((failure) => ({
+          ...failure,
+          recordedAt: failure.recordedAt.toISOString(),
+        })),
       };
       localStorage.setItem(QUEUE_CONFIG.storageKey, JSON.stringify(state));
     } catch (error) {
@@ -276,12 +329,50 @@ export class TranscriptQueue {
       const stored = localStorage.getItem(QUEUE_CONFIG.storageKey);
       if (!stored) return;
       const parsed = JSON.parse(stored) as SerializedTranscriptQueueState;
-      this.queue = (parsed.items ?? []).flatMap((item) =>
-        isTranscriptPersistenceRequest(item.request)
-          ? [{ ...item, lastAttempt: new Date(item.lastAttempt) }]
-          : []
-      );
+      const now = Date.now();
+      const migratedFailures: TranscriptQueueFailure[] = [];
+      this.queue = (parsed.items ?? []).flatMap((item) => {
+        if (!isTranscriptPersistenceRequest(item.request)) return [];
+        const enqueuedAt = new Date(item.enqueuedAt ?? item.lastAttempt);
+        const lastAttempt = new Date(item.lastAttempt);
+        if (
+          !Number.isFinite(enqueuedAt.getTime()) ||
+          !Number.isFinite(lastAttempt.getTime()) ||
+          now - enqueuedAt.getTime() > QUEUE_CONFIG.retentionMs
+        ) {
+          return [];
+        }
+        if ((item as { permanent?: boolean }).permanent) {
+          migratedFailures.push({
+            id: item.id,
+            ownerId: item.request.ownerId,
+            sessionId: item.request.sessionId,
+            reason:
+              (item as { error?: string }).error ===
+              "transcript_event_identity_conflict"
+                ? "identity_conflict"
+                : "non_retryable",
+            recordedAt: lastAttempt,
+          });
+          return [];
+        }
+        return [
+          { ...item, enqueuedAt, lastAttempt, status: "retrying" as const },
+        ];
+      });
       this.overflowedSessions = new Set(parsed.overflowedSessions ?? []);
+      this.failures = [
+        ...migratedFailures,
+        ...(parsed.failures ?? []).flatMap((failure) => {
+          const recordedAt = new Date(failure.recordedAt);
+          return isSafeFailure(failure) &&
+            Number.isFinite(recordedAt.getTime()) &&
+            now - recordedAt.getTime() <= QUEUE_CONFIG.retentionMs
+            ? [{ ...failure, recordedAt }]
+            : [];
+        }),
+      ];
+      this.saveToStorage();
     } catch (error) {
       console.error("[TranscriptQueue] Failed to load retry queue", error);
       this.queue = [];
@@ -302,30 +393,33 @@ export class TranscriptQueue {
         key.startsWith(`${ownerId}:`)
       )
     );
+    this.failures = this.failures.filter(
+      (failure) => failure.ownerId === ownerId
+    );
     this.boundOwnerId = ownerId;
+    this.ownerGeneration += 1;
     this.saveToStorage();
     this.startBackgroundProcessing();
     void this.processQueue();
   }
 
-  private recordPermanentFailure(
+  private recordFailure(
     request: TranscriptPersistenceRequest,
-    error: string
+    reason: TranscriptQueueFailure["reason"]
   ): void {
     const id = queueIdentity(request);
-    const existing = this.queue.find((item) => item.id === id);
+    this.removeQueuedItem(id);
+    const existing = this.failures.find((failure) => failure.id === id);
     if (existing) {
-      existing.error = error;
-      existing.permanent = true;
-      existing.lastAttempt = new Date();
+      existing.reason = reason;
+      existing.recordedAt = new Date();
     } else {
-      this.queue.push({
+      this.failures.push({
         id,
-        request,
-        attemptCount: 1,
-        lastAttempt: new Date(),
-        error,
-        permanent: true,
+        ownerId: request.ownerId,
+        sessionId: request.sessionId,
+        reason,
+        recordedAt: new Date(),
       });
     }
     this.saveToStorage();
@@ -335,6 +429,36 @@ export class TranscriptQueue {
     const next = this.queue.filter((item) => item.id !== id);
     if (next.length !== this.queue.length) {
       this.queue = next;
+      this.saveToStorage();
+    }
+  }
+
+  private removeFailure(id: string): void {
+    const next = this.failures.filter((failure) => failure.id !== id);
+    if (next.length !== this.failures.length) {
+      this.failures = next;
+      this.saveToStorage();
+    }
+  }
+
+  private isCurrentOwner(ownerId: string, generation: number): boolean {
+    return this.boundOwnerId === ownerId && this.ownerGeneration === generation;
+  }
+
+  private pruneExpired(): void {
+    const cutoff = Date.now() - QUEUE_CONFIG.retentionMs;
+    const queue = this.queue.filter(
+      (item) => item.enqueuedAt.getTime() >= cutoff
+    );
+    const failures = this.failures.filter(
+      (failure) => failure.recordedAt.getTime() >= cutoff
+    );
+    if (
+      queue.length !== this.queue.length ||
+      failures.length !== this.failures.length
+    ) {
+      this.queue = queue;
+      this.failures = failures;
       this.saveToStorage();
     }
   }
@@ -381,6 +505,31 @@ function isRetryable(error: unknown): boolean {
   return !(error instanceof TranscriptHttpError) || error.retryable;
 }
 
+function isClosedSessionError(error: unknown): boolean {
+  return (
+    error instanceof TranscriptHttpError &&
+    error.message === "transcript_session_closed"
+  );
+}
+
+function permanentFailureReason(
+  error: unknown
+): TranscriptQueueFailure["reason"] {
+  if (error instanceof TranscriptHttpError) {
+    if (error.status === 409) return "identity_conflict";
+    if (error.message === "transcript_session_capacity_exceeded") {
+      return "capacity_exceeded";
+    }
+  }
+  return "non_retryable";
+}
+
+function safeFailureStatus(error: unknown): string {
+  if (isClosedSessionError(error)) return "transcript_session_closed";
+  if (isRetryable(error)) return "transcript_save_retrying";
+  return permanentFailureReason(error);
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -399,9 +548,33 @@ function isTranscriptPersistenceRequest(
   );
 }
 
+function isSafeFailure(
+  value: unknown
+): value is SerializedTranscriptQueueFailure {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<SerializedTranscriptQueueFailure>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.ownerId === "string" &&
+    typeof candidate.sessionId === "string" &&
+    typeof candidate.recordedAt === "string" &&
+    ["identity_conflict", "capacity_exceeded", "non_retryable"].includes(
+      candidate.reason ?? ""
+    )
+  );
+}
+
 let transcriptQueue: TranscriptQueue | null = null;
 
 export function getTranscriptQueue(): TranscriptQueue {
   transcriptQueue ??= new TranscriptQueue();
   return transcriptQueue;
+}
+
+export function clearTranscriptQueueStorage(): void {
+  transcriptQueue?.clear();
+  if (typeof localStorage !== "undefined") {
+    localStorage.removeItem(QUEUE_CONFIG.storageKey);
+    localStorage.removeItem("transcript_queue");
+  }
 }

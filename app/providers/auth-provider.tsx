@@ -10,6 +10,7 @@ import {
   type AuthHandoffContext,
 } from "@/lib/auth/auth-handoff";
 import { resolveAuthInitializationWithin } from "@/lib/auth/auth-initialization";
+import { clearTranscriptQueueStorage } from "@/lib/utils/transcript-queue";
 
 interface AuthContextType {
   user: User | null;
@@ -220,6 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Track sign out and reset analytics
     analytics.track("auth_signout_completed", {});
     analytics.reset();
+    clearTranscriptQueueStorage();
 
     setUser(null);
     setSession(null);

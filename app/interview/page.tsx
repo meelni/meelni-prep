@@ -624,6 +624,9 @@ function InterviewPageContent() {
             payload.session?.lifecycleState &&
             TERMINAL_SESSION_STATES.has(payload.session.lifecycleState)
           ) {
+            if (user?.id) {
+              transcriptQueue.clearSession(user.id, activeSessionId);
+            }
             router.replace(`/feedback/${activeSessionId}/loading`);
             return;
           }
@@ -654,7 +657,14 @@ function InterviewPageContent() {
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeSessionId, deadlineReached, disconnectTimedOut, router]);
+  }, [
+    activeSessionId,
+    deadlineReached,
+    disconnectTimedOut,
+    router,
+    transcriptQueue,
+    user?.id,
+  ]);
 
   const handleEndSession = async () => {
     if (!activeSessionId) {
@@ -701,6 +711,8 @@ function InterviewPageContent() {
             "We couldn't end the interview yet. You're still connected and can try again."
         );
       }
+
+      transcriptQueue.clearSession(user!.id, activeSessionId);
 
       analytics.track("interview_ended", {
         session_id: activeSessionId,

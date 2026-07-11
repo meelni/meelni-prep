@@ -68,11 +68,16 @@ export async function POST(req: NextRequest) {
       if (
         result.reason === "event_conflict" ||
         result.reason === "writer_sequence_conflict" ||
-        result.reason === "writer_order_conflict" ||
-        result.reason === "session_closed"
+        result.reason === "writer_order_conflict"
       ) {
         return NextResponse.json(
           { error: "transcript_event_identity_conflict" },
+          { status: 409 }
+        );
+      }
+      if (result.reason === "session_closed") {
+        return NextResponse.json(
+          { error: "transcript_session_closed" },
           { status: 409 }
         );
       }
