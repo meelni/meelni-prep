@@ -49,4 +49,4 @@
 - Backward compatibility: Additive schema; legacy payment rows without correlation or rollover grants without durable source lots require support review rather than guessed mutation.
 - Metrics/events: `billing_credit_payment_adjusted`, reconciliation-required failures, revoked/unrecovered quantities, duplicate events.
 - Follow-up slice: Preview Stripe rehearsal after environment isolation and before enabling the relaunch flag.
-- Policy blocker: Cancellation economics and customer promise require an explicit product-owner choice; this branch intentionally makes no cancellation change.
+- Policy blocker: Cancellation economics require an explicit product-owner choice in SAV-237. This branch preserves the existing provider call, removes the unverified promise of a card refund, and does not claim that the policy is resolved.

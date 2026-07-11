@@ -719,8 +719,8 @@ export function BillingSection() {
                     Cancel immediately
                   </span>
                   <span className="text-muted-foreground mt-1 block text-sm">
-                    End subscription now and receive a prorated refund for
-                    unused time.
+                    End subscription now. Any billing adjustment will appear
+                    separately after it is processed.
                   </span>
                 </span>
               </Button>

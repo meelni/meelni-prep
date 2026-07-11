@@ -12,9 +12,9 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { and, eq, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
-import { eq } from "drizzle-orm";
 import postgres from "postgres";
 
 import {
@@ -23,6 +23,9 @@ import {
   fingerprintStripeSubject,
 } from "../lib/billing/stripe-privacy";
 import { ACCOUNT_IDENTITY_LOCK_NAMESPACE } from "../lib/db/account-identity-lock";
+import { stripeSubscriptionEventCursor } from "../lib/billing/stripe-subscription-event-order";
+import { stripeSubscriptionCursorIsNewer } from "../lib/db/stripe-subscription-event-order";
+import { subscription } from "../lib/db/schema";
 
 import {
   databaseSchemaFingerprint,
@@ -156,6 +159,7 @@ async function run() {
     await verifyTranscriptIngest(clean, cleanUrl);
     await verifyReconnectTimeoutRuntimeIntegrity(clean, cleanUrl);
     await verifyAuthorization(clean);
+    await verifyStripeSubscriptionOrdering(clean);
     await verifyDeletionWebhookConcurrency(clean, cleanUrl);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
@@ -319,6 +323,15 @@ async function run() {
       await seedLegacyInvoiceDuplicateFixtures(upgrade);
       const duplicatePreview = runPreflight(upgradeUrl, true, "reconciled")!;
       assert.equal(duplicatePreview.invoice_status_duplicate_rows, 1);
+      await seedDivergentLegacyInvoiceDuplicate(upgrade);
+      await assert.rejects(
+        () => migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS }),
+        /payment_history_invoice_status_financial_conflict/
+      );
+      await upgrade`
+        DELETE FROM payment_history
+        WHERE stripe_event_id = 'evt_legacy_invoice_conflict'
+      `;
       await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
       const reconnectApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
@@ -375,6 +388,149 @@ async function seedLegacyInvoiceDuplicateFixtures(sql: postgres.Sql) {
       (${USER_ONE}::uuid, 'in_legacy_duplicate', 'evt_legacy_invoice_b',
        900, 'usd', 'failed', 'starter', 'Payment failed',
        '2026-07-10T00:00:01.000Z'::timestamptz)
+  `;
+}
+
+async function verifyStripeSubscriptionOrdering(sql: postgres.Sql) {
+  const userId = "78787878-7878-4787-8787-787878787878";
+  await sql`
+    INSERT INTO app_user (id, email)
+    VALUES (${userId}::uuid, 'stripe-ordering@example.invalid')
+  `;
+  const database = drizzle(sql);
+  type Candidate = {
+    type: string;
+    id: string;
+    status: string;
+    gracePeriodEnd: Date | null;
+  };
+  const failed: Candidate = {
+    type: "invoice.payment_failed",
+    id: "evt_failed",
+    status: "past_due",
+    gracePeriodEnd: new Date("2026-07-18T00:00:00.000Z"),
+  };
+  const updated: Candidate = {
+    type: "customer.subscription.updated",
+    id: "evt_updated",
+    status: "active",
+    gracePeriodEnd: null,
+  };
+  const deleted: Candidate = {
+    type: "customer.subscription.deleted",
+    id: "evt_deleted",
+    status: "canceled",
+    gracePeriodEnd: null,
+  };
+  const samePriorityLow: Candidate = {
+    type: "customer.subscription.updated",
+    id: "evt_Z",
+    status: "paused",
+    gracePeriodEnd: null,
+  };
+  const samePriorityHigh: Candidate = {
+    type: "customer.subscription.updated",
+    id: "evt_a",
+    status: "active",
+    gracePeriodEnd: null,
+  };
+  const apply = async (candidate: Candidate) => {
+    const cursor = stripeSubscriptionEventCursor({
+      type: candidate.type,
+      id: candidate.id,
+      created: 1_784_035_200,
+    } as never);
+    await database
+      .update(subscription)
+      .set({
+        status: candidate.status,
+        gracePeriodEnd: candidate.gracePeriodEnd,
+        lastEventTimestamp: cursor.createdAt,
+        lastEventPriority: cursor.priority,
+        lastEventId: cursor.eventId,
+      })
+      .where(
+        and(
+          eq(subscription.userId, userId),
+          candidate.type.startsWith("invoice.")
+            ? ne(subscription.status, "canceled")
+            : undefined,
+          stripeSubscriptionCursorIsNewer(cursor)
+        )
+      );
+  };
+  const reset = async () => {
+    await sql`DELETE FROM subscription WHERE user_id = ${userId}::uuid`;
+    await sql`
+      INSERT INTO subscription (user_id, tier, status)
+      VALUES (${userId}::uuid, 'starter', 'active')
+    `;
+  };
+  const permutations = [
+    [failed, updated, deleted],
+    [failed, deleted, updated],
+    [updated, failed, deleted],
+    [updated, deleted, failed],
+    [deleted, failed, updated],
+    [deleted, updated, failed],
+  ];
+  for (const candidates of permutations) {
+    await reset();
+    for (const candidate of candidates) await apply(candidate);
+    const [row] = await sql<
+      Array<{
+        status: string;
+        grace_period_end: Date | null;
+        last_event_id: string;
+      }>
+    >`
+      SELECT status, grace_period_end, last_event_id
+      FROM subscription WHERE user_id = ${userId}::uuid
+    `;
+    assert.deepEqual(row, {
+      status: "canceled",
+      grace_period_end: null,
+      last_event_id: "evt_deleted",
+    });
+  }
+  for (const candidates of [
+    [failed, updated],
+    [updated, failed],
+    [samePriorityLow, samePriorityHigh],
+    [samePriorityHigh, samePriorityLow],
+  ]) {
+    await reset();
+    for (const candidate of candidates) await apply(candidate);
+    const [row] = await sql<
+      Array<{
+        status: string;
+        grace_period_end: Date | null;
+        last_event_id: string;
+      }>
+    >`
+      SELECT status, grace_period_end, last_event_id
+      FROM subscription WHERE user_id = ${userId}::uuid
+    `;
+    assert.deepEqual(row, {
+      status: "active",
+      grace_period_end: null,
+      last_event_id: candidates.includes(samePriorityHigh)
+        ? "evt_a"
+        : "evt_updated",
+    });
+  }
+}
+
+async function seedDivergentLegacyInvoiceDuplicate(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO payment_history (
+      user_id, stripe_invoice_id, stripe_event_id, amount_in_cents,
+      currency, status, tier, failure_reason, created_at
+    ) VALUES (
+      ${USER_ONE}::uuid, 'in_legacy_duplicate',
+      'evt_legacy_invoice_conflict', 1900, 'usd', 'failed', 'starter',
+      'Payment failed', '2026-07-10T00:00:02.000Z'::timestamptz
+    )
   `;
 }
 
@@ -6625,13 +6781,33 @@ async function verifyDeletionWebhookConcurrency(
         ${fingerprintA}, jsonb_build_array(${fingerprintA}::text),
         '{"secret":"must-not-persist"}', 'failed', 1, 'private error'
       )
-    `.then(() => {
-      eventCommitted = true;
-    });
+    `.then(
+      () => {
+        eventCommitted = true;
+        return { ok: true as const };
+      },
+      (error) => ({ ok: false as const, error })
+    );
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.equal(eventCommitted, false);
     releaseFirst();
-    await Promise.all([tombstoneFirst, eventSecond]);
+    const [, eventAttempt] = await Promise.all([tombstoneFirst, eventSecond]);
+    if (!eventAttempt.ok) {
+      assert.match(
+        errorMessage(eventAttempt.error),
+        /stripe_deletion_redaction_retry/
+      );
+      await writer`
+        INSERT INTO stripe_event_log (
+          stripe_event_id, event_type, subject_fingerprint,
+          subject_fingerprints, payload, status, attempts, last_error
+        ) VALUES (
+          'evt_deletion_race_tombstone_first', 'charge.refunded',
+          ${fingerprintA}, jsonb_build_array(${fingerprintA}::text),
+          '{"secret":"must-not-persist"}', 'failed', 1, 'private error'
+        )
+      `;
+    }
 
     let releaseWebhook!: () => void;
     let webhookLocked!: () => void;
@@ -6674,14 +6850,114 @@ async function verifyDeletionWebhookConcurrency(
            OR subject_fingerprints ? ${fingerprintB}
       `;
       })
-      .then(() => {
-        deletionCommitted = true;
-      });
+      .then(
+        () => {
+          deletionCommitted = true;
+          return { ok: true as const };
+        },
+        (error) => ({ ok: false as const, error })
+      );
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.equal(deletionCommitted, false);
     releaseWebhook();
-    await Promise.all([webhookFirst, deletionSecond]);
+    const [, deletionAttempt] = await Promise.all([
+      webhookFirst,
+      deletionSecond,
+    ]);
+    if (!deletionAttempt.ok) {
+      assert.match(
+        errorMessage(deletionAttempt.error),
+        /stripe_deletion_redaction_retry/
+      );
+      await writer.begin(async (tx) => {
+        await tx`
+          INSERT INTO account_deletion_request (user_id, stripe_subjects)
+          VALUES ('34343434-3434-4434-8434-343434343434'::uuid,
+            jsonb_build_array(jsonb_build_object(
+              'kind', 'customer', 'providerId', NULL,
+              'fingerprint', ${fingerprintB}::text
+            )))
+        `;
+        await tx`
+          UPDATE stripe_event_log
+          SET payload = '{}', last_error = NULL
+          WHERE subject_fingerprint = ${fingerprintB}
+             OR subject_fingerprints ? ${fingerprintB}
+        `;
+      });
+    }
 
+    const fingerprintC = "c".repeat(64);
+    await sql`
+      INSERT INTO stripe_event_log (
+        stripe_event_id, event_type, subject_fingerprint,
+        subject_fingerprints, payload, status, attempts, last_error
+      ) VALUES (
+        'evt_deletion_partial_overlap', 'charge.refunded',
+        ${fingerprintA},
+        jsonb_build_array(${fingerprintA}::text, ${fingerprintC}::text),
+        '{"secret":"partial-overlap"}', 'failed', 1, 'private error'
+      )
+    `;
+    let rowLocked!: () => void;
+    let deletionLocked!: () => void;
+    const rowHasLock = new Promise<void>((resolve) => (rowLocked = resolve));
+    const deletionHasLock = new Promise<void>(
+      (resolve) => (deletionLocked = resolve)
+    );
+    const partialWebhook = writer.begin(async (tx) => {
+      await tx`
+        SELECT id FROM stripe_event_log
+        WHERE stripe_event_id = 'evt_deletion_partial_overlap'
+        FOR UPDATE
+      `;
+      rowLocked();
+      await deletionHasLock;
+      await tx`
+        UPDATE stripe_event_log
+        SET attempts = attempts + 1,
+          subject_fingerprints = subject_fingerprints
+        WHERE stripe_event_id = 'evt_deletion_partial_overlap'
+      `;
+    });
+    await rowHasLock;
+    const partialDeletion = sql.begin(async (tx) => {
+      await tx`
+        INSERT INTO account_deletion_request (user_id, stripe_subjects)
+        VALUES ('56565656-5656-4565-8565-565656565656'::uuid,
+          jsonb_build_array(
+            jsonb_build_object(
+              'kind', 'customer', 'providerId', NULL,
+              'fingerprint', ${fingerprintB}::text
+            ),
+            jsonb_build_object(
+              'kind', 'customer', 'providerId', NULL,
+              'fingerprint', ${fingerprintC}::text
+            )
+          ))
+      `;
+      deletionLocked();
+      await tx`
+        UPDATE stripe_event_log SET payload = '{}', last_error = NULL
+        WHERE stripe_event_id = 'evt_deletion_partial_overlap'
+      `;
+    });
+    const partialResults = await Promise.allSettled([
+      partialWebhook,
+      partialDeletion,
+    ]);
+    assert.equal(partialResults[0]?.status, "rejected");
+    assert.match(
+      errorMessage((partialResults[0] as PromiseRejectedResult).reason),
+      /stripe_deletion_redaction_retry/
+    );
+    assert.equal(partialResults[1]?.status, "fulfilled");
+    await writer`
+      UPDATE stripe_event_log
+      SET attempts = attempts + 1,
+        subject_fingerprints = subject_fingerprints
+      WHERE stripe_event_id = 'evt_deletion_partial_overlap'
+    `;
     const rows = await sql<
       Array<{ payload: string; last_error: string | null }>
     >`
@@ -6689,13 +6965,15 @@ async function verifyDeletionWebhookConcurrency(
       FROM stripe_event_log
       WHERE stripe_event_id IN (
         'evt_deletion_race_tombstone_first',
-        'evt_deletion_race_webhook_first'
+        'evt_deletion_race_webhook_first',
+        'evt_deletion_partial_overlap'
       )
       ORDER BY stripe_event_id
     `;
     assert.deepEqual(
       rows.map((row) => ({ ...row })),
       [
+        { payload: "{}", last_error: null },
         { payload: "{}", last_error: null },
         { payload: "{}", last_error: null },
       ]

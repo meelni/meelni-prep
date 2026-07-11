@@ -56,6 +56,12 @@ import {
 import { reconcileStripeBillingAdjustment } from "@/lib/billing/stripe-billing-adjustment";
 import { normalizeStripeBillingAdjustmentEvent } from "@/lib/billing/stripe-adjustment-events";
 import { getStripeLogicalEventKey } from "@/lib/billing/stripe-event-identity";
+import {
+  compareStripeSubscriptionEventCursors,
+  stripeSubscriptionEventCursor,
+  type StripeSubscriptionEventCursor,
+} from "@/lib/billing/stripe-subscription-event-order";
+import { stripeSubscriptionCursorIsNewer } from "@/lib/db/stripe-subscription-event-order";
 
 const MAX_STRIPE_WEBHOOK_BODY_BYTES = 64 * 1024;
 const PAYMENT_FAILURE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -499,6 +505,7 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
   );
 
   const eventTimestamp = new Date(event.created * 1000);
+  const eventCursor = stripeSubscriptionEventCursor(event);
 
   const catalogId = getStripeCatalogIdForPrice(
     stripeSubscription.items.data[0]?.price.id
@@ -544,6 +551,8 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
       : null,
     cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
     lastEventTimestamp: eventTimestamp,
+    lastEventPriority: eventCursor.priority,
+    lastEventId: eventCursor.eventId,
     updatedAt: new Date(),
     ...trialUpdates,
   };
@@ -996,6 +1005,23 @@ async function handlePaymentFailed(event: Stripe.Event) {
       })
       .where(eq(subscription.userId, userId));
   });
+}
+
+function subscriptionEventCursorFromRow(
+  row:
+    | {
+        lastEventTimestamp: Date | null;
+        lastEventPriority: number | null;
+        lastEventId: string | null;
+      }
+    | undefined
+): StripeSubscriptionEventCursor | null {
+  if (!row?.lastEventTimestamp) return null;
+  return {
+    createdAt: row.lastEventTimestamp,
+    priority: row.lastEventPriority ?? -1,
+    eventId: row.lastEventId ?? "",
+  };
 }
 
 /**

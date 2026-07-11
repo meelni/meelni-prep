@@ -116,9 +116,10 @@ export async function POST(req: NextRequest) {
 
     try {
       if (cancelImmediately) {
-        // Cancel immediately - no more access after this
+        // Provider behavior is unchanged while SAV-237 decides cancellation
+        // economics. Do not promise a refund until that policy is accepted.
         await stripe.subscriptions.cancel(sub.stripeSubscriptionId, {
-          prorate: true, // Refund unused portion
+          prorate: true,
         });
 
         // Update database
@@ -145,7 +146,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           success: true,
           message:
-            "Your subscription has been canceled immediately. You will receive a prorated refund.",
+            "Your subscription has been canceled immediately. Any billing adjustment will appear separately after it is processed.",
           status: "canceled",
           effectiveDate: new Date().toISOString(),
         });
