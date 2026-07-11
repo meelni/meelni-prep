@@ -88,6 +88,22 @@ test("exact and near-duplicate identities have separate conservative policies", 
       question({ questionText: "Improve Search for new sellers" })
     )
   );
+  assert.notEqual(
+    questionSyncContentIdentity(
+      question({ questionText: "Should conversion be > 10%?" })
+    ),
+    questionSyncContentIdentity(
+      question({ questionText: "Should conversion be < 10%?" })
+    )
+  );
+  assert.notEqual(
+    questionSyncContentIdentity(
+      question({ questionText: "Increase retention by 10%" })
+    ),
+    questionSyncContentIdentity(
+      question({ questionText: "Increase retention by 10" })
+    )
+  );
 });
 
 test("dedupe removes only exact source fingerprints", () => {
@@ -100,6 +116,17 @@ test("dedupe removes only exact source fingerprints", () => {
 
   assert.equal(result.duplicates, 1);
   assert.equal(result.questions.length, 2);
+});
+
+test("exact-equivalent source collapse is independent of input order", () => {
+  const canonical = question({ questionText: "Improve Search" });
+  const formattingVariant = question({ questionText: " improve   SEARCH " });
+
+  const left = deduplicateQuestionSyncSource([canonical, formattingVariant]);
+  const right = deduplicateQuestionSyncSource([formattingVariant, canonical]);
+
+  assert.deepEqual(left, right);
+  assert.equal(left.questions[0]?.questionText, "Improve Search");
 });
 
 test("near duplicates preserve the active canonical id and are quarantined", () => {

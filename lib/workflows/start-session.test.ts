@@ -42,8 +42,8 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
         config: input.config,
       };
     },
-    getQuestionById: async (questionId) => {
-      calls.push("getQuestionById");
+    getActiveQuestionById: async (questionId) => {
+      calls.push("getActiveQuestionById");
       assert.equal(questionId, productFixture.question.questionId);
       return {
         id: productFixture.question.questionId,
@@ -143,7 +143,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     });
   }
   assert.deepEqual(calls, [
-    "getQuestionById",
+    "getActiveQuestionById",
     "upsertUser",
     "ensureTrialGrant",
     "reserveCredit",
@@ -152,6 +152,46 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     "transition:connecting",
     "consumeReservation",
   ]);
+});
+
+test("startInterviewSessionWorkflow rejects an inactive selected question before activation", async () => {
+  const productFixture = createProductSenseInterviewFixture();
+  const calls: string[] = [];
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: {
+        roundType: "product_sense",
+        questionId: productFixture.question.questionId,
+      },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      getActiveQuestionById: async () => {
+        calls.push("getActiveQuestionById");
+        return {
+          id: productFixture.question.questionId,
+          company: productFixture.question.company,
+          questionText: productFixture.question.questionText,
+          questionType: productFixture.question.questionType,
+          askedAt: productFixture.session.startedAt,
+          isActive: false,
+          createdAt: productFixture.session.startedAt,
+        };
+      },
+      upsertUser: async () => calls.push("upsertUser"),
+    })
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 404,
+    body: {
+      error: `Question not found: ${productFixture.question.questionId}`,
+    },
+  });
+  assert.deepEqual(calls, ["getActiveQuestionById"]);
 });
 
 test("startInterviewSessionWorkflow carries hint mode through session config", async () => {
@@ -496,7 +536,7 @@ function createDeps(
       id: productFixture.session.id,
       config: input.config,
     }),
-    getQuestionById: async () => question,
+    getActiveQuestionById: async () => question,
     getRandomQuestion: async () => question,
     getRandomRecentQuestion: async () => question,
     ensureTrialGrant: async () => {},

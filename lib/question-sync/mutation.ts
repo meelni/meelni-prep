@@ -12,11 +12,19 @@ export async function mutatePreparedQuestionSync(
 ): Promise<SyncResult> {
   const existingQuestions = await store.listQuestions();
   const plan = planQuestionSync(prepared.questions, existingQuestions);
+  const activeExistingIds = new Set(
+    existingQuestions
+      .filter((question) => question.isActive)
+      .map((question) => question.id)
+  );
+  const activeRowsToDeactivate = plan.questionsToUpdate.filter(
+    (question) => !question.isActive && activeExistingIds.has(question.id)
+  ).length;
   const safetyError = getQuestionSyncSafetyError({
     activeExistingRows: existingQuestions.filter(
       (question) => question.isActive
     ).length,
-    deactivationRows: plan.sourceMissingQuestionIdsToDeactivate.length,
+    deactivationRows: activeRowsToDeactivate,
     sourceRows: prepared.sourceRows,
     validRows: prepared.validRows,
   });
@@ -49,20 +57,12 @@ export async function mutatePreparedQuestionSync(
   const publishedUpdates = plan.questionsToUpdate.filter(
     (question) => question.qualityStatus === "published"
   ).length;
-  const activeExistingIds = new Set(
-    existingQuestions
-      .filter((question) => question.isActive)
-      .map((question) => question.id)
-  );
-  const questionsDeactivated = plan.questionsToUpdate.filter(
-    (question) => !question.isActive && activeExistingIds.has(question.id)
-  ).length;
 
   return {
     success: true,
     questionsAdded: publishedInserts,
     questionsUpdated: publishedUpdates,
-    questionsDeactivated,
+    questionsDeactivated: activeRowsToDeactivate,
     questionsSkipped:
       prepared.questionsSkipped + plan.nearDuplicateRowsQuarantined,
     invalidRows: prepared.invalidRows,

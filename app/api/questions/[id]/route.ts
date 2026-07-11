@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getQuestionById } from "@/lib/db/questions";
+import { getActiveQuestionById } from "@/lib/db/questions";
 
 export async function GET(
   req: NextRequest,
@@ -24,7 +24,7 @@ export async function GET(
       );
     }
 
-    const question = await getQuestionById(id);
+    const question = await getActiveQuestionById(id);
 
     if (!question) {
       return NextResponse.json(

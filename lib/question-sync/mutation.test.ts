@@ -94,11 +94,17 @@ test("an earlier provenance occurrence can become canonical without a transient 
   );
 });
 
-test("surplus active duplicates converge without tripping bulk removal safety", async () => {
+test("a bounded surplus active duplicate converges within bulk removal safety", async () => {
   const source = question();
+  const retained = Array.from({ length: 4 }, (_, index) =>
+    question({
+      questionText: `Retained ${index}`,
+      sourceFingerprint: String(index + 1).repeat(64),
+    })
+  );
   const calls: PlannedQuestionSyncRecord[][] = [];
   const result = await mutatePreparedQuestionSync(
-    prepared([source]),
+    prepared([source, ...retained]),
     { dryRun: false },
     store(
       [
@@ -112,6 +118,9 @@ test("surplus active duplicates converge without tripping bulk removal safety", 
           sourceKind: "legacy",
           sourceFingerprint: null,
         }),
+        ...retained.map((item, index) =>
+          stored(item, { id: `retained-${index}` })
+        ),
       ],
       calls
     )
@@ -124,6 +133,35 @@ test("surplus active duplicates converge without tripping bulk removal safety", 
       ?.duplicateOfQuestionId,
     "a-survivor"
   );
+});
+
+test("duplicate-driven bulk retirement is covered by the safety guard", async () => {
+  const greaterThan = question({
+    questionText: "Should conversion be > 10%?",
+    sourceFingerprint: "a".repeat(64),
+  });
+  const lessThan = question({
+    questionText: "Should conversion be < 10%?",
+    sourceFingerprint: "b".repeat(64),
+  });
+  const existing = Array.from({ length: 10 }, (_, index) =>
+    stored(index % 2 === 0 ? greaterThan : lessThan, {
+      id: `existing-${index}`,
+      sourceKind: "legacy",
+      sourceFingerprint: null,
+    })
+  );
+  const calls: PlannedQuestionSyncRecord[][] = [];
+
+  await assert.rejects(
+    mutatePreparedQuestionSync(
+      prepared([greaterThan, lessThan]),
+      { dryRun: false },
+      store(existing, calls)
+    ),
+    /question_sync_safety_abort/
+  );
+  assert.deepEqual(calls, []);
 });
 
 test("insert failure aborts before any existing-row update", async () => {
