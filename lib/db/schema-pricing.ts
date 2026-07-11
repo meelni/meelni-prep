@@ -663,6 +663,10 @@ export const stripeEventLog = pgTable(
     logicalEventKey: text("logical_event_key"),
     eventType: text("event_type").notNull(),
     subjectFingerprint: text("subject_fingerprint"),
+    subjectFingerprints: jsonb("subject_fingerprints")
+      .$type<string[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     payload: text("payload").notNull(), // Always "{}"; raw provider payloads are not retained.
     status: text("status").notNull().default("pending"), // 'pending', 'processed', 'failed'
     attempts: integer("attempts").default(0).notNull(),

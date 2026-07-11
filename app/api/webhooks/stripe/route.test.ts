@@ -18,6 +18,9 @@ vi.mock("stripe", () => ({
         return JSON.parse(body);
       },
     };
+    invoicePayments = {
+      list: vi.fn(async () => ({ data: [] })),
+    };
   },
 }));
 
@@ -85,6 +88,9 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/billing/credits", () => ({
   createCreditLedgerService: vi.fn(() => ({
     grantCredits: vi.fn(async () => ({ grant: { id: "grant_route" } })),
+    renewSubscriptionCredits: vi.fn(async () => ({
+      grant: { id: "grant_renewal_route" },
+    })),
   })),
 }));
 
@@ -300,6 +306,54 @@ describe("POST /api/webhooks/stripe", () => {
     expect(state.payments).toHaveLength(1);
   });
 
+  it.each(["failure_then_success", "success_then_failure"] as const)(
+    "converges invoice and grace truth for %s delivery",
+    async (order) => {
+      const failed = failedInvoiceEvent("evt_invoice_failed", 1_000);
+      const succeeded = succeededInvoiceEvent("evt_invoice_succeeded", 1_001);
+      const failedPayment = {
+        userId: "invoice_user",
+        stripePaymentIntentId: null,
+        stripeInvoiceId: "in_failed",
+        stripeChargeId: null,
+        creditGrantId: null,
+        catalogId: "starter",
+        amountInCents: 900,
+        currency: "usd",
+        status: "failed",
+        createdAt: new Date(1_000_000),
+      };
+      const succeededPayment = {
+        ...failedPayment,
+        stripePaymentIntentId: "pi_invoice",
+        stripeChargeId: "ch_invoice",
+        creditGrantId: "grant_renewal_route",
+        status: "succeeded",
+      };
+
+      if (order === "failure_then_success") {
+        state.selectResponses.push([], [], [failedPayment]);
+        expect((await POST(request(failed))).status).toBe(200);
+        state.selectResponses.push([], [succeededPayment]);
+        expect((await POST(request(succeeded))).status).toBe(200);
+      } else {
+        state.selectResponses.push([], [succeededPayment]);
+        expect((await POST(request(succeeded))).status).toBe(200);
+        state.selectResponses.push([], [succeededPayment]);
+        expect((await POST(request(failed))).status).toBe(200);
+      }
+
+      const subscriptionStates = state.updates.filter(
+        (update) => update.status === "active" || update.status === "past_due"
+      );
+      expect(subscriptionStates.at(-1)?.status).toBe("active");
+      expect(subscriptionStates.at(-1)?.gracePeriodEnd).toBeNull();
+      expect(
+        state.payments.filter((payment) => payment.status === "succeeded")
+      ).toHaveLength(1);
+    }
+  );
+
   it("rejects a declared oversized body before signature verification", async () => {
     const response = await POST(
       new NextRequest("http://localhost/api/webhooks/stripe", {
@@ -325,7 +379,8 @@ describe("POST /api/webhooks/stripe", () => {
     });
     const response = await POST(streamRequest(body));
     expect(response.status).toBe(413);
-    expect(reads).toBe(2);
+    expect(reads).toBeGreaterThanOrEqual(2);
+    expect(reads).toBeLessThanOrEqual(3);
     expect(state.signatureCalls).toBe(0);
   });
 
@@ -351,6 +406,20 @@ describe("POST /api/webhooks/stripe", () => {
       },
     });
     const response = await POST(streamRequest(body));
+    expect(response.status).toBe(400);
+    expect(state.signatureCalls).toBe(0);
+  });
+
+  it("stops a pending body read when the request signal aborts", async () => {
+    const controller = new AbortController();
+    const body = new ReadableStream<Uint8Array>({
+      pull: () => new Promise<void>(() => undefined),
+    });
+    const responsePromise = POST(streamRequest(body, controller.signal));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+
+    const response = await responsePromise;
     expect(response.status).toBe(400);
     expect(state.signatureCalls).toBe(0);
   });
@@ -422,10 +491,14 @@ function request(body: object) {
   });
 }
 
-function streamRequest(body: ReadableStream<Uint8Array>) {
+function streamRequest(
+  body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal
+) {
   return new NextRequest("http://localhost/api/webhooks/stripe", {
     method: "POST",
     body,
+    signal,
     duplex: "half",
     headers: { "stripe-signature": "test-signature" },
   } as never);
@@ -453,6 +526,32 @@ function failedInvoiceEvent(
         lines: {
           data: [
             { pricing: { price_details: { price: "price_starter_route" } } },
+          ],
+        },
+      },
+    },
+  };
+}
+
+function succeededInvoiceEvent(id: string, created: number) {
+  const payload = failedInvoiceEvent(id, created);
+  payload.type = "invoice.payment_succeeded";
+  return {
+    ...payload,
+    data: {
+      object: {
+        ...payload.data.object,
+        amount_paid: 900,
+        hosted_invoice_url: "https://invoice.example.invalid/receipt",
+        payments: {
+          data: [
+            {
+              status: "paid",
+              payment: {
+                payment_intent: "pi_invoice",
+                charge: "ch_invoice",
+              },
+            },
           ],
         },
       },

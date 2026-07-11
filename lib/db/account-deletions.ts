@@ -349,13 +349,17 @@ export async function redactStripeEventLogs(request: AccountDeletionRecord) {
       id: stripeEventLog.id,
       payload: stripeEventLog.payload,
       subjectFingerprint: stripeEventLog.subjectFingerprint,
+      subjectFingerprints: stripeEventLog.subjectFingerprints,
     })
     .from(stripeEventLog)
     .where(ne(stripeEventLog.payload, "{}"));
 
   for (const row of rows) {
     const fingerprintMatch =
-      row.subjectFingerprint && fingerprints.has(row.subjectFingerprint);
+      (row.subjectFingerprint && fingerprints.has(row.subjectFingerprint)) ||
+      row.subjectFingerprints.some((fingerprint) =>
+        fingerprints.has(fingerprint)
+      );
     const legacyPayloadMatch = payloadContainsProviderIdentifier(
       row.payload,
       identifiers

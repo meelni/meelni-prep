@@ -183,6 +183,9 @@ Expected:
 - `credit_grant` still has one row for the purchase idempotency key.
 - A distinct Event ID for the same immutable invoice transition creates no
   second payment-history row and does not move the failed-payment grace date.
+- Deliver a failed and successful event for one invoice in both orders; the
+  final subscription is active with no grace date and payment history exposes
+  only the successful attempt.
 
 Verification:
 
@@ -244,6 +247,11 @@ Expected:
 - `subscription.status = 'past_due'`.
 - `subscription.grace_period_end` is about 7 days in the future.
 - No new `credit_grant` row is created.
+
+Then deliver `invoice.payment_succeeded` for the same invoice, and repeat with
+the delivery order reversed. Both runs must converge on active subscription
+state with no grace date; the failed attempt may remain as internal audit
+evidence but must not appear in customer payment history.
 
 ## Scenario 9: Customer Mapping Fallback
 

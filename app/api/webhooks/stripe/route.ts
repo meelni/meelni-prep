@@ -9,7 +9,7 @@ import {
   paymentHistory,
   stripeCustomerMapping,
 } from "@/lib/db/schema";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
@@ -191,6 +191,7 @@ export async function POST(req: NextRequest) {
             lastError: null,
             processedAt: new Date(),
             subjectFingerprint: matchedDeletionFingerprint,
+            subjectFingerprints: subject.fingerprints,
           })
           .where(eq(stripeEventLog.id, eventLog.id));
         return NextResponse.json({ received: true, status: "deleted_subject" });
@@ -233,6 +234,7 @@ export async function POST(req: NextRequest) {
           logicalEventKey,
           eventType: event.type,
           subjectFingerprint: matchedDeletionFingerprint ?? subject.fingerprint,
+          subjectFingerprints: subject.fingerprints,
           // Never persist raw Stripe payloads. The verified event is scoped to
           // this request; durable logs retain only operational metadata.
           payload: "{}",
@@ -1627,9 +1629,24 @@ async function readBoundedStripeWebhookBody(
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
   let bytesRead = 0;
+  let resolveAbort!: () => void;
+  const aborted = new Promise<{ aborted: true }>((resolve) => {
+    resolveAbort = () => resolve({ aborted: true });
+  });
+  const onAbort = () => {
+    resolveAbort();
+    void reader.cancel().catch(() => undefined);
+  };
+  if (req.signal.aborted) onAbort();
+  else req.signal.addEventListener("abort", onAbort, { once: true });
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const next = await Promise.race([
+        reader.read().then((result) => ({ aborted: false as const, result })),
+        aborted,
+      ]);
+      if (next.aborted) return { ok: false, reason: "unreadable" };
+      const { done, value } = next.result;
       if (done) break;
       bytesRead += value.byteLength;
       if (bytesRead > MAX_STRIPE_WEBHOOK_BODY_BYTES) {
@@ -1652,6 +1669,7 @@ async function readBoundedStripeWebhookBody(
   } catch {
     return { ok: false, reason: "unreadable" };
   } finally {
+    req.signal.removeEventListener("abort", onAbort);
     reader.releaseLock();
   }
 }
