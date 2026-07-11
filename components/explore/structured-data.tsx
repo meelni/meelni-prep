@@ -18,9 +18,9 @@ interface Question {
   company: string | null;
   questionText: string;
   questionType: string;
-  askedAt: Date | null;
+  askedAt: Date | string | null;
   isActive: boolean;
-  createdAt: Date | null;
+  createdAt: Date | string | null;
 }
 
 interface ExploreStructuredDataProps {
