@@ -48,7 +48,8 @@ source ../venv/bin/activate
 python agent.py dev
 ```
 
-The agent will listen for room connections and read configuration from room metadata.
+The agent reads accepted interview preferences from room metadata and resolves
+provider, model, and voice tuning from server environment.
 
 ## Deployment
 
@@ -73,7 +74,7 @@ Uses shared modules from `../shared/`:
 1. User completes the New Mock Interview flow (`/dashboard/new-interview`) and navigates to `/interview`
 2. Frontend generates room with metadata containing:
    - `round_type`: interview type (e.g., "product_sense")
-   - `config`: settings (difficulty, mode, duration, voice)
+   - `config`: accepted preferences plus the web server's runtime snapshot
    - `question`: optional question from question bank
    - `session_id`: Supabase session ID for transcript saving
 3. Agent receives `JobContext` with room metadata
@@ -102,14 +103,14 @@ Uses shared modules from `../shared/`:
     "type": "Product Sense"
   },
   "config": {
-    "role": "interviewee",
-    "mode": "mock_interview",
     "difficulty": "intermediate",
+    "hintMode": "off",
+    "questionPreference": { "recency": "very_recent", "recentDays": 365 },
     "feedback_mode": "end_only",
     "duration": 30,
     "stt_model": "deepgram/nova-3",
     "llm_model": "openai/gpt-4.1-mini",
-    "tts_model": "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
+    "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
     "voice": "cgSgspJ2msm6clMCkdW9",
     "speed": 1.0,
     "emotion": "professional",
@@ -142,15 +143,12 @@ proc.userdata["vad"] = silero.VAD.load(
 )
 ```
 
-### Change Default Models
+### Change Runtime Models
 
-Update defaults in `entrypoint()` function in `agent.py`:
-
-```python
-stt_model = config.get("stt_model", "deepgram/nova-3")
-llm_model = config.get("llm_model", "openai/gpt-4.1-mini")
-tts_model = config.get("tts_model", "elevenlabs/eleven_turbo_v2_5:...")
-```
+Set the server-only `MEELNI_INTERVIEW_STT_MODEL`,
+`MEELNI_INTERVIEW_LLM_MODEL`, and `MEELNI_INTERVIEW_TTS_MODEL` variables on
+both web and voice-agent deployments. See
+`docs/operations/interview-runtime-configuration.md`.
 
 ## Event Handlers
 

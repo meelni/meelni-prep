@@ -5,10 +5,9 @@ import { isInterviewSessionCompletedForRead } from "@/lib/internal/core";
 
 export interface CreateSessionInput {
   userId: string;
-  role?: string;
+  role: "pm";
   roundType: "behavioral" | "product_sense" | "execution" | "strategy";
   mode: "voice_video" | "text";
-  persona?: string;
   livekitRoomName?: string;
   config?: Record<string, unknown>;
 }
@@ -26,10 +25,10 @@ export async function createSession(input: CreateSessionInput) {
     .insert(interviewSession)
     .values({
       userId: input.userId,
-      role: input.role || "pm",
+      role: input.role,
       roundType: input.roundType,
       mode: input.mode,
-      persona: input.persona,
+      persona: null,
       livekitRoomName: input.livekitRoomName,
       config: input.config,
       startedAt: new Date(),

@@ -72,23 +72,23 @@ paths:
                   description: Interview mode
                 role:
                   type: string
+                  enum: [pm]
                   default: pm
-                  description: User's role
-                persona:
-                  type: string
-                  nullable: true
-                  description: Custom interviewer persona
+                  description: Canonical candidate role
                 config:
-                  $ref: "#/components/schemas/SessionConfig"
+                  $ref: "#/components/schemas/InterviewPreferences"
             examples:
               product_sense:
                 value:
                   roundType: product_sense
-                  persona: Friendly Google PM interviewer
+                  role: pm
                   config:
-                    voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
-                    speed: 1.0
-                    emotion: Calm
+                    difficulty: intermediate
+                    duration: 45
+                    hintMode: off
+                    questionPreference:
+                      recency: very_recent
+                      recentDays: 365
       responses:
         "200":
           description: Session started successfully
@@ -546,6 +546,33 @@ components:
       description: Supabase Auth JWT token
 
   schemas:
+    InterviewPreferences:
+      type: object
+      description: Client-safe interview preferences; provider runtime settings are server-owned.
+      properties:
+        difficulty:
+          type: string
+          enum: [beginner, intermediate, advanced]
+          default: intermediate
+        duration:
+          type: integer
+          enum: [15, 30, 45]
+          default: 30
+        hintMode:
+          type: string
+          enum: [off, gentle, coach]
+          default: off
+        questionPreference:
+          type: object
+          properties:
+            recency:
+              type: string
+              enum: [all, recent, very_recent]
+            recentDays:
+              type: integer
+              minimum: 1
+              maximum: 3650
+
     SessionConfig:
       type: object
       properties:
@@ -612,7 +639,7 @@ components:
           format: uri
           description: LiveKit server WebSocket URL
         config:
-          $ref: "#/components/schemas/SessionConfig"
+          $ref: "#/components/schemas/InterviewPreferences"
 
     Session:
       type: object

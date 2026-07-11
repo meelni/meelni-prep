@@ -1,7 +1,8 @@
 """Runtime defaults and config helpers for the interview agent."""
 
-from copy import deepcopy
 import math
+import os
+import re
 from typing import Any, Dict
 
 DEFAULT_INTERVIEW_RUNTIME_CONFIG: Dict[str, Any] = {
@@ -13,55 +14,98 @@ DEFAULT_INTERVIEW_RUNTIME_CONFIG: Dict[str, Any] = {
     "duration": 30,
     "feedback_mode": "end_only",
     "hintMode": "off",
-    "persona": None,
+    "questionPreference": {"recency": "very_recent", "recentDays": 365},
     "stt_model": "deepgram/nova-3",
     "llm_model": "openai/gpt-4.1-mini",
     "tts_model": "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
 }
 
-ALLOWED_RUNTIME_MODELS = {
-    "stt_model": {DEFAULT_INTERVIEW_RUNTIME_CONFIG["stt_model"]},
-    "llm_model": {DEFAULT_INTERVIEW_RUNTIME_CONFIG["llm_model"]},
-    "tts_model": {
-        DEFAULT_INTERVIEW_RUNTIME_CONFIG["tts_model"],
-        "elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9",
-    },
+RUNTIME_ENV = {
+    "voice": "MEELNI_INTERVIEW_VOICE",
+    "speed": "MEELNI_INTERVIEW_TTS_SPEED",
+    "emotion": "MEELNI_INTERVIEW_TTS_EMOTION",
+    "volume": "MEELNI_INTERVIEW_TTS_VOLUME",
+    "stt_model": "MEELNI_INTERVIEW_STT_MODEL",
+    "llm_model": "MEELNI_INTERVIEW_LLM_MODEL",
+    "tts_model": "MEELNI_INTERVIEW_TTS_MODEL",
 }
+
+RUNTIME_NUMERIC_RANGES = {
+    "speed": (0.6, 1.5),
+    "volume": (0.5, 2.0),
+}
+
+DECIMAL_NUMBER_PATTERN = re.compile(
+    r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$"
+)
 
 
 def normalize_runtime_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
-    """Apply stable defaults while preserving extra runtime fields."""
+    """Combine accepted metadata preferences with server-owned runtime settings."""
     source = config or {}
-    normalized = deepcopy(DEFAULT_INTERVIEW_RUNTIME_CONFIG)
-    normalized.update({key: value for key, value in source.items() if value is not None})
+    normalized = dict(DEFAULT_INTERVIEW_RUNTIME_CONFIG)
 
-    for key in ("difficulty", "voice", "feedback_mode", "stt_model", "llm_model", "tts_model"):
-        if not isinstance(normalized.get(key), str) or not normalized[key].strip():
-            normalized[key] = DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
+    if source.get("difficulty") in {"beginner", "intermediate", "advanced"}:
+        normalized["difficulty"] = source["difficulty"]
+    if source.get("duration") in {15, 30, 45}:
+        normalized["duration"] = source["duration"]
+    if source.get("hintMode") in {"off", "gentle", "coach"}:
+        normalized["hintMode"] = source["hintMode"]
+    normalized["questionPreference"] = _normalize_question_preference(
+        source.get("questionPreference")
+    )
 
-    if normalized["feedback_mode"] not in {"real_time", "end_only", "silent"}:
-        normalized["feedback_mode"] = DEFAULT_INTERVIEW_RUNTIME_CONFIG["feedback_mode"]
-    if normalized.get("hintMode") not in {"off", "gentle", "coach"}:
-        normalized["hintMode"] = DEFAULT_INTERVIEW_RUNTIME_CONFIG["hintMode"]
-    if not isinstance(normalized.get("emotion"), str) or not normalized["emotion"].strip():
-        normalized["emotion"] = DEFAULT_INTERVIEW_RUNTIME_CONFIG["emotion"]
-    if normalized.get("persona") is not None and not isinstance(normalized["persona"], str):
-        normalized["persona"] = DEFAULT_INTERVIEW_RUNTIME_CONFIG["persona"]
-
-    for key, allowed_values in ALLOWED_RUNTIME_MODELS.items():
-        if normalized[key] not in allowed_values:
-            normalized[key] = DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
-
-    for key in ("speed", "volume", "duration"):
-        value = normalized.get(key)
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not math.isfinite(value)
-        ):
-            normalized[key] = DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
+    for key, env_name in RUNTIME_ENV.items():
+        value = os.getenv(env_name)
+        if key in RUNTIME_NUMERIC_RANGES:
+            minimum, maximum = RUNTIME_NUMERIC_RANGES[key]
+            normalized[key] = _env_number(
+                value,
+                DEFAULT_INTERVIEW_RUNTIME_CONFIG[key],
+                minimum,
+                maximum,
+            )
+        else:
+            normalized[key] = _env_string(
+                value, DEFAULT_INTERVIEW_RUNTIME_CONFIG[key]
+            )
 
     return normalized
+
+
+def _env_string(value: str | None, fallback: str) -> str:
+    trimmed = value.strip() if value else ""
+    return trimmed or fallback
+
+
+def _env_number(
+    value: str | None, fallback: float, minimum: float, maximum: float
+) -> float:
+    trimmed = value.strip() if value else ""
+    if not DECIMAL_NUMBER_PATTERN.fullmatch(trimmed):
+        return fallback
+    try:
+        parsed = float(trimmed)
+    except ValueError:
+        return fallback
+    return (
+        parsed
+        if math.isfinite(parsed) and minimum <= parsed <= maximum
+        else fallback
+    )
+
+
+def _normalize_question_preference(value: Any) -> Dict[str, Any]:
+    fallback = dict(DEFAULT_INTERVIEW_RUNTIME_CONFIG["questionPreference"])
+    if not isinstance(value, dict):
+        return fallback
+    recency = value.get("recency")
+    if recency not in {"all", "recent", "very_recent"}:
+        recency = fallback["recency"]
+    days = value.get("recentDays")
+    if isinstance(days, bool) or not isinstance(days, int) or not 0 < days <= 3650:
+        days = None
+    return {"recency": recency, **({"recentDays": days} if days else {})}
 
 
 def get_model_config(config: Dict[str, Any]) -> Dict[str, str]:

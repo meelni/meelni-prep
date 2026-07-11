@@ -1,6 +1,9 @@
 import {
   buildInterviewRoomMetadata,
-  normalizeInterviewRuntimeConfig,
+  interviewRuntimeSettingsFromEnv,
+  normalizeInterviewClientPreferences,
+  resolveInterviewRuntimeConfig,
+  type InterviewClientPreferences,
   type InterviewRuntimeConfig,
 } from "@/lib/internal/agent";
 import {
@@ -61,7 +64,6 @@ export interface StartInterviewSessionBody {
   roundType?: unknown;
   mode?: unknown;
   role?: unknown;
-  persona?: unknown;
   config?: unknown;
   questionId?: unknown;
 }
@@ -100,6 +102,9 @@ export interface StartInterviewSessionDeps {
     email: string;
     name: string | null;
   }): Promise<unknown>;
+  resolveRuntimeConfig(
+    preferences: InterviewClientPreferences
+  ): InterviewRuntimeConfig;
 }
 
 export type StartInterviewSessionResult =
@@ -110,7 +115,7 @@ export type StartInterviewSessionResult =
         roomName: string;
         token: string;
         url: string;
-        config: unknown;
+        config: InterviewClientPreferences;
         question: {
           id: string;
           text: string;
@@ -139,10 +144,9 @@ export async function startInterviewSessionWorkflow(
     return parsed;
   }
 
-  const { roundType, mode, role, persona, config, questionId } = parsed;
-  const runtimeConfig = normalizeInterviewRuntimeConfig(
-    config as Partial<InterviewRuntimeConfig>
-  );
+  const { roundType, mode, role, config, questionId } = parsed;
+  const preferences = normalizeInterviewClientPreferences(config);
+  const runtimeConfig = deps.resolveRuntimeConfig(preferences);
 
   const question = await selectQuestion({
     roundType,
@@ -188,9 +192,8 @@ export async function startInterviewSessionWorkflow(
       role,
       roundType,
       mode,
-      persona,
       livekitRoomName: roomName,
-      config: runtimeConfig,
+      config: { ...runtimeConfig },
     });
 
     if (question.value) {
@@ -283,7 +286,7 @@ export async function startInterviewSessionWorkflow(
       roomName,
       token: livekitResult.data.token,
       url: livekitResult.data.url,
-      config: session.config,
+      config: preferences,
       question: question.value
         ? {
             id: question.value.id,
@@ -322,6 +325,11 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
     transitionLifecycle: transitionInterviewSessionWorkflow,
     recordQuestionUsage,
     upsertUser,
+    resolveRuntimeConfig: (preferences) =>
+      resolveInterviewRuntimeConfig(
+        preferences,
+        interviewRuntimeSettingsFromEnv(process.env)
+      ),
   };
 }
 
@@ -397,8 +405,7 @@ type ParsedStartInterviewBody = {
   ok: true;
   roundType: RoundType;
   mode: "voice_video" | "text";
-  role: string;
-  persona?: string;
+  role: "pm";
   config: Record<string, unknown>;
   questionId?: string;
 };
@@ -422,12 +429,19 @@ function parseStartInterviewBody(
     };
   }
 
+  if (body.role !== undefined && body.role !== "pm") {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: "Invalid role" },
+    };
+  }
+
   return {
     ok: true,
     roundType: body.roundType,
     mode: body.mode === "text" ? "text" : "voice_video",
-    role: typeof body.role === "string" && body.role ? body.role : "pm",
-    persona: typeof body.persona === "string" ? body.persona : undefined,
+    role: "pm",
     config: isRecord(body.config) ? body.config : {},
     questionId:
       typeof body.questionId === "string" ? body.questionId : undefined,
@@ -543,7 +557,7 @@ async function selectQuestion({
   return { ok: true, value: question };
 }
 
-function getRecentDays(config: Record<string, unknown>): number | undefined {
+function getRecentDays(config: InterviewClientPreferences): number | undefined {
   const questionPreference = config.questionPreference;
 
   if (!isRecord(questionPreference)) {

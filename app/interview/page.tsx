@@ -78,9 +78,6 @@ function InterviewPageContent() {
   const modeParam = searchParams.get("mode");
   // Ensure mode is valid (fallback for cached URLs with "mock_interview")
   const mode = modeParam === "mock_interview" ? "voice_video" : modeParam;
-  const voice = searchParams.get("voice");
-  const speed = searchParams.get("speed");
-  const emotion = searchParams.get("emotion");
   const questionId = searchParams.get("questionId"); // Optional: pre-selected question
 
   // Session info (after session is created)
@@ -140,9 +137,6 @@ function InterviewPageContent() {
           mode,
           questionId: questionId || undefined, // Include questionId if present
           config: {
-            voice,
-            speed: speed ? parseFloat(speed) : 1.0,
-            emotion: emotion || "confident",
             hintMode,
           },
         }),
@@ -187,7 +181,7 @@ function InterviewPageContent() {
       );
       setLoading(false);
     }
-  }, [emotion, hintMode, mode, questionId, roundType, speed, user, voice]);
+  }, [hintMode, mode, questionId, roundType, user]);
 
   const fetchSessionDetails = useCallback(async () => {
     if (!sessionId || !user) return;

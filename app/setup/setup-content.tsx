@@ -362,7 +362,6 @@ export function SetupContent() {
       const sessionData = {
         roundType,
         mode: "voice_video" as const,
-        persona: undefined,
         config: fullConfig,
         questionId: questionId || undefined, // Include pre-selected question if available
       };
