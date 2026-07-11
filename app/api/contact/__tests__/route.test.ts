@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   consumeContactSubmissionAttemptBudget,
+  createContactAttemptRateLimitIdentity,
   createContactRateLimitIdentities,
   resolveAuthenticatedContactUserId,
   submitContactRequest,
 } = vi.hoisted(() => ({
   consumeContactSubmissionAttemptBudget: vi.fn(),
+  createContactAttemptRateLimitIdentity: vi.fn(),
   createContactRateLimitIdentities: vi.fn(),
   resolveAuthenticatedContactUserId: vi.fn(),
   submitContactRequest: vi.fn(),
@@ -21,6 +23,7 @@ vi.mock("@/lib/contact/authenticated-submitter", () => ({
   resolveAuthenticatedContactUserId,
 }));
 vi.mock("@/lib/security/contact-rate-limit-identity", () => ({
+  createContactAttemptRateLimitIdentity,
   createContactRateLimitIdentities,
 }));
 vi.mock("@/lib/workflows/submit-contact-request", () => ({
@@ -41,12 +44,14 @@ describe("POST /api/contact", () => {
   beforeEach(() => {
     submitContactRequest.mockReset();
     consumeContactSubmissionAttemptBudget.mockReset();
+    createContactAttemptRateLimitIdentity.mockReset();
     createContactRateLimitIdentities.mockReset();
     resolveAuthenticatedContactUserId.mockReset();
     consumeContactSubmissionAttemptBudget.mockResolvedValue({
       allowed: true,
       retryAfterSeconds: 0,
     });
+    createContactAttemptRateLimitIdentity.mockReturnValue("d".repeat(64));
     resolveAuthenticatedContactUserId.mockResolvedValue(null);
     createContactRateLimitIdentities.mockReturnValue({
       attempt: "d".repeat(64),
@@ -115,7 +120,7 @@ describe("POST /api/contact", () => {
     });
   });
 
-  it("consumes the attempt budget before resolving authentication", async () => {
+  it("consumes the attempt budget before parsing or resolving authentication", async () => {
     const order: string[] = [];
     consumeContactSubmissionAttemptBudget.mockImplementation(async () => {
       order.push("attempt");
@@ -160,6 +165,7 @@ describe("POST /api/contact", () => {
 
     expect(missingKey.status).toBe(400);
     expect(invalidBody.status).toBe(400);
+    expect(consumeContactSubmissionAttemptBudget).toHaveBeenCalledTimes(2);
     expect(submitContactRequest).not.toHaveBeenCalled();
   });
 
@@ -169,6 +175,7 @@ describe("POST /api/contact", () => {
     );
 
     expect(response.status).toBe(413);
+    expect(consumeContactSubmissionAttemptBudget).toHaveBeenCalledTimes(1);
     expect(submitContactRequest).not.toHaveBeenCalled();
   });
 
@@ -195,6 +202,22 @@ describe("POST /api/contact", () => {
 
   it("fails closed before storage when trusted-edge identity is unavailable", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    createContactAttemptRateLimitIdentity.mockImplementation(() => {
+      throw new Error("contact_trusted_edge_unavailable");
+    });
+
+    const response = await POST(request(validBody));
+
+    expect(response.status).toBe(503);
+    expect(consumeContactSubmissionAttemptBudget).not.toHaveBeenCalled();
+    expect(submitContactRequest).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith("contact_submission_failed", {
+      code: "security_configuration_unavailable",
+    });
+  });
+
+  it("fails closed after the attempt budget when accepted-request identities are unavailable", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     createContactRateLimitIdentities.mockImplementation(() => {
       throw new Error("contact_trusted_edge_unavailable");
     });
@@ -202,10 +225,35 @@ describe("POST /api/contact", () => {
     const response = await POST(request(validBody));
 
     expect(response.status).toBe(503);
+    expect(consumeContactSubmissionAttemptBudget).toHaveBeenCalledTimes(1);
+    expect(resolveAuthenticatedContactUserId).not.toHaveBeenCalled();
     expect(submitContactRequest).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith("contact_submission_failed", {
       code: "security_configuration_unavailable",
     });
+  });
+
+  it("denies a malformed request before reading its body when the attempt budget is exhausted", async () => {
+    consumeContactSubmissionAttemptBudget.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 23,
+    });
+    const unreadBody = new ReadableStream({
+      pull() {
+        throw new Error("body_must_not_be_read");
+      },
+    });
+    const response = await POST(
+      new NextRequest("https://meelni.example/api/contact", {
+        method: "POST",
+        body: unreadBody,
+        duplex: "half",
+      })
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("23");
+    expect(submitContactRequest).not.toHaveBeenCalled();
   });
 });
 
