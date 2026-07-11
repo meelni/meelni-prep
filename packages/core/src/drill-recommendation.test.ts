@@ -496,6 +496,36 @@ test("source finding selection is stable across finding order", () => {
   }
 });
 
+test("canonically equivalent Unicode evidence IDs have one ordinal result", () => {
+  const composedId = "\u00e9";
+  const decomposedId = "e\u0301";
+  const composed = {
+    ...baseFinding,
+    transcriptRefs: [composedId],
+    evidence: [{ turnRef: composedId, quote: "same exact evidence" }],
+    confidence: 0.9,
+  };
+  const decomposed = {
+    ...baseFinding,
+    transcriptRefs: [decomposedId],
+    evidence: [{ turnRef: decomposedId, quote: "same exact evidence" }],
+    confidence: 0.9,
+  };
+
+  const first = recommend({
+    feedback: feedback({ improvements: [composed, decomposed] }),
+  });
+  const reversed = recommend({
+    feedback: feedback({ improvements: [decomposed, composed] }),
+  });
+
+  assert.deepEqual(first, reversed);
+  assert.equal(first.state, "recommended");
+  if (first.state === "recommended") {
+    assert.deepEqual(first.sourceFinding.transcriptRefs, [decomposedId]);
+  }
+});
+
 test("stable IDs do not depend on provider model prose or array order", () => {
   const originalFeedback = feedback({
     improvements: [
