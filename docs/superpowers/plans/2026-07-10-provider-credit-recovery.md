@@ -52,11 +52,18 @@ action, reason, and make-good evidence without reading raw provider errors.
 6. Add unit, route, runtime, and real PostgreSQL concurrency/retry tests.
 7. Update contracts, operations, preflight, and Linear evidence; open a stacked
    draft PR without touching shared Preview/Production state.
+8. Treat every fatal runtime and normal deadline as a safety stop before
+   persistence: disable and interrupt input, independently bound session close
+   and room termination, guarantee job shutdown, then attempt bounded durable
+   reporting or transcript settlement cleanup.
 
 ## Required Evidence
 
 - Runtime contract accepts canonical provider failures and rejects malformed or
   provider-specific payload leakage.
+- Blocking close, room termination, and report fakes prove later stop steps and
+  shutdown still run; active-session and normal-deadline regressions prove no
+  persistence wait precedes the safety stop.
 - Pre-usable provider failure releases once.
 - Post-usable provider/integrity failure refunds once.
 - User end, time limit, disconnect/abandonment after usable retain.

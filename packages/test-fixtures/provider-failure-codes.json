@@ -11,7 +11,7 @@
     "deadline_enforcement_failed",
     "initial_greeting_failed"
   ],
-  "direct_report_codes": [
+  "stop_first_codes": [
     "voice_session_construction_failed",
     "voice_session_start_failed",
     "initial_greeting_failed"

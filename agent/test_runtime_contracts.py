@@ -160,12 +160,131 @@ class RuntimeContractTests(unittest.TestCase):
             "voice_runtime_provider_failed",
         )
 
+    def test_provider_failure_stop_continues_after_hung_close_and_terminate(self):
+        async def scenario(hung_step):
+            calls = []
+            never = asyncio.Event()
+
+            async def close_session():
+                calls.append("close_session")
+                if hung_step == "close_session":
+                    await never.wait()
+
+            async def terminate_room():
+                calls.append("terminate_room")
+                if hung_step == "terminate_room":
+                    await never.wait()
+
+            async def report_failure():
+                calls.append("report")
+                return True
+
+            with self.assertRaises(asyncio.TimeoutError):
+                await stop_provider_runtime_then_report(
+                    disable_input=lambda: calls.append("disable_input"),
+                    close_session=close_session,
+                    terminate_room=terminate_room,
+                    shutdown=lambda: calls.append("shutdown"),
+                    report_failure=report_failure,
+                    stop_timeout_seconds=0.01,
+                    report_timeout_seconds=0.01,
+                )
+            return calls
+
+        for hung_step in ("close_session", "terminate_room"):
+            calls = asyncio.run(scenario(hung_step))
+            self.assertEqual(
+                calls,
+                ["disable_input", "close_session", "terminate_room", "shutdown", "report"],
+            )
+
+    def test_provider_failure_stop_finishes_before_a_hung_report_times_out(self):
+        async def scenario():
+            calls = []
+            never = asyncio.Event()
+
+            async def report_failure():
+                calls.append("report")
+                await never.wait()
+                return True
+
+            with self.assertRaises(asyncio.TimeoutError):
+                await stop_provider_runtime_then_report(
+                    disable_input=lambda: calls.append("disable_input"),
+                    close_session=lambda: append_async(calls, "close_session"),
+                    terminate_room=lambda: append_async(calls, "terminate_room"),
+                    shutdown=lambda: calls.append("shutdown"),
+                    report_failure=report_failure,
+                    stop_timeout_seconds=0.01,
+                    report_timeout_seconds=0.01,
+                )
+            return calls
+
+        async def append_async(calls, value):
+            calls.append(value)
+
+        self.assertEqual(
+            asyncio.run(scenario()),
+            ["disable_input", "close_session", "terminate_room", "shutdown", "report"],
+        )
+
     def test_interview_agent_reports_fatal_session_errors(self):
         source = (Path(__file__).parent / "interview" / "agent.py").read_text()
 
         self.assertIn('@session.on("error")', source)
         self.assertIn('getattr(event.error, "recoverable", False)', source)
         self.assertIn("schedule_provider_failure_report(", source)
+        self.assertNotIn(
+            'await report_provider_failure("initial_greeting_failed"', source
+        )
+        self.assertNotIn(
+            'await report_provider_failure("voice_session_start_failed"', source
+        )
+        self.assertIn(
+            'stop_runtime_and_report(\n            "initial_greeting_failed"', source
+        )
+
+    def test_normal_deadline_safety_stop_precedes_blocked_cleanup(self):
+        async def scenario():
+            calls = []
+            cleanup_started = asyncio.Event()
+            release_cleanup = asyncio.Event()
+
+            async def cleanup():
+                calls.append("cleanup")
+                cleanup_started.set()
+                await release_cleanup.wait()
+                return True
+
+            task = asyncio.create_task(
+                stop_provider_runtime_then_report(
+                    disable_input=lambda: calls.extend(["disable_input", "interrupt"]),
+                    close_session=lambda: append_async(calls, "close_session"),
+                    terminate_room=lambda: append_async(calls, "terminate_room"),
+                    shutdown=lambda: calls.append("shutdown"),
+                    report_failure=cleanup,
+                )
+            )
+            await cleanup_started.wait()
+            before_cleanup_settles = list(calls)
+            release_cleanup.set()
+            await task
+            return before_cleanup_settles
+
+        async def append_async(calls, value):
+            calls.append(value)
+
+        self.assertEqual(
+            asyncio.run(scenario()),
+            [
+                "disable_input",
+                "interrupt",
+                "close_session",
+                "terminate_room",
+                "shutdown",
+                "cleanup",
+            ],
+        )
 
     def test_provider_failure_callsites_and_mapper_match_shared_vocabulary(self):
         fixture_path = (
@@ -179,6 +298,7 @@ class RuntimeContractTests(unittest.TestCase):
         tree = ast.parse(source)
         literal_codes = {
             "report_provider_failure": set(),
+            "stop_runtime_and_report": set(),
             "schedule_provider_failure_report": set(),
         }
         dynamic_calls = []
@@ -197,8 +317,8 @@ class RuntimeContractTests(unittest.TestCase):
                 dynamic_calls.append((reporter, code_argument))
 
         self.assertEqual(
-            literal_codes["report_provider_failure"],
-            set(fixture["direct_report_codes"]),
+            literal_codes["stop_runtime_and_report"],
+            set(fixture["stop_first_codes"]),
         )
         self.assertEqual(
             literal_codes["schedule_provider_failure_report"],
@@ -216,12 +336,16 @@ class RuntimeContractTests(unittest.TestCase):
             {reporter: len(calls) for reporter, calls in dynamic_by_reporter.items()},
             {
                 "report_provider_failure": 1,
+                "stop_runtime_and_report": 1,
                 "schedule_provider_failure_report": 1,
             },
         )
         forwarded_code = dynamic_by_reporter["report_provider_failure"][0]
         self.assertIsInstance(forwarded_code, ast.Name)
         self.assertEqual(forwarded_code.id, "code")
+        for forwarded_stop_code in dynamic_by_reporter["stop_runtime_and_report"]:
+            self.assertIsInstance(forwarded_stop_code, ast.Name)
+            self.assertEqual(forwarded_stop_code.id, "code")
         scheduled_code = dynamic_by_reporter["schedule_provider_failure_report"][0]
         self.assertIsInstance(scheduled_code, ast.Call)
         self.assertIsInstance(scheduled_code.func, ast.Name)
@@ -234,7 +358,7 @@ class RuntimeContractTests(unittest.TestCase):
         deployed_codes = (
             set(PROVIDER_FAILURE_CODES.values())
             | {DEFAULT_PROVIDER_FAILURE_CODE}
-            | literal_codes["report_provider_failure"]
+            | literal_codes["stop_runtime_and_report"]
             | literal_codes["schedule_provider_failure_report"]
         )
         self.assertEqual(deployed_codes, set(fixture["deployed_codes"]))

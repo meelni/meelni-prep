@@ -241,6 +241,51 @@ async def entrypoint(ctx: JobContext):
         transcript_queue.enqueue_runtime_event(event)
         return (await transcript_queue.flush(5.0)).settled
 
+    async def no_op_async() -> None:
+        return None
+
+    async def stop_runtime_and_report(
+        code: str,
+        *,
+        retryable: bool,
+        active_session: AgentSession | None,
+        shutdown_reason: str,
+    ) -> bool:
+        try:
+            persisted = await stop_provider_runtime_then_report(
+                disable_input=(
+                    lambda: active_session.input.set_audio_enabled(False)
+                    if active_session is not None
+                    else None
+                ),
+                close_session=(
+                    active_session.aclose
+                    if active_session is not None
+                    else no_op_async
+                ),
+                terminate_room=lambda: terminate_livekit_room(ctx, room_name),
+                shutdown=lambda: ctx.shutdown(shutdown_reason),
+                report_failure=lambda: report_provider_failure(
+                    code,
+                    retryable=retryable,
+                ),
+            )
+            if not persisted:
+                logger.error(
+                    "Provider failure report did not settle before shutdown",
+                    extra={"failure_code": code},
+                )
+            return persisted
+        except BaseException as error:
+            logger.error(
+                "Provider runtime stop or failure report failed",
+                extra={
+                    "failure_code": code,
+                    "error_type": type(error).__name__,
+                },
+            )
+            return False
+
     provider_failure_report_scheduled = False
 
     def schedule_provider_failure_report(code: str, *, retryable: bool) -> None:
@@ -251,32 +296,12 @@ async def entrypoint(ctx: JobContext):
         provider_failure_report_scheduled = True
 
         async def report_and_shutdown() -> None:
-            try:
-                persisted = await stop_provider_runtime_then_report(
-                    disable_input=lambda: session.input.set_audio_enabled(False),
-                    close_session=session.aclose,
-                    terminate_room=lambda: terminate_livekit_room(ctx, room_name),
-                    shutdown=lambda: ctx.shutdown(
-                        "voice runtime provider failure"
-                    ),
-                    report_failure=lambda: report_provider_failure(
-                        code,
-                        retryable=retryable,
-                    ),
-                )
-                if not persisted:
-                    logger.error(
-                        "Provider failure report did not settle before shutdown",
-                        extra={"failure_code": code},
-                    )
-            except Exception as error:
-                logger.error(
-                    "Provider failure report failed",
-                    extra={
-                        "failure_code": code,
-                        "error_type": type(error).__name__,
-                    },
-                )
+            await stop_runtime_and_report(
+                code,
+                retryable=retryable,
+                active_session=session,
+                shutdown_reason="voice runtime provider failure",
+            )
 
         task = asyncio.create_task(report_and_shutdown())
         background_transcript_tasks.add(task)
@@ -308,8 +333,12 @@ async def entrypoint(ctx: JobContext):
         )
     except Exception:
         logger.error("Voice session construction failed", exc_info=True)
-        await report_provider_failure("voice_session_construction_failed", retryable=True)
-        ctx.shutdown("voice session construction failed")
+        await stop_runtime_and_report(
+            "voice_session_construction_failed",
+            retryable=True,
+            active_session=None,
+            shutdown_reason="voice session construction failed",
+        )
         return
 
     async def publish_transcript_status(
@@ -646,8 +675,12 @@ async def entrypoint(ctx: JobContext):
         )
     except Exception:
         logger.error("Voice session start failed", exc_info=True)
-        await report_provider_failure("voice_session_start_failed", retryable=True)
-        ctx.shutdown("voice session start failed")
+        await stop_runtime_and_report(
+            "voice_session_start_failed",
+            retryable=True,
+            active_session=session,
+            shutdown_reason="voice session start failed",
+        )
         return
 
     logger.info(f"Voice agent started successfully - {round_type} interview with {config['difficulty']} difficulty")
@@ -655,29 +688,48 @@ async def entrypoint(ctx: JobContext):
     deadline_enforcer = DeadlineEnforcer()
     deadline_task: asyncio.Task[bool] | None = None
 
-    async def terminate_room() -> None:
-        await terminate_livekit_room(ctx, room_name)
+    deadline_interrupted_active_speech = False
 
-    async def close_session_at_deadline() -> None:
-        await settle_current_speech()
-        result = await transcript_queue.flush(5.0)
+    def disable_and_interrupt_at_deadline() -> None:
+        nonlocal deadline_interrupted_active_speech, transcript_integrity_unavailable
+        session.input.set_audio_enabled(False)
+        current_speech = session.current_speech
+        if current_speech is not None and not current_speech.done():
+            deadline_interrupted_active_speech = True
+            transcript_integrity_unavailable = True
+            current_speech.interrupt(force=True)
+        if session.user_state == "speaking":
+            deadline_interrupted_active_speech = True
+            transcript_integrity_unavailable = True
+
+    async def persist_deadline_cleanup() -> bool:
         settlement_state = (
             "degraded"
-            if not result.settled
-            or transcript_queue_overflowed
+            if transcript_queue_overflowed
             or transcript_integrity_unavailable
+            or deadline_interrupted_active_speech
             else "settled"
         )
-        if not await persist_runtime_settlement(settlement_state):
+        persisted = await persist_runtime_settlement(settlement_state)
+        if not persisted:
             logger.error("Runtime transcript settlement could not be persisted")
-        await session.aclose()
+        return persisted
+
+    async def close_session_at_deadline() -> None:
+        await stop_provider_runtime_then_report(
+            disable_input=disable_and_interrupt_at_deadline,
+            close_session=session.aclose,
+            terminate_room=lambda: terminate_livekit_room(ctx, room_name),
+            shutdown=lambda: ctx.shutdown("interview hard deadline reached"),
+            report_failure=persist_deadline_cleanup,
+        )
 
     if deadline_at is not None:
         deadline_task = asyncio.create_task(
             watch_session_deadline(
                 deadline_at=deadline_at,
                 close_session=close_session_at_deadline,
-                terminate_room=terminate_room,
+                terminate_room=no_op_async,
                 enforcer=deadline_enforcer,
             )
         )
@@ -742,8 +794,12 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"Initial greeting sent: {greeting[:50]}...")
     except Exception as e:
         logger.error(f"Failed to send initial greeting: {e}", exc_info=True)
-        await report_provider_failure("initial_greeting_failed", retryable=True)
-        ctx.shutdown("initial greeting failed")
+        await stop_runtime_and_report(
+            "initial_greeting_failed",
+            retryable=True,
+            active_session=session,
+            shutdown_reason="initial greeting failed",
+        )
         return
 
 
