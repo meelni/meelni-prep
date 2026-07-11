@@ -1,0 +1,77 @@
+name: Stack Topology
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, closed]
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A parent event must not overtake a child publication. Every event and
+  # scheduled fan-out shares one non-cancelling publisher queue.
+  group: stack-topology-publisher
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  verify:
+    if: github.event_name == 'pull_request_target'
+    name: Trusted Publisher
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: read
+    steps:
+      - name: Check out trusted default-branch verifier
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          # Required for exact refs/pull and parent fetches in this private repo.
+          # The token can read contents and publish checks; PR code is never
+          # checked out or executed.
+          persist-credentials: true
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+
+      - name: Verify exact stacked PR topology and evidence
+        run: node scripts/revalidate-stacked-prs-ci.mjs --event-path "$GITHUB_EVENT_PATH"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  revalidate:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Revalidate Open Stacks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: read
+    steps:
+      - name: Check out trusted default-branch verifier
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+
+      - name: Revalidate every open registered stack
+        run: node scripts/revalidate-stacked-prs-ci.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}

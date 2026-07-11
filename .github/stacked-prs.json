@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "repository": "saviii/meelni-prep",
+  "stacks": [
+    {
+      "pr": 253,
+      "headRef": "codex/explicit-analytics-consent",
+      "parentRef": "codex/bound-public-demo",
+      "expectedParentHead": "6608360c2309e22449ff67d3833a8af82378bb01"
+    },
+    {
+      "pr": 258,
+      "headRef": "codex/sav-190-reconnect-recovery",
+      "parentRef": "codex/sav-189-deadline-server",
+      "expectedParentHead": "6ddc71dba11dd665c42299762aef32f1823d4cc5"
+    },
+    {
+      "pr": 259,
+      "headRef": "codex/sav-194-transcript-ingest",
+      "parentRef": "codex/sav-190-reconnect-recovery",
+      "expectedParentHead": "0191d7b78b3659f86ed6e1df27133f722309392a"
+    },
+    {
+      "pr": 260,
+      "headRef": "codex/sav-193-transcript-privacy",
+      "parentRef": "codex/sav-194-transcript-ingest",
+      "expectedParentHead": "e4621c305082e5bf67f7162f935092eff67e88e5"
+    },
+    {
+      "pr": 263,
+      "headRef": "codex/sav-229-stable-start-attempt",
+      "parentRef": "codex/sav-193-transcript-privacy",
+      "expectedParentHead": "55a33ea2a33128422283a7f75e4b8f8ff72bef7d"
+    },
+    {
+      "pr": 265,
+      "headRef": "codex/sav-230-provider-credit-recovery",
+      "parentRef": "codex/sav-229-stable-start-attempt",
+      "expectedParentHead": "6e8399b712b1240cd12bc12940e48e14d8857c6d"
+    },
+    {
+      "pr": 266,
+      "headRef": "codex/sav-195-feedback-v2",
+      "parentRef": "codex/sav-194-transcript-ingest",
+      "expectedParentHead": "e4621c305082e5bf67f7162f935092eff67e88e5"
+    },
+    {
+      "pr": 268,
+      "headRef": "codex/sav-196-evaluation-validation",
+      "parentRef": "codex/sav-195-feedback-v2",
+      "expectedParentHead": "3313949de91b5919275dea25fd282e33496f67b1"
+    },
+    {
+      "pr": 270,
+      "headRef": "codex/sav-231-billing-truth",
+      "parentRef": "codex/sav-230-provider-credit-recovery",
+      "expectedParentHead": "c456eb436171cc80794b27cb84dfea88173e4e84"
+    },
+    {
+      "pr": 272,
+      "headRef": "codex/sav-197-feedback-workflow",
+      "parentRef": "codex/sav-196-evaluation-validation",
+      "expectedParentHead": "b5fb70dcdc3d2b2f922c45759c94ed8fb472b010"
+    },
+    {
+      "pr": 273,
+      "headRef": "codex/sav-211-feedback-accessibility",
+      "parentRef": "codex/sav-196-evaluation-validation",
+      "expectedParentHead": "b5fb70dcdc3d2b2f922c45759c94ed8fb472b010"
+    },
+    {
+      "pr": 274,
+      "headRef": "codex/sav-198-evaluation-calibration",
+      "parentRef": "codex/sav-197-feedback-workflow",
+      "expectedParentHead": "929b2116c12a17b8fece38136abf95ce1b7c3769"
+    },
+    {
+      "pr": 277,
+      "headRef": "codex/sav-149-transcript-body-hardening",
+      "parentRef": "codex/sav-194-transcript-ingest",
+      "expectedParentHead": "e4621c305082e5bf67f7162f935092eff67e88e5"
+    },
+    {
+      "pr": 281,
+      "headRef": "codex/sav-201-deterministic-recommendations",
+      "parentRef": "codex/sav-198-evaluation-calibration",
+      "expectedParentHead": "32ab83c42c4f89f8741eb9ff3f7873858557475f"
+    }
+  ]
+}
