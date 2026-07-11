@@ -12,6 +12,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import {
+  runStackCiAndPublish,
+  STACK_TOPOLOGY_CHECK_NAME,
+} from "./check-stacked-pr-ci.mjs";
+import { revalidateRegisteredStacks } from "./revalidate-stacked-prs-ci.mjs";
+
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const adapter = join(repositoryRoot, "scripts/check-stacked-pr-ci.mjs");
 
@@ -111,6 +117,29 @@ function run(state, payload, eventName = "pull_request_target") {
   });
 }
 
+function checkApi(calls, responses = [{ id: 101 }, {}]) {
+  return async (url, init) => {
+    calls.push({ url, init, body: init.body ? JSON.parse(init.body) : null });
+    const payload = responses.shift();
+    if (payload instanceof Error) {
+      return {
+        ok: false,
+        status: 503,
+        async json() {
+          return {};
+        },
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return payload;
+      },
+    };
+  };
+}
+
 test("the trusted adapter fetches the exact PR and parent refs from a bare origin", (t) => {
   const state = fixture();
   t.after(() => rmSync(state.root, { recursive: true, force: true }));
@@ -120,6 +149,230 @@ test("the trusted adapter fetches the exact PR and parent refs from a bare origi
   assert.equal(output.status, "pass");
   assert.equal(output.head, state.head);
   assert.equal(output.actualParentHead, state.parent);
+});
+
+test("the trusted publisher binds in-progress and success to the exact PR head", async (t) => {
+  const state = fixture();
+  t.after(() => rmSync(state.root, { recursive: true, force: true }));
+  const calls = [];
+  const result = await runStackCiAndPublish({
+    eventContent: JSON.stringify(event(state)),
+    env: { GITHUB_TOKEN: "token" },
+    repo: state.repo,
+    manifestPath: join(state.repo, ".github/stacked-prs.json"),
+    fetchImpl: checkApi(calls),
+  });
+
+  assert.equal(result.status, "pass");
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].body, {
+    name: STACK_TOPOLOGY_CHECK_NAME,
+    head_sha: state.head,
+    status: "in_progress",
+    started_at: calls[0].body.started_at,
+    output: calls[0].body.output,
+  });
+  assert.equal(calls[1].body.status, "completed");
+  assert.equal(calls[1].body.conclusion, "success");
+  assert.match(calls[1].url, /check-runs\/101$/);
+});
+
+test("a moved parent supersedes a prior green head check with failure", async (t) => {
+  const state = fixture();
+  t.after(() => rmSync(state.root, { recursive: true, force: true }));
+  git(state.repo, "switch", "parent");
+  commit(state.repo, "parent moved");
+  git(state.repo, "push", "--force", "origin", "parent:refs/heads/parent");
+
+  const calls = [];
+  const result = await runStackCiAndPublish({
+    eventContent: JSON.stringify(event(state)),
+    env: { GITHUB_TOKEN: "token" },
+    repo: state.repo,
+    manifestPath: join(state.repo, ".github/stacked-prs.json"),
+    fetchImpl: checkApi(calls),
+  });
+
+  assert.equal(result.status, "fail");
+  assert.equal(calls[0].body.head_sha, state.head);
+  assert.equal(calls[1].body.conclusion, "failure");
+  assert.match(calls[1].body.output.summary, /declared_parent_head_is_stale/);
+});
+
+test("unrelated main PRs receive a neutral head-bound result", async (t) => {
+  const state = fixture();
+  t.after(() => rmSync(state.root, { recursive: true, force: true }));
+  const payload = event(state);
+  payload.number = 123;
+  payload.pull_request.number = 123;
+  payload.pull_request.head.ref = "fork-feature";
+  payload.pull_request.head.repo.full_name = "contributor/meelni-prep";
+  payload.pull_request.base.ref = "main";
+  const calls = [];
+
+  const result = await runStackCiAndPublish({
+    eventContent: JSON.stringify(payload),
+    env: { GITHUB_TOKEN: "token" },
+    repo: state.repo,
+    fetchImpl: checkApi(calls),
+  });
+
+  assert.equal(result.status, "not_stacked");
+  assert.equal(calls[0].body.head_sha, state.head);
+  assert.equal(calls[1].body.conclusion, "neutral");
+});
+
+test("check API creation and completion failures fail closed", async (t) => {
+  const state = fixture();
+  t.after(() => rmSync(state.root, { recursive: true, force: true }));
+  await assert.rejects(
+    runStackCiAndPublish({
+      eventContent: JSON.stringify(event(state)),
+      env: { GITHUB_TOKEN: "token" },
+      repo: state.repo,
+      manifestPath: join(state.repo, ".github/stacked-prs.json"),
+      fetchImpl: checkApi([], [new Error("unavailable")]),
+    }),
+    /stack_gate_github_api_failed:503/
+  );
+  await assert.rejects(
+    runStackCiAndPublish({
+      eventContent: JSON.stringify(event(state)),
+      env: { GITHUB_TOKEN: "token" },
+      repo: state.repo,
+      manifestPath: join(state.repo, ".github/stacked-prs.json"),
+      fetchImpl: checkApi(
+        [],
+        [{ id: 102 }, new Error("unavailable"), new Error("unavailable")]
+      ),
+    }),
+    /stack_gate_github_api_failed:503/
+  );
+});
+
+test("scheduled revalidation fans out from the trusted current manifest", async () => {
+  const manifest = {
+    version: 1,
+    repository: "saviii/meelni-prep",
+    stacks: [
+      {
+        pr: 10,
+        headRef: "child-a",
+        parentRef: "parent",
+        expectedParentHead: "a".repeat(40),
+      },
+      {
+        pr: 11,
+        headRef: "child-b",
+        parentRef: "parent",
+        expectedParentHead: "b".repeat(40),
+      },
+    ],
+  };
+  const published = [];
+  const results = await revalidateRegisteredStacks({
+    env: { GITHUB_TOKEN: "token", GITHUB_DEFAULT_BRANCH: "main" },
+    manifest,
+    api: async ({ path }) => ({
+      number: Number(path.split("/").at(-1)),
+      state: path.endsWith("/10") ? "open" : "closed",
+      body: "evidence",
+      head: {
+        ref: "child-a",
+        sha: "c".repeat(40),
+        repo: { full_name: manifest.repository },
+      },
+      base: { ref: "parent" },
+    }),
+    verifyAndPublish: async (input) => {
+      published.push(JSON.parse(input.eventContent));
+      return { status: "fail", errors: ["declared_parent_head_is_stale"] };
+    },
+  });
+
+  assert.equal(published.length, 1);
+  assert.equal(published[0].pull_request.number, 10);
+  assert.deepEqual(results, [
+    { status: "fail", errors: ["declared_parent_head_is_stale"] },
+  ]);
+});
+
+test("scheduled revalidation replaces stale success after parent movement", async (t) => {
+  const state = fixture();
+  t.after(() => rmSync(state.root, { recursive: true, force: true }));
+  git(state.repo, "switch", "parent");
+  commit(state.repo, "scheduled parent movement");
+  git(state.repo, "push", "--force", "origin", "parent:refs/heads/parent");
+  const calls = [];
+  const pullRequest = { ...event(state).pull_request, state: "open" };
+
+  const results = await revalidateRegisteredStacks({
+    env: { GITHUB_TOKEN: "token", GITHUB_DEFAULT_BRANCH: "main" },
+    repo: state.repo,
+    manifest: JSON.parse(
+      readFileSync(join(state.repo, ".github/stacked-prs.json"), "utf8")
+    ),
+    manifestPath: join(state.repo, ".github/stacked-prs.json"),
+    api: async () => pullRequest,
+    fetchImpl: checkApi(calls),
+  });
+
+  assert.equal(results[0].status, "fail");
+  assert.equal(calls[0].body.head_sha, state.head);
+  assert.equal(calls[1].body.conclusion, "failure");
+  assert.match(calls[1].body.output.summary, /declared_parent_head_is_stale/);
+});
+
+test("scheduled revalidation records API failure and continues to later PRs", async () => {
+  const manifest = {
+    version: 1,
+    repository: "saviii/meelni-prep",
+    stacks: [
+      {
+        pr: 20,
+        headRef: "child-a",
+        parentRef: "parent",
+        expectedParentHead: "a".repeat(40),
+      },
+      {
+        pr: 21,
+        headRef: "child-b",
+        parentRef: "parent",
+        expectedParentHead: "b".repeat(40),
+      },
+    ],
+  };
+  const published = [];
+  const results = await revalidateRegisteredStacks({
+    env: { GITHUB_TOKEN: "token" },
+    manifest,
+    api: async ({ path }) => {
+      if (path.endsWith("/20")) throw new Error("github_pr_read_failed");
+      return {
+        number: 21,
+        state: "open",
+        body: "evidence",
+        head: {
+          ref: "child-b",
+          sha: "c".repeat(40),
+          repo: { full_name: manifest.repository },
+        },
+        base: { ref: "parent" },
+      };
+    },
+    verifyAndPublish: async (input) => {
+      published.push(input);
+      return { status: "pass", errors: [] };
+    },
+  });
+
+  assert.deepEqual(results[0], {
+    status: "error",
+    pr: 20,
+    errors: ["github_pr_read_failed"],
+  });
+  assert.equal(results[1].status, "pass");
+  assert.equal(published.length, 1);
 });
 
 test("a synthetic push event fails closed instead of executing an untrusted branch adapter", (t) => {
@@ -188,12 +441,25 @@ test("the authoritative workflow checks out default-branch code and never PR cod
   );
   assert.match(workflow, /pull_request_target:/);
   assert.match(workflow, /permissions:\n  contents: read/);
+  assert.match(
+    workflow,
+    /verify:[^]*permissions:\n      contents: read\n      checks: write/
+  );
+  assert.match(
+    workflow,
+    /revalidate:[^]*permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
+  );
+  assert.match(workflow, /cron: "\*\/5 \* \* \* \*"/);
   assert.match(workflow, /persist-credentials: true/);
   assert.match(
     workflow,
     /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/
   );
-  assert.match(workflow, /run: node scripts\/check-stacked-pr-ci\.mjs/);
+  assert.match(
+    workflow,
+    /run: node scripts\/check-stacked-pr-ci\.mjs --publish-check/
+  );
+  assert.match(workflow, /run: node scripts\/revalidate-stacked-prs-ci\.mjs/);
   assert.doesNotMatch(workflow, /pull_request\.head\.sha/);
   assert.doesNotMatch(workflow, /checkout[^]*pull_request\.head/);
   assert.doesNotMatch(generalCi, /check:stack:ci/);

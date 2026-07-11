@@ -218,6 +218,11 @@ code. The deterministic core remains offline and verifies that the child
 contains the current parent and that PR-body evidence names the exact child
 head, parent head, and merge-base.
 
+The workflow publishes the required `Stack Topology / Verify` Check Run on the
+verified PR head rather than relying on the default-branch workflow job. A
+five-minute trusted schedule and manual dispatch revalidate every open
+registered stack after parent or manifest movement.
+
 Run the offline regression fixtures with:
 
 ```bash

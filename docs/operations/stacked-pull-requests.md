@@ -107,13 +107,25 @@ runs the verifier and registry from that trusted checkout. It never checks out
 or executes a pull request's code. The hosted adapter validates the event's PR
 number and repository identity, fetches the server-owned `refs/pull/<n>/head`
 plus the one declared parent ref, and supplies the exact PR body to the
-deterministic verifier. Push events fail closed in this adapter; local branch
-work uses the command above.
+deterministic verifier. It creates a dedicated `Stack Topology / Verify` Check
+Run on that verified head SHA before the Git work begins, then completes it with
+success, failure, or a neutral unregistered-PR result. The workflow's own job
+has a different name and is not the branch-protection context. Push events fail
+closed in this adapter; local branch work uses the command above.
 
-Because the repository is private, the trusted checkout retains the workflow's
-`contents: read` token long enough to fetch those two refs. The token is never
-made available to PR code because no PR-controlled file is checked out or
-executed, and the checkout action removes its stored credential during cleanup.
+A trusted default-branch schedule re-reads every open manifest entry every five
+minutes. It loads current PR metadata through the read-only API, fetches the
+current parent, and publishes a new head-bound result. Parent movement or a
+default-branch manifest change therefore replaces stale success without
+executing code from either branch. `workflow_dispatch` provides the same fan-out
+for an immediate operator refresh.
+
+Because the repository is private, the trusted checkout retains the job token
+long enough to fetch those two refs. The event job grants only `contents: read`
+and `checks: write`; scheduled fan-out additionally grants `pull-requests: read`.
+The token is never made available to PR code because no PR-controlled file is
+checked out or executed, and checkout removes its stored credential during
+cleanup.
 
 This separation is intentional. A normal `pull_request` job executes files from
 the proposed change, so it cannot be the authority that decides whether its own
@@ -129,8 +141,9 @@ Merging the gate to `main` makes the trusted workflow available without copying
 the checker through every existing stack branch. It does not retroactively make
 old green `Validate` runs topology evidence. Before any stacked PR merges:
 
-1. Configure `Stack Topology / Verify` as a required check for every protected
-   branch that can receive a stacked PR.
+1. Configure the explicit head-bound `Stack Topology / Verify` Check Run as a
+   required check for every protected branch that can receive a stacked PR. Do
+   not select the workflow job `Stack Topology / Trusted Publisher`.
 2. Starting at each stack root, fetch the exact current parent and run the local
    command above. Do not change evidence for a failing topology.
 3. Replace the PR-body evidence block with the exact result. The body edit
@@ -140,8 +153,9 @@ old green `Validate` runs topology evidence. Before any stacked PR merges:
    general `Validate` result is not an exception.
 5. Reconverge root-to-leaf. Land each expected-parent update on `main`, replace
    the affected PR's evidence, and require a new trusted pass after every parent
-   or child movement. Keep the child blocked while its default-branch manifest
-   update is under review.
+   or child movement. The scheduled fan-out fails old evidence automatically;
+   use the manual dispatch when waiting five minutes is unsafe. Keep the child
+   blocked while its default-branch manifest update is under review.
 
 Keep the relaunch and stack merge queue frozen until every open stacked PR has a
 fresh `Stack Topology / Verify` result. If repository rules cannot require the
