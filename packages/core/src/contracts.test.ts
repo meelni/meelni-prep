@@ -275,6 +275,23 @@ test("launch context overrides fallback interview defaults", () => {
   assert.equal(recommendation.source, "launch_context");
 });
 
+test("a selected question round overrides conflicting launch context", () => {
+  const recommendation = buildInterviewRecommendation({
+    selectedQuestion: {
+      id: "question-1",
+      text: "How would you improve activation?",
+      company: "Example",
+      type: "Product Sense",
+    },
+    requestedRoundType: "strategy",
+    requestedDifficulty: "advanced",
+  });
+
+  assert.equal(recommendation.roundType, "product_sense");
+  assert.equal(recommendation.difficulty, "advanced");
+  assert.equal(recommendation.source, "selected_question");
+});
+
 test("question type mapping supports stored question bank labels", () => {
   assert.equal(mapQuestionTypeToRoundType("Behavioral"), "behavioral");
   assert.equal(

@@ -21,6 +21,7 @@ interface RoundSelectorProps {
   onSelect: (roundType: RoundType) => void;
   lockedTypes?: RoundType[];
   onLockedClick?: (roundType: RoundType) => void;
+  disabled?: boolean;
 }
 
 const iconMap = {
@@ -35,6 +36,7 @@ export function RoundSelector({
   onSelect,
   lockedTypes = [],
   onLockedClick,
+  disabled = false,
 }: RoundSelectorProps) {
   // Get all interview types in original order
   const allRoundTypes = Object.keys(ROUND_TYPES) as RoundType[];
@@ -70,6 +72,7 @@ export function RoundSelector({
         const tierBadge = isLocked ? getRequiredTierBadge(roundType) : "";
 
         const handleClick = () => {
+          if (disabled) return;
           if (isLocked && onLockedClick) {
             onLockedClick(roundType);
           } else if (!isLocked) {
@@ -82,7 +85,14 @@ export function RoundSelector({
             <SelectableCard
               selected={isSelected && !isLocked}
               locked={isLocked}
-              className={isLocked ? undefined : "hover:scale-[1.01]"}
+              disabled={disabled}
+              className={
+                disabled
+                  ? "cursor-not-allowed opacity-60"
+                  : isLocked
+                    ? undefined
+                    : "hover:scale-[1.01]"
+              }
               onClick={handleClick}
             >
               {/* Gradient background on hover/select */}

@@ -50,7 +50,6 @@ export function buildInterviewRecommendation(
 ): InterviewRecommendation {
   if (input.selectedQuestion) {
     const roundType =
-      input.requestedRoundType ??
       mapQuestionTypeToRoundType(input.selectedQuestion.type) ??
       "product_sense";
 

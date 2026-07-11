@@ -29,6 +29,41 @@ Unknown types are rejected at the API boundary or skipped by ingestion; they are
 - `pagination.total` is the count of the complete filtered set, not the count of the current page.
 - `pagination.hasMore` is true when the current offset and returned row count have not reached that total.
 
+## Selected-question launch semantics
+
+`GET /api/questions/[id]` accepts a UUID and returns only an active question.
+Malformed IDs return `400`; deleted, missing, and inactive records share the
+same `404` response. The practice setup surface validates a non-empty selected
+question before enabling interview start and renders its question text,
+company tag, and canonical round label for confirmation.
+
+For a selected question, the active database record is authoritative for the
+round. Setup disables round changes while that intent is attached, and session
+start normalizes the persisted question type before user, credit, session,
+usage, or LiveKit side effects. Runtime configuration is server-owned and
+strips every conflicting round alias, so the resolved canonical session round
+and top-level room metadata round remain the only round authorities. A
+conflicting compatibility query is ignored; an active question whose stored
+type cannot map to a canonical round fails with the stable
+`selected_question_round_unavailable` response.
+Question-free launches continue to use the candidate-selected or query-provided
+round.
+
+If selected intent becomes unavailable, setup presents explicit recovery. The
+candidate can choose another question from the safe `returnTo` origin or remove
+only `questionId` and continue with all other canonical and compatibility query
+parameters intact. Session start repeats the active-record check so a question
+deactivated after setup validation cannot be used.
+
+Malformed, missing, inactive, and semantically invalid question intent is
+terminal and uses the unavailable recovery state. A `5xx`, network failure, or
+response parse failure is temporary. Verification has one bounded deadline
+covering both the response and its body; a deadline expiry is also temporary.
+Setup retains `questionId`, disables start, explains that verification is
+paused, and offers Retry without changing the rest of the launch query. A URL
+intent change cancels the superseded verification without presenting it as a
+failure for the new question.
+
 ## Data rollout
 
 The public contract and all application decisions use the four canonical rounds. Until the historical migration baseline is reconciled, the storage adapter persists canonical Strategy questions with the database-compatible `Product Strategy` label. Reads normalize that label back to `Strategy` before it leaves the data boundary.
