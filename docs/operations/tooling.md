@@ -207,7 +207,7 @@ it uses provider-neutral fakes. LiveKit Agents and its plugins are pinned as one
 tested version family in `agent/requirements.txt`; update them together and
 rerun TypeScript/Python golden contract fixtures before deployment.
 
-## Stacked Pull Request Verification
+## Relaunch Pull Request Verification
 
 Stack relationships and exact expected parent heads live in the trusted
 default-branch copy of `.github/stacked-prs.json`. The read-only
@@ -233,13 +233,41 @@ protection does not treat GitHub's `neutral` conclusion as satisfying this
 required context. Registered children and undeclared non-default stacks retain
 the exact fail-closed behavior described in the runbook.
 
+The same trusted workflow inventories every open same-repository PR and all of
+its paginated file diffs. Every non-removed change to a direct
+`lib/db/migrations/<numeric>_*.sql` file claims that numeric sequence. Removed
+or renamed-away migration history fails as an immutable-history violation. The
+workflow publishes a separate exact-head `Migration Collision / Verify` Check
+Run: unique owners pass, every owner of a duplicate sequence fails, and the
+triggering PR receives a neutral result when it changes no Drizzle migration.
+Fork PRs do not enter the repository migration inventory.
+Fork events also skip the migration fan-out so untrusted contributors cannot
+consume the same-repository audit budget.
+
+The inventory fails closed. A malformed response, incomplete PR/file page,
+moving PR head, GitHub API error, or Check Run error prevents the workflow from
+claiming that collision absence was proved. When the open PR list is known, an
+incomplete file inventory publishes failure to every known migration or
+immutable-history owner, every PR whose diff failed, and the triggering PR. Any
+missing diff could collide with a known migration owner. On a PR event where
+the list itself fails, the triggering exact head receives failure. The
+scheduled job also fails so an operator cannot mistake missing checks for a
+clean inventory.
+
+Opened, reopened, synchronized, edited, closed, draft-conversion, and
+ready-for-review events refresh affected owners immediately. The five-minute
+schedule is a recovery path for missed events and parent/default-branch
+movement. Scheduled runs publish only migration or immutable-history owners,
+not every open PR, and reuse the latest completed Check Run when its exact head,
+conclusion, and summary are unchanged.
+
 Run the offline regression fixtures with:
 
 ```bash
 npm run test:stack
 ```
 
-The reconvergence procedure and manual audit command are documented in
+The reconvergence, migration serialization, and manual audit procedures are documented in
 [Stacked Pull Requests](./stacked-pull-requests.md).
 
 ## Database Migration Verification

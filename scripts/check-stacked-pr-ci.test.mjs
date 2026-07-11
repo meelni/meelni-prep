@@ -689,20 +689,17 @@ test("the authoritative workflow checks out default-branch code and never PR cod
   assert.match(workflow, /group: stack-topology-publisher/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /queue: max/);
-  assert.match(
-    workflow,
-    /types: \[opened, reopened, synchronize, edited, closed\]/
-  );
+  assert.match(workflow, /pull_request_target:[^]*types:[^]*closed/);
   assert.match(workflow, /persist-credentials: true/);
   assert.match(
     workflow,
     /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/
   );
+  assert.match(workflow, /run: node scripts\/verify-relaunch-pr-gates-ci\.mjs/);
   assert.match(
     workflow,
-    /run: node scripts\/revalidate-stacked-prs-ci\.mjs --event-path "\$GITHUB_EVENT_PATH"/
+    /run: node scripts\/revalidate-relaunch-pr-gates-ci\.mjs/
   );
-  assert.match(workflow, /run: node scripts\/revalidate-stacked-prs-ci\.mjs/);
   assert.doesNotMatch(workflow, /pull_request\.head\.sha/);
   assert.doesNotMatch(workflow, /checkout[^]*pull_request\.head/);
   assert.doesNotMatch(generalCi, /check:stack:ci/);

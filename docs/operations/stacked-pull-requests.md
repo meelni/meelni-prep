@@ -160,15 +160,53 @@ is branch-protection compatibility, not stack evidence. Registered stack
 children receive success only after exact child, parent, ancestry, and PR-body
 evidence verification.
 
+## Cross-PR migration ownership
+
+Stack ancestry alone cannot detect two sibling or standalone PRs adding
+different Drizzle files with the same sequence. The trusted workflow therefore
+loads the paginated open-PR list and each same-repository PR's paginated file
+diff from GitHub. Every non-removed change to a direct
+`lib/db/migrations/<numeric>_*.sql` file owns its numeric sequence, so two PRs
+modifying the same numbered file also collide. Removing a migration or renaming
+away its prior path fails as an immutable-history violation; the API inventory
+does not guess that changing committed history is safe. Snapshot JSON and
+`_journal.json` are companion artifacts, not independent owners.
+
+`Migration Collision / Verify` is published on each exact open PR head:
+
+- success means every sequence changed by that head has one open owner;
+- failure names every colliding PR and migration path;
+- neutral means that head changes no numeric Drizzle SQL migration;
+- an incomplete API inventory fails closed rather than publishing speculative
+  success.
+
+The check runs on open, reopen, synchronize, edit, close, draft-conversion, and
+ready-for-review events, plus the same five-minute/manual trusted revalidation.
+Scheduled runs target only migration or immutable-history owners; the triggering
+non-migration PR receives a neutral result. An identical completed result on the
+same exact head is reused, bounding Check Run churn. The workflow still checks
+out only default-branch code; it reads PR metadata and file names but never
+fetches or executes PR files for collision detection.
+
+This gate prevents new duplicate ownership; it does not make independently
+generated journals composable. Merge one migration-bearing PR at a time in the
+canonical SAV-241 order. After each schema merge, rebase the next PR onto the
+actual new `main`, remove superseded migration artifacts, regenerate its SQL,
+journal entry, and snapshot at the next valid sequence, then rerun clean and
+legacy-upgrade database migration tests. The PR body must name its exact base,
+head, and migration predecessor. Do not merge merely because the collision
+check is green.
+
 ## Initial rollout for the existing stacks
 
 Merging the gate to `main` makes the trusted workflow available without copying
 the checker through every existing stack branch. It does not retroactively make
 old green `Validate` runs topology evidence. Before any stacked PR merges:
 
-1. Configure the explicit head-bound `Stack Topology / Verify` Check Run as a
-   required check for every protected branch that can receive a stacked PR. Do
-   not select the workflow job `Stack Topology / Trusted Publisher`.
+1. Configure the explicit head-bound `Stack Topology / Verify` and
+   `Migration Collision / Verify` Check Runs as required checks for every
+   protected branch that can receive a relaunch PR. Do not select the workflow
+   job `Relaunch Integration Gates / Trusted Publisher`.
 2. Starting at each stack root, fetch the exact current parent and run the local
    command above. Do not change evidence for a failing topology.
 3. Replace the PR-body evidence block with the exact result. The body edit

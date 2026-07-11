@@ -1,8 +1,17 @@
-name: Stack Topology
+name: Relaunch Integration Gates
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize, edited, closed]
+    types:
+      [
+        opened,
+        reopened,
+        synchronize,
+        edited,
+        closed,
+        converted_to_draft,
+        ready_for_review,
+      ]
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
@@ -43,14 +52,14 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify exact stacked PR topology and evidence
-        run: node scripts/revalidate-stacked-prs-ci.mjs --event-path "$GITHUB_EVENT_PATH"
+      - name: Verify stack topology and migration ownership
+        run: node scripts/verify-relaunch-pr-gates-ci.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
   revalidate:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    name: Revalidate Open Stacks
+    name: Revalidate Open PR Gates
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -70,8 +79,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Revalidate every open registered stack
-        run: node scripts/revalidate-stacked-prs-ci.mjs
+      - name: Revalidate every open PR gate
+        run: node scripts/revalidate-relaunch-pr-gates-ci.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
