@@ -6,17 +6,23 @@ import { fileURLToPath } from "node:url";
 const DEFAULT_MANIFEST = ".github/stacked-prs.json";
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const REF_PATTERN = /^(?!\/)(?!.*(?:\.\.|\/\/))[A-Za-z0-9._/-]+$/;
+const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const EVIDENCE_PATTERN = /<!--\s*meelni-stack-evidence\s*\n([\s\S]*?)\n\s*-->/m;
 
 export function loadStackManifest(path = DEFAULT_MANIFEST) {
   const manifest = JSON.parse(readFileSync(path, "utf8"));
-  if (manifest.version !== 1 || !Array.isArray(manifest.stacks)) {
+  if (
+    manifest.version !== 1 ||
+    !REPOSITORY_PATTERN.test(manifest.repository ?? "") ||
+    !Array.isArray(manifest.stacks)
+  ) {
     throw new Error("stack_manifest_invalid_shape");
   }
   const seen = new Set();
   for (const entry of manifest.stacks) {
     if (
       !Number.isInteger(entry.pr) ||
+      entry.pr < 1 ||
       !REF_PATTERN.test(entry.headRef ?? "") ||
       !REF_PATTERN.test(entry.parentRef ?? "") ||
       !SHA_PATTERN.test(entry.expectedParentHead ?? "")
@@ -58,18 +64,33 @@ export function extractStackEvidence(content) {
 
 export function validatePullRequestDeclaration({
   manifest,
+  prNumber,
   headRef,
+  headRepository,
   baseRef,
   defaultBranch = "main",
 }) {
+  const isManifestRepository = headRepository === manifest.repository;
   const entry = manifest.stacks.find(
     (candidate) => candidate.headRef === headRef
   );
+  if (!isManifestRepository) {
+    if (baseRef !== defaultBranch) {
+      return {
+        entry: null,
+        errors: ["stacked_pr_must_originate_from_manifest_repository"],
+      };
+    }
+    return { entry: null, errors: [] };
+  }
   if (!entry && baseRef !== defaultBranch) {
     return {
       entry: null,
       errors: ["stack_relationship_missing_from_manifest"],
     };
+  }
+  if (entry && entry.pr !== prNumber) {
+    return { entry, errors: ["github_pr_differs_from_manifest_entry"] };
   }
   if (entry && entry.parentRef !== baseRef) {
     return { entry, errors: ["github_base_differs_from_declared_parent"] };

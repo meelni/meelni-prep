@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "repository": "saviii/meelni-prep",
   "stacks": [
     {
       "pr": 253,
@@ -23,7 +24,7 @@
       "pr": 260,
       "headRef": "codex/sav-193-transcript-privacy",
       "parentRef": "codex/sav-194-transcript-ingest",
-      "expectedParentHead": "3ff4c70407284ad839c47b1f6b682bbf160f22f6"
+      "expectedParentHead": "e4621c305082e5bf67f7162f935092eff67e88e5"
     },
     {
       "pr": 263,
@@ -41,7 +42,7 @@
       "pr": 266,
       "headRef": "codex/sav-195-feedback-v2",
       "parentRef": "codex/sav-194-transcript-ingest",
-      "expectedParentHead": "3ff4c70407284ad839c47b1f6b682bbf160f22f6"
+      "expectedParentHead": "e4621c305082e5bf67f7162f935092eff67e88e5"
     },
     {
       "pr": 268,
@@ -53,7 +54,7 @@
       "pr": 270,
       "headRef": "codex/sav-231-billing-truth",
       "parentRef": "codex/sav-230-provider-credit-recovery",
-      "expectedParentHead": "2a3a9e19e3a752b4ac26c9a6a75e01d4b2edeb02"
+      "expectedParentHead": "b729a3fc7e78698c6b39fabd23de3b644089489f"
     },
     {
       "pr": 272,
@@ -77,7 +78,7 @@
       "pr": 277,
       "headRef": "codex/sav-149-transcript-body-hardening",
       "parentRef": "codex/sav-194-transcript-ingest",
-      "expectedParentHead": "3ff4c70407284ad839c47b1f6b682bbf160f22f6"
+      "expectedParentHead": "e4621c305082e5bf67f7162f935092eff67e88e5"
     },
     {
       "pr": 281,

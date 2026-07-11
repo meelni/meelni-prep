@@ -209,11 +209,14 @@ rerun TypeScript/Python golden contract fixtures before deployment.
 
 ## Stacked Pull Request Verification
 
-Stack relationships and exact expected parent heads live in
-`.github/stacked-prs.json`. Hosted pull-request CI verifies that a declared
-child contains the current parent and that its PR-body evidence names the exact
-child head, parent head, and merge-base. The deterministic verifier performs no
-network access; its CI adapter fetches only the declared parent ref.
+Stack relationships and exact expected parent heads live in the trusted
+default-branch copy of `.github/stacked-prs.json`. The read-only
+`pull_request_target` workflow checks out only default-branch code, binds a
+declaration to the exact PR number and source repository, and fetches the
+server-owned PR head plus its declared parent. It never executes proposed PR
+code. The deterministic core remains offline and verifies that the child
+contains the current parent and that PR-body evidence names the exact child
+head, parent head, and merge-base.
 
 Run the offline regression fixtures with:
 
