@@ -114,6 +114,24 @@ function createDrizzleCreditLedgerTransaction(
     if (!rows[0]) throw new Error("credit_ledger_user_scope_mismatch");
   }
 
+  function assertOwnedGrantRows(rows: CreditGrantRow[]): void {
+    if (lockedUserId && rows.some((row) => row.userId !== lockedUserId)) {
+      throw new Error("credit_ledger_user_scope_mismatch");
+    }
+  }
+
+  function assertOwnedReservationRows(rows: CreditReservationRow[]): void {
+    if (lockedUserId && rows.some((row) => row.userId !== lockedUserId)) {
+      throw new Error("credit_ledger_user_scope_mismatch");
+    }
+  }
+
+  function assertOwnedTransactionRows(rows: CreditTransactionRow[]): void {
+    if (lockedUserId && rows.some((row) => row.userId !== lockedUserId)) {
+      throw new Error("credit_ledger_user_scope_mismatch");
+    }
+  }
+
   const store: CreditLedgerTransaction = {
     async createGrant(input) {
       requireLockedUser(input.userId);
@@ -135,12 +153,21 @@ function createDrizzleCreditLedgerTransaction(
     },
 
     async findGrantByIdempotencyKey(idempotencyKey) {
+      const userId = lockedUserId;
       const rows = await database
         .select()
         .from(creditGrant)
-        .where(eq(creditGrant.idempotencyKey, idempotencyKey))
+        .where(
+          userId
+            ? and(
+                eq(creditGrant.idempotencyKey, idempotencyKey),
+                eq(creditGrant.userId, userId)
+              )
+            : eq(creditGrant.idempotencyKey, idempotencyKey)
+        )
         .limit(1);
 
+      assertOwnedGrantRows(rows);
       return rows[0] ? mapGrant(rows[0]) : null;
     },
 
@@ -162,12 +189,21 @@ function createDrizzleCreditLedgerTransaction(
     },
 
     async findTransactionByIdempotencyKey(idempotencyKey) {
+      const userId = lockedUserId;
       const rows = await database
         .select()
         .from(creditTransaction)
-        .where(eq(creditTransaction.idempotencyKey, idempotencyKey))
+        .where(
+          userId
+            ? and(
+                eq(creditTransaction.idempotencyKey, idempotencyKey),
+                eq(creditTransaction.userId, userId)
+              )
+            : eq(creditTransaction.idempotencyKey, idempotencyKey)
+        )
         .limit(1);
 
+      assertOwnedTransactionRows(rows);
       return rows[0] ? mapTransaction(rows[0]) : null;
     },
 
@@ -189,6 +225,7 @@ function createDrizzleCreditLedgerTransaction(
     },
 
     async listSpendableGrants(userId, now) {
+      if (lockedUserId) requireLockedUser(userId);
       const rows = await database
         .select()
         .from(creditGrant)
@@ -205,6 +242,7 @@ function createDrizzleCreditLedgerTransaction(
           asc(creditGrant.id)
         );
 
+      assertOwnedGrantRows(rows);
       return rows.map(mapGrant);
     },
 
@@ -231,11 +269,13 @@ function createDrizzleCreditLedgerTransaction(
     },
 
     async listUserGrants(userId) {
+      if (lockedUserId) requireLockedUser(userId);
       const rows = await database
         .select()
         .from(creditGrant)
         .where(eq(creditGrant.userId, userId));
 
+      assertOwnedGrantRows(rows);
       return rows.map(mapGrant);
     },
 
@@ -298,12 +338,21 @@ function createDrizzleCreditLedgerTransaction(
     },
 
     async findReservationByKey(reservationKey) {
+      const userId = lockedUserId;
       const rows = await database
         .select()
         .from(creditReservation)
-        .where(eq(creditReservation.reservationKey, reservationKey))
+        .where(
+          userId
+            ? and(
+                eq(creditReservation.reservationKey, reservationKey),
+                eq(creditReservation.userId, userId)
+              )
+            : eq(creditReservation.reservationKey, reservationKey)
+        )
         .limit(1);
 
+      assertOwnedReservationRows(rows);
       return rows[0] ? mapReservation(rows[0]) : null;
     },
 
@@ -355,6 +404,7 @@ function createDrizzleCreditLedgerTransaction(
     },
 
     async listAllocations(reservationId) {
+      if (lockedUserId) await assertReservationOwnership(reservationId);
       const rows = await database
         .select()
         .from(creditReservationGrant)
