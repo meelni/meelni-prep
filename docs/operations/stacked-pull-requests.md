@@ -191,9 +191,12 @@ fetches or executes PR files for collision detection.
 All event and scheduled migration publishers use one global, non-canceling
 running concurrency group. This orders publication so an older run cannot land
 green after a newer run has detected a collision. The publisher also rechecks
-each exact PR head immediately before writing; a moved or unverifiable head gets
-a failure instead of stale success. Stack-topology jobs retain their separate
-per-PR concurrency because they publish only the triggering stack result.
+the full inventory and exact PR head before lookup, after lookup, and after
+Check Run creation immediately before completion. Check output records a
+deterministic SHA-256 inventory generation, and reuse requires that same
+generation. A moved or unverifiable PR set gets failure instead of stale
+success. Stack-topology jobs retain their separate per-PR concurrency because
+they publish only the triggering stack result.
 
 This gate prevents new duplicate ownership; it does not make independently
 generated journals composable. Merge one migration-bearing PR at a time in the

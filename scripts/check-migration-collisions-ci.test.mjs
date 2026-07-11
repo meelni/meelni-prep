@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   auditOpenMigrationPullRequests,
+  buildMigrationResultSummary,
   inventoryOpenMigrationPullRequests,
   MIGRATION_COLLISION_CHECK_NAME,
   paginateGithubApi,
@@ -434,6 +435,7 @@ test("an identical completed exact-head result is reused without a write", async
     migrations: [],
     violations: [],
     collisions: [],
+    inventorySnapshot: [`60:${"a".repeat(40)}:branch-60:main`],
     status: "not_applicable",
   };
   const calls = [];
@@ -452,8 +454,7 @@ test("an identical completed exact-head result is reused without a write", async
             status: "completed",
             conclusion: "neutral",
             output: {
-              summary:
-                "This exact PR head does not change a numeric Drizzle SQL migration.",
+              summary: buildMigrationResultSummary(result),
             },
           },
         ],
@@ -464,6 +465,32 @@ test("an identical completed exact-head result is reused without a write", async
   assert.equal(published.publication, "reused");
   assert.equal(calls.length, 1);
   assert.match(calls[0].path, new RegExp(`/commits/${result.headSha}/`));
+});
+
+test("check summaries bind reuse to the full inventory generation", () => {
+  const base = {
+    pr: 60,
+    headSha: "a".repeat(40),
+    headRef: "branch-60",
+    migrations: [],
+    violations: [],
+    collisions: [],
+    status: "not_applicable",
+  };
+  const first = buildMigrationResultSummary({
+    ...base,
+    inventorySnapshot: [`60:${"a".repeat(40)}:branch-60:main`],
+  });
+  const second = buildMigrationResultSummary({
+    ...base,
+    inventorySnapshot: [
+      `60:${"a".repeat(40)}:branch-60:main`,
+      `61:${"b".repeat(40)}:branch-61:main`,
+    ],
+  });
+  assert.notEqual(first, second);
+  assert.match(first, /Inventory generation: [0-9a-f]{64}\./);
+  assert.match(second, /Inventory generation: [0-9a-f]{64}\./);
 });
 
 test("a check lookup error replaces possible stale success with failure", async () => {
@@ -569,4 +596,125 @@ test("a deferred publication cannot emit stale success after the head moves", as
     completion.body.output.summary,
     /migration_collision_global_snapshot_became_stale/
   );
+});
+
+test("a matching check is not reused when the snapshot moves during lookup", async () => {
+  const result = {
+    pr: 63,
+    headSha: "e".repeat(40),
+    headRef: "branch-63",
+    baseRef: "main",
+    migrations: [],
+    violations: [],
+    collisions: [],
+    inventorySnapshot: [`63:${"e".repeat(40)}:branch-63:main`],
+    status: "not_applicable",
+  };
+  let releaseLookup;
+  const deferredLookup = new Promise((resolve) => {
+    releaseLookup = resolve;
+  });
+  let markLookupStarted;
+  const lookupStarted = new Promise((resolve) => {
+    markLookupStarted = resolve;
+  });
+  let freshnessCalls = 0;
+  const calls = [];
+  const publication = publishMigrationResult({
+    token: "token",
+    repository,
+    result,
+    api: checkApi(calls),
+    freshnessCheck: async () => {
+      freshnessCalls += 1;
+      if (freshnessCalls === 2) {
+        throw new Error("snapshot_moved_during_lookup");
+      }
+    },
+    reuseCheck: async () => {
+      markLookupStarted();
+      await deferredLookup;
+      return true;
+    },
+  });
+
+  await lookupStarted;
+  assert.equal(freshnessCalls, 1);
+  assert.equal(
+    calls.some((call) => call.path === "/check-runs"),
+    false
+  );
+  releaseLookup();
+  const published = await publication;
+  assert.equal(freshnessCalls, 2);
+  assert.equal(published.status, "error");
+  assert.equal(published.publication, "created");
+  const completion = calls.find((call) => call.path.startsWith("/check-runs/"));
+  assert.equal(completion.body.conclusion, "failure");
+  assert.match(completion.body.output.summary, /post_lookup/);
+  assert.match(completion.body.output.summary, /snapshot_moved_during_lookup/);
+});
+
+test("a snapshot move between check creation and completion patches failure", async () => {
+  const result = {
+    pr: 64,
+    headSha: "f".repeat(40),
+    headRef: "branch-64",
+    baseRef: "main",
+    migrations: [
+      {
+        sequence: "0014",
+        path: "lib/db/migrations/0014_owner.sql",
+        status: "added",
+      },
+    ],
+    violations: [],
+    collisions: [],
+    inventorySnapshot: [`64:${"f".repeat(40)}:branch-64:main`],
+    status: "pass",
+  };
+  let releaseCreate;
+  const deferredCreate = new Promise((resolve) => {
+    releaseCreate = resolve;
+  });
+  let markCreateStarted;
+  const createStarted = new Promise((resolve) => {
+    markCreateStarted = resolve;
+  });
+  let freshnessCalls = 0;
+  const calls = [];
+  const publication = publishMigrationResult({
+    token: "token",
+    repository,
+    result,
+    freshnessCheck: async () => {
+      freshnessCalls += 1;
+      if (freshnessCalls === 3) {
+        throw new Error("snapshot_moved_after_create");
+      }
+    },
+    reuseCheck: async () => false,
+    api: async (input) => {
+      calls.push(input);
+      if (input.path === "/check-runs") {
+        markCreateStarted();
+        await deferredCreate;
+        return { id: 903 };
+      }
+      if (input.path === "/check-runs/903") return {};
+      throw new Error(`unexpected_api_path:${input.path}`);
+    },
+  });
+
+  await createStarted;
+  assert.equal(freshnessCalls, 2);
+  assert.equal(calls.length, 1);
+  releaseCreate();
+  const published = await publication;
+  assert.equal(freshnessCalls, 3);
+  assert.equal(published.status, "error");
+  const completion = calls.find((call) => call.path === "/check-runs/903");
+  assert.equal(completion.body.conclusion, "failure");
+  assert.match(completion.body.output.summary, /pre_completion/);
+  assert.match(completion.body.output.summary, /snapshot_moved_after_create/);
 });

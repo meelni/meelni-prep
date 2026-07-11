@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -184,34 +185,42 @@ export async function inventoryOpenMigrationPullRequests({
   };
 }
 
-function collisionSummary(result) {
+function inventoryGeneration(result) {
+  if (!Array.isArray(result.inventorySnapshot)) return "unavailable";
+  return createHash("sha256")
+    .update(JSON.stringify(result.inventorySnapshot))
+    .digest("hex");
+}
+
+export function buildMigrationResultSummary(result) {
+  let summary;
   if (result.status === "error") {
-    return (
+    summary =
       result.inventoryError ??
-      "Open-PR migration inventory failed; collision absence cannot be proven."
-    );
-  }
-  if (result.status === "not_applicable") {
-    return "This exact PR head does not change a numeric Drizzle SQL migration.";
-  }
-  if (result.status === "pass") {
+      "Open-PR migration inventory failed; collision absence cannot be proven.";
+  } else if (result.status === "not_applicable") {
+    summary =
+      "This exact PR head does not change a numeric Drizzle SQL migration.";
+  } else if (result.status === "pass") {
     const sequences = result.migrations
       .map((migration) => migration.sequence)
       .join(", ");
-    return `This exact PR head owns migration sequence(s) ${sequences}; no other open same-repository PR owns them.`;
+    summary = `This exact PR head owns migration sequence(s) ${sequences}; no other open same-repository PR owns them.`;
+  } else {
+    const violations = (result.violations ?? []).map((violation) =>
+      violation.type === "migration_history_removed"
+        ? `Committed migration history was removed: ${JSON.stringify(violation.path)}.`
+        : `Committed migration history was renamed away: ${JSON.stringify(violation.path)} -> ${JSON.stringify(violation.replacementPath)}.`
+    );
+    const collisions = result.collisions.map((collision) => {
+      const owners = collision.owners
+        .map((owner) => `#${owner.pr} (${JSON.stringify(owner.path)})`)
+        .join(", ");
+      return `Sequence ${collision.sequence} has multiple open owners: ${owners}.`;
+    });
+    summary = [...violations, ...collisions].join("\n");
   }
-  const violations = (result.violations ?? []).map((violation) =>
-    violation.type === "migration_history_removed"
-      ? `Committed migration history was removed: ${JSON.stringify(violation.path)}.`
-      : `Committed migration history was renamed away: ${JSON.stringify(violation.path)} -> ${JSON.stringify(violation.replacementPath)}.`
-  );
-  const collisions = result.collisions.map((collision) => {
-    const owners = collision.owners
-      .map((owner) => `#${owner.pr} (${JSON.stringify(owner.path)})`)
-      .join(", ");
-    return `Sequence ${collision.sequence} has multiple open owners: ${owners}.`;
-  });
-  return [...violations, ...collisions].join("\n");
+  return `${summary}\nInventory generation: ${inventoryGeneration(result)}.`;
 }
 
 function conclusionForResult(result) {
@@ -241,7 +250,7 @@ export async function hasMatchingMigrationCheck({
   ) {
     throw new Error("migration_collision_check_lookup_invalid");
   }
-  const expectedSummary = collisionSummary(result).slice(0, 60_000);
+  const expectedSummary = buildMigrationResultSummary(result).slice(0, 60_000);
   return response.check_runs.some(
     (check) =>
       check?.name === MIGRATION_COLLISION_CHECK_NAME &&
@@ -337,7 +346,7 @@ export async function completeMigrationCheck({
   api = githubApi,
 }) {
   const conclusion = conclusionForResult(result);
-  const summary = collisionSummary(result).slice(0, 60_000);
+  const summary = buildMigrationResultSummary(result).slice(0, 60_000);
   await api({
     token,
     repository,
@@ -370,51 +379,64 @@ export async function publishMigrationResult({
   reuseCheck = hasMatchingMigrationCheck,
   freshnessCheck = assertMigrationResultFresh,
 }) {
-  let freshnessFailed = false;
-  try {
-    await freshnessCheck({
-      token,
-      repository,
-      result,
-      fetchImpl,
-      api,
-    });
-  } catch (error) {
+  const failFreshness = (currentResult, error, phase) => {
     const code =
       error instanceof Error
         ? error.message
         : "migration_collision_freshness_check_failed";
-    result = {
-      ...result,
+    return {
+      ...currentResult,
       status: "error",
-      inventoryError: `Publication was deferred because the exact PR head could not be proven current (${code}); a failure replaces any stale success.`,
+      inventoryError: `Publication was rejected at ${phase} because the full open-PR snapshot and exact head could not be proven current (${code}); a failure replaces any stale success.`,
     };
-    freshnessFailed = true;
-  }
-  try {
-    if (
-      !freshnessFailed &&
-      (await reuseCheck({
+  };
+  const verifyFreshness = async (phase) => {
+    try {
+      await freshnessCheck({
         token,
         repository,
         result,
         fetchImpl,
         api,
-      }))
-    ) {
-      return { ...result, publication: "reused" };
+      });
+      return true;
+    } catch (error) {
+      result = failFreshness(result, error, phase);
+      return false;
     }
-  } catch (error) {
-    const code =
-      error instanceof Error
-        ? error.message
-        : "migration_collision_check_lookup_failed";
-    result = {
-      ...result,
-      status: "error",
-      inventoryError: `The latest exact-head collision check could not be read (${code}); a failure replaces any stale success.`,
-    };
+  };
+
+  let snapshotCurrent = await verifyFreshness("pre_lookup");
+  let matchingCheck = false;
+  if (snapshotCurrent) {
+    try {
+      matchingCheck = await reuseCheck({
+        token,
+        repository,
+        result,
+        fetchImpl,
+        api,
+      });
+    } catch (error) {
+      const code =
+        error instanceof Error
+          ? error.message
+          : "migration_collision_check_lookup_failed";
+      result = {
+        ...result,
+        status: "error",
+        inventoryError: `The latest exact-head collision check could not be read (${code}); a failure replaces any stale success.`,
+      };
+      snapshotCurrent = false;
+    }
   }
+  if (snapshotCurrent) {
+    snapshotCurrent = await verifyFreshness("post_lookup");
+  }
+  if (snapshotCurrent && matchingCheck) {
+    return { ...result, publication: "reused" };
+  }
+
   const checkId = await createMigrationCheck({
     token,
     repository,
@@ -422,6 +444,9 @@ export async function publishMigrationResult({
     fetchImpl,
     api,
   });
+  if (snapshotCurrent) {
+    await verifyFreshness("pre_completion");
+  }
   await completeMigrationCheck({
     token,
     repository,

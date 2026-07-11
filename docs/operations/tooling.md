@@ -268,10 +268,14 @@ Event-driven and scheduled migration publishers share the global
 `migration-collision-audit` concurrency group with running-run cancellation
 disabled. An older inventory therefore cannot finish after a newer audit and
 overwrite its collision failure with stale success. Immediately before each
-Check Run write, the publisher re-reads that PR and verifies the recorded head,
-head ref, repository, and base ref. If publication was deferred across a head
-move or the freshness read fails, it publishes failure rather than reusing or
-creating success from the stale result.
+publication phase, the publisher re-lists the complete same-repository PR set
+and verifies the recorded inventory generation, head, head ref, repository, and
+base ref. Freshness is checked before lookup, after lookup before reuse/create,
+and after Check Run creation immediately before completion. Check summaries
+include the SHA-256 inventory generation, so reuse cannot cross snapshots. If
+publication is deferred across a PR-set or head change, or any freshness read
+fails, the run creates or patches failure rather than reusing or completing
+success from the stale result.
 
 Run the offline regression fixtures with:
 
