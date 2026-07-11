@@ -363,10 +363,10 @@ export default function ContactPage() {
                     View billing history
                   </Link>
                   <Link href="/privacy" className="block text-sm text-primary hover:underline">
-                    Privacy Policy
+                    Privacy draft
                   </Link>
                   <Link href="/terms" className="block text-sm text-primary hover:underline">
-                    Terms of Service
+                    Terms draft
                   </Link>
                 </div>
               </MarketingCard>
