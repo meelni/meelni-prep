@@ -102,7 +102,13 @@ import {
   readOperationalRequestId,
   reportOperationalFailure,
 } from "@/lib/operations/operational-events";
-import { startInterviewSessionWorkflow } from "@/lib/workflows/start-session";
+import {
+  startInterviewSessionWorkflow,
+  type StartInterviewSessionBody,
+} from "@/lib/workflows/start-session";
+import { readBoundedJson } from "@/lib/http/read-bounded-json";
+
+const MAX_INTERVIEW_START_BODY_BYTES = 16 * 1024;
 
 export async function POST(req: NextRequest) {
   try {
@@ -118,7 +124,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse request body first to access roundType
-    const body = await req.json();
+    const parsedBody = await readBoundedJson(
+      req,
+      MAX_INTERVIEW_START_BODY_BYTES
+    );
+    if (!parsedBody.ok) {
+      return NextResponse.json(
+        {
+          error:
+            parsedBody.reason === "too_large"
+              ? "Payload too large"
+              : "Invalid request",
+        },
+        { status: parsedBody.reason === "too_large" ? 413 : 400 }
+      );
+    }
+    const body = parsedBody.value as StartInterviewSessionBody;
     // Validate required environment variables
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (!livekitEnv.ok) {

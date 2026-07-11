@@ -27,6 +27,7 @@ export const OPERATIONAL_FAILURE_ERROR_CODES = [
   "livekit_reconnect_rate_limit_unavailable",
   "livekit_token_issue_failed",
   "livekit_token_unavailable",
+  "operational_reporter_failed",
   "question_sync_failed",
   "question_sync_unavailable",
   "stripe_signature_invalid",
@@ -116,26 +117,43 @@ export function reportOperationalFailure(
   input: OperationalFailureInput,
   dependencies: OperationalEventDependencies = defaultDependencies
 ): OperationalFailureEvent {
-  if (!isOperationalFailureErrorCode(input.errorCode)) {
-    throw new Error("Operational error code is not in the versioned contract");
-  }
-
-  const event: OperationalFailureEvent = {
+  const fallback: OperationalFailureEvent = {
     event: "meelni_operational_failure",
     version: 1,
-    occurredAt: dependencies.now().toISOString(),
-    environment: readEnvironment(dependencies.env),
-    release: readRelease(dependencies.env),
-    operation: input.operation,
-    errorCode: input.errorCode,
-    severity: input.severity ?? "error",
+    occurredAt: "1970-01-01T00:00:00.000Z",
+    environment: "unknown",
+    release: null,
+    operation: OPERATIONAL_FAILURE_OPERATIONS.includes(input.operation)
+      ? input.operation
+      : "interview_start",
+    errorCode: "operational_reporter_failed",
+    severity: "error",
     retryable: input.retryable,
-    requestId: sanitizeRequestId(input.requestId),
-    correlationId: sanitizeCorrelationId(input.correlationId),
+    requestId: null,
+    correlationId: null,
   };
-
-  dependencies.write(JSON.stringify(event));
-  return event;
+  try {
+    if (!isOperationalFailureErrorCode(input.errorCode)) return fallback;
+    const event: OperationalFailureEvent = {
+      ...fallback,
+      occurredAt: dependencies.now().toISOString(),
+      environment: readEnvironment(dependencies.env),
+      release: readRelease(dependencies.env),
+      operation: input.operation,
+      errorCode: input.errorCode,
+      severity: input.severity ?? "error",
+      requestId: sanitizeRequestId(input.requestId),
+      correlationId: sanitizeCorrelationId(input.correlationId),
+    };
+    try {
+      dependencies.write(JSON.stringify(event));
+    } catch {
+      return fallback;
+    }
+    return event;
+  } catch {
+    return fallback;
+  }
 }
 
 export function readOperationalRequestId(

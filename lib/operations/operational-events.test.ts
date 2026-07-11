@@ -105,7 +105,7 @@ test("untrusted identifiers and environment values fail closed", () => {
   assert.equal(event.correlationId, null);
 });
 
-test("unknown and secret-shaped error codes cannot enter the structured event", () => {
+test("unknown and secret-shaped error codes fail closed without throwing", () => {
   if (false) {
     reportOperationalFailure({
       operation: "auth_callback",
@@ -114,22 +114,51 @@ test("unknown and secret-shaped error codes cannot enter the structured event", 
       retryable: false,
     });
   }
-  assert.throws(
-    () =>
-      reportOperationalFailure(
-        {
-          operation: "auth_callback",
-          errorCode: "sk_live_secret_key" as never,
-          retryable: false,
-        },
-        {
-          now: () => new Date(),
-          env: {},
-          write: () => {},
-        }
-      ),
-    /versioned contract/
+  assert.equal(
+    reportOperationalFailure(
+      {
+        operation: "auth_callback",
+        errorCode: "sk_live_secret_key" as never,
+        retryable: false,
+      },
+      {
+        now: () => new Date(),
+        env: {},
+        write: () => {},
+      }
+    ).errorCode,
+    "operational_reporter_failed"
   );
+});
+
+test("throwing clocks and sinks cannot mask the product failure", () => {
+  const base = {
+    operation: "interview_start" as const,
+    errorCode: "interview_start_failed" as const,
+    retryable: true,
+  };
+  for (const dependencies of [
+    {
+      now: () => {
+        throw new Error("clock");
+      },
+      env: {},
+      write: () => {},
+    },
+    {
+      now: () => new Date(),
+      env: {},
+      write: () => {
+        throw new Error("sink");
+      },
+    },
+  ]) {
+    assert.doesNotThrow(() => reportOperationalFailure(base, dependencies));
+    assert.equal(
+      reportOperationalFailure(base, dependencies).errorCode,
+      "operational_reporter_failed"
+    );
+  }
 });
 
 test("request and interview-session correlation helpers accept only domain-owned identifiers", () => {

@@ -4,6 +4,11 @@
 
 Meelni emits one-line JSON operational-failure events to server stderr. Vercel captures them in Runtime Logs. No external drain, incident vendor, or alert receiver is configured by this code change.
 
+The reporter is failure-isolated: an invalid clock or throwing log sink returns
+a fixed redacted fallback and must never replace the product workflow failure.
+Instrumented JSON request boundaries reject declared or streamed bodies above
+16 KiB and never include rejected body content in logs.
+
 The relaunch gate must remain off until a controlled isolated-Preview failure proves that the selected operator can receive and act on alerts. Do not generate that failure against the current shared Production database.
 
 ## Finding failures
