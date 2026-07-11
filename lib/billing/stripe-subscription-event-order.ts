@@ -6,6 +6,20 @@ export interface StripeSubscriptionEventCursor {
   eventId: string;
 }
 
+export function mayApplyStripeSubscriptionResource(input: {
+  currentResourceId: string | null;
+  currentStatus: string | null;
+  candidateResourceId: string;
+  eventType: string;
+}): boolean {
+  if (!input.currentResourceId) return true;
+  if (input.currentResourceId === input.candidateResourceId) return true;
+  return (
+    input.eventType === "customer.subscription.created" &&
+    input.currentStatus === "canceled"
+  );
+}
+
 const priorities: Record<string, number> = {
   "invoice.payment_failed": 10,
   "invoice.payment_succeeded": 20,
