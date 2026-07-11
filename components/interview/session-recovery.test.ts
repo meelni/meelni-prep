@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   getCanonicalInterviewHref,
   getCredentialRetryDelayMs,
+  isInterviewRoomCredentialAuthorizationCurrent,
   parseInterviewRoomCredentials,
   reduceInterviewConnectionState,
   shouldDiscardInterviewRoomCredentials,
@@ -90,6 +91,59 @@ test("reconnect credentials require a live authorization generation", () => {
     ),
     null
   );
+});
+
+test("reconnect credential generation must still match current lifecycle truth", () => {
+  const credentials = {
+    token: "short-lived-token",
+    url: "wss://preview.livekit.cloud",
+    roomName: "interview-owned-room",
+    authorizationVersion: 4,
+    expiresAt: "2026-07-10T08:00:30.000Z",
+  };
+  const now = new Date("2026-07-10T08:00:00.000Z");
+  assert.equal(
+    isInterviewRoomCredentialAuthorizationCurrent(
+      credentials,
+      {
+        lifecycleState: "reconnecting",
+        lifecycleVersion: 4,
+        reconnectDeadlineAt: "2026-07-10T08:00:30.000Z",
+        endedAt: null,
+      },
+      now
+    ),
+    true
+  );
+  for (const lifecycle of [
+    {
+      lifecycleState: "reconnecting",
+      lifecycleVersion: 5,
+      reconnectDeadlineAt: "2026-07-10T08:00:30.000Z",
+      endedAt: null,
+    },
+    {
+      lifecycleState: "ending",
+      lifecycleVersion: 4,
+      reconnectDeadlineAt: "2026-07-10T08:00:30.000Z",
+      endedAt: null,
+    },
+    {
+      lifecycleState: "failed",
+      lifecycleVersion: 5,
+      reconnectDeadlineAt: null,
+      endedAt: "2026-07-10T08:00:01.000Z",
+    },
+  ]) {
+    assert.equal(
+      isInterviewRoomCredentialAuthorizationCurrent(
+        credentials,
+        lifecycle,
+        now
+      ),
+      false
+    );
+  }
 });
 
 test("credential retries are bounded and limited to transient responses", () => {

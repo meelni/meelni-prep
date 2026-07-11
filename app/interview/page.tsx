@@ -35,6 +35,7 @@ import { shouldAnalyzeNudges, type HintMode } from "@meelni/core";
 import {
   getCanonicalInterviewHref,
   getCredentialRetryDelayMs,
+  isInterviewRoomCredentialAuthorizationCurrent,
   parseInterviewRoomCredentials,
   shouldDiscardInterviewRoomCredentials,
   type InterviewConnectionStatus,
@@ -1061,7 +1062,31 @@ async function requestInterviewRoomCredentialsWithRetry(
           payload,
           expectedRoomName
         );
-        if (credentials) return { ok: true, credentials };
+        if (credentials) {
+          const lifecycleResponse = await fetch(`/api/session/${sessionId}`, {
+            cache: "no-store",
+          });
+          const lifecyclePayload = await lifecycleResponse
+            .json()
+            .catch(() => null);
+          if (
+            lifecycleResponse.ok &&
+            isRecord(lifecyclePayload) &&
+            isInterviewRoomCredentialAuthorizationCurrent(
+              credentials,
+              lifecyclePayload.session
+            )
+          ) {
+            return { ok: true, credentials };
+          }
+          return {
+            ok: false,
+            status: 409,
+            error: "session_not_joinable",
+            message: "This interview session is no longer active.",
+            retryAfterMs: null,
+          };
+        }
 
         return {
           ok: false,

@@ -319,7 +319,9 @@ function deriveJoinAuthorization(
 
   const expiresAt =
     session.lifecycleState === "reconnecting"
-      ? session.reconnectDeadlineAt!
+      ? new Date(
+          Math.min(session.reconnectDeadlineAt!.getTime(), deadlineAt.getTime())
+        )
       : deadlineAt;
   const remainingSeconds = Math.floor(
     (expiresAt.getTime() - now.getTime()) / 1_000

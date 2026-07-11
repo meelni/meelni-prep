@@ -77,7 +77,11 @@ async function readBoundedWebhookBody(
       if (done) break;
       bytesRead += value.byteLength;
       if (bytesRead > MAX_LIVEKIT_WEBHOOK_BODY_BYTES) {
-        await reader.cancel();
+        try {
+          await reader.cancel();
+        } catch {
+          // The size verdict is already final; cancellation is best-effort.
+        }
         return { ok: false, reason: "too_large" };
       }
       chunks.push(Buffer.from(value));

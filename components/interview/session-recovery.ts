@@ -115,6 +115,45 @@ export function parseInterviewRoomCredentials(
   return { token, url, roomName };
 }
 
+export function isInterviewRoomCredentialAuthorizationCurrent(
+  credentials: InterviewRoomCredentials,
+  lifecycle: unknown,
+  now = new Date()
+): boolean {
+  if (
+    credentials.authorizationVersion === undefined ||
+    credentials.expiresAt === undefined ||
+    !isRecord(lifecycle)
+  ) {
+    return false;
+  }
+  const expiresAt = Date.parse(credentials.expiresAt);
+  if (
+    lifecycle.lifecycleVersion !== credentials.authorizationVersion ||
+    !["connecting", "active", "reconnecting"].includes(
+      String(lifecycle.lifecycleState)
+    ) ||
+    lifecycle.endedAt !== null ||
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= now.getTime()
+  ) {
+    return false;
+  }
+  if (lifecycle.lifecycleState === "reconnecting") {
+    const reconnectDeadlineAt =
+      typeof lifecycle.reconnectDeadlineAt === "string"
+        ? Date.parse(lifecycle.reconnectDeadlineAt)
+        : Number.NaN;
+    if (
+      !Number.isFinite(reconnectDeadlineAt) ||
+      expiresAt > reconnectDeadlineAt
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function getCredentialRetryDelayMs(
   status: number,
   retryAfterHeader: string | null
