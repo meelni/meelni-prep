@@ -880,8 +880,6 @@ export function createCreditLedgerService({
       trackBillingPaymentAdjusted({
         userId: input.userId,
         credits: outcome.adjustment.revokedCredits,
-        idempotencyKey: input.providerAdjustmentId,
-        grantId: outcome.adjustment.creditGrantId,
         reason: input.adjustmentType,
         duplicate: outcome.duplicate,
         reservedCredits: outcome.adjustment.reservedCredits,
@@ -995,8 +993,6 @@ export function createCreditLedgerService({
       trackBillingPaymentAdjusted({
         userId: input.userId,
         credits: outcome.adjustment.revokedCredits,
-        idempotencyKey: `${input.providerAdjustmentId}:reinstate`,
-        grantId: outcome.adjustment.creditGrantId,
         reason: `${input.adjustmentType}_reinstated`,
         duplicate: outcome.duplicate,
         reservedCredits: outcome.adjustment.reservedCredits,

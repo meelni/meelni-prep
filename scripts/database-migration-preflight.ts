@@ -24,6 +24,7 @@ import {
   STABLE_START_SCHEMA_FINGERPRINT,
   CREDIT_RECOVERY_SCHEMA_FINGERPRINT,
   BILLING_TRUTH_SCHEMA_FINGERPRINT,
+  WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 import {
   canonicalEnvironmentForEnvFile,
@@ -107,12 +108,12 @@ async function run(url: string, environmentIdentity: string) {
         ORDER BY created_at
       `;
       if (
-        ![2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(
+        ![2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].includes(
           migrations.length
         )
       ) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, 14 runtime-settlement, 15 stable-start, 16 credit-recovery, or 17 billing-truth migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, 14 runtime-settlement, 15 stable-start, 16 credit-recovery, 17 billing-truth, or 18 webhook-convergence migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -300,7 +301,8 @@ async function run(url: string, environmentIdentity: string) {
         | "runtime_settlement"
         | "stable_start"
         | "credit_recovery"
-        | "billing_truth";
+        | "billing_truth"
+        | "webhook_convergence";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -338,8 +340,10 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "stable_start";
       } else if (migrations.length === 16) {
         startingContract = "credit_recovery";
-      } else {
+      } else if (migrations.length === 15) {
         startingContract = "billing_truth";
+      } else {
+        startingContract = "webhook_convergence";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
@@ -388,7 +392,9 @@ async function run(url: string, environmentIdentity: string) {
                               ? STABLE_START_SCHEMA_FINGERPRINT
                               : migrations.length === 16
                                 ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
-                                : BILLING_TRUTH_SCHEMA_FINGERPRINT;
+                                : migrations.length === 17
+                                  ? BILLING_TRUTH_SCHEMA_FINGERPRINT
+                                  : WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -466,31 +472,33 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 17
-            ? BILLING_TRUTH_SCHEMA_FINGERPRINT
-            : migrations.length === 16
-              ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
-              : migrations.length === 15
-                ? STABLE_START_SCHEMA_FINGERPRINT
-                : migrations.length === 14
-                  ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
-                  : migrations.length === 13
-                    ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-                    : migrations.length === 12
-                      ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-                      : migrations.length === 11
-                        ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                        : migrations.length === 10
-                          ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
-                          : migrations.length === 9
-                            ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
-                            : migrations.length === 8
-                              ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                              : migrations.length === 7
-                                ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                                : migrations.length === 6
-                                  ? RELAUNCH_SCHEMA_FINGERPRINT
-                                  : "pending",
+          migrations.length === 18
+            ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
+            : migrations.length === 17
+              ? BILLING_TRUTH_SCHEMA_FINGERPRINT
+              : migrations.length === 16
+                ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
+                : migrations.length === 15
+                  ? STABLE_START_SCHEMA_FINGERPRINT
+                  : migrations.length === 14
+                    ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+                    : migrations.length === 13
+                      ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                      : migrations.length === 12
+                        ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                        : migrations.length === 11
+                          ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                          : migrations.length === 10
+                            ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                            : migrations.length === 9
+                              ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                              : migrations.length === 8
+                                ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                                : migrations.length === 7
+                                  ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                                  : migrations.length === 6
+                                    ? RELAUNCH_SCHEMA_FINGERPRINT
+                                    : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }

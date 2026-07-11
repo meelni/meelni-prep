@@ -84,6 +84,8 @@ export function buildStripeDeletionSubjects(input: {
   subscriptionId?: string | null;
   subscriptionCustomerId?: string | null;
   mappedCustomerIds: Array<string | null | undefined>;
+  paymentIntentIds?: Array<string | null | undefined>;
+  chargeIds?: Array<string | null | undefined>;
 }): StripeDeletionSubject[] {
   const candidates: Array<{
     kind: StripeDeletionSubject["kind"];
@@ -93,6 +95,14 @@ export function buildStripeDeletionSubjects(input: {
     { kind: "customer", providerId: input.subscriptionCustomerId },
     ...input.mappedCustomerIds.map((providerId) => ({
       kind: "customer" as const,
+      providerId,
+    })),
+    ...(input.paymentIntentIds ?? []).map((providerId) => ({
+      kind: "payment_intent" as const,
+      providerId,
+    })),
+    ...(input.chargeIds ?? []).map((providerId) => ({
+      kind: "charge" as const,
       providerId,
     })),
   ];
@@ -113,15 +123,23 @@ export function buildStripeDeletionSubjects(input: {
 export function getStripeEventSubject(event: Stripe.Event): {
   customerId: string | null;
   subscriptionId: string | null;
+  paymentIntentId: string | null;
+  chargeId: string | null;
   fingerprint: string | null;
 } {
   const object = event.data.object as unknown;
   const customerId = providerId(object, "customer");
   const subscriptionId = providerId(object, "subscription");
+  const paymentIntentId = providerId(object, "payment_intent");
+  const chargeId = providerId(object, "charge");
   return {
     customerId,
     subscriptionId,
-    fingerprint: fingerprintStripeSubject(customerId ?? subscriptionId),
+    paymentIntentId,
+    chargeId,
+    fingerprint: fingerprintStripeSubject(
+      customerId ?? subscriptionId ?? paymentIntentId ?? chargeId
+    ),
   };
 }
 
@@ -140,7 +158,10 @@ export function payloadContainsProviderIdentifier(
   }
 }
 
-function providerId(value: unknown, kind: "customer" | "subscription") {
+function providerId(
+  value: unknown,
+  kind: "customer" | "subscription" | "payment_intent" | "charge"
+) {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   const direct = record[kind];
