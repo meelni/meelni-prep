@@ -38,6 +38,8 @@ type CreditTransactionRow = typeof creditTransaction.$inferSelect;
 
 interface CreditLedgerTransactionLease {
   active: boolean;
+  accepting: boolean;
+  inFlight: Set<Promise<unknown>>;
 }
 
 export function createDrizzleCreditLedgerStore(
@@ -52,7 +54,10 @@ export function createDrizzleCreditLedgerStore(
     listUserGrants: operations.listUserGrants,
     findReservationByKey: operations.findReservationByKey,
     listAllocations: operations.listAllocations,
-    async withUserTransaction(userId, work) {
+    async withUserTransaction<T>(
+      userId: string,
+      work: (transaction: CreditLedgerTransaction) => Promise<T>
+    ): Promise<T> {
       return database.transaction(async (transaction) => {
         const users = await transaction
           .select({ id: appUser.id })
@@ -69,20 +74,72 @@ export function createDrizzleCreditLedgerStore(
           .limit(1);
         if (tombstones[0]) throw new Error("account_deletion_pending");
 
-        const lease: CreditLedgerTransactionLease = { active: true };
-        const scopedTransaction = createDrizzleCreditLedgerTransaction(
+        const lease: CreditLedgerTransactionLease = {
+          active: true,
+          accepting: true,
+          inFlight: new Set(),
+        };
+        const transactionOperations = createDrizzleCreditLedgerTransaction(
           transaction,
           userId,
           lease
         );
+        const scopedTransaction = createCallbackScopedTransaction(
+          transactionOperations,
+          lease
+        );
+        let callbackResult: T | undefined;
+        let callbackError: unknown;
+        let callbackFailed = false;
         try {
-          return await work(scopedTransaction);
+          callbackResult = await work(scopedTransaction);
+        } catch (error) {
+          callbackFailed = true;
+          callbackError = error;
         } finally {
+          lease.accepting = false;
+          const operationResults = await Promise.allSettled([
+            ...lease.inFlight,
+          ]);
           lease.active = false;
+          if (callbackFailed) throw callbackError;
+
+          const failedOperation = operationResults.find(
+            (result) => result.status === "rejected"
+          );
+          if (failedOperation?.status === "rejected") {
+            throw failedOperation.reason;
+          }
         }
+        return callbackResult as T;
       });
     },
   };
+}
+
+function createCallbackScopedTransaction(
+  transaction: CreditLedgerTransaction,
+  lease: CreditLedgerTransactionLease
+): CreditLedgerTransaction {
+  return new Proxy(transaction, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== "function") return value;
+
+      return (...args: unknown[]) => {
+        if (!lease.accepting) {
+          return Promise.reject(new Error("credit_ledger_transaction_closed"));
+        }
+
+        const operation = Promise.resolve().then(() =>
+          Reflect.apply(value, target, args)
+        );
+        lease.inFlight.add(operation);
+        void operation.catch(() => {});
+        return operation;
+      };
+    },
+  });
 }
 
 function createDrizzleCreditLedgerTransaction(

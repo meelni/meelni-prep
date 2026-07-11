@@ -113,43 +113,62 @@ test("production transaction mutations cannot escape the locked user scope", asy
 });
 
 test("every inherited transaction read stays inside the locked user scope", async () => {
-  const database = createScopedLedgerDatabase({
-    selectRows: [
-      [{ userId: "user-2" }],
-      [{ userId: "user-2" }],
-      [{ userId: "user-2" }],
-      [],
-    ],
-  });
-  const store = createDrizzleCreditLedgerStore(database);
+  const cases: Array<{
+    selectRows: unknown[][];
+    operation: (transaction: CreditLedgerTransaction) => Promise<unknown>;
+  }> = [
+    {
+      selectRows: [[{ userId: "user-2" }]],
+      operation: (transaction) =>
+        transaction.findGrantByIdempotencyKey("grant:user-2"),
+    },
+    {
+      selectRows: [[{ userId: "user-2" }]],
+      operation: (transaction) =>
+        transaction.findTransactionByIdempotencyKey("txn:user-2"),
+    },
+    {
+      selectRows: [],
+      operation: (transaction) =>
+        transaction.listSpendableGrants("user-2", new Date()),
+    },
+    {
+      selectRows: [],
+      operation: (transaction) => transaction.listUserGrants("user-2"),
+    },
+    {
+      selectRows: [[{ userId: "user-2" }]],
+      operation: (transaction) =>
+        transaction.findReservationByKey("reservation:user-2"),
+    },
+    {
+      selectRows: [[]],
+      operation: (transaction) =>
+        transaction.listAllocations("reservation-owned-by-user-2"),
+    },
+  ];
 
-  await store.withUserTransaction("user-1", async (transaction) => {
-    for (const operation of [
-      () => transaction.findGrantByIdempotencyKey("grant:user-2"),
-      () => transaction.findTransactionByIdempotencyKey("txn:user-2"),
-      () => transaction.listSpendableGrants("user-2", new Date()),
-      () => transaction.listUserGrants("user-2"),
-      () => transaction.findReservationByKey("reservation:user-2"),
-      () => transaction.listAllocations("reservation-owned-by-user-2"),
-    ]) {
-      await assert.rejects(operation, /credit_ledger_user_scope_mismatch/);
-    }
-  });
+  for (const { operation, selectRows } of cases) {
+    const store = createDrizzleCreditLedgerStore(
+      createScopedLedgerDatabase({ selectRows })
+    );
+    await assert.rejects(
+      store.withUserTransaction("user-1", async (transaction) => {
+        await assert.rejects(
+          operation(transaction),
+          /credit_ledger_user_scope_mismatch/
+        );
+      }),
+      /credit_ledger_user_scope_mismatch/
+    );
+  }
 });
 
 test("unique-key conflict fallbacks cannot return another user's ledger rows", async () => {
-  const database = createScopedLedgerDatabase({
-    selectRows: [
-      [{ userId: "user-2" }],
-      [{ userId: "user-2" }],
-      [{ userId: "user-2" }],
-    ],
-    insertRows: [[], [], []],
-  });
-  const store = createDrizzleCreditLedgerStore(database);
-
-  await store.withUserTransaction("user-1", async (transaction) => {
-    await assert.rejects(
+  const operations: Array<
+    (transaction: CreditLedgerTransaction) => Promise<unknown>
+  > = [
+    (transaction) =>
       transaction.createGrant({
         userId: "user-1",
         catalogId: "trial",
@@ -164,9 +183,7 @@ test("unique-key conflict fallbacks cannot return another user's ledger rows", a
         rolloverSourceGrantId: null,
         metadata: null,
       }),
-      /credit_ledger_user_scope_mismatch/
-    );
-    await assert.rejects(
+    (transaction) =>
       transaction.createReservation({
         userId: "user-1",
         reservationKey: "reservation-collision",
@@ -176,9 +193,7 @@ test("unique-key conflict fallbacks cannot return another user's ledger rows", a
         expiresAt: new Date("2026-07-11T01:00:00.000Z"),
         metadata: null,
       }),
-      /credit_ledger_user_scope_mismatch/
-    );
-    await assert.rejects(
+    (transaction) =>
       transaction.createTransaction({
         userId: "user-1",
         grantId: null,
@@ -190,9 +205,25 @@ test("unique-key conflict fallbacks cannot return another user's ledger rows", a
         balanceAfter: null,
         metadata: null,
       }),
+  ];
+
+  for (const operation of operations) {
+    const store = createDrizzleCreditLedgerStore(
+      createScopedLedgerDatabase({
+        selectRows: [[{ userId: "user-2" }]],
+        insertRows: [[]],
+      })
+    );
+    await assert.rejects(
+      store.withUserTransaction("user-1", async (transaction) => {
+        await assert.rejects(
+          operation(transaction),
+          /credit_ledger_user_scope_mismatch/
+        );
+      }),
       /credit_ledger_user_scope_mismatch/
     );
-  });
+  }
 });
 
 test("a retained production transaction rejects every operation after callback closure", async () => {
@@ -242,6 +273,134 @@ test("a returned production transaction closes after asynchronous callback settl
     await assert.rejects(operation, /credit_ledger_transaction_closed/);
   }
   assert.equal(queryCount, queriesAfterCallback);
+});
+
+test("an unawaited transaction operation is drained before callback commit", async () => {
+  const deferredRows = deferred<unknown[]>();
+  let committed = false;
+  let queryCount = 0;
+  let retainedTransaction!: CreditLedgerTransaction;
+  const database = createScopedLedgerDatabase({
+    selectRows: [deferredRows.promise],
+    onQuery: () => {
+      queryCount += 1;
+    },
+    onCommit: () => {
+      committed = true;
+    },
+  });
+  const store = createDrizzleCreditLedgerStore(database);
+  let settled = false;
+
+  const transactionResult = store
+    .withUserTransaction("user-1", async (transaction) => {
+      retainedTransaction = transaction;
+      void transaction.listUserGrants("user-1");
+      return "callback-settled";
+    })
+    .then((result) => {
+      settled = true;
+      return result;
+    });
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(settled, false);
+  assert.equal(committed, false);
+
+  deferredRows.resolve([]);
+  assert.equal(await transactionResult, "callback-settled");
+  assert.equal(committed, true);
+  assert.ok(retainedTransaction);
+
+  const queriesAfterCommit = queryCount;
+  await assert.rejects(
+    retainedTransaction.listUserGrants("user-1"),
+    /credit_ledger_transaction_closed/
+  );
+  assert.equal(queryCount, queriesAfterCommit);
+});
+
+test("a rejected unawaited transaction operation rolls back before closure", async () => {
+  const deferredRows = deferred<unknown[]>();
+  let committed = false;
+  let rolledBack = false;
+  let queryCount = 0;
+  let retainedTransaction!: CreditLedgerTransaction;
+  const database = createScopedLedgerDatabase({
+    selectRows: [deferredRows.promise],
+    onQuery: () => {
+      queryCount += 1;
+    },
+    onCommit: () => {
+      committed = true;
+    },
+    onRollback: () => {
+      rolledBack = true;
+    },
+  });
+  const store = createDrizzleCreditLedgerStore(database);
+
+  const transactionResult = store.withUserTransaction(
+    "user-1",
+    async (transaction) => {
+      retainedTransaction = transaction;
+      void transaction.listUserGrants("user-1");
+    }
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  deferredRows.reject(new Error("deferred_ledger_query_failed"));
+  await assert.rejects(transactionResult, /deferred_ledger_query_failed/);
+  assert.equal(committed, false);
+  assert.equal(rolledBack, true);
+  assert.ok(retainedTransaction);
+
+  const queriesAfterRollback = queryCount;
+  await assert.rejects(
+    retainedTransaction.listUserGrants("user-1"),
+    /credit_ledger_transaction_closed/
+  );
+  assert.equal(queryCount, queriesAfterRollback);
+});
+
+test("an early unawaited rejection is retained until callback settlement", async () => {
+  const callbackDelay = deferred<void>();
+  let committed = false;
+  let rolledBack = false;
+  let queryCount = 0;
+  const database = createScopedLedgerDatabase({
+    selectRows: [],
+    onQuery: () => {
+      queryCount += 1;
+    },
+    onCommit: () => {
+      committed = true;
+    },
+    onRollback: () => {
+      rolledBack = true;
+    },
+  });
+  const store = createDrizzleCreditLedgerStore(database);
+
+  const transactionResult = store.withUserTransaction(
+    "user-1",
+    async (transaction) => {
+      void transaction.listUserGrants("user-2");
+      await callbackDelay.promise;
+    }
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  const queriesAfterEarlyRejection = queryCount;
+  callbackDelay.resolve();
+
+  await assert.rejects(transactionResult, /credit_ledger_user_scope_mismatch/);
+  assert.equal(committed, false);
+  assert.equal(rolledBack, true);
+  assert.equal(queryCount, queriesAfterEarlyRejection);
 });
 
 test("grantCredits is idempotent and balance ignores expired grants", async () => {
@@ -1339,10 +1498,14 @@ function createScopedLedgerDatabase({
   selectRows,
   insertRows = [],
   onQuery = () => {},
+  onCommit = () => {},
+  onRollback = () => {},
 }: {
-  selectRows: unknown[][];
+  selectRows: Array<unknown[] | Promise<unknown[]>>;
   insertRows?: unknown[][];
   onQuery?: () => void;
+  onCommit?: () => void;
+  onRollback?: () => void;
 }) {
   return {
     async transaction(
@@ -1398,9 +1561,26 @@ function createScopedLedgerDatabase({
           throw new Error("unexpected_update");
         },
       };
-      return work(transaction);
+      try {
+        const result = await work(transaction);
+        onCommit();
+        return result;
+      } catch (error) {
+        onRollback();
+        throw error;
+      }
     },
   } as never;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 }
 
 function closedTransactionOperations(transaction: CreditLedgerTransaction) {
