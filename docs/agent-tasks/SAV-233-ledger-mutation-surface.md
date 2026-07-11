@@ -42,7 +42,7 @@
 
 - Required commands: Billing tests, typecheck, boundary checks, `npm run check:ci`, and build.
 - Optional/manual checks: Inspect the production adapter's runtime keys.
-- Fixtures or regression tests needed: Assert every low-level mutation key is absent from the production adapter; retained or returned callback objects are revoked after asynchronous settlement without issuing queries; unawaited in-flight operations drain before commit and roll back on rejection; and existing fault-injection tests remain green.
+- Fixtures or regression tests needed: Assert every low-level mutation key is absent from the production adapter; retained or returned callback objects are revoked after asynchronous settlement without issuing queries; unawaited in-flight operations drain before commit and roll back on rejection; corrupt cross-user terminal transactions and allocation-to-grant links fail closed without mutation or commit; and existing fault-injection tests remain green.
 
 ## Rollout
 

@@ -226,6 +226,88 @@ test("unique-key conflict fallbacks cannot return another user's ledger rows", a
   }
 });
 
+test("corrupt cross-user terminal transactions roll back instead of appearing settled", async () => {
+  let committed = false;
+  let rolledBack = false;
+  let attemptedWrites = 0;
+  const store = createDrizzleCreditLedgerStore(
+    createScopedLedgerDatabase({
+      selectRows: [
+        [{ id: "reservation-1" }],
+        [{ userId: "user-2", reservationId: "reservation-1" }],
+      ],
+      onCommit: () => {
+        committed = true;
+      },
+      onRollback: () => {
+        rolledBack = true;
+      },
+      onWrite: () => {
+        attemptedWrites += 1;
+      },
+    })
+  );
+
+  await assert.rejects(
+    store.withUserTransaction("user-1", (transaction) =>
+      transaction.listTerminalTransactionsByReservationForUpdate(
+        "reservation-1"
+      )
+    ),
+    /credit_ledger_user_scope_mismatch/
+  );
+  assert.equal(committed, false);
+  assert.equal(rolledBack, true);
+  assert.equal(attemptedWrites, 0);
+});
+
+test("corrupt cross-user allocation grants roll back every transaction read", async () => {
+  const operations: Array<
+    (transaction: CreditLedgerTransaction) => Promise<unknown>
+  > = [
+    (transaction) => transaction.listAllocations("reservation-1"),
+    (transaction) => transaction.listAllocationsForUpdate("reservation-1"),
+  ];
+
+  for (const operation of operations) {
+    let committed = false;
+    let rolledBack = false;
+    let attemptedWrites = 0;
+    const store = createDrizzleCreditLedgerStore(
+      createScopedLedgerDatabase({
+        selectRows: [
+          [{ id: "reservation-1" }],
+          [
+            {
+              reservationId: "reservation-1",
+              grantId: "grant-owned-by-user-2",
+              credits: 1,
+            },
+          ],
+          [],
+        ],
+        onCommit: () => {
+          committed = true;
+        },
+        onRollback: () => {
+          rolledBack = true;
+        },
+        onWrite: () => {
+          attemptedWrites += 1;
+        },
+      })
+    );
+
+    await assert.rejects(
+      store.withUserTransaction("user-1", operation),
+      /credit_ledger_user_scope_mismatch/
+    );
+    assert.equal(committed, false);
+    assert.equal(rolledBack, true);
+    assert.equal(attemptedWrites, 0);
+  }
+});
+
 test("a retained production transaction rejects every operation after callback closure", async () => {
   let queryCount = 0;
   let retainedTransaction: CreditLedgerTransaction | null = null;
@@ -1500,12 +1582,14 @@ function createScopedLedgerDatabase({
   onQuery = () => {},
   onCommit = () => {},
   onRollback = () => {},
+  onWrite = () => {},
 }: {
   selectRows: Array<unknown[] | Promise<unknown[]>>;
   insertRows?: unknown[][];
   onQuery?: () => void;
   onCommit?: () => void;
   onRollback?: () => void;
+  onWrite?: () => void;
 }) {
   return {
     async transaction(
@@ -1542,6 +1626,7 @@ function createScopedLedgerDatabase({
         },
         insert() {
           onQuery();
+          onWrite();
           const rows = pendingInsertRows.shift() ?? [];
           const builder = {
             values() {
@@ -1558,6 +1643,7 @@ function createScopedLedgerDatabase({
         },
         update() {
           onQuery();
+          onWrite();
           throw new Error("unexpected_update");
         },
       };
