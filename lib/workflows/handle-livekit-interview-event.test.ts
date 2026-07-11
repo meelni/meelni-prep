@@ -6,7 +6,10 @@ import type {
   InterviewReconnectSession,
   InterviewReconnectStore,
 } from "@/lib/db/session-reconnects";
-import { compareInterviewTransportEvents } from "@/lib/db/session-reconnects";
+import {
+  compareInterviewTransportEvents,
+  compareUtf8Bytes,
+} from "@/lib/db/session-reconnects";
 import {
   handleLiveKitInterviewEventWorkflow,
   type HandleLiveKitInterviewEventDeps,
@@ -314,6 +317,105 @@ for (const delayedEventName of [
     assert.equal(fixture.schedules.length, 0);
   });
 }
+
+test("an equal-time join supersedes a disconnect that arrived first", async () => {
+  const fixture = createFixture(createSession());
+  const disconnected = await handleLiveKitInterviewEventWorkflow(
+    event("participant_left", USER_ID, "EV_01-left", NOW),
+    fixture.deps
+  );
+  const joined = await handleLiveKitInterviewEventWorkflow(
+    event("participant_joined", USER_ID, "EV_01-joined", NOW),
+    fixture.deps
+  );
+
+  assert.equal(disconnected.disposition, "reconnecting");
+  assert.equal(joined.disposition, "recovered");
+  assert.equal(joined.lifecycle?.state, "active");
+  assert.equal(joined.lifecycle?.lastTransportEventName, "participant_joined");
+});
+
+test("event IDs use PostgreSQL C-collation UTF-8 byte order", () => {
+  const ascending = [
+    "EV_01-A",
+    "EV_01-Z",
+    "EV_01_A",
+    "EV_01_Z",
+    "EV_01_a",
+    "EV_01_ä",
+  ];
+
+  for (let index = 1; index < ascending.length; index += 1) {
+    assert.ok(compareUtf8Bytes(ascending[index - 1]!, ascending[index]!) < 0);
+    assert.ok(
+      compareInterviewTransportEvents(
+        {
+          occurredAt: NOW,
+          eventId: ascending[index]!,
+          eventName: "participant_joined",
+        },
+        {
+          occurredAt: NOW,
+          eventId: ascending[index - 1]!,
+          eventName: "participant_joined",
+        }
+      ) > 0
+    );
+  }
+});
+
+test("an exact event replay is idempotent but divergent ID reuse fails closed", async () => {
+  const storedAt = new Date(NOW.getTime() - 1_000);
+  const fixture = createFixture(
+    createSession({
+      lastTransportEventAt: storedAt,
+      lastTransportEventId: "EV_collision_Aa-01",
+      lastTransportEventName: "participant_joined",
+    })
+  );
+
+  const replay = await handleLiveKitInterviewEventWorkflow(
+    event("participant_joined", USER_ID, "EV_collision_Aa-01", storedAt),
+    fixture.deps
+  );
+  const changedName = await handleLiveKitInterviewEventWorkflow(
+    event("participant_left", USER_ID, "EV_collision_Aa-01", storedAt),
+    fixture.deps
+  );
+  const changedTimestamp = await handleLiveKitInterviewEventWorkflow(
+    event("participant_joined", USER_ID, "EV_collision_Aa-01", NOW),
+    fixture.deps
+  );
+
+  assert.equal(replay.disposition, "duplicate");
+  assert.equal(changedName.ok, false);
+  assert.equal(changedName.disposition, "conflict");
+  assert.equal(changedTimestamp.ok, false);
+  assert.equal(changedTimestamp.disposition, "conflict");
+  assert.equal(fixture.writes, 0);
+});
+
+test("an exact candidate replay can finish activation after runtime readiness", async () => {
+  const fixture = createFixture(
+    createSession({
+      state: "connecting",
+      version: 2,
+      activatedAt: null,
+      runtimeReadyAt: NOW,
+      lastTransportEventAt: NOW,
+      lastTransportEventId: "EV_candidate_join",
+      lastTransportEventName: "participant_joined",
+    })
+  );
+
+  const result = await handleLiveKitInterviewEventWorkflow(
+    event("participant_joined", USER_ID, "EV_candidate_join", NOW),
+    fixture.deps
+  );
+
+  assert.equal(result.disposition, "activated");
+  assert.equal(result.lifecycle?.state, "active");
+});
 
 function event(
   eventName:
