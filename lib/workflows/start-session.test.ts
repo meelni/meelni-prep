@@ -161,6 +161,83 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
   ]);
 });
 
+test("selected question converges conflicting round identities before persistence and LiveKit", async () => {
+  const productFixture = createProductSenseInterviewFixture();
+  const liveKitFixture = createLiveKitStartFixture();
+  const conflictingConfig = {
+    ...productFixture.roomMetadata.config,
+    roundType: "strategy",
+    round_type: "behavioral",
+    interviewType: "execution",
+    interview_type: "strategy",
+  };
+  const roundIdentityKeys = [
+    "roundType",
+    "round_type",
+    "interviewType",
+    "interview_type",
+  ];
+
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: {
+        roundType: "strategy",
+        config: conflictingConfig,
+        questionId: productFixture.question.questionId,
+      },
+      env: liveKitFixture.input.env,
+      interviewAgentName: liveKitFixture.input.agentName,
+    },
+    createDeps({
+      getQuestionById: async () => ({
+        id: productFixture.question.questionId,
+        company: productFixture.question.company,
+        questionText: productFixture.question.questionText,
+        questionType: productFixture.question.questionType,
+        askedAt: productFixture.session.startedAt,
+        isActive: true,
+        createdAt: productFixture.session.startedAt,
+      }),
+      createSession: async (input) => {
+        assert.equal(input.roundType, "product_sense");
+        assert.ok(input.config);
+        for (const key of roundIdentityKeys) {
+          assert.equal((input.config as Record<string, unknown>)[key], undefined);
+        }
+        return { id: productFixture.session.id, config: input.config };
+      },
+      livekitProvider: {
+        startInterviewRoom: async (input) => {
+          const metadata = input.metadata as InterviewRoomMetadata;
+          assert.equal(metadata.round_type, "product_sense");
+          for (const key of roundIdentityKeys) {
+            assert.equal(
+              (metadata.config as unknown as Record<string, unknown>)[key],
+              undefined
+            );
+          }
+          return {
+            ok: true,
+            provider: "livekit",
+            data: liveKitFixture.expectedStartedRoom,
+          };
+        },
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    for (const key of roundIdentityKeys) {
+      assert.equal(
+        (result.body.config as unknown as Record<string, unknown>)[key],
+        undefined
+      );
+    }
+  }
+});
+
 test("startInterviewSessionWorkflow rejects an unmappable selected question before side effects", async () => {
   const fixture = createProductSenseInterviewFixture();
   const calls: string[] = [];
@@ -417,6 +494,11 @@ test("startInterviewSessionWorkflow allows all PM round types when a credit is a
     createDeps({
       createSession: async (input) => {
         assert.equal(input.roundType, "execution");
+        assert.ok(input.config);
+        assert.equal(
+          (input.config as Record<string, unknown>).roundType,
+          undefined
+        );
         return {
           id: createProductSenseInterviewFixture().session.id,
           config: input.config,

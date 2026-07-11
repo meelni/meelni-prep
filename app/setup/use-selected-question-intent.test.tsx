@@ -3,7 +3,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { useSelectedQuestionIntent } from "./use-selected-question-intent";
+import {
+  SELECTED_QUESTION_VERIFICATION_TIMEOUT_MS,
+  useSelectedQuestionIntent,
+} from "./use-selected-question-intent";
 
 const QUESTION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -91,6 +94,95 @@ describe("useSelectedQuestionIntent", () => {
     );
 
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("times out a never-settling question request and keeps Retry available", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockImplementationOnce(() => new Promise<Response>(() => {}))
+        .mockResolvedValueOnce(activeQuestionResponse());
+      const { result } = renderHook(() =>
+        useSelectedQuestionIntent(QUESTION_ID, fetcher)
+      );
+
+      expect(result.current.state.status).toBe("loading");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          SELECTED_QUESTION_VERIFICATION_TIMEOUT_MS
+        );
+      });
+
+      expect(result.current.state.status).toBe("temporary_error");
+      act(() => result.current.retry());
+      await act(async () => {});
+      expect(result.current.state.status).toBe("ready");
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("times out a never-settling successful response body", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => new Promise<never>(() => {}),
+      } as unknown as Response);
+      const { result } = renderHook(() =>
+        useSelectedQuestionIntent(QUESTION_ID, fetcher)
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          SELECTED_QUESTION_VERIFICATION_TIMEOUT_MS
+        );
+      });
+
+      expect(result.current.state.status).toBe("temporary_error");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels a stale hanging request without turning the next question into an error", async () => {
+    vi.useFakeTimers();
+    try {
+      const nextQuestionId = "660e8400-e29b-41d4-a716-446655440000";
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockImplementationOnce(() => new Promise<Response>(() => {}))
+        .mockResolvedValueOnce(activeQuestionResponse(nextQuestionId));
+      const { result, rerender } = renderHook(
+        ({ questionId }: { questionId: string }) =>
+          useSelectedQuestionIntent(questionId, fetcher),
+        { initialProps: { questionId: QUESTION_ID } }
+      );
+
+      rerender({ questionId: nextQuestionId });
+      await act(async () => {});
+      expect(result.current.state.status).toBe("ready");
+      const firstSignal = fetcher.mock.calls[0]?.[1]?.signal;
+      const secondSignal = fetcher.mock.calls[1]?.[1]?.signal;
+      expect(firstSignal?.aborted).toBe(true);
+      expect(secondSignal?.aborted).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          SELECTED_QUESTION_VERIFICATION_TIMEOUT_MS
+        );
+      });
+      expect(result.current.state.status).toBe("ready");
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("resets to question-free state without fetching when intent is removed", async () => {
