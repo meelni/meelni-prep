@@ -31,6 +31,7 @@ import {
   canonicalQuestionTypeLabel,
   type CanonicalQuestionType,
 } from "@meelni/core";
+import { createHash } from "node:crypto";
 
 // Question type mapping from Google Sheet to database
 // Maps various input formats to canonical database types
@@ -451,6 +452,8 @@ export async function prepareQuestionSyncSource(): Promise<PreparedQuestionSync>
     questions,
     sourceRows: sheetRows.length,
     validRows: validatedQuestions.length,
+    invalidRows,
+    exactDuplicateRows: duplicates,
     questionsSkipped: invalidRows + duplicates,
   };
 }
@@ -544,8 +547,35 @@ function processSheetRow(
       questionText,
       questionType: mappedType,
       askedAt,
+      sourceKind: "google_sheets",
+      sourceCategory: row.questionType.trim(),
+      sourceFingerprint: questionSourceFingerprint({
+        company,
+        questionText,
+        sourceCategory: row.questionType,
+        askedAt,
+      }),
     },
   };
+}
+
+export function questionSourceFingerprint(input: {
+  company: string | null;
+  questionText: string;
+  sourceCategory: string;
+  askedAt: Date | null;
+}): string {
+  const normalized = JSON.stringify([
+    normalizeFingerprintText(input.questionText),
+    normalizeFingerprintText(input.company ?? "") || null,
+    normalizeFingerprintText(input.sourceCategory),
+    input.askedAt?.toISOString() ?? null,
+  ]);
+  return createHash("sha256").update(normalized, "utf8").digest("hex");
+}
+
+function normalizeFingerprintText(value: string): string {
+  return value.normalize("NFKC").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 /**
