@@ -27,6 +27,15 @@ whose local branch name happens to match a registered child. Declared stacks
 must originate in the registered repository and fail closed when the PR number,
 base, ref, head, parent, or evidence differs.
 
+The trusted publisher completes the head-bound check with an explicit GitHub
+`success` conclusion for an unregistered PR targeting `main`, while its title
+and summary continue to say that the PR is not a registered stack child. This
+is required because classic branch protection does not accept a `neutral`
+conclusion for a required check. It does not weaken stack validation: a PR that
+matches a declaration must still pass exact stack verification, and a PR that
+targets a non-default branch without a declaration or has stale topology or
+evidence still fails closed.
+
 ## Local verification
 
 Fetch the current child and parent refs, then run:
@@ -145,6 +154,11 @@ permission and does not expose secrets to PR code.
 
 Functional, security, Preview, and provider verification remain separate
 requirements.
+
+For an unregistered PR targeting `main`, the required check's explicit success
+is branch-protection compatibility, not stack evidence. Registered stack
+children receive success only after exact child, parent, ancestry, and PR-body
+evidence verification.
 
 ## Initial rollout for the existing stacks
 

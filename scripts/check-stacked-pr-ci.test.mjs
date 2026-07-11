@@ -252,7 +252,7 @@ test("a child that moves after the initial fetch cannot publish success", async 
   assert.equal(calls[1].body.conclusion, "failure");
 });
 
-test("unrelated main PRs receive a neutral head-bound result", async (t) => {
+test("unrelated main PRs receive an explicit successful head-bound result", async (t) => {
   const state = fixture();
   t.after(() => rmSync(state.root, { recursive: true, force: true }));
   const payload = event(state);
@@ -272,7 +272,15 @@ test("unrelated main PRs receive a neutral head-bound result", async (t) => {
 
   assert.equal(result.status, "not_stacked");
   assert.equal(calls[0].body.head_sha, state.head);
-  assert.equal(calls[1].body.conclusion, "neutral");
+  assert.equal(calls[1].body.conclusion, "success");
+  assert.equal(
+    calls[1].body.output.title,
+    "PR is not a registered stack child"
+  );
+  assert.equal(
+    calls[1].body.output.summary,
+    "This exact PR head is not a registered stack child."
+  );
 });
 
 test("check API creation and completion failures fail closed", async (t) => {

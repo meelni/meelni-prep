@@ -227,6 +227,12 @@ success; a deleted parent ref fails the child closed. A five-minute trusted
 schedule and manual dispatch remain backstops for manifest movement and
 operator recovery.
 
+Unregistered PRs targeting `main` publish an explicit successful required check
+whose output says the PR is not a registered stack child. Classic branch
+protection does not treat GitHub's `neutral` conclusion as satisfying this
+required context. Registered children and undeclared non-default stacks retain
+the exact fail-closed behavior described in the runbook.
+
 Run the offline regression fixtures with:
 
 ```bash
