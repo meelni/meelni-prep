@@ -32,6 +32,8 @@ test("reconnect timeout is inert 1ms early and claims at the exact instant", asy
   assert.deepEqual(earlyResult, { ok: false, disposition: "not_due" });
   assert.equal(atResult.ok, true);
   assert.deepEqual(at.calls, ["claim", "terminate", "end"]);
+  assert.equal(at.current.roomCleanupPending, false);
+  assert.equal(at.current.reconnectDeadlineAt, null);
 });
 
 test("restored or superseded lifecycle versions make timeout events stale", async () => {
@@ -179,6 +181,7 @@ function createFixture(
         state: "ending",
         version: current.version + 1,
         terminalReason: input.terminalReason,
+        roomCleanupPending: true,
       };
       onClaim?.();
       return { applied: true, current };
@@ -254,7 +257,7 @@ function createSession(
     runtimeReadyAt: new Date("2026-07-10T07:45:01.000Z"),
     lastTransitionAt: new Date("2026-07-10T08:00:00.000Z"),
     reconnectDeadlineAt: new Date(DEADLINE),
-    roomCleanupPending: true,
+    roomCleanupPending: false,
     lastTransportEventAt: new Date("2026-07-10T08:00:00.000Z"),
     lastTransportEventId: "lost-1",
     lastTransportEventName: "participant_left",

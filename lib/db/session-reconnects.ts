@@ -230,6 +230,7 @@ export function createDrizzleInterviewReconnectStore(
           }),
           endingAt: sql`COALESCE(${interviewSession.endingAt}, ${input.transitionedAt})`,
           lastTransitionAt: input.transitionedAt,
+          roomCleanupPending: true,
         })
         .where(
           and(
