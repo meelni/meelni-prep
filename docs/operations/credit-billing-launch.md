@@ -65,6 +65,16 @@ subscription resource: an explicitly allowed `customer.subscription.created`
 replacement for a canceled resource seeds the replacement cursor atomically,
 and later events from the superseded resource cannot mutate it.
 
+Migration `0017` makes cross-resource replacement durable rather than relying
+on delivery order. Each row stores the Stripe resource creation time and its
+created-event cursor, plus every retired subscription identity. A replacement
+must be a `customer.subscription.created` event for a provably newer resource;
+same-second resources use the stored created-event cursor as the deterministic
+tie-breaker. Rows without durable creation proof fail closed on replacement
+until provider reconciliation supplies that proof. Retired identities can
+never be resurrected by a delayed created event, and optimistic versioning
+elects one winner when replacement events race.
+
 Account-deletion tombstones include hashed customer, subscription,
 payment-intent, and charge identifiers. Stored and late refund/dispute payloads
 for a deleted subject must be replaced with `{}` and acknowledged without
@@ -193,6 +203,10 @@ Cancellation launch remains blocked on an explicit product-policy decision:
 whether cancellation is immediate or remains active through the paid period.
 Do not change provider behavior or customer-facing promises until one policy is
 accepted and implemented end to end.
+
+Cancellation requests do not collect or log free-form reasons, feedback, or
+raw user identifiers. Add cancellation analytics only after defining a bounded
+event contract with pseudonymous or aggregate fields.
 
 Until SAV-237 is decided, the immediate-cancellation response must describe any
 billing adjustment as a separately processed outcome. It must not promise that

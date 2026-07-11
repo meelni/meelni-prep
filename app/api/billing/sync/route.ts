@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { subscription, stripeCustomerMapping } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import {
   STRIPE_API_VERSION,
   getStripeCatalogIdForPrice,
 } from "@/lib/billing/stripe-catalog";
+import { mayApplyStripeSubscriptionResource } from "@/lib/billing/stripe-subscription-event-order";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -246,12 +247,59 @@ async function syncSubscriptionFromStripe(
     throw new Error("stripe_subscription_price_unknown");
   }
 
+  const resourceCreatedAt = new Date(stripeSubscription.created * 1000);
+  if (!Number.isFinite(resourceCreatedAt.getTime())) {
+    throw new Error("stripe_subscription_created_at_invalid");
+  }
+  const current = existing[0];
+  const currentResourceId = current?.stripeSubscriptionId ?? null;
+  const replacingResource = Boolean(
+    currentResourceId && currentResourceId !== stripeSubscription.id
+  );
+  if (
+    !mayApplyStripeSubscriptionResource({
+      currentResourceId,
+      currentStatus: current?.status ?? null,
+      currentResourceProof: current?.stripeResourceCreatedAt
+        ? {
+            resourceCreatedAt: current.stripeResourceCreatedAt,
+            createdEventCursor:
+              current.stripeResourceCreatedEventTimestamp &&
+              current.stripeResourceCreatedEventId
+                ? {
+                    createdAt: current.stripeResourceCreatedEventTimestamp,
+                    priority: 30,
+                    eventId: current.stripeResourceCreatedEventId,
+                  }
+                : null,
+          }
+        : null,
+      retiredResourceIds: current?.retiredStripeSubscriptionIds ?? [],
+      candidateResourceId: stripeSubscription.id,
+      candidateResourceProof: {
+        resourceCreatedAt,
+        createdEventCursor: null,
+      },
+      eventType: "customer.subscription.created",
+    })
+  ) {
+    throw new Error("stripe_subscription_resource_conflict");
+  }
+
   const updateData = {
     tier: tier ?? existing[0].tier,
     status,
     stripeSubscriptionId: stripeSubscription.id,
     stripeCustomerId: stripeSubscription.customer as string,
     stripePriceId: priceId,
+    stripeResourceCreatedAt: resourceCreatedAt,
+    stripeResourceCreatedEventTimestamp:
+      current?.stripeResourceCreatedEventTimestamp ?? null,
+    stripeResourceCreatedEventId: current?.stripeResourceCreatedEventId ?? null,
+    retiredStripeSubscriptionIds:
+      replacingResource && currentResourceId
+        ? sql`array_append(${subscription.retiredStripeSubscriptionIds}, ${currentResourceId})`
+        : (current?.retiredStripeSubscriptionIds ?? []),
     billingCycle:
       firstItem?.price?.recurring?.interval === "year"
         ? ("annual" as const)
@@ -273,10 +321,22 @@ async function syncSubscriptionFromStripe(
   };
 
   if (existing.length > 0) {
-    await db
+    const result = await db
       .update(subscription)
-      .set(updateData)
-      .where(eq(subscription.userId, userId));
+      .set({ ...updateData, version: current.version + 1 })
+      .where(
+        and(
+          eq(subscription.userId, userId),
+          eq(subscription.version, current.version),
+          currentResourceId
+            ? eq(subscription.stripeSubscriptionId, currentResourceId)
+            : isNull(subscription.stripeSubscriptionId)
+        )
+      )
+      .returning({ id: subscription.id });
+    if (result.length === 0) {
+      throw new Error("stripe_subscription_version_conflict");
+    }
   } else {
     await db.insert(subscription).values({
       userId,

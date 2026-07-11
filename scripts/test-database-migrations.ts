@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql as drizzleSql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -40,7 +40,7 @@ import {
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
   INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT,
   getStableStartDatabaseSchemaContract,
-  INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT,
+  SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
   CREDIT_RECOVERY_SCHEMA_FINGERPRINT,
@@ -182,7 +182,10 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT);
+    assert.equal(
+      cleanFingerprint,
+      SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
+    );
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -538,6 +541,11 @@ async function verifyStripeSubscriptionReplacement(
     id: "evt_old_deleted",
     created,
   } as never);
+  const oldCreation = stripeSubscriptionEventCursor({
+    type: "customer.subscription.created",
+    id: "evt_old_created",
+    created: created - 100,
+  } as never);
   const replacementCreation = stripeSubscriptionEventCursor({
     type: "customer.subscription.created",
     id: "evt_new_created",
@@ -568,9 +576,15 @@ async function verifyStripeSubscriptionReplacement(
   await sql`
     INSERT INTO subscription (
       user_id, tier, status, stripe_subscription_id,
+      stripe_resource_created_at,
+      stripe_resource_created_event_timestamp,
+      stripe_resource_created_event_id,
       last_event_timestamp, last_event_priority, last_event_id
     ) VALUES (
       ${userId}::uuid, 'starter', 'canceled', 'sub_old',
+      ${oldCreation.createdAt.toISOString()}::timestamptz,
+      ${oldCreation.createdAt.toISOString()}::timestamptz,
+      ${oldCreation.eventId},
       ${oldDeletion.createdAt.toISOString()}::timestamptz,
       ${oldDeletion.priority}, ${oldDeletion.eventId}
     )
@@ -580,7 +594,16 @@ async function verifyStripeSubscriptionReplacement(
     mayApplyStripeSubscriptionResource({
       currentResourceId: "sub_old",
       currentStatus: "canceled",
+      currentResourceProof: {
+        resourceCreatedAt: oldCreation.createdAt,
+        createdEventCursor: oldCreation,
+      },
+      retiredResourceIds: [],
       candidateResourceId: "sub_new",
+      candidateResourceProof: {
+        resourceCreatedAt: replacementCreation.createdAt,
+        createdEventCursor: replacementCreation,
+      },
       eventType: "customer.subscription.created",
     }),
     true
@@ -593,6 +616,10 @@ async function verifyStripeSubscriptionReplacement(
     .update(subscription)
     .set({
       stripeSubscriptionId: "sub_new",
+      stripeResourceCreatedAt: replacementCreation.createdAt,
+      stripeResourceCreatedEventTimestamp: replacementCreation.createdAt,
+      stripeResourceCreatedEventId: replacementCreation.eventId,
+      retiredStripeSubscriptionIds: drizzleSql`array_append(${subscription.retiredStripeSubscriptionIds}, 'sub_old')`,
       status: "trialing",
       lastEventTimestamp: replacementCreation.createdAt,
       lastEventPriority: replacementCreation.priority,
@@ -676,9 +703,11 @@ async function verifyStripeSubscriptionReplacement(
       stripe_subscription_id: string;
       status: string;
       last_event_id: string;
+      retired_stripe_subscription_ids: string[];
     }>
   >`
-    SELECT stripe_subscription_id, status, last_event_id
+    SELECT stripe_subscription_id, status, last_event_id,
+           retired_stripe_subscription_ids
     FROM subscription
     WHERE user_id = ${userId}::uuid
   `;
@@ -686,7 +715,109 @@ async function verifyStripeSubscriptionReplacement(
     stripe_subscription_id: "sub_new",
     status: "active",
     last_event_id: "evt_new_invoice",
+    retired_stripe_subscription_ids: ["sub_old"],
   });
+
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      currentResourceId: "sub_new",
+      currentStatus: "canceled",
+      currentResourceProof: {
+        resourceCreatedAt: replacementCreation.createdAt,
+        createdEventCursor: replacementCreation,
+      },
+      retiredResourceIds: row.retired_stripe_subscription_ids,
+      candidateResourceId: "sub_old",
+      candidateResourceProof: {
+        resourceCreatedAt: oldCreation.createdAt,
+        createdEventCursor: oldCreation,
+      },
+      eventType: "customer.subscription.created",
+    }),
+    false,
+    "a delayed created event for a retired resource must not resurrect it"
+  );
+
+  await verifyConcurrentStripeSubscriptionReplacement(
+    database,
+    sql,
+    userId,
+    created
+  );
+}
+
+async function verifyConcurrentStripeSubscriptionReplacement(
+  database: ReturnType<typeof drizzle>,
+  sql: postgres.Sql,
+  userId: string,
+  created: number
+) {
+  await sql`DELETE FROM subscription WHERE user_id = ${userId}::uuid`;
+  await sql`
+    INSERT INTO subscription (
+      user_id, tier, status, stripe_subscription_id, version,
+      stripe_resource_created_at,
+      stripe_resource_created_event_timestamp,
+      stripe_resource_created_event_id
+    ) VALUES (
+      ${userId}::uuid, 'starter', 'canceled', 'sub_concurrent_old', 1,
+      to_timestamp(${created - 100}), to_timestamp(${created - 100}),
+      'evt_concurrent_old_created'
+    )
+  `;
+
+  const replace = (resourceId: string, offset: number) =>
+    database
+      .update(subscription)
+      .set({
+        stripeSubscriptionId: resourceId,
+        status: "canceled",
+        version: 2,
+        stripeResourceCreatedAt: new Date((created + offset) * 1_000),
+        stripeResourceCreatedEventTimestamp: new Date(
+          (created + offset) * 1_000
+        ),
+        stripeResourceCreatedEventId: `evt_${resourceId}_created`,
+        retiredStripeSubscriptionIds: drizzleSql`array_append(${subscription.retiredStripeSubscriptionIds}, 'sub_concurrent_old')`,
+      })
+      .where(
+        and(
+          eq(subscription.userId, userId),
+          eq(subscription.stripeSubscriptionId, "sub_concurrent_old"),
+          eq(subscription.version, 1)
+        )
+      )
+      .returning({ id: subscription.id });
+
+  const results = await Promise.all([
+    replace("sub_concurrent_a", 1),
+    replace("sub_concurrent_b", 2),
+  ]);
+  assert.equal(
+    results.filter((result) => result.length === 1).length,
+    1,
+    "optimistic replacement must elect one concurrent resource"
+  );
+
+  const [winner] = await sql<
+    Array<{
+      stripe_subscription_id: string;
+      retired_stripe_subscription_ids: string[];
+      version: number;
+    }>
+  >`
+    SELECT stripe_subscription_id, retired_stripe_subscription_ids, version
+    FROM subscription WHERE user_id = ${userId}::uuid
+  `;
+  assert.ok(
+    ["sub_concurrent_a", "sub_concurrent_b"].includes(
+      winner!.stripe_subscription_id
+    )
+  );
+  assert.deepEqual(winner!.retired_stripe_subscription_ids, [
+    "sub_concurrent_old",
+  ]);
+  assert.equal(winner!.version, 2);
 }
 
 async function seedDivergentLegacyInvoiceDuplicate(sql: postgres.Sql) {
@@ -4775,7 +4906,7 @@ async function verifyProviderCreditRecovery(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 19);
+  assert.equal(await migrationCount(sql), 20);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name

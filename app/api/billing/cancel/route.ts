@@ -16,8 +16,6 @@ const stripe = process.env.STRIPE_SECRET_KEY
 // Request validation
 const cancelSchema = z.object({
   cancelImmediately: z.boolean().optional().default(false),
-  reason: z.string().optional(),
-  feedback: z.string().optional(),
 });
 
 /**
@@ -27,8 +25,6 @@ const cancelSchema = z.object({
  *
  * Options:
  * - cancelImmediately: true = cancel now, false = cancel at period end (default)
- * - reason: Optional cancellation reason for analytics
- * - feedback: Optional feedback for improvement
  *
  * California Automatic Renewal Law (ARL) Compliance:
  * - Users can cancel at any time through this API
@@ -59,7 +55,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { cancelImmediately, reason, feedback } = result.data;
+    const { cancelImmediately } = result.data;
     const userId = user.id;
 
     // Get user's subscription
@@ -133,16 +129,6 @@ export async function POST(req: NextRequest) {
           })
           .where(eq(subscription.userId, userId));
 
-        // Log cancellation reason for analytics
-        if (reason || feedback) {
-          console.log("Subscription canceled immediately:", {
-            userId,
-            reason,
-            feedback,
-            timestamp: new Date().toISOString(),
-          });
-        }
-
         return NextResponse.json({
           success: true,
           message:
@@ -164,17 +150,6 @@ export async function POST(req: NextRequest) {
             updatedAt: new Date(),
           })
           .where(eq(subscription.userId, userId));
-
-        // Log cancellation reason for analytics
-        if (reason || feedback) {
-          console.log("Subscription set to cancel at period end:", {
-            userId,
-            reason,
-            feedback,
-            periodEnd: sub.currentPeriodEnd,
-            timestamp: new Date().toISOString(),
-          });
-        }
 
         return NextResponse.json({
           success: true,

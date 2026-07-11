@@ -6,17 +6,44 @@ export interface StripeSubscriptionEventCursor {
   eventId: string;
 }
 
+export interface StripeSubscriptionResourceProof {
+  resourceCreatedAt: Date;
+  createdEventCursor: StripeSubscriptionEventCursor | null;
+}
+
 export function mayApplyStripeSubscriptionResource(input: {
   currentResourceId: string | null;
   currentStatus: string | null;
+  currentResourceProof: StripeSubscriptionResourceProof | null;
+  retiredResourceIds: readonly string[];
   candidateResourceId: string;
+  candidateResourceProof: StripeSubscriptionResourceProof;
   eventType: string;
 }): boolean {
+  if (input.retiredResourceIds.includes(input.candidateResourceId)) {
+    return false;
+  }
   if (!input.currentResourceId) return true;
   if (input.currentResourceId === input.candidateResourceId) return true;
+  if (
+    input.eventType !== "customer.subscription.created" ||
+    input.currentStatus !== "canceled" ||
+    !input.currentResourceProof
+  ) {
+    return false;
+  }
+
+  const resourceCreatedDifference =
+    input.candidateResourceProof.resourceCreatedAt.getTime() -
+    input.currentResourceProof.resourceCreatedAt.getTime();
+  if (resourceCreatedDifference !== 0) return resourceCreatedDifference > 0;
+
+  const currentCreation = input.currentResourceProof.createdEventCursor;
+  const candidateCreation = input.candidateResourceProof.createdEventCursor;
+  if (!currentCreation || !candidateCreation) return false;
   return (
-    input.eventType === "customer.subscription.created" &&
-    input.currentStatus === "canceled"
+    compareStripeSubscriptionEventCursors(candidateCreation, currentCreation) >
+    0
   );
 }
 

@@ -12,6 +12,21 @@ function cursor(type: string, id: string, created = 1_000) {
   return stripeSubscriptionEventCursor({ type, id, created } as never);
 }
 
+function proof(
+  resourceCreated = 900,
+  eventId = "evt_created",
+  eventCreated = resourceCreated
+) {
+  return {
+    resourceCreatedAt: new Date(resourceCreated * 1_000),
+    createdEventCursor: cursor(
+      "customer.subscription.created",
+      eventId,
+      eventCreated
+    ),
+  };
+}
+
 test("subscription cursors impose one total order inside a Stripe second", () => {
   const ordered = [
     cursor("invoice.payment_failed", "evt_z"),
@@ -40,7 +55,10 @@ test("only a created event may replace a canceled subscription resource", () => 
       mayApplyStripeSubscriptionResource({
         currentResourceId: "sub_new",
         currentStatus: "active",
+        currentResourceProof: proof(),
+        retiredResourceIds: ["sub_retired"],
         candidateResourceId: "sub_old",
+        candidateResourceProof: proof(1_000),
         eventType,
       }),
       false
@@ -50,7 +68,10 @@ test("only a created event may replace a canceled subscription resource", () => 
     mayApplyStripeSubscriptionResource({
       currentResourceId: "sub_old",
       currentStatus: "canceled",
+      currentResourceProof: proof(900, "evt_old_created"),
+      retiredResourceIds: [],
       candidateResourceId: "sub_new",
+      candidateResourceProof: proof(1_000, "evt_new_created"),
       eventType: "customer.subscription.created",
     }),
     true
@@ -71,7 +92,13 @@ test("a canceled resource cursor cannot suppress a same-second replacement", () 
     mayApplyStripeSubscriptionResource({
       currentResourceId: "sub_old",
       currentStatus: "canceled",
+      currentResourceProof: proof(900, "evt_old_created"),
+      retiredResourceIds: [],
       candidateResourceId: "sub_new",
+      candidateResourceProof: {
+        resourceCreatedAt: new Date(1_000_000),
+        createdEventCursor: replacementCreation,
+      },
       eventType: "customer.subscription.created",
     }),
     true
@@ -95,6 +122,78 @@ test("a canceled resource cursor cannot suppress a same-second replacement", () 
       candidateResourceId: "sub_old",
       currentCursor: oldDeletion,
       candidateCursor: replacementCreation,
+    }),
+    false
+  );
+});
+
+test("cross-resource replacement requires durable monotonic creation proof", () => {
+  const base = {
+    currentResourceId: "sub_current",
+    currentStatus: "canceled",
+    currentResourceProof: proof(1_000, "evt_current_created", 1_001),
+    retiredResourceIds: ["sub_retired"],
+    eventType: "customer.subscription.created",
+  } as const;
+
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      ...base,
+      candidateResourceId: "sub_retired",
+      candidateResourceProof: proof(2_000, "evt_retired_replay", 2_000),
+    }),
+    false
+  );
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      ...base,
+      currentResourceProof: null,
+      candidateResourceId: "sub_unproven",
+      candidateResourceProof: proof(2_000),
+    }),
+    false
+  );
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      ...base,
+      candidateResourceId: "sub_older",
+      candidateResourceProof: proof(999, "evt_stale_created", 2_000),
+    }),
+    false
+  );
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      ...base,
+      candidateResourceId: "sub_newer",
+      candidateResourceProof: proof(1_001, "evt_newer_created", 1_001),
+    }),
+    true
+  );
+});
+
+test("same-second resources use durable created-event order", () => {
+  const currentProof = proof(1_000, "evt_Z", 1_001);
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      currentResourceId: "sub_current",
+      currentStatus: "canceled",
+      currentResourceProof: currentProof,
+      retiredResourceIds: [],
+      candidateResourceId: "sub_same_second_newer",
+      candidateResourceProof: proof(1_000, "evt_a", 1_001),
+      eventType: "customer.subscription.created",
+    }),
+    true
+  );
+  assert.equal(
+    mayApplyStripeSubscriptionResource({
+      currentResourceId: "sub_current",
+      currentStatus: "canceled",
+      currentResourceProof: currentProof,
+      retiredResourceIds: [],
+      candidateResourceId: "sub_same_second_older",
+      candidateResourceProof: proof(1_000, "evt_A", 1_001),
+      eventType: "customer.subscription.created",
     }),
     false
   );

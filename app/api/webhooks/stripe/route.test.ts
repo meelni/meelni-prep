@@ -5,6 +5,7 @@ const state = vi.hoisted(() => ({
   logs: [] as Array<Record<string, unknown>>,
   payments: [] as Array<Record<string, unknown>>,
   updates: [] as Array<Record<string, unknown>>,
+  subscriptionWrites: [] as Array<Record<string, unknown>>,
   selectResponses: [] as Array<Array<Record<string, unknown>>>,
   tombstoneFingerprints: new Set<string>(),
   signatureCalls: 0,
@@ -82,6 +83,31 @@ vi.mock("@/lib/db", () => ({
         },
       }),
     }),
+    transaction: async (
+      work: (tx: Record<string, (...args: never[]) => unknown>) => unknown
+    ) =>
+      work({
+        insert: () => ({
+          values: (value: Record<string, unknown>) => {
+            if ("stripeSubscriptionId" in value && "status" in value) {
+              state.subscriptionWrites.push(value);
+            }
+            return {
+              onConflictDoUpdate: async () => undefined,
+            };
+          },
+        }),
+        update: () => ({
+          set: (value: Record<string, unknown>) => ({
+            where: () => ({
+              returning: async () => {
+                state.subscriptionWrites.push(value);
+                return [{ id: "subscription-route" }];
+              },
+            }),
+          }),
+        }),
+      }),
   },
 }));
 
@@ -115,6 +141,7 @@ describe("POST /api/webhooks/stripe", () => {
     state.logs.length = 0;
     state.payments.length = 0;
     state.updates.length = 0;
+    state.subscriptionWrites.length = 0;
     state.selectResponses.length = 0;
     state.tombstoneFingerprints.clear();
     state.signatureCalls = 0;
@@ -467,7 +494,129 @@ describe("POST /api/webhooks/stripe", () => {
       lastError: "billing_payment_truth_mismatch",
     });
   });
+
+  it("accepts a newer cross-resource creation and retires the prior identity", async () => {
+    state.selectResponses.push(
+      [],
+      [],
+      [
+        subscriptionRow({
+          stripeSubscriptionId: "sub_old",
+          status: "canceled",
+          stripeResourceCreatedAt: new Date(900_000),
+          stripeResourceCreatedEventTimestamp: new Date(900_000),
+          stripeResourceCreatedEventId: "evt_old_created",
+          lastEventTimestamp: new Date(1_000_000),
+          lastEventPriority: 40,
+          lastEventId: "evt_old_deleted",
+        }),
+      ]
+    );
+
+    const response = await POST(
+      request(
+        subscriptionCreatedEvent("evt_new_created", "sub_new", 1_000, 1_000)
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(state.subscriptionWrites).toHaveLength(1);
+    expect(state.subscriptionWrites[0]).toMatchObject({
+      stripeSubscriptionId: "sub_new",
+      stripeResourceCreatedAt: new Date(1_000_000),
+      stripeResourceCreatedEventTimestamp: new Date(1_000_000),
+      stripeResourceCreatedEventId: "evt_new_created",
+    });
+  });
+
+  it("acknowledges but rejects delayed creation for a retired resource", async () => {
+    state.selectResponses.push(
+      [],
+      [],
+      [
+        subscriptionRow({
+          stripeSubscriptionId: "sub_new",
+          status: "canceled",
+          stripeResourceCreatedAt: new Date(1_000_000),
+          stripeResourceCreatedEventTimestamp: new Date(1_000_000),
+          stripeResourceCreatedEventId: "evt_new_created",
+          retiredStripeSubscriptionIds: ["sub_old"],
+        }),
+      ]
+    );
+
+    const response = await POST(
+      request(
+        subscriptionCreatedEvent(
+          "evt_old_created_delayed",
+          "sub_old",
+          900,
+          1_100
+        )
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(state.subscriptionWrites).toHaveLength(0);
+    expect(state.logs[0]).toMatchObject({ status: "processed" });
+  });
 });
+
+function subscriptionRow(overrides: Record<string, unknown>) {
+  return {
+    id: "subscription-row",
+    userId: "subscription_user",
+    version: 4,
+    stripeSubscriptionId: "sub_current",
+    status: "active",
+    stripeResourceCreatedAt: new Date(900_000),
+    stripeResourceCreatedEventTimestamp: new Date(900_000),
+    stripeResourceCreatedEventId: "evt_current_created",
+    retiredStripeSubscriptionIds: [],
+    lastEventTimestamp: new Date(900_000),
+    lastEventPriority: 30,
+    lastEventId: "evt_current_created",
+    ...overrides,
+  };
+}
+
+function subscriptionCreatedEvent(
+  id: string,
+  subscriptionId: string,
+  resourceCreated: number,
+  eventCreated: number
+) {
+  return {
+    id,
+    type: "customer.subscription.created",
+    created: eventCreated,
+    data: {
+      object: {
+        id: subscriptionId,
+        object: "subscription",
+        created: resourceCreated,
+        customer: "cus_subscription_route",
+        metadata: { userId: "subscription_user" },
+        status: "active",
+        items: {
+          data: [
+            {
+              current_period_start: eventCreated,
+              current_period_end: eventCreated + 2_592_000,
+              price: {
+                id: "price_starter_route",
+                recurring: { interval: "month" },
+              },
+            },
+          ],
+        },
+        trial_end: null,
+        canceled_at: null,
+        cancel_at_period_end: false,
+      },
+    },
+  };
+}
 
 function event(id: string, type: string) {
   return {
@@ -491,10 +640,7 @@ function request(body: object) {
   });
 }
 
-function streamRequest(
-  body: ReadableStream<Uint8Array>,
-  signal?: AbortSignal
-) {
+function streamRequest(body: ReadableStream<Uint8Array>, signal?: AbortSignal) {
   return new NextRequest("http://localhost/api/webhooks/stripe", {
     method: "POST",
     body,
