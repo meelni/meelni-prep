@@ -9,7 +9,7 @@ import {
   paymentHistory,
   stripeCustomerMapping,
 } from "@/lib/db/schema";
-import { eq, and, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { eq, and, ne, or, sql } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
