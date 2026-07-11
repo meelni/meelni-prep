@@ -11,7 +11,10 @@ import {
   consumeContactSubmissionAttemptBudget,
   createDrizzleContactSubmissionStore,
 } from "@/lib/db/contact-submissions";
-import { createContactRateLimitIdentities } from "@/lib/security/contact-rate-limit-identity";
+import {
+  createContactAttemptRateLimitIdentity,
+  createContactRateLimitIdentities,
+} from "@/lib/security/contact-rate-limit-identity";
 import { submitContactRequest } from "@/lib/workflows/submit-contact-request";
 
 const MAX_CONTACT_REQUEST_BYTES = 32 * 1024;
@@ -19,6 +22,50 @@ const MAX_CONTACT_REQUEST_BYTES = 32 * 1024;
 class ContactRequestTooLarge extends Error {}
 
 export async function POST(req: NextRequest) {
+  let attemptIdentity: string;
+  try {
+    attemptIdentity = createContactAttemptRateLimitIdentity(req.headers);
+  } catch {
+    console.error("contact_submission_failed", {
+      code: "security_configuration_unavailable",
+    });
+    return contactError(
+      "storage_unavailable",
+      "We could not save your request. Try again or email support@meelni.com directly.",
+      true,
+      503
+    );
+  }
+
+  let attemptDecision;
+  try {
+    attemptDecision =
+      await consumeContactSubmissionAttemptBudget(attemptIdentity);
+  } catch {
+    console.error("contact_submission_failed", {
+      code: "attempt_budget_unavailable",
+    });
+    return contactError(
+      "storage_unavailable",
+      "We could not save your request. Try again or email support@meelni.com directly.",
+      true,
+      503
+    );
+  }
+
+  if (!attemptDecision.allowed) {
+    console.warn("contact_submission_rejected", {
+      code: "rate_limited",
+    });
+    return contactError(
+      "rate_limited",
+      "Too many requests were submitted. Wait a little, then try again or email us directly.",
+      true,
+      429,
+      attemptDecision.retryAfterSeconds
+    );
+  }
+
   const idempotencyKey = contactIdempotencyKeySchema.safeParse(
     req.headers.get("Idempotency-Key")
   );
@@ -76,36 +123,6 @@ export async function POST(req: NextRequest) {
       "We could not save your request. Try again or email support@meelni.com directly.",
       true,
       503
-    );
-  }
-
-  let attemptDecision;
-  try {
-    attemptDecision = await consumeContactSubmissionAttemptBudget(
-      rateLimitIdentities.attempt
-    );
-  } catch {
-    console.error("contact_submission_failed", {
-      code: "attempt_budget_unavailable",
-    });
-    return contactError(
-      "storage_unavailable",
-      "We could not save your request. Try again or email support@meelni.com directly.",
-      true,
-      503
-    );
-  }
-
-  if (!attemptDecision.allowed) {
-    console.warn("contact_submission_rejected", {
-      code: "rate_limited",
-    });
-    return contactError(
-      "rate_limited",
-      "Too many requests were submitted. Wait a little, then try again or email us directly.",
-      true,
-      429,
-      attemptDecision.retryAfterSeconds
     );
   }
 

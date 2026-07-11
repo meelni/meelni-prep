@@ -50,6 +50,8 @@ const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const CONTACT_DELETE_USER = "12121212-1212-4212-8212-121212121212";
 const CONTACT_DELETE_SESSION = "15151515-1515-4515-8515-151515151515";
+const CONTACT_WINS_RACE_USER = "16161616-1616-4616-8616-161616161616";
+const DELETION_WINS_RACE_USER = "17171717-1717-4717-8717-171717171717";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
@@ -1518,7 +1520,7 @@ async function verifyDurableContactSubmission(
       consumeContactSubmissionAttemptBudget,
       createDrizzleContactSubmissionStore,
     },
-    { deleteUserApplicationData },
+    { deleteUserApplicationData, requestAccountDeletion },
     schema,
   ] = await Promise.all([
     import("../lib/db/contact-submissions"),
@@ -1856,9 +1858,194 @@ async function verifyDurableContactSubmission(
       sessions: 0,
       unlinked: 1,
     });
+
+    await sql`
+      INSERT INTO app_user (id, email)
+      VALUES
+        (${CONTACT_WINS_RACE_USER}::uuid, 'contact-wins@example.invalid'),
+        (${DELETION_WINS_RACE_USER}::uuid, 'deletion-wins@example.invalid')
+    `;
+
+    const contactWinsInput = contactRaceInput({
+      userId: CONTACT_WINS_RACE_USER,
+      idempotencyKey: "18181818-1818-4818-8818-181818181818",
+      identitySeed: "1",
+    });
+    const contactWinsBarrier = await holdIdempotencyLock(
+      databaseUrl,
+      contactWinsInput.idempotencyKey
+    );
+    const contactWins = stores[0]!.accept(contactWinsInput);
+    await waitForAccountIdentityLock(databaseUrl, CONTACT_WINS_RACE_USER);
+    const deletionAfterContact = requestAccountDeletion({
+      userId: CONTACT_WINS_RACE_USER,
+      stripeSubjects: [],
+    });
+    await contactWinsBarrier.release();
+
+    const contactWinsDecision = await contactWins;
+    assert.equal(contactWinsDecision.disposition, "stored");
+    await deletionAfterContact;
+    await deleteUserApplicationData(CONTACT_WINS_RACE_USER);
+    const [contactWinsState] = await sql<{ remaining: number }[]>`
+      SELECT count(*)::int AS remaining
+      FROM contact_submission
+      WHERE user_id = ${CONTACT_WINS_RACE_USER}::uuid
+    `;
+    assert.equal(contactWinsState?.remaining, 0);
+
+    const deletionWinsInput = contactRaceInput({
+      userId: DELETION_WINS_RACE_USER,
+      idempotencyKey: "19191919-1919-4919-8919-191919191919",
+      identitySeed: "2",
+    });
+    const deletionWinsBarrier = await holdAppUserRowLock(
+      databaseUrl,
+      DELETION_WINS_RACE_USER
+    );
+    const deletionBeforeContact = requestAccountDeletion({
+      userId: DELETION_WINS_RACE_USER,
+      stripeSubjects: [],
+    });
+    await waitForAccountIdentityLock(databaseUrl, DELETION_WINS_RACE_USER);
+    const rejectedContact = stores[1]!.accept(deletionWinsInput);
+    await deletionWinsBarrier.release();
+
+    await deletionBeforeContact;
+    await assert.rejects(rejectedContact, /contact_account_unavailable/);
+    const [deletionWinsState] = await sql<
+      { remaining: number; tombstones: number }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM contact_submission
+          WHERE user_id = ${DELETION_WINS_RACE_USER}::uuid) AS remaining,
+        (SELECT count(*)::int FROM account_deletion_request
+          WHERE user_id = ${DELETION_WINS_RACE_USER}::uuid) AS tombstones
+    `;
+    assert.deepEqual(deletionWinsState, { remaining: 0, tombstones: 1 });
+
+    await assert.rejects(
+      stores[2]!.accept(
+        contactRaceInput({
+          userId: "20202020-2020-4020-8020-202020202020",
+          idempotencyKey: "21212121-2121-4121-8121-212121212121",
+          identitySeed: "3",
+        })
+      ),
+      /contact_account_unavailable/
+    );
   } finally {
     await Promise.all(clients.map((client) => client.end()));
   }
+}
+
+function contactRaceInput({
+  userId,
+  idempotencyKey,
+  identitySeed,
+}: {
+  userId: string;
+  idempotencyKey: string;
+  identitySeed: string;
+}) {
+  return {
+    idempotencyKey,
+    userId,
+    name: "Deletion Race",
+    email: `${identitySeed}@example.invalid`,
+    reason: "support" as const,
+    subject: "Concurrent deletion",
+    message: "This disposable fixture verifies deletion serialization.",
+    rateLimitIdentities: {
+      attempt: identitySeed.repeat(64),
+      client: (Number(identitySeed) + 3).toString(16).repeat(64),
+      email: (Number(identitySeed) + 6).toString(16).repeat(64),
+      global: (Number(identitySeed) + 9).toString(16).repeat(64),
+    },
+  };
+}
+
+async function holdIdempotencyLock(
+  databaseUrl: string,
+  idempotencyKey: string
+) {
+  const client = postgres(databaseUrl, { max: 1, prepare: false });
+  let releaseBarrier!: () => void;
+  let signalReady!: () => void;
+  const release = new Promise<void>((resolve) => {
+    releaseBarrier = resolve;
+  });
+  const ready = new Promise<void>((resolve) => {
+    signalReady = resolve;
+  });
+  const transaction = client.begin(async (tx) => {
+    await tx`
+      SELECT pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 0))
+    `;
+    signalReady();
+    await release;
+  });
+  await ready;
+
+  return {
+    async release() {
+      releaseBarrier();
+      await transaction;
+      await client.end();
+    },
+  };
+}
+
+async function holdAppUserRowLock(databaseUrl: string, userId: string) {
+  const client = postgres(databaseUrl, { max: 1, prepare: false });
+  let releaseBarrier!: () => void;
+  let signalReady!: () => void;
+  const release = new Promise<void>((resolve) => {
+    releaseBarrier = resolve;
+  });
+  const ready = new Promise<void>((resolve) => {
+    signalReady = resolve;
+  });
+  const transaction = client.begin(async (tx) => {
+    await tx`
+      SELECT id FROM app_user WHERE id = ${userId}::uuid FOR UPDATE
+    `;
+    signalReady();
+    await release;
+  });
+  await ready;
+
+  return {
+    async release() {
+      releaseBarrier();
+      await transaction;
+      await client.end();
+    },
+  };
+}
+
+async function waitForAccountIdentityLock(databaseUrl: string, userId: string) {
+  const probe = postgres(databaseUrl, { max: 1, prepare: false });
+  try {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const acquired = await probe.begin(async (tx) => {
+        const [row] = await tx<{ acquired: boolean }[]>`
+          SELECT pg_try_advisory_xact_lock(
+            hashtextextended(
+              ${userId},
+              ${ACCOUNT_IDENTITY_LOCK_NAMESPACE}::bigint
+            )
+          ) AS acquired
+        `;
+        return row?.acquired ?? false;
+      });
+      if (!acquired) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  } finally {
+    await probe.end();
+  }
+  throw new Error(`Timed out waiting for account identity lock: ${userId}`);
 }
 
 async function verifyAtomicCreditLedger(

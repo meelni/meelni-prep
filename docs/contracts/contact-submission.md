@@ -6,7 +6,7 @@ Status: implemented locally for SAV-182; shared-environment rollout not performe
 
 `stored` means one normalized request was committed to `contact_submission` and can be retrieved by its receipt. It does not mean an email was sent, delivered, read, or answered. The public UI must not claim provider delivery or a response-time SLA.
 
-The route is a thin adapter: parse the request, require a UUID idempotency key, validate and normalize fields, derive rate-limit identities at the trusted edge, consume the durable attempt budget before any authentication-provider lookup, invoke the workflow, and map the result to HTTP.
+The route is a thin adapter: derive a PII-free trusted-client identity and consume the durable attempt budget before reading the request body, require a UUID idempotency key, validate and normalize fields, derive accepted-request identities, resolve an optional authenticated account link, invoke the workflow, and map the result to HTTP.
 
 ## Request
 
@@ -21,8 +21,8 @@ The route is a thin adapter: parse the request, require a UUID idempotency key, 
 | ---- | ---------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | 202  | `stored`                                       | no                   | A new row committed; response includes a receipt and `duplicate: false`.                                             |
 | 200  | `stored`                                       | no                   | The same key and normalized payload replayed the original receipt with `duplicate: true`.                            |
-| 400  | `invalid_request` or `invalid_idempotency_key` | after correction     | No workflow write occurred.                                                                                          |
-| 413  | `invalid_request`                              | after shortening     | The bounded JSON body exceeded 32 KiB; no workflow write occurred.                                                   |
+| 400  | `invalid_request` or `invalid_idempotency_key` | after correction     | The attempt budget was consumed; no contact row or accepted-request budget was written.                              |
+| 413  | `invalid_request`                              | after shortening     | The attempt budget was consumed before the bounded JSON body exceeded 32 KiB; no contact row was written.            |
 | 409  | `idempotency_conflict`                         | new key after review | The key already belongs to a different normalized payload.                                                           |
 | 429  | `rate_limited`                                 | yes                  | No submission committed; `Retry-After` and `retryAfterSeconds` agree.                                                |
 | 503  | `storage_unavailable`                          | yes                  | Trusted identity, security configuration, limiter, transaction, or storage could not be proven. No success is shown. |
@@ -32,7 +32,7 @@ Network retries reuse the same key while the payload is unchanged. Editing any f
 ## Persistence and triage
 
 - `persistence_state` is exactly `stored` in this slice.
-- An authenticated submission is linked to `user_id` only when the server-verified account email exactly matches the normalized form email. Account deletion removes only those linked rows; it never deletes another person's request merely because a form contained the account email.
+- An authenticated submission is linked to `user_id` only when the server-verified account email exactly matches the normalized form email. Before a linked insert, the store takes the same account-identity and application-user locks as deletion intent and rejects a missing user or any deletion tombstone. Therefore either the contact row commits first and later deletion removes it, or deletion intent commits first and the contact row cannot be created. Account deletion removes only linked rows; it never deletes another person's request merely because a form contained the account email.
 - Anonymous or mismatched-email submissions remain unlinked and require a separately verified privacy request from the submitting email address. Automated deletion by email alone is intentionally forbidden.
 - `triage_state` is `new`, `claimed`, or `resolved` and is independent of persistence.
 - Queue listing returns receipt, reason, triage state, and created time only.

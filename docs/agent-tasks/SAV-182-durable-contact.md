@@ -42,7 +42,7 @@
 
 - Required: workflow/security/API tests, typecheck, lint, build, local PostgreSQL clean/upgrade migration rehearsal, schema fingerprint, quality/secret scan.
 - Manual: responsive contact UI, keyboard path, failure/retry, saved receipt, direct email fallback.
-- Regression fixtures: idempotent concurrent writes, changed-payload conflict, shared rate-limit exhaustion, least-privilege triage audit, bounded stale-limit cleanup.
+- Regression fixtures: idempotent concurrent writes, changed-payload conflict, malformed-request attempt accounting, shared rate-limit exhaustion, barrier-controlled contact/deletion races in both commit orders, missing-user rejection, least-privilege triage audit, bounded stale-limit cleanup.
 
 ## Rollout
 
