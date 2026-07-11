@@ -69,5 +69,22 @@ describe("bounded launch-critical JSON routes", () => {
       expect(mocks.startInterviewSessionWorkflow).not.toHaveBeenCalled();
       expect(mocks.generateFeedback).not.toHaveBeenCalled();
     });
+
+    for (const body of ["null", "[]", '"text"', "42", "true"]) {
+      it(`${name} quietly rejects the non-object JSON body ${body}`, async () => {
+        const response = await handler(
+          new NextRequest("http://localhost/api/test", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body,
+          })
+        );
+
+        expect(response.status).toBe(400);
+        expect(mocks.reportOperationalFailure).not.toHaveBeenCalled();
+        expect(mocks.startInterviewSessionWorkflow).not.toHaveBeenCalled();
+        expect(mocks.generateFeedback).not.toHaveBeenCalled();
+      });
+    }
   }
 });

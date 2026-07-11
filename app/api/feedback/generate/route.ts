@@ -102,7 +102,7 @@ import {
   reportOperationalFailure,
   type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
-import { readBoundedJson } from "@/lib/http/read-bounded-json";
+import { readBoundedJsonObject } from "@/lib/http/read-bounded-json";
 
 export async function POST(req: NextRequest) {
   let correlationId: InterviewSessionCorrelationId | null = null;
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse request body
-    const parsed = await readBoundedJson(req, 16 * 1024);
+    const parsed = await readBoundedJsonObject(req, 16 * 1024);
     if (!parsed.ok)
       return NextResponse.json(
         { error: "Invalid request" },

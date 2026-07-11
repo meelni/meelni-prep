@@ -142,6 +142,20 @@ test("the operational contract cannot accept arbitrary context or error objects"
   assert.match(source, /InterviewSessionCorrelationSource/);
 });
 
+test("every bounded critical JSON route requires a top-level object", async () => {
+  const violations = [];
+  for (const file of [
+    "app/api/session/start/route.ts",
+    "app/api/feedback/generate/route.ts",
+    "app/api/interview/end/route.ts",
+    "app/api/livekit/token/route.ts",
+  ]) {
+    const source = await readFile(path.join(ROOT, file), "utf8");
+    if (!source.includes("readBoundedJsonObject(")) violations.push(file);
+  }
+  assert.deepEqual(violations, []);
+});
+
 async function collectLocalCallGraph(entryFiles) {
   const visited = new Set();
   const queue = [...entryFiles];

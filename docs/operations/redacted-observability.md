@@ -8,7 +8,10 @@ The reporter is failure-isolated: an invalid clock or throwing log sink returns
 a fixed redacted fallback and must never replace the product workflow failure.
 Instrumented JSON request boundaries reject declared or streamed bodies above
 16 KiB, cancel pending reads when the request aborts, and never include rejected
-body content in logs. The signed Stripe webhook preserves raw signature bytes
+body content in logs. The session-start, interview-end, feedback-generation,
+and LiveKit-token boundaries also require a top-level JSON object; JSON `null`,
+arrays, and primitives return a quiet 400 before workflow or critical-event
+work. The signed Stripe webhook preserves raw signature bytes
 behind the same bounded reader with a 256 KiB ceiling.
 
 The relaunch gate must remain off until a controlled isolated-Preview failure proves that the selected operator can receive and act on alerts. Do not generate that failure against the current shared Production database.
@@ -21,8 +24,9 @@ Filter Runtime Logs for:
 "event":"meelni_operational_failure"
 ```
 
-Then group by `environment`, `release`, `operation`, and `errorCode`. Use
-`requestId` to correlate a single Vercel invocation. `correlationId` is present
+Then group by `environment`, `release`, `operation`, and `errorCode`. The
+`requestId` field is currently null because request headers are not a trusted
+identifier source at the application boundary. `correlationId` is present
 only after a stored interview session is authenticated as owned by the caller;
 pre-lookup configuration, rate-limit, authorization, and malformed-request
 failures deliberately omit it.
@@ -65,7 +69,7 @@ Rehearse one safe configuration failure that cannot mutate Production or incur a
 
 - exactly one expected structured event;
 - environment and release match Preview;
-- request/correlation IDs are opaque;
+- the request ID is null and any correlation ID is an owned session UUID;
 - no transcript, email, user ID, auth code, token, provider payload, or secret appears;
 - the alert is received and acknowledged;
 - recovery produces no new error event.

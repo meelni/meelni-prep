@@ -59,6 +59,22 @@ export async function readBoundedJson(
   }
 }
 
+export async function readBoundedJsonObject(
+  request: Request,
+  maxBytes: number
+): Promise<BoundedBodyResult<Record<string, unknown>>> {
+  const parsed = await readBoundedJson(request, maxBytes);
+  if (!parsed.ok) return parsed;
+  if (
+    parsed.value === null ||
+    typeof parsed.value !== "object" ||
+    Array.isArray(parsed.value)
+  ) {
+    return { ok: false, reason: "invalid" };
+  }
+  return { ok: true, value: parsed.value as Record<string, unknown> };
+}
+
 async function readChunkOrAbort(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   signal: AbortSignal

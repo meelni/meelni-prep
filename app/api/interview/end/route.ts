@@ -9,7 +9,7 @@ import {
   type OperationalRequestId,
   type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
-import { readBoundedJson } from "@/lib/http/read-bounded-json";
+import { readBoundedJsonObject } from "@/lib/http/read-bounded-json";
 import { createClient } from "@/lib/supabase/server";
 import { updateStreak } from "@/lib/streaks";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const parsed = await readBoundedJson(req, 16 * 1024);
+    const parsed = await readBoundedJsonObject(req, 16 * 1024);
     if (!parsed.ok)
       return NextResponse.json(
         { error: "Invalid request" },

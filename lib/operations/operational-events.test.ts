@@ -51,7 +51,7 @@ test("operational failures contain only the bounded alert contract", () => {
     errorCode: "interview_start_failed",
     severity: "critical",
     retryable: true,
-    requestId: "sfo1::request-123",
+    requestId: null,
     correlationId: SESSION_ID,
   });
   assert.deepEqual(writes, [JSON.stringify(event)]);
@@ -192,12 +192,27 @@ test("throwing clocks and sinks cannot mask the product failure", () => {
   }
 });
 
-test("request and interview-session correlation helpers accept only domain-owned identifiers", () => {
-  const request = new Request("https://meelni.test", {
-    headers: { "x-vercel-id": "iad1::safe-request" },
-  });
+test("request headers are never treated as trusted operational identifiers", () => {
+  const secretShapedValue = ["sk", "live", "redacted-test-value"].join("_");
+  for (const value of [
+    "iad1::apparently-platform-shaped",
+    secretShapedValue,
+    "550e8400-e29b-41d4-a716-446655440000",
+    "+1-415-555-0199",
+    "customer@example.com",
+  ]) {
+    assert.equal(
+      readOperationalRequestId(
+        new Request("https://meelni.test", {
+          headers: { "x-vercel-id": value },
+        })
+      ),
+      null
+    );
+  }
+});
 
-  assert.equal(readOperationalRequestId(request), "iad1::safe-request");
+test("interview-session correlation helpers accept only domain-owned identifiers", () => {
   assert.equal(
     readInterviewSessionCorrelationId({
       kind: "owned_interview_session",

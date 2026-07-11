@@ -1,7 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { readBoundedJson } from "./read-bounded-json";
+import { readBoundedJson, readBoundedJsonObject } from "./read-bounded-json";
+
+test("bounded JSON objects reject null, arrays, and primitives", async () => {
+  for (const value of ["null", "[]", '"text"', "42", "true"]) {
+    const result = await readBoundedJsonObject(
+      new Request("https://meelni.test", { method: "POST", body: value }),
+      100
+    );
+    assert.deepEqual(result, { ok: false, reason: "invalid" });
+  }
+
+  assert.deepEqual(
+    await readBoundedJsonObject(
+      new Request("https://meelni.test", { method: "POST", body: "{}" }),
+      100
+    ),
+    { ok: true, value: {} }
+  );
+});
 
 test("bounded JSON rejects declared and streamed overflow without reading content", async () => {
   const declared = await readBoundedJson(

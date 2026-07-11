@@ -106,7 +106,7 @@ import {
   startInterviewSessionWorkflow,
   type StartInterviewSessionBody,
 } from "@/lib/workflows/start-session";
-import { readBoundedJson } from "@/lib/http/read-bounded-json";
+import { readBoundedJsonObject } from "@/lib/http/read-bounded-json";
 
 const MAX_INTERVIEW_START_BODY_BYTES = 16 * 1024;
 
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse request body first to access roundType
-    const parsedBody = await readBoundedJson(
+    const parsedBody = await readBoundedJsonObject(
       req,
       MAX_INTERVIEW_START_BODY_BYTES
     );

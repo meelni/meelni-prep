@@ -97,7 +97,6 @@ interface OperationalEventDependencies {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const RELEASE_PATTERN = /^[0-9a-f]{7,40}$/i;
 const OPERATIONAL_FAILURE_ERROR_CODE_SET = new Set<string>(
   OPERATIONAL_FAILURE_ERROR_CODES
@@ -156,7 +155,7 @@ export function reportOperationalFailure(
       errorCode: input.errorCode,
       severity: input.severity ?? "error",
       retryable: input.retryable,
-      requestId: sanitizeRequestId(input.requestId),
+      requestId: sanitizeRequestId(),
       correlationId: sanitizeCorrelationId(input.correlationId),
     };
     try {
@@ -189,7 +188,10 @@ function isOperationalFailureSeverity(
 export function readOperationalRequestId(
   request: Request
 ): OperationalRequestId | null {
-  return sanitizeRequestId(request.headers.get("x-vercel-id"));
+  void request;
+  // Request headers are caller-controlled at this boundary. Until request IDs
+  // come from a trusted platform API, do not serialize them as operational data.
+  return null;
 }
 
 export function readInterviewSessionCorrelationId(
@@ -242,12 +244,8 @@ function readRelease(
   return value && RELEASE_PATTERN.test(value) ? value.slice(0, 12) : null;
 }
 
-function sanitizeRequestId(
-  value: string | null | undefined
-): OperationalRequestId | null {
-  return value && SAFE_REQUEST_ID_PATTERN.test(value)
-    ? (value as OperationalRequestId)
-    : null;
+function sanitizeRequestId(): OperationalRequestId | null {
+  return null;
 }
 
 function sanitizeCorrelationId(
