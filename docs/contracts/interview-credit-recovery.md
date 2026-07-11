@@ -23,6 +23,10 @@ Provider-failure ingress accepts only the deployed `livekit` runtime and the
 normalized failure-code set shared by the TypeScript and Python contracts.
 The first accepted terminal claim is immutable; an equivalent replay is
 idempotent and a conflicting claim fails closed.
+Fatal runtime and deadline-watchdog failures use one tracked stop sequence:
+persist the provider-neutral fact, close the agent session, terminate the room,
+and shut down the job. Persistence failure cannot leave the voice runtime
+accepting turns after server truth has failed and refunded the interview.
 
 ## Versioned Billing Policy
 
@@ -42,6 +46,9 @@ make-good grant ID commit together. Lock order is always owner lookup followed
 by `app_user`, `interview_session`, reservation, allocations, and grants.
 Concurrent commands and retries converge on one evidence tuple and one ledger
 terminal history.
+Settlement analytics are held outside nested savepoints and emitted only after
+the outer user transaction commits. An outer rollback discards both durable
+settlement state and its pending analytics evidence.
 
 ## Expired Source Make-Good
 

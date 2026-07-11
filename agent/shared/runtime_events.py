@@ -2,7 +2,7 @@
 
 from datetime import datetime
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 
 INTERVIEW_RUNTIME_EVENT_CONTRACT_VERSION = 1
@@ -41,6 +41,26 @@ def provider_failure_code(error_type: object) -> str:
         error_type,
         DEFAULT_PROVIDER_FAILURE_CODE,
     )
+
+
+async def report_provider_failure_and_stop(
+    *,
+    report_failure: Callable[[], Awaitable[bool]],
+    close_session: Callable[[], Awaitable[None]],
+    terminate_room: Callable[[], Awaitable[None]],
+    shutdown: Callable[[], None],
+) -> bool:
+    """Persist one fatal fact and guarantee every local runtime stop boundary."""
+    try:
+        return await report_failure()
+    finally:
+        try:
+            await close_session()
+        finally:
+            try:
+                await terminate_room()
+            finally:
+                shutdown()
 
 
 def create_runtime_event(

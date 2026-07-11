@@ -27,7 +27,10 @@ export async function convergeDrizzleInterviewCreditSettlement(
 }
 
 export function createDrizzleInterviewCreditSettlementStore(
-  database: CreditLedgerDatabase = db
+  database: CreditLedgerDatabase = db,
+  trackCompletedSettlement: (
+    evidence: InterviewCreditSettlementEvidence
+  ) => void = trackCompletedInterviewCreditSettlement
 ): InterviewCreditSettlementStore {
   return {
     async lookupOwner(sessionId) {
@@ -55,10 +58,8 @@ export function createDrizzleInterviewCreditSettlementStore(
               billingFault: interviewSession.billingFault,
               billingFaultCode: interviewSession.billingFaultCode,
               creditPolicyVersion: interviewSession.creditPolicyVersion,
-              creditSettlementAction:
-                interviewSession.creditSettlementAction,
-              creditSettlementReason:
-                interviewSession.creditSettlementReason,
+              creditSettlementAction: interviewSession.creditSettlementAction,
+              creditSettlementReason: interviewSession.creditSettlementReason,
               creditSettlementIdempotencyKey:
                 interviewSession.creditSettlementIdempotencyKey,
               creditSettledAt: interviewSession.creditSettledAt,
@@ -203,7 +204,9 @@ export function createDrizzleInterviewCreditSettlementStore(
                 )
                 .returning({ id: interviewSession.id });
               if (!updated[0]) {
-                throw new Error("interview_credit_settlement_evidence_write_failed");
+                throw new Error(
+                  "interview_credit_settlement_evidence_write_failed"
+                );
               }
             },
           });
@@ -211,22 +214,40 @@ export function createDrizzleInterviewCreditSettlementStore(
         database
       );
     },
-    trackCompletedSettlement(evidence) {
-      trackCompletedReservationEvent({
-        transactionType: evidence.transactionType,
-        userId: evidence.userId,
-        catalogId: evidence.catalogId as Parameters<
-          typeof trackCompletedReservationEvent
-        >[0]["catalogId"],
-        creditSource: evidence.creditSource as Parameters<
-          typeof trackCompletedReservationEvent
-        >[0]["creditSource"],
-        credits: evidence.credits,
-        idempotencyKey: evidence.idempotencyKey,
-        sessionId: evidence.sessionId,
-        reservationId: evidence.reservationId,
-        grantId: evidence.grantId,
-      });
-    },
+    trackCompletedSettlement,
   };
+}
+
+export function trackCompletedInterviewCreditSettlement(
+  evidence: InterviewCreditSettlementEvidence
+): void {
+  trackCompletedReservationEvent({
+    transactionType: evidence.transactionType,
+    userId: evidence.userId,
+    catalogId: evidence.catalogId as Parameters<
+      typeof trackCompletedReservationEvent
+    >[0]["catalogId"],
+    creditSource: evidence.creditSource as Parameters<
+      typeof trackCompletedReservationEvent
+    >[0]["creditSource"],
+    credits: evidence.credits,
+    idempotencyKey: evidence.idempotencyKey,
+    sessionId: evidence.sessionId,
+    reservationId: evidence.reservationId,
+    grantId: evidence.grantId,
+  });
+}
+
+export async function withDeferredInterviewCreditSettlementTracking<T>(
+  work: (
+    defer: (evidence: InterviewCreditSettlementEvidence) => void
+  ) => Promise<T>,
+  track: (
+    evidence: InterviewCreditSettlementEvidence
+  ) => void = trackCompletedInterviewCreditSettlement
+): Promise<T> {
+  const completed: InterviewCreditSettlementEvidence[] = [];
+  const result = await work((evidence) => completed.push(evidence));
+  for (const evidence of completed) track(evidence);
+  return result;
 }

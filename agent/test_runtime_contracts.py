@@ -26,6 +26,7 @@ from shared.runtime_events import (
     PROVIDER_FAILURE_CODES,
     create_runtime_event,
     provider_failure_code,
+    report_provider_failure_and_stop,
 )
 from shared.runtime_config import (
     DEFAULT_INTERVIEW_RUNTIME_CONFIG,
@@ -77,6 +78,69 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(
             provider_failure_code("realtime_model_error"),
             "realtime_model_provider_failed",
+        )
+
+    def test_provider_failure_stop_closes_session_room_and_job(self):
+        async def scenario():
+            calls = []
+
+            async def report_failure():
+                calls.append("report")
+                return True
+
+            async def close_session():
+                calls.append("close_session")
+
+            async def terminate_room():
+                calls.append("terminate_room")
+
+            persisted = await report_provider_failure_and_stop(
+                report_failure=report_failure,
+                close_session=close_session,
+                terminate_room=terminate_room,
+                shutdown=lambda: calls.append("shutdown"),
+            )
+            return persisted, calls
+
+        persisted, calls = asyncio.run(scenario())
+
+        self.assertTrue(persisted)
+        self.assertEqual(
+            calls,
+            ["report", "close_session", "terminate_room", "shutdown"],
+        )
+
+    def test_provider_failure_stop_is_guaranteed_when_reporting_fails(self):
+        async def scenario():
+            calls = []
+
+            async def report_failure():
+                calls.append("report")
+                raise RuntimeError("persistence unavailable")
+
+            async def close_session():
+                calls.append("close_session")
+
+            async def terminate_room():
+                calls.append("terminate_room")
+
+            try:
+                await report_provider_failure_and_stop(
+                    report_failure=report_failure,
+                    close_session=close_session,
+                    terminate_room=terminate_room,
+                    shutdown=lambda: calls.append("shutdown"),
+                )
+            except RuntimeError as error:
+                return error, calls
+            raise AssertionError("provider failure should propagate")
+
+        error, calls = asyncio.run(scenario())
+        self.assertRegex(str(error), "persistence unavailable")
+
+        self.assertEqual(
+            calls,
+            ["report", "close_session", "terminate_room", "shutdown"],
         )
         self.assertEqual(
             provider_failure_code("raw provider stack with token"),
