@@ -62,7 +62,9 @@ An overlapping request may finish its provider fetch, but returns `409 question_
 
 The provider has no durable row ID. The sync therefore hashes normalized non-private source fields into `source_fingerprint`, retains the original category in `source_category`, and records only the provider class in `source_kind`. Logs and responses expose aggregate counts, never those values.
 
-Exact fingerprints collapse before planning. A near duplicate must have the same normalized prompt, company, and canonical PM round while differing only in provenance or harmless formatting. One existing active row remains canonical whenever possible; additional occurrences are stored inactive with `quality_status = quarantined_near_duplicate` and a canonical link. The database enforces that only `published` rows are active. Fuzzy semantic matching is intentionally out of scope and must not silently quarantine questions.
+Exact fingerprints collapse deterministically before planning, regardless of provider row order. A near duplicate must have the same normalized prompt, company, and canonical PM round while differing only in provenance or explicitly normalized formatting. The normalizer preserves comparison operators, percentages, currency, arithmetic signs, and other meaning-bearing symbols. One existing active row remains canonical whenever possible; additional occurrences are stored inactive with `quality_status = quarantined_near_duplicate` and a canonical link. The database enforces that only `published` rows are active. Fuzzy semantic matching is intentionally out of scope and must not silently quarantine questions.
+
+The 25% bulk-removal guard counts every active row that would become inactive, whether it is source-missing or retired as a duplicate. A dry run that exceeds the guard fails instead of treating duplicate cleanup as exempt.
 
 Dry-run and live responses report `invalidRows`, `exactDuplicateRows`, `nearDuplicateRowsQuarantined`, and `duplicateRecordsRetired` alongside the existing add/update/deactivate totals. Repeating the same source snapshot must produce no new rows or canonical IDs.
 

@@ -203,11 +203,23 @@ export async function getQuestions(
   };
 }
 
-/**
- * Get a question by ID
- */
-export async function getQuestionById(
+/** Public lookup for a question that is currently eligible for new practice. */
+export async function getActiveQuestionById(
   questionId: string
+): Promise<QuestionBankRecord | null> {
+  return findQuestionById(questionId, true);
+}
+
+/** Internal historical lookup. Never use this for public reads or new practice. */
+export async function getQuestionByIdForHistory(
+  questionId: string
+): Promise<QuestionBankRecord | null> {
+  return findQuestionById(questionId, false);
+}
+
+async function findQuestionById(
+  questionId: string,
+  activeOnly: boolean
 ): Promise<QuestionBankRecord | null> {
   const [question] = await db
     .select({
@@ -220,7 +232,14 @@ export async function getQuestionById(
       createdAt: interviewQuestion.createdAt,
     })
     .from(interviewQuestion)
-    .where(eq(interviewQuestion.id, questionId))
+    .where(
+      activeOnly
+        ? and(
+            eq(interviewQuestion.id, questionId),
+            eq(interviewQuestion.isActive, true)
+          )
+        : eq(interviewQuestion.id, questionId)
+    )
     .limit(1);
 
   return question ? canonicalizeQuestionRecord(question) : null;
