@@ -50,6 +50,7 @@ import {
   type AccountDeletionResult,
   type SettingsLoadState,
 } from "@/lib/dashboard/settings-actions";
+import { clearTranscriptQueueStorage } from "@/lib/utils/transcript-queue";
 import { cn } from "@/lib/utils";
 
 interface SubscriptionSummary {
@@ -731,6 +732,9 @@ function DataPrivacyPane({
     setDeleteMessage(null);
     setReauthenticateAt(null);
     const result = await requestAccountDeletion(confirmation);
+    if (result.state === "requested" || result.state === "retry_scheduled") {
+      clearTranscriptQueueStorage();
+    }
     setDeleteState(result.state);
     setDeleteMessage(result.message);
     if (result.state === "reauthentication_required") {

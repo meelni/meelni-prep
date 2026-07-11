@@ -75,6 +75,43 @@ test("identity conflicts are permanent and block transcript settlement", async (
   }
 });
 
+test("terminal session closure discards raw transcript content without blocking settlement", async () => {
+  const storage = new MemoryStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  globalThis.fetch = async () =>
+    Response.json({ error: "transcript_session_closed" }, { status: 409 });
+
+  try {
+    const queue = new TranscriptQueue();
+    const result = await queue.save(request());
+    assert.deepEqual(result, {
+      success: false,
+      error: "transcript_session_closed",
+    });
+    assert.deepEqual(await queue.flush("user-1", SESSION_ID, 20), {
+      settled: true,
+      pending: 0,
+      failed: 0,
+    });
+    assert.doesNotMatch(
+      storage.getItem("transcript_queue_v2") ?? "",
+      /clarifying the goal/
+    );
+    queue.stop();
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
 test("restored events stay paused until owner binding filters account data", async () => {
   const storage = new MemoryStorage();
   const originalStorage = Object.getOwnPropertyDescriptor(
@@ -142,24 +179,119 @@ test("permanent failures survive reload and continue blocking settlement", async
   try {
     const settlement = await queue.flush("user-1", SESSION_ID, 20);
     assert.deepEqual(settlement, { settled: false, pending: 0, failed: 1 });
+    const persisted = storage.getItem("transcript_queue_v2") ?? "";
+    assert.doesNotMatch(persisted, /clarifying the goal/);
+    assert.match(persisted, /identity_conflict/);
   } finally {
     queue.stop();
     restoreGlobal("localStorage", originalStorage);
   }
 });
 
-function request() {
+test("expired retry entries are purged instead of retaining transcript text indefinitely", () => {
+  const storage = new MemoryStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  storage.setItem(
+    "transcript_queue_v2",
+    JSON.stringify({
+      items: [
+        {
+          ...serializedQueueItem(request()),
+          enqueuedAt: "2020-01-01T00:00:00.000Z",
+          lastAttempt: "2020-01-01T00:00:00.000Z",
+        },
+      ],
+      overflowedSessions: [],
+    })
+  );
+
+  try {
+    const queue = new TranscriptQueue();
+    assert.equal(queue.getStatus().queueLength, 0);
+    assert.doesNotMatch(
+      storage.getItem("transcript_queue_v2") ?? "",
+      /clarifying the goal/
+    );
+    queue.stop();
+  } finally {
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
+test("an unresolved old-owner save cannot rebind or delete the new owner's queue", async () => {
+  const storage = new MemoryStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  let resolveOldRequest!: (response: Response) => void;
+  const oldRequest = new Promise<Response>((resolve) => {
+    resolveOldRequest = resolve;
+  });
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    if (requests === 1) return oldRequest;
+    return Response.json({ error: "unavailable" }, { status: 503 });
+  };
+
+  const queue = new TranscriptQueue();
+  try {
+    const staleSave = queue.save(request());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    queue.bindOwner("user-2");
+    queue.add(
+      request({
+        ownerId: "user-2",
+        text: "New owner's private answer.",
+        eventId: "writer-2:message-1",
+      })
+    );
+    resolveOldRequest(Response.json({ error: "unavailable" }, { status: 503 }));
+
+    assert.deepEqual(await staleSave, {
+      success: false,
+      error: "transcript_owner_changed",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const persisted = storage.getItem("transcript_queue_v2") ?? "";
+    assert.match(persisted, /New owner's private answer/);
+    assert.doesNotMatch(persisted, /clarifying the goal/);
+    assert.equal(queue.getStatus().queueLength, 1);
+  } finally {
+    queue.stop();
+    globalThis.fetch = originalFetch;
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
+function request(
+  overrides: { ownerId?: string; text?: string; eventId?: string } = {}
+) {
+  const ownerId = overrides.ownerId ?? "user-1";
   return {
-    ownerId: "user-1",
+    ownerId,
     sessionId: SESSION_ID,
     event: createTranscriptEvent({
-      event_id: "writer-1:message-1",
+      event_id: overrides.eventId ?? "writer-1:message-1",
       writer_id: "writer-1",
       sequence: 1,
       session_id: SESSION_ID,
       room_name: "interview-room",
       speaker: "user",
-      text: "I would begin by clarifying the goal.",
+      text: overrides.text ?? "I would begin by clarifying the goal.",
       started_at: "2026-07-10T05:00:00.000Z",
       ended_at: "2026-07-10T05:00:04.000Z",
       audio_duration_ms: 4_000,
@@ -174,6 +306,7 @@ function serializedQueueItem(value: ReturnType<typeof request>) {
     id: `${value.ownerId}:${value.sessionId}:${value.event.event_id}`,
     request: value,
     attemptCount: 1,
+    enqueuedAt: "2026-07-10T05:00:05.000Z",
     lastAttempt: "2026-07-10T05:00:05.000Z",
   };
 }
