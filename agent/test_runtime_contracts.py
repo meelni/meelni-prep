@@ -26,7 +26,7 @@ from shared.runtime_events import (
     PROVIDER_FAILURE_CODES,
     create_runtime_event,
     provider_failure_code,
-    report_provider_failure_and_stop,
+    stop_provider_runtime_then_report,
 )
 from shared.runtime_config import (
     DEFAULT_INTERVIEW_RUNTIME_CONFIG,
@@ -80,12 +80,16 @@ class RuntimeContractTests(unittest.TestCase):
             "realtime_model_provider_failed",
         )
 
-    def test_provider_failure_stop_closes_session_room_and_job(self):
+    def test_provider_failure_stop_precedes_bounded_reporting(self):
         async def scenario():
             calls = []
+            report_started = asyncio.Event()
+            release_report = asyncio.Event()
 
             async def report_failure():
                 calls.append("report")
+                report_started.set()
+                await release_report.wait()
                 return True
 
             async def close_session():
@@ -94,20 +98,28 @@ class RuntimeContractTests(unittest.TestCase):
             async def terminate_room():
                 calls.append("terminate_room")
 
-            persisted = await report_provider_failure_and_stop(
-                report_failure=report_failure,
+            task = asyncio.create_task(stop_provider_runtime_then_report(
+                disable_input=lambda: calls.append("disable_input"),
                 close_session=close_session,
                 terminate_room=terminate_room,
                 shutdown=lambda: calls.append("shutdown"),
-            )
-            return persisted, calls
+                report_failure=report_failure,
+            ))
+            await report_started.wait()
+            calls_before_report_settles = list(calls)
+            release_report.set()
+            return await task, calls_before_report_settles, calls
 
-        persisted, calls = asyncio.run(scenario())
+        persisted, calls_before_report_settles, calls = asyncio.run(scenario())
 
         self.assertTrue(persisted)
         self.assertEqual(
+            calls_before_report_settles,
+            ["disable_input", "close_session", "terminate_room", "shutdown", "report"],
+        )
+        self.assertEqual(
             calls,
-            ["report", "close_session", "terminate_room", "shutdown"],
+            ["disable_input", "close_session", "terminate_room", "shutdown", "report"],
         )
 
     def test_provider_failure_stop_is_guaranteed_when_reporting_fails(self):
@@ -125,11 +137,12 @@ class RuntimeContractTests(unittest.TestCase):
                 calls.append("terminate_room")
 
             try:
-                await report_provider_failure_and_stop(
-                    report_failure=report_failure,
+                await stop_provider_runtime_then_report(
+                    disable_input=lambda: calls.append("disable_input"),
                     close_session=close_session,
                     terminate_room=terminate_room,
                     shutdown=lambda: calls.append("shutdown"),
+                    report_failure=report_failure,
                 )
             except RuntimeError as error:
                 return error, calls
@@ -140,7 +153,7 @@ class RuntimeContractTests(unittest.TestCase):
 
         self.assertEqual(
             calls,
-            ["report", "close_session", "terminate_room", "shutdown"],
+            ["disable_input", "close_session", "terminate_room", "shutdown", "report"],
         )
         self.assertEqual(
             provider_failure_code("raw provider stack with token"),

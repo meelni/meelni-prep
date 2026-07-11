@@ -41,7 +41,7 @@ from shared.runtime_config import get_model_config, get_tts_config
 from shared.runtime_events import (
     create_runtime_event,
     provider_failure_code,
-    report_provider_failure_and_stop,
+    stop_provider_runtime_then_report,
 )
 from shared.session_deadline import (
     DeadlineEnforcer,
@@ -252,15 +252,16 @@ async def entrypoint(ctx: JobContext):
 
         async def report_and_shutdown() -> None:
             try:
-                persisted = await report_provider_failure_and_stop(
-                    report_failure=lambda: report_provider_failure(
-                        code,
-                        retryable=retryable,
-                    ),
+                persisted = await stop_provider_runtime_then_report(
+                    disable_input=lambda: session.input.set_audio_enabled(False),
                     close_session=session.aclose,
                     terminate_room=lambda: terminate_livekit_room(ctx, room_name),
                     shutdown=lambda: ctx.shutdown(
                         "voice runtime provider failure"
+                    ),
+                    report_failure=lambda: report_provider_failure(
+                        code,
+                        retryable=retryable,
                     ),
                 )
                 if not persisted:
