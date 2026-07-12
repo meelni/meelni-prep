@@ -86,11 +86,12 @@ redirects. It accepts no operator-supplied client or endpoint and pins a
 five-minute request timeout. Each reserved logical call therefore permits at
 most one physical HTTP attempt.
 
-Each call reserves its conservative input ceiling plus at most 2,000 completion
-tokens before invocation. That reservation is atomically persisted before the
-physical request is permitted. The runner reads a fresh clock at reservation
-and again immediately before HTTP, so request preparation that crosses the
-pricing-review expiry stops without a provider call. Provider usage reconciles
+Before activation, the CLI precomputes every permitted call's conservative
+input ceiling plus at most 2,000 completion tokens and refuses unless the whole
+plan is at most 96 calls and $3 worst-case. The one-time Git activation burns
+that complete plan. A custom guarded fetch revalidates the activated remote ref
+and pricing immediately at actual transport dispatch, then increments the
+physical-attempt counter. Provider usage reconciles
 the reservation to actual cost. Missing/malformed usage or provider failure
 stops the run and forbids another call; unresolved spend retains its full
 worst-case reservation. Valid usage above a reservation is charged at its exact
@@ -103,31 +104,32 @@ totals on failed or mismatched responses. Valid in-reservation usage is
 reconciled to known cost before the identity failure stops the run; absent,
 invalid usage retains the reservation.
 
-### Durable single-run state
+### Durable single-run Git activation
 
-The live CLI acquires an exclusive lease and writes its fixed checkpoint under:
+Paid execution remains disabled until repository owners configure a ruleset for:
 
 ```text
-~/.local/state/meelni/evaluation-calibration/
-  sav-198-authorized-paid-calibration.v1.checkpoint.json
-  sav-198-authorized-paid-calibration.v1.lease.json
+refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1
 ```
 
-Checkpoint replacement is atomic and fsynced. The 20-minute lease is longer
-than the five-minute provider timeout and is heartbeated at every persisted
-boundary. A concurrent invocation fails before evaluator work. If the process
-crashes, wait until the lease is genuinely stale and rerun the same command on
-the same operator machine. Stale-lock recovery preserves the checkpoint and
-the cumulative authorization; it does not reset attempted calls or cost.
-Previously attempted case/run keys are never sent again. Any unresolved request
-reservation remains committed, and missing in-memory evaluation evidence keeps
-launch acceptance closed.
+The ruleset must reject force pushes and deletion, apply to administrators and
+automation without bypass, and allow only the explicitly approved activation
+actor to create the one fast-forward child. Configure and verify that protection
+before creating the ref. This PR intentionally does not create or activate the
+remote ledger ref.
 
-Do not delete, copy, edit, relocate, or reset the checkpoint or lease to obtain
-another attempt. Do not run the approved aggregate authorization concurrently
-from another machine. A terminal checkpoint cannot be reopened; any additional
-paid run requires a new explicit authorization and reviewed code change.
-Checkpoint, lease, and report data are accounting metadata only and must never
+The initial ref must be a zero-parent, empty-tree commit whose entire message is
+the exact output of `calibrationAuthorizationCommitMessage()`. The live CLI
+validates that shape, builds and hashes the exact approved plan, creates a unique
+empty-tree activation child, and performs a normal non-force push. Two
+concurrent activations create sibling children, so only one fast-forward wins.
+The loser refuses before provider work.
+
+An activated ref is terminal even when the process crashes before call one.
+There is no stale recovery or resume: all unused pre-reserved capacity is burned,
+and a new paid run requires separate owner authorization plus a reviewed code
+change. Missing/deleted refs and changed activation heads fail closed. Local
+reports or caches may be deleted without affecting authority and must never
 contain prompts, transcripts, provider bodies, API keys, customer data, or
 Production data.
 
@@ -168,11 +170,13 @@ secrets or provider responses containing sensitive data.
   reservation, it records exact actual cost and `spendCapBreached: true` before
   stopping. It has `completed_plan` only after all 96 calls reconcile
   successfully.
-- The cost report uses `evaluation-calibration-cost-report.v3`, the report uses
+- The cost report uses `evaluation-calibration-cost-report.v4`, the report uses
   `evaluation-calibration-report.v6`, and the fixed run, authorization ID, and
   authorization hash match the committed spend-authorization manifest.
-- The physical-attempt ceiling is incremented only after a reservation is
-  durable and the immediate pre-HTTP pricing/lease boundary succeeds.
+- The activated plan reports 96 or fewer calls and at most $3 worst-case, the
+  activation commit remains the protected ref head, and the physical-attempt
+  ceiling increments only inside the guarded fetch after fresh pricing and Git
+  authorization checks succeed.
 - `observedServiceTiers` contains only `default` for a passing run. A missing or
   different returned tier stops after the first affected call.
 - Evidence validity, adjudicated evidence match, and insufficient handling are
@@ -191,7 +195,7 @@ secrets or provider responses containing sensitive data.
 - The report contains no prompt text, transcript text, provider body, secret,
   or Production/customer-data payload.
 
-If a live run fails, keep the launch gate closed. Inspect case/run/dimension
-failure records, update the evaluator or adjudication deliberately, rerun local
-tests, and obtain fresh authorization before any new paid run. A crash recovery
-of the same nonterminal aggregate run is a resume, not a fresh allowance.
+If a live run fails or crashes, keep the launch gate closed. Inspect available
+case/run/dimension failure records, update the evaluator or adjudication
+deliberately, and obtain a separate new authorization before any paid retry.
+The activated SAV-198 run never resumes.
