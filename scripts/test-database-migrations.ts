@@ -1916,6 +1916,7 @@ async function verifyAtomicSessionCompletion(
               finalize: (
                 input: Parameters<typeof finalizeInterviewSession>[0]
               ) => finalizeInterviewSession(input, databases[0]!),
+              settleCredit: async () => undefined,
               updateMotivation: async () => {},
             }
           ),
@@ -2168,6 +2169,7 @@ async function verifyAtomicSessionCompletion(
                 finalize: (
                   input: Parameters<typeof finalizeInterviewSession>[0]
                 ) => finalizeInterviewSession(input, databases[0]!),
+                settleCredit: async () => undefined,
                 updateMotivation: async () => {},
               }
             ),
@@ -3048,6 +3050,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
               authorize: (input) =>
                 authorizeInterviewSessionEnd(input, database),
               finalize: (input) => finalizeInterviewSession(input, database),
+              settleCredit: async () => undefined,
               dispatch: async ({ sessionId: dispatchedSessionId }) => {
                 dispatches += 1;
                 return {
@@ -3927,7 +3930,7 @@ async function verifyStableStartConcurrency(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 14);
+  assert.equal(await migrationCount(sql), 15);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
