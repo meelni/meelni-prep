@@ -9,6 +9,14 @@ record only sanitized case-level diagnostics plus aggregate call/cost
 accounting. Spend authorization does not satisfy the separately required PM or
 product-owner adjudication approval.
 
+`sav-198-paid-run-authorization.json` records the explicit product-owner spend
+boundary for one fixed aggregate paid run: at most 96 provider calls/physical
+attempts and $3, using synthetic or separately approved fixtures only. It is
+code-bound authorization evidence, not a reusable per-process budget, a live
+run result, or semantic approval of the gold-set candidates. The durable local
+checkpoint binds this manifest's SHA-256 and prevents a restart from resetting
+the aggregate allowance.
+
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are local evidence only and deliberately keep live-provider launch acceptance
 pending.

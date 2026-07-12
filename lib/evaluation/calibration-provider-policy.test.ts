@@ -5,6 +5,7 @@ import {
   CALIBRATION_MAX_SDK_RETRIES,
   CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
   CALIBRATION_PRICING_CONTRACT,
+  CALIBRATION_REQUEST_TIMEOUT_MS,
   CALIBRATION_SERVICE_TIER,
 } from "./calibration-budget";
 import {
@@ -24,9 +25,11 @@ test("paid calibration client pins official endpoint and disables SDK retries", 
   assert.equal(client.baseURL, CALIBRATION_OFFICIAL_OPENAI_ENDPOINT);
   assert.equal(client.maxRetries, 0);
   assert.equal(client.fetchOptions?.redirect, "error");
+  assert.equal(client.timeout, CALIBRATION_REQUEST_TIMEOUT_MS);
   assert.equal(CALIBRATION_MAX_SDK_RETRIES, 0);
   assert.equal(CALIBRATION_PRICING_CONTRACT.maximumSdkRetries, 0);
   assert.equal(CALIBRATION_PRICING_CONTRACT.redirectPolicy, "error");
+  assert.equal(CALIBRATION_PRICING_CONTRACT.requestTimeoutMs, 300_000);
   assert.equal(CALIBRATION_PRICING_CONTRACT.endpoint, client.baseURL);
   assert.equal(CALIBRATION_PRICING_CONTRACT.serviceTier, "default");
   assert.equal(CALIBRATION_SERVICE_TIER, "default");
@@ -72,17 +75,29 @@ test("paid request policy rejects an unpriced model or output ceiling", () => {
   assert.doesNotThrow(() =>
     assertCalibrationProviderRequestPolicy(
       CALIBRATION_PRICING_CONTRACT.model,
-      2_000
+      2_000,
+      () => undefined
     )
   );
   assert.throws(
-    () => assertCalibrationProviderRequestPolicy("gpt-5.1", 2_000),
+    () =>
+      assertCalibrationProviderRequestPolicy("gpt-5.1", 2_000, () => undefined),
     /request_policy_mismatch/
   );
   assert.throws(
     () =>
       assertCalibrationProviderRequestPolicy(
         CALIBRATION_PRICING_CONTRACT.model,
+        undefined,
+        () => undefined
+      ),
+    /request_policy_mismatch/
+  );
+  assert.throws(
+    () =>
+      assertCalibrationProviderRequestPolicy(
+        CALIBRATION_PRICING_CONTRACT.model,
+        2_000,
         undefined
       ),
     /request_policy_mismatch/

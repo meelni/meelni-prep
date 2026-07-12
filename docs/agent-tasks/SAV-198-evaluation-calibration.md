@@ -30,7 +30,9 @@
 - Fixture files: `packages/test-fixtures/src/evaluation-calibration.ts` and behavior tests.
 - Workflow files: `lib/evaluation/calibration.ts` and behavior tests using `generateFeedbackWorkflow` with an in-memory store.
 - Operator files: `scripts/run-evaluation-calibration.ts` and package scripts.
-- Provider dependency: optional OpenAI execution through the existing scorer, guarded by an explicit paid-calibration acknowledgement, an all-approved adjudication artifact, the fresh pinned `gpt-5.1-2025-11-13` + official endpoint + default-tier pricing contract, zero SDK retries/redirects, a 96-physical-attempt cap, and a $3 hard spend cap.
+- Provider dependency: optional OpenAI execution through the existing scorer, guarded by an explicit paid-calibration acknowledgement, an all-approved adjudication artifact, the fresh pinned `gpt-5.1-2025-11-13` + official endpoint + default-tier pricing contract, zero SDK retries/redirects, a five-minute request timeout, a 96-physical-attempt cap, and a $3 hard spend cap.
+- Authorization boundary: the committed SAV-198 authorization permits one fixed aggregate run only. A durable, atomic checkpoint and exclusive 20-minute lease preserve reservations and costs across crashes, reject concurrent execution, and prevent arbitrary run IDs or ledger paths from minting another budget.
+- Request boundary: reserve and persist before HTTP, then recheck pricing freshness and lease ownership immediately before the physical request. Previously attempted case/run keys are never replayed on recovery.
 - Docs: calibration contract, operations runbook, and a checked preflight report.
 
 ## Validation
@@ -44,4 +46,4 @@
 - Risk level: high because the result gates claims about feedback trustworthiness.
 - Backward compatibility: additive test/operator surface only; no runtime schema or customer data changes.
 - Metrics/events to watch: provider-run validity, score agreement, unstable dimensions, insufficient cases incorrectly sent to the model.
-- Follow-up slice: an explicitly authorized repeated provider run; keep SAV-198 In Progress until its machine-readable report passes.
+- Follow-up slice: obtain product-owner/PM adjudication approval, then resume or execute the single explicitly authorized aggregate provider run; keep SAV-198 In Progress until its machine-readable report passes. Any additional paid run requires new explicit authorization.

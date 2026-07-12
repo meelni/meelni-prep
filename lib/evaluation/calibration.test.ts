@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { FeedbackV2Result, FeedbackV2Scores } from "@meelni/core";
 import {
   EVALUATION_ADJUDICATION_VERSION,
@@ -18,10 +22,20 @@ import {
   CALIBRATION_PRICING_REVIEW_TTL_MS,
   CalibrationSpendGuard,
 } from "./calibration-budget";
+import {
+  DurableCalibrationRunLedger,
+  SAV_198_APPROVED_RUN_ID,
+  SAV_198_SPEND_AUTHORIZATION,
+} from "./calibration-run-ledger";
 
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
 const LIVE_MODEL = CALIBRATION_PRICING_CONTRACT.model;
 const NOW = new Date("2026-07-12T07:00:00.000Z");
+const LEDGER_TEST_ROOT = mkdtempSync(
+  join(tmpdir(), "meelni-calibration-integration-")
+);
+
+test.after(() => rmSync(LEDGER_TEST_ROOT, { recursive: true, force: true }));
 
 test("calibration preflight validates 40 synthetic cases without claiming readiness", async () => {
   const report = await runEvaluationCalibration({
@@ -226,7 +240,8 @@ test("a failed response from an unexpected model preserves identity and known co
     now: NOW,
     adjudicationApproval: approvalFixture(),
     spendGuard: liveGuard(),
-    evaluator: async () => {
+    evaluator: async (input) => {
+      input.beforePhysicalRequest?.();
       throw Object.assign(new Error("provider response rejected"), {
         observedModel: "unpriced-provider-snapshot",
         observedServiceTier: "default",
@@ -264,16 +279,19 @@ test("missing or mismatched service tier stops after one reconciled call", async
       now: NOW,
       adjudicationApproval: approvalFixture(),
       spendGuard: liveGuard(),
-      evaluator: async (input) => ({
-        evaluation: await baseline(input),
-        observedServiceTier,
-        usage: {
-          inputTokens: 100,
-          cachedInputTokens: 0,
-          outputTokens: 100,
-          totalTokens: 200,
-        },
-      }),
+      evaluator: async (input) => {
+        input.beforePhysicalRequest?.();
+        return {
+          evaluation: await baseline(input),
+          observedServiceTier,
+          usage: {
+            inputTokens: 100,
+            cachedInputTokens: 0,
+            outputTokens: 100,
+            totalTokens: 200,
+          },
+        };
+      },
     });
 
     assert.equal(report.execution.cost?.attemptedCalls, 1);
@@ -295,7 +313,8 @@ test("provider-error tier identity and known usage survive sanitization", async 
     now: NOW,
     adjudicationApproval: approvalFixture(),
     spendGuard: liveGuard(),
-    evaluator: async () => {
+    evaluator: async (input) => {
+      input.beforePhysicalRequest?.();
       throw Object.assign(new Error("sanitized_provider_failure"), {
         observedModel: LIVE_MODEL,
         observedServiceTier: "priority",
@@ -420,6 +439,8 @@ test("approved adjudication and live-pass satisfy the combined gate", async () =
   assert.equal(report.gate.liveProviderAcceptance, "passed");
   assert.equal(report.gate.launchAcceptance, "passed");
   assert.equal(report.execution.cost?.attemptedCalls, 96);
+  assert.equal(report.execution.cost?.authorizedRunId, SAV_198_APPROVED_RUN_ID);
+  assert.equal(report.execution.cost?.authorizationHash?.length, 64);
   assert.equal(report.execution.cost?.physicalHttpAttemptCeiling, 96);
   assert.equal(report.execution.cost?.completedCalls, 96);
   assert.equal(report.execution.cost?.stopReason, "completed_plan");
@@ -438,20 +459,33 @@ function withScores(output: FeedbackV2Result, scores: FeedbackV2Scores) {
 function withProviderUsage(
   evaluator: CalibrationEvaluator
 ): CalibrationEvaluator {
-  return async (input) => ({
-    evaluation: (await evaluator(input)) as FeedbackV2Result,
-    usage: {
-      inputTokens: 100,
-      cachedInputTokens: 0,
-      outputTokens: 100,
-      totalTokens: 200,
-    },
-    observedServiceTier: "default",
-  });
+  return async (input) => {
+    input.beforePhysicalRequest?.();
+    return {
+      evaluation: (await evaluator(input)) as FeedbackV2Result,
+      usage: {
+        inputTokens: 100,
+        cachedInputTokens: 0,
+        outputTokens: 100,
+        totalTokens: 200,
+      },
+      observedServiceTier: "default",
+    };
+  };
 }
 
 function liveGuard(): CalibrationSpendGuard {
-  return new CalibrationSpendGuard(LIVE_MODEL, NOW);
+  const ledger = DurableCalibrationRunLedger.open({
+    authorization: SAV_198_SPEND_AUTHORIZATION,
+    ownerId: `test-${randomUUID()}`,
+    clock: () => new Date(NOW.getTime()),
+    stateDirectory: mkdtempSync(join(LEDGER_TEST_ROOT, "run-")),
+  });
+  return new CalibrationSpendGuard(
+    LIVE_MODEL,
+    () => new Date(NOW.getTime()),
+    ledger
+  );
 }
 
 function approvalFixture(changesRequiredCaseId?: string) {

@@ -56,6 +56,14 @@ model calls. Three repetitions, 96 calls, and $3 total estimated committed
 spend are hard maximums. The runner stops before any call whose worst-case
 reservation could exceed the remaining spend cap.
 
+The explicit SAV-198 spend approval is committed as
+`docs/evidence/sav-198-paid-run-authorization.json`. It authorizes exactly one
+aggregate run, `sav-198-authorized-paid-calibration.v1`; it is not a renewable
+96-call allowance for each invocation. The CLI has no run-ID or ledger-path
+override. Spend authorization permits the bounded paid run only after the
+separate candidate adjudication is approved; it does not approve those semantic
+judgments itself.
+
 `calibration:live` loads `.env.local` through `tsx --env-file=.env.local`, just
 like other local feedback tooling. Run `npm run setup:local` first if the file
 does not exist. Keep both the provider key and model configuration only in that
@@ -74,19 +82,54 @@ requires a reviewed code change, not an environment override.
 Unset `OPENAI_BASE_URL` completely. Paid calibration rejects even an ambient
 override equal to the official URL. Its client pins `https://api.openai.com/v1`,
 requests the `default` service tier, sets SDK retries to zero, and rejects HTTP
-redirects. It accepts no operator-supplied client or endpoint. Each reserved
-logical call therefore permits at most one physical HTTP attempt.
+redirects. It accepts no operator-supplied client or endpoint and pins a
+five-minute request timeout. Each reserved logical call therefore permits at
+most one physical HTTP attempt.
 
 Each call reserves its conservative input ceiling plus at most 2,000 completion
-tokens before invocation. Provider usage reconciles that reservation to actual
-cost. Missing/malformed usage, usage above the reservation, or provider failure
+tokens before invocation. That reservation is atomically persisted before the
+physical request is permitted. The runner reads a fresh clock at reservation
+and again immediately before HTTP, so request preparation that crosses the
+pricing-review expiry stops without a provider call. Provider usage reconciles
+the reservation to actual cost. Missing/malformed usage or provider failure
 stops the run and forbids another call; unresolved spend retains its full
-worst-case reservation. The report exposes attempted/completed calls and
-reserved, reconciled, unresolved, and estimated committed costs.
+worst-case reservation. Valid usage above a reservation is charged at its exact
+known actual cost before stopping. An unavoidable provider-reported total above
+$3 is exposed as a breached cap and exact cost, never concealed by retaining a
+smaller reservation. The report exposes attempted/completed calls and reserved,
+reconciled, unresolved, and estimated committed costs.
 It also preserves provider-reported model/tier identities and observed token
 totals on failed or mismatched responses. Valid in-reservation usage is
 reconciled to known cost before the identity failure stops the run; absent,
-invalid, or over-ceiling usage retains the reservation.
+invalid usage retains the reservation.
+
+### Durable single-run state
+
+The live CLI acquires an exclusive lease and writes its fixed checkpoint under:
+
+```text
+~/.local/state/meelni/evaluation-calibration/
+  sav-198-authorized-paid-calibration.v1.checkpoint.json
+  sav-198-authorized-paid-calibration.v1.lease.json
+```
+
+Checkpoint replacement is atomic and fsynced. The 20-minute lease is longer
+than the five-minute provider timeout and is heartbeated at every persisted
+boundary. A concurrent invocation fails before evaluator work. If the process
+crashes, wait until the lease is genuinely stale and rerun the same command on
+the same operator machine. Stale-lock recovery preserves the checkpoint and
+the cumulative authorization; it does not reset attempted calls or cost.
+Previously attempted case/run keys are never sent again. Any unresolved request
+reservation remains committed, and missing in-memory evaluation evidence keeps
+launch acceptance closed.
+
+Do not delete, copy, edit, relocate, or reset the checkpoint or lease to obtain
+another attempt. Do not run the approved aggregate authorization concurrently
+from another machine. A terminal checkpoint cannot be reopened; any additional
+paid run requires a new explicit authorization and reviewed code change.
+Checkpoint, lease, and report data are accounting metadata only and must never
+contain prompts, transcripts, provider bodies, API keys, customer data, or
+Production data.
 
 After authorization, set the acknowledgement only for the command invocation:
 
@@ -120,8 +163,16 @@ secrets or provider responses containing sensitive data.
   attempted and completed calls are reported separately and can be fewer than
   96 when a fail-closed stop occurs.
 - The cost report names the pinned pricing contract, never exceeds 96 attempted
-  calls, 96 physical HTTP attempts, or $3 estimated committed spend, and has
-  `completed_plan` only after all 96 calls reconcile successfully.
+  calls or 96 physical HTTP attempts. It ordinarily remains at or below $3
+  estimated committed spend; if valid provider usage unexpectedly exceeds its
+  reservation, it records exact actual cost and `spendCapBreached: true` before
+  stopping. It has `completed_plan` only after all 96 calls reconcile
+  successfully.
+- The cost report uses `evaluation-calibration-cost-report.v3`, the report uses
+  `evaluation-calibration-report.v6`, and the fixed run, authorization ID, and
+  authorization hash match the committed spend-authorization manifest.
+- The physical-attempt ceiling is incremented only after a reservation is
+  durable and the immediate pre-HTTP pricing/lease boundary succeeds.
 - `observedServiceTiers` contains only `default` for a passing run. A missing or
   different returned tier stops after the first affected call.
 - Evidence validity, adjudicated evidence match, and insufficient handling are
@@ -142,4 +193,5 @@ secrets or provider responses containing sensitive data.
 
 If a live run fails, keep the launch gate closed. Inspect case/run/dimension
 failure records, update the evaluator or adjudication deliberately, rerun local
-tests, and obtain fresh authorization before another paid run.
+tests, and obtain fresh authorization before any new paid run. A crash recovery
+of the same nonterminal aggregate run is a resume, not a fresh allowance.

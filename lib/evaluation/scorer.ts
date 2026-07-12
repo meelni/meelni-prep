@@ -15,6 +15,7 @@ import {
   CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
   CALIBRATION_SERVICE_TIER,
   CALIBRATION_PRICING_CONTRACT,
+  CALIBRATION_REQUEST_TIMEOUT_MS,
 } from "./calibration-budget";
 
 export interface FeedbackProviderUsage {
@@ -65,6 +66,7 @@ export async function generateFeedbackWithUsage(
   options: {
     maxCompletionTokens?: number;
     calibrationPaidMode?: boolean;
+    beforePhysicalRequest?: () => void;
   } = {}
 ): Promise<FeedbackProviderResult> {
   const prepared = prepareFeedbackTranscript(transcript);
@@ -79,24 +81,27 @@ export async function generateFeedbackWithUsage(
   if (options.calibrationPaidMode) {
     assertCalibrationProviderRequestPolicy(
       modelVersion,
-      options.maxCompletionTokens
+      options.maxCompletionTokens,
+      options.beforePhysicalRequest
     );
   }
   try {
     const client = options.calibrationPaidMode
       ? createCalibrationOpenAIClient()
       : getOpenAI();
+    const userPrompt = getEvaluationPrompt(
+      roundType,
+      prepared.transcript,
+      evaluationState
+    );
+    if (options.calibrationPaidMode) options.beforePhysicalRequest!();
     const completion = await client.chat.completions.create({
       model: modelVersion,
       messages: [
         { role: "system", content: EVALUATION_SYSTEM_PROMPT },
         {
           role: "user",
-          content: getEvaluationPrompt(
-            roundType,
-            prepared.transcript,
-            evaluationState
-          ),
+          content: userPrompt,
         },
       ],
       temperature: 0.2,
@@ -230,11 +235,13 @@ export function assertCalibrationOpenAIEnvironment(
 
 export function assertCalibrationProviderRequestPolicy(
   model: string,
-  maxCompletionTokens: number | undefined
+  maxCompletionTokens: number | undefined,
+  beforePhysicalRequest: (() => void) | undefined
 ): void {
   if (
     model !== CALIBRATION_PRICING_CONTRACT.model ||
-    maxCompletionTokens !== CALIBRATION_MAX_COMPLETION_TOKENS
+    maxCompletionTokens !== CALIBRATION_MAX_COMPLETION_TOKENS ||
+    typeof beforePhysicalRequest !== "function"
   ) {
     throw new Error("calibration_provider_request_policy_mismatch");
   }
@@ -262,6 +269,7 @@ export function createCalibrationOpenAIClient(
     apiKey,
     baseURL: CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
     maxRetries: CALIBRATION_MAX_SDK_RETRIES,
+    timeout: CALIBRATION_REQUEST_TIMEOUT_MS,
     fetchOptions: { redirect: "error" },
   });
 }

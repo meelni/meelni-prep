@@ -1,0 +1,14 @@
+{
+  "contractVersion": "evaluation-calibration-spend-authorization.v1",
+  "authorizationId": "sav-198-user-authorization-2026-07-12.v1",
+  "runId": "sav-198-authorized-paid-calibration.v1",
+  "authorizedOn": "2026-07-12",
+  "authorizationSource": "explicit_product_owner_chat_approval",
+  "singleAggregateRun": true,
+  "maximumProviderCalls": 96,
+  "maximumPhysicalHttpAttempts": 96,
+  "maximumSpendUsd": 3,
+  "fixturePolicy": "synthetic_or_separately_approved_only",
+  "customerTranscriptsAllowed": false,
+  "productionDataAllowed": false
+}
