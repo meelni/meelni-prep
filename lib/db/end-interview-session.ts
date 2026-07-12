@@ -141,34 +141,12 @@ export async function finalizeInterviewSession(
       const baseValidation = validateSessionStats(
         calculateSessionStatsFromTurns(turns)
       );
-      const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
-      const runtimeSettlementState = settlements[0]?.state;
-      const integrityReasons = [
-        ...(runtimeSettlementState === "settled"
-          ? []
-          : [
-              runtimeSettlementState === "degraded"
-                ? "Voice runtime reported degraded transcript integrity"
-                : "Voice runtime transcript settlement was not confirmed",
-            ]),
-        ...(unavailableInterruptions > 0
-          ? [
-              `Transcript integrity unavailable for ${unavailableInterruptions} turn(s)`,
-            ]
-          : []),
-      ];
-      validation =
-        integrityReasons.length > 0
-          ? {
-              ...baseValidation,
-              isValid: false,
-              reasons: [...integrityReasons, ...baseValidation.reasons],
-              recommendations: [
-                "Retry the interview so every heard turn can be verified",
-                ...baseValidation.recommendations,
-              ],
-            }
-          : baseValidation;
+      validation = applyTranscriptIntegrityValidation({
+        baseValidation,
+        interruptionCount: interruptionCounts[0]?.value ?? 0,
+        runtimeSettlementState:
+          (settlements[0]?.state as "settled" | "degraded" | undefined) ?? null,
+      });
     }
 
     let state = stored.lifecycleState;
@@ -185,12 +163,14 @@ export async function finalizeInterviewSession(
       stored.terminalReason === null;
 
     if (
-      shouldRefineProvisionalHardDeadlineReason({
+      shouldRefineProvisionalTerminalReason({
         state,
         terminalReason,
         isValid: validation.isValid,
+        source: input.actor.type === "system" ? input.actor.source : "user_end",
       })
     ) {
+      const expectedTerminalReason = terminalReason!;
       const refined = await tx
         .update(interviewSession)
         .set({
@@ -207,7 +187,7 @@ export async function finalizeInterviewSession(
             eq(interviewSession.id, input.sessionId),
             eq(interviewSession.lifecycleState, "ending"),
             eq(interviewSession.lifecycleVersion, version),
-            eq(interviewSession.terminalReason, "time_limit")
+            eq(interviewSession.terminalReason, expectedTerminalReason)
           )
         )
         .returning({
@@ -413,16 +393,55 @@ export async function finalizeInterviewSession(
   });
 }
 
-export function shouldRefineProvisionalHardDeadlineReason(input: {
+export function shouldRefineProvisionalTerminalReason(input: {
   state: InterviewLifecycleState;
   terminalReason: InterviewTerminalReason | null;
   isValid: boolean;
+  source:
+    | "hard_deadline"
+    | "reconnect_timeout"
+    | "invalid_session_recovery"
+    | "user_end";
 }): boolean {
   return (
     input.state === "ending" &&
-    input.terminalReason === "time_limit" &&
+    ((input.source === "hard_deadline" &&
+      input.terminalReason === "time_limit") ||
+      (input.source === "reconnect_timeout" &&
+        input.terminalReason === "disconnect_timeout")) &&
     !input.isValid
   );
+}
+
+export function applyTranscriptIntegrityValidation(input: {
+  baseValidation: SessionValidation;
+  interruptionCount: number;
+  runtimeSettlementState: "settled" | "degraded" | null;
+}): SessionValidation {
+  const integrityReasons = [
+    ...(input.runtimeSettlementState === "settled"
+      ? []
+      : [
+          input.runtimeSettlementState === "degraded"
+            ? "Voice runtime reported degraded transcript integrity"
+            : "Voice runtime transcript settlement was not confirmed",
+        ]),
+    ...(input.interruptionCount > 0
+      ? [
+          `Transcript integrity unavailable for ${input.interruptionCount} turn(s)`,
+        ]
+      : []),
+  ];
+  if (integrityReasons.length === 0) return input.baseValidation;
+  return {
+    ...input.baseValidation,
+    isValid: false,
+    reasons: [...integrityReasons, ...input.baseValidation.reasons],
+    recommendations: [
+      "Retry the interview so every heard turn can be verified",
+      ...input.baseValidation.recommendations,
+    ],
+  };
 }
 
 export function resolveInterviewTerminalReason(

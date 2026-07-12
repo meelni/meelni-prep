@@ -75,6 +75,14 @@ const SESSION_TRANSCRIPT_DEADLINE_INVALID =
   "b3000000-0000-4000-8000-000000000003";
 const SESSION_TRANSCRIPT_MARKER = "b4000000-0000-4000-8000-000000000004";
 const SESSION_DELETION_MARKER = "b5000000-0000-4000-8000-000000000005";
+const SESSION_RECONNECT_INTEGRITY_MISSING =
+  "c1000000-0000-4000-8000-000000000001";
+const SESSION_RECONNECT_INTEGRITY_DEGRADED =
+  "c2000000-0000-4000-8000-000000000002";
+const SESSION_RECONNECT_INTEGRITY_INTERRUPTED =
+  "c3000000-0000-4000-8000-000000000003";
+const SESSION_RECONNECT_INTEGRITY_VALID =
+  "c4000000-0000-4000-8000-000000000004";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -138,6 +146,7 @@ async function run() {
     await verifyReconnectTransportOrdering(clean, cleanUrl);
     await verifyAtomicSessionCompletion(clean, cleanUrl, true);
     await verifyTranscriptIngest(clean, cleanUrl);
+    await verifyReconnectTimeoutRuntimeIntegrity(clean, cleanUrl);
     await verifyAuthorization(clean);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
@@ -290,6 +299,7 @@ async function run() {
       await verifyLifecycleBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl, false);
       await verifyTranscriptIngest(upgrade, upgradeUrl);
+      await verifyReconnectTimeoutRuntimeIntegrity(upgrade, upgradeUrl);
       await verifyAuthorization(upgrade);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
       assertLegacyCreditLedgerIntegrity(
@@ -2797,6 +2807,237 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
     }
   } finally {
     await Promise.all(clients.map((client) => client.end()));
+  }
+}
+
+async function verifyReconnectTimeoutRuntimeIntegrity(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    { authorizeInterviewSessionEnd, finalizeInterviewSession },
+    { createDrizzleInterviewReconnectStore },
+    { endInterviewSessionWorkflow },
+    { enforceInterviewReconnectWorkflow },
+    schema,
+  ] = await Promise.all([
+    import("../lib/db/end-interview-session"),
+    import("../lib/db/session-reconnects"),
+    import("../lib/workflows/end-interview-session"),
+    import("../lib/workflows/enforce-interview-reconnect"),
+    import("../lib/db/schema"),
+  ]);
+  const database = drizzle(sql, { schema });
+  const deadlineAt = new Date("2026-07-10T08:00:30.000Z");
+  const cases = [
+    {
+      sessionId: SESSION_RECONNECT_INTEGRITY_MISSING,
+      settlement: null,
+      interruption: false,
+      expectedReason: "insufficient_signal",
+      expectedState: "abandoned",
+      expectedFeedback: "skipped",
+    },
+    {
+      sessionId: SESSION_RECONNECT_INTEGRITY_DEGRADED,
+      settlement: "degraded" as const,
+      interruption: false,
+      expectedReason: "insufficient_signal",
+      expectedState: "abandoned",
+      expectedFeedback: "skipped",
+    },
+    {
+      sessionId: SESSION_RECONNECT_INTEGRITY_INTERRUPTED,
+      settlement: "settled" as const,
+      interruption: true,
+      expectedReason: "insufficient_signal",
+      expectedState: "abandoned",
+      expectedFeedback: "skipped",
+    },
+    {
+      sessionId: SESSION_RECONNECT_INTEGRITY_VALID,
+      settlement: "settled" as const,
+      interruption: false,
+      expectedReason: "disconnect_timeout",
+      expectedState: "completed",
+      expectedFeedback: "pending",
+    },
+  ] as const;
+
+  for (const [caseIndex, testCase] of cases.entries()) {
+    const roomName = `reconnect-integrity-${caseIndex}`;
+    await sql`
+      INSERT INTO interview_session (
+        id, user_id, round_type, mode, status, lifecycle_state,
+        lifecycle_version, activated_at, started_at, livekit_room_name,
+        config, last_transition_at, reconnect_deadline_at,
+        reconnect_deadline_owner
+      ) VALUES (
+        ${testCase.sessionId}::uuid,
+        ${USER_ONE}::uuid,
+        'product_sense',
+        'voice_video',
+        'in_progress',
+        'reconnecting',
+        4,
+        '2026-07-10T07:45:01.000Z'::timestamptz,
+        '2026-07-10T07:45:00.000Z'::timestamptz,
+        ${roomName},
+        '{"duration":30}'::jsonb,
+        '2026-07-10T08:00:00.000Z'::timestamptz,
+        ${deadlineAt.toISOString()}::timestamptz,
+        'reconnect_grace'
+      )
+    `;
+    await sql`
+      INSERT INTO transcript_turn (
+        session_id, speaker, text, started_at, ended_at
+      ) VALUES
+        (${testCase.sessionId}::uuid, 'interviewer',
+          'Please explain your product approach.',
+          '2026-07-10T07:46:00.000Z'::timestamptz,
+          '2026-07-10T07:46:01.000Z'::timestamptz),
+        (${testCase.sessionId}::uuid, 'user',
+          'I would begin with the target customer problem and define a measurable outcome before considering solutions.',
+          '2026-07-10T07:47:00.000Z'::timestamptz,
+          '2026-07-10T07:47:01.000Z'::timestamptz),
+        (${testCase.sessionId}::uuid, 'interviewer',
+          'How would you prioritize the opportunities?',
+          '2026-07-10T07:49:00.000Z'::timestamptz,
+          '2026-07-10T07:49:01.000Z'::timestamptz),
+        (${testCase.sessionId}::uuid, 'user',
+          'I would compare customer reach severity strategic alignment confidence and implementation effort before prioritizing.',
+          '2026-07-10T07:50:00.000Z'::timestamptz,
+          '2026-07-10T07:50:01.000Z'::timestamptz),
+        (${testCase.sessionId}::uuid, 'user',
+          'I would measure retained customer value supported by adoption quality and operational guardrail metrics.',
+          '2026-07-10T07:52:00.000Z'::timestamptz,
+          '2026-07-10T07:52:01.000Z'::timestamptz)
+    `;
+    if (testCase.settlement) {
+      await sql`
+        INSERT INTO transcript_runtime_settlement (
+          session_id, contract_version, room_name, writer_id, state, settled_at
+        ) VALUES (
+          ${testCase.sessionId}::uuid,
+          1,
+          ${roomName},
+          ${`reconnect-integrity-writer-${caseIndex}`},
+          ${testCase.settlement},
+          '2026-07-10T08:00:01.000Z'::timestamptz
+        )
+      `;
+    }
+    if (testCase.interruption) {
+      await sql`
+        INSERT INTO transcript_interruption_marker (
+          session_id, contract_version, event_id, writer_id, sequence,
+          room_name, speaker, occurred_at, reason
+        ) VALUES (
+          ${testCase.sessionId}::uuid,
+          1,
+          ${`reconnect-integrity-marker-${caseIndex}`},
+          ${`reconnect-integrity-writer-${caseIndex}`},
+          99,
+          ${roomName},
+          'interviewer',
+          '2026-07-10T08:00:00.000Z'::timestamptz,
+          'no_provider_confirmed_prefix'
+        )
+      `;
+    }
+
+    let dispatches = 0;
+    const result = await enforceInterviewReconnectWorkflow(
+      {
+        sessionId: testCase.sessionId,
+        expectedVersion: 4,
+        deadlineAt: deadlineAt.toISOString(),
+        env: { apiKey: "test", apiSecret: "test", url: "wss://test.invalid" },
+      },
+      {
+        store: createDrizzleInterviewReconnectStore(database),
+        inspectPresence: async () => ({
+          ok: true,
+          provider: "livekit",
+          data: { present: false, joined: false, joinedAt: null, agent: null },
+        }),
+        terminateRoom: async () => ({
+          ok: true,
+          provider: "livekit",
+          data: { roomName, disposition: "already_absent" as const },
+        }),
+        waitUntil: async () => undefined,
+        endSession: (sessionId) =>
+          endInterviewSessionWorkflow(
+            {
+              sessionId,
+              actor: { type: "system", source: "reconnect_timeout" },
+              requestedTerminalReason: "disconnect_timeout",
+            },
+            {
+              authorize: (input) =>
+                authorizeInterviewSessionEnd(input, database),
+              finalize: (input) => finalizeInterviewSession(input, database),
+              dispatch: async ({ sessionId: dispatchedSessionId }) => {
+                dispatches += 1;
+                return {
+                  ok: true,
+                  disposition: "sent",
+                  dispatch: {
+                    sessionId: dispatchedSessionId,
+                    eventId: `feedback/generate.requested:${dispatchedSessionId}:1`,
+                    status: "sent",
+                    attempts: 1,
+                    claimedAt: deadlineAt,
+                    dispatchedAt: deadlineAt,
+                  },
+                };
+              },
+              updateMotivation: async () => undefined,
+            }
+          ),
+      }
+    );
+    assert.equal(result.ok, true, JSON.stringify(result));
+    if (!result.ok) continue;
+    assert.equal(
+      result.completion?.completion.lifecycle.terminalReason,
+      testCase.expectedReason
+    );
+    assert.equal(
+      result.completion?.completion.lifecycle.state,
+      testCase.expectedState
+    );
+    assert.equal(
+      result.completion?.completion.feedback.status,
+      testCase.expectedFeedback
+    );
+    assert.equal(result.completion?.dispatch === null, dispatches === 0);
+    assert.equal(dispatches, testCase.expectedFeedback === "pending" ? 1 : 0);
+
+    const [stored] = await sql<
+      {
+        lifecycle_state: string;
+        terminal_reason: string;
+        feedback_status: string;
+        dispatch_status: string;
+      }[]
+    >`
+      SELECT session.lifecycle_state, session.terminal_reason,
+        feedback.status AS feedback_status, feedback.dispatch_status
+      FROM interview_session session
+      JOIN feedback ON feedback.session_id = session.id
+      WHERE session.id = ${testCase.sessionId}::uuid
+    `;
+    assert.deepEqual(stored, {
+      lifecycle_state: testCase.expectedState,
+      terminal_reason: testCase.expectedReason,
+      feedback_status: testCase.expectedFeedback,
+      dispatch_status:
+        testCase.expectedFeedback === "pending" ? "pending" : "not_required",
+    });
   }
 }
 

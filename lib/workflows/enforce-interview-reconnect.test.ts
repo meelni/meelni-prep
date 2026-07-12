@@ -6,8 +6,6 @@ import type {
   InterviewReconnectStore,
 } from "@/lib/db/session-reconnects";
 import { providerFailure, providerSuccess } from "@/lib/internal/integrations";
-import type { SessionValidation } from "@/lib/evaluation/session-validator";
-import { SessionTier } from "@/lib/evaluation/session-validator";
 import type { EndInterviewSessionResult } from "./end-interview-session";
 import {
   enforceInterviewReconnectWorkflow,
@@ -133,64 +131,46 @@ test("timeout recovery denies JOINING, missing, invalid, equal, and late join ev
   }
 });
 
-test("timeout drains transcripts before taking its single validation snapshot", async () => {
+test("timeout drains transcripts before authoritative locked finalization", async () => {
   const fixture = createFixture(new Date(DEADLINE));
-  const originalValidate = fixture.deps.validate;
   fixture.deps.waitUntil = async () => {
     fixture.calls.push("drain");
-  };
-  fixture.deps.validate = async (sessionId) => {
-    fixture.calls.push("validate");
-    return originalValidate(sessionId);
   };
 
   const result = await run(fixture.deps);
 
   assert.equal(result.ok, true);
-  assert.deepEqual(fixture.calls, [
-    "claim",
-    "terminate",
-    "drain",
-    "validate",
-    "end",
-  ]);
+  assert.deepEqual(fixture.calls, ["claim", "terminate", "drain", "end"]);
 });
 
-test("validation stays blocked until the bounded transcript drain completes", async () => {
+test("authoritative finalization stays blocked until transcript drain completes", async () => {
   const fixture = createFixture(new Date(DEADLINE));
   let releaseDrain!: () => void;
-  let validationCalls = 0;
+  let endCalls = 0;
   fixture.deps.waitUntil = () =>
     new Promise((resolve) => {
       releaseDrain = resolve;
     });
-  fixture.deps.validate = async () => {
-    validationCalls += 1;
-    return validValidation();
+  fixture.deps.endSession = async () => {
+    endCalls += 1;
+    return completion();
   };
 
   const enforcement = run(fixture.deps);
   await waitFor(() => fixture.calls.includes("terminate"));
-  assert.equal(validationCalls, 0);
+  assert.equal(endCalls, 0);
 
   releaseDrain();
   assert.equal((await enforcement).ok, true);
-  assert.equal(validationCalls, 1);
+  assert.equal(endCalls, 1);
 });
 
-test("timeout claims the authorization fence before transcript validation resolves", async () => {
+test("timeout claims the authorization fence before locked finalization resolves", async () => {
   const fixture = createFixture(new Date(DEADLINE));
-  let releaseValidation!: () => void;
-  fixture.deps.validate = () =>
+  let releaseFinalization!: () => void;
+  fixture.deps.endSession = () =>
     new Promise((resolve) => {
-      releaseValidation = () =>
-        resolve({
-          isValid: true,
-          reasons: [],
-          stats: emptyStats(),
-          tier: SessionTier.FULL,
-          recommendations: [],
-        });
+      releaseFinalization = () => resolve(completion());
     });
 
   const enforcement = run(fixture.deps);
@@ -214,7 +194,7 @@ test("timeout claims the authorization fence before transcript validation resolv
   });
   assert.equal(restore.applied, false);
 
-  releaseValidation();
+  releaseFinalization();
   assert.equal((await enforcement).ok, true);
 });
 
@@ -230,75 +210,23 @@ test("retry resumes an already-claimed timeout without claiming twice", async ()
   assert.deepEqual(fixture.calls, ["terminate", "end"]);
 });
 
-test("insufficient durable signal refines the claimed timeout reason", async () => {
+test("workflow preserves authoritative insufficient-signal settlement", async () => {
   const fixture = createFixture(new Date(DEADLINE));
-  fixture.deps.validate = async () => ({
-    isValid: false,
-    reasons: ["not enough signal"],
-    stats: emptyStats(),
-    tier: SessionTier.INSUFFICIENT,
-    recommendations: [],
-  });
+  fixture.deps.endSession = async () => {
+    fixture.calls.push("end");
+    fixture.current.state = "abandoned";
+    fixture.current.terminalReason = "insufficient_signal";
+    return completion("insufficient_signal", "skipped");
+  };
 
   const result = await run(fixture.deps);
 
   assert.equal(result.ok, true);
   assert.equal(fixture.current.terminalReason, "insufficient_signal");
-});
-
-test("the first completed timeout settlement survives a divergent retry", async () => {
-  const fixture = createFixture(new Date(DEADLINE));
-  let releaseFirstValidation!: () => void;
-  let validationCalls = 0;
-  fixture.deps.validate = async () => {
-    validationCalls += 1;
-    if (validationCalls === 1) {
-      return new Promise((resolve) => {
-        releaseFirstValidation = () => resolve(invalidValidation());
-      });
-    }
-    return validValidation();
-  };
-
-  const first = run(fixture.deps);
-  await waitFor(() => validationCalls === 1);
-  const retry = await run(fixture.deps);
-  assert.equal(retry.ok, true);
-  assert.equal(fixture.current.state, "completed");
-  assert.equal(fixture.current.terminalReason, "disconnect_timeout");
-
-  releaseFirstValidation();
-  assert.deepEqual(await first, { ok: false, disposition: "stale_event" });
-  assert.equal(fixture.current.state, "completed");
-  assert.equal(fixture.current.terminalReason, "disconnect_timeout");
-});
-
-test("the first abandoned timeout settlement survives a divergent retry", async () => {
-  const fixture = createFixture(new Date(DEADLINE));
-  let releaseFirstValidation!: () => void;
-  let validationCalls = 0;
-  fixture.deps.validate = async () => {
-    validationCalls += 1;
-    if (validationCalls === 1) {
-      return new Promise((resolve) => {
-        releaseFirstValidation = () => resolve(validValidation());
-      });
-    }
-    return invalidValidation();
-  };
-
-  const first = run(fixture.deps);
-  await waitFor(() => validationCalls === 1);
-  const retry = await run(fixture.deps);
-  assert.equal(retry.ok, true);
-  assert.equal(fixture.current.state, "abandoned");
-  assert.equal(fixture.current.terminalReason, "insufficient_signal");
-
-  releaseFirstValidation();
-  const resumed = await first;
-  assert.equal(resumed.ok, true);
-  assert.equal(fixture.current.state, "abandoned");
-  assert.equal(fixture.current.terminalReason, "insufficient_signal");
+  if (result.ok) {
+    assert.equal(result.completion?.completion.feedback.status, "skipped");
+    assert.equal(result.completion?.dispatch, null);
+  }
 });
 
 test("room deletion retries after terminal settlement commits", async () => {
@@ -466,13 +394,6 @@ function createFixture(
     },
     deps: {
       store,
-      validate: async () => ({
-        isValid: true,
-        reasons: [],
-        stats: emptyStats(),
-        tier: SessionTier.FULL,
-        recommendations: [],
-      }),
       terminateRoom: async ({ roomName }) => {
         calls.push("terminate");
         return providerSuccess("livekit", {
@@ -501,36 +422,6 @@ function createFixture(
       },
       waitUntil: async () => undefined,
     },
-  };
-}
-
-function emptyStats(): SessionValidation["stats"] {
-  return {
-    totalTurns: 0,
-    userTurns: 0,
-    totalWords: 0,
-    durationSeconds: 0,
-    substantiveResponses: 0,
-  };
-}
-
-function validValidation(): SessionValidation {
-  return {
-    isValid: true,
-    reasons: [],
-    stats: emptyStats(),
-    tier: SessionTier.FULL,
-    recommendations: [],
-  };
-}
-
-function invalidValidation(): SessionValidation {
-  return {
-    isValid: false,
-    reasons: ["not enough signal"],
-    stats: emptyStats(),
-    tier: SessionTier.INSUFFICIENT,
-    recommendations: [],
   };
 }
 
@@ -571,13 +462,19 @@ function createSession(
   };
 }
 
-function completion(): EndInterviewSessionResult {
+function completion(
+  terminalReason:
+    | "disconnect_timeout"
+    | "insufficient_signal" = "disconnect_timeout",
+  feedbackStatus: "pending" | "skipped" = "pending"
+): EndInterviewSessionResult {
   return {
     ok: true,
     completion: {
       ok: true,
       disposition: "applied",
-      lifecycle: { terminalReason: "disconnect_timeout" },
+      lifecycle: { terminalReason },
+      feedback: { status: feedbackStatus },
     },
     dispatch: null,
   } as EndInterviewSessionResult;

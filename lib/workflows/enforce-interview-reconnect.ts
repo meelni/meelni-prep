@@ -16,13 +16,9 @@ import {
   type TerminatedInterviewRoom,
 } from "@/lib/internal/integrations";
 import {
-  endInterviewSessionWithValidationWorkflow,
+  endInterviewSessionWorkflow,
   type EndInterviewSessionResult,
 } from "./end-interview-session";
-import {
-  validateSessionCompleteness,
-  type SessionValidation,
-} from "@/lib/evaluation/session-validator";
 
 export interface EnforceInterviewReconnectInput {
   sessionId: string;
@@ -33,11 +29,7 @@ export interface EnforceInterviewReconnectInput {
 
 export interface EnforceInterviewReconnectDeps {
   store: InterviewReconnectStore;
-  validate(sessionId: string): Promise<SessionValidation>;
-  endSession(
-    sessionId: string,
-    validation: SessionValidation
-  ): Promise<EndInterviewSessionResult>;
+  endSession(sessionId: string): Promise<EndInterviewSessionResult>;
   terminateRoom(input: {
     roomName: string;
     participantIdentity: string;
@@ -189,32 +181,7 @@ export async function enforceInterviewReconnectWorkflow(
     new Date(current.lastTransitionAt.getTime() + INTERVIEW_TRANSCRIPT_DRAIN_MS)
   );
 
-  const validation = await deps.validate(input.sessionId);
-  const terminalReason = validation.isValid
-    ? "disconnect_timeout"
-    : "insufficient_signal";
-  if (
-    current.terminalReason === "disconnect_timeout" &&
-    terminalReason === "insufficient_signal"
-  ) {
-    const refined = await deps.store.refineTimeoutClaim({
-      sessionId: input.sessionId,
-      expectedVersion: input.expectedVersion + 1,
-      deadlineAt,
-      expectedTerminalReason: "disconnect_timeout",
-      terminalReason,
-    });
-    if (!refined.applied) {
-      return {
-        ok: false,
-        disposition:
-          refined.reason === "not_found" ? "not_found" : "stale_event",
-      };
-    }
-    current = refined.current;
-  }
-
-  const completion = await deps.endSession(input.sessionId, validation);
+  const completion = await deps.endSession(input.sessionId);
   if (!completion.ok) return { ok: false, disposition: "not_found" };
   if (roomError) {
     throw Object.assign(
@@ -255,16 +222,12 @@ async function requireRoomTermination(
 export function createEnforceInterviewReconnectDeps(): EnforceInterviewReconnectDeps {
   return {
     store: createDrizzleInterviewReconnectStore(),
-    validate: validateSessionCompleteness,
-    endSession: (sessionId, validation) =>
-      endInterviewSessionWithValidationWorkflow(
-        {
-          sessionId,
-          actor: { type: "system", source: "reconnect_timeout" },
-          requestedTerminalReason: "disconnect_timeout",
-        },
-        validation
-      ),
+    endSession: (sessionId) =>
+      endInterviewSessionWorkflow({
+        sessionId,
+        actor: { type: "system", source: "reconnect_timeout" },
+        requestedTerminalReason: "disconnect_timeout",
+      }),
     terminateRoom: terminateInterviewRoom,
     inspectPresence: inspectInterviewParticipantPresence,
     waitUntil: async (deadlineAt) => {
