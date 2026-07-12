@@ -140,7 +140,7 @@ export async function requestAccountDeletion(input: {
           existingRequest.livekitRooms,
           input.livekitRooms ?? []
         )
-      : (input.livekitRooms ?? []);
+      : normalizeLiveKitDeletionRooms(input.livekitRooms ?? []);
 
     const [persisted] = await tx
       .insert(accountDeletionRequest)
@@ -266,7 +266,7 @@ export async function requestAccountDeletionWithCurrentSubjects(
       : stripeSubjects;
     const mergedLiveKitRooms = existingRequest
       ? mergeLiveKitDeletionRooms(existingRequest.livekitRooms, livekitRooms)
-      : livekitRooms;
+      : normalizeLiveKitDeletionRooms(livekitRooms);
 
     const [persisted] = await tx
       .insert(accountDeletionRequest)
@@ -875,6 +875,9 @@ export function normalizeLiveKitDeletionRooms(
       provisioning = false,
       provisioningExpiresAt = null,
     } = candidate as Record<string, unknown>;
+    const normalizedProvisioningExpiresAt = normalizeLiveKitProvisioningExpiry(
+      provisioningExpiresAt
+    );
     if (
       (roomName !== null && typeof roomName !== "string") ||
       typeof fingerprint !== "string" ||
@@ -882,9 +885,6 @@ export function normalizeLiveKitDeletionRooms(
       !Number.isSafeInteger(generation) ||
       (generation as number) < 1 ||
       typeof provisioning !== "boolean" ||
-      (provisioningExpiresAt !== null &&
-        (typeof provisioningExpiresAt !== "string" ||
-          !Number.isFinite(Date.parse(provisioningExpiresAt)))) ||
       (typeof roomName === "string" &&
         createHash("sha256").update(roomName).digest("hex") !== fingerprint)
     ) {
@@ -896,7 +896,7 @@ export function normalizeLiveKitDeletionRooms(
       generation: generation as number,
       provisioning,
       provisioningExpiresAt: provisioning
-        ? (provisioningExpiresAt as string | null)
+        ? normalizedProvisioningExpiresAt
         : null,
     };
   });
@@ -935,7 +935,7 @@ function mergeLiveKitDeletionRooms(
       room,
     ])
   );
-  for (const candidate of incoming) {
+  for (const candidate of normalizeLiveKitDeletionRooms(incoming)) {
     const existing = rooms.get(candidate.fingerprint);
     if (!existing) {
       rooms.set(candidate.fingerprint, candidate);
@@ -950,16 +950,35 @@ function mergeLiveKitDeletionRooms(
       ...existing,
       provisioningExpiresAt:
         existing.provisioning && candidate.provisioning
-          ? ([existingExpiry, candidateExpiry]
-              .filter((value): value is string => value !== null)
-              .sort()
-              .at(-1) ?? null)
+          ? laterLiveKitProvisioningExpiry(existingExpiry, candidateExpiry)
           : existingExpiry,
     });
   }
   return [...rooms.values()].sort((left, right) =>
     left.fingerprint.localeCompare(right.fingerprint)
   );
+}
+
+function laterLiveKitProvisioningExpiry(
+  left: string | null,
+  right: string | null
+): string | null {
+  if (left === null) return normalizeLiveKitProvisioningExpiry(right);
+  if (right === null) return normalizeLiveKitProvisioningExpiry(left);
+  const leftEpoch = Date.parse(left);
+  const rightEpoch = Date.parse(right);
+  if (!Number.isFinite(leftEpoch) || !Number.isFinite(rightEpoch)) {
+    throw invalidLiveKitDeletionRooms();
+  }
+  return new Date(Math.max(leftEpoch, rightEpoch)).toISOString();
+}
+
+function normalizeLiveKitProvisioningExpiry(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") throw invalidLiveKitDeletionRooms();
+  const epoch = Date.parse(value);
+  if (!Number.isFinite(epoch)) throw invalidLiveKitDeletionRooms();
+  return new Date(epoch).toISOString();
 }
 
 function invalidLiveKitDeletionRooms(): Error & { code: string } {
