@@ -63,7 +63,7 @@ export const deleteAccount = inngest.createFunction(
     );
 
     try {
-      await step.run("delete-account-providers-and-data", () =>
+      const cleanup = await step.run("delete-account-providers-and-data", () =>
         runSafeAccountDeletionStep(
           () =>
             deleteAccountWorkflow(request, {
@@ -126,10 +126,21 @@ export const deleteAccount = inngest.createFunction(
                 }
               },
               markCompleted: markAccountDeletionCompleted,
+              now: () => new Date(),
             }),
           undefined
         )
       );
+      if (cleanup.retryAt) {
+        await step.sleepUntil(
+          "wait-for-livekit-provisioning-lease",
+          cleanup.retryAt
+        );
+        await step.sendEvent("retry-livekit-provisioning-cleanup", {
+          name: "account/deletion.requested",
+          data: { userId },
+        });
+      }
     } catch (error) {
       const failureCode = accountDeletionFailureCode(error);
       try {

@@ -124,6 +124,7 @@ export const accountDeletionRequest = pgTable(
           fingerprint: string;
           generation: number;
           provisioning: boolean;
+          provisioningExpiresAt: string | null;
         }>
       >()
       .default(sql`'[]'::jsonb`)

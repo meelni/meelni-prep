@@ -43,7 +43,9 @@
   capture, in-flight room termination, post-create token withholding, cleanup
   generation fencing, monotonic duplicate deletion subject merging,
   provisioning-subject retention across a pre-create 404, combined fence/delete
-  failure containment, and absence of automatic refund operations.
+  failure containment, bounded database-clock provisioning leases with
+  expiry-aware durable retry, provider-start reconciliation and provider-error
+  redaction, and absence of automatic refund operations.
 
 ## Rollout
 
