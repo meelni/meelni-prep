@@ -96,7 +96,6 @@ read_frame() {
   [ "$frame_read" -eq 0 ]
 }
 
-[ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
 attest_file() {
   canonical=$(/bin/realpath "$1") || fail "calibration_live_launcher_file_realpath_failed"
   [ "$canonical" = "$1" ] || fail "calibration_live_launcher_file_canonical_rejected"
@@ -123,18 +122,22 @@ test_bootstrap=${MEELNI_CALIBRATION_TEST_BOOTSTRAP-}
 test_runtime=${MEELNI_CALIBRATION_TEST_RUNTIME-}
 test_timeout=${MEELNI_CALIBRATION_TEST_TIMEOUT_SECONDS-10}
 test_timeout_override=${MEELNI_CALIBRATION_TEST_TIMEOUT_SECONDS-}
-if [ -n "$test_mode$credential_fd$test_bootstrap$test_runtime$test_timeout_override" ]; then
+test_node_bin=${MEELNI_CALIBRATION_TEST_NODE_BIN-}
+if [ -n "$test_mode$credential_fd$test_bootstrap$test_runtime$test_timeout_override$test_node_bin" ]; then
   [ "$test_mode" = "1" ] || fail "calibration_live_launcher_test_mode_invalid"
   case "$credential_fd" in *[!0-9]*|'') fail "calibration_live_launcher_test_fd_invalid" ;; esac
   case "$test_timeout" in *[!0-9]*|'') fail "calibration_live_launcher_test_timeout_invalid" ;; esac
   [ "$test_timeout" -gt 0 ] && [ "$test_timeout" -le 10 ] || fail "calibration_live_launcher_test_timeout_invalid"
   BOOTSTRAP=$(/bin/realpath "$test_bootstrap") || fail "calibration_live_launcher_test_bootstrap_invalid"
   attest_file "$BOOTSTRAP"
+  [ -n "$test_node_bin" ] || fail "calibration_live_launcher_test_node_invalid"
+  NODE_BIN=$(/bin/realpath "$test_node_bin") || fail "calibration_live_launcher_test_node_invalid"
   if [ -n "$test_runtime" ]; then
     test_runtime=$(/bin/realpath "$test_runtime") || fail "calibration_live_launcher_test_runtime_invalid"
     attest_file "$test_runtime"
   fi
 fi
+[ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
 
 channel_dir=$(/usr/bin/mktemp -d /tmp/meelni-calibration-live.XXXXXX)
 /bin/chmod 700 "$channel_dir"
