@@ -1,6 +1,6 @@
 {
-  "id": "662d7cd7-500c-4039-8614-ba31cdf8ee9a",
-  "prevId": "cb042d37-c7b6-4623-97d2-2c99af2cff29",
+  "id": "cb042d37-c7b6-4623-97d2-2c99af2cff29",
+  "prevId": "d570eb1b-518d-48d0-a76d-b75d63c9cdb1",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2882,103 +2882,6 @@
         "transcript_interruption_marker_reason_check": {
           "name": "transcript_interruption_marker_reason_check",
           "value": "\"transcript_interruption_marker\".\"reason\" IN ('no_provider_confirmed_prefix', 'canonicalization_failed')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.transcript_runtime_settlement": {
-      "name": "transcript_runtime_settlement",
-      "schema": "",
-      "columns": {
-        "session_id": {
-          "name": "session_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "contract_version": {
-          "name": "contract_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "room_name": {
-          "name": "room_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "writer_id": {
-          "name": "writer_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "settled_at": {
-          "name": "settled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "transcript_runtime_settlement_room_settled_at_idx": {
-          "name": "transcript_runtime_settlement_room_settled_at_idx",
-          "columns": [
-            {
-              "expression": "room_name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "settled_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "transcript_runtime_settlement_session_id_interview_session_id_fk": {
-          "name": "transcript_runtime_settlement_session_id_interview_session_id_fk",
-          "tableFrom": "transcript_runtime_settlement",
-          "tableTo": "interview_session",
-          "columnsFrom": ["session_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "transcript_runtime_settlement_contract_check": {
-          "name": "transcript_runtime_settlement_contract_check",
-          "value": "\"transcript_runtime_settlement\".\"contract_version\" = 1"
-        },
-        "transcript_runtime_settlement_state_check": {
-          "name": "transcript_runtime_settlement_state_check",
-          "value": "\"transcript_runtime_settlement\".\"state\" IN ('settled', 'degraded')"
         }
       },
       "isRLSEnabled": false

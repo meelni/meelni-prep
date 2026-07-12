@@ -50,7 +50,7 @@ import {
   type AccountDeletionResult,
   type SettingsLoadState,
 } from "@/lib/dashboard/settings-actions";
-import { clearTranscriptQueueStorage } from "@/lib/utils/transcript-queue";
+import { scrubRetiredTranscriptBrowserStorage } from "@/lib/privacy/transcript-browser-storage";
 import { cn } from "@/lib/utils";
 
 interface SubscriptionSummary {
@@ -733,7 +733,7 @@ function DataPrivacyPane({
     setReauthenticateAt(null);
     const result = await requestAccountDeletion(confirmation);
     if (result.state === "requested" || result.state === "retry_scheduled") {
-      clearTranscriptQueueStorage();
+      scrubRetiredTranscriptBrowserStorage();
     }
     setDeleteState(result.state);
     setDeleteMessage(result.message);

@@ -80,17 +80,17 @@
       "breakpoints": true
     },
     {
-      "idx": 10,
+      "idx": 11,
       "version": "7",
-      "when": 1783672284542,
-      "tag": "0010_safe_hemingway",
+      "when": 1783877181911,
+      "tag": "0011_transcript_privacy_integrity",
       "breakpoints": true
     },
     {
-      "idx": 11,
+      "idx": 12,
       "version": "7",
-      "when": 1783674991085,
-      "tag": "0011_runtime-settlement",
+      "when": 1783877181912,
+      "tag": "0012_runtime_settlement",
       "breakpoints": true
     }
   ]

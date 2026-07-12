@@ -71,14 +71,14 @@ generation fence, cleanup intent, and shared issuance limiter used by SAV-190.
 sequence, room correlation, delivery state, deterministic ordering, and
 database-enforced idempotency while retaining nullable legacy rows.
 
-`0010_safe_hemingway` adds the service-only
+`0011_transcript_privacy_integrity` adds the service-only
 `transcript_interruption_marker` table. The table contains no transcript text;
 it records a provider-confirmed interruption whose heard prefix was unavailable
 or a committed turn whose canonical measurement failed. RLS and ACLs deny
 browser roles. A marker makes feedback ineligible so incomplete evidence
 cannot be scored as complete.
 
-`0011_runtime-settlement` adds the service-only
+`0012_runtime_settlement` adds the service-only
 `transcript_runtime_settlement` table. A trusted metadata-only watermark is
 required before terminal completion can mark transcript evidence eligible for
 feedback; missing or degraded settlement fails closed.

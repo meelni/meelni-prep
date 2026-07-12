@@ -1971,7 +1971,7 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
     );
     for (const deadlineEvent of deadlineEvents.slice(0, 4)) {
       const persisted = await stores[2]!.persist({
-        userId: USER_ONE,
+        principal: { kind: "voice_runtime" },
         event: deadlineEvent,
       });
       assert.equal(persisted.ok, true);
@@ -2018,7 +2018,7 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
         FOR UPDATE
       `;
       thresholdIngest = stores[3]!.persist({
-        userId: USER_ONE,
+        principal: { kind: "voice_runtime" },
         event: deadlineEvents[4]!,
       });
       await waitForDatabaseLock(sql, ingestBackend.pid);
@@ -2040,7 +2040,6 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       "created"
     );
     assert.equal(await deadlineClaim, true);
-
     const postClaimEvent = createTranscriptEvent({
       ...deadlineEvents[4]!,
       event_id: "deadline-writer:message-6",
@@ -2051,8 +2050,25 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       ended_at: "2026-07-10T05:06:01.000Z",
     });
     assert.deepEqual(
-      await stores[5]!.persist({ userId: USER_ONE, event: postClaimEvent }),
+      await stores[5]!.persist({
+        principal: { kind: "voice_runtime" },
+        event: postClaimEvent,
+      }),
       { ok: false, reason: "session_closed" }
+    );
+    assert.equal(
+      (
+        await settlementStore.persist({
+          contract_version: 1,
+          event_type: "runtime_settlement",
+          session_id: SESSION_TRANSCRIPT_DEADLINE,
+          room_name: "transcript-deadline-room",
+          writer_id: "deadline-writer",
+          state: "settled",
+          settled_at: "2026-07-10T05:05:03.000Z",
+        })
+      ).ok,
+      true
     );
 
     const deadlineCompletion = await finalizeInterviewSession(
@@ -2071,7 +2087,7 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       assert.equal(deadlineCompletion.tier, "partial");
       assert.equal(deadlineCompletion.feedback.status, "pending");
       const replay = await stores[7]!.persist({
-        userId: USER_ONE,
+        principal: { kind: "voice_runtime" },
         event: deadlineEvents[4]!,
       });
       assert.equal(replay.ok && replay.disposition, "existing");
@@ -2092,6 +2108,20 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       }
     }
 
+    assert.equal(
+      (
+        await settlementStore.persist({
+          contract_version: 1,
+          event_type: "runtime_settlement",
+          session_id: SESSION_TRANSCRIPT_DEADLINE_INVALID,
+          room_name: "transcript-deadline-invalid-room",
+          writer_id: "deadline-invalid-writer",
+          state: "settled",
+          settled_at: "2026-07-10T05:00:01.000Z",
+        })
+      ).ok,
+      true
+    );
     assert.equal(
       await claimInterviewDeadline(
         {
