@@ -15,7 +15,7 @@ export interface InterviewReconnectSession {
   version: number;
   terminalReason: string | null;
   config: unknown;
-  startedAt: Date;
+  startedAt: Date | null;
   activatedAt: Date | null;
   runtimeReadyAt: Date | null;
   lastTransitionAt: Date;
@@ -446,10 +446,8 @@ export async function listInterviewReconnectSchedules(limit = 250): Promise<
 function mapReconnectSession(
   row: typeof interviewSession.$inferSelect
 ): InterviewReconnectSession {
-  if (!row.livekitRoomName || !row.startedAt) {
-    throw new Error(
-      "Voice interview reconnect row is missing room or start time"
-    );
+  if (!row.livekitRoomName) {
+    throw new Error("Voice interview reconnect row is missing its room");
   }
   return {
     sessionId: row.id,

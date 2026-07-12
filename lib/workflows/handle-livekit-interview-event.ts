@@ -67,8 +67,16 @@ export async function handleLiveKitInterviewEventWorkflow(
   if (!current) {
     return { ok: false, disposition: "not_found", lifecycle: null };
   }
+  if (!current.startedAt) {
+    // Deadline recovery owns quarantine for malformed legacy sessions. Do not
+    // let provider presence mutate or activate a row without canonical timing.
+    return { ok: false, disposition: "conflict", lifecycle: current };
+  }
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (!current.startedAt) {
+      return { ok: false, disposition: "conflict", lifecycle: current };
+    }
     const isCandidate = input.participantIdentity === current.userId;
     const canCompleteInitialActivation =
       isCandidate &&
@@ -204,6 +212,8 @@ function deriveDesiredTransition(
   disposition: "activated" | "reconnecting" | "recovered";
   runtimeReadyAt?: Date;
 } | null {
+  if (!current.startedAt) return null;
+
   const isCandidate = input.participantIdentity === current.userId;
   const config = isRecord(current.config) ? current.config : {};
   const hardDeadlineAt = deriveInterviewDeadlineAt({
