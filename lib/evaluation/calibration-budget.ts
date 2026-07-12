@@ -8,6 +8,7 @@ export const CALIBRATION_MAX_COMPLETION_TOKENS = 2_000;
 export const CALIBRATION_OFFICIAL_OPENAI_ENDPOINT = "https://api.openai.com/v1";
 export const CALIBRATION_SERVICE_TIER = "default";
 export const CALIBRATION_MAX_SDK_RETRIES = 0;
+export const CALIBRATION_REQUEST_TIMEOUT_MS = 300_000;
 export const CALIBRATION_PRICING_REVIEW_TTL_MS = 24 * 60 * 60 * 1_000;
 
 const REQUEST_FRAMING_TOKEN_CEILING = 1_024;
@@ -27,6 +28,7 @@ export interface CalibrationPricingContract {
   serviceTier: "default";
   maximumSdkRetries: 0;
   redirectPolicy: "error";
+  requestTimeoutMs: 300_000;
   reviewedAt: "2026-07-12T06:28:08.000Z";
   reviewTtlHours: 24;
   source: "https://developers.openai.com/api/docs/models/gpt-5.1";
@@ -45,6 +47,7 @@ export const CALIBRATION_PRICING_CONTRACT: CalibrationPricingContract = {
   serviceTier: CALIBRATION_SERVICE_TIER,
   maximumSdkRetries: CALIBRATION_MAX_SDK_RETRIES,
   redirectPolicy: "error",
+  requestTimeoutMs: CALIBRATION_REQUEST_TIMEOUT_MS,
   reviewedAt: "2026-07-12T06:28:08.000Z",
   reviewTtlHours: 24,
   source: "https://developers.openai.com/api/docs/models/gpt-5.1",
@@ -65,10 +68,18 @@ export type CalibrationBudgetStopReason =
   | "provider_service_tier_mismatch"
   | "missing_provider_usage"
   | "invalid_provider_usage"
-  | "provider_usage_exceeded_reservation";
+  | "provider_usage_exceeded_reservation"
+  | "actual_spend_cap_breached"
+  | "physical_request_boundary_not_confirmed"
+  | "pricing_review_expired_before_request"
+  | "resumed_run_missing_evaluation_evidence"
+  | "recovered_unresolved_reservation";
 
 export interface CalibrationCostReport {
-  contractVersion: "evaluation-calibration-cost-report.v2";
+  contractVersion: "evaluation-calibration-cost-report.v3";
+  authorizedRunId: string | null;
+  authorizationId: string | null;
+  authorizationHash: string | null;
   maximumCalls: 96;
   maximumSpendUsd: 3;
   attemptedCalls: number;
@@ -79,6 +90,8 @@ export interface CalibrationCostReport {
   unreconciledReservedCostUsd: number;
   estimatedCommittedCostUsd: number;
   actualCostComplete: boolean;
+  spendCapBreached: boolean;
+  resumedSkippedCalls: number;
   observedUsage: CalibrationProviderUsage;
   pricingReviewExpiresAt: string;
   stopReason: CalibrationBudgetStopReason | null;
@@ -87,11 +100,54 @@ export interface CalibrationCostReport {
 
 export interface CalibrationSpendReservation {
   id: number;
+  callKey: string;
   inputTokenCeiling: number;
   outputTokenCeiling: number;
   worstCaseNanoUsd: number;
   settled: boolean;
   usageRecorded: boolean;
+  requestBoundaryConfirmed: boolean;
+}
+
+export interface CalibrationPersistedSpendState {
+  attemptedCalls: number;
+  completedCalls: number;
+  cumulativeReservedNanoUsd: number;
+  reconciledActualNanoUsd: number;
+  unresolvedReservedNanoUsd: number;
+  stopReason: CalibrationBudgetStopReason | null;
+  observedUsage: CalibrationProviderUsage;
+  reservations: CalibrationSpendReservation[];
+  resumedSkippedCalls: number;
+}
+
+export interface CalibrationSpendPersistence {
+  readonly durable: true;
+  readonly runId: string;
+  readonly authorizationId: string;
+  readonly authorizationHash: string;
+  assertExclusiveLease(): void;
+  loadSpendState(): CalibrationPersistedSpendState;
+  saveSpendState(state: CalibrationPersistedSpendState): void;
+}
+
+export function createEmptyCalibrationSpendState(): CalibrationPersistedSpendState {
+  return {
+    attemptedCalls: 0,
+    completedCalls: 0,
+    cumulativeReservedNanoUsd: 0,
+    reconciledActualNanoUsd: 0,
+    unresolvedReservedNanoUsd: 0,
+    stopReason: null,
+    observedUsage: {
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    },
+    reservations: [],
+    resumedSkippedCalls: 0,
+  };
 }
 
 /**
@@ -105,6 +161,8 @@ export class CalibrationSpendGuard {
   private reconciledActualNanoUsd = 0;
   private unresolvedReservedNanoUsd = 0;
   private stopReason: CalibrationBudgetStopReason | null = null;
+  private resumedSkippedCalls = 0;
+  private reservations = new Map<string, CalibrationSpendReservation>();
   private observedUsage: CalibrationProviderUsage = {
     inputTokens: 0,
     cachedInputTokens: 0,
@@ -112,23 +170,45 @@ export class CalibrationSpendGuard {
     totalTokens: 0,
   };
   readonly pricing = CALIBRATION_PRICING_CONTRACT;
+  readonly durable: boolean;
+  private readonly clock: () => Date;
 
   constructor(
     readonly model: string,
-    readonly now: Date = new Date()
+    nowOrClock: Date | (() => Date) = () => new Date(),
+    private readonly persistence?: CalibrationSpendPersistence
   ) {
+    this.clock =
+      nowOrClock instanceof Date
+        ? () => new Date(nowOrClock.getTime())
+        : nowOrClock;
+    this.durable = persistence?.durable === true;
     if (model !== this.pricing.model) {
       throw new Error("calibration_model_has_no_reviewed_pricing_contract");
     }
-    validateCalibrationPricingFreshness(now, this.pricing);
+    validateCalibrationPricingFreshness(this.clock(), this.pricing);
+    if (persistence) this.hydrate(persistence.loadSpendState());
+  }
+
+  hasAttemptedCall(callKey: string): boolean {
+    return this.reservations.has(callKey);
+  }
+
+  recordResumedSkippedCall(): void {
+    this.resumedSkippedCalls += 1;
+    this.persist();
   }
 
   reserve(
-    fixture: EvaluationCalibrationCase
+    fixture: EvaluationCalibrationCase,
+    callKey = `local:${this.attemptedCalls + 1}`
   ): CalibrationSpendReservation | null {
+    validateCalibrationPricingFreshness(this.clock(), this.pricing);
     if (this.stopReason !== null) return null;
+    if (this.reservations.has(callKey)) return null;
     if (this.attemptedCalls >= CALIBRATION_MAX_PROVIDER_CALLS) {
       this.stopReason = "call_cap_reached";
+      this.persist();
       return null;
     }
 
@@ -145,20 +225,27 @@ export class CalibrationSpendGuard {
       CALIBRATION_MAX_SPEND_NANO_USD
     ) {
       this.stopReason = "spend_cap_before_next_call";
+      this.persist();
       return null;
     }
 
     this.attemptedCalls += 1;
     this.cumulativeReservedNanoUsd += worstCaseNanoUsd;
     this.unresolvedReservedNanoUsd += worstCaseNanoUsd;
-    return {
+    const reservation: CalibrationSpendReservation = {
       id: this.attemptedCalls,
+      callKey,
       inputTokenCeiling,
       outputTokenCeiling: CALIBRATION_MAX_COMPLETION_TOKENS,
       worstCaseNanoUsd,
       settled: false,
       usageRecorded: false,
+      requestBoundaryConfirmed: false,
     };
+    this.reservations.set(callKey, reservation);
+    // The reservation reaches durable storage before the caller may issue HTTP.
+    this.persist();
+    return reservation;
   }
 
   settleSuccess(
@@ -166,8 +253,12 @@ export class CalibrationSpendGuard {
     usage: CalibrationProviderUsage | undefined
   ): boolean {
     const actual = this.reconcile(reservation, usage);
-    if (actual === null) return false;
+    if (actual === null) {
+      this.persist();
+      return false;
+    }
     this.completedCalls += 1;
+    this.persist();
     return true;
   }
 
@@ -177,6 +268,7 @@ export class CalibrationSpendGuard {
   ): void {
     if (usage) this.reconcile(reservation, usage);
     this.stopReason ??= usage ? "provider_failure" : "missing_provider_usage";
+    this.persist();
   }
 
   rejectObservedModel(
@@ -184,6 +276,7 @@ export class CalibrationSpendGuard {
     usage: CalibrationProviderUsage | undefined
   ): void {
     this.rejectProviderIdentity(reservation, usage, "provider_model_mismatch");
+    this.persist();
   }
 
   rejectObservedServiceTier(
@@ -198,20 +291,54 @@ export class CalibrationSpendGuard {
         ? "provider_service_tier_mismatch"
         : "provider_service_tier_missing"
     );
+    this.persist();
+  }
+
+  assertPhysicalRequestAllowed(reservation: CalibrationSpendReservation): void {
+    try {
+      validateCalibrationPricingFreshness(this.clock(), this.pricing);
+    } catch (error) {
+      this.stopReason = "pricing_review_expired_before_request";
+      this.persist();
+      throw error;
+    }
+    if (this.reservations.get(reservation.callKey) !== reservation) {
+      throw new Error("calibration_reservation_is_not_current");
+    }
+    if (reservation.settled || this.stopReason !== null) {
+      throw new Error("calibration_reservation_is_not_active");
+    }
+    this.persistence?.assertExclusiveLease();
+    reservation.requestBoundaryConfirmed = true;
+    this.persist();
   }
 
   finishPlan(): void {
-    if (this.stopReason === null) this.stopReason = "completed_plan";
+    if (this.stopReason === null) {
+      this.stopReason =
+        this.unresolvedReservedNanoUsd > 0
+          ? "recovered_unresolved_reservation"
+          : this.resumedSkippedCalls > 0
+            ? "resumed_run_missing_evaluation_evidence"
+            : "completed_plan";
+    }
+    this.persist();
   }
 
   report(): CalibrationCostReport {
     return {
-      contractVersion: "evaluation-calibration-cost-report.v2",
+      contractVersion: "evaluation-calibration-cost-report.v3",
+      authorizedRunId: this.persistence?.runId ?? null,
+      authorizationId: this.persistence?.authorizationId ?? null,
+      authorizationHash: this.persistence?.authorizationHash ?? null,
       maximumCalls: CALIBRATION_MAX_PROVIDER_CALLS,
       maximumSpendUsd: 3,
       attemptedCalls: this.attemptedCalls,
       physicalHttpAttemptCeiling:
-        this.attemptedCalls * (this.pricing.maximumSdkRetries + 1),
+        [...this.reservations.values()].filter(
+          ({ requestBoundaryConfirmed }) => requestBoundaryConfirmed
+        ).length *
+        (this.pricing.maximumSdkRetries + 1),
       completedCalls: this.completedCalls,
       reservedWorstCaseCostUsd: nanoUsdToUsd(this.cumulativeReservedNanoUsd),
       reconciledActualCostUsd: nanoUsdToUsd(this.reconciledActualNanoUsd),
@@ -220,6 +347,9 @@ export class CalibrationSpendGuard {
         this.reconciledActualNanoUsd + this.unresolvedReservedNanoUsd
       ),
       actualCostComplete: this.unresolvedReservedNanoUsd === 0,
+      spendCapBreached:
+        this.reconciledActualNanoUsd > CALIBRATION_MAX_SPEND_NANO_USD,
+      resumedSkippedCalls: this.resumedSkippedCalls,
       observedUsage: { ...this.observedUsage },
       pricingReviewExpiresAt: pricingReviewExpiresAt(
         this.pricing
@@ -237,6 +367,10 @@ export class CalibrationSpendGuard {
       this.stopReason = "invalid_provider_usage";
       return null;
     }
+    if (!reservation.requestBoundaryConfirmed) {
+      this.stopReason = "physical_request_boundary_not_confirmed";
+      return null;
+    }
     if (!usage) {
       this.stopReason = "missing_provider_usage";
       return null;
@@ -246,17 +380,19 @@ export class CalibrationSpendGuard {
       return null;
     }
     this.recordUsage(reservation, usage);
+    const actualNanoUsd = calculateActualNanoUsd(usage, this.pricing);
     if (
       usage.inputTokens > reservation.inputTokenCeiling ||
-      usage.outputTokens > reservation.outputTokenCeiling
+      usage.outputTokens > reservation.outputTokenCeiling ||
+      actualNanoUsd > reservation.worstCaseNanoUsd
     ) {
-      this.stopReason = "provider_usage_exceeded_reservation";
-      return null;
-    }
-
-    const actualNanoUsd = calculateActualNanoUsd(usage, this.pricing);
-    if (actualNanoUsd > reservation.worstCaseNanoUsd) {
-      this.stopReason = "provider_usage_exceeded_reservation";
+      reservation.settled = true;
+      this.unresolvedReservedNanoUsd -= reservation.worstCaseNanoUsd;
+      this.reconciledActualNanoUsd += actualNanoUsd;
+      this.stopReason =
+        this.reconciledActualNanoUsd > CALIBRATION_MAX_SPEND_NANO_USD
+          ? "actual_spend_cap_breached"
+          : "provider_usage_exceeded_reservation";
       return null;
     }
 
@@ -293,6 +429,76 @@ export class CalibrationSpendGuard {
     this.observedUsage.cachedInputTokens += usage.cachedInputTokens;
     this.observedUsage.outputTokens += usage.outputTokens;
     this.observedUsage.totalTokens += usage.totalTokens;
+  }
+
+  private hydrate(state: CalibrationPersistedSpendState): void {
+    this.attemptedCalls = state.attemptedCalls;
+    this.completedCalls = state.completedCalls;
+    this.cumulativeReservedNanoUsd = state.cumulativeReservedNanoUsd;
+    this.reconciledActualNanoUsd = state.reconciledActualNanoUsd;
+    this.unresolvedReservedNanoUsd = state.unresolvedReservedNanoUsd;
+    this.stopReason = state.stopReason;
+    this.observedUsage = { ...state.observedUsage };
+    this.resumedSkippedCalls = state.resumedSkippedCalls;
+    this.reservations = new Map(
+      state.reservations.map((reservation) => [
+        reservation.callKey,
+        { ...reservation },
+      ])
+    );
+    const reservationIds = state.reservations
+      .map(({ id }) => id)
+      .sort((left, right) => left - right);
+    const cumulativeReservedNanoUsd = state.reservations.reduce(
+      (total, reservation) => total + reservation.worstCaseNanoUsd,
+      0
+    );
+    const unresolvedReservedNanoUsd = state.reservations
+      .filter(({ settled }) => !settled)
+      .reduce((total, reservation) => total + reservation.worstCaseNanoUsd, 0);
+    const settledReservations = state.reservations.filter(
+      ({ settled }) => settled
+    );
+    if (
+      this.reservations.size !== state.reservations.length ||
+      this.attemptedCalls !== state.reservations.length ||
+      reservationIds.some((id, index) => id !== index + 1) ||
+      this.completedCalls > this.attemptedCalls ||
+      this.completedCalls > settledReservations.length ||
+      settledReservations.some(
+        ({ requestBoundaryConfirmed, usageRecorded }) =>
+          !requestBoundaryConfirmed || !usageRecorded
+      ) ||
+      this.cumulativeReservedNanoUsd !== cumulativeReservedNanoUsd ||
+      this.unresolvedReservedNanoUsd !== unresolvedReservedNanoUsd ||
+      this.unresolvedReservedNanoUsd < 0 ||
+      this.reconciledActualNanoUsd < 0 ||
+      this.cumulativeReservedNanoUsd < 0
+    ) {
+      throw new Error("calibration_spend_checkpoint_is_inconsistent");
+    }
+    // A terminal attempt cannot be reopened. Resumption may continue only when
+    // the prior process ended unexpectedly without a deliberate stop reason.
+    if (this.stopReason !== null) {
+      throw new Error("calibration_authorized_run_is_already_terminal");
+    }
+  }
+
+  private persist(): void {
+    if (!this.persistence) return;
+    this.persistence.saveSpendState({
+      attemptedCalls: this.attemptedCalls,
+      completedCalls: this.completedCalls,
+      cumulativeReservedNanoUsd: this.cumulativeReservedNanoUsd,
+      reconciledActualNanoUsd: this.reconciledActualNanoUsd,
+      unresolvedReservedNanoUsd: this.unresolvedReservedNanoUsd,
+      stopReason: this.stopReason,
+      observedUsage: { ...this.observedUsage },
+      reservations: [...this.reservations.values()].map((reservation) => ({
+        ...reservation,
+      })),
+      resumedSkippedCalls: this.resumedSkippedCalls,
+    });
   }
 }
 

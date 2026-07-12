@@ -1,6 +1,6 @@
 {
-  "contractVersion": "evaluation-calibration-report.v5",
-  "generatedAt": "2026-07-12T06:54:37.992Z",
+  "contractVersion": "evaluation-calibration-report.v6",
+  "generatedAt": "2026-07-12T07:25:04.991Z",
   "execution": {
     "kind": "preflight",
     "modelVersion": null,

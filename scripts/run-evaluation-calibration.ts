@@ -16,6 +16,10 @@ import {
   assertCalibrationOpenAIEnvironment,
   generateFeedbackWithUsage,
 } from "@/lib/evaluation/scorer";
+import {
+  DurableCalibrationRunLedger,
+  SAV_198_SPEND_AUTHORIZATION,
+} from "@/lib/evaluation/calibration-run-ledger";
 import { getCalibrationCliExitCode } from "@/lib/evaluation/calibration-cli";
 
 const LIVE_ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL";
@@ -41,6 +45,7 @@ async function main() {
   let modelVersion: string | null = null;
   let evaluator;
   let spendGuard: CalibrationSpendGuard | undefined;
+  let runLedger: DurableCalibrationRunLedger | undefined;
   const adjudicationApproval = args.approval
     ? JSON.parse(await readFile(resolve(process.cwd(), args.approval), "utf8"))
     : undefined;
@@ -60,10 +65,23 @@ async function main() {
     }
     assertCalibrationOpenAIEnvironment(process.env);
     modelVersion = getFeedbackEvaluationModel();
-    spendGuard = new CalibrationSpendGuard(modelVersion);
+    runLedger = DurableCalibrationRunLedger.open({
+      authorization: SAV_198_SPEND_AUTHORIZATION,
+    });
+    try {
+      spendGuard = new CalibrationSpendGuard(
+        modelVersion,
+        () => new Date(),
+        runLedger
+      );
+    } catch (error) {
+      runLedger.release();
+      throw error;
+    }
     evaluator = ({
       fixture,
       evaluationState,
+      beforePhysicalRequest,
     }: Parameters<
       ReturnType<typeof createDeterministicCalibrationEvaluator>
     >[0]) =>
@@ -74,18 +92,24 @@ async function main() {
         {
           maxCompletionTokens: CALIBRATION_MAX_COMPLETION_TOKENS,
           calibrationPaidMode: true,
+          beforePhysicalRequest,
         }
       );
   }
 
-  const report = await runEvaluationCalibration({
-    executionKind,
-    evaluator,
-    modelVersion,
-    repetitions,
-    adjudicationApproval,
-    spendGuard,
-  });
+  let report;
+  try {
+    report = await runEvaluationCalibration({
+      executionKind,
+      evaluator,
+      modelVersion,
+      repetitions,
+      adjudicationApproval,
+      spendGuard,
+    });
+  } finally {
+    runLedger?.release();
+  }
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
   if (args.output) {
     const target = resolve(process.cwd(), args.output);
