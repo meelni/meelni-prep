@@ -349,11 +349,12 @@ export function buildCalibrationActivatedPlan(input: {
 }
 
 export async function activateCalibrationRun(
-  options: ActivateCalibrationRunOptions
+  options: ActivateCalibrationRunOptions,
+  credentials: { githubToken: string }
 ): Promise<ActivatedCalibrationRunAuthority> {
   return await activateCalibrationRunWithClient(
     options,
-    createProductionGitHubCasClient()
+    createProductionGitHubCasClient(credentials.githubToken)
   );
 }
 
@@ -851,10 +852,12 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
   }
 }
 
-function createProductionGitHubCasClient(): CalibrationGitHubCasClient {
+function createProductionGitHubCasClient(
+  githubToken: string
+): CalibrationGitHubCasClient {
   assertCalibrationLiveStartupState();
   return createDirectGitHubCasClient(
-    process.env,
+    { GITHUB_TOKEN: githubToken },
     new NodeGitHubHttpsTransport(),
     {
       timeoutMs: GITHUB_API_TIMEOUT_MS,
