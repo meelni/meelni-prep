@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import {
   createServer as createHttpsServer,
   request as nodeHttpsRequest,
@@ -15,7 +9,7 @@ import {
 } from "node:https";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { rootCertificates } from "node:tls";
 import test from "node:test";
 
@@ -61,10 +55,6 @@ import {
 } from "./calibration-run-ledger";
 
 const NOW = new Date("2026-07-12T09:00:00.000Z");
-const LIVE_BOOTSTRAP = resolve(
-  process.cwd(),
-  "scripts/run-evaluation-calibration-live.mjs"
-);
 
 test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.deepEqual(
@@ -471,6 +461,17 @@ test("startup attestation accepts only the pinned empty-argv Node runtime", () =
       }),
     /startup_runtime_rejected/
   );
+  assert.throws(
+    () =>
+      assertCalibrationLiveStartupState({
+        env: {},
+        execArgv: [],
+        releaseName: "node",
+        nodeVersion: "22.21.1",
+        invocation: "bootstrap",
+      }),
+    /startup_runtime_rejected/
+  );
 });
 
 test("startup environment fails before any token property is read", () => {
@@ -558,62 +559,6 @@ test("startup attestation runs before client token reads and again before every 
   );
   assert.equal(requests, 0);
   assert.equal(attestations, 3);
-});
-
-test("paid bootstrap rejects malicious preload, inspector, and TLS keylog child processes", () => {
-  const directory = mkdtempSync(join(tmpdir(), "meelni-calibration-startup-"));
-  const marker = join(directory, "transport-called");
-  const preload = join(directory, "preload.cjs");
-  const keylog = join(directory, "tls.keys");
-  const token = "startup-secret-must-not-leak";
-  writeFileSync(
-    preload,
-    [
-      'const fs = require("node:fs");',
-      'const https = require("node:https");',
-      "delete process.env.NODE_OPTIONS;",
-      `https.request = () => { fs.writeFileSync(${JSON.stringify(marker)}, "called"); throw new Error("patched"); };`,
-    ].join("\n")
-  );
-  try {
-    const scenarios = [
-      ["--require", preload],
-      ["--inspect=127.0.0.1:0"],
-      [`--tls-keylog=${keylog}`],
-    ];
-    for (const flags of scenarios) {
-      const result = spawnSync(process.execPath, [...flags, LIVE_BOOTSTRAP], {
-        encoding: "utf8",
-        env: {
-          NODE_ENV: "test",
-          PATH: process.env.PATH,
-          GITHUB_TOKEN: token,
-          OPENAI_API_KEY: token,
-        },
-        timeout: 10_000,
-      });
-      const output = `${result.stdout}${result.stderr}`;
-      assert.notEqual(result.status, 0);
-      assert.match(output, /calibration_live_startup_exec_argv_rejected/);
-      assert.equal(output.includes(token), false);
-    }
-    assert.equal(existsSync(marker), false);
-    assert.equal(existsSync(keylog), false);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-test("canonical paid bootstrap reaches the acknowledgement gate without authority traffic", () => {
-  const result = spawnSync(process.execPath, [LIVE_BOOTSTRAP], {
-    encoding: "utf8",
-    env: { NODE_ENV: "test", PATH: process.env.PATH },
-    timeout: 10_000,
-  });
-  const output = `${result.stdout}${result.stderr}`;
-  assert.equal(result.status, 1);
-  assert.doesNotMatch(output, /startup_.*_rejected/);
-  assert.match(output, /Live calibration is disabled/);
 });
 
 test("direct GitHub transport rejects redirects, malformed and oversized bodies, and timeouts", async () => {

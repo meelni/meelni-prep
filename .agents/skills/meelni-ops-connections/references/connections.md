@@ -136,6 +136,14 @@ Production guardrails:
   actor `saviii`/`24397508`, and the exact protected ledger ref and genesis OID.
   Follow `docs/operations/evaluation-calibration.md` for the two-ruleset and
   deterministic seed gate. Do not create the real ref or rulesets during tests.
+- SAV-198 paid calibration must be launched directly with
+  `./scripts/run-evaluation-calibration-live.sh`, never through npm or a Node
+  process that inherits credentials. The launcher derives the GitHub token from
+  the fixed GitHub CLI after a credential-free readiness handshake and reads
+  the OpenAI key from the macOS Keychain service
+  `meelni-calibration-openai`. Ambient `GITHUB_TOKEN`,
+  `OPENAI_API_KEY`, xtrace, preload, proxy, and TLS override state are rejected
+  or stripped before Node starts.
 
 ## LiveKit
 

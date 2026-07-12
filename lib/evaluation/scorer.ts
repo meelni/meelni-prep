@@ -67,6 +67,7 @@ export async function generateFeedbackWithUsage(
     maxCompletionTokens?: number;
     calibrationPaidMode?: boolean;
     beforePhysicalRequest?: () => void | Promise<void>;
+    calibrationCredentials?: { openaiApiKey: string };
   } = {}
 ): Promise<FeedbackProviderResult> {
   const prepared = prepareFeedbackTranscript(transcript);
@@ -88,7 +89,7 @@ export async function generateFeedbackWithUsage(
   try {
     const client = options.calibrationPaidMode
       ? createCalibrationOpenAIClient(
-          process.env,
+          { OPENAI_API_KEY: options.calibrationCredentials?.openaiApiKey },
           options.beforePhysicalRequest!
         )
       : getOpenAI();
