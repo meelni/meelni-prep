@@ -1,7 +1,16 @@
+import { deletedBillingIdempotencyKey } from "@/lib/billing/account-deletion-guard";
 import type { AccountDeletionRecord } from "@/lib/db/account-deletions";
 
+export interface AccountDeletionSubscriptionCancellation {
+  prorate: false;
+  idempotencyKey: string;
+}
+
 export interface DeleteAccountWorkflowDeps {
-  cancelSubscription(subscriptionId: string): Promise<void>;
+  cancelSubscription(
+    subscriptionId: string,
+    cancellation: AccountDeletionSubscriptionCancellation
+  ): Promise<void>;
   deleteCustomer(customerId: string): Promise<void>;
   redactProviderLogs(request: AccountDeletionRecord): Promise<void>;
   deleteApplicationData(userId: string): Promise<void>;
@@ -35,12 +44,18 @@ export async function deleteAccountWorkflow(
   );
   for (const subject of pendingSubjects) {
     if (subject.kind === "subscription") {
-      await deps.cancelSubscription(subject.providerId);
+      await deps.cancelSubscription(subject.providerId, {
+        prorate: false,
+        idempotencyKey: deletedBillingIdempotencyKey(
+          subject.providerId,
+          "cancel"
+        ),
+      });
     }
   }
-  // Account deletion does not make a billing-refund decision. Historical
-  // invoice and payment records remain subject to Stripe/legal retention, and
-  // any exceptional refund requires a separate manual support decision.
+  // Accepted deletion policy never compensates automatically. Historical
+  // invoice and payment records remain subject to Stripe/legal retention; an
+  // exceptional refund is a separate manual support decision.
   // Customer deletion remains last so the subscription is canceled first.
   for (const subject of pendingSubjects) {
     if (subject.kind === "customer") {

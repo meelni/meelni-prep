@@ -54,10 +54,11 @@ workflows.
 - Credit and cancellation read truth use one user-fenced database-time snapshot;
   equality with `current_period_end` is unavailable even if an application clock
   rolls backward.
-- Account deletion never automatically refunds historical payments. The current
-  draft implementation also ends access immediately because the account is
-  removed; that irreversible exception is not approved by this decision and is
-  an explicit owner gate before merge.
+- Account deletion is the approved exception to period-end access. Once its
+  irreversible intent is durably persisted, the tombstone immediately denies
+  product access, unused credits are no longer redeemable, and captured
+  subscriptions are canceled without proration, refund, or customer-balance
+  compensation. Ordinary cancellation remains period-end.
 - An exceptional-refund decision is human-owned, but execution for an existing
   account remains paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
   provides verified payment-to-credit-ledger reconciliation. Today,
@@ -68,6 +69,8 @@ workflows.
 
 The relaunch flag remains off. Before launch, rehearse cancellation and
 reactivation in Stripe test mode and confirm the subscription, invoice,
-customer balance, payment history, access, and unused-credit states. Manual
-refund execution additionally requires SAV-231, an updated support runbook, and
-test-mode evidence.
+customer balance, payment history, access, and unused-credit states. Rehearse
+the approved deletion exception separately: access denial begins at durable
+intent, while provider cancellation remains retryable and non-compensating.
+Manual refund execution additionally requires SAV-231, an updated support
+runbook, and test-mode evidence.

@@ -1,7 +1,6 @@
 import Stripe from "stripe";
-
-import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
 import { deletedBillingIdempotencyKey } from "@/lib/billing/account-deletion-guard";
+import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
 import {
   deleteUserApplicationData,
   getAccountDeletionRequest,
@@ -63,17 +62,14 @@ export const deleteAccount = inngest.createFunction(
         runSafeAccountDeletionStep(
           () =>
             deleteAccountWorkflow(request, {
-              cancelSubscription: async (subscriptionId) => {
+              cancelSubscription: async (subscriptionId, cancellation) => {
                 const stripe = createStripeClient();
                 try {
                   await stripe.subscriptions.cancel(
                     subscriptionId,
-                    { prorate: false },
+                    { prorate: cancellation.prorate },
                     {
-                      idempotencyKey: deletedBillingIdempotencyKey(
-                        subscriptionId,
-                        "cancel"
-                      ),
+                      idempotencyKey: cancellation.idempotencyKey,
                     }
                   );
                 } catch (error) {

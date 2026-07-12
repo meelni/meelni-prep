@@ -4,11 +4,11 @@ import test from "node:test";
 import type { AccountDeletionRecord } from "@/lib/db/account-deletions";
 
 import {
+  type DeleteAccountWorkflowDeps,
   deleteAccountWorkflow,
   isAlreadyDeletedProviderError,
   runSafeAccountDeletionStep,
   safeAccountDeletionError,
-  type DeleteAccountWorkflowDeps,
 } from "./delete-account";
 
 const REQUEST: AccountDeletionRecord = {
@@ -112,6 +112,30 @@ test("account deletion never creates automatic payment or invoice refunds", asyn
   assert.equal(
     calls.some((call) => call.startsWith("invoice:")),
     false
+  );
+});
+
+test("deletion cancellation is immediate, non-prorated, and retry-idempotent", async () => {
+  const cancellations: Array<{
+    id: string;
+    prorate: false;
+    idempotencyKey: string;
+  }> = [];
+  const deps = createDeps([]);
+  deps.cancelSubscription = async (id, cancellation) => {
+    cancellations.push({ id, ...cancellation });
+  };
+
+  await deleteAccountWorkflow(REQUEST, deps);
+  await deleteAccountWorkflow(REQUEST, deps);
+
+  assert.equal(cancellations.length, 2);
+  assert.deepEqual(cancellations[0], cancellations[1]);
+  assert.equal(cancellations[0]?.id, "sub_test");
+  assert.equal(cancellations[0]?.prorate, false);
+  assert.match(
+    cancellations[0]?.idempotencyKey ?? "",
+    /^account-deletion:cancel:[a-f0-9]{64}$/
   );
 });
 

@@ -12,6 +12,9 @@ client claims are not accepted as proof of recent authentication.
 `deletion_requested` means the request is durable and initially queued.
 `deletion_retry_scheduled` means the request is durable but the initial enqueue
 failed; the recovery cron will retry. Neither status claims provider completion.
+Durable persistence is also the immediate product-access cutoff: middleware
+denies current and future sessions with `account_deletion_pending` while every
+cleanup stage remains retryable.
 
 The `account-deletion` Inngest function performs these idempotent stages:
 
@@ -54,6 +57,9 @@ the invariant that closes the late-webhook race, rather than delivery timing.
 - Confirm unconfirmed `DELETE` returns 405 and invalid confirmation returns 400.
 - Confirm a sign-in older than ten minutes returns 409 without a tombstone.
 - Confirm the API returns 202 and stores a pending tombstone.
+- Immediately after tombstone persistence, confirm all product pages and API
+  calls deny the original and second-device sessions even while the worker is
+  paused or failed; unused credits must not be readable or redeemable.
 - Simulate enqueue failure after persistence and confirm the API returns 202
   `deletion_retry_scheduled`, signs the user out, and recovery requeues it.
 - Confirm a second sign-in is rejected with `account_deletion_pending`.
@@ -142,9 +148,10 @@ Never issue an automatic refund from account-deletion recovery. Any exceptional
 refund decision follows [Manual Exceptional Refunds](./manual-exceptional-refunds.md),
 but execution for an existing account remains paused until SAV-231 provides
 verified payment-to-credit-ledger reconciliation.
-The draft currently ends paid product access immediately after irreversible
-account deletion. Do not merge or rehearse that exception as accepted policy
-until the owner explicitly approves it.
+The accepted deletion exception ends paid product access at durable intent,
+before provider cleanup completes. Rehearse access denial and retryable
+`prorate=false` cancellation together; never delay denial until Stripe succeeds
+and never convert a cleanup retry into compensation.
 Completed tombstone retention remains intentionally undefined beyond the
 accepted durable-deletion requirement. Do not promise a removal date for the
 tombstone, provider records, logs, or backups until an owner/legal decision is

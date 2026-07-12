@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-07-09
-- Amended: 2026-07-10
+- Amended: 2026-07-12
 
 ## Context
 
@@ -54,14 +54,20 @@ report success while the authentication account remained active.
   provides verified payment-to-credit-ledger reconciliation; current
   `charge.refunded` handling changes payment history only and disputes are not
   supported.
-- Whether irreversible account deletion may end paid access immediately without
-  compensation remains an explicit owner approval gate. This decision does not
-  approve that product/economic exception.
+- Once irreversible deletion intent is durably persisted, product access ends
+  immediately. Existing and newly presented sessions are denied by the durable
+  tombstone; local identity and entitlement data are then removed. Captured
+  subscriptions are canceled without proration, refund, or customer-balance
+  compensation. Unused credits are not redeemable after deletion because the
+  account and identity no longer have product access. This is the approved
+  deletion exception and does not change ordinary period-end cancellation.
 
 ## Consequences
 
 - A failed provider call leaves a recoverable tombstone rather than a live,
   partially recreated account.
+- Stripe cleanup may finish after access has already ended; the tombstone keeps
+  entitlement denial fail-safe throughout retries.
 - A Supabase Auth or Stripe outage occurs only after local product data and
   matching legacy provider-log payloads have been removed.
 - Account deletion now depends on the Inngest route and signing/event keys.
