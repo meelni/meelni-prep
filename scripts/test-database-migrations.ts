@@ -49,6 +49,9 @@ const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SESSION_RECONNECT_ORDER = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const SESSION_PROVIDER_START_FAILURE = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const SESSION_PROVISIONING_COMPLETE = "a1000000-0000-4000-8000-000000000001";
+const SESSION_PROVISIONING_STALE = "a2000000-0000-4000-8000-000000000002";
+const SESSION_PRESENCE_RECOVERY = "a3000000-0000-4000-8000-000000000003";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
@@ -109,6 +112,7 @@ async function run() {
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
     await verifyProviderStartCleanupOwnership(clean, cleanUrl);
+    await verifyRoomProvisioningAndPresenceFences(clean, cleanUrl);
     await verifyReconnectTransportOrdering(clean, cleanUrl);
     await verifyAtomicSessionCompletion(clean, cleanUrl);
     await verifyAuthorization(clean);
@@ -850,10 +854,52 @@ async function verifyProviderStartCleanupOwnership(
       'voice_video',
       'in_progress',
       'provider-start-failure-room',
-      'connecting',
-      2
+      'created',
+      1
     )
   `;
+
+  const connecting = await transitionInterviewSessionWorkflow(
+    {
+      sessionId: SESSION_PROVIDER_START_FAILURE,
+      to: "connecting",
+    },
+    {
+      lifecycleStore: createDrizzleInterviewSessionLifecycleStore(drizzle(sql)),
+      now: () => new Date("2026-07-10T07:59:00.000Z"),
+    }
+  );
+  assert.equal(connecting.ok, true);
+
+  const provisioned = await sql<
+    {
+      lifecycle_state: string;
+      lifecycle_version: number;
+      room_cleanup_pending: boolean;
+      room_provisioning_pending: boolean;
+      room_provisioning_started_at: Date | null;
+    }[]
+  >`
+    SELECT lifecycle_state, lifecycle_version, room_cleanup_pending,
+      room_provisioning_pending, room_provisioning_started_at
+    FROM interview_session
+    WHERE id = ${SESSION_PROVIDER_START_FAILURE}::uuid
+  `;
+  assert.deepEqual(
+    provisioned[0] && {
+      ...provisioned[0],
+      room_provisioning_started_at: provisioned[0].room_provisioning_started_at
+        ? new Date(provisioned[0].room_provisioning_started_at)
+        : null,
+    },
+    {
+      lifecycle_state: "connecting",
+      lifecycle_version: 2,
+      room_cleanup_pending: true,
+      room_provisioning_pending: true,
+      room_provisioning_started_at: new Date("2026-07-10T07:59:00.000Z"),
+    }
+  );
 
   const result = await transitionInterviewSessionWorkflow(
     {
@@ -874,19 +920,148 @@ async function verifyProviderStartCleanupOwnership(
       terminal_reason: string;
       room_cleanup_pending: boolean;
       room_cleanup_attempted_at: Date | null;
+      room_provisioning_pending: boolean;
+      room_provisioning_started_at: Date | null;
     }[]
   >`
     SELECT lifecycle_state, terminal_reason, room_cleanup_pending,
-      room_cleanup_attempted_at
+      room_cleanup_attempted_at, room_provisioning_pending,
+      room_provisioning_started_at
     FROM interview_session
     WHERE id = ${SESSION_PROVIDER_START_FAILURE}::uuid
   `;
-  assert.deepEqual(stored[0], {
-    lifecycle_state: "failed",
-    terminal_reason: "provider_failure",
-    room_cleanup_pending: true,
-    room_cleanup_attempted_at: null,
+  assert.deepEqual(
+    stored[0] && {
+      ...stored[0],
+      room_provisioning_started_at: stored[0].room_provisioning_started_at
+        ? new Date(stored[0].room_provisioning_started_at)
+        : null,
+    },
+    {
+      lifecycle_state: "failed",
+      terminal_reason: "provider_failure",
+      room_cleanup_pending: true,
+      room_cleanup_attempted_at: null,
+      room_provisioning_pending: true,
+      room_provisioning_started_at: new Date("2026-07-10T07:59:00.000Z"),
+    }
+  );
+}
+
+async function verifyRoomProvisioningAndPresenceFences(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const { createDrizzleInterviewReconnectStore } = await import(
+    "../lib/db/session-reconnects"
+  );
+  const store = createDrizzleInterviewReconnectStore(drizzle(sql));
+  const provisioningStartedAt = new Date("2026-07-10T08:00:00.000Z");
+  const reconnectDeadlineAt = new Date("2026-07-10T08:05:00.000Z");
+
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, livekit_room_name,
+      lifecycle_state, lifecycle_version, room_cleanup_pending,
+      room_provisioning_pending, room_provisioning_started_at,
+      reconnect_deadline_at
+    ) VALUES
+      (
+        ${SESSION_PROVISIONING_COMPLETE}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'provisioning-complete-room', 'connecting', 2, true, true,
+        ${provisioningStartedAt.toISOString()}, NULL
+      ),
+      (
+        ${SESSION_PROVISIONING_STALE}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'provisioning-stale-room', 'connecting', 4, true, true,
+        ${provisioningStartedAt.toISOString()}, NULL
+      ),
+      (
+        ${SESSION_PRESENCE_RECOVERY}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'presence-recovery-room', 'reconnecting', 6, false, false,
+        NULL, ${reconnectDeadlineAt.toISOString()}
+      )
+  `;
+
+  const wrongCompletion = await store.completeRoomProvisioning({
+    sessionId: SESSION_PROVISIONING_COMPLETE,
+    expectedVersion: 1,
   });
+  assert.equal(wrongCompletion.applied, false);
+  const completed = await store.completeRoomProvisioning({
+    sessionId: SESSION_PROVISIONING_COMPLETE,
+    expectedVersion: 2,
+  });
+  assert.equal(completed.applied, true);
+  if (completed.applied) {
+    assert.equal(completed.current.roomCleanupPending, false);
+    assert.equal(completed.current.roomProvisioningPending, false);
+    assert.equal(completed.current.roomProvisioningStartedAt, null);
+  }
+
+  const tooFresh = await store.claimStaleProvisioning({
+    sessionId: SESSION_PROVISIONING_STALE,
+    expectedVersion: 4,
+    provisioningStartedAt,
+    staleBefore: new Date(provisioningStartedAt.getTime() - 1),
+    transitionedAt: new Date("2026-07-10T08:04:59.999Z"),
+  });
+  assert.equal(tooFresh.applied, false);
+  const wrongVersion = await store.claimStaleProvisioning({
+    sessionId: SESSION_PROVISIONING_STALE,
+    expectedVersion: 3,
+    provisioningStartedAt,
+    staleBefore: provisioningStartedAt,
+    transitionedAt: new Date("2026-07-10T08:05:00.000Z"),
+  });
+  assert.equal(wrongVersion.applied, false);
+  const claimed = await store.claimStaleProvisioning({
+    sessionId: SESSION_PROVISIONING_STALE,
+    expectedVersion: 4,
+    provisioningStartedAt,
+    staleBefore: provisioningStartedAt,
+    transitionedAt: new Date("2026-07-10T08:05:00.000Z"),
+  });
+  assert.equal(claimed.applied, true);
+  if (claimed.applied) {
+    assert.equal(claimed.current.state, "failed");
+    assert.equal(claimed.current.version, 5);
+    assert.equal(claimed.current.roomCleanupPending, true);
+    assert.equal(claimed.current.roomProvisioningPending, true);
+  }
+
+  const equalDeadline = await store.recoverFromPresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 6,
+    deadlineAt: reconnectDeadlineAt,
+    joinedAt: reconnectDeadlineAt,
+    transitionedAt: reconnectDeadlineAt,
+  });
+  assert.equal(equalDeadline.applied, false);
+  const staleVersion = await store.recoverFromPresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 5,
+    deadlineAt: reconnectDeadlineAt,
+    joinedAt: new Date(reconnectDeadlineAt.getTime() - 1),
+    transitionedAt: reconnectDeadlineAt,
+  });
+  assert.equal(staleVersion.applied, false);
+  const recovered = await store.recoverFromPresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 6,
+    deadlineAt: reconnectDeadlineAt,
+    joinedAt: new Date(reconnectDeadlineAt.getTime() - 1),
+    transitionedAt: reconnectDeadlineAt,
+  });
+  assert.equal(recovered.applied, true);
+  if (recovered.applied) {
+    assert.equal(recovered.current.state, "active");
+    assert.equal(recovered.current.reconnectDeadlineAt, null);
+  }
 }
 
 async function verifyReconnectTransportOrdering(
@@ -1325,13 +1500,14 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND table_name = 'interview_session'
       AND column_name IN (
         'reconnect_deadline_at', 'room_cleanup_pending',
-        'room_cleanup_attempted_at', 'presence_reconciled_at',
+        'room_cleanup_attempted_at', 'room_provisioning_pending',
+        'room_provisioning_started_at', 'presence_reconciled_at',
         'runtime_ready_at', 'last_transport_event_at',
         'last_transport_event_id', 'last_transport_event_name'
       )
     ORDER BY column_name
   `;
-  assert.equal(reconnectColumns.length, 8);
+  assert.equal(reconnectColumns.length, 10);
 
   const reconnectIndexes = await sql<{ indexname: string }[]>`
     SELECT indexname
@@ -1340,11 +1516,19 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND indexname IN (
         'interview_session_reconnect_deadline_idx',
         'interview_session_presence_reconciliation_idx',
-        'interview_session_room_cleanup_recovery_idx'
+        'interview_session_room_cleanup_recovery_idx',
+        'interview_session_room_provisioning_recovery_idx'
       )
     ORDER BY indexname
   `;
-  assert.equal(reconnectIndexes.length, 3);
+  assert.equal(reconnectIndexes.length, 4);
+
+  const reconnectConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname = 'interview_session_room_provisioning_claim_check'
+  `;
+  assert.equal(reconnectConstraints.length, 1);
 
   const completionColumns = await sql<{ column_name: string }[]>`
     SELECT column_name

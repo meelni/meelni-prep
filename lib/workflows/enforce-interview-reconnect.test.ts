@@ -96,6 +96,44 @@ test("presence provider failure cannot claim or terminate the session", async ()
   assert.deepEqual(fixture.calls, []);
 });
 
+test("timeout recovery denies JOINING, missing, invalid, equal, and late join evidence", async () => {
+  const snapshots = [
+    {
+      present: true,
+      joined: false,
+      joinedAt: new Date("2026-07-10T08:00:29.000Z"),
+      agent: null,
+    },
+    { present: true, joined: true, joinedAt: null, agent: null },
+    {
+      present: true,
+      joined: true,
+      joinedAt: new Date(Number.NaN),
+      agent: null,
+    },
+    { present: true, joined: true, joinedAt: new Date(DEADLINE), agent: null },
+    {
+      present: true,
+      joined: true,
+      joinedAt: new Date("2026-07-10T08:00:30.001Z"),
+      agent: null,
+    },
+  ];
+
+  for (const snapshot of snapshots) {
+    const fixture = createFixture(new Date(DEADLINE));
+    fixture.deps.inspectPresence = async () =>
+      providerSuccess("livekit", snapshot);
+
+    const result = await run(fixture.deps);
+
+    assert.equal(result.ok, true);
+    if (result.ok) assert.equal(result.disposition, "enforced");
+    assert.equal(fixture.current.state, "completed");
+    assert.equal(fixture.calls.includes("claim"), true);
+  }
+});
+
 test("timeout drains transcripts before taking its single validation snapshot", async () => {
   const fixture = createFixture(new Date(DEADLINE));
   const originalValidate = fixture.deps.validate;
@@ -340,6 +378,17 @@ function createFixture(
       };
     },
     markRoomCleanupAttempted: async () => undefined,
+    completeRoomProvisioning: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
+    markRoomProvisioningSettled: async () => undefined,
+    claimStaleProvisioning: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
     markPresenceReconciled: async (input) => {
       if (current.version !== input.expectedVersion) {
         return { applied: false, reason: "conflict", current };
@@ -351,7 +400,8 @@ function createFixture(
       if (
         current.state !== "reconnecting" ||
         current.version !== input.expectedVersion ||
-        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime()
+        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime() ||
+        input.joinedAt.getTime() >= input.deadlineAt.getTime()
       ) {
         return { applied: false, reason: "conflict", current };
       }
@@ -506,6 +556,8 @@ function createSession(
     reconnectDeadlineAt: new Date(DEADLINE),
     roomCleanupPending: false,
     roomCleanupAttemptedAt: null,
+    roomProvisioningPending: false,
+    roomProvisioningStartedAt: null,
     presenceReconciledAt: null,
     lastTransportEventAt: new Date("2026-07-10T08:00:00.000Z"),
     lastTransportEventId: "lost-1",

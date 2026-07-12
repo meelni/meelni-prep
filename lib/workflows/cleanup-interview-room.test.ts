@@ -96,6 +96,81 @@ test("terminal cleanup recovers a quarantined room without a start time", async 
   assert.equal(fixture.current.roomCleanupPending, false);
 });
 
+test("fresh provisioning lease cannot be reclaimed by cleanup", async () => {
+  const fixture = createFixture();
+  fixture.setCurrent({
+    ...fixture.current,
+    state: "connecting",
+    version: 2,
+    terminalReason: null,
+    roomProvisioningPending: true,
+    roomProvisioningStartedAt: new Date("2026-07-10T07:59:00.000Z"),
+  });
+
+  const result = await cleanupInterviewRoomWorkflow(
+    { sessionId: SESSION_ID, env: ENV },
+    fixture.deps
+  );
+
+  assert.deepEqual(result, { ok: false, disposition: "not_due" });
+  assert.equal(fixture.current.state, "connecting");
+  assert.deepEqual(fixture.calls, []);
+});
+
+test("stale provisioning survives teardown failure and later settles room and credit", async () => {
+  const fixture = createFixture();
+  fixture.setCurrent({
+    ...fixture.current,
+    state: "connecting",
+    version: 2,
+    terminalReason: null,
+    roomProvisioningPending: true,
+    roomProvisioningStartedAt: new Date("2026-07-10T07:54:00.000Z"),
+  });
+  let attempts = 0;
+  fixture.deps.terminateRoom = async ({ roomName }) => {
+    fixture.calls.push("terminate");
+    attempts += 1;
+    return attempts === 1
+      ? providerFailure("livekit", {
+          code: "livekit_room_delete_failed",
+          message: "provider unavailable",
+          retryable: true,
+        })
+      : providerSuccess("livekit", { roomName, disposition: "deleted" });
+  };
+
+  await assert.rejects(
+    () =>
+      cleanupInterviewRoomWorkflow(
+        { sessionId: SESSION_ID, env: ENV },
+        fixture.deps
+      ),
+    /room cleanup failed/
+  );
+  assert.equal(fixture.current.state, "failed");
+  assert.equal(fixture.current.roomCleanupPending, true);
+  assert.equal(fixture.current.roomProvisioningPending, true);
+
+  const recovered = await cleanupInterviewRoomWorkflow(
+    { sessionId: SESSION_ID, env: ENV },
+    fixture.deps
+  );
+  assert.equal(recovered.ok, true);
+  assert.equal(fixture.current.roomCleanupPending, false);
+  assert.equal(fixture.current.roomProvisioningPending, false);
+  assert.deepEqual(fixture.calls, [
+    "claim-provisioning",
+    "attempt",
+    "terminate",
+    "attempt",
+    "terminate",
+    "settle-credit",
+    "settle-provisioning",
+    "clear",
+  ]);
+});
+
 function createFixture(): {
   deps: CleanupInterviewRoomDeps;
   calls: string[];
@@ -143,6 +218,40 @@ function createFixture(): {
     markRoomCleanupAttempted: async () => {
       calls.push("attempt");
     },
+    completeRoomProvisioning: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
+    markRoomProvisioningSettled: async () => {
+      calls.push("settle-provisioning");
+      current = {
+        ...current,
+        roomProvisioningPending: false,
+        roomProvisioningStartedAt: null,
+      };
+    },
+    claimStaleProvisioning: async (input) => {
+      if (
+        current.state !== "connecting" ||
+        current.version !== input.expectedVersion ||
+        current.roomProvisioningStartedAt?.getTime() !==
+          input.provisioningStartedAt.getTime() ||
+        input.provisioningStartedAt.getTime() > input.staleBefore.getTime()
+      ) {
+        return { applied: false, reason: "conflict", current };
+      }
+      calls.push("claim-provisioning");
+      current = {
+        ...current,
+        state: "failed",
+        version: current.version + 1,
+        terminalReason: "provider_failure",
+        lastTransitionAt: input.transitionedAt,
+        roomCleanupPending: true,
+      };
+      return { applied: true, current };
+    },
     markPresenceReconciled: async () => ({
       applied: false,
       reason: "conflict",
@@ -172,6 +281,9 @@ function createFixture(): {
         });
       },
       now: () => new Date("2026-07-10T08:00:05.000Z"),
+      settleProvisioningCredit: async () => {
+        calls.push("settle-credit");
+      },
     },
   };
 }
@@ -192,6 +304,8 @@ function createSession(): InterviewReconnectSession {
     reconnectDeadlineAt: null,
     roomCleanupPending: true,
     roomCleanupAttemptedAt: null,
+    roomProvisioningPending: false,
+    roomProvisioningStartedAt: null,
     presenceReconciledAt: null,
     lastTransportEventAt: new Date("2026-07-10T07:45:00.000Z"),
     lastTransportEventId: "candidate-joined",

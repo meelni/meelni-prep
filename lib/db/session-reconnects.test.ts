@@ -53,6 +53,8 @@ function reconnectRow(roomCleanupPending: boolean) {
     reconnectDeadlineAt: new Date("2026-07-10T08:00:30.000Z"),
     roomCleanupPending,
     roomCleanupAttemptedAt: null,
+    roomProvisioningPending: false,
+    roomProvisioningStartedAt: null,
     presenceReconciledAt: null,
     lastTransportEventAt: new Date("2026-07-10T08:00:00.000Z"),
     lastTransportEventId: "lost-1",

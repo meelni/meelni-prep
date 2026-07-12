@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 import {
   projectLegacyInterviewSessionStatus,
   type InterviewLifecycleState,
@@ -22,6 +22,8 @@ export interface InterviewReconnectSession {
   reconnectDeadlineAt: Date | null;
   roomCleanupPending: boolean;
   roomCleanupAttemptedAt: Date | null;
+  roomProvisioningPending: boolean;
+  roomProvisioningStartedAt: Date | null;
   presenceReconciledAt: Date | null;
   lastTransportEventAt: Date | null;
   lastTransportEventId: string | null;
@@ -86,6 +88,18 @@ export interface InterviewReconnectStore {
     sessionId: string;
     attemptedAt: Date;
   }): Promise<void>;
+  completeRoomProvisioning(input: {
+    sessionId: string;
+    expectedVersion: number;
+  }): Promise<ApplyInterviewTransportTransitionResult>;
+  markRoomProvisioningSettled(input: { sessionId: string }): Promise<void>;
+  claimStaleProvisioning(input: {
+    sessionId: string;
+    expectedVersion: number;
+    provisioningStartedAt: Date;
+    staleBefore: Date;
+    transitionedAt: Date;
+  }): Promise<ApplyInterviewTransportTransitionResult>;
   markPresenceReconciled(input: {
     sessionId: string;
     expectedVersion: number;
@@ -95,6 +109,7 @@ export interface InterviewReconnectStore {
     sessionId: string;
     expectedVersion: number;
     deadlineAt: Date;
+    joinedAt: Date;
     transitionedAt: Date;
   }): Promise<ApplyInterviewTransportTransitionResult>;
   claimTimeout(input: {
@@ -114,6 +129,8 @@ export interface InterviewReconnectStore {
 }
 
 export type InterviewReconnectDatabase = Pick<typeof db, "select" | "update">;
+
+export const INTERVIEW_ROOM_PROVISIONING_LEASE_MS = 5 * 60 * 1_000;
 
 export function createDrizzleInterviewReconnectStore(
   database: InterviewReconnectDatabase = db
@@ -271,6 +288,89 @@ export function createDrizzleInterviewReconnectStore(
           )
         );
     },
+    async completeRoomProvisioning(input) {
+      const rows = await database
+        .update(interviewSession)
+        .set({
+          roomCleanupPending: false,
+          roomProvisioningPending: false,
+          roomProvisioningStartedAt: null,
+        })
+        .where(
+          and(
+            eq(interviewSession.id, input.sessionId),
+            eq(interviewSession.lifecycleState, "connecting"),
+            eq(interviewSession.lifecycleVersion, input.expectedVersion),
+            eq(interviewSession.roomProvisioningPending, true)
+          )
+        )
+        .returning();
+
+      if (rows[0]) {
+        return { applied: true, current: mapReconnectSession(rows[0]) };
+      }
+      const current = await store.getById(input.sessionId);
+      return {
+        applied: false,
+        reason: current ? "conflict" : "not_found",
+        current,
+      };
+    },
+    async markRoomProvisioningSettled(input) {
+      await database
+        .update(interviewSession)
+        .set({
+          roomProvisioningPending: false,
+          roomProvisioningStartedAt: null,
+        })
+        .where(
+          and(
+            eq(interviewSession.id, input.sessionId),
+            eq(interviewSession.roomProvisioningPending, true)
+          )
+        );
+    },
+    async claimStaleProvisioning(input) {
+      const rows = await database
+        .update(interviewSession)
+        .set({
+          lifecycleState: "failed",
+          lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 1`,
+          terminalReason: "provider_failure",
+          status: projectLegacyInterviewSessionStatus({
+            state: "failed",
+            terminalReason: "provider_failure",
+          }),
+          endingAt: sql`COALESCE(${interviewSession.endingAt}, ${input.transitionedAt.toISOString()}::timestamptz)`,
+          endedAt: sql`COALESCE(${interviewSession.endedAt}, ${input.transitionedAt.toISOString()}::timestamptz)`,
+          lastTransitionAt: input.transitionedAt,
+          roomCleanupPending: true,
+        })
+        .where(
+          and(
+            eq(interviewSession.id, input.sessionId),
+            eq(interviewSession.lifecycleState, "connecting"),
+            eq(interviewSession.lifecycleVersion, input.expectedVersion),
+            eq(interviewSession.roomProvisioningPending, true),
+            eq(
+              interviewSession.roomProvisioningStartedAt,
+              input.provisioningStartedAt
+            ),
+            lte(interviewSession.roomProvisioningStartedAt, input.staleBefore)
+          )
+        )
+        .returning();
+
+      if (rows[0]) {
+        return { applied: true, current: mapReconnectSession(rows[0]) };
+      }
+      const current = await store.getById(input.sessionId);
+      return {
+        applied: false,
+        reason: current ? "conflict" : "not_found",
+        current,
+      };
+    },
     async markPresenceReconciled(input) {
       const rows = await database
         .update(interviewSession)
@@ -294,6 +394,17 @@ export function createDrizzleInterviewReconnectStore(
       };
     },
     async recoverFromPresence(input) {
+      if (
+        !Number.isFinite(input.joinedAt.getTime()) ||
+        input.joinedAt.getTime() >= input.deadlineAt.getTime()
+      ) {
+        const current = await store.getById(input.sessionId);
+        return {
+          applied: false,
+          reason: current ? "conflict" : "not_found",
+          current,
+        };
+      }
       const rows = await database
         .update(interviewSession)
         .set({
@@ -310,7 +421,8 @@ export function createDrizzleInterviewReconnectStore(
             eq(interviewSession.id, input.sessionId),
             eq(interviewSession.lifecycleState, "reconnecting"),
             eq(interviewSession.lifecycleVersion, input.expectedVersion),
-            eq(interviewSession.reconnectDeadlineAt, input.deadlineAt)
+            eq(interviewSession.reconnectDeadlineAt, input.deadlineAt),
+            sql`${input.joinedAt.toISOString()}::timestamptz < ${interviewSession.reconnectDeadlineAt}`
           )
         )
         .returning();
@@ -546,6 +658,8 @@ function mapReconnectSession(
     reconnectDeadlineAt: row.reconnectDeadlineAt,
     roomCleanupPending: row.roomCleanupPending,
     roomCleanupAttemptedAt: row.roomCleanupAttemptedAt,
+    roomProvisioningPending: row.roomProvisioningPending,
+    roomProvisioningStartedAt: row.roomProvisioningStartedAt,
     presenceReconciledAt: row.presenceReconciledAt,
     lastTransportEventAt: row.lastTransportEventAt,
     lastTransportEventId: row.lastTransportEventId,
@@ -580,25 +694,40 @@ export async function listInterviewPresenceReconciliationSessions(
 }
 
 export async function listInterviewRoomCleanupSessions(
-  limit = 250
+  limit = 250,
+  staleBefore = new Date(Date.now() - INTERVIEW_ROOM_PROVISIONING_LEASE_MS)
 ): Promise<Array<{ sessionId: string }>> {
   return db
     .select({ sessionId: interviewSession.id })
     .from(interviewSession)
     .where(
       and(
-        inArray(interviewSession.lifecycleState, [
-          "completed",
-          "abandoned",
-          "failed",
-        ]),
-        eq(interviewSession.roomCleanupPending, true),
-        isNotNull(interviewSession.livekitRoomName)
+        isNotNull(interviewSession.livekitRoomName),
+        or(
+          and(
+            inArray(interviewSession.lifecycleState, [
+              "completed",
+              "abandoned",
+              "failed",
+            ]),
+            or(
+              eq(interviewSession.roomCleanupPending, true),
+              eq(interviewSession.roomProvisioningPending, true)
+            )
+          ),
+          and(
+            eq(interviewSession.lifecycleState, "connecting"),
+            eq(interviewSession.roomProvisioningPending, true),
+            isNotNull(interviewSession.roomProvisioningStartedAt),
+            lte(interviewSession.roomProvisioningStartedAt, staleBefore)
+          )
+        )
       )
     )
     .orderBy(
       sql`${interviewSession.roomCleanupAttemptedAt} ASC NULLS FIRST`,
       asc(interviewSession.roomCleanupAttemptedAt),
+      asc(interviewSession.roomProvisioningStartedAt),
       asc(interviewSession.lastTransitionAt),
       asc(interviewSession.id)
     )

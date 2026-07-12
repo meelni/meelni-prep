@@ -49,6 +49,7 @@ import {
 } from "./transition-interview-session";
 import { scheduleInterviewDeadline } from "./schedule-interview-deadline";
 import { createDrizzleInterviewReconnectStore } from "@/lib/db/session-reconnects";
+import { createFailedInterviewStartSettler } from "@/lib/billing/failed-interview-start";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   behavioral: [...questionTypeStorageAliasesForRound("behavioral")],
@@ -98,6 +99,7 @@ export interface StartInterviewSessionDeps {
   reserveCredit(input: ReserveCreditInput): Promise<ReserveCreditResult>;
   consumeReservation(input: CompleteReservationInput): Promise<unknown>;
   releaseReservation(input: CompleteReservationInput): Promise<unknown>;
+  settleFailedReservation(reservationKey: string): Promise<void>;
   scheduleDeadline(input: {
     sessionId: string;
     deadlineAt: Date;
@@ -108,6 +110,11 @@ export interface StartInterviewSessionDeps {
     env: LiveKitEnvironment;
   }): Promise<unknown>;
   markRoomCleanupComplete(sessionId: string): Promise<void>;
+  completeRoomProvisioning(input: {
+    sessionId: string;
+    expectedVersion: number;
+  }): Promise<boolean>;
+  markRoomProvisioningSettled(sessionId: string): Promise<void>;
   livekitProvider: LiveKitInterviewProvider;
   transitionLifecycle(
     input: TransitionInterviewSessionInput
@@ -204,6 +211,7 @@ export async function startInterviewSessionWorkflow(
     | Awaited<ReturnType<StartInterviewSessionDeps["createSession"]>>
     | undefined;
   let deadlineAt: Date | undefined;
+  let connectingVersion: number | undefined;
 
   try {
     session = await deps.createSession({
@@ -223,10 +231,11 @@ export async function startInterviewSessionWorkflow(
       await deps.recordQuestionUsage(session.id, question.value.id);
     }
 
-    await requireLifecycleTransition(
+    const connecting = await requireLifecycleTransition(
       { sessionId: session.id, to: "connecting" },
       deps
     );
+    connectingVersion = connecting.version;
   } catch (error) {
     if (session) {
       await terminalizeProviderFailureAndRelease(
@@ -242,6 +251,9 @@ export async function startInterviewSessionWorkflow(
 
   if (!deadlineAt) {
     throw new Error("Interview session deadline was not established");
+  }
+  if (connectingVersion === undefined) {
+    throw new Error("Interview room provisioning lease was not established");
   }
 
   const roomMetadata = buildInterviewRoomMetadata({
@@ -261,14 +273,32 @@ export async function startInterviewSessionWorkflow(
       : null,
   });
 
-  const livekitResult = await deps.livekitProvider.startInterviewRoom({
-    agentName: input.interviewAgentName,
-    identity: input.user.id,
-    participantName: "Candidate",
-    roomName,
-    metadata: roomMetadata,
-    env: input.env,
-  });
+  let livekitResult;
+  try {
+    livekitResult = await deps.livekitProvider.startInterviewRoom({
+      agentName: input.interviewAgentName,
+      identity: input.user.id,
+      participantName: "Candidate",
+      roomName,
+      metadata: roomMetadata,
+      env: input.env,
+    });
+  } catch (error) {
+    console.error("LiveKit interview start exception:", getErrorMessage(error));
+    await terminalizeCleanupAndRelease(
+      session.id,
+      roomName,
+      input.user.id,
+      input.env,
+      reservationKey,
+      deps
+    );
+    return {
+      ok: false,
+      status: 503,
+      body: { error: "Failed to start voice interview" },
+    };
+  }
 
   if (!livekitResult.ok) {
     console.error("LiveKit interview start error:", livekitResult.error);
@@ -315,6 +345,13 @@ export async function startInterviewSessionWorkflow(
       reservationKey,
       idempotencyKey: `consume:${reservationKey}`,
     });
+    const completed = await deps.completeRoomProvisioning({
+      sessionId: session.id,
+      expectedVersion: connectingVersion,
+    });
+    if (!completed) {
+      throw new Error("room_provisioning_lease_lost");
+    }
   } catch (error) {
     console.error("Credit consume error:", getErrorMessage(error));
     await terminalizeCleanupAndRelease(
@@ -364,6 +401,7 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
   const creditLedger =
     persistentCreditLedger ?? createLocalDevCreditLedgerService();
   const reconnectStore = createDrizzleInterviewReconnectStore();
+  const settleFailedReservation = createFailedInterviewStartSettler();
 
   return {
     buildRoomName: buildInterviewRoomName,
@@ -380,6 +418,7 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
     reserveCredit: creditLedger.reserveCredit,
     consumeReservation: creditLedger.consumeReservation,
     releaseReservation: creditLedger.releaseReservation,
+    settleFailedReservation,
     scheduleDeadline: scheduleInterviewDeadline,
     terminateRoom: async (input) => {
       const result = await terminateInterviewRoom(input);
@@ -388,6 +427,10 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
     },
     markRoomCleanupComplete: (sessionId) =>
       reconnectStore.markRoomCleanupComplete({ sessionId }),
+    completeRoomProvisioning: async (input) =>
+      (await reconnectStore.completeRoomProvisioning(input)).applied,
+    markRoomProvisioningSettled: (sessionId) =>
+      reconnectStore.markRoomProvisioningSettled({ sessionId }),
     livekitProvider: createLiveKitInterviewProvider(),
     transitionLifecycle: transitionInterviewSessionWorkflow,
     recordQuestionUsage,
@@ -448,11 +491,14 @@ async function attemptProvisionedRoomCleanup(
 async function requireLifecycleTransition(
   input: TransitionInterviewSessionInput,
   deps: StartInterviewSessionDeps
-): Promise<void> {
+): Promise<
+  Extract<TransitionInterviewSessionResult, { ok: true }>["lifecycle"]
+> {
   const result = await deps.transitionLifecycle(input);
   if (!result.ok) {
     throw new Error(`session_lifecycle_${result.disposition}`);
   }
+  return result.lifecycle;
 }
 
 async function terminalizeProviderFailure(
@@ -489,10 +535,16 @@ async function terminalizeProviderFailureAndRelease(
   reservationKey: string,
   deps: StartInterviewSessionDeps
 ): Promise<void> {
+  let terminalized = false;
   try {
     await terminalizeProviderFailure(sessionId, deps);
+    terminalized = true;
   } finally {
-    await releaseInterviewCredit(reservationKey, deps);
+    if (terminalized && (await releaseInterviewCredit(reservationKey, deps))) {
+      await deps.markRoomProvisioningSettled(sessionId);
+    } else if (!terminalized) {
+      await releaseInterviewCredit(reservationKey, deps);
+    }
   }
 }
 
@@ -511,8 +563,10 @@ async function terminalizeCleanupAndRelease(
     lifecycleError = error;
   }
 
+  let cleanupSucceeded = false;
+  let creditSettled = false;
   try {
-    await attemptProvisionedRoomCleanup(
+    cleanupSucceeded = await attemptProvisionedRoomCleanup(
       sessionId,
       roomName,
       participantIdentity,
@@ -520,7 +574,10 @@ async function terminalizeCleanupAndRelease(
       deps
     );
   } finally {
-    await releaseInterviewCredit(reservationKey, deps);
+    creditSettled = await releaseInterviewCredit(reservationKey, deps);
+  }
+  if (creditSettled && cleanupSucceeded && !lifecycleError) {
+    await deps.markRoomProvisioningSettled(sessionId);
   }
 
   if (lifecycleError) {
@@ -616,14 +673,13 @@ async function reserveInterviewCredit({
 async function releaseInterviewCredit(
   reservationKey: string,
   deps: StartInterviewSessionDeps
-) {
+): Promise<boolean> {
   try {
-    await deps.releaseReservation({
-      reservationKey,
-      idempotencyKey: `release:${reservationKey}`,
-    });
+    await deps.settleFailedReservation(reservationKey);
+    return true;
   } catch (error) {
     console.error("Credit release error:", getErrorMessage(error));
+    return false;
   }
 }
 

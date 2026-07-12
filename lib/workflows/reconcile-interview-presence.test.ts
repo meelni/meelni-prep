@@ -54,6 +54,36 @@ test("authoritative presence repairs a missed join exactly once", async () => {
   assert.equal(fixture.current.state, "active");
 });
 
+test("reconnect reconciliation requires a valid join strictly before grace expiry", async () => {
+  const deadlineAt = new Date("2026-07-10T08:00:30.000Z");
+  const snapshots = [
+    { ...presence(), joined: false },
+    { ...presence(), joinedAt: null },
+    { ...presence(), joinedAt: new Date(Number.NaN) },
+    { ...presence(), joinedAt: deadlineAt },
+    { ...presence(), joinedAt: new Date(deadlineAt.getTime() + 1) },
+  ];
+
+  for (const snapshot of snapshots) {
+    const fixture = createFixture(
+      createSession({
+        state: "reconnecting",
+        version: 4,
+        reconnectDeadlineAt: deadlineAt,
+      })
+    );
+    fixture.deps.inspectPresence = async () =>
+      providerSuccess("livekit", snapshot);
+
+    assert.deepEqual(await run(fixture.deps, "strict-join"), {
+      ok: true,
+      disposition: "reconnecting",
+    });
+    assert.equal(fixture.recoveries, 0);
+    assert.equal(fixture.current.state, "reconnecting");
+  }
+});
+
 test("provider failure records scan fairness but never invents a loss", async () => {
   const fixture = createFixture(createSession());
   fixture.deps.inspectPresence = async () =>
@@ -265,6 +295,17 @@ function createFixture(initial: InterviewReconnectSession): {
     }),
     markRoomCleanupComplete: async () => undefined,
     markRoomCleanupAttempted: async () => undefined,
+    completeRoomProvisioning: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
+    markRoomProvisioningSettled: async () => undefined,
+    claimStaleProvisioning: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
     markPresenceReconciled: async (input) => {
       if (conflictOnMark || current.version !== input.expectedVersion) {
         return { applied: false, reason: "conflict", current };
@@ -276,7 +317,8 @@ function createFixture(initial: InterviewReconnectSession): {
       if (
         current.state !== "reconnecting" ||
         current.version !== input.expectedVersion ||
-        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime()
+        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime() ||
+        input.joinedAt.getTime() >= input.deadlineAt.getTime()
       ) {
         return { applied: false, reason: "conflict", current };
       }
@@ -439,6 +481,8 @@ function createSession(
     reconnectDeadlineAt: null,
     roomCleanupPending: false,
     roomCleanupAttemptedAt: null,
+    roomProvisioningPending: false,
+    roomProvisioningStartedAt: null,
     presenceReconciledAt: null,
     lastTransportEventAt: new Date("2026-07-10T07:45:02.000Z"),
     lastTransportEventId: "joined-1",
