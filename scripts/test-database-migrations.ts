@@ -9,7 +9,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -38,7 +39,7 @@ import {
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
-const ROOT = resolve(import.meta.dirname, "..");
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "lib/db/migrations");
 const CLEAN_DATABASE = "meelni_clean_test";
 const UPGRADE_DATABASE = "meelni_upgrade_test";
@@ -1408,6 +1409,7 @@ async function verifyReconnectTransportOrdering(
   const workflowDeps = {
     store,
     scheduleReconnect: async () => undefined,
+    settleCredit: async () => undefined,
     now: () => occurredAt,
   };
   const disconnected = await handleLiveKitInterviewEventWorkflow(

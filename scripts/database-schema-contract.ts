@@ -26,7 +26,7 @@ export const RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT =
 // includes the stable-evidence trigger, which the earlier schema fingerprints
 // deliberately did not inspect.
 export const STABLE_START_SCHEMA_FINGERPRINT =
-  "57ad88f0a2dbe151871d7a6e93af0417b02498aa9da6fe532e651fa4ed0110a1";
+  "10c75eb6a1da4af71436b689fb912647f825b555a1df2080d06dd181f4b2cbcd";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =

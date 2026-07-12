@@ -103,5 +103,7 @@ test("LiveKit start fixture matches provider and transcript-event contracts", ()
   });
   assert.deepEqual(fixture.expectedStartedRoom, {
     roomName: "interview-1782600000000-i00000",
+    token: "fixture-livekit-token",
+    url: "wss://fixture.livekit.cloud",
   });
 });

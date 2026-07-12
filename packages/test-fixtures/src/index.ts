@@ -216,6 +216,8 @@ const liveKitStartFixture: LiveKitStartFixture = {
   },
   expectedStartedRoom: {
     roomName: "interview-1782600000000-i00000",
+    token: "fixture-livekit-token",
+    url: "wss://fixture.livekit.cloud",
   },
 };
 

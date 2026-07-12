@@ -21,6 +21,7 @@ export interface LiveKitEnvironment {
 export type LiveKitAgentKind = "interview" | "demo";
 
 export const INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS = 60;
+const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
 
 export interface StartInterviewRoomInput {
   agentName: string;
@@ -33,6 +34,8 @@ export interface StartInterviewRoomInput {
 
 export interface StartedInterviewRoom {
   roomName: string;
+  token: string;
+  url: string;
 }
 
 export interface IssueInterviewParticipantTokenInput {
@@ -210,6 +213,7 @@ export function buildInterviewRoomName({
 }
 
 export function createLiveKitInterviewProvider({
+  accessTokenFactory = AccessToken,
   agentDispatchClientFactory = (url, apiKey, apiSecret) =>
     new AgentDispatchClient(url, apiKey, apiSecret),
   roomServiceClientFactory = (url, apiKey, apiSecret) =>

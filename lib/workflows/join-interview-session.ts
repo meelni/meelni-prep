@@ -6,6 +6,7 @@ import { getSessionForLiveKitJoin } from "@/lib/db/sessions";
 import { consumeReconnectRateLimit } from "@/lib/db/rate-limits";
 import {
   deriveInterviewDeadlineAt,
+  isInterviewDeadlineReached,
   normalizeInterviewDurationMinutes,
   type InterviewLifecycleState,
 } from "@/lib/internal/core";

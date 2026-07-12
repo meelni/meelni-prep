@@ -705,7 +705,6 @@ function createFixture(
       settleCredit: async (sessionId) => {
         settlements.push(sessionId);
       },
-      now: () => NOW,
     },
     schedules,
     settlements,

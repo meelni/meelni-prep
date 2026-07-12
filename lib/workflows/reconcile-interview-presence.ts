@@ -13,6 +13,7 @@ import {
   type HandleLiveKitInterviewEventResult,
 } from "./handle-livekit-interview-event";
 import { scheduleInterviewReconnect } from "./schedule-interview-reconnect";
+import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
 
 export interface ReconcileInterviewPresenceInput {
   sessionId: string;
@@ -215,6 +216,7 @@ export function createReconcileInterviewPresenceDeps(): ReconcileInterviewPresen
       handleLiveKitInterviewEventWorkflow(input, {
         store,
         scheduleReconnect: scheduleInterviewReconnect,
+        settleCredit: convergeDrizzleInterviewCreditSettlement,
       }),
   };
 }

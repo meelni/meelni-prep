@@ -167,6 +167,13 @@ test("a caller-provided validation snapshot is finalized without revalidation", 
         finalizedValidation = input.validationOverride ?? null;
         return completion();
       },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(finalizedValidation, snapshot);
+});
+
 test("terminal credit settlement completes before feedback dispatch", async () => {
   const order: string[] = [];
   const result = await endInterviewSessionWorkflow(
@@ -187,7 +194,6 @@ test("terminal credit settlement completes before feedback dispatch", async () =
   );
 
   assert.equal(result.ok, true);
-  assert.equal(finalizedValidation, snapshot);
   assert.deepEqual(order, ["finalize", "settle_credit", "dispatch_feedback"]);
 });
 
