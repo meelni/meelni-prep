@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
+import { lockAccountIdentity } from "@/lib/db/account-identity-lock";
 import { accountDeletionRequest, appUser, subscription } from "@/lib/db/schema";
 import { shouldApplyStripeSubscriptionState } from "./stripe-event-ordering";
 
@@ -33,6 +34,10 @@ export interface CancellationReadSnapshot {
 }
 
 export type AuthoritativeSnapshotCommitResult = "applied" | "retry" | "skipped";
+
+export type VersionedProviderMutationCommitResult<T> =
+  | { status: "applied"; value: T }
+  | { status: "retry" };
 
 export function shouldApplyAuthoritativeProviderSnapshot(input: {
   current: Pick<
@@ -92,6 +97,44 @@ export async function reconcileAuthoritativeProviderSnapshot<T>({
   throw new Error("billing_subscription_reconciliation_retry_exhausted");
 }
 
+export async function reconcileVersionedProviderMutation<TSnapshot, TValue>({
+  initialExpectedVersion,
+  initialSnapshot,
+  readVersion,
+  retrieve,
+  commit,
+  maxAttempts = 3,
+}: {
+  initialExpectedVersion: number;
+  initialSnapshot: TSnapshot;
+  readVersion(): Promise<number>;
+  retrieve(): Promise<TSnapshot>;
+  commit(input: {
+    expectedVersion: number;
+    snapshot: TSnapshot;
+  }): Promise<VersionedProviderMutationCommitResult<TValue>>;
+  maxAttempts?: number;
+}): Promise<{ snapshot: TSnapshot; value: TValue }> {
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts <= 0) {
+    throw new Error("billing_subscription_reconciliation_attempts_invalid");
+  }
+
+  let expectedVersion = initialExpectedVersion;
+  let snapshot = initialSnapshot;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const result = await commit({ expectedVersion, snapshot });
+    if (result.status === "applied") {
+      return { snapshot, value: result.value };
+    }
+    if (attempt + 1 < maxAttempts) {
+      expectedVersion = await readVersion();
+      snapshot = await retrieve();
+    }
+  }
+
+  throw new Error("billing_subscription_reconciliation_retry_exhausted");
+}
+
 export function nextProviderCancellationState(
   current: CancellationStateSnapshot,
   observation: ProviderCancellationObservation
@@ -113,18 +156,12 @@ export function nextProviderCancellationState(
     throw new Error("billing_subscription_observation_invalid");
   }
 
-  const providerSecond = new Date(
-    Math.floor(observation.observedAt.getTime() / 1000) * 1000
-  );
-  const lastEventTimestamp =
-    current.lastEventTimestamp && current.lastEventTimestamp > providerSecond
-      ? current.lastEventTimestamp
-      : providerSecond;
-
   return {
     cancelAtPeriodEnd: observation.cancelAtPeriodEnd,
     currentPeriodEnd: observation.currentPeriodEnd,
-    lastEventTimestamp,
+    // Direct provider reads have no Stripe event timestamp. Preserve the
+    // provider-event ordering fence; local concurrency is fenced by version.
+    lastEventTimestamp: current.lastEventTimestamp,
     version: current.version + 1,
     updatedAt: observation.observedAt,
   };
@@ -156,8 +193,13 @@ export async function getCancellationReadSnapshot(
 }
 
 export async function reconcileProviderCancellationState(
-  observation: Omit<ProviderCancellationObservation, "observedAt">
-) {
+  observation: Omit<ProviderCancellationObservation, "observedAt">,
+  expectedVersion: number
+): Promise<
+  VersionedProviderMutationCommitResult<
+    ReturnType<typeof nextProviderCancellationState>
+  >
+> {
   return db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, observation.userId);
     const [current] = await tx
@@ -175,6 +217,9 @@ export async function reconcileProviderCancellationState(
       .limit(1)
       .for("update");
     if (!current) throw new Error("billing_subscription_not_found");
+    if (current.version !== expectedVersion) {
+      return { status: "retry" as const };
+    }
 
     const next = nextProviderCancellationState(current, {
       ...observation,
@@ -191,9 +236,9 @@ export async function reconcileProviderCancellationState(
       )
       .returning({ id: subscription.id });
     if (updated.length !== 1) {
-      throw new Error("billing_subscription_version_conflict");
+      return { status: "retry" as const };
     }
-    return next;
+    return { status: "applied" as const, value: next };
   });
 }
 
@@ -233,6 +278,7 @@ export async function lockBillingUserUnlessDeleting(
   tx: BillingTransaction,
   userId: string
 ) {
+  await lockAccountIdentity(tx, userId);
   const [user] = await tx
     .select({ id: appUser.id })
     .from(appUser)

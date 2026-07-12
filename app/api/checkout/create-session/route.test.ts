@@ -3,14 +3,19 @@ import { NextRequest } from "next/server";
 
 const stripeMocks = vi.hoisted(() => ({
   list: vi.fn(),
+  subscriptionList: vi.fn(),
   create: vi.fn(),
   expire: vi.fn(),
 }));
-const dbMocks = vi.hoisted(() => ({ selectLimit: vi.fn() }));
+const dbMocks = vi.hoisted(() => ({
+  selectLimit: vi.fn(),
+  selectForUpdate: vi.fn(),
+}));
 
 vi.mock("stripe", () => ({
   default: class StripeMock {
     checkout = { sessions: stripeMocks };
+    subscriptions = { list: stripeMocks.subscriptionList };
   },
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
@@ -21,7 +26,23 @@ vi.mock("@/lib/db", () => ({
         where: vi.fn(() => ({ limit: dbMocks.selectLimit })),
       })),
     })),
+    transaction: vi.fn(async (work) =>
+      work({
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn(() => ({
+                for: dbMocks.selectForUpdate,
+              })),
+            })),
+          })),
+        })),
+      })
+    ),
   },
+}));
+vi.mock("@/lib/billing/subscription-state", () => ({
+  lockBillingUserUnlessDeleting: vi.fn(async () => undefined),
 }));
 vi.mock("@/lib/db/account-deletions", () => ({
   hasAccountDeletionTombstone: vi.fn(),
@@ -50,13 +71,15 @@ describe("POST /api/checkout/create-session deletion guard", () => {
         }),
       },
     } as never);
-    stripeMocks.list.mockResolvedValue({ data: [] });
+    stripeMocks.list.mockResolvedValue({ data: [], has_more: false });
+    stripeMocks.subscriptionList.mockResolvedValue({ data: [] });
     stripeMocks.create.mockResolvedValue({
       id: "cs_test_created",
       url: "https://checkout.example.invalid/session",
     });
     stripeMocks.expire.mockResolvedValue({ id: "cs_test_created" });
     dbMocks.selectLimit.mockResolvedValue([]);
+    dbMocks.selectForUpdate.mockImplementation(() => dbMocks.selectLimit());
   });
 
   it("makes no Stripe request when the deletion tombstone already exists", async () => {
@@ -157,10 +180,12 @@ function request(catalogId = "interview_pass") {
 
 function subscriptionFixture(overrides: Record<string, unknown> = {}) {
   return {
+    version: 1,
     tier: "starter",
     status: "active",
     cancelAtPeriodEnd: false,
     stripeCustomerId: "cus_test",
+    stripeSubscriptionId: "sub_test",
     ...overrides,
   };
 }

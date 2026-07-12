@@ -6,6 +6,9 @@ import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
 import {
   getCancellationReadSnapshot,
   reconcileProviderCancellationState,
+  reconcileVersionedProviderMutation,
+  retrieveAuthoritativeSubscription,
+  type CancellationStateSnapshot,
 } from "@/lib/billing/subscription-state";
 
 // Keep the legacy false value deploy-compatible while rejecting the retired
@@ -108,15 +111,17 @@ export async function POST(req: NextRequest) {
       if (!providerSubscription.cancel_at_period_end) {
         throw new Error("billing_cancel_provider_not_scheduled");
       }
-      const periodEnd = providerPeriodEnd(providerSubscription, observedAt);
-      const next = await reconcileProviderCancellationState({
-        userId,
-        stripeSubscriptionId: sub.stripeSubscriptionId,
-        cancelAtPeriodEnd: true,
-        currentPeriodEnd: periodEnd,
+      const converged = await convergeCancellationMutation({
+        stripe,
+        initial: providerSubscription,
+        expected: sub,
+        desiredCancelAtPeriodEnd: true,
       });
 
-      return cancellationResponse(periodEnd, next.updatedAt);
+      return cancellationResponse(
+        converged.currentPeriodEnd,
+        converged.updatedAt
+      );
     } catch {
       console.error("billing_cancel_provider_failed");
       return NextResponse.json(
@@ -240,15 +245,11 @@ export async function DELETE() {
       if (providerSubscription.cancel_at_period_end) {
         throw new Error("billing_reactivate_provider_not_confirmed");
       }
-      const periodEnd = providerPeriodEnd(
-        providerSubscription,
-        readSnapshot.observedAt
-      );
-      await reconcileProviderCancellationState({
-        userId,
-        stripeSubscriptionId: sub.stripeSubscriptionId,
-        cancelAtPeriodEnd: false,
-        currentPeriodEnd: periodEnd,
+      await convergeCancellationMutation({
+        stripe,
+        initial: providerSubscription,
+        expected: sub,
+        desiredCancelAtPeriodEnd: false,
       });
 
       return NextResponse.json({
@@ -272,10 +273,62 @@ export async function DELETE() {
   }
 }
 
-function providerPeriodEnd(
-  providerSubscription: Stripe.Subscription,
-  earliestObservedAt: Date
-) {
+async function convergeCancellationMutation({
+  stripe,
+  initial,
+  expected,
+  desiredCancelAtPeriodEnd,
+}: {
+  stripe: Stripe;
+  initial: Stripe.Subscription;
+  expected: CancellationStateSnapshot;
+  desiredCancelAtPeriodEnd: boolean;
+}) {
+  if (!expected.stripeSubscriptionId) {
+    throw new Error("billing_subscription_provider_mismatch");
+  }
+  const subscriptionId = expected.stripeSubscriptionId;
+  const result = await reconcileVersionedProviderMutation({
+    initialExpectedVersion: expected.version,
+    initialSnapshot: initial,
+    readVersion: async () => {
+      const current = await getCancellationReadSnapshot(expected.userId);
+      if (
+        !current ||
+        current.subscription.stripeSubscriptionId !== subscriptionId ||
+        current.subscription.status === "canceled"
+      ) {
+        throw new Error("billing_subscription_provider_mismatch");
+      }
+      return current.subscription.version;
+    },
+    retrieve: () =>
+      retrieveAuthoritativeSubscription(stripe.subscriptions, subscriptionId),
+    commit: async ({ expectedVersion, snapshot }) => {
+      if (snapshot.id !== subscriptionId || snapshot.status === "canceled") {
+        throw new Error("billing_subscription_provider_mismatch");
+      }
+      return reconcileProviderCancellationState(
+        {
+          userId: expected.userId,
+          stripeSubscriptionId: subscriptionId,
+          cancelAtPeriodEnd: snapshot.cancel_at_period_end,
+          currentPeriodEnd: providerPeriodEnd(snapshot),
+        },
+        expectedVersion
+      );
+    },
+  });
+  if (
+    result.snapshot.cancel_at_period_end !== desiredCancelAtPeriodEnd ||
+    result.value.cancelAtPeriodEnd !== desiredCancelAtPeriodEnd
+  ) {
+    throw new Error("billing_subscription_provider_state_changed");
+  }
+  return result.value;
+}
+
+function providerPeriodEnd(providerSubscription: Stripe.Subscription) {
   const periodEndSeconds =
     providerSubscription.items.data[0]?.current_period_end;
   if (!periodEndSeconds || !Number.isSafeInteger(periodEndSeconds)) {
@@ -284,9 +337,6 @@ function providerPeriodEnd(
   const periodEnd = new Date(periodEndSeconds * 1000);
   if (!Number.isFinite(periodEnd.getTime())) {
     throw new Error("billing_subscription_period_end_invalid");
-  }
-  if (periodEnd <= earliestObservedAt) {
-    throw new Error("billing_subscription_period_end_not_future");
   }
   return periodEnd;
 }

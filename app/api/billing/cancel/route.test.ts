@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const stripeMocks = vi.hoisted(() => ({
   update: vi.fn(),
+  retrieve: vi.fn(),
   cancel: vi.fn(),
 }));
 const stateMocks = vi.hoisted(() => ({
@@ -19,6 +20,32 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/billing/subscription-state", () => ({
   getCancellationReadSnapshot: stateMocks.getReadSnapshot,
   reconcileProviderCancellationState: stateMocks.reconcile,
+  retrieveAuthoritativeSubscription: (
+    provider: { retrieve: (...args: unknown[]) => Promise<unknown> },
+    id: string
+  ) => provider.retrieve(id, { timeout: 10_000 }),
+  reconcileVersionedProviderMutation: async (input: {
+    initialExpectedVersion: number;
+    initialSnapshot: unknown;
+    readVersion(): Promise<number>;
+    retrieve(): Promise<unknown>;
+    commit(value: {
+      expectedVersion: number;
+      snapshot: unknown;
+    }): Promise<{ status: string; value?: unknown }>;
+  }) => {
+    let expectedVersion = input.initialExpectedVersion;
+    let snapshot = input.initialSnapshot;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const result = await input.commit({ expectedVersion, snapshot });
+      if (result.status === "applied") {
+        return { snapshot, value: result.value };
+      }
+      expectedVersion = await input.readVersion();
+      snapshot = await input.retrieve();
+    }
+    throw new Error("billing_subscription_reconciliation_retry_exhausted");
+  },
 }));
 
 import { createClient } from "@/lib/supabase/server";
@@ -41,9 +68,14 @@ describe("period-end subscription cancellation", () => {
     } as never);
     readSubscription();
     stripeMocks.update.mockResolvedValue(providerSubscription(true));
-    stateMocks.reconcile.mockResolvedValue({
-      updatedAt: new Date("2026-07-12T00:00:01.000Z"),
-    });
+    stripeMocks.retrieve.mockResolvedValue(providerSubscription(true));
+    stateMocks.reconcile.mockImplementation(async (input) => ({
+      status: "applied",
+      value: {
+        ...input,
+        updatedAt: new Date("2026-07-12T00:00:01.000Z"),
+      },
+    }));
   });
 
   it("rejects the retired immediate-cancellation request before provider work", async () => {
@@ -64,7 +96,7 @@ describe("period-end subscription cancellation", () => {
       cancel_at_period_end: true,
     });
     expect(stripeMocks.cancel).not.toHaveBeenCalled();
-    expect(stateMocks.reconcile).toHaveBeenCalledWith(
+    expect(stateMocks.reconcile.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
         cancelAtPeriodEnd: true,
         currentPeriodEnd: PERIOD_END,
@@ -135,11 +167,22 @@ describe("period-end subscription cancellation", () => {
       ...providerSubscription(true),
       items: { data: [{ current_period_end: 1 }] },
     });
+    stateMocks.reconcile.mockRejectedValue(
+      new Error("billing_subscription_observation_invalid")
+    );
 
     const response = await POST(request({}));
 
     expect(response.status).toBe(500);
-    expect(stateMocks.reconcile).not.toHaveBeenCalled();
+    expect(stateMocks.reconcile).toHaveBeenCalledWith(
+      {
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: new Date(1_000),
+        stripeSubscriptionId: "sub_test",
+        userId: "user-one",
+      },
+      7
+    );
   });
 
   it("reactivates only by clearing the period-end schedule", async () => {
@@ -153,7 +196,7 @@ describe("period-end subscription cancellation", () => {
       cancel_at_period_end: false,
     });
     expect(stripeMocks.cancel).not.toHaveBeenCalled();
-    expect(stateMocks.reconcile).toHaveBeenCalledWith(
+    expect(stateMocks.reconcile.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({ cancelAtPeriodEnd: false })
     );
   });
@@ -168,6 +211,57 @@ describe("period-end subscription cancellation", () => {
     expect(response.status).toBe(500);
     expect(stateMocks.reconcile).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { method: "cancel", desired: true, authoritative: false },
+    { method: "reactivate", desired: false, authoritative: true },
+  ])(
+    "fails truthfully when a same-resource webhook inverts $method during the provider call",
+    async ({ method, desired, authoritative }) => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      readSubscription({
+        cancelAtPeriodEnd: method === "reactivate",
+        version: 7,
+      });
+      stateMocks.getReadSnapshot
+        .mockResolvedValueOnce({
+          subscription: subscriptionFixture({
+            cancelAtPeriodEnd: method === "reactivate",
+            version: 7,
+          }),
+          observedAt: new Date("2026-07-12T00:00:00.000Z"),
+        })
+        .mockResolvedValueOnce({
+          subscription: subscriptionFixture({
+            cancelAtPeriodEnd: authoritative,
+            version: 8,
+          }),
+          observedAt: new Date("2026-07-12T00:00:01.000Z"),
+        });
+      stripeMocks.update.mockResolvedValue(providerSubscription(desired));
+      stripeMocks.retrieve.mockResolvedValue(
+        providerSubscription(authoritative)
+      );
+      stateMocks.reconcile
+        .mockResolvedValueOnce({ status: "retry" })
+        .mockImplementationOnce(async (input) => ({
+          status: "applied",
+          value: {
+            ...input,
+            updatedAt: new Date("2026-07-12T00:00:02.000Z"),
+          },
+        }));
+
+      const response =
+        method === "cancel" ? await POST(request({})) : await DELETE();
+      expect(response.status).toBe(500);
+      expect(stripeMocks.retrieve).toHaveBeenCalledOnce();
+      expect(stateMocks.reconcile.mock.calls[1]?.[0]).toEqual(
+        expect.objectContaining({ cancelAtPeriodEnd: authoritative })
+      );
+      expect(stateMocks.reconcile.mock.calls[1]?.[1]).toBe(8);
+    }
+  );
 });
 
 function request(body: unknown) {
@@ -186,6 +280,8 @@ function subscriptionFixture(overrides: Record<string, unknown> = {}) {
     stripeSubscriptionId: "sub_test",
     cancelAtPeriodEnd: false,
     currentPeriodEnd: PERIOD_END,
+    version: 7,
+    lastEventTimestamp: new Date("2026-07-11T00:00:00.000Z"),
     ...overrides,
   };
 }
@@ -203,6 +299,7 @@ function readSubscription(
 function providerSubscription(cancelAtPeriodEnd: boolean) {
   return {
     id: "sub_test",
+    status: "active",
     cancel_at_period_end: cancelAtPeriodEnd,
     items: { data: [{ current_period_end: PERIOD_END_SECONDS }] },
   };

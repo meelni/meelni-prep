@@ -420,6 +420,36 @@ transaction that confirms its subscription ID and event ordering. An invoice
 for an older/replaced subscription can still be recorded idempotently in
 payment history but grants zero entitlement.
 
+Webhook ordering uses Stripe's event creation timestamp; local observation time
+must not advance that provider fence. A direct cancellation or reactivation has
+no provider event timestamp, so it preserves the existing provider fence and
+uses the locked subscription version as its concurrency boundary. If a webhook
+wins that race, retrieve the same provider subscription and retry the
+version-checked reconciliation from authoritative truth. Retry only a bounded
+number of times and fail closed if the provider read or convergence fails.
+
+For invoice entitlement, require the currently locked subscription resource, a
+supported subscription billing reason, and valid invoice/current periods. An
+invoice for the exact current period remains eligible even when a subscription
+update with an earlier or same-second provider timestamp arrives first. Moving
+to a later period additionally requires an event newer than the stored provider
+fence. Older periods, terminal subscriptions, and replaced resources grant and
+roll zero credits.
+
+Subscription Checkout takes the same per-user advisory lock before the billing
+row lock used by webhook and cancellation paths. Hold that serialization
+boundary through provider active-subscription and open-session checks, Checkout
+creation, and the final local-state recheck. Use a deterministic idempotency key
+from the user and locked billing-state version (shared across plan choices for
+that version); if local state changes after creation, expire the session and
+return no Checkout URL. Provider reads and writes are time-bounded and ambiguous
+pagination fails closed.
+
+Renewal and rollover analytics are post-commit effects. The locked renewal
+transaction returns the effect description, and the webhook emits it only after
+the outer database transaction resolves. A rollback therefore emits no renewal
+event, while an analytics failure cannot undo committed ledger state.
+
 Before launch, use Stripe test mode to prove:
 
 - the subscription remains active and is marked to cancel at period end;
@@ -430,7 +460,14 @@ Before launch, use Stripe test mode to prove:
 - subscription Checkout is refused while the scheduled subscription remains
   active/trialing, and becomes available only after it has truly ended;
 - delayed, same-second terminal, and old-resource invoice events grant/roll zero
-  credits, while current-resource replay remains idempotent;
+  credits, while reordered exact-current-period and duplicate current-resource
+  events grant at most once;
+- concurrent same-plan and different-plan subscription Checkout requests create
+  at most one provider session for one locked billing-state version, and a
+  post-create state change expires and withholds that session;
+- a webhook racing cancellation/reactivation converges through a fresh bounded
+  provider read without moving the provider-event fence to local clock time;
+- a rolled-back renewal emits no renewal or rollover analytics;
 - account deletion cancels provider resources without automatically refunding
   invoices, charges, or PaymentIntents.
 
