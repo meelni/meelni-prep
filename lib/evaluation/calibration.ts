@@ -52,7 +52,7 @@ export interface CalibrationEvaluatorInput {
   fixture: EvaluationCalibrationCase;
   evaluationState: FeedbackEvaluationState;
   runIndex: number;
-  beforePhysicalRequest?: () => void;
+  beforePhysicalRequest?: () => void | Promise<void>;
 }
 
 export interface CalibrationEvaluatorResult {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { rootCertificates } from "node:tls";
 import test from "node:test";
 
 import {
@@ -10,6 +11,7 @@ import {
 
 import { getEvaluationAdjudicationHashes } from "./calibration-approval";
 import {
+  CalibrationSpendGuard,
   CALIBRATION_MAX_PROVIDER_CALLS,
   CALIBRATION_MAX_SPEND_NANO_USD,
   CALIBRATION_PRICING_CONTRACT,
@@ -73,7 +75,7 @@ test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.equal(deterministicGenesisOid(), SAV_198_GENESIS_COMMIT_OID);
 });
 
-test("canonical repository and activation actor identities are immutable", () => {
+test("canonical repository and activation actor identities are immutable", async () => {
   for (const mutate of [
     (state: FakeGitHubState) => (state.repository.id += 1),
     (state: FakeGitHubState) =>
@@ -83,7 +85,7 @@ test("canonical repository and activation actor identities are immutable", () =>
   ]) {
     const state = createCanonicalState();
     mutate(state);
-    assert.throws(
+    await assert.rejects(
       () => activate(new FakeGitHubClient(state)),
       /repository_identity_mismatch|activation_actor_mismatch/
     );
@@ -91,10 +93,10 @@ test("canonical repository and activation actor identities are immutable", () =>
   }
 });
 
-test("activation requires the exact deterministic pinned genesis OID and payload", () => {
+test("activation requires the exact deterministic pinned genesis OID and payload", async () => {
   const missingRef = createCanonicalState();
   missingRef.refSha = "";
-  assert.throws(
+  await assert.rejects(
     () => activate(new FakeGitHubClient(missingRef)),
     /fake_ref_missing/
   );
@@ -105,7 +107,7 @@ test("activation requires the exact deterministic pinned genesis OID and payload
     wrongOid.refSha,
     genesisCommit({ sha: wrongOid.refSha })
   );
-  assert.throws(
+  await assert.rejects(
     () => activate(new FakeGitHubClient(wrongOid)),
     /genesis_oid_mismatch/
   );
@@ -118,14 +120,14 @@ test("activation requires the exact deterministic pinned genesis OID and payload
   ] satisfies Array<Partial<GitHubCommit>>) {
     const state = createCanonicalState();
     state.commits.set(SAV_198_GENESIS_COMMIT_OID, genesisCommit(patch));
-    assert.throws(
+    await assert.rejects(
       () => activate(new FakeGitHubClient(state)),
       /authorization_commit_invalid/
     );
   }
 });
 
-test("activation refuses absent, inactive, bypassable, or incomplete protection", () => {
+test("activation refuses absent, inactive, bypassable, or incomplete protection", async () => {
   const mutations: Array<(state: FakeGitHubState) => void> = [
     (state) => (state.rulesets = []),
     (state) =>
@@ -166,7 +168,7 @@ test("activation refuses absent, inactive, bypassable, or incomplete protection"
   for (const mutate of mutations) {
     const state = createCanonicalState();
     mutate(state);
-    assert.throws(
+    await assert.rejects(
       () => activate(new FakeGitHubClient(state)),
       /ruleset|protection/
     );
@@ -174,51 +176,235 @@ test("activation refuses absent, inactive, bypassable, or incomplete protection"
   }
 });
 
-test("concurrent sibling activation CAS permits exactly one winner", () => {
+test("concurrent sibling activation CAS permits exactly one winner", async () => {
   const state = createCanonicalState();
-  let winner: ReturnType<typeof activate> | undefined;
-  const first = new FakeGitHubClient(state, () => {
-    winner = activate(new FakeGitHubClient(state), "activation-two");
+  let winner: Awaited<ReturnType<typeof activate>> | undefined;
+  const first = new FakeGitHubClient(state, async () => {
+    winner = await activate(new FakeGitHubClient(state), "activation-two");
   });
 
-  assert.throws(() => activate(first, "activation-one"), /lost_concurrent_cas/);
+  await assert.rejects(
+    () => activate(first, "activation-one"),
+    /lost_concurrent_cas/
+  );
   assert.ok(winner);
   assert.equal(state.refSha, winner.activationCommit);
-  assert.throws(
+  await assert.rejects(
     () => activate(new FakeGitHubClient(state), "activation-three"),
     /already_activated/
   );
   assertPayloadFreeActivation(state, winner.activationCommit);
 });
 
-test("an activated crash and local Git configuration cannot reopen authority", () => {
+test("an activated crash and local Git configuration cannot reopen authority", async () => {
   const state = createCanonicalState();
-  const first = activate(new FakeGitHubClient(state), "activation-one");
+  const first = await activate(new FakeGitHubClient(state), "activation-one");
   first.release();
 
-  assert.throws(
+  await assert.rejects(
     () => activate(new FakeGitHubClient(state), "activation-two"),
     /already_activated/
   );
   assert.equal(state.refSha, first.activationCommit);
 });
 
-test("request authority fails closed when protection or activated ref changes", () => {
+test("request authority fails closed when protection or activated ref changes", async () => {
   const state = createCanonicalState();
-  const authority = activate(new FakeGitHubClient(state));
+  const authority = await activate(new FakeGitHubClient(state));
   state.effectiveRuleTypes = ["deletion", "update"];
-  assert.throws(
+  await assert.rejects(
     () => authority.assertRequestAuthority(),
     /effective_protection_missing/
   );
 
   const secondState = createCanonicalState();
-  const second = activate(new FakeGitHubClient(secondState));
+  const second = await activate(new FakeGitHubClient(secondState));
   secondState.refSha = SAV_198_GENESIS_COMMIT_OID;
-  assert.throws(
+  await assert.rejects(
     () => second.assertRequestAuthority(),
     /activation_is_not_current/
   );
+});
+
+test("direct GitHub transport ignores PATH and accepts only canonical API data", async () => {
+  const requests: Array<{ path: string; authorization: string | undefined }> =
+    [];
+  const client = calibrationRunLedgerTestSeam.createGitHubClient(
+    {
+      GITHUB_TOKEN: "test-github-token",
+      PATH: "/tmp/fake-gh-that-must-never-run",
+    },
+    {
+      async request(input) {
+        requests.push({
+          path: input.path,
+          authorization: input.headers.Authorization,
+        });
+        return jsonResponse({
+          id: SAV_198_GITHUB_REPOSITORY_ID,
+          full_name: "saviii/meelni-prep",
+          owner: {
+            id: SAV_198_GITHUB_ACTIVATION_ACTOR_ID,
+            login: SAV_198_GITHUB_ACTIVATION_ACTOR_LOGIN,
+          },
+          private: true,
+        });
+      },
+    }
+  );
+
+  assert.deepEqual(
+    await client.getRepository(),
+    createCanonicalState().repository
+  );
+  assert.deepEqual(requests, [
+    {
+      path: "/repos/saviii/meelni-prep",
+      authorization: "Bearer test-github-token",
+    },
+  ]);
+});
+
+test("production HTTPS options pin GitHub, bundled roots, SNI, and no agent or DNS seam", () => {
+  const options = calibrationRunLedgerTestSeam.nodeRequestOptions({
+    method: "GET",
+    path: "/user",
+    headers: {},
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(options.protocol, "https:");
+  assert.equal(options.hostname, "api.github.com");
+  assert.equal(options.port, 443);
+  assert.equal(options.servername, "api.github.com");
+  assert.equal(options.rejectUnauthorized, true);
+  assert.equal(options.agent, false);
+  assert.equal(options.lookup, undefined);
+  assert.equal(typeof options.checkServerIdentity, "function");
+  assert.deepEqual(options.ca, [...rootCertificates]);
+});
+
+test("GitHub config, Unix-socket, proxy, and custom TLS env fail before request", () => {
+  const overrides = [
+    "GH_CONFIG_DIR",
+    "GH_HTTP_UNIX_SOCKET",
+    "GH_HOST",
+    "GITHUB_API_URL",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "NODE_EXTRA_CA_CERTS",
+    "NODE_DEBUG",
+    "NODE_OPTIONS",
+    "NODE_TLS_REJECT_UNAUTHORIZED",
+    "NODE_USE_ENV_PROXY",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+  ];
+  let requests = 0;
+  for (const name of overrides) {
+    assert.throws(
+      () =>
+        calibrationRunLedgerTestSeam.createGitHubClient(
+          { GITHUB_TOKEN: "test-github-token", [name]: "unsafe" },
+          {
+            async request() {
+              requests += 1;
+              return jsonResponse({});
+            },
+          }
+        ),
+      new RegExp(`transport_env_${name}_rejected`)
+    );
+  }
+  assert.equal(requests, 0);
+});
+
+test("direct GitHub transport rejects redirects, malformed and oversized bodies, and timeouts", async () => {
+  const scenarios = [
+    {
+      expected: /redirect_rejected/,
+      response: async () => textResponse("{}", 302),
+    },
+    {
+      expected: /response_invalid/,
+      response: async () => textResponse("not-json"),
+    },
+    {
+      expected: /response_too_large/,
+      response: async () => textResponse("12345"),
+      maximumResponseBytes: 4,
+    },
+    {
+      expected: /request_timed_out/,
+      response: async (signal: AbortSignal) =>
+        await new Promise<never>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => reject(new Error("transport aborted")),
+            { once: true }
+          );
+        }),
+      timeoutMs: 5,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const client = calibrationRunLedgerTestSeam.createGitHubClient(
+      { GITHUB_TOKEN: "test-github-token" },
+      {
+        request: (input) => scenario.response(input.signal),
+      },
+      {
+        timeoutMs: scenario.timeoutMs,
+        maximumResponseBytes: scenario.maximumResponseBytes,
+      }
+    );
+    await assert.rejects(
+      async () => await client.getViewer(),
+      scenario.expected
+    );
+  }
+});
+
+test("GitHub token never appears in transport errors", async () => {
+  const token = "secret-token-must-not-leak";
+  const client = calibrationRunLedgerTestSeam.createGitHubClient(
+    { GITHUB_TOKEN: token },
+    {
+      async request() {
+        throw new Error(`upstream exposed ${token}`);
+      },
+    }
+  );
+  assert.equal(JSON.stringify(client).includes(token), false);
+
+  const error = await Promise.resolve(client.getViewer()).catch(
+    (cause: unknown) => cause
+  );
+  assert.ok(error instanceof Error);
+  assert.equal(error.message, "calibration_github_api_request_failed");
+  assert.equal(JSON.stringify(error).includes(token), false);
+});
+
+test("direct HTTPS activation preserves CAS behavior without exposing its token in reports", async () => {
+  const token = "report-secret-token-must-not-leak";
+  const state = createCanonicalState();
+  const client = calibrationRunLedgerTestSeam.createGitHubClient(
+    { GITHUB_TOKEN: token },
+    fakeGitHubApiTransport(state)
+  );
+  const authority = await activate(client, "direct-https-activation");
+  const guard = new CalibrationSpendGuard(
+    CALIBRATION_PRICING_CONTRACT.model,
+    NOW,
+    authority
+  );
+
+  assert.equal(state.refSha, authority.activationCommit);
+  assert.equal(JSON.stringify(guard.report()).includes(token), false);
+  authority.release();
 });
 
 interface FakeGitHubState {
@@ -236,11 +422,11 @@ interface FakeGitHubState {
 }
 
 class FakeGitHubClient implements CalibrationGitHubCasClient {
-  private beforeUpdate: (() => void) | undefined;
+  private beforeUpdate: (() => void | Promise<void>) | undefined;
 
   constructor(
     private readonly state: FakeGitHubState,
-    beforeUpdate?: () => void
+    beforeUpdate?: () => void | Promise<void>
   ) {
     this.beforeUpdate = beforeUpdate;
   }
@@ -291,11 +477,11 @@ class FakeGitHubClient implements CalibrationGitHubCasClient {
     return structuredClone(commit);
   }
 
-  updateRef(input: { sha: string; force: false }): GitHubRef {
+  async updateRef(input: { sha: string; force: false }): Promise<GitHubRef> {
     assert.equal(input.force, false);
     const hook = this.beforeUpdate;
     this.beforeUpdate = undefined;
-    hook?.();
+    await hook?.();
     const commit = this.state.commits.get(input.sha);
     if (!commit || commit.parents[0] !== this.state.refSha) {
       throw new Error("fake_non_fast_forward");
@@ -445,4 +631,127 @@ function deterministicGenesisOid(): string {
     .update(`commit ${Buffer.byteLength(body)}\0`)
     .update(body)
     .digest("hex");
+}
+
+function jsonResponse(value: unknown, statusCode = 200) {
+  return textResponse(JSON.stringify(value), statusCode);
+}
+
+function textResponse(value: string, statusCode = 200) {
+  return {
+    statusCode,
+    body: {
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(value);
+      },
+    },
+  };
+}
+
+function fakeGitHubApiTransport(state: FakeGitHubState) {
+  const client = new FakeGitHubClient(state);
+  return {
+    async request(input: {
+      method: string;
+      path: string;
+      body: string | undefined;
+    }) {
+      if (
+        input.method === "GET" &&
+        input.path === "/repos/saviii/meelni-prep"
+      ) {
+        return jsonResponse({
+          id: state.repository.id,
+          full_name: state.repository.fullName,
+          owner: state.repository.owner,
+          private: state.repository.private,
+        });
+      }
+      if (input.method === "GET" && input.path === "/user") {
+        return jsonResponse(state.viewer);
+      }
+      if (input.method === "GET" && input.path.includes("/rulesets?")) {
+        return jsonResponse(
+          state.rulesets.map((ruleset, index) => ({
+            id: index + 1,
+            name: ruleset.name,
+          }))
+        );
+      }
+      const rulesetMatch = input.path.match(/\/rulesets\/(\d+)\?/);
+      if (input.method === "GET" && rulesetMatch) {
+        const ruleset = state.rulesets[Number(rulesetMatch[1]) - 1]!;
+        return jsonResponse({
+          name: ruleset.name,
+          source: ruleset.source,
+          source_type: ruleset.sourceType,
+          target: ruleset.target,
+          enforcement: ruleset.enforcement,
+          bypass_actors: ruleset.bypassActors.map((actor) => ({
+            actor_id: actor.actorId,
+            actor_type: actor.actorType,
+            bypass_mode: actor.bypassMode,
+          })),
+          conditions: {
+            ref_name: {
+              include: ruleset.includeRefs,
+              exclude: ruleset.excludeRefs,
+            },
+          },
+          rules: ruleset.ruleTypes.map((type) => ({ type })),
+        });
+      }
+      if (input.method === "GET" && input.path.includes("/rules/branches/")) {
+        return jsonResponse(state.effectiveRuleTypes.map((type) => ({ type })));
+      }
+      if (input.method === "GET" && input.path.includes("/git/ref/")) {
+        const ref = await client.getRef();
+        return jsonResponse({
+          ref: ref.ref,
+          object: { type: "commit", sha: ref.sha },
+        });
+      }
+      const commitMatch = input.path.match(/\/git\/commits\/([0-9a-f]{40})$/);
+      if (input.method === "GET" && commitMatch) {
+        return jsonResponse(
+          gitHubCommitResponse(await client.getCommit(commitMatch[1]!))
+        );
+      }
+      if (input.method === "POST" && input.path.endsWith("/git/commits")) {
+        const body = JSON.parse(input.body ?? "null") as {
+          message: string;
+          tree: string;
+          parents: string[];
+          author: { date: string };
+        };
+        const commit = await client.createCommit({
+          message: body.message,
+          treeSha: body.tree,
+          parents: body.parents,
+          date: body.author.date,
+        });
+        return jsonResponse(gitHubCommitResponse(commit), 201);
+      }
+      if (input.method === "PATCH" && input.path.includes("/git/refs/")) {
+        const body = JSON.parse(input.body ?? "null") as {
+          sha: string;
+          force: false;
+        };
+        const ref = await client.updateRef(body);
+        return jsonResponse({ ref: ref.ref, object: { sha: ref.sha } });
+      }
+      throw new Error("unexpected fake GitHub API request");
+    },
+  };
+}
+
+function gitHubCommitResponse(commit: GitHubCommit) {
+  return {
+    sha: commit.sha,
+    message: commit.message,
+    tree: { sha: commit.treeSha },
+    parents: commit.parents.map((sha) => ({ sha })),
+    author: commit.author,
+    committer: commit.committer,
+  };
 }

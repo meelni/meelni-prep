@@ -111,7 +111,9 @@ test("paid request policy rejects an unpriced model or output ceiling", () => {
 test("guarded transport validates authorization at actual fetch dispatch", async () => {
   const order: string[] = [];
   const guardedFetch = createGuardedCalibrationFetch(
-    () => order.push("authorize"),
+    () => {
+      order.push("authorize");
+    },
     async (_input, init) => {
       order.push("dispatch");
       assert.equal(init?.redirect, "error");
