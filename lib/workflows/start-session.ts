@@ -8,7 +8,6 @@ import {
 } from "@/lib/internal/agent";
 import {
   deriveInterviewDeadlineAt,
-  isInterviewDeadlineReached,
   isValidRoundType,
   normalizeQuestionRound,
   normalizeInterviewDurationMinutes,
@@ -57,6 +56,7 @@ import {
 import { transitionInterviewSessionWorkflow } from "./transition-interview-session";
 import { scheduleInterviewDeadline } from "./schedule-interview-deadline";
 import { createDrizzleInterviewReconnectStore } from "@/lib/db/session-reconnects";
+import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   behavioral: [...questionTypeStorageAliasesForRound("behavioral")],
@@ -125,6 +125,7 @@ export interface StartInterviewSessionDeps {
     expectedVersion: number;
   }): Promise<boolean>;
   markRoomProvisioningSettled(sessionId: string): Promise<void>;
+  settleCredit(sessionId: string): Promise<unknown>;
   livekitProvider: LiveKitInterviewProvider;
   issueParticipantToken(input: {
     identity: string;
@@ -289,6 +290,7 @@ export async function startInterviewSessionWorkflow(
       requestFingerprint,
       leaseId,
       now: deps.now(),
+      deadlineAt,
     });
   } catch (error) {
     if (error instanceof InterviewStartFailedError) {
@@ -345,6 +347,11 @@ export async function startInterviewSessionWorkflow(
         retryAfterMs: claim.retryAfterMs,
       },
     };
+  }
+
+  if (claim.disposition === "not_joinable") {
+    await reconcileLateProvisionedRoom(claim.start, input.env, deps);
+    return terminalStartResult("interview_start_not_joinable");
   }
 
   if (claim.disposition === "failed") {
@@ -500,6 +507,7 @@ export async function startInterviewSessionWorkflow(
         startAttemptId,
         leaseId: claim.leaseId,
         provisionedAt: deps.now(),
+        deadlineAt,
       });
       const completed = await deps.completeRoomProvisioning({
         sessionId: start.sessionId,
@@ -540,7 +548,29 @@ export async function startInterviewSessionWorkflow(
       // A commit can succeed even when its acknowledgement is lost. Preserve
       // the reconciled ready room rather than deleting durable provider state.
       if (durableStart?.provisioningState === "ready") {
-        start = durableStart;
+        const authorization = await authorizeProvisionedOrReconcile(
+          {
+            startAttemptId,
+            userId: input.user.id,
+            requestFingerprint,
+            deadlineAt,
+          },
+          durableStart,
+          input.env,
+          deps
+        );
+        if (!authorization) {
+          return acknowledgementPendingResult();
+        }
+        if (!authorization.joinable) {
+          await reconcileLateProvisionedRoom(
+            authorization.start,
+            input.env,
+            deps
+          );
+          return terminalStartResult("interview_start_not_joinable");
+        }
+        start = authorization.start;
         await deps.markRoomProvisioningSettled(start.sessionId);
       } else {
         if (!(error instanceof InterviewProvisioningLeaseLostError)) {
@@ -549,18 +579,11 @@ export async function startInterviewSessionWorkflow(
             leaseId: claim.leaseId,
           });
         }
-        try {
-          await deps.terminateRoom({
-            roomName: start.roomName,
-            participantIdentity: start.userId,
-            env: input.env,
-          });
-        } catch (cleanupError) {
-          console.error(
-            "Interview room cleanup after lost provisioning fence failed:",
-            getErrorMessage(cleanupError)
-          );
-        }
+        await reconcileLateProvisionedRoom(
+          durableStart ?? start,
+          input.env,
+          deps
+        );
         return {
           ok: false,
           status: 503,
@@ -574,13 +597,24 @@ export async function startInterviewSessionWorkflow(
     }
   }
 
-  const tokenNow = deps.now();
-  if (
-    start.provisioningState !== "ready" ||
-    start.endedAt !== null ||
-    !["connecting", "active", "reconnecting"].includes(start.lifecycleState) ||
-    isInterviewDeadlineReached({ deadlineAt, now: tokenNow })
-  ) {
+  const authorization = await authorizeProvisionedOrReconcile(
+    {
+      startAttemptId,
+      userId: input.user.id,
+      requestFingerprint,
+      deadlineAt,
+    },
+    start,
+    input.env,
+    deps
+  );
+  if (!authorization) {
+    return acknowledgementPendingResult();
+  }
+  start = authorization.start;
+  const tokenNow = authorization.databaseNow;
+  if (!authorization.joinable) {
+    await reconcileLateProvisionedRoom(start, input.env, deps);
     return terminalStartResult("interview_start_not_joinable");
   }
   const remainingSeconds = Math.floor(
@@ -611,6 +645,30 @@ export async function startInterviewSessionWorkflow(
       },
     };
   }
+
+  const finalAuthorization = await authorizeProvisionedOrReconcile(
+    {
+      startAttemptId,
+      userId: input.user.id,
+      requestFingerprint,
+      deadlineAt,
+    },
+    start,
+    input.env,
+    deps
+  );
+  if (!finalAuthorization) {
+    return acknowledgementPendingResult();
+  }
+  if (!finalAuthorization.joinable) {
+    await reconcileLateProvisionedRoom(
+      finalAuthorization.start,
+      input.env,
+      deps
+    );
+    return terminalStartResult("interview_start_not_joinable");
+  }
+  start = finalAuthorization.start;
 
   return {
     ok: true,
@@ -694,6 +752,7 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
       (await reconnectStore.completeRoomProvisioning(input)).applied,
     markRoomProvisioningSettled: (sessionId) =>
       reconnectStore.markRoomProvisioningSettled({ sessionId }),
+    settleCredit: convergeDrizzleInterviewCreditSettlement,
     livekitProvider: createLiveKitInterviewProvider(),
     issueParticipantToken: issueInterviewParticipantToken,
     transitionLifecycle: transitionInterviewSessionWorkflow,
@@ -1016,6 +1075,62 @@ async function cleanupFailedStart(
     reservationKey,
     idempotencyKey: `release:${reservationKey}`,
   });
+}
+
+async function reconcileLateProvisionedRoom(
+  start: PersistedStableInterviewStart,
+  env: LiveKitEnvironment,
+  deps: StartInterviewSessionDeps
+): Promise<void> {
+  try {
+    await deps.terminateRoom({
+      roomName: start.roomName,
+      participantIdentity: start.userId,
+      env,
+    });
+    await deps.markRoomCleanupComplete(start.sessionId);
+  } catch {
+    // The terminal/deadline winner retains durable cleanup intent. Never log
+    // provider details, room identity, or credentials from this path.
+    console.error("Late interview provisioning cleanup remains pending");
+  }
+
+  try {
+    await deps.settleCredit(start.sessionId);
+  } catch {
+    console.error(
+      "Late interview provisioning credit settlement remains pending"
+    );
+  }
+}
+
+async function authorizeProvisionedOrReconcile(
+  input: Parameters<InterviewStartStore["authorizeProvisioned"]>[0],
+  fallbackStart: PersistedStableInterviewStart,
+  env: LiveKitEnvironment,
+  deps: StartInterviewSessionDeps
+): Promise<Awaited<
+  ReturnType<InterviewStartStore["authorizeProvisioned"]>
+> | null> {
+  try {
+    return await deps.startStore.authorizeProvisioned(input);
+  } catch {
+    console.error("Interview provisioning authorization remains pending");
+    await reconcileLateProvisionedRoom(fallbackStart, env, deps);
+    return null;
+  }
+}
+
+function acknowledgementPendingResult(): StartInterviewSessionErrorResult {
+  return {
+    ok: false,
+    status: 503,
+    body: {
+      error: "interview_start_acknowledgement_pending",
+      message: "The interview is still starting. Please try again.",
+      retryable: true,
+    },
+  };
 }
 
 function terminalStartResult(error: string): StartInterviewSessionErrorResult {

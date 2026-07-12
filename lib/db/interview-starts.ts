@@ -1,4 +1,4 @@
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
 import { db } from "./index";
 import { interviewQuestion, interviewSession, sessionQuestion } from "./schema";
@@ -64,6 +64,7 @@ export type ProvisioningClaim =
   | { disposition: "ready"; start: PersistedStableInterviewStart }
   | { disposition: "failed"; start: PersistedStableInterviewStart }
   | { disposition: "busy"; retryAfterMs: number }
+  | { disposition: "not_joinable"; start: PersistedStableInterviewStart }
   | {
       disposition: "claimed";
       leaseId: string;
@@ -93,12 +94,24 @@ export interface InterviewStartStore {
     requestFingerprint: string;
     leaseId: string;
     now: Date;
+    deadlineAt: Date;
   }): Promise<ProvisioningClaim>;
   markProvisioned(input: {
     startAttemptId: string;
     leaseId: string;
     provisionedAt: Date;
+    deadlineAt: Date;
   }): Promise<PersistedStableInterviewStart>;
+  authorizeProvisioned(input: {
+    startAttemptId: string;
+    userId: string;
+    requestFingerprint: string;
+    deadlineAt: Date;
+  }): Promise<{
+    start: PersistedStableInterviewStart;
+    databaseNow: Date;
+    joinable: boolean;
+  }>;
   releaseProvisioningClaim(input: {
     startAttemptId: string;
     leaseId: string;
@@ -187,8 +200,19 @@ export function createDrizzleInterviewStartStore(
         ) {
           throw new InterviewStartConflictError();
         }
+        const databaseNow = await readDatabaseNow(
+          transaction,
+          input.startAttemptId
+        );
+        assertMatchingDeadline(session, input.deadlineAt);
         if (session.provisioningState === "failed") {
           throw new InterviewStartFailedError();
+        }
+        if (!isProvisioningJoinable(session, databaseNow, input.deadlineAt)) {
+          return {
+            disposition: "not_joinable" as const,
+            start: await loadStart(transaction, input.startAttemptId),
+          };
         }
         if (session.provisioningState === "ready") {
           return {
@@ -199,14 +223,14 @@ export function createDrizzleInterviewStartStore(
         if (session.provisioningState === "provisioning") {
           if (
             session.provisioningLeaseExpiresAt &&
-            session.provisioningLeaseExpiresAt > input.now
+            session.provisioningLeaseExpiresAt > databaseNow
           ) {
             return {
               disposition: "busy" as const,
               retryAfterMs: Math.max(
                 1,
                 session.provisioningLeaseExpiresAt.getTime() -
-                  input.now.getTime()
+                  databaseNow.getTime()
               ),
             };
           }
@@ -237,7 +261,7 @@ export function createDrizzleInterviewStartStore(
         }
 
         const leaseExpiresAt = new Date(
-          input.now.getTime() + INTERVIEW_PROVISIONING_LEASE_MS
+          databaseNow.getTime() + INTERVIEW_PROVISIONING_LEASE_MS
         );
         const updated = await transaction
           .update(interviewSession)
@@ -252,7 +276,13 @@ export function createDrizzleInterviewStartStore(
               eq(
                 interviewSession.startRequestFingerprint,
                 input.requestFingerprint
-              )
+              ),
+              inArray(interviewSession.lifecycleState, [
+                "created",
+                "connecting",
+              ]),
+              isNull(interviewSession.endedAt),
+              sql`CURRENT_TIMESTAMP < ${input.deadlineAt.toISOString()}::timestamptz`
             )
           )
           .returning({ id: interviewSession.id });
@@ -268,28 +298,69 @@ export function createDrizzleInterviewStartStore(
 
     async markProvisioned(input) {
       return database.transaction(async (transaction) => {
+        const databaseNow = await readDatabaseNow(
+          transaction,
+          input.startAttemptId
+        );
         const rows = await transaction
           .update(interviewSession)
           .set({
             provisioningState: "ready",
             provisioningLeaseId: null,
             provisioningLeaseExpiresAt: null,
-            provisionedAt: input.provisionedAt,
+            provisionedAt: databaseNow,
           })
           .where(
             and(
               eq(interviewSession.id, input.startAttemptId),
               eq(interviewSession.provisioningState, "provisioning"),
               eq(interviewSession.provisioningLeaseId, input.leaseId),
-              gt(
-                interviewSession.provisioningLeaseExpiresAt,
-                input.provisionedAt
-              )
+              gt(interviewSession.provisioningLeaseExpiresAt, databaseNow),
+              inArray(interviewSession.lifecycleState, [
+                "connecting",
+                "active",
+                "reconnecting",
+              ]),
+              isNull(interviewSession.endedAt),
+              sql`CURRENT_TIMESTAMP < ${input.deadlineAt.toISOString()}::timestamptz`
             )
           )
           .returning({ id: interviewSession.id });
         if (!rows[0]) throw new InterviewProvisioningLeaseLostError();
         return loadStart(transaction, input.startAttemptId);
+      });
+    },
+
+    async authorizeProvisioned(input) {
+      return database.transaction(async (transaction) => {
+        const rows = await transaction
+          .select()
+          .from(interviewSession)
+          .where(eq(interviewSession.id, input.startAttemptId))
+          .limit(1)
+          .for("update");
+        const session = rows[0];
+        if (
+          !session ||
+          session.userId !== input.userId ||
+          session.startContractVersion !== INTERVIEW_START_CONTRACT_VERSION ||
+          session.startAttemptId !== input.startAttemptId ||
+          session.startRequestFingerprint !== input.requestFingerprint
+        ) {
+          throw new InterviewStartConflictError();
+        }
+        assertMatchingDeadline(session, input.deadlineAt);
+        const databaseNow = await readDatabaseNow(
+          transaction,
+          input.startAttemptId
+        );
+        return {
+          start: await loadStart(transaction, input.startAttemptId),
+          databaseNow,
+          joinable:
+            session.provisioningState === "ready" &&
+            isProvisioningJoinable(session, databaseNow, input.deadlineAt),
+        };
       });
     },
 
@@ -332,6 +403,59 @@ export function createDrizzleInterviewStartStore(
 }
 
 type StartDatabase = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function readDatabaseNow(
+  transaction: StartDatabase,
+  sessionId: string
+): Promise<Date> {
+  const rows = await transaction
+    .select({ databaseNow: sql<Date>`CURRENT_TIMESTAMP` })
+    .from(interviewSession)
+    .where(eq(interviewSession.id, sessionId))
+    .limit(1);
+  const rawDatabaseNow = rows[0]?.databaseNow as Date | string | undefined;
+  const databaseNow =
+    rawDatabaseNow instanceof Date
+      ? rawDatabaseNow
+      : typeof rawDatabaseNow === "string"
+        ? new Date(rawDatabaseNow)
+        : null;
+  if (!databaseNow || Number.isNaN(databaseNow.getTime())) {
+    throw new Error("interview_start_database_time_invalid");
+  }
+  return databaseNow;
+}
+
+function assertMatchingDeadline(
+  session: typeof interviewSession.$inferSelect,
+  expectedDeadlineAt: Date
+): void {
+  if (!session.startedAt || Number.isNaN(expectedDeadlineAt.getTime())) {
+    throw new InterviewStartConflictError();
+  }
+  const config = isRecord(session.config) ? session.config : {};
+  const storedDeadlineAt = deriveInterviewDeadlineAt({
+    startedAt: session.startedAt,
+    durationMinutes: normalizeInterviewDurationMinutes(config.duration),
+  });
+  if (storedDeadlineAt.getTime() !== expectedDeadlineAt.getTime()) {
+    throw new InterviewStartConflictError();
+  }
+}
+
+function isProvisioningJoinable(
+  session: typeof interviewSession.$inferSelect,
+  databaseNow: Date,
+  deadlineAt: Date
+): boolean {
+  return (
+    session.endedAt === null &&
+    ["created", "connecting", "active", "reconnecting"].includes(
+      session.lifecycleState
+    ) &&
+    databaseNow.getTime() < deadlineAt.getTime()
+  );
+}
 
 async function createOrLoadInTransaction(
   transaction: StartDatabase,
