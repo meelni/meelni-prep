@@ -78,6 +78,10 @@ npm run typecheck
   derive a deterministic room name, validate exact room metadata, and reconcile
   exactly one matching dispatch. Ready replays mint a fresh short-lived token
   without creating another room, dispatch, deadline, reservation, or session.
+  Every mint requires a fresh locked database authorization. Transient database
+  authorization failures withhold credentials but do not delete a healthy
+  ready room; destructive reconciliation requires durable terminal or expired
+  state.
 - The interview worker waits for the authenticated `candidate_identity` before
   greeting. Legacy metadata waits for the first non-agent participant; neither
   path may greet an empty room.

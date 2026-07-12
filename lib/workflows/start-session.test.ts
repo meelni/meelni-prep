@@ -244,6 +244,66 @@ test("deadline cleanup wins during token signing and withholds late credentials"
   );
 });
 
+test("transient authorization failure withholds credentials without deleting a ready room and retry reauthorizes", async () => {
+  const fixture = createFixture({ authorizationFailures: 1 });
+
+  const withheld = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.equal(withheld.ok, false);
+  if (!withheld.ok) {
+    assert.equal(withheld.status, 503);
+    assert.equal(
+      withheld.body.error,
+      "interview_start_acknowledgement_pending"
+    );
+    assert.equal(withheld.body.retryable, true);
+  }
+  assert.equal(fixture.store.current?.provisioningState, "ready");
+  assert.deepEqual(fixture.tokenTtls, []);
+  assert.equal(
+    fixture.calls.filter((call) => call === "terminate-room").length,
+    0
+  );
+  assert.equal(
+    fixture.calls.filter((call) => call === "settle-credit").length,
+    0
+  );
+
+  const retried = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.equal(retried.ok, true);
+  assert.deepEqual(fixture.tokenTtls, [300]);
+  assert.equal(fixture.calls.filter((call) => call === "authorize").length, 3);
+  assert.equal(
+    fixture.calls.filter((call) => call === "terminate-room").length,
+    0
+  );
+});
+
+test("a signed token expired by the final database snapshot is withheld without destructive cleanup", async () => {
+  const fixture = createFixture({ tokenExpiresBeforeFinalAuthorization: true });
+
+  const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.status, 503);
+    assert.equal(result.body.error, "interview_token_unavailable");
+    assert.equal(result.body.retryable, true);
+  }
+  assert.equal(fixture.store.current?.provisioningState, "ready");
+  assert.deepEqual(fixture.tokenTtls, [300]);
+  assert.equal(fixture.calls.filter((call) => call === "authorize").length, 2);
+  assert.equal(
+    fixture.calls.filter((call) => call === "terminate-room").length,
+    0
+  );
+  assert.equal(
+    fixture.calls.filter((call) => call === "settle-credit").length,
+    0
+  );
+});
+
 function input(
   overrides: Partial<StartInterviewSessionInput> = {}
 ): StartInterviewSessionInput {
@@ -286,6 +346,8 @@ function createFixture({
   acknowledgementLeaseLost = 0,
   terminalDuringProvider = false,
   expireDuringToken = false,
+  authorizationFailures = 0,
+  tokenExpiresBeforeFinalAuthorization = false,
 } = {}) {
   const calls: string[] = [];
   const reservations: ReserveCreditInput[] = [];
@@ -296,12 +358,19 @@ function createFixture({
   let remainingNonretryableProviderFailures = providerNonretryableFailures;
   let remainingTerminalizationFailures = terminalizationFailures;
   let remainingReleaseFailures = releaseFailures;
+  let remainingAuthorizationFailures = authorizationFailures;
   let lifecycleState: "created" | "connecting" | "failed" = "created";
   let metadata: Record<string, unknown> | null = null;
   let currentTime = STARTED_AT;
   const store = createMemoryStartStore({
     acknowledgementCommitThenThrow,
     acknowledgementLeaseLost,
+    beforeAuthorize: () => {
+      calls.push("authorize");
+      if (remainingAuthorizationFailures-- > 0) {
+        throw new Error("database temporarily unavailable");
+      }
+    },
     now: () => currentTime,
   });
   const deps: StartInterviewSessionDeps = {
@@ -389,6 +458,12 @@ function createFixture({
       if (expireDuringToken) {
         currentTime = tokenInput.expiresAt;
       }
+      const tokenExpiresAt = tokenExpiresBeforeFinalAuthorization
+        ? new Date(tokenInput.observedAt.getTime() + 1_000)
+        : tokenInput.expiresAt;
+      if (tokenExpiresBeforeFinalAuthorization) {
+        currentTime = new Date(tokenExpiresAt.getTime() + 1_000);
+      }
       return {
         ok: true,
         provider: "livekit",
@@ -396,7 +471,7 @@ function createFixture({
           roomName: tokenInput.roomName,
           token: `join-token-${++tokenSequence}`,
           url: tokenInput.env.url,
-          expiresAt: tokenInput.expiresAt,
+          expiresAt: tokenExpiresAt,
         },
       };
     },
@@ -467,6 +542,7 @@ function createFixture({
 function createMemoryStartStore({
   acknowledgementCommitThenThrow = 0,
   acknowledgementLeaseLost = 0,
+  beforeAuthorize = () => undefined,
   now = () => STARTED_AT,
 } = {}): InterviewStartStore & {
   current: PersistedStableInterviewStart | null;
@@ -567,6 +643,7 @@ function createMemoryStartStore({
       return structuredClone(store.current);
     },
     async authorizeProvisioned(input) {
+      beforeAuthorize();
       if (!store.current) throw new Error("missing start");
       if (
         store.current.userId !== input.userId ||

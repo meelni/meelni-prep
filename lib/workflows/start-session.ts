@@ -555,8 +555,6 @@ export async function startInterviewSessionWorkflow(
             requestFingerprint,
             deadlineAt,
           },
-          durableStart,
-          input.env,
           deps
         );
         if (!authorization) {
@@ -604,8 +602,6 @@ export async function startInterviewSessionWorkflow(
       requestFingerprint,
       deadlineAt,
     },
-    start,
-    input.env,
     deps
   );
   if (!authorization) {
@@ -653,8 +649,6 @@ export async function startInterviewSessionWorkflow(
       requestFingerprint,
       deadlineAt,
     },
-    start,
-    input.env,
     deps
   );
   if (!finalAuthorization) {
@@ -669,6 +663,12 @@ export async function startInterviewSessionWorkflow(
     return terminalStartResult("interview_start_not_joinable");
   }
   start = finalAuthorization.start;
+  if (
+    tokenResult.data.expiresAt.getTime() <=
+    finalAuthorization.databaseNow.getTime()
+  ) {
+    return tokenUnavailableResult();
+  }
 
   return {
     ok: true,
@@ -1106,8 +1106,6 @@ async function reconcileLateProvisionedRoom(
 
 async function authorizeProvisionedOrReconcile(
   input: Parameters<InterviewStartStore["authorizeProvisioned"]>[0],
-  fallbackStart: PersistedStableInterviewStart,
-  env: LiveKitEnvironment,
   deps: StartInterviewSessionDeps
 ): Promise<Awaited<
   ReturnType<InterviewStartStore["authorizeProvisioned"]>
@@ -1116,9 +1114,20 @@ async function authorizeProvisionedOrReconcile(
     return await deps.startStore.authorizeProvisioned(input);
   } catch {
     console.error("Interview provisioning authorization remains pending");
-    await reconcileLateProvisionedRoom(fallbackStart, env, deps);
     return null;
   }
+}
+
+function tokenUnavailableResult(): StartInterviewSessionErrorResult {
+  return {
+    ok: false,
+    status: 503,
+    body: {
+      error: "interview_token_unavailable",
+      message: "The interview is ready, but access is temporarily unavailable.",
+      retryable: true,
+    },
+  };
 }
 
 function acknowledgementPendingResult(): StartInterviewSessionErrorResult {

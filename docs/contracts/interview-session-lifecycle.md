@@ -274,11 +274,14 @@ governed by SAV-194 and must be complete before reconnect readiness is closed.
 The token adapter converts the database-observed authorization window to an
 absolute whole-second target, adjusts the provider SDK's relative TTL for the
 signer clock, decodes the signed JWT, and returns its actual `exp` to the join
-workflow. After signing, the workflow reads the session and PostgreSQL clock a
+workflow. The adapter also rechecks wall clock after asynchronous signing.
+After signing, the workflow locks and reads the session and PostgreSQL wall clock a
 second time and withholds the credential unless `exp` is strictly later than
 that snapshot and no later than the whole-second floor of the unchanged earlier
 reconnect or hard deadline. A slow, fast, or delayed signer cannot extend or
-return an already-expired credential.
+return an already-expired credential. A transient failure of that final read
+withholds the credential without treating the ready room as nonjoinable;
+cleanup requires durable terminal/nonjoinable evidence.
 
 ## Legacy Compatibility And Backfill
 

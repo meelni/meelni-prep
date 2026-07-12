@@ -604,6 +604,44 @@ test("a delayed real LiveKit token is withheld when its actual exp crosses the a
   );
 });
 
+test("a token that expires while its signer is delayed is withheld", async () => {
+  const observedAt = new Date("2026-07-10T08:00:00.000Z");
+  const tokenExpiresAt = new Date("2026-07-10T08:00:02.000Z");
+  const deadlineAt = new Date("2026-07-10T08:05:00.000Z");
+  const clock = [observedAt, new Date("2026-07-10T08:00:03.000Z")];
+  const result = await issueInterviewParticipantToken(
+    {
+      identity: "authenticated-user-id",
+      participantName: "Candidate",
+      roomName: "interview-server-owned-room",
+      ttlSeconds: 300,
+      observedAt,
+      expiresAt: deadlineAt,
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      now: () => clock.shift() ?? clock[0]!,
+      accessTokenFactory: class {
+        addGrant() {}
+        async toJwt() {
+          return jwtWithExpiration(
+            Math.floor(tokenExpiresAt.getTime() / 1_000)
+          );
+        }
+      },
+    }
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_token_expiry_invalid");
+  }
+});
+
 test("a real LiveKit token is bounded by the absolute authorization deadline", async () => {
   const issuedAtSeconds = Math.floor(Date.now() / 1_000);
   const observedAt = new Date(issuedAtSeconds * 1_000);
