@@ -12,6 +12,7 @@ import {
   assertCalibrationOpenAIEnvironment,
   assertCalibrationProviderRequestPolicy,
   createCalibrationOpenAIClient,
+  createGuardedCalibrationFetch,
   getCalibrationProviderRequestFields,
 } from "./scorer";
 
@@ -102,4 +103,22 @@ test("paid request policy rejects an unpriced model or output ceiling", () => {
       ),
     /request_policy_mismatch/
   );
+});
+
+test("guarded transport validates authorization at actual fetch dispatch", async () => {
+  const order: string[] = [];
+  const guardedFetch = createGuardedCalibrationFetch(
+    () => order.push("authorize"),
+    async (_input, init) => {
+      order.push("dispatch");
+      assert.equal(init?.redirect, "error");
+      return new Response("{}", { status: 200 });
+    }
+  );
+
+  await guardedFetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    redirect: "follow",
+  });
+  assert.deepEqual(order, ["authorize", "dispatch"]);
 });

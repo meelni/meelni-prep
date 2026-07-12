@@ -1,9 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import type { FeedbackV2Result, FeedbackV2Scores } from "@meelni/core";
 import {
   EVALUATION_ADJUDICATION_VERSION,
@@ -21,22 +17,19 @@ import {
   CALIBRATION_PRICING_CONTRACT,
   CALIBRATION_PRICING_REVIEW_TTL_MS,
   CalibrationSpendGuard,
+  createEmptyCalibrationSpendState,
+  type CalibrationPersistedSpendState,
+  type CalibrationSpendPersistence,
 } from "./calibration-budget";
 import {
-  DurableCalibrationRunLedger,
   SAV_198_APPROVED_RUN_ID,
   SAV_198_SPEND_AUTHORIZATION,
+  buildCalibrationActivatedPlan,
 } from "./calibration-run-ledger";
 
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
 const LIVE_MODEL = CALIBRATION_PRICING_CONTRACT.model;
 const NOW = new Date("2026-07-12T07:00:00.000Z");
-const LEDGER_TEST_ROOT = mkdtempSync(
-  join(tmpdir(), "meelni-calibration-integration-")
-);
-
-test.after(() => rmSync(LEDGER_TEST_ROOT, { recursive: true, force: true }));
-
 test("calibration preflight validates 40 synthetic cases without claiming readiness", async () => {
   const report = await runEvaluationCalibration({
     executionKind: "preflight",
@@ -475,16 +468,41 @@ function withProviderUsage(
 }
 
 function liveGuard(): CalibrationSpendGuard {
-  const ledger = DurableCalibrationRunLedger.open({
+  const plan = buildCalibrationActivatedPlan({
     authorization: SAV_198_SPEND_AUTHORIZATION,
-    ownerId: `test-${randomUUID()}`,
-    clock: () => new Date(NOW.getTime()),
-    stateDirectory: mkdtempSync(join(LEDGER_TEST_ROOT, "run-")),
+    adjudicationApproval: approvalFixture(),
+    model: LIVE_MODEL,
+    repetitions: 3,
+    now: NOW,
   });
+  let spend = createEmptyCalibrationSpendState();
+  const persistence: CalibrationSpendPersistence = {
+    durable: true,
+    runId: SAV_198_APPROVED_RUN_ID,
+    authorizationId: SAV_198_SPEND_AUTHORIZATION.authorizationId,
+    authorizationHash: plan.authorizationHash,
+    activationCommit: "test-activation-commit",
+    planHash: plan.planHash,
+    plannedCalls: plan.plannedCalls,
+    plannedWorstCaseNanoUsd: plan.plannedWorstCaseNanoUsd,
+    assertRequestAuthority() {},
+    assertReservationAuthorized(input) {
+      assert.deepEqual(
+        plan.calls.find(({ callKey }) => callKey === input.callKey),
+        input
+      );
+    },
+    loadSpendState() {
+      return structuredClone(spend);
+    },
+    saveSpendState(next: CalibrationPersistedSpendState) {
+      spend = structuredClone(next);
+    },
+  };
   return new CalibrationSpendGuard(
     LIVE_MODEL,
     () => new Date(NOW.getTime()),
-    ledger
+    persistence
   );
 }
 

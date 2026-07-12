@@ -317,18 +317,6 @@ export async function runEvaluationCalibration(
       }> = [];
       for (let runIndex = 0; runIndex < repetitions; runIndex += 1) {
         const callKey = `${fixture.id}:${runIndex}`;
-        if (
-          options.executionKind === "live_provider" &&
-          options.spendGuard!.hasAttemptedCall(callKey)
-        ) {
-          options.spendGuard!.recordResumedSkippedCall();
-          failures.push({
-            caseId: fixture.id,
-            runIndex,
-            code: "recovered_call_not_replayed",
-          });
-          continue;
-        }
         let reservation:
           | ReturnType<CalibrationSpendGuard["reserve"]>
           | undefined;
