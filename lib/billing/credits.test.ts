@@ -6,7 +6,6 @@ import {
   createMemoryCreditLedgerStore,
   type CreditLedgerTransaction,
   settleReservationInTransaction,
-  type CreditLedgerTransaction,
   type CreditLedgerStore,
 } from "./credits";
 
