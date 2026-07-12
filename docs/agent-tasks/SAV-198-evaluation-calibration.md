@@ -30,14 +30,14 @@
 - Fixture files: `packages/test-fixtures/src/evaluation-calibration.ts` and behavior tests.
 - Workflow files: `lib/evaluation/calibration.ts` and behavior tests using `generateFeedbackWorkflow` with an in-memory store.
 - Operator files: `scripts/run-evaluation-calibration.ts` and package scripts.
-- Provider dependency: optional OpenAI execution through the existing scorer, guarded by an explicit paid-calibration acknowledgement.
+- Provider dependency: optional OpenAI execution through the existing scorer, guarded by an explicit paid-calibration acknowledgement, an all-approved adjudication artifact, the pinned `gpt-5.1-2025-11-13` pricing contract, a 96-call cap, and a $3 hard spend cap.
 - Docs: calibration contract, operations runbook, and a checked preflight report.
 
 ## Validation
 
 - Required commands: calibration preflight/self-test, fixture/core/workflow tests, `npm run check:ci`, `npm run build`, and `npm run verify:agent` when the local environment permits it.
 - Fixtures: 10 Product Sense, 10 Execution, 10 Strategy, and 10 Behavioral cases; every round includes weak, average, and strong sufficient answers plus full, partial, short, and low-signal states.
-- Acceptance thresholds: 100% exact evidence validity, insufficient handling, and model identity; at least 80% pooled and per-dimension score agreement; at least 75% per-round and per-state agreement; maximum repeated-run dimension range of 1; and exactly three runs within a 96-call cap.
+- Acceptance thresholds: 100% exact evidence validity, insufficient handling, and model identity; at least 80% pooled and per-dimension score agreement; at least 75% per-round and per-state agreement; maximum repeated-run dimension range of 1; and exactly three runs within 96 calls and $3 total estimated committed spend.
 
 ## Rollout
 

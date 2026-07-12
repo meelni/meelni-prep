@@ -10,10 +10,16 @@ import {
 import {
   createDeterministicCalibrationEvaluator,
   runEvaluationCalibration,
+  type CalibrationEvaluator,
 } from "./calibration";
 import { getEvaluationAdjudicationHashes } from "./calibration-approval";
+import {
+  CALIBRATION_PRICING_CONTRACT,
+  CalibrationSpendGuard,
+} from "./calibration-budget";
 
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
+const LIVE_MODEL = CALIBRATION_PRICING_CONTRACT.model;
 const NOW = new Date("2026-07-10T16:00:00.000Z");
 
 test("calibration preflight validates 40 synthetic cases without claiming readiness", async () => {
@@ -84,15 +90,13 @@ test("deterministic self-test proves the harness but keeps live acceptance pendi
 });
 
 test("calibration fails a live report when repeated scores are unstable", async () => {
-  const baseline = createDeterministicCalibrationEvaluator(
-    "unstable-fixture-model"
-  );
+  const baseline = createDeterministicCalibrationEvaluator(LIVE_MODEL);
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
-    modelVersion: "unstable-fixture-model",
+    modelVersion: LIVE_MODEL,
     repetitions: 3,
     now: NOW,
-    evaluator: async (input) => {
+    evaluator: withProviderUsage(async (input) => {
       const output = await baseline(input);
       return input.runIndex === 2
         ? {
@@ -101,7 +105,9 @@ test("calibration fails a live report when repeated scores are unstable", async 
             overallScore: 0,
           }
         : output;
-    },
+    }),
+    spendGuard: new CalibrationSpendGuard(LIVE_MODEL),
+    adjudicationApproval: approvalFixture(),
   });
 
   assert.ok(
@@ -122,20 +128,23 @@ test("calibration fails a live report when repeated scores are unstable", async 
 });
 
 test("a constant-high scorer fails the varied corpus instead of gaming a pooled band", async () => {
-  const baseline = createDeterministicCalibrationEvaluator("constant-eight");
+  const baseline = createDeterministicCalibrationEvaluator(LIVE_MODEL);
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
-    modelVersion: "constant-eight",
+    modelVersion: LIVE_MODEL,
     repetitions: 3,
     now: NOW,
-    evaluator: async (input) =>
+    evaluator: withProviderUsage(async (input) =>
       withScores(await baseline(input), {
         structure: 8,
         clarity: 8,
         insight: 8,
         communication: 8,
         leadership: 8,
-      }),
+      })
+    ),
+    spendGuard: new CalibrationSpendGuard(LIVE_MODEL),
+    adjudicationApproval: approvalFixture(),
   });
 
   assert.ok(report.metrics.scoreBandAgreementRate! < 0.8);
@@ -157,16 +166,18 @@ test("a constant-high scorer fails the varied corpus instead of gaming a pooled 
 });
 
 test("a completely broken leadership scorer cannot pass at the pooled 80 percent boundary", async () => {
-  const baseline = createDeterministicCalibrationEvaluator("broken-leadership");
+  const baseline = createDeterministicCalibrationEvaluator(LIVE_MODEL);
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
-    modelVersion: "broken-leadership",
+    modelVersion: LIVE_MODEL,
     repetitions: 3,
     now: NOW,
-    evaluator: async (input) => {
+    evaluator: withProviderUsage(async (input) => {
       const output = await baseline(input);
       return withScores(output, { ...output.scores, leadership: 0 });
-    },
+    }),
+    spendGuard: new CalibrationSpendGuard(LIVE_MODEL),
+    adjudicationApproval: approvalFixture(),
   });
 
   assert.equal(report.metrics.scoreBandAgreementRate, 0.8);
@@ -174,37 +185,54 @@ test("a completely broken leadership scorer cannot pass at the pooled 80 percent
   assert.equal(report.gate.liveProviderAcceptance, "failed");
 });
 
-test("model provenance mismatch fails every otherwise valid output", async () => {
+test("model provenance mismatch stops after the first otherwise valid output", async () => {
   const baseline = createDeterministicCalibrationEvaluator(
     "provider-observed-snapshot"
   );
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
-    modelVersion: "configured-model-alias",
+    modelVersion: LIVE_MODEL,
     repetitions: 3,
     now: NOW,
-    evaluator: baseline,
+    evaluator: withProviderUsage(baseline),
+    spendGuard: new CalibrationSpendGuard(LIVE_MODEL),
+    adjudicationApproval: approvalFixture(),
   });
 
   assert.equal(report.metrics.modelVersionMatchRate, 0);
-  assert.deepEqual(report.execution.observedModelVersions, [
-    "provider-observed-snapshot",
-  ]);
+  assert.deepEqual(report.execution.observedModelVersions, []);
   assert.equal(report.gate.liveProviderAcceptance, "failed");
-  assert.ok(
-    report.failures.every(
-      (failure) =>
-        failure.code !== "model_version_mismatch" ||
-        (failure.expectedModelVersion === "configured-model-alias" &&
-          failure.observedModelVersion === "provider-observed-snapshot")
-    )
-  );
-  assert.equal(
-    report.failures.filter(
-      (failure) => failure.code === "model_version_mismatch"
-    ).length,
-    96
-  );
+  assert.equal(report.execution.cost?.attemptedCalls, 1);
+  assert.equal(report.execution.cost?.completedCalls, 0);
+  assert.equal(report.execution.cost?.stopReason, "provider_model_mismatch");
+  assert.equal(report.execution.cost?.actualCostComplete, false);
+});
+
+test("a failed response from an unexpected model retains its reservation", async () => {
+  const report = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 3,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: new CalibrationSpendGuard(LIVE_MODEL),
+    evaluator: async () => {
+      throw Object.assign(new Error("provider response rejected"), {
+        observedModel: "unpriced-provider-snapshot",
+        usage: {
+          inputTokens: 100,
+          cachedInputTokens: 0,
+          outputTokens: 100,
+          totalTokens: 200,
+        },
+      });
+    },
+  });
+
+  assert.equal(report.execution.cost?.attemptedCalls, 1);
+  assert.equal(report.execution.cost?.completedCalls, 0);
+  assert.equal(report.execution.cost?.stopReason, "provider_model_mismatch");
+  assert.equal(report.execution.cost?.actualCostComplete, false);
 });
 
 test("run budget rejects a repetition typo before the evaluator can be called", async () => {
@@ -212,13 +240,15 @@ test("run budget rejects a repetition typo before the evaluator can be called", 
   await assert.rejects(
     runEvaluationCalibration({
       executionKind: "live_provider",
-      modelVersion: "budget-test",
+      modelVersion: LIVE_MODEL,
       repetitions: 4,
       now: NOW,
       evaluator: async () => {
         evaluatorCalls += 1;
         throw new Error("should not run");
       },
+      spendGuard: new CalibrationSpendGuard(LIVE_MODEL),
+      adjudicationApproval: approvalFixture(),
     }),
     /must be exactly 3/
   );
@@ -239,43 +269,70 @@ test("approved adjudication without a live run remains pending live calibration"
   assert.equal(report.gate.launchAcceptance, "pending_live_provider_run");
 });
 
-test("live-pass with a pending decision remains pending signoff", async () => {
-  const model = "test-live-pass-pending-signoff";
-  const report = await runEvaluationCalibration({
-    executionKind: "live_provider",
-    evaluator: createDeterministicCalibrationEvaluator(model),
-    modelVersion: model,
-    repetitions: 3,
-    now: NOW,
-    adjudicationApproval: approvalFixture(
-      "product_sense:01:caregiver-planning"
-    ),
-  });
-  assert.equal(report.gate.liveProviderAcceptance, "passed");
-  assert.equal(
-    report.gate.adjudicationAcceptance,
-    "pending_product_owner_pm_signoff"
+test("a pending adjudication decision blocks paid evaluation before call one", async () => {
+  let evaluatorCalls = 0;
+  await assert.rejects(
+    runEvaluationCalibration({
+      executionKind: "live_provider",
+      evaluator: async () => {
+        evaluatorCalls += 1;
+        throw new Error("must not run");
+      },
+      modelVersion: LIVE_MODEL,
+      repetitions: 3,
+      now: NOW,
+      adjudicationApproval: approvalFixture(
+        "product_sense:01:caregiver-planning"
+      ),
+    }),
+    /requires_approved_adjudication/
   );
-  assert.equal(report.gate.launchAcceptance, "pending_adjudication_signoff");
+  assert.equal(evaluatorCalls, 0);
 });
 
 test("approved adjudication and live-pass satisfy the combined gate", async () => {
-  const model = "test-live-pass-approved";
+  const model = LIVE_MODEL;
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
-    evaluator: createDeterministicCalibrationEvaluator(model),
+    evaluator: withProviderUsage(
+      createDeterministicCalibrationEvaluator(model)
+    ),
     modelVersion: model,
     repetitions: 3,
     now: NOW,
     adjudicationApproval: approvalFixture(),
+    spendGuard: new CalibrationSpendGuard(model),
   });
   assert.equal(report.gate.adjudicationAcceptance, "passed");
   assert.equal(report.gate.liveProviderAcceptance, "passed");
   assert.equal(report.gate.launchAcceptance, "passed");
+  assert.equal(report.execution.cost?.attemptedCalls, 96);
+  assert.equal(report.execution.cost?.completedCalls, 96);
+  assert.equal(report.execution.cost?.stopReason, "completed_plan");
+  assert.ok(report.execution.cost!.estimatedCommittedCostUsd < 3);
+  const serialized = JSON.stringify(report);
+  const syntheticTranscriptText =
+    evaluationCalibrationCases[0].transcript[0].text;
+  assert.equal(serialized.includes(syntheticTranscriptText), false);
+  assert.equal(serialized.includes("OPENAI_API_KEY"), false);
 });
 
 function withScores(output: FeedbackV2Result, scores: FeedbackV2Scores) {
   return { ...output, scores, overallScore: 0 };
+}
+
+function withProviderUsage(
+  evaluator: CalibrationEvaluator
+): CalibrationEvaluator {
+  return async (input) => ({
+    evaluation: (await evaluator(input)) as FeedbackV2Result,
+    usage: {
+      inputTokens: 100,
+      cachedInputTokens: 0,
+      outputTokens: 100,
+      totalTokens: 200,
+    },
+  });
 }
 
 function approvalFixture(changesRequiredCaseId?: string) {

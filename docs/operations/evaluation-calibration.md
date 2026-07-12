@@ -50,21 +50,31 @@ preflight requires all eight to skip evaluation and make zero provider calls.
 
 Do not run this step without explicit authorization for provider spend and
 confirmation that the intended model/configuration is the one being evaluated.
-The minimum run evaluates 32 scored synthetic transcripts three times, for 96
-model calls. The eight insufficient transcripts are expected to make zero
-model calls. Three repetitions and 96 calls are also hard maximums; other
-repetition counts fail before evaluator work.
+The approved run evaluates 32 scored synthetic transcripts three times, for up
+to 96 model calls. The eight insufficient transcripts are expected to make zero
+model calls. Three repetitions, 96 calls, and $3 total estimated committed
+spend are hard maximums. The runner stops before any call whose worst-case
+reservation could exceed the remaining spend cap.
 
 `calibration:live` loads `.env.local` through `tsx --env-file=.env.local`, just
 like other local feedback tooling. Run `npm run setup:local` first if the file
 does not exist. Keep both the provider key and model configuration only in that
 gitignored file.
 
-Before authorizing spend, set `OPENAI_FEEDBACK_MODEL` to the exact model ID the
-provider response is expected to report, preferably a pinned snapshot rather
-than a moving alias. The report treats this configured value as an expectation,
-not observed proof. Each validated output carries the API response's model ID,
-and any mismatch fails acceptance with case/run diagnostics.
+Set `OPENAI_FEEDBACK_MODEL=gpt-5.1-2025-11-13`. That exact snapshot is bound to
+the repository's reviewed `evaluation-calibration-pricing.v1` contract; a
+moving alias or any other model fails before call one. The pricing contract was
+reviewed against the official OpenAI GPT-5.1 model page on 2026-07-11 and uses
+Standard rates of $1.25/M uncached input, $0.125/M cached input, and $10/M
+output tokens. A pricing change requires a reviewed code change, not an
+environment override.
+
+Each call reserves its conservative input ceiling plus at most 2,000 completion
+tokens before invocation. Provider usage reconciles that reservation to actual
+cost. Missing/malformed usage, usage above the reservation, or provider failure
+stops the run and forbids another call; unresolved spend retains its full
+worst-case reservation. The report exposes attempted/completed calls and
+reserved, reconciled, unresolved, and estimated committed costs.
 
 After authorization, set the acknowledgement only for the command invocation:
 
@@ -75,7 +85,9 @@ MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   --output /tmp/meelni-calibration-live.json
 ```
 
-The command also requires `OPENAI_API_KEY`. Never paste a key into chat,
+The command also requires `OPENAI_API_KEY` and a validated, all-approved
+adjudication artifact. Spend approval does not approve the candidate gold set.
+Never paste a key into chat,
 documentation, Linear, or a report. The acknowledgement is deliberately exact
 so an ambient boolean cannot accidentally enable paid calibration.
 
@@ -93,8 +105,11 @@ secrets or provider responses containing sensitive data.
   round.
 - Expected-state mismatches and invalid gold anchors are zero.
 - Provider calls are zero for preflight and deterministic modes. In a live run,
-  they equal scored cases multiplied by repetitions; local evaluator calls are
-  reported separately.
+  attempted and completed calls are reported separately and can be fewer than
+  96 when a fail-closed stop occurs.
+- The cost report names the pinned pricing contract, never exceeds 96 attempted
+  calls or $3 estimated committed spend, and has `completed_plan` only after all
+  96 calls reconcile successfully.
 - Evidence validity, adjudicated evidence match, and insufficient handling are
   all 100%.
 - Pooled and per-dimension score-band agreement are at least 80%; each round and
@@ -108,6 +123,8 @@ secrets or provider responses containing sensitive data.
   status is never treated as ground truth.
 - Candidate and corpus hashes match the separately stored approval artifact,
   and all 32 scored-case decisions are approved.
+- The report contains no prompt text, transcript text, provider body, secret,
+  or Production/customer-data payload.
 
 If a live run fails, keep the launch gate closed. Inspect case/run/dimension
 failure records, update the evaluator or adjudication deliberately, rerun local

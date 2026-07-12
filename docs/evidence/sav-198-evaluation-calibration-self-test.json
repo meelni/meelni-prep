@@ -1,6 +1,6 @@
 {
-  "contractVersion": "evaluation-calibration-report.v3",
-  "generatedAt": "2026-07-10T17:40:44.301Z",
+  "contractVersion": "evaluation-calibration-report.v4",
+  "generatedAt": "2026-07-12T06:16:18.781Z",
   "execution": {
     "kind": "deterministic_self_test",
     "modelVersion": "deterministic-calibration-self-test.v1",
@@ -8,9 +8,8 @@
     "customerDataUsed": false,
     "paidProviderCalled": false,
     "modelVersionBasis": "deterministic_identifier",
-    "observedModelVersions": [
-      "deterministic-calibration-self-test.v1"
-    ]
+    "observedModelVersions": ["deterministic-calibration-self-test.v1"],
+    "cost": null
   },
   "versions": {
     "goldSet": "pm-gold-set.v3",
