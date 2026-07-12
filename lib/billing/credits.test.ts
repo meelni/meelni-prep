@@ -27,6 +27,7 @@ test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", 
     "findGrantByIdempotencyKey",
     "findReservationByKey",
     "findTransactionByIdempotencyKey",
+    "getSubscriptionCreditPolicy",
     "listAllocations",
     "listSpendableGrants",
     "listUserGrants",
@@ -2038,6 +2039,98 @@ test("subscription renewal respects the rollover cap and 60 day expiration", asy
     rolloverIdempotencyKey: "rollover:2026-07",
   });
   assert.equal(duplicate.rolloverGrant?.id, rollover.rolloverGrant?.id);
+});
+
+test("period-end policy bounds only subscription-derived credits and reactivation preserves expiry", async () => {
+  let currentTime = new Date("2026-08-01T11:59:59.999Z");
+  const periodEnd = new Date("2026-08-01T12:00:00.000Z");
+  const rolloverExpiry = new Date("2026-09-01T12:00:00.000Z");
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => currentTime,
+  });
+
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "renewal:period-boundary",
+  });
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "starter",
+    source: "rollover",
+    includedCredits: 1,
+    expiresAt: rolloverExpiry,
+    idempotencyKey: "rollover:period-boundary",
+  });
+  for (const [source, catalogId] of [
+    ["trial", "trial"],
+    ["checkout", "interview_pass"],
+    ["admin", "starter"],
+    ["refund", "starter"],
+    ["migration", "starter"],
+  ] as const) {
+    await ledger.grantCredits({
+      userId: "user-1",
+      catalogId,
+      source,
+      includedCredits: 1,
+      expiresAt: null,
+      idempotencyKey: `${source}:period-boundary`,
+    });
+  }
+
+  store.setSubscriptionCreditPolicy("user-1", {
+    restricted: true,
+    availableThrough: periodEnd,
+  });
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 7);
+
+  currentTime = periodEnd;
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 5);
+  const reservation = await ledger.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:after-period",
+    credits: 5,
+  });
+  const reservedSources = new Set(
+    await Promise.all(
+      reservation.allocations.map(
+        async ({ grantId }) =>
+          (await store.listUserGrants("user-1")).find(
+            (grant) => grant.id === grantId
+          )?.source
+      )
+    )
+  );
+  assert.deepEqual([...reservedSources].sort(), [
+    "admin",
+    "checkout",
+    "migration",
+    "refund",
+    "trial",
+  ]);
+
+  store.setSubscriptionCreditPolicy("user-1", {
+    restricted: false,
+    availableThrough: null,
+  });
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 2);
+  const grants = await store.listUserGrants("user-1");
+  assert.equal(
+    grants.find(({ source }) => source === "subscription_renewal")?.expiresAt,
+    null
+  );
+  assert.equal(
+    grants
+      .find(({ source }) => source === "rollover")
+      ?.expiresAt?.toISOString(),
+    rolloverExpiry.toISOString()
+  );
 });
 
 test("subscription renewal replay preserves a committed zero-rollover outcome", async () => {

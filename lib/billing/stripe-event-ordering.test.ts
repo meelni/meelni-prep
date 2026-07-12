@@ -57,6 +57,45 @@ test("subscription deletion wins same-second ties in either arrival order", () =
   }
 });
 
+test("an authoritative provider retrieval converges same-second update permutations", () => {
+  assert.equal(
+    shouldApplyStripeSubscriptionState({
+      currentStatus: "active",
+      currentStripeSubscriptionId: "sub_current",
+      event: "subscription_retrieved",
+      eventTimestamp: at(10),
+      incomingStripeSubscriptionId: "sub_current",
+      lastEventTimestamp: at(10),
+    }),
+    true
+  );
+  assert.equal(
+    shouldApplyStripeSubscriptionState({
+      currentStatus: "active",
+      currentStripeSubscriptionId: "sub_current",
+      event: "subscription_retrieved",
+      eventTimestamp: at(9),
+      incomingStripeSubscriptionId: "sub_current",
+      lastEventTimestamp: at(10),
+    }),
+    false
+  );
+});
+
+test("an authoritative retrieval applies when a created event follows a same-resource checkout row", () => {
+  assert.equal(
+    shouldApplyStripeSubscriptionState({
+      currentStatus: "active",
+      currentStripeSubscriptionId: "sub_current",
+      event: "subscription_retrieved",
+      eventTimestamp: at(10),
+      incomingStripeSubscriptionId: "sub_current",
+      lastEventTimestamp: at(10),
+    }),
+    true
+  );
+});
+
 test("a new subscription can replace a canceled subscription", () => {
   assert.equal(
     shouldApplyStripeSubscriptionState({

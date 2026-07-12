@@ -16,6 +16,8 @@
 - Out: manual support refunds, Stripe credential changes, catalog changes,
   migrations, and Production/test-mode provider mutations.
 - Provider dependency: Stripe test-mode rehearsal after code review.
+- Open owner gate: approve or reject immediate paid-access loss after irreversible
+  account deletion; this draft does not treat the exception as accepted.
 
 ## Validation
 
@@ -23,6 +25,8 @@
 - `npm run test:api`, `npm run test:workflows`, `npm run check:ci`, and
   `npm run build`.
 - Stripe test-mode cancellation/reactivation evidence before launch.
+- Source-aware entitlement boundary tests at, before, and after period end plus
+  delayed/same-second webhook permutations.
 
 ## Rollout
 

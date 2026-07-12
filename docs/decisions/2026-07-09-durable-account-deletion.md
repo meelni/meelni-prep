@@ -45,11 +45,14 @@ report success while the authentication account remained active.
   metadata and client reference match. Any metadata, Checkout client-reference,
   mapping, or tombstone-fingerprint disagreement fails before active billing or
   destructive cleanup.
-- Reconcile invoices through every paginated paid InvoicePayment allocation.
-  Exact partial-allocation refunds carry a one-way allocation fingerprint, and
-  customer deletion waits for terminal allocation-specific or full-charge
-  refund evidence. Unsupported PaymentRecords and ambiguous partial refunds
-  remain recoverable for manual reconciliation.
+- Account deletion cancels captured subscriptions without proration, deletes
+  captured customer resources, and does not create payment, invoice,
+  customer-balance, or card refunds. Historical financial records remain subject
+  to Stripe and legal retention. An exceptional refund is a separate manual
+  support decision, never a deletion-workflow side effect.
+- Whether irreversible account deletion may end paid access immediately without
+  compensation remains an explicit owner approval gate. This decision does not
+  approve that product/economic exception.
 
 ## Consequences
 

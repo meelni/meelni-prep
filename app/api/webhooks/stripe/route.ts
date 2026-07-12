@@ -44,6 +44,10 @@ import {
 } from "@/lib/billing/account-deletion-guard";
 import { isAlreadyDeletedProviderError } from "@/lib/workflows/delete-account";
 import {
+  lockBillingUserUnlessDeleting,
+  retrieveAuthoritativeSubscription,
+} from "@/lib/billing/subscription-state";
+import {
   STRIPE_API_VERSION,
   getStripeCatalogIdForPrice,
   isStripeCheckoutCatalogId,
@@ -326,7 +330,7 @@ export async function POST(req: NextRequest) {
 
         case "customer.subscription.created":
         case "customer.subscription.updated":
-          await handleSubscriptionUpdate(event);
+          await handleSubscriptionUpdate(event, stripe);
           break;
 
         case "customer.subscription.deleted":
@@ -491,8 +495,14 @@ async function getUserIdFromStripe(
  * Updates subscription state with optimistic locking
  * Phase 0.5C: Added customer mapping upsert and trial tracking (P0 fixes #2, #4)
  */
-async function handleSubscriptionUpdate(event: Stripe.Event) {
-  const stripeSubscription = event.data.object as Stripe.Subscription;
+async function handleSubscriptionUpdate(event: Stripe.Event, stripe: Stripe) {
+  const eventSubscription = event.data.object as Stripe.Subscription;
+  // A retrieved snapshot is authoritative even when multiple update events have
+  // Stripe's same second-resolution timestamp or arrive out of order.
+  const stripeSubscription = await retrieveAuthoritativeSubscription(
+    stripe.subscriptions,
+    eventSubscription.id
+  );
 
   // Phase 0.5C: Use metadata fallback (P0 fix #3)
   const userId = await getUserIdFromStripe(
@@ -1200,27 +1210,6 @@ function getInvoicePriceId(invoice: Stripe.Invoice): string | undefined {
   return invoice.lines.data[0]?.pricing?.price_details?.price;
 }
 
-type BillingTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-async function lockBillingUserUnlessDeleting(
-  tx: BillingTransaction,
-  userId: string
-) {
-  const [user] = await tx
-    .select({ id: appUser.id })
-    .from(appUser)
-    .where(eq(appUser.id, userId))
-    .limit(1)
-    .for("update");
-  if (!user) throw new Error("billing_user_not_found");
-  const [tombstone] = await tx
-    .select({ userId: accountDeletionRequest.userId })
-    .from(accountDeletionRequest)
-    .where(eq(accountDeletionRequest.userId, userId))
-    .limit(1);
-  if (tombstone) throw new Error("account_deletion_pending");
-}
-
 function getExpandableId(value: { id: string } | string | null | undefined) {
   if (!value) return null;
   return typeof value === "string" ? value : value.id;
@@ -1249,7 +1238,6 @@ async function getInvoicePaymentCorrelation(invoice: Stripe.Invoice) {
       getExpandableId(expandedPaymentIntent?.latest_charge),
   };
 }
-
 async function upsertStripeCustomerMapping({
   stripeCustomerId,
   stripeSubscriptionId,
