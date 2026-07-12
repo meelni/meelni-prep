@@ -51,6 +51,7 @@ export async function revalidateRegisteredStacks({
           remote,
           fetchImpl,
           manifestPath,
+          api,
         })
       );
     } catch (error) {
@@ -64,6 +65,13 @@ export async function revalidateRegisteredStacks({
     }
   }
   return results;
+}
+
+export function classifyRevalidationOutcome({ results, triggerPr } = {}) {
+  if (results.some((result) => result.status === "error")) return "error";
+  if (!Number.isInteger(triggerPr)) return "success";
+  const triggerResult = results.find((result) => result.pr === triggerPr);
+  return triggerResult?.status === "fail" ? "fail" : "success";
 }
 
 export async function revalidateAffectedStacksForEvent({
@@ -107,21 +115,26 @@ export async function revalidateAffectedStacksForEvent({
 
 async function main() {
   try {
+    const manifest = loadStackManifest();
     const eventPathIndex = process.argv.indexOf("--event-path");
+    const event =
+      eventPathIndex === -1
+        ? null
+        : JSON.parse(readFileSync(process.argv[eventPathIndex + 1], "utf8"));
     const results =
       eventPathIndex === -1
-        ? await revalidateRegisteredStacks()
+        ? await revalidateRegisteredStacks({ manifest })
         : await revalidateAffectedStacksForEvent({
-            eventContent: readFileSync(
-              process.argv[eventPathIndex + 1],
-              "utf8"
-            ),
+            eventContent: JSON.stringify(event),
+            manifest,
           });
     console.log(JSON.stringify(results, null, 2));
     if (
-      results.some(
-        (result) => result.status === "fail" || result.status === "error"
-      )
+      classifyRevalidationOutcome({
+        results,
+        triggerPr: event?.pull_request?.number,
+        manifest,
+      }) !== "success"
     ) {
       process.exitCode = 1;
     }
