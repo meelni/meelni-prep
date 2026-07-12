@@ -4,6 +4,11 @@ This directory contains reproducible, machine-readable evidence generated from
 non-secret repository inputs. Reports must not contain customer data, provider
 credentials, recordings, or real transcripts.
 
+Live calibration reports additionally exclude prompt and transcript text and
+record only sanitized case-level diagnostics plus aggregate call/cost
+accounting. Spend authorization does not satisfy the separately required PM or
+product-owner adjudication approval.
+
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are local evidence only and deliberately keep live-provider launch acceptance
 pending.
