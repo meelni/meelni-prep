@@ -657,7 +657,7 @@ test("startInterviewSessionWorkflow fails closed before reservation when trial a
   assert.deepEqual(calls, ["upsertUser", "ensureTrialGrant"]);
 });
 
-test("startInterviewSessionWorkflow maps retryable LiveKit failures to service unavailable", async () => {
+test("partial LiveKit dispatch failure durably owns cleanup when immediate teardown fails", async () => {
   const calls: string[] = [];
   const lifecycle = createStatefulLifecycleHarness();
   const result = await startInterviewSessionWorkflow(
@@ -685,6 +685,13 @@ test("startInterviewSessionWorkflow maps retryable LiveKit failures to service u
       releaseReservation: async (input) => {
         calls.push(`release:${input.idempotencyKey}`);
       },
+      terminateRoom: async () => {
+        calls.push("terminate-room");
+        throw new Error("provider unavailable");
+      },
+      markRoomCleanupComplete: async () => {
+        calls.push("clear-cleanup");
+      },
       transitionLifecycle: async (input) => {
         calls.push(`transition:${input.to}`);
         return lifecycle.transition(input);
@@ -704,10 +711,12 @@ test("startInterviewSessionWorkflow maps retryable LiveKit failures to service u
     "transition:connecting",
     "startInterviewRoom",
     "transition:failed",
+    "terminate-room",
     "release:release:interview-start:fixture-user-1:interview-1782600000000-i00000",
   ]);
   assert.equal(lifecycle.current().state, "failed");
   assert.equal(lifecycle.current().terminalReason, "provider_failure");
+  assert.equal(calls.includes("clear-cleanup"), false);
 });
 
 test("deadline scheduling failure closes the room, terminalizes, and releases credit", async () => {
@@ -727,6 +736,9 @@ test("deadline scheduling failure closes the room, terminalizes, and releases cr
       },
       terminateRoom: async () => {
         calls.push("terminate-room");
+      },
+      markRoomCleanupComplete: async () => {
+        calls.push("clear-cleanup");
       },
       transitionLifecycle: async (input) => {
         calls.push(`transition:${input.to}`);
@@ -749,11 +761,91 @@ test("deadline scheduling failure closes the room, terminalizes, and releases cr
   assert.deepEqual(calls, [
     "transition:connecting",
     "schedule",
-    "terminate-room",
     "transition:failed",
+    "terminate-room",
+    "clear-cleanup",
     "release",
   ]);
   assert.equal(lifecycle.current().state, "failed");
+});
+
+test("post-provision failure claims cleanup even when signed presence already activated", async () => {
+  const calls: string[] = [];
+  const now = new Date("2026-06-29T00:00:00.000Z");
+  let failedAttempts = 0;
+  const lifecycle = (state: "active" | "ending" | "failed") => ({
+    sessionId: createProductSenseInterviewFixture().session.id,
+    state,
+    version: state === "active" ? 3 : state === "ending" ? 4 : 5,
+    terminalReason: state === "active" ? null : ("provider_failure" as const),
+    legacyStatus:
+      state === "failed" ? ("error" as const) : ("in_progress" as const),
+    activatedAt: now,
+    endingAt: state === "active" ? null : now,
+    lastTransitionAt: now,
+    endedAt: state === "failed" ? now : null,
+  });
+
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: { roundType: "product_sense" },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      scheduleDeadline: async () => {
+        calls.push("schedule");
+        throw new Error("deadline provider unavailable");
+      },
+      transitionLifecycle: async (input) => {
+        calls.push(`transition:${input.to}`);
+        if (input.to === "connecting") return createTransitionResult(input);
+        if (input.to === "ending") {
+          return {
+            ok: true,
+            disposition: "applied",
+            lifecycle: lifecycle("ending"),
+          };
+        }
+        failedAttempts += 1;
+        return failedAttempts === 1
+          ? {
+              ok: false,
+              disposition: "rejected",
+              code: "invalid_transition",
+              lifecycle: lifecycle("active"),
+            }
+          : {
+              ok: true,
+              disposition: "applied",
+              lifecycle: lifecycle("failed"),
+            };
+      },
+      terminateRoom: async () => {
+        calls.push("terminate");
+        throw new Error("provider unavailable");
+      },
+      markRoomCleanupComplete: async () => {
+        calls.push("clear");
+      },
+      releaseReservation: async () => {
+        calls.push("release");
+      },
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(calls, [
+    "transition:connecting",
+    "schedule",
+    "transition:failed",
+    "transition:ending",
+    "transition:failed",
+    "terminate",
+    "release",
+  ]);
+  assert.equal(calls.includes("clear"), false);
 });
 
 test("missing persisted start time fails closed before room creation and releases credit", async () => {
@@ -841,48 +933,57 @@ test("provider failure releases credit even when lifecycle persistence fails", a
   assert.deepEqual(calls, [
     "transition:connecting",
     "transition:failed",
+    "transition:ending",
     "release",
   ]);
 });
 
-test("credit consume failure returns a retryable response and releases credit when lifecycle persistence also fails", async () => {
+test("credit consume failure surfaces lifecycle persistence failure after cleanup and release", async () => {
   const calls: string[] = [];
-  const result = await startInterviewSessionWorkflow(
-    {
-      user,
-      body: { roundType: "product_sense" },
-      env: createLiveKitStartFixture().input.env,
-      interviewAgentName: createLiveKitStartFixture().input.agentName,
-    },
-    createDeps({
-      consumeReservation: async () => {
-        calls.push("consume");
-        throw new Error("credit ledger unavailable");
-      },
-      transitionLifecycle: async (input) => {
-        calls.push(`transition:${input.to}`);
-        if (input.to === "connecting") return createTransitionResult(input);
-        return {
-          ok: false,
-          disposition: "conflict",
-          lifecycle: createTransitionResult(input).lifecycle,
-        };
-      },
-      releaseReservation: async () => {
-        calls.push("release");
-      },
-    })
+  await assert.rejects(
+    () =>
+      startInterviewSessionWorkflow(
+        {
+          user,
+          body: { roundType: "product_sense" },
+          env: createLiveKitStartFixture().input.env,
+          interviewAgentName: createLiveKitStartFixture().input.agentName,
+        },
+        createDeps({
+          consumeReservation: async () => {
+            calls.push("consume");
+            throw new Error("credit ledger unavailable");
+          },
+          transitionLifecycle: async (input) => {
+            calls.push(`transition:${input.to}`);
+            if (input.to === "connecting") return createTransitionResult(input);
+            return {
+              ok: false,
+              disposition: "conflict",
+              lifecycle: createTransitionResult(input).lifecycle,
+            };
+          },
+          terminateRoom: async () => {
+            calls.push("terminate");
+          },
+          markRoomCleanupComplete: async () => {
+            calls.push("clear");
+          },
+          releaseReservation: async () => {
+            calls.push("release");
+          },
+        })
+      ),
+    /session_lifecycle_conflict/
   );
 
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    assert.equal(result.status, 503);
-    assert.equal(result.body.error, "service_unavailable");
-  }
   assert.deepEqual(calls, [
     "transition:connecting",
     "consume",
     "transition:failed",
+    "transition:ending",
+    "terminate",
+    "clear",
     "release",
   ]);
 });
@@ -921,6 +1022,7 @@ function createDeps(
     releaseReservation: async () => {},
     scheduleDeadline: async () => {},
     terminateRoom: async () => {},
+    markRoomCleanupComplete: async () => {},
     livekitProvider: {
       startInterviewRoom: async () => ({
         ok: true,

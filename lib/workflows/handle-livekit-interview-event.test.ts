@@ -93,6 +93,33 @@ test("candidate loss before agent readiness cannot activate an empty session", a
   );
 });
 
+test("candidate identity cannot satisfy the distinct signed agent receipt", async () => {
+  const fixture = createFixture(
+    createSession({
+      state: "connecting",
+      version: 2,
+      activatedAt: null,
+      runtimeReadyAt: null,
+      lastTransportEventAt: null,
+      lastTransportEventId: null,
+      lastTransportEventName: null,
+    })
+  );
+
+  const result = await handleLiveKitInterviewEventWorkflow(
+    {
+      ...event("participant_joined", USER_ID, "wrong-kind"),
+      participantKind: 4,
+    },
+    fixture.deps
+  );
+
+  assert.equal(result.disposition, "ignored");
+  assert.equal(result.lifecycle?.state, "connecting");
+  assert.equal(result.lifecycle?.runtimeReadyAt, null);
+  assert.equal(result.lifecycle?.lastTransportEventId, null);
+});
+
 test("short drop enters one fixed grace and candidate rejoin recovers", async () => {
   const fixture = createFixture(createSession());
 

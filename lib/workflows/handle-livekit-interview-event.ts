@@ -77,7 +77,7 @@ export async function handleLiveKitInterviewEventWorkflow(
     if (!current.startedAt) {
       return { ok: false, disposition: "conflict", lifecycle: current };
     }
-    const isCandidate = input.participantIdentity === current.userId;
+    const isCandidate = isCandidateSignal(input, current);
     const canCompleteInitialActivation =
       isCandidate &&
       input.eventName === "participant_joined" &&
@@ -137,7 +137,7 @@ export async function handleLiveKitInterviewEventWorkflow(
         current = observation.current;
         if (canActivateFromCandidateJoin(input, current)) continue;
       } else if (
-        isAgentReadySignal(input) &&
+        isAgentReadySignal(input, current) &&
         current.state === "connecting" &&
         current.runtimeReadyAt === null
       ) {
@@ -214,7 +214,7 @@ function deriveDesiredTransition(
 } | null {
   if (!current.startedAt) return null;
 
-  const isCandidate = input.participantIdentity === current.userId;
+  const isCandidate = isCandidateSignal(input, current);
   const config = isRecord(current.config) ? current.config : {};
   const hardDeadlineAt = deriveInterviewDeadlineAt({
     startedAt: current.startedAt,
@@ -230,7 +230,7 @@ function deriveDesiredTransition(
 
   if (input.eventName === "participant_joined") {
     if (
-      isAgentReadySignal(input) &&
+      isAgentReadySignal(input, current) &&
       current.state === "connecting" &&
       current.lastTransportEventName === "participant_joined"
     ) {
@@ -287,9 +287,23 @@ function deriveDesiredTransition(
   };
 }
 
-function isAgentReadySignal(input: HandleLiveKitInterviewEventInput): boolean {
+function isAgentReadySignal(
+  input: HandleLiveKitInterviewEventInput,
+  current: InterviewReconnectSession
+): boolean {
   return (
-    input.eventName === "participant_joined" && input.participantKind === 4
+    input.eventName === "participant_joined" &&
+    input.participantKind === 4 &&
+    input.participantIdentity !== current.userId
+  );
+}
+
+function isCandidateSignal(
+  input: HandleLiveKitInterviewEventInput,
+  current: InterviewReconnectSession
+): boolean {
+  return (
+    input.participantIdentity === current.userId && input.participantKind === 0
   );
 }
 
@@ -299,7 +313,7 @@ function canActivateFromCandidateJoin(
 ): boolean {
   return (
     input.eventName === "participant_joined" &&
-    input.participantIdentity === current.userId &&
+    isCandidateSignal(input, current) &&
     current.state === "connecting" &&
     current.runtimeReadyAt !== null
   );

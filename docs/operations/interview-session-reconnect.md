@@ -34,8 +34,14 @@ Never place an intermediary in front of the route that rewrites the body.
   deletion or absence. Never-attempted and least-recently-attempted rooms run
   first.
 - Because LiveKit webhooks are best-effort, a one-minute reconciliation scan
-  checks authoritative candidate presence for active and reconnecting rooms.
-  Provider read failure retries without creating a synthetic loss.
+  checks authoritative participant presence for connecting, active, and
+  reconnecting rooms. Connecting activation requires the exact standard
+  candidate plus a distinct LiveKit agent-kind participant, both in
+  joined/active provider state. Provider read
+  failure retries without creating a synthetic loss or readiness receipt.
+- A post-provision start failure atomically terminalizes with cleanup intent
+  before immediate teardown. Partial agent dispatch, deadline scheduling, and
+  credit consumption failures remain recoverable when LiveKit teardown fails.
 - Reconnect expiry rechecks authoritative presence before claiming timeout,
   revokes candidate tokens before room deletion, waits a bounded two seconds
   for durable transcript delivery, and finalizes from one validation snapshot.
@@ -78,6 +84,16 @@ ready:
 13. Leave one terminal room cleanup permanently failing while another is
     pending. Confirm per-session retries and the persisted fairness cursor let
     the healthy room complete without waiting for the poison room.
+14. Drop the initial candidate-join webhook, the agent-ready webhook, then both
+    in separate runs. Confirm the presence scan activates exactly once only
+    while the exact standard candidate and a distinct agent-kind participant
+    are both listed. Verify arbitrary participants and stale join evidence are
+    inert.
+15. Force room creation to succeed and agent dispatch to fail, then fail the
+    immediate teardown. Confirm `failed + provider_failure + cleanup_pending`
+    commits before credit release and terminal-room recovery later clears the
+    marker after provider-confirmed teardown. Repeat for deadline-schedule and
+    credit-consume failures.
 
 SAV-194 transcript event identity must be deployed before this ticket can be
 declared launch-ready; repeated packets across reload must not create duplicate

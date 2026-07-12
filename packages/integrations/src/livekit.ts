@@ -67,7 +67,9 @@ export interface TerminatedInterviewRoom {
 
 export interface InterviewParticipantPresence {
   present: boolean;
+  joined: boolean;
   joinedAt: Date | null;
+  agent: { identity: string; joinedAt: Date | null } | null;
 }
 
 export interface LiveKitInterviewProvider {
@@ -130,6 +132,7 @@ interface RoomServiceClientLike {
       identity: string;
       state: number;
       joinedAtMs: bigint;
+      kind: number;
     }>
   >;
 }
@@ -460,20 +463,49 @@ export async function inspectInterviewParticipantPresence(
   try {
     const participants = await roomClient.listParticipants(input.roomName);
     const participant = participants.find(
-      (candidate) => candidate.identity === input.participantIdentity
+      (candidate) =>
+        candidate.identity === input.participantIdentity && candidate.kind === 0
     );
     const present = Boolean(participant && participant.state !== 3);
+    const joined = Boolean(
+      participant && (participant.state === 1 || participant.state === 2)
+    );
     const joinedAtMs = participant ? Number(participant.joinedAtMs) : 0;
+    const agentParticipant = participants.find(
+      (candidate) =>
+        candidate.kind === 4 &&
+        (candidate.state === 1 || candidate.state === 2) &&
+        candidate.identity !== input.participantIdentity &&
+        candidate.identity.trim().length > 0
+    );
+    const agentJoinedAtMs = agentParticipant
+      ? Number(agentParticipant.joinedAtMs)
+      : 0;
     return providerSuccess("livekit", {
       present,
+      joined,
       joinedAt:
         present && Number.isSafeInteger(joinedAtMs) && joinedAtMs > 0
           ? new Date(joinedAtMs)
           : null,
+      agent: agentParticipant
+        ? {
+            identity: agentParticipant.identity,
+            joinedAt:
+              Number.isSafeInteger(agentJoinedAtMs) && agentJoinedAtMs > 0
+                ? new Date(agentJoinedAtMs)
+                : null,
+          }
+        : null,
     });
   } catch (error) {
     if (isLiveKitNotFoundError(error)) {
-      return providerSuccess("livekit", { present: false, joinedAt: null });
+      return providerSuccess("livekit", {
+        present: false,
+        joined: false,
+        joinedAt: null,
+        agent: null,
+      });
     }
     return providerFailure("livekit", {
       code: "livekit_participant_presence_failed",

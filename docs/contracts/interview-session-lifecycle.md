@@ -159,8 +159,13 @@ LiveKit room retention is 60 seconds, while the Python agent uses
 `RoomOptions(close_on_disconnect=False)`, so a browser reload can rejoin the
 same room and agent job. Signed `participant_joined`, `participant_left`, and
 `participant_connection_aborted` webhooks are normalized before the session
-workflow sees them. A connecting room activates only after both the signed
-agent-ready signal and the latest candidate-presence observation are joined;
+workflow sees them. A connecting room activates only after both a distinct
+LiveKit agent-kind receipt and the exact standard-participant candidate identity
+are joined; one identity cannot satisfy both receipts. The authenticated Room
+Service participant list may repair a missing initial webhook only while both
+participants are in joined/active provider state. A merely joining participant,
+arbitrary standard participant, an agent
+using the candidate identity, and stale/reordered presence never activate;
 candidate loss moves an active session to reconnecting, and candidate rejoin
 recovers it. Candidate observations persist their ordering watermark even when
 they do not change lifecycle state, preventing delayed loss delivery from
@@ -191,14 +196,22 @@ explicit pending marker and fair retry cursor, so recovery continues after
 provider retries are exhausted.
 
 LiveKit webhooks are best-effort delivery. A bounded one-minute recovery scan
-lists provider participants for active and reconnecting voice sessions, with
-never-checked and least-recently-checked sessions first. Confirmed absence from
-an active room synthesizes one ordered candidate-loss observation; confirmed
-presence in reconnecting repairs a missed join by version/deadline CAS. A stale
-scan cannot overwrite a newer lifecycle version, and a provider read failure
-never invents absence.
+lists provider participants for connecting, active, and reconnecting voice
+sessions, with never-checked and least-recently-checked sessions first. For a
+connecting room it repairs a missing candidate receipt, agent receipt, or both
+only when the exact candidate and a distinct agent-kind participant are both
+currently present. Confirmed absence from an active room synthesizes one
+ordered candidate-loss observation; confirmed presence in reconnecting repairs
+a missed join by version/deadline CAS. A stale scan cannot overwrite a newer
+lifecycle version, and a provider read failure never invents absence.
 
 Every terminal path also sets `roomCleanupPending` when a LiveKit room exists.
+An atomic provider-start failure sets `failed`, `provider_failure`, and cleanup
+intent in the same lifecycle CAS before immediate teardown. This includes a
+partial room-create/agent-dispatch failure and later deadline-schedule or credit
+consume failure. Immediate cleanup clears intent only after LiveKit confirms
+revocation and deletion or absence; otherwise the terminal recovery worker owns
+the retry.
 User end attempts cleanup immediately but still returns committed terminal
 truth if the provider is unavailable. Hard-deadline and reconnect workers clear
 the same marker after acknowledged deletion. Cleanup removes the candidate with

@@ -48,6 +48,7 @@ const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SESSION_RECONNECT_ORDER = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const SESSION_PROVIDER_START_FAILURE = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
@@ -107,6 +108,7 @@ async function run() {
     await verifyDatabase(clean);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
+    await verifyProviderStartCleanupOwnership(clean, cleanUrl);
     await verifyReconnectTransportOrdering(clean, cleanUrl);
     await verifyAtomicSessionCompletion(clean, cleanUrl);
     await verifyAuthorization(clean);
@@ -822,6 +824,68 @@ async function verifyLifecycleConcurrency(sql: postgres.Sql) {
     lifecycle_state: "ending",
     lifecycle_version: 4,
     terminal_reason: winners[0]?.terminal_reason,
+  });
+}
+
+async function verifyProviderStartCleanupOwnership(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    { createDrizzleInterviewSessionLifecycleStore },
+    { transitionInterviewSessionWorkflow },
+  ] = await Promise.all([
+    import("../lib/db/session-lifecycle"),
+    import("../lib/workflows/transition-interview-session"),
+  ]);
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, livekit_room_name,
+      lifecycle_state, lifecycle_version
+    ) VALUES (
+      ${SESSION_PROVIDER_START_FAILURE}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'provider-start-failure-room',
+      'connecting',
+      2
+    )
+  `;
+
+  const result = await transitionInterviewSessionWorkflow(
+    {
+      sessionId: SESSION_PROVIDER_START_FAILURE,
+      to: "failed",
+      terminalReason: "provider_failure",
+    },
+    {
+      lifecycleStore: createDrizzleInterviewSessionLifecycleStore(drizzle(sql)),
+      now: () => new Date("2026-07-10T08:00:00.000Z"),
+    }
+  );
+  assert.equal(result.ok, true);
+
+  const stored = await sql<
+    {
+      lifecycle_state: string;
+      terminal_reason: string;
+      room_cleanup_pending: boolean;
+      room_cleanup_attempted_at: Date | null;
+    }[]
+  >`
+    SELECT lifecycle_state, terminal_reason, room_cleanup_pending,
+      room_cleanup_attempted_at
+    FROM interview_session
+    WHERE id = ${SESSION_PROVIDER_START_FAILURE}::uuid
+  `;
+  assert.deepEqual(stored[0], {
+    lifecycle_state: "failed",
+    terminal_reason: "provider_failure",
+    room_cleanup_pending: true,
+    room_cleanup_attempted_at: null,
   });
 }
 
