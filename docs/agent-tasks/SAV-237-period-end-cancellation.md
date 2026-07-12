@@ -11,8 +11,10 @@
 ## Scope
 
 - In: retire immediate cancellation, keep access/credits through period end,
-  preserve reactivation, remove automatic account-deletion refunds, tests and
-  durable policy docs.
+  preserve reactivation, block overlapping subscription Checkout, bind invoice
+  entitlement to current-resource ordering, use authoritative DB-time read
+  snapshots, remove automatic account-deletion refunds, tests and durable policy
+  docs.
 - Out: manual support refunds, Stripe credential changes, catalog changes,
   migrations, and Production/test-mode provider mutations.
 - Provider dependency: Stripe test-mode rehearsal after code review.

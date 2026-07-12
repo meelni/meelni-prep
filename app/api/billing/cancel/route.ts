@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { db } from "@/lib/db";
-import { subscription } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { z } from "zod";
 import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
-import { reconcileProviderCancellationState } from "@/lib/billing/subscription-state";
+import {
+  getCancellationReadSnapshot,
+  reconcileProviderCancellationState,
+} from "@/lib/billing/subscription-state";
 
 // Keep the legacy false value deploy-compatible while rejecting the retired
 // immediate-cancellation path and every unrecognized input.
@@ -50,20 +50,15 @@ export async function POST(req: NextRequest) {
     const userId = user.id;
 
     // Get user's subscription
-    const userSubscription = await db
-      .select()
-      .from(subscription)
-      .where(eq(subscription.userId, userId))
-      .limit(1);
-
-    if (userSubscription.length === 0) {
+    const readSnapshot = await getCancellationReadSnapshot(userId);
+    if (!readSnapshot) {
       return NextResponse.json(
         { error: "No subscription found" },
         { status: 404 }
       );
     }
 
-    const sub = userSubscription[0];
+    const { subscription: sub, observedAt } = readSnapshot;
 
     // Check if already canceled
     if (sub.status === "canceled") {
@@ -77,7 +72,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (sub.cancelAtPeriodEnd) {
-      return cancellationResponse(sub.currentPeriodEnd);
+      return cancellationResponse(sub.currentPeriodEnd, observedAt);
     }
 
     // Check if free tier
@@ -113,16 +108,15 @@ export async function POST(req: NextRequest) {
       if (!providerSubscription.cancel_at_period_end) {
         throw new Error("billing_cancel_provider_not_scheduled");
       }
-      const observedAt = new Date();
       const periodEnd = providerPeriodEnd(providerSubscription, observedAt);
-      await reconcileProviderCancellationState({
+      const next = await reconcileProviderCancellationState({
         userId,
         stripeSubscriptionId: sub.stripeSubscriptionId,
         cancelAtPeriodEnd: true,
         currentPeriodEnd: periodEnd,
       });
 
-      return cancellationResponse(periodEnd);
+      return cancellationResponse(periodEnd, next.updatedAt);
     } catch {
       console.error("billing_cancel_provider_failed");
       return NextResponse.json(
@@ -151,11 +145,12 @@ function createStripeClient() {
     : null;
 }
 
-function cancellationResponse(periodEnd: Date | null) {
+function cancellationResponse(periodEnd: Date | null, observedAt: Date) {
   if (
     !periodEnd ||
     !Number.isFinite(periodEnd.getTime()) ||
-    periodEnd.getTime() <= Date.now()
+    !Number.isFinite(observedAt.getTime()) ||
+    periodEnd <= observedAt
   ) {
     return NextResponse.json(
       {
@@ -200,20 +195,15 @@ export async function DELETE() {
     const userId = user.id;
 
     // Get user's subscription
-    const userSubscription = await db
-      .select()
-      .from(subscription)
-      .where(eq(subscription.userId, userId))
-      .limit(1);
-
-    if (userSubscription.length === 0) {
+    const readSnapshot = await getCancellationReadSnapshot(userId);
+    if (!readSnapshot) {
       return NextResponse.json(
         { error: "No subscription found" },
         { status: 404 }
       );
     }
 
-    const sub = userSubscription[0];
+    const sub = readSnapshot.subscription;
 
     // Check if subscription can be reactivated
     if (sub.status === "canceled") {
@@ -250,8 +240,10 @@ export async function DELETE() {
       if (providerSubscription.cancel_at_period_end) {
         throw new Error("billing_reactivate_provider_not_confirmed");
       }
-      const observedAt = new Date();
-      const periodEnd = providerPeriodEnd(providerSubscription, observedAt);
+      const periodEnd = providerPeriodEnd(
+        providerSubscription,
+        readSnapshot.observedAt
+      );
       await reconcileProviderCancellationState({
         userId,
         stripeSubscriptionId: sub.stripeSubscriptionId,
@@ -282,7 +274,7 @@ export async function DELETE() {
 
 function providerPeriodEnd(
   providerSubscription: Stripe.Subscription,
-  observedAt: Date
+  earliestObservedAt: Date
 ) {
   const periodEndSeconds =
     providerSubscription.items.data[0]?.current_period_end;
@@ -293,7 +285,7 @@ function providerPeriodEnd(
   if (!Number.isFinite(periodEnd.getTime())) {
     throw new Error("billing_subscription_period_end_invalid");
   }
-  if (periodEnd <= observedAt) {
+  if (periodEnd <= earliestObservedAt) {
     throw new Error("billing_subscription_period_end_not_future");
   }
   return periodEnd;

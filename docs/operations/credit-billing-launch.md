@@ -406,6 +406,20 @@ late. Trial, pass/checkout, admin, refund, and migration grants keep their own
 expiry semantics. Reactivation before the cutoff removes only this subscription
 restriction.
 
+Credit reads and cancellation replays take one user-fenced database snapshot and
+read `clock_timestamp()` after the identity/subscription boundary is held. Do
+not replace that clock with application time: a rolled-back process clock must
+neither display subscription credits nor claim retained access at cutoff
+equality.
+
+While an active or trialing subscription is scheduled to cancel, subscription
+Checkout is blocked. The customer must use reactivation to clear the existing
+schedule; Meelni must not create an overlapping provider subscription. A paid
+invoice grants or rolls subscription credits only inside the same locked
+transaction that confirms its subscription ID and event ordering. An invoice
+for an older/replaced subscription can still be recorded idempotently in
+payment history but grants zero entitlement.
+
 Before launch, use Stripe test mode to prove:
 
 - the subscription remains active and is marked to cancel at period end;
@@ -413,6 +427,10 @@ Before launch, use Stripe test mode to prove:
 - no Refund object or card refund is created;
 - dashboard access and unused credits remain available through the same date;
 - reactivation clears the scheduled cancellation without creating a charge;
+- subscription Checkout is refused while the scheduled subscription remains
+  active/trialing, and becomes available only after it has truly ended;
+- delayed, same-second terminal, and old-resource invoice events grant/roll zero
+  credits, while current-resource replay remains idempotent;
 - account deletion cancels provider resources without automatically refunding
   invoices, charges, or PaymentIntents.
 

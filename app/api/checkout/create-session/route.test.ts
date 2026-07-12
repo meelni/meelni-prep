@@ -6,6 +6,7 @@ const stripeMocks = vi.hoisted(() => ({
   create: vi.fn(),
   expire: vi.fn(),
 }));
+const dbMocks = vi.hoisted(() => ({ selectLimit: vi.fn() }));
 
 vi.mock("stripe", () => ({
   default: class StripeMock {
@@ -17,7 +18,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     select: vi.fn(() => ({
       from: vi.fn(() => ({
-        where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })),
+        where: vi.fn(() => ({ limit: dbMocks.selectLimit })),
       })),
     })),
   },
@@ -35,6 +36,7 @@ describe("POST /api/checkout/create-session deletion guard", () => {
     vi.clearAllMocks();
     process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
     process.env.STRIPE_INTERVIEW_PASS_PRICE_ID = "price_test_pass";
+    process.env.STRIPE_STARTER_MONTHLY_PRICE_ID = "price_test_starter";
     vi.mocked(createClient).mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -54,6 +56,7 @@ describe("POST /api/checkout/create-session deletion guard", () => {
       url: "https://checkout.example.invalid/session",
     });
     stripeMocks.expire.mockResolvedValue({ id: "cs_test_created" });
+    dbMocks.selectLimit.mockResolvedValue([]);
   });
 
   it("makes no Stripe request when the deletion tombstone already exists", async () => {
@@ -101,12 +104,63 @@ describe("POST /api/checkout/create-session deletion guard", () => {
       Math.floor(Date.now() / 1000) + 29 * 60
     );
   });
+
+  it("blocks overlapping subscription Checkout while cancellation is scheduled", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(false);
+    dbMocks.selectLimit.mockResolvedValue([
+      subscriptionFixture({ cancelAtPeriodEnd: true }),
+    ]);
+
+    const response = await POST(request("starter"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      reactivationRequired: true,
+    });
+    expect(stripeMocks.list).not.toHaveBeenCalled();
+    expect(stripeMocks.create).not.toHaveBeenCalled();
+  });
+
+  it("continues to block an ordinary active subscription", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(false);
+    dbMocks.selectLimit.mockResolvedValue([subscriptionFixture()]);
+
+    const response = await POST(request("starter"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      reactivationRequired: false,
+    });
+    expect(stripeMocks.create).not.toHaveBeenCalled();
+  });
+
+  it("allows subscription Checkout after the prior resource is truly canceled", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(false);
+    dbMocks.selectLimit.mockResolvedValue([
+      subscriptionFixture({ status: "canceled", cancelAtPeriodEnd: true }),
+    ]);
+
+    const response = await POST(request("starter"));
+
+    expect(response.status).toBe(200);
+    expect(stripeMocks.create).toHaveBeenCalledOnce();
+  });
 });
 
-function request() {
+function request(catalogId = "interview_pass") {
   return new NextRequest("http://localhost/api/checkout/create-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ catalogId: "interview_pass" }),
+    body: JSON.stringify({ catalogId }),
   });
+}
+
+function subscriptionFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    tier: "starter",
+    status: "active",
+    cancelAtPeriodEnd: false,
+    stripeCustomerId: "cus_test",
+    ...overrides,
+  };
 }

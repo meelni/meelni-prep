@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { getCreditBalanceReadModel } from "./credit-balance-read-model";
 import { createDrizzleCreditLedgerStore } from "./credit-ledger-store";
 import {
   createCreditLedgerService,
@@ -27,6 +28,7 @@ test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", 
     "findGrantByIdempotencyKey",
     "findReservationByKey",
     "findTransactionByIdempotencyKey",
+    "getCreditReadSnapshot",
     "getSubscriptionCreditPolicy",
     "listAllocations",
     "listSpendableGrants",
@@ -88,6 +90,73 @@ test("production transaction clock is read after the user lock and rejects inval
     ),
     /credit_ledger_clock_invalid/
   );
+});
+
+test("production balance read uses one user-fenced database-time snapshot", async () => {
+  const order: string[] = [];
+  const rowSets = [
+    [{ id: "user-1" }],
+    [
+      {
+        status: "active",
+        cancelAtPeriodEnd: false,
+        currentPeriodEnd: null,
+      },
+    ],
+    [],
+  ];
+  const database = {
+    async transaction(work: (transaction: unknown) => Promise<unknown>) {
+      let selectIndex = 0;
+      const transaction = {
+        select() {
+          const index = selectIndex++;
+          const rows = rowSets[index] ?? [];
+          order.push(`select:${index}`);
+          const result = Promise.resolve(rows);
+          const builder = {
+            from() {
+              return builder;
+            },
+            where() {
+              return builder;
+            },
+            limit() {
+              return builder;
+            },
+            async for(mode: string) {
+              order.push(`lock:${mode}`);
+              return rows;
+            },
+            then: result.then.bind(result),
+            catch: result.catch.bind(result),
+            finally: result.finally.bind(result),
+          };
+          return builder;
+        },
+        async execute() {
+          order.push("clock");
+          return [{ currentTime: "2026-08-01T12:00:00.000Z" }];
+        },
+      };
+      return work(transaction);
+    },
+  } as never;
+
+  const snapshot =
+    await createDrizzleCreditLedgerStore(database).getCreditReadSnapshot(
+      "user-1"
+    );
+
+  assert.equal(snapshot.currentTime.toISOString(), "2026-08-01T12:00:00.000Z");
+  assert.deepEqual(order, [
+    "select:0",
+    "lock:share",
+    "select:1",
+    "lock:share",
+    "clock",
+    "select:2",
+  ]);
 });
 
 test("production transaction mutations cannot escape the locked user scope", async () => {
@@ -2184,6 +2253,47 @@ test("period-end policy bounds only subscription-derived credits and reactivatio
       .find(({ source }) => source === "rollover")
       ?.expiresAt?.toISOString(),
     rolloverExpiry.toISOString()
+  );
+});
+
+test("credit read model uses authoritative snapshot time at cutoff and ignores app rollback", async () => {
+  const cutoff = new Date("2026-08-01T12:00:00.000Z");
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-07-01T00:00:00.000Z"),
+  });
+  await ledger.grantCredits({
+    userId: "user-read-cutoff",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "renewal:read-cutoff",
+  });
+  await ledger.grantCredits({
+    userId: "user-read-cutoff",
+    catalogId: "interview_pass",
+    source: "checkout",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "checkout:read-cutoff",
+  });
+  store.setSubscriptionCreditPolicy("user-read-cutoff", {
+    restricted: true,
+    availableThrough: cutoff,
+  });
+  store.setCurrentTime(cutoff);
+
+  const read = await getCreditBalanceReadModel({
+    store,
+    userId: "user-read-cutoff",
+  });
+
+  assert.equal(read.availableCredits, 1);
+  assert.deepEqual(
+    read.grants.map(({ source }) => source),
+    ["checkout"]
   );
 });
 
