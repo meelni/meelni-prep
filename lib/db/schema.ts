@@ -159,7 +159,7 @@ export const interviewSession = pgTable(
     ).on(table.userId, table.lifecycleState),
     deadlineRoomCleanupIdx: index(
       "interview_session_deadline_room_cleanup_idx"
-    ).on(table.terminalReason, table.deadlineRoomCleanupStatus),
+    ).on(table.deadlineRoomCleanupStatus, table.terminalReason),
   })
 );
 

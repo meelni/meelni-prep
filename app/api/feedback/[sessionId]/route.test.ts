@@ -20,6 +20,7 @@ import { NextRequest } from "next/server";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { createClient } from "@/lib/supabase/server";
+import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 import { GET, POST } from "./route";
 
@@ -99,7 +100,7 @@ describe("/api/feedback/[sessionId]", () => {
   it("keeps skipped hard-deadline feedback hidden while room cleanup is pending", async () => {
     vi.mocked(getSessionById).mockResolvedValue({
       lifecycleState: "abandoned",
-      terminalReason: "time_limit",
+      terminalReason: "insufficient_signal",
       deadlineRoomCleanupStatus: "pending",
     } as never);
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
@@ -115,6 +116,30 @@ describe("/api/feedback/[sessionId]", () => {
       status: "settling",
       retryable: false,
     });
+  });
+
+  it("shows skipped hard-deadline feedback after the persisted cleanup claim is acknowledged", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "abandoned",
+      terminalReason: "insufficient_signal",
+      deadlineRoomCleanupStatus: "already_absent",
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+      }) as never
+    );
+    vi.mocked(validateSessionCompleteness).mockResolvedValue({
+      tier: "insufficient",
+      stats: {},
+      reasons: ["Insufficient durable interview signal"],
+      recommendations: [],
+    } as never);
+
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ status: "skipped" });
   });
 
   it("offers recovery before a sender claims a pending dispatch", async () => {
@@ -257,7 +282,7 @@ describe("/api/feedback/[sessionId]", () => {
   it("cannot manually bypass skipped hard-deadline cleanup", async () => {
     vi.mocked(getSessionById).mockResolvedValue({
       lifecycleState: "abandoned",
-      terminalReason: "time_limit",
+      terminalReason: "insufficient_signal",
       deadlineRoomCleanupStatus: "pending",
     } as never);
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
@@ -273,6 +298,37 @@ describe("/api/feedback/[sessionId]", () => {
       error: "deadline_settlement_pending",
     });
     expect(endInterviewSessionWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("allows the terminal skipped response after hard-deadline cleanup acknowledgement", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "abandoned",
+      terminalReason: "insufficient_signal",
+      deadlineRoomCleanupStatus: "already_absent",
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+      }) as never
+    );
+    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue({
+      ok: true,
+      completion: {
+        feedback: feedbackRecord({
+          status: "skipped",
+          dispatchStatus: "not_required",
+        }),
+      },
+      dispatch: null,
+    } as never);
+
+    const response = await POST(request("POST"), PARAMS);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "skipped",
+      dispatch: { status: "not_required", retryable: false },
+    });
   });
 
   it("keeps authenticated completed feedback out of shared caches", async () => {

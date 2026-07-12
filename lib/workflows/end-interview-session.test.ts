@@ -301,6 +301,7 @@ function completion(
       endedAt: new Date("2026-07-09T22:00:00.000Z"),
     },
     feedback: feedbackRecord(),
+    deadlineRoomCleanupStatus: null,
     stats: validation().stats,
     tier: SessionTier.FULL,
     recommendations: [],

@@ -28,10 +28,13 @@ Settlement and dispatch are separate typed workflow boundaries. Ordinary
 authenticated end commands call both boundaries in sequence. A hard-deadline
 command may commit settlement while LiveKit room deletion is retryable, but it
 must not enter the dispatch boundary until room deletion is acknowledged as
-`deleted` or `already_absent`. Every `time_limit` settlement independently
+`deleted` or `already_absent`. The accepted hard-deadline command independently
 claims `deadline_room_cleanup_status=pending`; provider acknowledgement stores
-the exact terminal disposition and acknowledgement time before dispatch. This
-gate also applies when feedback is skipped and dispatch is `not_required`.
+the exact terminal disposition and acknowledgement time before dispatch. The
+claim remains authoritative when validation refines the lifecycle reason to
+`insufficient_signal`, so this gate also applies when feedback is skipped and
+dispatch is `not_required`. A concurrent `user_end` winner never gains a
+deadline cleanup claim.
 
 Equivalent replays return the stored result. An existing terminal reason is immutable. A historical terminal session without feedback is repaired by creating the missing feedback result; its lifecycle is not reopened.
 
@@ -73,11 +76,11 @@ new identity that provider deduplication cannot suppress. The provider event
 always carries the stored event ID. Acknowledgement changes it to `sent`;
 failure changes it to `failed` without changing `feedback.status=pending`.
 
-For `time_limit`, `pending`, `sending`, or `failed` is not sufficient evidence
-that feedback is safe to expose. The deadline consumer retries acknowledged
-room deletion first and considers feedback ready only after dispatch is `sent`
-or feedback is `not_required`, and only when the independent room-cleanup claim
-is acknowledged. A replay reuses terminal truth and the outbox
+For a persisted deadline cleanup claim, `pending`, `sending`, or `failed` is not
+sufficient evidence that feedback is safe to expose. The deadline consumer
+retries acknowledged room deletion first and considers feedback ready only
+after dispatch is `sent` or feedback is `not_required`, and only when the
+independent room-cleanup claim is acknowledged. A replay reuses terminal truth and the outbox
 fence, so it cannot emit a second accepted feedback event.
 
 A crash between provider acknowledgement and the `sent` write can cause a
@@ -101,8 +104,9 @@ stored state is retryable. No path creates a second feedback row.
 for both terminal lifecycle truth and `feedbackReady=true` before navigating
 away from the interview saving state.
 
-The five-minute deadline recovery scan includes terminal `time_limit` sessions
-whose room-cleanup claim is still `pending`. Exhausting one event's retry budget
+The five-minute deadline recovery scan includes every terminal session whose
+deadline room-cleanup claim is still `pending`, including refined
+`insufficient_signal` outcomes. Exhausting one event's retry budget
 therefore cannot strand a live room or leave the UI settling indefinitely.
 
 ## Acceptance Evidence

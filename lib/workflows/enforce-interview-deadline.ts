@@ -143,7 +143,7 @@ export async function enforceInterviewDeadlineWorkflow(
     });
   }
 
-  if (settlement.completion.lifecycle.terminalReason === "time_limit") {
+  if (settlement.completion.deadlineRoomCleanupStatus === "pending") {
     await deps.acknowledgeRoomCleanup(
       input.sessionId,
       room?.disposition ?? "already_absent"
@@ -198,7 +198,7 @@ export async function quarantineInvalidInterviewSessionWorkflow(
     throw createRoomTerminationError(roomTerminationError.code);
   }
 
-  if (settlement.completion.lifecycle.terminalReason === "time_limit") {
+  if (settlement.completion.deadlineRoomCleanupStatus === "pending") {
     await deps.acknowledgeRoomCleanup(
       input.sessionId,
       room?.disposition ?? "already_absent"

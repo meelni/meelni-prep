@@ -30,8 +30,9 @@ Keep the relaunch feature default-off. With an authenticated Preview account:
    sends one feedback event, skipped signal sends none, and later replays send no
    duplicate.
 8. Confirm the recovery cron emits a new delivery identity only for an overdue
-   open session or terminal `time_limit` session with
-   `deadline_room_cleanup_status=pending`. Exhaust the exact event's retries and
+   open session or any terminal session with
+   `deadline_room_cleanup_status=pending`, including an
+   `insufficient_signal` refinement. Exhaust the exact event's retries and
    confirm recovery deletes the room, acknowledges the claim, and completes the
    dispatch/not-required boundary within the next five-minute recovery window.
 9. Create an isolated open voice-session fixture with a room name but no
@@ -68,5 +69,9 @@ Never log tokens, credentials, transcript text, customer identifiers, or room me
   deadline-exempt. Quarantine it, delete the room, and terminalize it as
   `provider_failure`; never silently omit it from recovery.
 - Migration `0008_deadline_room_cleanup_ack.sql` is additive and backfills
-  existing `time_limit` sessions to `pending`. Keep it applied during rollback.
+  existing explicit `time_limit` sessions to `pending`. New accepted deadline
+  commands persist the independent claim even when validation refines the
+  terminal reason to `insufficient_signal`; historical refined rows cannot be
+  attributed to a deadline safely and are not guessed by the backfill. Keep the
+  migration applied during rollback.
 - Roll back application code only with the relaunch flag still off. Keep additive lifecycle and completion schema in place.
