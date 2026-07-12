@@ -207,6 +207,22 @@ test("events at the hard deadline cannot enter reconnect or reactivate", async (
   assert.equal(restored.lifecycle?.state, "reconnecting");
 });
 
+test("transport events cannot activate a legacy session without canonical start time", async () => {
+  const fixture = createFixture(
+    createSession({ state: "connecting", startedAt: null })
+  );
+
+  const result = await handleLiveKitInterviewEventWorkflow(
+    event("participant_joined", USER_ID, "candidate-invalid-start"),
+    fixture.deps
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.disposition, "conflict");
+  assert.equal(fixture.writes, 0);
+  assert.deepEqual(fixture.schedules, []);
+});
+
 test("candidate recovery is accepted 1ms before grace and rejected at grace", async () => {
   const deadlineAt = new Date("2026-07-10T08:00:30.000Z");
   const beforeFixture = createFixture(

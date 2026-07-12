@@ -61,10 +61,25 @@ test("provider failure preserves durable cleanup intent for recovery", async () 
   assert.deepEqual(fixture.calls, ["terminate"]);
 });
 
+test("terminal cleanup recovers a quarantined room without a start time", async () => {
+  const fixture = createFixture();
+  fixture.setCurrent({ ...fixture.current, startedAt: null });
+
+  const result = await cleanupInterviewRoomWorkflow(
+    { sessionId: SESSION_ID, env: ENV },
+    fixture.deps
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(fixture.calls, ["terminate", "clear"]);
+  assert.equal(fixture.current.roomCleanupPending, false);
+});
+
 function createFixture(): {
   deps: CleanupInterviewRoomDeps;
   calls: string[];
   current: InterviewReconnectSession;
+  setCurrent(value: InterviewReconnectSession): void;
 } {
   const calls: string[] = [];
   let current = createSession();
@@ -107,6 +122,9 @@ function createFixture(): {
   };
   return {
     calls,
+    setCurrent(value) {
+      current = value;
+    },
     get current() {
       return current;
     },
