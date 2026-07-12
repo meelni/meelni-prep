@@ -57,7 +57,6 @@ import {
 import { transitionInterviewSessionWorkflow } from "./transition-interview-session";
 import { scheduleInterviewDeadline } from "./schedule-interview-deadline";
 import { createDrizzleInterviewReconnectStore } from "@/lib/db/session-reconnects";
-import { createFailedInterviewStartSettler } from "@/lib/billing/failed-interview-start";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   behavioral: [...questionTypeStorageAliasesForRound("behavioral")],
@@ -189,15 +188,13 @@ export async function startInterviewSessionWorkflow(
     return parsed;
   }
 
-  const { startAttemptId, roundType, mode, role, persona, config, questionId } =
-    parsed;
+  const { startAttemptId, roundType, mode, role, config, questionId } = parsed;
   const preferences = normalizeInterviewClientPreferences(config);
   const runtimeConfig = deps.resolveRuntimeConfig(preferences);
   const requestFingerprint = fingerprintStartRequest({
     roundType,
     mode,
     role,
-    persona: persona ?? null,
     config: runtimeConfig,
     questionId: questionId ?? null,
   });
@@ -249,9 +246,8 @@ export async function startInterviewSessionWorkflow(
         role,
         roundType: resolvedRoundType,
         mode,
-        persona,
         roomName,
-        config: runtimeConfig,
+        config: { ...runtimeConfig },
         startedAt,
         question,
       },
@@ -421,7 +417,12 @@ export async function startInterviewSessionWorkflow(
         "LiveKit interview provisioning threw:",
         getErrorMessage(error)
       );
-      await safelyTerminateProvisioningRoom(start.roomName, input.env, deps);
+      await safelyTerminateProvisioningRoom(
+        start.roomName,
+        input.user.id,
+        input.env,
+        deps
+      );
       await deps.startStore.releaseProvisioningClaim({
         startAttemptId,
         leaseId: claim.leaseId,
@@ -439,7 +440,12 @@ export async function startInterviewSessionWorkflow(
     if (!livekitResult.ok) {
       console.error("LiveKit interview start error:", livekitResult.error);
       if (livekitResult.error.retryable) {
-        await safelyTerminateProvisioningRoom(start.roomName, input.env, deps);
+        await safelyTerminateProvisioningRoom(
+          start.roomName,
+          input.user.id,
+          input.env,
+          deps
+        );
         await deps.startStore.releaseProvisioningClaim({
           startAttemptId,
           leaseId: claim.leaseId,
@@ -546,6 +552,7 @@ export async function startInterviewSessionWorkflow(
         try {
           await deps.terminateRoom({
             roomName: start.roomName,
+            participantIdentity: start.userId,
             env: input.env,
           });
         } catch (cleanupError) {
@@ -640,7 +647,6 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
   const creditLedger =
     persistentCreditLedger ?? createLocalDevCreditLedgerService();
   const reconnectStore = createDrizzleInterviewReconnectStore();
-  const settleFailedReservation = createFailedInterviewStartSettler();
 
   return {
     startStore,
@@ -677,7 +683,6 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
       await ensureCanonicalTrialGrant(persistentCreditLedger, userId);
     },
     releaseReservation: creditLedger.releaseReservation,
-    settleFailedReservation,
     scheduleDeadline: scheduleInterviewDeadline,
     terminateRoom: async (input) => {
       const result = await terminateInterviewRoom(input);
@@ -1001,7 +1006,11 @@ async function cleanupFailedStart(
   env: LiveKitEnvironment,
   deps: StartInterviewSessionDeps
 ) {
-  await deps.terminateRoom({ roomName: start.roomName, env });
+  await deps.terminateRoom({
+    roomName: start.roomName,
+    participantIdentity: start.userId,
+    env,
+  });
   await terminalizeProviderFailure(start.sessionId, deps);
   await deps.releaseReservation({
     reservationKey,
@@ -1023,11 +1032,12 @@ function terminalStartResult(error: string): StartInterviewSessionErrorResult {
 
 async function safelyTerminateProvisioningRoom(
   roomName: string,
+  participantIdentity: string,
   env: LiveKitEnvironment,
   deps: StartInterviewSessionDeps
 ): Promise<void> {
   try {
-    await deps.terminateRoom({ roomName, env });
+    await deps.terminateRoom({ roomName, participantIdentity, env });
   } catch (error) {
     console.error(
       "Interview provisioning room cleanup failed:",

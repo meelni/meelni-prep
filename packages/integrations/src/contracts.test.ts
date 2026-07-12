@@ -212,11 +212,10 @@ test("LiveKit provider creates and reconciles one interview room and dispatch", 
 
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.deepEqual(result.data, {
-      roomName: fixture.input.roomName,
-    });
+    assert.equal(result.data.roomName, fixture.input.roomName);
+    assert.equal(result.data.url, fixture.input.env.url);
+    assert.ok(result.data.token);
   }
-  assert.deepEqual(calls, ["grant", "jwt", "room", "dispatch"]);
   assert.deepEqual(calls, [
     "room",
     "list-dispatch",
@@ -391,8 +390,10 @@ test("LiveKit token signing failure occurs before room or dispatch side effects"
       },
     }),
     agentDispatchClientFactory: () => ({
+      listDispatch: async () => [],
       createDispatch: async () => {
         calls.push("dispatch");
+        return { id: "dispatch-id", agentName: "agent", room: "room" };
       },
     }),
   });

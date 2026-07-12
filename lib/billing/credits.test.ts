@@ -190,6 +190,8 @@ test("unique-key conflict fallbacks cannot return another user's ledger rows", a
         status: "active",
         credits: 1,
         sessionId: null,
+        startContractVersion: 0,
+        startAttemptId: null,
         expiresAt: new Date("2026-07-11T01:00:00.000Z"),
         metadata: null,
       }),
@@ -1694,6 +1696,8 @@ function closedTransactionOperations(transaction: CreditLedgerTransaction) {
     status: "active" as const,
     credits: 1,
     sessionId: null,
+    startContractVersion: 0,
+    startAttemptId: null,
     expiresAt: new Date("2026-07-12T00:00:00.000Z"),
     metadata: null,
   };

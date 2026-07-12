@@ -301,13 +301,11 @@ function createMemoryStore() {
   const store: TranscriptIngestStore<TranscriptEvent> & {
     events: typeof events;
     sessions: typeof sessions;
-  } = {
-    events,
-    sessions,
     convergences: typeof convergences;
     convergeError: Error | null;
   } = {
     events,
+    sessions,
     convergences,
     get convergeError() {
       return convergeError;

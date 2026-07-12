@@ -25,7 +25,6 @@ export interface StableInterviewStartInput {
   startAttemptId: string;
   userId: string;
   requestFingerprint: string;
-  roundType: StableInterviewStartInput["roundType"];
   role: string;
   roundType: "behavioral" | "product_sense" | "execution" | "strategy";
   mode: "voice_video" | "text";
@@ -41,6 +40,7 @@ export interface PersistedStableInterviewStart {
   userId: string;
   startAttemptId: string;
   requestFingerprint: string;
+  roundType: StableInterviewStartInput["roundType"];
   roomName: string;
   config: Record<string, unknown>;
   startedAt: Date;
