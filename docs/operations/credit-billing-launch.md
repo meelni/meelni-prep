@@ -485,8 +485,9 @@ Before launch, use Stripe test mode to prove:
 - durable account deletion immediately denies original and second-device access
   before provider cleanup completes, including while cleanup is retrying;
 - deletion captures every current/historical mapped subscription and customer,
-  and disconnects an already-connected LiveKit interview room; a simulated
-  LiveKit failure remains retryable without restoring access;
+  captures LiveKit room names even after local terminalization, and disconnects
+  an already-connected LiveKit interview room; a simulated LiveKit failure
+  remains retryable without restoring access;
 - deletion between session persistence and LiveKit creation causes the
   post-create fence to terminate the later room, withhold its token/URL, release
   the reservation, and retain a newer cleanup generation when termination
@@ -494,6 +495,10 @@ Before launch, use Stripe test mode to prove:
   subject or a newer retry target, and a concurrent duplicate deletion request
   cannot shorten its ten-minute provider uncertainty lease or reset/drop either
   generation; verify the durable wake-up retries termination at lease expiry;
+- ambiguous provider failure followed by missing containment, local
+  terminalization, deletion snapshot, and a late room commit retains a
+  provisioning subject and terminates the late room without exposing token,
+  credit, room, endpoint, or provider error details;
 - account deletion cancels provider resources with `prorate=false`, stable retry
   idempotency, and no invoice, charge, PaymentIntent, or customer-balance refund.
 

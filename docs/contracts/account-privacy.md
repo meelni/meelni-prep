@@ -105,18 +105,22 @@ historical mapping, sorted and deduplicated deterministically. Billing fulfillme
 uses the same lock, so a local mapping/subscription either commits before the
 snapshot or is denied after the tombstone; it cannot commit into the gap.
 
-The same accepted transaction snapshots each room name belonging to a
-nonterminal LiveKit interview. Session creation takes the account identity lock,
-so it either commits before the snapshot or fails after the tombstone exists.
-Rooms whose local session is still `created` or `connecting` are retained as
-provisioning subjects: a provider 404 cannot clear them because room creation
-may still commit afterward. Each subject stores a database-clock ten-minute
+The same accepted transaction snapshots every stored LiveKit room name;
+terminal local lifecycle state is not proof that provider cleanup occurred.
+Session creation takes the account identity lock, so it either commits before
+the snapshot or fails after the tombstone exists. Rooms whose local session is
+still `created` or `connecting`, plus rooms terminalized by provider failure,
+are retained as provisioning subjects: a provider 404 cannot clear them because
+an ambiguous room creation may still commit afterward. Each subject stores a database-clock ten-minute
 lease, chosen as the conservative bound for the LiveKit create/dispatch HTTP
 attempt and delayed outcome uncertainty. A missing room stays protected before
 that deadline; durable execution wakes at the deadline, calls room termination
-again, and may then clear an exact-generation missing result. A duplicate deletion request unions its fresh
+again, and may then clear an exact-generation missing result. Legacy null-expiry
+subjects receive one persisted database-clock lease under the tombstone row lock
+before cleanup begins. A duplicate deletion request unions its fresh
 snapshot with the tombstone under the same lock; it cannot drop an unresolved
-room, shorten its lease, lower its generation, or replace a newer raw cleanup subject.
+room, shorten its lease, lower its generation, or replace a newer raw cleanup
+subject.
 Because LiveKit provider creation happens after that database transaction, the
 start workflow takes the identity lock again after provider creation and before
 returning credentials. If deletion won that fence, the workflow durably

@@ -1,17 +1,6 @@
 import { createHash } from "node:crypto";
 
-import {
-  and,
-  asc,
-  eq,
-  inArray,
-  isNotNull,
-  lt,
-  ne,
-  notInArray,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 
 import {
   buildStripeDeletionSubjects,
@@ -233,31 +222,34 @@ export async function requestAccountDeletionWithCurrentSubjects(
       .select({
         roomName: interviewSession.livekitRoomName,
         lifecycleState: interviewSession.lifecycleState,
+        terminalReason: interviewSession.terminalReason,
       })
       .from(interviewSession)
       .where(
         and(
           eq(interviewSession.userId, userId),
-          isNotNull(interviewSession.livekitRoomName),
-          notInArray(interviewSession.lifecycleState, [
-            "completed",
-            "abandoned",
-            "failed",
-          ])
+          isNotNull(interviewSession.livekitRoomName)
         )
       )
       .orderBy(asc(interviewSession.livekitRoomName));
-    const livekitRooms = roomRows.flatMap(({ roomName, lifecycleState }) =>
-      buildLiveKitDeletionRooms([roomName], {
-        provisioning:
-          lifecycleState === "created" || lifecycleState === "connecting",
-        provisioningExpiresAt:
-          lifecycleState === "created" || lifecycleState === "connecting"
+    const livekitRooms = roomRows.flatMap(
+      ({ roomName, lifecycleState, terminalReason }) => {
+        // Terminal lifecycle truth does not prove provider cleanup. In
+        // particular, provider-start failure can terminalize locally while an
+        // ambiguous LiveKit create commits late.
+        const provisioning =
+          lifecycleState === "created" ||
+          lifecycleState === "connecting" ||
+          terminalReason === "provider_failure";
+        return buildLiveKitDeletionRooms([roomName], {
+          provisioning,
+          provisioningExpiresAt: provisioning
             ? new Date(
                 databaseNow.getTime() + LIVEKIT_DELETION_PROVISIONING_LEASE_MS
               ).toISOString()
             : null,
-      })
+        });
+      }
     );
 
     const [existingRequest] = await tx
@@ -519,15 +511,43 @@ export async function markLateStripeReconciliationFailed(userId: string) {
 }
 
 export async function markAccountDeletionProcessing(userId: string) {
-  await db
-    .update(accountDeletionRequest)
-    .set({
-      status: "processing",
-      attempts: sql`${accountDeletionRequest.attempts} + 1`,
-      lastErrorCode: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(accountDeletionRequest.userId, userId));
+  await db.transaction(async (tx) => {
+    const [request] = await tx
+      .select()
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1)
+      .for("update");
+    if (!request) throw new Error("Account deletion tombstone is missing");
+    const clockRows = await tx.execute(
+      sql<{ now: Date | string }>`select clock_timestamp() as now`
+    );
+    const clockValue: unknown = clockRows[0]?.now;
+    if (!(clockValue instanceof Date) && typeof clockValue !== "string") {
+      throw new Error("Database clock is unavailable");
+    }
+    const databaseNow = new Date(clockValue);
+    const provisioningExpiresAt = new Date(
+      databaseNow.getTime() + LIVEKIT_DELETION_PROVISIONING_LEASE_MS
+    ).toISOString();
+    const livekitRooms = normalizeLiveKitDeletionRooms(
+      request.livekitRooms
+    ).map((room) =>
+      room.provisioning && room.provisioningExpiresAt === null
+        ? { ...room, provisioningExpiresAt }
+        : room
+    );
+    await tx
+      .update(accountDeletionRequest)
+      .set({
+        status: "processing",
+        attempts: sql`${accountDeletionRequest.attempts} + 1`,
+        lastErrorCode: null,
+        livekitRooms,
+        updatedAt: databaseNow,
+      })
+      .where(eq(accountDeletionRequest.userId, userId));
+  });
 }
 
 export async function markAccountDeletionFailed(

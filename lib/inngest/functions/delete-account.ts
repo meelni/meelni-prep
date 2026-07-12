@@ -61,6 +61,20 @@ export const deleteAccount = inngest.createFunction(
         "account_deletion_state_update_failed"
       )
     );
+    // Mark-processing upgrades legacy provisioning subjects with a persisted
+    // database-clock lease. Re-read so this attempt cannot retain a null-expiry
+    // target forever or invent an app-clock deadline.
+    try {
+      request = await getAccountDeletionRequest(userId);
+    } catch (error) {
+      throw safeAccountDeletionError(error);
+    }
+    if (!request) {
+      throw safeAccountDeletionError(
+        null,
+        "account_deletion_tombstone_missing"
+      );
+    }
 
     try {
       const cleanup = await step.run("delete-account-providers-and-data", () =>
