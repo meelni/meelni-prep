@@ -145,6 +145,8 @@ export interface Session {
   startedAt: Date | string;
   /** Canonical server-derived absolute deadline */
   deadlineAt: string;
+  /** Whether feedback is safe to show after terminal provider cleanup */
+  feedbackReady: boolean;
   /** ISO 8601 timestamp when session ended (null if active) */
   endedAt?: Date | string | null;
   /** LiveKit room name */

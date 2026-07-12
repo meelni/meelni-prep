@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/app-surface";
 import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
 import { requireInterviewResumeTiming } from "@/lib/interview/resume-session";
+import { canNavigateToInterviewFeedback } from "@/lib/interview/deadline-view";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { shouldAnalyzeNudges, type HintMode } from "@meelni/core";
 import {
@@ -69,6 +70,7 @@ interface PersistedInterviewSession {
   livekitRoomName: string | null;
   startedAt: string | null;
   deadlineAt: string;
+  feedbackReady?: boolean;
   lifecycleState?: string | null;
   roundType?: string | null;
   mode?: string | null;
@@ -255,14 +257,21 @@ function InterviewPageContent() {
       setSessionStartTime(new Date(normalizedSession.started_at).getTime());
 
       if (
-        normalizedSession.lifecycle_state &&
-        TERMINAL_SESSION_STATES.has(normalizedSession.lifecycle_state)
+        canNavigateToInterviewFeedback({
+          lifecycleState: normalizedSession.lifecycle_state,
+          feedbackReady: sessionData.feedbackReady,
+        })
       ) {
         router.replace(`/feedback/${sessionId}/loading`);
         return;
       }
 
-      if (normalizedSession.lifecycle_state === "ending") {
+      if (
+        normalizedSession.lifecycle_state === "ending" ||
+        (normalizedSession.lifecycle_state !== undefined &&
+          normalizedSession.lifecycle_state !== null &&
+          TERMINAL_SESSION_STATES.has(normalizedSession.lifecycle_state))
+      ) {
         setDisconnectTimedOut(true);
         setLoading(false);
         return;
@@ -606,12 +615,12 @@ function InterviewPageContent() {
         });
         if (response.ok) {
           const payload = (await response.json()) as {
-            session?: { lifecycleState?: string | null };
+            session?: {
+              lifecycleState?: string | null;
+              feedbackReady?: boolean;
+            };
           };
-          if (
-            payload.session?.lifecycleState &&
-            TERMINAL_SESSION_STATES.has(payload.session.lifecycleState)
-          ) {
+          if (canNavigateToInterviewFeedback(payload.session ?? {})) {
             router.replace(`/feedback/${activeSessionId}/loading`);
             return;
           }
