@@ -1,5 +1,4 @@
 import {
-  createCreditLedgerService,
   getTrialGrantIdempotencyKey,
   isCreditGrantAvailable,
   type CreditLedgerStore,
@@ -30,19 +29,38 @@ export interface CreditBalanceReadModel {
 export async function getCreditBalanceReadModel({
   store,
   userId,
-  now = () => new Date(),
+  now,
 }: {
   store: CreditLedgerStore;
   userId: string;
   now?: () => Date;
 }): Promise<CreditBalanceReadModel> {
-  const ledger = createCreditLedgerService({ store, now });
-  const currentTime = now();
-  const [balance, allGrants, subscriptionPolicy] = await Promise.all([
-    ledger.getCreditBalance(userId),
-    store.listUserGrants(userId),
-    store.getSubscriptionCreditPolicy(userId),
-  ]);
+  const {
+    currentTime: authoritativeTime,
+    grants: allGrants,
+    subscriptionPolicy,
+  } = await store.getCreditReadSnapshot(userId);
+  // Production callers omit the override and use database time. Tests may
+  // still inject a deterministic clock without weakening the runtime path.
+  const currentTime = now ? now() : authoritativeTime;
+  const activeGrants = allGrants.filter((grant) =>
+    isCreditGrantAvailable(grant, currentTime, subscriptionPolicy)
+  );
+  const availableCredits = sumBy(
+    activeGrants,
+    (grant) => grant.remainingCredits
+  );
+  const reservedCredits = sumBy(activeGrants, (grant) => grant.reservedCredits);
+  const nextCreditExpiresAt = getNextExpiration(activeGrants);
+  const expiringCredits = nextCreditExpiresAt
+    ? sumBy(
+        activeGrants.filter(
+          (grant) =>
+            grant.expiresAt?.getTime() === nextCreditExpiresAt.getTime()
+        ),
+        (grant) => grant.remainingCredits
+      )
+    : 0;
   const trialAvailable = !allGrants.some(
     (grant) => grant.idempotencyKey === getTrialGrantIdempotencyKey(userId)
   );
@@ -71,11 +89,26 @@ export async function getCreditBalanceReadModel({
     }));
 
   return {
-    availableCredits: balance.availableCredits,
-    reservedCredits: balance.reservedCredits,
-    expiringCredits: balance.expiringCredits,
-    nextCreditExpiresAt: balance.nextCreditExpiresAt?.toISOString() ?? null,
+    availableCredits,
+    reservedCredits,
+    expiringCredits,
+    nextCreditExpiresAt: nextCreditExpiresAt?.toISOString() ?? null,
     trialAvailable,
     grants,
   };
+}
+
+function sumBy<T>(items: T[], value: (item: T) => number): number {
+  return items.reduce((total, item) => total + value(item), 0);
+}
+
+function getNextExpiration(
+  grants: Array<{ remainingCredits: number; expiresAt: Date | null }>
+): Date | null {
+  return (
+    grants
+      .filter((grant) => grant.remainingCredits > 0 && grant.expiresAt)
+      .map((grant) => grant.expiresAt as Date)
+      .sort((left, right) => left.getTime() - right.getTime())[0] ?? null
+  );
 }

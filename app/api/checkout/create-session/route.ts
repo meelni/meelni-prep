@@ -64,14 +64,16 @@ export async function POST(req: NextRequest) {
       if (
         catalogId !== "interview_pass" &&
         (sub.tier === "starter" || sub.tier === "pro") &&
-        (sub.status === "active" || sub.status === "trialing") &&
-        !sub.cancelAtPeriodEnd
+        (sub.status === "active" || sub.status === "trialing")
       ) {
         return NextResponse.json(
           {
-            error: "You already have an active subscription",
+            error: sub.cancelAtPeriodEnd
+              ? "Reactivate your current subscription before changing plans"
+              : "You already have an active subscription",
             existingTier: sub.tier,
             status: sub.status,
+            reactivationRequired: sub.cancelAtPeriodEnd,
           },
           { status: 400 }
         );

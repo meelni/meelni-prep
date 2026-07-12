@@ -25,6 +25,13 @@ export interface ProviderCancellationObservation {
   observedAt: Date;
 }
 
+export interface CancellationReadSnapshot {
+  subscription: CancellationStateSnapshot & {
+    tier: string;
+  };
+  observedAt: Date;
+}
+
 export type AuthoritativeSnapshotCommitResult = "applied" | "retry" | "skipped";
 
 export function shouldApplyAuthoritativeProviderSnapshot(input: {
@@ -100,7 +107,8 @@ export function nextProviderCancellationState(
   }
   if (
     !Number.isFinite(observation.currentPeriodEnd.getTime()) ||
-    !Number.isFinite(observation.observedAt.getTime())
+    !Number.isFinite(observation.observedAt.getTime()) ||
+    observation.currentPeriodEnd <= observation.observedAt
   ) {
     throw new Error("billing_subscription_observation_invalid");
   }
@@ -120,6 +128,31 @@ export function nextProviderCancellationState(
     version: current.version + 1,
     updatedAt: observation.observedAt,
   };
+}
+
+export async function getCancellationReadSnapshot(
+  userId: string
+): Promise<CancellationReadSnapshot | null> {
+  return db.transaction(async (tx) => {
+    await lockBillingUserUnlessDeleting(tx, userId);
+    const [current] = await tx
+      .select({
+        userId: subscription.userId,
+        tier: subscription.tier,
+        status: subscription.status,
+        stripeSubscriptionId: subscription.stripeSubscriptionId,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        version: subscription.version,
+        lastEventTimestamp: subscription.lastEventTimestamp,
+      })
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1)
+      .for("share");
+    const observedAt = await getBillingDatabaseTime(tx);
+    return current ? { subscription: current, observedAt } : null;
+  });
 }
 
 export async function reconcileProviderCancellationState(

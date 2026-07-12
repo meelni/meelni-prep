@@ -83,6 +83,20 @@ test("provider observations fail closed on wrong resources or ended subscription
   );
 });
 
+test("provider observations reject a paid-through cutoff at database-time equality", () => {
+  assert.throws(
+    () =>
+      nextProviderCancellationState(snapshot(), {
+        userId: "user-1",
+        stripeSubscriptionId: "sub_current",
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: PERIOD_END,
+        observedAt: PERIOD_END,
+      }),
+    /billing_subscription_observation_invalid/
+  );
+});
+
 test("authoritative retrieval is one time-bounded read and fails closed", async () => {
   let calls = 0;
   const snapshot = { id: "sub_current" };

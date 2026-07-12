@@ -26,6 +26,16 @@ workflows.
 - The dashboard shows one cancellation action and the paid-through date.
 - A repeated request is idempotent and does not call Stripe again.
 - Reactivation clears `cancel_at_period_end` before the paid period ends.
+- A scheduled active/trialing subscription cannot open a second subscription
+  Checkout. The customer must reactivate the current provider resource or wait
+  until it has ended before starting another subscription.
+- Subscription invoice credits are granted only when the invoice belongs to the
+  currently locked provider subscription and passes event ordering. Delayed or
+  replaced-resource invoices remain payment history but grant and roll zero
+  credits.
+- Credit and cancellation read truth use one user-fenced database-time snapshot;
+  equality with `current_period_end` is unavailable even if an application clock
+  rolls backward.
 - Account deletion never automatically refunds historical payments. The current
   draft implementation also ends access immediately because the account is
   removed; that irreversible exception is not approved by this decision and is

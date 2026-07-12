@@ -194,6 +194,7 @@ export interface CreditLedgerReadStore {
   ): Promise<LedgerCreditTransaction | null>;
   listSpendableGrants(userId: string, now: Date): Promise<LedgerCreditGrant[]>;
   listUserGrants(userId: string): Promise<LedgerCreditGrant[]>;
+  getCreditReadSnapshot(userId: string): Promise<CreditReadSnapshot>;
   getSubscriptionCreditPolicy(
     userId: string
   ): Promise<SubscriptionCreditPolicy>;
@@ -367,6 +368,12 @@ export interface SubscriptionCreditPolicy {
   availableThrough: Date | null;
 }
 
+export interface CreditReadSnapshot {
+  currentTime: Date;
+  grants: LedgerCreditGrant[];
+  subscriptionPolicy: SubscriptionCreditPolicy;
+}
+
 export interface CreditBalance {
   availableCredits: number;
   reservedCredits: number;
@@ -497,13 +504,14 @@ export interface RevokePaidGrantResult {
 
 export function createCreditLedgerService({
   store,
-  now = () => new Date(),
+  now,
   trackTerminalSettlement = trackCompletedReservationEvent,
 }: CreateCreditLedgerServiceInput) {
+  const operationNow = now ?? (() => new Date());
   return {
     async grantCredits(input: GrantCreditsInput): Promise<GrantCreditsResult> {
       const catalogItem = BILLING_CATALOG[input.catalogId];
-      const issuedAt = now();
+      const issuedAt = operationNow();
       const includedCredits =
         input.includedCredits ?? catalogItem.includedCredits;
       assertPositiveCredits(includedCredits);
@@ -542,11 +550,9 @@ export function createCreditLedgerService({
     },
 
     async getCreditBalance(userId: string): Promise<CreditBalance> {
-      const currentTime = now();
-      const [grants, subscriptionPolicy] = await Promise.all([
-        store.listUserGrants(userId),
-        store.getSubscriptionCreditPolicy(userId),
-      ]);
+      const snapshot = await store.getCreditReadSnapshot(userId);
+      const currentTime = now ? now() : snapshot.currentTime;
+      const { grants, subscriptionPolicy } = snapshot;
       const activeGrants = grants.filter((grant) =>
         isCreditGrantAvailable(grant, currentTime, subscriptionPolicy)
       );
@@ -578,7 +584,7 @@ export function createCreditLedgerService({
     },
 
     async expireCredits(userId: string): Promise<ExpireCreditsResult> {
-      const currentTime = now();
+      const currentTime = operationNow();
       const expired = await store.withUserTransaction(
         userId,
         async (transaction) => {
@@ -1032,7 +1038,7 @@ export function createCreditLedgerService({
         throw new Error("invalid_subscription_renewal");
       }
 
-      const currentTime = now();
+      const currentTime = operationNow();
       const renewalInput: GrantCreditsInput = {
         userId: input.userId,
         catalogId: input.catalogId,
@@ -2134,6 +2140,14 @@ export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
 
     async listUserGrants(userId) {
       return grants.filter((grant) => grant.userId === userId).map(cloneGrant);
+    },
+
+    async getCreditReadSnapshot(userId) {
+      return {
+        currentTime: new Date(currentTime),
+        grants: await store.listUserGrants(userId),
+        subscriptionPolicy: await store.getSubscriptionCreditPolicy(userId),
+      };
     },
 
     async listUserGrantsForUpdate(userId) {

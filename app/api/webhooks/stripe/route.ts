@@ -11,8 +11,12 @@ import {
 } from "@/lib/db/schema";
 import { eq, and, or, sql } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
-import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
+import {
+  createDrizzleCreditLedgerStore,
+  createDrizzleCreditLedgerStoreForLockedTransaction,
+} from "@/lib/billing/credit-ledger-store";
 import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
+import { applyCurrentSubscriptionInvoice } from "@/lib/billing/subscription-invoice";
 import {
   getMappedStripeCustomerUserId,
   resolveAuthoritativeStripeUserId,
@@ -836,28 +840,59 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
   }
 
   const catalogId = getStripeCatalogIdForPrice(getInvoicePriceId(invoice));
-  let creditGrantId: string | null = null;
-
-  if (catalogId === "starter" || catalogId === "pro") {
-    const ledger = createCreditLedgerService({
-      store: createDrizzleCreditLedgerStore(),
-    });
-    const renewal = await ledger.renewSubscriptionCredits({
-      userId,
-      catalogId,
-      renewalIdempotencyKey: `stripe:invoice:${invoice.id}:${catalogId}`,
-      rolloverIdempotencyKey: `stripe:rollover:${invoice.id}:${catalogId}`,
-      sourceId: invoice.id,
-    });
-    creditGrantId = renewal.grant.id;
-  }
-
   const invoicePayment = await getInvoicePaymentCorrelation(invoice);
   const eventTimestamp = new Date(event.created * 1000);
   await db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, userId);
-    // In recent Stripe API versions, payment_intent moved to invoice payments.
-    // The event ID remains the durable idempotency key for payment history.
+    const [currentSub] = await tx
+      .select()
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1)
+      .for("update");
+    const observedAt = await getBillingDatabaseTime(tx);
+    let creditGrantId: string | null = null;
+    await applyCurrentSubscriptionInvoice({
+      current: currentSub ?? null,
+      incomingStripeSubscriptionId: getInvoiceSubscriptionId(invoice),
+      eventTimestamp,
+      invoiceId: invoice.id,
+      catalogId,
+      userId,
+      ledger: createCreditLedgerService({
+        store: createDrizzleCreditLedgerStoreForLockedTransaction(tx, userId),
+        now: () => observedAt,
+      }),
+      onCreditGrant: (grantId) => {
+        creditGrantId = grantId;
+      },
+      applySubscriptionState: async () => {
+        // Older invoice events remain recorded in payment history but cannot
+        // reach this state or entitlement mutation.
+        const updated = await tx
+          .update(subscription)
+          .set({
+            status: "active",
+            gracePeriodEnd: null,
+            lastEventTimestamp: eventTimestamp,
+            version: currentSub!.version + 1,
+            updatedAt: observedAt,
+          })
+          .where(
+            and(
+              eq(subscription.userId, userId),
+              eq(subscription.version, currentSub!.version)
+            )
+          )
+          .returning({ id: subscription.id });
+        if (updated.length !== 1) {
+          throw new Error("billing_subscription_version_conflict");
+        }
+      },
+    });
+
+    // Provider correlation is resolved before the transaction; payment truth,
+    // entitlement truth, and subscription state commit atomically here.
     await tx
       .insert(paymentHistory)
       .values({
@@ -902,38 +937,6 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
       currency: invoice.currency,
       status: "succeeded",
     });
-
-    const [currentSub] = await tx
-      .select()
-      .from(subscription)
-      .where(eq(subscription.userId, userId))
-      .limit(1)
-      .for("update");
-    if (
-      !currentSub ||
-      !shouldApplyStripeSubscriptionState({
-        currentStatus: currentSub.status,
-        currentStripeSubscriptionId: currentSub.stripeSubscriptionId,
-        event: "invoice_succeeded",
-        eventTimestamp,
-        incomingStripeSubscriptionId: getInvoiceSubscriptionId(invoice),
-        lastEventTimestamp: currentSub.lastEventTimestamp,
-      })
-    ) {
-      return;
-    }
-    // Older invoice events may still be recorded, but cannot overwrite newer
-    // or terminal subscription state.
-    await tx
-      .update(subscription)
-      .set({
-        status: "active",
-        gracePeriodEnd: null,
-        lastEventTimestamp: eventTimestamp,
-        version: currentSub.version + 1,
-        updatedAt: new Date(),
-      })
-      .where(eq(subscription.userId, userId));
   });
 }
 
