@@ -113,6 +113,7 @@ async function run() {
     await verifyLifecycleConcurrency(clean);
     await verifyProviderStartCleanupOwnership(clean, cleanUrl);
     await verifyRoomProvisioningAndPresenceFences(clean, cleanUrl);
+    await verifyRoomRecoveryFairness(clean, cleanUrl);
     await verifyReconnectTransportOrdering(clean, cleanUrl);
     await verifyAtomicSessionCompletion(clean, cleanUrl);
     await verifyAuthorization(clean);
@@ -859,6 +860,9 @@ async function verifyProviderStartCleanupOwnership(
     )
   `;
 
+  const [databaseClockBefore] = await sql<{ observed_at: Date }[]>`
+    SELECT clock_timestamp() AS observed_at
+  `;
   const connecting = await transitionInterviewSessionWorkflow(
     {
       sessionId: SESSION_PROVIDER_START_FAILURE,
@@ -870,6 +874,9 @@ async function verifyProviderStartCleanupOwnership(
     }
   );
   assert.equal(connecting.ok, true);
+  const [databaseClockAfter] = await sql<{ observed_at: Date }[]>`
+    SELECT clock_timestamp() AS observed_at
+  `;
 
   const provisioned = await sql<
     {
@@ -885,19 +892,32 @@ async function verifyProviderStartCleanupOwnership(
     FROM interview_session
     WHERE id = ${SESSION_PROVIDER_START_FAILURE}::uuid
   `;
+  const provisioningLeaseStartedAt = provisioned[0]
+    ?.room_provisioning_started_at
+    ? new Date(provisioned[0].room_provisioning_started_at)
+    : null;
+  assert.ok(databaseClockBefore?.observed_at);
+  assert.ok(databaseClockAfter?.observed_at);
+  assert.ok(provisioningLeaseStartedAt);
+  assert.ok(
+    provisioningLeaseStartedAt.getTime() >=
+      new Date(databaseClockBefore.observed_at).getTime()
+  );
+  assert.ok(
+    provisioningLeaseStartedAt.getTime() <=
+      new Date(databaseClockAfter.observed_at).getTime()
+  );
   assert.deepEqual(
     provisioned[0] && {
       ...provisioned[0],
-      room_provisioning_started_at: provisioned[0].room_provisioning_started_at
-        ? new Date(provisioned[0].room_provisioning_started_at)
-        : null,
+      room_provisioning_started_at: provisioningLeaseStartedAt,
     },
     {
       lifecycle_state: "connecting",
       lifecycle_version: 2,
       room_cleanup_pending: true,
       room_provisioning_pending: true,
-      room_provisioning_started_at: new Date("2026-07-10T07:59:00.000Z"),
+      room_provisioning_started_at: provisioningLeaseStartedAt,
     }
   );
 
@@ -943,7 +963,7 @@ async function verifyProviderStartCleanupOwnership(
       room_cleanup_pending: true,
       room_cleanup_attempted_at: null,
       room_provisioning_pending: true,
-      room_provisioning_started_at: new Date("2026-07-10T07:59:00.000Z"),
+      room_provisioning_started_at: provisioningLeaseStartedAt,
     }
   );
 }
@@ -957,33 +977,39 @@ async function verifyRoomProvisioningAndPresenceFences(
     "../lib/db/session-reconnects"
   );
   const store = createDrizzleInterviewReconnectStore(drizzle(sql));
-  const provisioningStartedAt = new Date("2026-07-10T08:00:00.000Z");
-  const reconnectDeadlineAt = new Date("2026-07-10T08:05:00.000Z");
+  const [clock] = await sql<{ observed_at: Date }[]>`
+    SELECT clock_timestamp() AS observed_at
+  `;
+  assert.ok(clock?.observed_at);
+  const provisioningStartedAt = new Date(clock.observed_at);
+  const reconnectDeadlineAt = new Date(
+    provisioningStartedAt.getTime() + 5 * 60_000
+  );
 
   await sql`
     INSERT INTO interview_session (
       id, user_id, round_type, mode, status, livekit_room_name,
       lifecycle_state, lifecycle_version, room_cleanup_pending,
       room_provisioning_pending, room_provisioning_started_at,
-      reconnect_deadline_at
+      reconnect_deadline_at, reconnect_deadline_owner
     ) VALUES
       (
         ${SESSION_PROVISIONING_COMPLETE}::uuid, ${USER_ONE}::uuid,
         'product_sense', 'voice_video', 'in_progress',
         'provisioning-complete-room', 'connecting', 2, true, true,
-        ${provisioningStartedAt.toISOString()}, NULL
+        ${provisioningStartedAt.toISOString()}, NULL, NULL
       ),
       (
         ${SESSION_PROVISIONING_STALE}::uuid, ${USER_ONE}::uuid,
         'product_sense', 'voice_video', 'in_progress',
         'provisioning-stale-room', 'connecting', 4, true, true,
-        ${provisioningStartedAt.toISOString()}, NULL
+        ${provisioningStartedAt.toISOString()}, NULL, NULL
       ),
       (
         ${SESSION_PRESENCE_RECOVERY}::uuid, ${USER_ONE}::uuid,
         'product_sense', 'voice_video', 'in_progress',
         'presence-recovery-room', 'reconnecting', 6, false, false,
-        NULL, ${reconnectDeadlineAt.toISOString()}
+        NULL, ${reconnectDeadlineAt.toISOString()}, 'reconnect_grace'
       )
   `;
 
@@ -1007,24 +1033,33 @@ async function verifyRoomProvisioningAndPresenceFences(
     sessionId: SESSION_PROVISIONING_STALE,
     expectedVersion: 4,
     provisioningStartedAt,
-    staleBefore: new Date(provisioningStartedAt.getTime() - 1),
-    transitionedAt: new Date("2026-07-10T08:04:59.999Z"),
+    transitionedAt: provisioningStartedAt,
   });
   assert.equal(tooFresh.applied, false);
+  const [staleLease] = await sql<{ room_provisioning_started_at: Date }[]>`
+    UPDATE interview_session
+    SET room_provisioning_started_at =
+      date_trunc('milliseconds', clock_timestamp())
+        - interval '5 minutes' - interval '1 millisecond'
+    WHERE id = ${SESSION_PROVISIONING_STALE}::uuid
+    RETURNING room_provisioning_started_at
+  `;
+  assert.ok(staleLease?.room_provisioning_started_at);
+  const staleProvisioningStartedAt = new Date(
+    staleLease.room_provisioning_started_at
+  );
   const wrongVersion = await store.claimStaleProvisioning({
     sessionId: SESSION_PROVISIONING_STALE,
     expectedVersion: 3,
-    provisioningStartedAt,
-    staleBefore: provisioningStartedAt,
-    transitionedAt: new Date("2026-07-10T08:05:00.000Z"),
+    provisioningStartedAt: staleProvisioningStartedAt,
+    transitionedAt: new Date(),
   });
   assert.equal(wrongVersion.applied, false);
   const claimed = await store.claimStaleProvisioning({
     sessionId: SESSION_PROVISIONING_STALE,
     expectedVersion: 4,
-    provisioningStartedAt,
-    staleBefore: provisioningStartedAt,
-    transitionedAt: new Date("2026-07-10T08:05:00.000Z"),
+    provisioningStartedAt: staleProvisioningStartedAt,
+    transitionedAt: new Date(),
   });
   assert.equal(claimed.applied, true);
   if (claimed.applied) {
@@ -1076,7 +1111,12 @@ async function verifyReconnectTransportOrdering(
     import("../lib/db/session-reconnects"),
     import("../lib/workflows/handle-livekit-interview-event"),
   ]);
-  const occurredAt = new Date("2026-07-10T08:00:00.000Z");
+  const [databaseClock] = await sql<{ observed_at: Date }[]>`
+    SELECT date_trunc('milliseconds', clock_timestamp()) AS observed_at
+  `;
+  assert.ok(databaseClock?.observed_at);
+  const occurredAt = new Date(databaseClock.observed_at);
+  const startedAt = new Date(occurredAt.getTime() - 15 * 60_000);
   const roomName = "migration-reconnect-order-room";
   await sql`
     INSERT INTO interview_session (
@@ -1093,9 +1133,9 @@ async function verifyReconnectTransportOrdering(
       '{"duration": 30}'::jsonb,
       'active',
       3,
-      ${"2026-07-10T07:45:02.000Z"}::timestamptz,
-      ${"2026-07-10T07:45:01.000Z"}::timestamptz,
-      ${"2026-07-10T07:45:00.000Z"}::timestamptz
+      ${new Date(startedAt.getTime() + 2_000).toISOString()}::timestamptz,
+      ${new Date(startedAt.getTime() + 1_000).toISOString()}::timestamptz,
+      ${startedAt.toISOString()}::timestamptz
     )
   `;
 
@@ -1194,6 +1234,7 @@ async function verifyReconnectTransportOrdering(
     expectedVersion: 5,
     nextState: "reconnecting",
     reconnectDeadlineAt: new Date(occurredAt.getTime() + 30_000),
+    reconnectDeadlineOwner: "reconnect_grace",
     transportEventAt: occurredAt,
     transportEventId: "delayed-left-at-tie",
     transportEventName: "participant_left",
@@ -1222,6 +1263,74 @@ async function verifyReconnectTransportOrdering(
     "EV_01_a",
     "EV_01_ä",
   ]);
+}
+
+async function verifyRoomRecoveryFairness(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const { listInterviewRoomCleanupSessions } = await import(
+    "../lib/db/session-reconnects"
+  );
+  const database = drizzle(sql);
+  const healthySessionId = "a4000000-0000-4000-8000-000000000004";
+
+  await sql`
+    UPDATE interview_session
+    SET room_cleanup_attempted_at = clock_timestamp()
+    WHERE room_cleanup_pending OR room_provisioning_pending
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      user_id, round_type, mode, status, livekit_room_name,
+      lifecycle_state, lifecycle_version, terminal_reason, ended_at,
+      room_cleanup_pending, room_provisioning_pending,
+      room_provisioning_started_at
+    )
+    SELECT ${USER_ONE}::uuid, 'product_sense', 'voice_video', 'error',
+      'poison-credit-' || sequence, 'failed', 3, 'provider_failure',
+      clock_timestamp(), false, true,
+      clock_timestamp() - interval '10 minutes' -
+        (sequence * interval '1 millisecond')
+    FROM generate_series(1, 251) AS sequence
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, livekit_room_name,
+      lifecycle_state, lifecycle_version, terminal_reason, ended_at,
+      room_cleanup_pending, room_provisioning_pending,
+      room_provisioning_started_at
+    ) VALUES (
+      ${healthySessionId}::uuid, ${USER_ONE}::uuid, 'product_sense',
+      'voice_video', 'error', 'healthy-room-cleanup', 'failed', 3,
+      'provider_failure', clock_timestamp(), true, false, NULL
+    )
+  `;
+
+  const firstPage = await listInterviewRoomCleanupSessions(250, database);
+  assert.equal(firstPage.length, 250);
+  assert.equal(
+    firstPage.some((row) => row.sessionId === healthySessionId),
+    false
+  );
+
+  await sql`
+    UPDATE interview_session
+    SET room_cleanup_attempted_at = clock_timestamp()
+    WHERE id IN ${sql(firstPage.map((row) => row.sessionId))}
+  `;
+  const secondPage = await listInterviewRoomCleanupSessions(250, database);
+  assert.equal(
+    secondPage.some((row) => row.sessionId === healthySessionId),
+    true
+  );
+
+  await sql`
+    DELETE FROM interview_session
+    WHERE livekit_room_name LIKE 'poison-credit-%'
+      OR id = ${healthySessionId}::uuid
+  `;
 }
 
 async function verifyAtomicSessionCompletion(
@@ -1450,7 +1559,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 9);
+  assert.equal(await migrationCount(sql), 10);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -1499,7 +1608,8 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
       AND table_name = 'interview_session'
       AND column_name IN (
-        'reconnect_deadline_at', 'room_cleanup_pending',
+        'reconnect_deadline_at', 'reconnect_deadline_owner',
+        'room_cleanup_pending',
         'room_cleanup_attempted_at', 'room_provisioning_pending',
         'room_provisioning_started_at', 'presence_reconciled_at',
         'runtime_ready_at', 'last_transport_event_at',
@@ -1507,7 +1617,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       )
     ORDER BY column_name
   `;
-  assert.equal(reconnectColumns.length, 10);
+  assert.equal(reconnectColumns.length, 11);
 
   const reconnectIndexes = await sql<{ indexname: string }[]>`
     SELECT indexname
@@ -1526,9 +1636,12 @@ async function verifyDatabase(sql: postgres.Sql) {
   const reconnectConstraints = await sql<{ conname: string }[]>`
     SELECT conname
     FROM pg_constraint
-    WHERE conname = 'interview_session_room_provisioning_claim_check'
+    WHERE conname IN (
+      'interview_session_room_provisioning_claim_check',
+      'interview_session_reconnect_deadline_owner_check'
+    )
   `;
-  assert.equal(reconnectConstraints.length, 1);
+  assert.equal(reconnectConstraints.length, 2);
 
   const completionColumns = await sql<{ column_name: string }[]>`
     SELECT column_name

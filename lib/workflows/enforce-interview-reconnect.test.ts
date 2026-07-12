@@ -63,7 +63,7 @@ test("atomic timeout claim prevents a concurrent restore before room deletion", 
   assert.deepEqual(fixture.calls, ["claim", "terminate", "end"]);
 });
 
-test("authoritative presence recovers before the timeout claim", async () => {
+test("deadline enforcement does not revive a join observed at the cutoff", async () => {
   const fixture = createFixture(new Date(DEADLINE));
   fixture.deps.inspectPresence = async () =>
     providerSuccess("livekit", {
@@ -76,10 +76,9 @@ test("authoritative presence recovers before the timeout claim", async () => {
   const result = await run(fixture.deps);
 
   assert.equal(result.ok, true);
-  if (result.ok) assert.equal(result.disposition, "presence_recovered");
-  assert.equal(fixture.current.state, "active");
-  assert.equal(fixture.current.version, 5);
-  assert.deepEqual(fixture.calls, []);
+  if (result.ok) assert.equal(result.disposition, "enforced");
+  assert.equal(fixture.current.state, "completed");
+  assert.deepEqual(fixture.calls, ["claim", "terminate", "end"]);
 });
 
 test("presence provider failure cannot claim or terminate the session", async () => {
@@ -206,6 +205,7 @@ test("timeout claims the authorization fence before transcript validation resolv
     expectedVersion: 4,
     nextState: "active",
     reconnectDeadlineAt: null,
+    reconnectDeadlineOwner: null,
     transportEventAt: new Date(DEADLINE),
     transportEventId: "late-restore",
     transportEventName: "participant_joined",
@@ -353,6 +353,7 @@ function createFixture(
   let current = createSession(overrides);
   let onClaim: (() => void) | undefined;
   const store: InterviewReconnectStore = {
+    getDatabaseTime: async () => new Date(now),
     getById: async () => current,
     getByRoom: async () => current,
     applyTransportTransition: async () => ({
@@ -401,6 +402,7 @@ function createFixture(
         current.state !== "reconnecting" ||
         current.version !== input.expectedVersion ||
         current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime() ||
+        now.getTime() >= input.deadlineAt.getTime() ||
         input.joinedAt.getTime() >= input.deadlineAt.getTime()
       ) {
         return { applied: false, reason: "conflict", current };
@@ -410,6 +412,7 @@ function createFixture(
         state: "active",
         version: current.version + 1,
         reconnectDeadlineAt: null,
+        reconnectDeadlineOwner: null,
         lastTransitionAt: input.transitionedAt,
         presenceReconciledAt: input.transitionedAt,
       };
@@ -419,7 +422,9 @@ function createFixture(
       if (
         current.state !== "reconnecting" ||
         current.version !== input.expectedVersion ||
-        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime()
+        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime() ||
+        current.reconnectDeadlineOwner !== "reconnect_grace" ||
+        now.getTime() < input.deadlineAt.getTime()
       ) {
         return { applied: false, reason: "conflict", current };
       }
@@ -494,7 +499,6 @@ function createFixture(
         };
         return completion();
       },
-      now: () => now,
       waitUntil: async () => undefined,
     },
   };
@@ -554,6 +558,7 @@ function createSession(
     runtimeReadyAt: new Date("2026-07-10T07:45:01.000Z"),
     lastTransitionAt: new Date("2026-07-10T08:00:00.000Z"),
     reconnectDeadlineAt: new Date(DEADLINE),
+    reconnectDeadlineOwner: "reconnect_grace",
     roomCleanupPending: false,
     roomCleanupAttemptedAt: null,
     roomProvisioningPending: false,

@@ -21,11 +21,11 @@ A lifecycle-aware session exposes these domain facts:
 | `endingAt`                                                                 | Set once when the first terminal claim reaches `ending`.                                                                                                                                                                                                                             |
 | `endedAt`                                                                  | Set once when terminalization reaches `completed`, `abandoned`, or `failed`.                                                                                                                                                                                                         |
 | `lastTransitionAt`                                                         | Timestamp of the last accepted transition.                                                                                                                                                                                                                                           |
-| `reconnectDeadlineAt`                                                      | Immutable deadline for the accepted reconnect generation and durable room-cleanup marker; cleared on recovery or successful room deletion. A null value while reconnecting means the hard deadline owns expiry.                                                                      |
+| `reconnectDeadlineAt` / `reconnectDeadlineOwner`                           | Immutable effective cutoff for the accepted reconnect generation, equal to the earlier of grace expiry and the hard deadline. The owner records `reconnect_grace` or `hard_deadline`; both fields are cleared together on recovery or terminal settlement.                           |
 | `runtimeReadyAt`                                                           | First signed provider evidence that the dispatched interviewer runtime is active. Initial activation also requires current candidate presence.                                                                                                                                       |
 | `roomCleanupPending`                                                       | Durable provider-cleanup intent set by terminal settlement when a room exists; cleared only after idempotent room deletion succeeds.                                                                                                                                                 |
-| `roomCleanupAttemptedAt`                                                   | Fairness cursor updated before each provider cleanup attempt so one failing room cannot starve older or never-attempted terminal rooms.                                                                                                                                              |
-| `roomProvisioningPending` / `roomProvisioningStartedAt`                    | Pre-provider crash-recovery lease established by the `created → connecting` CAS when a room name exists. It remains independently scannable until full startup commits or teardown and failed-credit settlement are both acknowledged.                                               |
+| `roomCleanupAttemptedAt`                                                   | Shared recovery fairness cursor updated before every cleanup, provisioning, or failed-credit settlement attempt so a poison row cannot starve older or never-attempted work, including credit-only recovery.                                                                         |
+| `roomProvisioningPending` / `roomProvisioningStartedAt`                    | Pre-provider crash-recovery lease established from PostgreSQL's clock by the `created → connecting` CAS when a room name exists. It remains independently scannable until full startup commits or teardown and failed-credit settlement are both acknowledged.                       |
 | `presenceReconciledAt`                                                     | Fairness cursor for authoritative participant-list reconciliation. It is not transport-event ordering evidence and never changes lifecycle state by itself.                                                                                                                          |
 | `lastTransportEventAt` / `lastTransportEventId` / `lastTransportEventName` | Signed candidate-presence ordering and replay evidence. These values never replace the lifecycle version as the write-conflict authority.                                                                                                                                            |
 | `runtimeRef`                                                               | Provider-neutral `{ provider, id }` correlation. Provider-specific room fields are adapter compatibility only.                                                                                                                                                                       |
@@ -172,12 +172,19 @@ recovers it. Candidate observations persist their ordering watermark even when
 they do not change lifecycle state, preventing delayed loss delivery from
 overriding a later join.
 
-The accepted reconnecting lifecycle version is the generation fence. The
-grace event carries that version and the exact stored deadline. At expiry the
+The accepted reconnecting lifecycle version is the generation fence. Every
+accepted loss persists the effective cutoff and its owner, including a loss in
+the final 30 seconds. Only a grace-owned cutoff schedules reconnect enforcement;
+the hard-deadline worker retains termination ownership when the hard deadline
+wins. The grace event carries the version and exact stored cutoff. At expiry the
 worker first checks authoritative candidate presence. Only provider state
 `JOINED` or `ACTIVE` with a finite provider `joinedAt` strictly before the
-stored reconnect deadline may repair a missed join through the same
+stored cutoff may repair a missed join through the same
 lifecycle-version, deadline, and timestamp compare-and-set;
+the database clock must also still be strictly before the cutoff. Equality is
+expired. Fresh token issuance, signed join recovery, presence repair, and the
+timeout claim all use PostgreSQL time as the authorization clock, so an
+application host's slow, fast, or rolled-back clock cannot extend access.
 provider read failure leaves the session reconnecting for retry. Confirmed
 absence allows the worker to atomically claim provisional
 `ending (disconnect_timeout)` only while all three facts still match. The claim
@@ -210,7 +217,7 @@ lifecycle version, and a provider read failure never invents absence.
 
 Before any provider call, the adapter signs the participant token so signing
 failure cannot leave a room or dispatch behind. The `created → connecting` CAS
-also establishes a durable provisioning lease and room-cleanup intent before
+also establishes a PostgreSQL-clock provisioning lease and room-cleanup intent before
 room creation. Any later provider exception is treated as potentially
 provisioned. An atomic provider-start failure sets `failed`,
 `provider_failure`, and cleanup intent before immediate teardown. This includes
@@ -224,11 +231,12 @@ truth if the provider is unavailable. Hard-deadline and reconnect workers clear
 the same marker after acknowledged deletion. Cleanup removes the candidate with
 an explicit token-revocation timestamp before deleting the room; room absence
 is idempotent success. A five-minute terminal-room recovery scan fans each
-pending room into an independently retryable event and prioritizes never-tried,
-then least-recently-tried work, preventing one poison room from starving peers
+pending row into an independently retryable event and prioritizes never-tried,
+then least-recently-tried cleanup, provisioning, and credit-only work,
+preventing one poison row from starving peers
 or a retained agent or issued token from surviving an exhausted retry window.
 A connecting provisioning lease becomes claimable after five minutes through
-state, lifecycle-version, lease-timestamp, and age fencing. The recovery worker
+state, lifecycle-version, lease-timestamp, and a PostgreSQL-clock age fence. The recovery worker
 then terminalizes it, retries provider teardown, settles credit idempotently,
 and clears each durable marker only after its corresponding acknowledgement.
 

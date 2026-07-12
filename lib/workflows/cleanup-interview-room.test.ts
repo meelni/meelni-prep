@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type {
-  InterviewReconnectSession,
-  InterviewReconnectStore,
+import {
+  INTERVIEW_ROOM_PROVISIONING_LEASE_MS,
+  type InterviewReconnectSession,
+  type InterviewReconnectStore,
 } from "@/lib/db/session-reconnects";
 import { providerFailure, providerSuccess } from "@/lib/internal/integrations";
 import {
@@ -171,6 +172,44 @@ test("stale provisioning survives teardown failure and later settles room and cr
   ]);
 });
 
+test("credit-only poison retries advance the shared recovery cursor", async () => {
+  const fixture = createFixture();
+  fixture.setCurrent({
+    ...fixture.current,
+    roomCleanupPending: false,
+    roomProvisioningPending: true,
+    roomProvisioningStartedAt: new Date("2026-07-10T07:54:00.000Z"),
+  });
+  let attempts = 0;
+  fixture.deps.settleProvisioningCredit = async () => {
+    fixture.calls.push("settle-credit");
+    attempts += 1;
+    if (attempts === 1) throw new Error("ledger unavailable");
+  };
+
+  await assert.rejects(
+    () =>
+      cleanupInterviewRoomWorkflow(
+        { sessionId: SESSION_ID, env: ENV },
+        fixture.deps
+      ),
+    /ledger unavailable/
+  );
+  const recovered = await cleanupInterviewRoomWorkflow(
+    { sessionId: SESSION_ID, env: ENV },
+    fixture.deps
+  );
+
+  assert.equal(recovered.ok, true);
+  assert.deepEqual(fixture.calls, [
+    "attempt",
+    "settle-credit",
+    "attempt",
+    "settle-credit",
+    "settle-provisioning",
+  ]);
+});
+
 function createFixture(): {
   deps: CleanupInterviewRoomDeps;
   calls: string[];
@@ -179,7 +218,9 @@ function createFixture(): {
 } {
   const calls: string[] = [];
   let current = createSession();
+  const databaseNow = new Date("2026-07-10T08:00:05.000Z");
   const store: InterviewReconnectStore = {
+    getDatabaseTime: async () => new Date(databaseNow),
     getById: async () => current,
     getByRoom: async () => current,
     applyTransportTransition: async () => ({
@@ -237,7 +278,8 @@ function createFixture(): {
         current.version !== input.expectedVersion ||
         current.roomProvisioningStartedAt?.getTime() !==
           input.provisioningStartedAt.getTime() ||
-        input.provisioningStartedAt.getTime() > input.staleBefore.getTime()
+        input.provisioningStartedAt.getTime() >
+          databaseNow.getTime() - INTERVIEW_ROOM_PROVISIONING_LEASE_MS
       ) {
         return { applied: false, reason: "conflict", current };
       }
@@ -280,7 +322,6 @@ function createFixture(): {
           disposition: "deleted" as const,
         });
       },
-      now: () => new Date("2026-07-10T08:00:05.000Z"),
       settleProvisioningCredit: async () => {
         calls.push("settle-credit");
       },
@@ -302,6 +343,7 @@ function createSession(): InterviewReconnectSession {
     runtimeReadyAt: new Date("2026-07-10T07:45:01.000Z"),
     lastTransitionAt: new Date("2026-07-10T08:00:00.000Z"),
     reconnectDeadlineAt: null,
+    reconnectDeadlineOwner: null,
     roomCleanupPending: true,
     roomCleanupAttemptedAt: null,
     roomProvisioningPending: false,

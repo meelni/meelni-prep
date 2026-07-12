@@ -158,6 +158,32 @@ test("a compareAndSet for a missing session reports not_found", async () => {
   });
 });
 
+test("connecting writes the provisioning lease from PostgreSQL time", async () => {
+  const updated = lifecycleRow({
+    lifecycleState: "connecting",
+    lifecycleVersion: 2,
+  });
+  const fake = createFakeDatabase({ updateRows: [updated] });
+  const store = createDrizzleInterviewSessionLifecycleStore(fake.database);
+
+  await store.compareAndSet({
+    sessionId: updated.id,
+    expectedState: "created",
+    expectedVersion: 1,
+    nextState: "connecting",
+    transitionedAt: new Date("1999-01-01T00:00:00.000Z"),
+  });
+
+  const leaseSql = new PgDialect().sqlToQuery(
+    fake.capturedSet.roomProvisioningStartedAt as SQL
+  );
+  assert.match(
+    leaseSql.sql,
+    /date_trunc\('milliseconds', clock_timestamp\(\)\)/
+  );
+  assert.doesNotMatch(leaseSql.sql, /1999-01-01/);
+});
+
 function createFakeDatabase({
   updateRows,
   selectRows = [],

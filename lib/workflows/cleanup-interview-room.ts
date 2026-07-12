@@ -23,7 +23,6 @@ export interface CleanupInterviewRoomDeps {
     participantIdentity: string;
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<TerminatedInterviewRoom>>;
-  now(): Date;
   settleProvisioningCredit(reservationKey: string): Promise<void>;
 }
 
@@ -51,8 +50,9 @@ export async function cleanupInterviewRoomWorkflow(
     ) {
       return { ok: false, disposition: "not_terminal" };
     }
+    const databaseNow = await deps.store.getDatabaseTime();
     const staleBefore = new Date(
-      deps.now().getTime() - INTERVIEW_ROOM_PROVISIONING_LEASE_MS
+      databaseNow.getTime() - INTERVIEW_ROOM_PROVISIONING_LEASE_MS
     );
     if (session.roomProvisioningStartedAt.getTime() > staleBefore.getTime()) {
       return { ok: false, disposition: "not_due" };
@@ -61,8 +61,7 @@ export async function cleanupInterviewRoomWorkflow(
       sessionId: session.sessionId,
       expectedVersion: session.version,
       provisioningStartedAt: session.roomProvisioningStartedAt,
-      staleBefore,
-      transitionedAt: deps.now(),
+      transitionedAt: databaseNow,
     });
     if (!claim.applied) {
       return {
@@ -79,13 +78,13 @@ export async function cleanupInterviewRoomWorkflow(
     return { ok: true, disposition: "already_clean", room: null };
   }
 
+  await deps.store.markRoomCleanupAttempted({
+    sessionId: session.sessionId,
+    attemptedAt: await deps.store.getDatabaseTime(),
+  });
+
   let room: TerminatedInterviewRoom | null = null;
   if (session.roomCleanupPending) {
-    await deps.store.markRoomCleanupAttempted({
-      sessionId: session.sessionId,
-      attemptedAt: deps.now(),
-    });
-
     const terminated = await deps.terminateRoom({
       roomName: session.roomName,
       participantIdentity: session.userId,
@@ -118,7 +117,6 @@ export function createCleanupInterviewRoomDeps(): CleanupInterviewRoomDeps {
   return {
     store: createDrizzleInterviewReconnectStore(),
     terminateRoom: terminateInterviewRoom,
-    now: () => new Date(),
     settleProvisioningCredit,
   };
 }

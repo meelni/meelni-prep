@@ -7,7 +7,7 @@ export interface DeriveInterviewReconnectDeadlineInput {
 }
 
 export interface InterviewReconnectDeadline {
-  deadlineAt: Date | null;
+  deadlineAt: Date;
   owner: "reconnect_grace" | "hard_deadline";
 }
 
@@ -21,7 +21,7 @@ export function deriveInterviewReconnectDeadline({
   );
 
   if (hardDeadlineAt.getTime() <= reconnectDeadlineAt.getTime()) {
-    return { deadlineAt: null, owner: "hard_deadline" };
+    return { deadlineAt: new Date(hardDeadlineAt), owner: "hard_deadline" };
   }
 
   return { deadlineAt: reconnectDeadlineAt, owner: "reconnect_grace" };

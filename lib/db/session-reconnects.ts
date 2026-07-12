@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import {
   projectLegacyInterviewSessionStatus,
   type InterviewLifecycleState,
@@ -20,6 +20,7 @@ export interface InterviewReconnectSession {
   runtimeReadyAt: Date | null;
   lastTransitionAt: Date;
   reconnectDeadlineAt: Date | null;
+  reconnectDeadlineOwner: "reconnect_grace" | "hard_deadline" | null;
   roomCleanupPending: boolean;
   roomCleanupAttemptedAt: Date | null;
   roomProvisioningPending: boolean;
@@ -47,6 +48,7 @@ export interface ApplyInterviewTransportTransitionInput {
   expectedVersion: number;
   nextState: "active" | "reconnecting";
   reconnectDeadlineAt: Date | null;
+  reconnectDeadlineOwner: "reconnect_grace" | "hard_deadline" | null;
   transportEventAt: Date;
   transportEventId: string;
   transportEventName: InterviewTransportEventName;
@@ -64,6 +66,7 @@ export type ApplyInterviewTransportTransitionResult =
     };
 
 export interface InterviewReconnectStore {
+  getDatabaseTime(): Promise<Date>;
   getByRoom(roomName: string): Promise<InterviewReconnectSession | null>;
   getById(sessionId: string): Promise<InterviewReconnectSession | null>;
   applyTransportTransition(
@@ -97,7 +100,6 @@ export interface InterviewReconnectStore {
     sessionId: string;
     expectedVersion: number;
     provisioningStartedAt: Date;
-    staleBefore: Date;
     transitionedAt: Date;
   }): Promise<ApplyInterviewTransportTransitionResult>;
   markPresenceReconciled(input: {
@@ -128,7 +130,10 @@ export interface InterviewReconnectStore {
   }): Promise<ApplyInterviewTransportTransitionResult>;
 }
 
-export type InterviewReconnectDatabase = Pick<typeof db, "select" | "update">;
+export type InterviewReconnectDatabase = Pick<
+  typeof db,
+  "execute" | "select" | "update"
+>;
 
 export const INTERVIEW_ROOM_PROVISIONING_LEASE_MS = 5 * 60 * 1_000;
 
@@ -147,6 +152,18 @@ export function createDrizzleInterviewReconnectStore(
   };
 
   const store: InterviewReconnectStore = {
+    async getDatabaseTime() {
+      const rows = (await database.execute(
+        sql`SELECT clock_timestamp() AS observed_at`
+      )) as unknown as Array<{ observed_at: Date | string }>;
+      const observedAt = rows[0]?.observed_at;
+      const value =
+        observedAt instanceof Date ? observedAt : new Date(String(observedAt));
+      if (!Number.isFinite(value.getTime())) {
+        throw new Error("Database clock returned an invalid timestamp");
+      }
+      return value;
+    },
     getByRoom: (roomName) =>
       getByCondition(eq(interviewSession.livekitRoomName, roomName)),
     getById: (sessionId) => getByCondition(eq(interviewSession.id, sessionId)),
@@ -162,6 +179,7 @@ export function createDrizzleInterviewReconnectStore(
           }),
           lastTransitionAt: input.transitionedAt,
           reconnectDeadlineAt: input.reconnectDeadlineAt,
+          reconnectDeadlineOwner: input.reconnectDeadlineOwner,
           ...(input.recordTransportEvent
             ? {
                 lastTransportEventAt: input.transportEventAt,
@@ -192,6 +210,14 @@ export function createDrizzleInterviewReconnectStore(
                     eventId: input.transportEventId,
                     eventName: input.transportEventName,
                   }),
+                ]
+              : []),
+            ...(input.expectedState === "reconnecting" &&
+            input.nextState === "active"
+              ? [
+                  isNotNull(interviewSession.reconnectDeadlineAt),
+                  sql`${input.transportEventAt.toISOString()}::timestamptz < ${interviewSession.reconnectDeadlineAt}`,
+                  sql`clock_timestamp() < ${interviewSession.reconnectDeadlineAt}`,
                 ]
               : [])
           )
@@ -269,7 +295,11 @@ export function createDrizzleInterviewReconnectStore(
     async markRoomCleanupComplete(input) {
       await database
         .update(interviewSession)
-        .set({ reconnectDeadlineAt: null, roomCleanupPending: false })
+        .set({
+          reconnectDeadlineAt: null,
+          reconnectDeadlineOwner: null,
+          roomCleanupPending: false,
+        })
         .where(
           and(
             eq(interviewSession.id, input.sessionId),
@@ -284,7 +314,10 @@ export function createDrizzleInterviewReconnectStore(
         .where(
           and(
             eq(interviewSession.id, input.sessionId),
-            eq(interviewSession.roomCleanupPending, true)
+            or(
+              eq(interviewSession.roomCleanupPending, true),
+              eq(interviewSession.roomProvisioningPending, true)
+            )
           )
         );
     },
@@ -356,7 +389,7 @@ export function createDrizzleInterviewReconnectStore(
               interviewSession.roomProvisioningStartedAt,
               input.provisioningStartedAt
             ),
-            lte(interviewSession.roomProvisioningStartedAt, input.staleBefore)
+            sql`${interviewSession.roomProvisioningStartedAt} <= clock_timestamp() - (${INTERVIEW_ROOM_PROVISIONING_LEASE_MS} * interval '1 millisecond')`
           )
         )
         .returning();
@@ -414,6 +447,7 @@ export function createDrizzleInterviewReconnectStore(
           status: projectLegacyInterviewSessionStatus({ state: "active" }),
           lastTransitionAt: input.transitionedAt,
           reconnectDeadlineAt: null,
+          reconnectDeadlineOwner: null,
           presenceReconciledAt: input.transitionedAt,
         })
         .where(
@@ -422,7 +456,8 @@ export function createDrizzleInterviewReconnectStore(
             eq(interviewSession.lifecycleState, "reconnecting"),
             eq(interviewSession.lifecycleVersion, input.expectedVersion),
             eq(interviewSession.reconnectDeadlineAt, input.deadlineAt),
-            sql`${input.joinedAt.toISOString()}::timestamptz < ${interviewSession.reconnectDeadlineAt}`
+            sql`${input.joinedAt.toISOString()}::timestamptz < ${interviewSession.reconnectDeadlineAt}`,
+            sql`clock_timestamp() < ${interviewSession.reconnectDeadlineAt}`
           )
         )
         .returning();
@@ -457,7 +492,9 @@ export function createDrizzleInterviewReconnectStore(
             eq(interviewSession.id, input.sessionId),
             eq(interviewSession.lifecycleState, "reconnecting"),
             eq(interviewSession.lifecycleVersion, input.expectedVersion),
-            eq(interviewSession.reconnectDeadlineAt, input.deadlineAt)
+            eq(interviewSession.reconnectDeadlineAt, input.deadlineAt),
+            eq(interviewSession.reconnectDeadlineOwner, "reconnect_grace"),
+            sql`${interviewSession.reconnectDeadlineAt} <= clock_timestamp()`
           )
         )
         .returning();
@@ -488,6 +525,7 @@ export function createDrizzleInterviewReconnectStore(
             eq(interviewSession.lifecycleState, "ending"),
             eq(interviewSession.lifecycleVersion, input.expectedVersion),
             eq(interviewSession.reconnectDeadlineAt, input.deadlineAt),
+            eq(interviewSession.reconnectDeadlineOwner, "reconnect_grace"),
             eq(interviewSession.terminalReason, input.expectedTerminalReason)
           )
         )
@@ -613,7 +651,8 @@ export async function listInterviewReconnectSchedules(limit = 250): Promise<
           "abandoned",
           "failed",
         ]),
-        isNotNull(interviewSession.reconnectDeadlineAt)
+        isNotNull(interviewSession.reconnectDeadlineAt),
+        eq(interviewSession.reconnectDeadlineOwner, "reconnect_grace")
       )
     )
     .orderBy(asc(interviewSession.reconnectDeadlineAt))
@@ -656,6 +695,7 @@ function mapReconnectSession(
     runtimeReadyAt: row.runtimeReadyAt,
     lastTransitionAt: row.lastTransitionAt,
     reconnectDeadlineAt: row.reconnectDeadlineAt,
+    reconnectDeadlineOwner: row.reconnectDeadlineOwner,
     roomCleanupPending: row.roomCleanupPending,
     roomCleanupAttemptedAt: row.roomCleanupAttemptedAt,
     roomProvisioningPending: row.roomProvisioningPending,
@@ -695,9 +735,9 @@ export async function listInterviewPresenceReconciliationSessions(
 
 export async function listInterviewRoomCleanupSessions(
   limit = 250,
-  staleBefore = new Date(Date.now() - INTERVIEW_ROOM_PROVISIONING_LEASE_MS)
+  database: Pick<typeof db, "select"> = db
 ): Promise<Array<{ sessionId: string }>> {
-  return db
+  return database
     .select({ sessionId: interviewSession.id })
     .from(interviewSession)
     .where(
@@ -719,7 +759,7 @@ export async function listInterviewRoomCleanupSessions(
             eq(interviewSession.lifecycleState, "connecting"),
             eq(interviewSession.roomProvisioningPending, true),
             isNotNull(interviewSession.roomProvisioningStartedAt),
-            lte(interviewSession.roomProvisioningStartedAt, staleBefore)
+            sql`${interviewSession.roomProvisioningStartedAt} <= clock_timestamp() - (${INTERVIEW_ROOM_PROVISIONING_LEASE_MS} * interval '1 millisecond')`
           )
         )
       )

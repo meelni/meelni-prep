@@ -29,6 +29,8 @@ export interface JoinableInterviewSession {
   lifecycleState: InterviewLifecycleState;
   lifecycleVersion: number;
   reconnectDeadlineAt?: Date | null;
+  reconnectDeadlineOwner?: "reconnect_grace" | "hard_deadline" | null;
+  databaseNow: Date;
 }
 
 export interface JoinInterviewSessionInput {
@@ -63,7 +65,6 @@ export interface JoinInterviewSessionDeps {
     expiresAt: Date;
     env: LiveKitEnvironment;
   }): ReturnType<typeof issueInterviewParticipantToken>;
-  now(): Date;
 }
 
 export type JoinInterviewSessionResult =
@@ -160,7 +161,7 @@ export async function joinInterviewSessionWorkflow(
   // Session creation already reserved and consumed one interview credit. The
   // owned, active voice session is the reconnect entitlement; checking the
   // user's remaining balance here would reject the credit they just consumed.
-  const authorization = deriveJoinAuthorization(session, deps.now());
+  const authorization = deriveJoinAuthorization(session, session.databaseNow);
   if (!authorization) {
     deps.audit({
       outcome: "denied",
@@ -207,11 +208,12 @@ export async function joinInterviewSessionWorkflow(
     current.userId !== input.user.id ||
     current.livekitRoomName !== session.livekitRoomName ||
     current.lifecycleVersion !== authorization.lifecycleVersion ||
+    current.reconnectDeadlineOwner !== authorization.reconnectDeadlineOwner ||
     !sameInstant(
       current.reconnectDeadlineAt ?? null,
       authorization.reconnectDeadlineAt
     ) ||
-    !deriveJoinAuthorization(current, deps.now())
+    !deriveJoinAuthorization(current, current.databaseNow)
   ) {
     deps.audit({
       outcome: "denied",
@@ -278,7 +280,6 @@ export function createJoinInterviewSessionDeps(): JoinInterviewSessionDeps {
     consumeRateLimit: consumeReconnectRateLimit,
     getSession: getSessionForLiveKitJoin,
     issueToken: issueInterviewParticipantToken,
-    now: () => new Date(),
   };
 }
 
@@ -288,6 +289,7 @@ function deriveJoinAuthorization(
 ): {
   lifecycleVersion: number;
   reconnectDeadlineAt: Date | null;
+  reconnectDeadlineOwner: "reconnect_grace" | "hard_deadline" | null;
   expiresAt: Date;
   ttlSeconds: number;
 } | null {
@@ -332,6 +334,7 @@ function deriveJoinAuthorization(
   return {
     lifecycleVersion: session.lifecycleVersion,
     reconnectDeadlineAt: session.reconnectDeadlineAt ?? null,
+    reconnectDeadlineOwner: session.reconnectDeadlineOwner ?? null,
     expiresAt,
     ttlSeconds: Math.min(PARTICIPANT_TOKEN_TTL_SECONDS, remainingSeconds),
   };

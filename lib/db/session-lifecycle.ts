@@ -99,6 +99,7 @@ export function createDrizzleInterviewSessionLifecycleStore(
             ? {
                 activatedAt: sql`COALESCE(${interviewSession.activatedAt}, ${transitionedAt.toISOString()}::timestamptz)`,
                 reconnectDeadlineAt: null,
+                reconnectDeadlineOwner: null,
               }
             : {}),
           ...(input.nextState === "connecting"
@@ -106,7 +107,7 @@ export function createDrizzleInterviewSessionLifecycleStore(
                 roomCleanupPending: sql`${interviewSession.livekitRoomName} IS NOT NULL`,
                 roomCleanupAttemptedAt: null,
                 roomProvisioningPending: sql`${interviewSession.livekitRoomName} IS NOT NULL`,
-                roomProvisioningStartedAt: sql`CASE WHEN ${interviewSession.livekitRoomName} IS NOT NULL THEN ${transitionedAt.toISOString()}::timestamptz ELSE NULL END`,
+                roomProvisioningStartedAt: sql`CASE WHEN ${interviewSession.livekitRoomName} IS NOT NULL THEN date_trunc('milliseconds', clock_timestamp()) ELSE NULL END`,
               }
             : {}),
           ...(input.nextState === "ending"
@@ -121,6 +122,7 @@ export function createDrizzleInterviewSessionLifecycleStore(
                 endingAt: sql`COALESCE(${interviewSession.endingAt}, ${transitionedAt.toISOString()}::timestamptz)`,
                 endedAt: sql`COALESCE(${interviewSession.endedAt}, ${transitionedAt.toISOString()}::timestamptz)`,
                 reconnectDeadlineAt: null,
+                reconnectDeadlineOwner: null,
                 roomCleanupPending: sql`${interviewSession.livekitRoomName} IS NOT NULL`,
                 roomCleanupAttemptedAt: null,
               }

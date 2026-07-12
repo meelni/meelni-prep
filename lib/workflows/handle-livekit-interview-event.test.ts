@@ -217,7 +217,8 @@ test("events at the hard deadline cannot enter reconnect or reactivate", async (
       state: "reconnecting",
       version: 4,
       startedAt: new Date("2026-07-10T07:30:00.000Z"),
-      reconnectDeadlineAt: null,
+      reconnectDeadlineAt: NOW,
+      reconnectDeadlineOwner: "hard_deadline",
     })
   );
   const restored = await handleLiveKitInterviewEventWorkflow(
@@ -285,6 +286,65 @@ test("candidate recovery is accepted 1ms before grace and rejected at grace", as
   assert.equal(before.lifecycle?.state, "active");
   assert.equal(at.disposition, "ignored");
   assert.equal(at.lifecycle?.state, "reconnecting");
+});
+
+test("hard-deadline-owned loss keeps a recoverable cutoff without scheduling grace", async () => {
+  const hardDeadlineAt = new Date("2026-07-10T08:00:20.000Z");
+  const fixture = createFixture(
+    createSession({ startedAt: new Date("2026-07-10T07:30:20.000Z") })
+  );
+
+  const lost = await handleLiveKitInterviewEventWorkflow(
+    event("participant_left", USER_ID, "hard-owned-loss", NOW),
+    fixture.deps
+  );
+  assert.equal(lost.lifecycle?.reconnectDeadlineOwner, "hard_deadline");
+  assert.equal(
+    lost.lifecycle?.reconnectDeadlineAt?.getTime(),
+    hardDeadlineAt.getTime()
+  );
+  assert.deepEqual(fixture.schedules, []);
+
+  const recovered = await handleLiveKitInterviewEventWorkflow(
+    event(
+      "participant_joined",
+      USER_ID,
+      "hard-owned-restore",
+      new Date(hardDeadlineAt.getTime() - 1)
+    ),
+    fixture.deps
+  );
+  assert.equal(recovered.disposition, "recovered");
+  assert.equal(recovered.lifecycle?.state, "active");
+});
+
+test("signed rejoin uses strict database time at -1ms, equality, and +1ms", async () => {
+  const cutoff = new Date("2026-07-10T08:00:30.000Z");
+  for (const [offset, disposition] of [
+    [-1, "recovered"],
+    [0, "ignored"],
+    [1, "ignored"],
+  ] as const) {
+    const fixture = createFixture(
+      createSession({
+        state: "reconnecting",
+        version: 4,
+        reconnectDeadlineAt: cutoff,
+        reconnectDeadlineOwner: "hard_deadline",
+      }),
+      new Date(cutoff.getTime() + offset)
+    );
+    const result = await handleLiveKitInterviewEventWorkflow(
+      event(
+        "participant_joined",
+        USER_ID,
+        `database-cutoff:${offset}`,
+        new Date(cutoff.getTime() - 1)
+      ),
+      fixture.deps
+    );
+    assert.equal(result.disposition, disposition);
+  }
 });
 
 test("a delayed pre-deadline join cannot restore after the server deadline", async () => {
@@ -504,6 +564,9 @@ function createSession(
     lastTransportEventId: null,
     lastTransportEventName: "participant_joined",
     ...overrides,
+    reconnectDeadlineOwner:
+      overrides.reconnectDeadlineOwner ??
+      (overrides.reconnectDeadlineAt ? "reconnect_grace" : null),
   };
 }
 
@@ -527,12 +590,19 @@ function createFixture(
     deadlineAt: Date;
   }> = [];
   const store: InterviewReconnectStore = {
+    getDatabaseTime: async () => new Date(now),
     getByRoom: async () => current,
     getById: async () => current,
     applyTransportTransition: async (input) => {
       if (
         current.state !== input.expectedState ||
         current.version !== input.expectedVersion ||
+        (input.expectedState === "reconnecting" &&
+          input.nextState === "active" &&
+          (!current.reconnectDeadlineAt ||
+            now.getTime() >= current.reconnectDeadlineAt.getTime() ||
+            input.transportEventAt.getTime() >=
+              current.reconnectDeadlineAt.getTime())) ||
         (input.recordTransportEvent &&
           compareInterviewTransportEvents(
             {
@@ -629,7 +699,6 @@ function createFixture(
       scheduleReconnect: async (input) => {
         schedules.push(input);
       },
-      now: () => now,
     },
     schedules,
     get writes() {
@@ -652,6 +721,7 @@ function apply(
         : current.activatedAt,
     lastTransitionAt: input.transitionedAt,
     reconnectDeadlineAt: input.reconnectDeadlineAt,
+    reconnectDeadlineOwner: input.reconnectDeadlineOwner,
     runtimeReadyAt: input.runtimeReadyAt ?? current.runtimeReadyAt,
     lastTransportEventAt: input.recordTransportEvent
       ? input.transportEventAt
