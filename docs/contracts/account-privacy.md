@@ -67,6 +67,13 @@ After persistence:
 - An ordinary HTTP 401 for export or deletion is an expired/absent session and
   must offer a safe sign-in path back to Data & privacy.
 
+The durable tombstone is the entitlement cutoff. As soon as persistence
+commits, middleware denies the authenticated session and every other existing
+or future session with `account_deletion_pending`, even when provider cleanup is
+still queued, retrying, or failed. Unused credits are not redeemable because the
+deleted identity has no product access; no ledger compensation or refund is
+created.
+
 The unconfirmed `DELETE` method returns `405`. Provider/admin error details are
 never returned to the client or stored in the tombstone; only stable categories
 are persisted.
@@ -178,10 +185,13 @@ customer IDs must use `cus_`, subscriptions `sub_`, invoices `in_`, PaymentInten
 `pi_`, and charges `ch_`. A kind/ID mismatch fails closed before any provider
 operation or fingerprint clearing.
 
-The draft deletion workflow removes local/Auth identity before provider cleanup,
-which ends product access immediately even when a paid period remains. That
-irreversible access-loss exception is not an accepted billing-policy fact; it
-requires explicit owner approval before the draft can merge.
+The accepted deletion exception removes product access immediately at durable
+intent even when a paid period remains. Local/Auth identity cleanup proceeds
+before provider cleanup, and provider failure cannot restore access because the
+tombstone remains authoritative. Captured subscriptions are retried with the
+same object-derived idempotency key and `prorate=false`; deletion never creates
+a refund or customer-balance compensation. Ordinary cancellation remains
+period-end.
 
 ## Retention boundary
 

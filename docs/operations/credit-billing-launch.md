@@ -456,6 +456,14 @@ transaction returns the effect description, and the webhook emits it only after
 the outer database transaction resolves. A rollback therefore emits no renewal
 event, while an analytics failure cannot undo committed ledger state.
 
+Account deletion is the accepted exception to period-end access. Once
+irreversible deletion intent is durably committed, the tombstone immediately
+denies every product session and credit redemption. Provider cleanup may retry
+after that cutoff, but every captured subscription cancellation uses
+`prorate=false` with a provider-object-derived idempotency key and creates no
+refund or customer-balance compensation. Ordinary cancellation remains
+period-end, and exceptional refunds remain separate manual support decisions.
+
 Before launch, use Stripe test mode to prove:
 
 - the subscription remains active and is marked to cancel at period end;
@@ -474,8 +482,10 @@ Before launch, use Stripe test mode to prove:
 - concurrent cancellation/reactivation duplicates produce one provider
   mutation at most, and no direct observation moves the provider-event fence;
 - a rolled-back renewal emits no renewal or rollover analytics;
-- account deletion cancels provider resources without automatically refunding
-  invoices, charges, or PaymentIntents.
+- durable account deletion immediately denies original and second-device access
+  before provider cleanup completes, including while cleanup is retrying;
+- account deletion cancels provider resources with `prorate=false`, stable retry
+  idempotency, and no invoice, charge, PaymentIntent, or customer-balance refund.
 
 Exceptional-refund decisions are manual. Execution for an existing account is
 paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)

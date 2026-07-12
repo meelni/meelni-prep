@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { getAccountAccessDecision } from "./account-access";
 
-test("tombstones deny password reauthentication and existing sessions", () => {
+test("durable deletion intent immediately denies password reauthentication and existing sessions", () => {
   for (const requiresAuthentication of [true, false]) {
     assert.equal(
       getAccountAccessDecision({

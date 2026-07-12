@@ -147,7 +147,7 @@ export function checkoutReconciliationErrorCode(error: unknown) {
 
 export function deletedBillingIdempotencyKey(
   providerId: string,
-  operation: "cancel" | "delete" | "expire" | "refund"
+  operation: "cancel" | "delete" | "expire"
 ) {
   const fingerprint = fingerprintStripeSubject(providerId);
   if (!fingerprint) {

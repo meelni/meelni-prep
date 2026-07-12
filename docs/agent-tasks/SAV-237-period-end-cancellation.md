@@ -19,8 +19,10 @@
 - Out: manual support refunds, Stripe credential changes, catalog changes,
   migrations, and Production/test-mode provider mutations.
 - Provider dependency: Stripe test-mode rehearsal after code review.
-- Open owner gate: approve or reject immediate paid-access loss after irreversible
-  account deletion; this draft does not treat the exception as accepted.
+- Accepted deletion exception: durable irreversible deletion intent immediately
+  ends product access and credit redemption; captured subscriptions are canceled
+  without proration, refund, or customer-balance compensation. Ordinary
+  cancellation remains period-end.
 - Technical gate: SAV-231 must provide verified payment-to-credit-ledger
   reconciliation before a human-approved exceptional refund can be executed
   for an existing account.
@@ -33,6 +35,8 @@
 - Stripe test-mode cancellation/reactivation evidence before launch.
 - Source-aware entitlement boundary tests at, before, and after period end plus
   delayed/same-second webhook permutations.
+- Deletion tests proving tombstone-time access denial, retry-stable
+  `prorate=false` cancellation, and absence of automatic refund operations.
 
 ## Rollout
 
