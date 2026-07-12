@@ -67,7 +67,7 @@ gold-set preflight and 100% insufficient-handling threshold.
 
 ## Report contract
 
-Every command emits `evaluation-calibration-report.v4` JSON with:
+Every command emits `evaluation-calibration-report.v5` JSON with:
 
 - execution kind, evaluator model, repetition count, and paid-provider status;
 - gold-set, adjudication, schema, prompt, and rubric versions;
@@ -81,7 +81,8 @@ Every command emits `evaluation-calibration-report.v4` JSON with:
 - case-level failure codes and unresolved blockers.
 
 Live reports also include `execution.cost`, an
-`evaluation-calibration-cost-report.v1` object with attempted and completed
+`evaluation-calibration-cost-report.v2` object with logical calls, the physical
+HTTP-attempt ceiling, completed calls,
 calls, cumulative worst-case reservations, reconciled actual cost,
 unreconciled reservation cost, estimated committed cost, the deterministic stop
 reason, and the exact reviewed pricing contract. Preflight and deterministic
@@ -124,14 +125,20 @@ result identity.
 
 For live runs, `execution.modelVersion` must be the pinned snapshot
 `gpt-5.1-2025-11-13`; moving aliases and unknown models fail before call one.
-`evaluation-calibration-pricing.v1` records the reviewed Standard pricing from
-the official model page on 2026-07-11: $1.25 per million uncached input tokens,
-$0.125 per million cached input tokens, and $10 per million output tokens.
+`evaluation-calibration-pricing.v1` binds that model to
+`https://api.openai.com/v1`, the explicit `default` service tier, zero SDK
+retries, and redirect rejection. It records the Standard pricing re-verified
+against the official model page at `2026-07-12T06:28:08.000Z`: $1.25 per
+million uncached input tokens, $0.125 per million cached input tokens, and $10
+per million output tokens. The review expires after 24 hours; future-dated or
+stale review timestamps fail before call one.
 `modelVersionBasis` says `configured_provider_model`; configuration alone is
 not provider proof. The OpenAI adapter records the API response's `model` value
 on each validated output, and the report lists those values in
 `observedModelVersions`. Acceptance requires every observed value to match the
-pinned expectation. Deterministic runs use an explicit local identifier.
+pinned expectation. Live reports preserve every provider-reported model and
+service-tier identity, including identities returned with invalid or failed
+responses. Deterministic runs use an explicit local identifier.
 
 Immediately before each provider invocation, the runner reserves a worst-case
 cost using a conservative input-token ceiling and a 2,000 completion-token
@@ -141,6 +148,16 @@ within both ceilings; the reservation is then reconciled to actual uncached,
 cached, and output token usage. Missing, malformed, or over-reservation usage,
 as well as provider failure, stops the run before another call. Uncertain spend
 retains its full reservation.
+
+The paid client rejects any ambient `OPENAI_BASE_URL`, accepts no injected
+client, pins the official endpoint, requests `service_tier: "default"`, disables
+SDK retries, and rejects HTTP redirects. One fully reserved logical call can
+therefore create at most one physical HTTP attempt; the 96-call cap is also a
+96-attempt cap. Missing or non-default returned tier fails after at most one
+call. When a mismatched model/tier response includes valid in-reservation usage,
+the report preserves its identity and token totals, reconciles known cost, and
+then stops. Only absent, invalid, or over-ceiling usage retains an unresolved
+worst-case reservation.
 
 ## Approval artifact contract
 

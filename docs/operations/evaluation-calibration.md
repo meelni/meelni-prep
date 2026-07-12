@@ -64,10 +64,18 @@ gitignored file.
 Set `OPENAI_FEEDBACK_MODEL=gpt-5.1-2025-11-13`. That exact snapshot is bound to
 the repository's reviewed `evaluation-calibration-pricing.v1` contract; a
 moving alias or any other model fails before call one. The pricing contract was
-reviewed against the official OpenAI GPT-5.1 model page on 2026-07-11 and uses
-Standard rates of $1.25/M uncached input, $0.125/M cached input, and $10/M
-output tokens. A pricing change requires a reviewed code change, not an
-environment override.
+re-verified against the official OpenAI GPT-5.1 model page at
+`2026-07-12T06:28:08.000Z` and uses Standard rates of $1.25/M uncached input,
+$0.125/M cached input, and $10/M output tokens. The review is valid for only 24
+hours. Refresh the reviewed timestamp in code only after rechecking the official
+page; stale or future-dated reviews fail before call one. A pricing change
+requires a reviewed code change, not an environment override.
+
+Unset `OPENAI_BASE_URL` completely. Paid calibration rejects even an ambient
+override equal to the official URL. Its client pins `https://api.openai.com/v1`,
+requests the `default` service tier, sets SDK retries to zero, and rejects HTTP
+redirects. It accepts no operator-supplied client or endpoint. Each reserved
+logical call therefore permits at most one physical HTTP attempt.
 
 Each call reserves its conservative input ceiling plus at most 2,000 completion
 tokens before invocation. Provider usage reconciles that reservation to actual
@@ -75,6 +83,10 @@ cost. Missing/malformed usage, usage above the reservation, or provider failure
 stops the run and forbids another call; unresolved spend retains its full
 worst-case reservation. The report exposes attempted/completed calls and
 reserved, reconciled, unresolved, and estimated committed costs.
+It also preserves provider-reported model/tier identities and observed token
+totals on failed or mismatched responses. Valid in-reservation usage is
+reconciled to known cost before the identity failure stops the run; absent,
+invalid, or over-ceiling usage retains the reservation.
 
 After authorization, set the acknowledgement only for the command invocation:
 
@@ -108,8 +120,10 @@ secrets or provider responses containing sensitive data.
   attempted and completed calls are reported separately and can be fewer than
   96 when a fail-closed stop occurs.
 - The cost report names the pinned pricing contract, never exceeds 96 attempted
-  calls or $3 estimated committed spend, and has `completed_plan` only after all
-  96 calls reconcile successfully.
+  calls, 96 physical HTTP attempts, or $3 estimated committed spend, and has
+  `completed_plan` only after all 96 calls reconcile successfully.
+- `observedServiceTiers` contains only `default` for a passing run. A missing or
+  different returned tier stops after the first affected call.
 - Evidence validity, adjudicated evidence match, and insufficient handling are
   all 100%.
 - Pooled and per-dimension score-band agreement are at least 80%; each round and

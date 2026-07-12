@@ -38,6 +38,7 @@ import {
 } from "./calibration-approval";
 import {
   CalibrationSpendGuard,
+  validateCalibrationPricingFreshness,
   type CalibrationCostReport,
   type CalibrationProviderUsage,
 } from "./calibration-budget";
@@ -56,6 +57,7 @@ export interface CalibrationEvaluatorInput {
 export interface CalibrationEvaluatorResult {
   evaluation: FeedbackV2Result;
   usage?: CalibrationProviderUsage;
+  observedServiceTier?: string | null;
 }
 
 export type CalibrationEvaluator = (
@@ -86,7 +88,7 @@ export interface CalibrationFailure {
 }
 
 export interface EvaluationCalibrationReport {
-  contractVersion: "evaluation-calibration-report.v4";
+  contractVersion: "evaluation-calibration-report.v5";
   generatedAt: string;
   execution: {
     kind: CalibrationExecutionKind;
@@ -99,6 +101,7 @@ export interface EvaluationCalibrationReport {
       | "deterministic_identifier"
       | "configured_provider_model";
     observedModelVersions: string[];
+    observedServiceTiers: Array<string | null>;
     cost: CalibrationCostReport | null;
   };
   versions: {
@@ -218,6 +221,9 @@ export async function runEvaluationCalibration(
   ) {
     throw new Error("live_calibration_requires_matching_spend_guard");
   }
+  if (options.executionKind === "live_provider") {
+    validateCalibrationPricingFreshness(now, options.spendGuard!.pricing);
+  }
   const adjudicationHashes = getEvaluationAdjudicationHashes();
   const repetitions =
     options.executionKind === "preflight"
@@ -268,6 +274,7 @@ export async function runEvaluationCalibration(
     Array<{ runIndex: number; evaluation: FeedbackV2Result }>
   >();
   const observedModelVersions = new Set<string>();
+  const observedServiceTiers = new Set<string | null>();
 
   for (const fixture of insufficientCases) {
     let evaluatorCalls = 0;
@@ -322,12 +329,33 @@ export async function runEvaluationCalibration(
               try {
                 const raw = await options.evaluator!(input);
                 const normalized = normalizeEvaluatorResult(raw);
+                observedModelVersions.add(normalized.evaluation.modelVersion);
+                if (options.executionKind === "live_provider") {
+                  observedServiceTiers.add(
+                    normalized.observedServiceTier ?? null
+                  );
+                }
                 if (
                   options.executionKind === "live_provider" &&
                   normalized.evaluation.modelVersion !== options.modelVersion
                 ) {
-                  options.spendGuard!.rejectObservedModel(reservation!);
+                  options.spendGuard!.rejectObservedModel(
+                    reservation!,
+                    normalized.usage
+                  );
                   throw new Error("calibration_provider_model_mismatch");
+                }
+                if (
+                  options.executionKind === "live_provider" &&
+                  normalized.observedServiceTier !==
+                    options.spendGuard!.pricing.serviceTier
+                ) {
+                  options.spendGuard!.rejectObservedServiceTier(
+                    reservation!,
+                    normalized.usage,
+                    normalized.observedServiceTier
+                  );
+                  throw new Error("calibration_provider_service_tier_mismatch");
                 }
                 if (
                   options.executionKind === "live_provider" &&
@@ -343,11 +371,31 @@ export async function runEvaluationCalibration(
                 if (
                   options.executionKind === "live_provider" &&
                   reservation &&
-                  !reservation.settled
+                  !reservation.settled &&
+                  options.spendGuard!.report().stopReason === null
                 ) {
                   const observedModel = getObservedModelFromError(error);
+                  const observedServiceTier =
+                    getObservedServiceTierFromError(error);
+                  if (observedModel) observedModelVersions.add(observedModel);
+                  if (observedModel || observedServiceTier !== undefined) {
+                    observedServiceTiers.add(observedServiceTier ?? null);
+                  }
                   if (observedModel && observedModel !== options.modelVersion) {
-                    options.spendGuard!.rejectObservedModel(reservation);
+                    options.spendGuard!.rejectObservedModel(
+                      reservation,
+                      getUsageFromError(error)
+                    );
+                  } else if (
+                    observedModel &&
+                    observedServiceTier !==
+                      options.spendGuard!.pricing.serviceTier
+                  ) {
+                    options.spendGuard!.rejectObservedServiceTier(
+                      reservation,
+                      getUsageFromError(error),
+                      observedServiceTier
+                    );
                   } else {
                     options.spendGuard!.settleFailure(
                       reservation,
@@ -592,7 +640,7 @@ export async function runEvaluationCalibration(
   const adjudicationPassed = pendingAdjudicationSignoffs === 0;
 
   return {
-    contractVersion: "evaluation-calibration-report.v4",
+    contractVersion: "evaluation-calibration-report.v5",
     generatedAt: now.toISOString(),
     execution: {
       kind: options.executionKind,
@@ -607,6 +655,9 @@ export async function runEvaluationCalibration(
             ? "configured_provider_model"
             : "deterministic_identifier",
       observedModelVersions: [...observedModelVersions].sort(),
+      observedServiceTiers: [...observedServiceTiers].sort((left, right) =>
+        String(left).localeCompare(String(right))
+      ),
       cost:
         options.executionKind === "live_provider"
           ? options.spendGuard!.report()
@@ -1014,4 +1065,19 @@ function getObservedModelFromError(error: unknown): string | undefined {
   }
   const value = (error as { observedModel?: unknown }).observedModel;
   return typeof value === "string" ? value : undefined;
+}
+
+function getObservedServiceTierFromError(
+  error: unknown
+): string | null | undefined {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("observedServiceTier" in error)
+  ) {
+    return undefined;
+  }
+  const value = (error as { observedServiceTier?: unknown })
+    .observedServiceTier;
+  return value === null || typeof value === "string" ? value : undefined;
 }

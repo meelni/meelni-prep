@@ -5,6 +5,10 @@ import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
 export const CALIBRATION_MAX_PROVIDER_CALLS = 96;
 export const CALIBRATION_MAX_SPEND_NANO_USD = 3_000_000_000;
 export const CALIBRATION_MAX_COMPLETION_TOKENS = 2_000;
+export const CALIBRATION_OFFICIAL_OPENAI_ENDPOINT = "https://api.openai.com/v1";
+export const CALIBRATION_SERVICE_TIER = "default";
+export const CALIBRATION_MAX_SDK_RETRIES = 0;
+export const CALIBRATION_PRICING_REVIEW_TTL_MS = 24 * 60 * 60 * 1_000;
 
 const REQUEST_FRAMING_TOKEN_CEILING = 1_024;
 
@@ -19,7 +23,12 @@ export interface CalibrationPricingContract {
   contractVersion: "evaluation-calibration-pricing.v1";
   provider: "openai";
   model: "gpt-5.1-2025-11-13";
-  reviewedAt: "2026-07-11";
+  endpoint: "https://api.openai.com/v1";
+  serviceTier: "default";
+  maximumSdkRetries: 0;
+  redirectPolicy: "error";
+  reviewedAt: "2026-07-12T06:28:08.000Z";
+  reviewTtlHours: 24;
   source: "https://developers.openai.com/api/docs/models/gpt-5.1";
   nanoUsdPerMillionTokens: {
     input: 1_250_000_000;
@@ -32,7 +41,12 @@ export const CALIBRATION_PRICING_CONTRACT: CalibrationPricingContract = {
   contractVersion: "evaluation-calibration-pricing.v1",
   provider: "openai",
   model: "gpt-5.1-2025-11-13",
-  reviewedAt: "2026-07-11",
+  endpoint: CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
+  serviceTier: CALIBRATION_SERVICE_TIER,
+  maximumSdkRetries: CALIBRATION_MAX_SDK_RETRIES,
+  redirectPolicy: "error",
+  reviewedAt: "2026-07-12T06:28:08.000Z",
+  reviewTtlHours: 24,
   source: "https://developers.openai.com/api/docs/models/gpt-5.1",
   nanoUsdPerMillionTokens: {
     input: 1_250_000_000,
@@ -47,21 +61,26 @@ export type CalibrationBudgetStopReason =
   | "spend_cap_before_next_call"
   | "provider_failure"
   | "provider_model_mismatch"
+  | "provider_service_tier_missing"
+  | "provider_service_tier_mismatch"
   | "missing_provider_usage"
   | "invalid_provider_usage"
   | "provider_usage_exceeded_reservation";
 
 export interface CalibrationCostReport {
-  contractVersion: "evaluation-calibration-cost-report.v1";
+  contractVersion: "evaluation-calibration-cost-report.v2";
   maximumCalls: 96;
   maximumSpendUsd: 3;
   attemptedCalls: number;
+  physicalHttpAttemptCeiling: number;
   completedCalls: number;
   reservedWorstCaseCostUsd: number;
   reconciledActualCostUsd: number;
   unreconciledReservedCostUsd: number;
   estimatedCommittedCostUsd: number;
   actualCostComplete: boolean;
+  observedUsage: CalibrationProviderUsage;
+  pricingReviewExpiresAt: string;
   stopReason: CalibrationBudgetStopReason | null;
   pricing: CalibrationPricingContract;
 }
@@ -72,6 +91,7 @@ export interface CalibrationSpendReservation {
   outputTokenCeiling: number;
   worstCaseNanoUsd: number;
   settled: boolean;
+  usageRecorded: boolean;
 }
 
 /**
@@ -85,12 +105,22 @@ export class CalibrationSpendGuard {
   private reconciledActualNanoUsd = 0;
   private unresolvedReservedNanoUsd = 0;
   private stopReason: CalibrationBudgetStopReason | null = null;
+  private observedUsage: CalibrationProviderUsage = {
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+  };
   readonly pricing = CALIBRATION_PRICING_CONTRACT;
 
-  constructor(readonly model: string) {
+  constructor(
+    readonly model: string,
+    readonly now: Date = new Date()
+  ) {
     if (model !== this.pricing.model) {
       throw new Error("calibration_model_has_no_reviewed_pricing_contract");
     }
+    validateCalibrationPricingFreshness(now, this.pricing);
   }
 
   reserve(
@@ -127,6 +157,7 @@ export class CalibrationSpendGuard {
       outputTokenCeiling: CALIBRATION_MAX_COMPLETION_TOKENS,
       worstCaseNanoUsd,
       settled: false,
+      usageRecorded: false,
     };
   }
 
@@ -148,10 +179,25 @@ export class CalibrationSpendGuard {
     this.stopReason ??= usage ? "provider_failure" : "missing_provider_usage";
   }
 
-  rejectObservedModel(reservation: CalibrationSpendReservation): void {
-    if (!reservation.settled) {
-      this.stopReason = "provider_model_mismatch";
-    }
+  rejectObservedModel(
+    reservation: CalibrationSpendReservation,
+    usage: CalibrationProviderUsage | undefined
+  ): void {
+    this.rejectProviderIdentity(reservation, usage, "provider_model_mismatch");
+  }
+
+  rejectObservedServiceTier(
+    reservation: CalibrationSpendReservation,
+    usage: CalibrationProviderUsage | undefined,
+    observedTier: string | null | undefined
+  ): void {
+    this.rejectProviderIdentity(
+      reservation,
+      usage,
+      observedTier
+        ? "provider_service_tier_mismatch"
+        : "provider_service_tier_missing"
+    );
   }
 
   finishPlan(): void {
@@ -160,10 +206,12 @@ export class CalibrationSpendGuard {
 
   report(): CalibrationCostReport {
     return {
-      contractVersion: "evaluation-calibration-cost-report.v1",
+      contractVersion: "evaluation-calibration-cost-report.v2",
       maximumCalls: CALIBRATION_MAX_PROVIDER_CALLS,
       maximumSpendUsd: 3,
       attemptedCalls: this.attemptedCalls,
+      physicalHttpAttemptCeiling:
+        this.attemptedCalls * (this.pricing.maximumSdkRetries + 1),
       completedCalls: this.completedCalls,
       reservedWorstCaseCostUsd: nanoUsdToUsd(this.cumulativeReservedNanoUsd),
       reconciledActualCostUsd: nanoUsdToUsd(this.reconciledActualNanoUsd),
@@ -172,6 +220,10 @@ export class CalibrationSpendGuard {
         this.reconciledActualNanoUsd + this.unresolvedReservedNanoUsd
       ),
       actualCostComplete: this.unresolvedReservedNanoUsd === 0,
+      observedUsage: { ...this.observedUsage },
+      pricingReviewExpiresAt: pricingReviewExpiresAt(
+        this.pricing
+      ).toISOString(),
       stopReason: this.stopReason,
       pricing: this.pricing,
     };
@@ -193,6 +245,7 @@ export class CalibrationSpendGuard {
       this.stopReason = "invalid_provider_usage";
       return null;
     }
+    this.recordUsage(reservation, usage);
     if (
       usage.inputTokens > reservation.inputTokenCeiling ||
       usage.outputTokens > reservation.outputTokenCeiling
@@ -212,6 +265,61 @@ export class CalibrationSpendGuard {
     this.reconciledActualNanoUsd += actualNanoUsd;
     return actualNanoUsd;
   }
+
+  private rejectProviderIdentity(
+    reservation: CalibrationSpendReservation,
+    usage: CalibrationProviderUsage | undefined,
+    reason: CalibrationBudgetStopReason
+  ): void {
+    if (reservation.settled) {
+      this.stopReason = "invalid_provider_usage";
+      return;
+    }
+    if (!usage) {
+      this.stopReason = reason;
+      return;
+    }
+    const actual = this.reconcile(reservation, usage);
+    if (actual !== null) this.stopReason = reason;
+  }
+
+  private recordUsage(
+    reservation: CalibrationSpendReservation,
+    usage: CalibrationProviderUsage
+  ): void {
+    if (reservation.usageRecorded) return;
+    reservation.usageRecorded = true;
+    this.observedUsage.inputTokens += usage.inputTokens;
+    this.observedUsage.cachedInputTokens += usage.cachedInputTokens;
+    this.observedUsage.outputTokens += usage.outputTokens;
+    this.observedUsage.totalTokens += usage.totalTokens;
+  }
+}
+
+export function validateCalibrationPricingFreshness(
+  now: Date,
+  pricing: CalibrationPricingContract = CALIBRATION_PRICING_CONTRACT
+): void {
+  if (!Number.isFinite(now.getTime())) {
+    throw new Error("calibration_pricing_review_clock_invalid");
+  }
+  const reviewedAt = new Date(pricing.reviewedAt);
+  if (!Number.isFinite(reviewedAt.getTime())) {
+    throw new Error("calibration_pricing_review_timestamp_invalid");
+  }
+  if (reviewedAt.getTime() > now.getTime()) {
+    throw new Error("calibration_pricing_review_is_future_dated");
+  }
+  if (now.getTime() > pricingReviewExpiresAt(pricing).getTime()) {
+    throw new Error("calibration_pricing_review_is_stale");
+  }
+}
+
+function pricingReviewExpiresAt(pricing: CalibrationPricingContract): Date {
+  return new Date(
+    new Date(pricing.reviewedAt).getTime() +
+      pricing.reviewTtlHours * 60 * 60 * 1_000
+  );
 }
 
 export function calibrationInputTokenCeiling(
