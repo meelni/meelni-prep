@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { providerFailure, providerSuccess } from "@/lib/internal/integrations";
+import type { InterviewDeadlineSession } from "@/lib/db/session-deadlines";
+import {
+  SessionTier,
+  type SessionValidation,
+} from "@/lib/evaluation/session-validator";
 import type { EndInterviewSessionResult } from "./end-interview-session";
 import {
   enforceInterviewDeadlineWorkflow,
@@ -19,10 +24,15 @@ const ENV = {
 
 test("deadline is inert before the exact instant and enforces at the instant", async () => {
   let ended = 0;
+  const scheduled: Date[] = [];
   const before = await enforceInterviewDeadlineWorkflow(
     { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
     createDeps({
-      now: () => new Date("2026-07-10T06:29:59.999Z"),
+      getSession: async () =>
+        deadlineSession(new Date("2026-07-10T06:29:59.999Z")),
+      scheduleDeadline: async ({ deadlineAt }) => {
+        scheduled.push(deadlineAt);
+      },
       endSession: async () => {
         ended += 1;
         return completion();
@@ -32,7 +42,6 @@ test("deadline is inert before the exact instant and enforces at the instant", a
   const at = await enforceInterviewDeadlineWorkflow(
     { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
     createDeps({
-      now: () => new Date(DEADLINE),
       endSession: async () => {
         ended += 1;
         return completion();
@@ -43,6 +52,31 @@ test("deadline is inert before the exact instant and enforces at the instant", a
   assert.deepEqual(before, { ok: false, disposition: "not_due" });
   assert.equal(at.ok, true);
   assert.equal(ended, 1);
+  assert.deepEqual(scheduled, [new Date(DEADLINE)]);
+});
+
+test("database time owns the -1ms, equality, and +1ms deadline boundary", async () => {
+  const results = [];
+  for (const databaseNow of [
+    "2026-07-10T06:29:59.999Z",
+    DEADLINE,
+    "2026-07-10T06:30:00.001Z",
+  ]) {
+    results.push(
+      await enforceInterviewDeadlineWorkflow(
+        { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
+        createDeps({
+          getSession: async () => deadlineSession(new Date(databaseNow)),
+        })
+      )
+    );
+  }
+
+  assert.deepEqual(
+    results.map((result) => result.ok),
+    [false, true, true]
+  );
+  assert.equal(results[0]?.disposition, "not_due");
 });
 
 test("malformed, missing, and stale deadline events have no side effects", async () => {
@@ -126,7 +160,24 @@ test("room deletion failure retries without reversing committed completion", asy
 test("duplicate deadline commands converge on one stored terminal claim", async () => {
   let terminalWrites = 0;
   let stored: EndInterviewSessionResult | null = null;
+  let current = deadlineSession(new Date(DEADLINE));
   const deps = createDeps({
+    getSession: async () => ({ ...current }),
+    claimDue: async (input) => {
+      if (
+        current.state !== input.expectedState ||
+        current.version !== input.expectedVersion
+      ) {
+        return false;
+      }
+      current = {
+        ...current,
+        state: "ending",
+        version: current.version + 1,
+        terminalReason: input.terminalReason,
+      };
+      return true;
+    },
     endSession: async () => {
       if (!stored) {
         terminalWrites += 1;
@@ -151,6 +202,52 @@ test("duplicate deadline commands converge on one stored terminal claim", async 
   assert.equal(terminalWrites, 1);
 });
 
+test("reordered deadline events cannot replace another terminal owner", async () => {
+  let terminated = 0;
+  const result = await enforceInterviewDeadlineWorkflow(
+    { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
+    createDeps({
+      getSession: async () => ({
+        ...deadlineSession(new Date(DEADLINE)),
+        state: "ending",
+        version: 4,
+        terminalReason: "user_end",
+      }),
+      terminateRoom: async () => {
+        terminated += 1;
+        return providerSuccess("livekit", {
+          roomName: "interview-deadline-room",
+          disposition: "deleted" as const,
+        });
+      },
+    })
+  );
+
+  assert.deepEqual(result, { ok: false, disposition: "stale_event" });
+  assert.equal(terminated, 0);
+});
+
+test("hard deadline claims preserve insufficient-signal validation", async () => {
+  let claimedReason: string | null = null;
+  const result = await enforceInterviewDeadlineWorkflow(
+    { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
+    createDeps({
+      validateSession: async () => validValidation(false),
+      claimDue: async (input) => {
+        claimedReason = input.terminalReason;
+        return true;
+      },
+      endSession: async (_sessionId, validation) => {
+        assert.equal(validation.isValid, false);
+        return completion("insufficient_signal", "abandoned");
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(claimedReason, "insufficient_signal");
+});
+
 test("recovery closes an open room with no start time and terminalizes provider failure", async () => {
   const calls: string[] = [];
   const result = await quarantineInvalidInterviewSessionWorkflow(
@@ -166,6 +263,10 @@ test("recovery closes an open room with no start time and terminalizes provider 
         startedAt: null,
         config: { duration: 30 },
         roomName: "interview-invalid-start-room",
+        state: "active",
+        version: 3,
+        terminalReason: null,
+        databaseNow: new Date(DEADLINE),
       }),
       terminateRoom: async ({ roomName }) => {
         calls.push(`terminate:${roomName}`);
@@ -211,6 +312,10 @@ test("invalid-session room cleanup failure commits provider failure then retries
             startedAt: null,
             config: {},
             roomName: "interview-invalid-start-room",
+            state: "active",
+            version: 3,
+            terminalReason: null,
+            databaseNow: new Date(DEADLINE),
           }),
           terminateRoom: async () =>
             providerFailure("livekit", {
@@ -236,13 +341,10 @@ function createDeps(
   overrides: Partial<EnforceInterviewDeadlineDeps> = {}
 ): EnforceInterviewDeadlineDeps {
   return {
-    getSession: async () => ({
-      id: SESSION_ID,
-      userId: "650e8400-e29b-41d4-a716-446655440000",
-      startedAt: new Date("2026-07-10T06:00:00.000Z"),
-      config: { duration: 30 },
-      roomName: "interview-deadline-room",
-    }),
+    getSession: async () => deadlineSession(new Date(DEADLINE)),
+    claimDue: async () => true,
+    scheduleDeadline: async () => undefined,
+    validateSession: async () => validValidation(),
     endSession: async () => completion(),
     endInvalidSession: async () => completion("provider_failure", "failed"),
     terminateRoom: async ({ roomName }) =>
@@ -251,14 +353,46 @@ function createDeps(
         disposition: "already_absent" as const,
       }),
     markRoomCleanupComplete: async () => undefined,
-    now: () => new Date(DEADLINE),
     ...overrides,
   };
 }
 
+function deadlineSession(databaseNow: Date): InterviewDeadlineSession {
+  return {
+    id: SESSION_ID,
+    userId: "650e8400-e29b-41d4-a716-446655440000",
+    startedAt: new Date("2026-07-10T06:00:00.000Z"),
+    config: { duration: 30 },
+    roomName: "interview-deadline-room",
+    state: "active",
+    version: 3,
+    terminalReason: null,
+    databaseNow,
+  };
+}
+
+function validValidation(isValid = true): SessionValidation {
+  return {
+    tier: isValid ? SessionTier.FULL : SessionTier.INSUFFICIENT,
+    isValid,
+    stats: {
+      totalTurns: isValid ? 20 : 0,
+      userTurns: isValid ? 10 : 0,
+      totalWords: isValid ? 800 : 0,
+      durationSeconds: isValid ? 1_200 : 0,
+      substantiveResponses: isValid ? 8 : 0,
+    },
+    reasons: isValid ? [] : ["Insufficient durable signal"],
+    recommendations: [],
+  };
+}
+
 function completion(
-  terminalReason: "time_limit" | "provider_failure" = "time_limit",
-  state: "completed" | "failed" = "completed"
+  terminalReason:
+    | "time_limit"
+    | "provider_failure"
+    | "insufficient_signal" = "time_limit",
+  state: "completed" | "abandoned" | "failed" = "completed"
 ): EndInterviewSessionResult {
   return {
     ok: true,

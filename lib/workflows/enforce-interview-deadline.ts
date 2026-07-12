@@ -1,6 +1,5 @@
 import {
   deriveInterviewDeadlineAt,
-  isInterviewDeadlineReached,
   normalizeInterviewDurationMinutes,
   parseInterviewDeadlineAt,
   serializeInterviewDeadlineAt,
@@ -12,14 +11,22 @@ import {
   type TerminatedInterviewRoom,
 } from "@/lib/internal/integrations";
 import {
+  claimInterviewDeadline,
   getInterviewDeadlineSession,
+  type ClaimInterviewDeadlineInput,
   type InterviewDeadlineSession,
 } from "@/lib/db/session-deadlines";
 import {
   endInterviewSessionWorkflow,
+  endInterviewSessionWithValidationWorkflow,
   type EndInterviewSessionResult,
 } from "./end-interview-session";
 import { createDrizzleInterviewReconnectStore } from "@/lib/db/session-reconnects";
+import { scheduleInterviewDeadline } from "./schedule-interview-deadline";
+import {
+  validateSessionCompleteness,
+  type SessionValidation,
+} from "@/lib/evaluation/session-validator";
 
 export interface EnforceInterviewDeadlineInput {
   sessionId: string;
@@ -35,7 +42,17 @@ export interface QuarantineInvalidInterviewSessionInput {
 
 export interface EnforceInterviewDeadlineDeps {
   getSession(sessionId: string): Promise<InterviewDeadlineSession | undefined>;
-  endSession(sessionId: string): Promise<EndInterviewSessionResult>;
+  claimDue(input: ClaimInterviewDeadlineInput): Promise<boolean>;
+  scheduleDeadline(input: {
+    sessionId: string;
+    deadlineAt: Date;
+    deliveryId: string;
+  }): Promise<unknown>;
+  validateSession(sessionId: string): Promise<SessionValidation>;
+  endSession(
+    sessionId: string,
+    validation: SessionValidation
+  ): Promise<EndInterviewSessionResult>;
   endInvalidSession(sessionId: string): Promise<EndInterviewSessionResult>;
   terminateRoom(input: {
     roomName: string;
@@ -43,7 +60,6 @@ export interface EnforceInterviewDeadlineDeps {
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<TerminatedInterviewRoom>>;
   markRoomCleanupComplete(sessionId: string): Promise<void>;
-  now(): Date;
 }
 
 export type EnforceInterviewDeadlineResult =
@@ -79,7 +95,7 @@ export async function enforceInterviewDeadlineWorkflow(
     return { ok: false, disposition: "invalid_event" };
   }
 
-  const session = await deps.getSession(input.sessionId);
+  let session = await deps.getSession(input.sessionId);
   if (!session?.startedAt) {
     return { ok: false, disposition: "not_found" };
   }
@@ -95,11 +111,58 @@ export async function enforceInterviewDeadlineWorkflow(
   ) {
     return { ok: false, disposition: "stale_event" };
   }
-  if (
-    !isInterviewDeadlineReached({ deadlineAt: storedDeadline, now: deps.now() })
-  ) {
-    return { ok: false, disposition: "not_due" };
+  let validation: SessionValidation | null = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (session.databaseNow.getTime() < storedDeadline.getTime()) {
+      await rescheduleCanonicalDeadline(
+        input.sessionId,
+        storedDeadline,
+        session,
+        deps
+      );
+      return { ok: false, disposition: "not_due" };
+    }
+
+    if (session.state === "ending" || isTerminalState(session.state)) {
+      if (!isHardDeadlineReason(session.terminalReason)) {
+        return { ok: false, disposition: "stale_event" };
+      }
+      break;
+    }
+
+    if (!isDeadlineClaimableState(session.state)) {
+      return { ok: false, disposition: "stale_event" };
+    }
+
+    validation ??= await deps.validateSession(input.sessionId);
+    const claimed = await deps.claimDue({
+      sessionId: input.sessionId,
+      expectedState: session.state,
+      expectedVersion: session.version,
+      deadlineAt: storedDeadline,
+      terminalReason: validation.isValid ? "time_limit" : "insufficient_signal",
+    });
+    if (claimed) break;
+
+    const current = await deps.getSession(input.sessionId);
+    if (!current?.startedAt) {
+      return { ok: false, disposition: "not_found" };
+    }
+    const currentDeadline = deriveStoredDeadline(current);
+    if (
+      serializeInterviewDeadlineAt(currentDeadline) !==
+      serializeInterviewDeadlineAt(storedDeadline)
+    ) {
+      return { ok: false, disposition: "stale_event" };
+    }
+    session = current;
+
+    if (attempt === 3) {
+      throw new Error("Interview deadline claim did not converge");
+    }
   }
+
+  validation ??= await deps.validateSession(input.sessionId);
 
   let room: TerminatedInterviewRoom | null = null;
   let roomTerminationError: { code: string } | null = null;
@@ -116,7 +179,7 @@ export async function enforceInterviewDeadlineWorkflow(
     }
   }
 
-  const completion = await deps.endSession(input.sessionId);
+  const completion = await deps.endSession(input.sessionId, validation);
   if (!completion.ok) {
     if (roomTerminationError) {
       throw Object.assign(
@@ -188,12 +251,18 @@ export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDe
   const reconnectStore = createDrizzleInterviewReconnectStore();
   return {
     getSession: getInterviewDeadlineSession,
-    endSession: (sessionId) =>
-      endInterviewSessionWorkflow({
-        sessionId,
-        actor: { type: "system", source: "hard_deadline" },
-        requestedTerminalReason: "time_limit",
-      }),
+    claimDue: claimInterviewDeadline,
+    scheduleDeadline: scheduleInterviewDeadline,
+    validateSession: validateSessionCompleteness,
+    endSession: (sessionId, validation) =>
+      endInterviewSessionWithValidationWorkflow(
+        {
+          sessionId,
+          actor: { type: "system", source: "hard_deadline" },
+          requestedTerminalReason: "time_limit",
+        },
+        validation
+      ),
     endInvalidSession: (sessionId) =>
       endInterviewSessionWorkflow({
         sessionId,
@@ -203,8 +272,44 @@ export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDe
     terminateRoom: terminateInterviewRoom,
     markRoomCleanupComplete: (sessionId) =>
       reconnectStore.markRoomCleanupComplete({ sessionId }),
-    now: () => new Date(),
   };
+}
+
+async function rescheduleCanonicalDeadline(
+  sessionId: string,
+  deadlineAt: Date,
+  session: InterviewDeadlineSession,
+  deps: EnforceInterviewDeadlineDeps
+): Promise<void> {
+  await deps.scheduleDeadline({
+    sessionId,
+    deadlineAt,
+    deliveryId: `db-not-due:${session.version}:${session.databaseNow.toISOString()}`,
+  });
+}
+
+function deriveStoredDeadline(session: InterviewDeadlineSession): Date {
+  const config = isRecord(session.config) ? session.config : {};
+  return deriveInterviewDeadlineAt({
+    startedAt: session.startedAt!,
+    durationMinutes: normalizeInterviewDurationMinutes(config.duration),
+  });
+}
+
+function isDeadlineClaimableState(
+  state: InterviewDeadlineSession["state"]
+): state is ClaimInterviewDeadlineInput["expectedState"] {
+  return ["created", "connecting", "active", "reconnecting"].includes(state);
+}
+
+function isTerminalState(state: InterviewDeadlineSession["state"]): boolean {
+  return ["completed", "abandoned", "failed"].includes(state);
+}
+
+function isHardDeadlineReason(
+  reason: InterviewDeadlineSession["terminalReason"]
+): reason is "time_limit" | "insufficient_signal" {
+  return reason === "time_limit" || reason === "insufficient_signal";
 }
 
 function createRoomTerminationError(code: string): Error {

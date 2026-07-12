@@ -136,10 +136,18 @@ a terminal reason.
 
 The server deadline worker remains the sole owner of the durable `time_limit`
 command. It schedules the absolute deadline with a future Inngest event,
-attempts room deletion before settlement, and uses an idempotent completion
-workflow for terminal truth, feedback dispatch, streaks, and completion-time
-achievements. A five-minute recovery scan prioritizes absolute deadlines and
-uses a unique delivery identity per recovery run.
+reads PostgreSQL time, resolves the existing durable-signal validation, and
+first claims `ending` with `time_limit` or `insufficient_signal` through one
+state/version compare-and-set that also proves the event's exact derived
+deadline is due according to `clock_timestamp()`. Only that claim owner or an
+idempotent retry of the stored outcome may attempt room deletion and settlement.
+If a delivery arrives before PostgreSQL says it is due, the worker
+creates a distinct durable retry at the unchanged canonical deadline before it
+returns `not_due`. The idempotent completion workflow owns terminal truth,
+feedback dispatch, streaks, and completion-time achievements. A five-minute
+recovery query filters and orders due absolute deadlines in PostgreSQL rather
+than from a caller-supplied clock, and uses a unique delivery identity per
+recovery run.
 
 The client countdown reflects this deadline but never claims `time_limit`. At
 zero it mutes local input, removes voluntary controls, presents a non-dismissible
@@ -244,10 +252,14 @@ Browser history contains only `sessionId`. Reload requests a fresh short-lived
 participant token from the owned session; it never creates a room, redispatches
 the agent, or consumes another credit. Transcript ingest remains independently
 governed by SAV-194 and must be complete before reconnect readiness is closed.
-The token adapter recomputes its relative TTL at signing, decodes the signed
-JWT, and withholds it unless the actual `exp` is both still usable and no later
-than the earlier reconnect or hard deadline. A delayed signer cannot extend a
-credential past the server-owned authorization window.
+The token adapter converts the database-observed authorization window to an
+absolute whole-second target, adjusts the provider SDK's relative TTL for the
+signer clock, decodes the signed JWT, and returns its actual `exp` to the join
+workflow. After signing, the workflow reads the session and PostgreSQL clock a
+second time and withholds the credential unless `exp` is strictly later than
+that snapshot and no later than the whole-second floor of the unchanged earlier
+reconnect or hard deadline. A slow, fast, or delayed signer cannot extend or
+return an already-expired credential.
 
 ## Legacy Compatibility And Backfill
 

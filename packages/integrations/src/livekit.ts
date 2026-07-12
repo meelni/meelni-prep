@@ -43,6 +43,7 @@ export interface IssueInterviewParticipantTokenInput {
   participantName: string;
   roomName: string;
   ttlSeconds: number;
+  observedAt: Date;
   expiresAt: Date;
   env: LiveKitEnvironment;
 }
@@ -51,6 +52,7 @@ export interface IssuedInterviewParticipantToken {
   roomName: string;
   token: string;
   url: string;
+  expiresAt: Date;
 }
 
 export interface TerminateInterviewRoomInput {
@@ -296,14 +298,20 @@ export async function issueInterviewParticipantToken(
 ): Promise<ProviderResult<IssuedInterviewParticipantToken>> {
   try {
     const signingAtSeconds = Math.floor(now().getTime() / 1_000);
+    const observedAtMilliseconds = input.observedAt.getTime();
+    const observedAtSeconds = Math.floor(observedAtMilliseconds / 1_000);
     const deadlineSeconds = Math.floor(input.expiresAt.getTime() / 1_000);
     const expirationSeconds = Math.min(
       deadlineSeconds,
-      signingAtSeconds + input.ttlSeconds
+      observedAtSeconds + input.ttlSeconds
     );
     if (
+      !Number.isFinite(observedAtMilliseconds) ||
+      !Number.isSafeInteger(signingAtSeconds) ||
+      !Number.isSafeInteger(observedAtSeconds) ||
       !Number.isSafeInteger(deadlineSeconds) ||
       !Number.isSafeInteger(expirationSeconds) ||
+      expirationSeconds <= observedAtSeconds ||
       expirationSeconds <= signingAtSeconds
     ) {
       return invalidTokenExpiration();
@@ -332,7 +340,7 @@ export async function issueInterviewParticipantToken(
     if (
       actualExpiration === null ||
       actualExpiration > expirationSeconds ||
-      actualExpiration <= Math.floor(now().getTime() / 1_000)
+      actualExpiration * 1_000 <= observedAtMilliseconds
     ) {
       return invalidTokenExpiration();
     }
@@ -341,6 +349,7 @@ export async function issueInterviewParticipantToken(
       roomName: input.roomName,
       token: signedToken,
       url: input.env.url,
+      expiresAt: new Date(actualExpiration * 1_000),
     });
   } catch (error) {
     return providerFailure("livekit", {

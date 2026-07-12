@@ -39,6 +39,7 @@ test("join workflow derives token identity and room from authenticated server re
             token: "signed-token",
             url: input.env.url,
             roomName: input.roomName,
+            expiresAt: input.expiresAt,
           },
         };
       },
@@ -61,6 +62,7 @@ test("join workflow derives token identity and room from authenticated server re
       participantName: "Candidate",
       roomName: "interview-server-owned-room",
       ttlSeconds: 300,
+      observedAt: NOW,
       expiresAt: new Date("2026-07-09T12:30:00.000Z"),
       env: ENV,
     },
@@ -266,6 +268,7 @@ test("a token completed after timeout is discarded when authorization generation
             token: "late-token",
             url: input.env.url,
             roomName: input.roomName,
+            expiresAt: input.expiresAt,
           },
         };
       },
@@ -288,6 +291,44 @@ test("a token completed after timeout is discarded when authorization generation
     assert.equal(result.body.error, "session_not_joinable");
   }
   assert.equal(audits.at(-1)?.reason, "reconnect_authorization_changed");
+});
+
+test("a token is withheld when database time advances through its exp during signing", async () => {
+  let reads = 0;
+  const tokenExpiresAt = new Date("2026-07-09T12:20:01.000Z");
+  const audits: Parameters<JoinInterviewSessionDeps["audit"]>[0][] = [];
+  const result = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      audit: (event) => audits.push(event),
+      getSession: async () => {
+        reads += 1;
+        return createSession({
+          databaseNow: reads === 1 ? NOW : new Date(tokenExpiresAt.getTime()),
+        });
+      },
+      issueToken: async (input) => ({
+        ok: true,
+        provider: "livekit",
+        data: {
+          token: "expired-during-signing",
+          url: input.env.url,
+          roomName: input.roomName,
+          expiresAt: tokenExpiresAt,
+        },
+      }),
+    })
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 503,
+    body: { error: "livekit_token_unavailable" },
+  });
+  assert.equal(
+    audits.at(-1)?.reason,
+    "livekit_token_expiry_invalid_after_authorization"
+  );
 });
 
 test("join workflow rejects sessions without voice-room entitlement", async () => {
@@ -458,6 +499,13 @@ function createDeps(
         token: "signed-token",
         url: input.env.url,
         roomName: input.roomName,
+        expiresAt: new Date(
+          Math.min(
+            Math.floor(input.expiresAt.getTime() / 1_000) * 1_000,
+            Math.floor(input.observedAt.getTime() / 1_000) * 1_000 +
+              input.ttlSeconds * 1_000
+          )
+        ),
       },
     }),
     ...overrides,

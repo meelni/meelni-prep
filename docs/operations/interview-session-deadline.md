@@ -31,6 +31,14 @@ Keep the relaunch feature default-off. With an authenticated Preview account:
    `provider_failure`, and retries with the safe room-deletion error code if the
    provider acknowledgement fails. This quarantine path also covers legacy
    rooms whose metadata cannot supply a usable deadline.
+10. Deliver one valid deadline event one millisecond early. Confirm the worker
+    uses PostgreSQL time, returns `not_due`, and acknowledges a new durable
+    delivery at the unchanged canonical deadline. At equality and +1
+    millisecond, confirm the atomic state/version/derived-deadline claim stores
+    `ending + time_limit` before room teardown.
+11. Skew the application host clock both slow and fast, replay the event, and
+    confirm the PostgreSQL claim and recovery query still select the same due
+    rows and preserve the first terminal owner.
 
 ## Monitoring
 
