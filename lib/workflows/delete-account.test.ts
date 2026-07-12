@@ -55,6 +55,7 @@ const REQUEST: AccountDeletionRecord = {
     {
       roomName: "interview-active-room",
       fingerprint: "livekit-room-fingerprint",
+      generation: 1,
     },
   ],
   attempts: 1,

@@ -1,5 +1,8 @@
 import { deletedBillingIdempotencyKey } from "@/lib/billing/account-deletion-guard";
-import type { AccountDeletionRecord } from "@/lib/db/account-deletions";
+import type {
+  AccountDeletionRecord,
+  ProcessedLiveKitDeletionRoom,
+} from "@/lib/db/account-deletions";
 
 export interface AccountDeletionSubscriptionCancellation {
   prorate: false;
@@ -19,7 +22,7 @@ export interface DeleteAccountWorkflowDeps {
   markCompleted(
     userId: string,
     processedFingerprints: string[],
-    processedLiveKitFingerprints: string[]
+    processedLiveKitRooms: ProcessedLiveKitDeletionRoom[]
   ): Promise<void>;
 }
 
@@ -78,7 +81,10 @@ export async function deleteAccountWorkflow(
   await deps.markCompleted(
     request.userId,
     [...processedFingerprints],
-    pendingRooms.map(({ fingerprint }) => fingerprint)
+    pendingRooms.map(({ fingerprint, generation }) => ({
+      fingerprint,
+      generation,
+    }))
   );
   return { alreadyCompleted: false };
 }

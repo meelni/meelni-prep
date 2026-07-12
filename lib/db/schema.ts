@@ -118,7 +118,13 @@ export const accountDeletionRequest = pgTable(
       .default(sql`'[]'::jsonb`)
       .notNull(),
     livekitRooms: jsonb("livekit_rooms")
-      .$type<Array<{ roomName: string | null; fingerprint: string }>>()
+      .$type<
+        Array<{
+          roomName: string | null;
+          fingerprint: string;
+          generation: number;
+        }>
+      >()
       .default(sql`'[]'::jsonb`)
       .notNull(),
     attempts: integer("attempts").default(0).notNull(),

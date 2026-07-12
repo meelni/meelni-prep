@@ -104,7 +104,13 @@ function hasPostgresCode(error: unknown, code: string): boolean {
 export interface LiveKitDeletionRoom {
   roomName: string | null;
   fingerprint: string;
+  generation: number;
 }
+
+export type ProcessedLiveKitDeletionRoom = Pick<
+  LiveKitDeletionRoom,
+  "fingerprint" | "generation"
+>;
 
 export async function requestAccountDeletion(input: {
   userId: string;
@@ -248,6 +254,108 @@ export async function hasAccountDeletionTombstone(
   return Boolean(await getAccountDeletionRequest(userId));
 }
 
+export async function fenceInterviewRoomAgainstAccountDeletion(
+  userId: string,
+  roomName: string
+): Promise<
+  | { deletionPending: false }
+  | { deletionPending: true; room: LiveKitDeletionRoom }
+> {
+  return db.transaction(async (tx) => {
+    // This is the post-provider linearization point. Deletion takes the same
+    // advisory lock, so either this fence authorizes the created room first or
+    // it durably re-enrolls the room in deletion cleanup before credentials can
+    // leave the start workflow. Provider I/O never runs while this lock is held.
+    await lockAccountIdentity(tx, userId);
+    const [request] = await tx
+      .select()
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1)
+      .for("update");
+    if (!request) return { deletionPending: false };
+
+    const candidate = buildLiveKitDeletionRooms([roomName])[0]!;
+    const rooms = normalizeLiveKitDeletionRooms(request.livekitRooms);
+    const existing = rooms.find(
+      ({ fingerprint }) => fingerprint === candidate.fingerprint
+    );
+    const room = {
+      ...candidate,
+      generation: (existing?.generation ?? 0) + 1,
+    };
+    const livekitRooms = rooms
+      .filter(({ fingerprint }) => fingerprint !== room.fingerprint)
+      .concat(room)
+      .sort((left, right) => left.fingerprint.localeCompare(right.fingerprint));
+    const reopensCompletedDeletion = request.status === "completed";
+    await tx
+      .update(accountDeletionRequest)
+      .set({
+        livekitRooms,
+        ...(reopensCompletedDeletion
+          ? {
+              status: "failed",
+              lastErrorCode: "livekit_provider_error",
+              completedAt: null,
+            }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(accountDeletionRequest.userId, userId));
+    return { deletionPending: true, room };
+  });
+}
+
+export async function clearLateLiveKitDeletionRoom(
+  userId: string,
+  processedRoom: ProcessedLiveKitDeletionRoom
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [request] = await tx
+      .select()
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1)
+      .for("update");
+    if (!request) throw new Error("Account deletion tombstone is missing");
+
+    const livekitRooms = normalizeLiveKitDeletionRooms(
+      request.livekitRooms
+    ).map((room) =>
+      room.fingerprint === processedRoom.fingerprint &&
+      room.generation === processedRoom.generation
+        ? { ...room, roomName: null }
+        : room
+    );
+    const hasRemainingRooms = livekitRooms.some(
+      ({ roomName }) => roomName !== null
+    );
+    const hasRemainingStripeSubjects = request.stripeSubjects.some(
+      ({ providerId }) => providerId !== null
+    );
+    const completesReopenedDeletion =
+      request.status === "failed" &&
+      request.lastErrorCode === "livekit_provider_error" &&
+      !hasRemainingRooms &&
+      !hasRemainingStripeSubjects;
+    await tx
+      .update(accountDeletionRequest)
+      .set({
+        livekitRooms,
+        ...(completesReopenedDeletion
+          ? {
+              status: "completed",
+              lastErrorCode: null,
+              completedAt: new Date(),
+            }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(accountDeletionRequest.userId, userId));
+  });
+}
+
 export async function recordLateStripeDeletionSubjects(
   userId: string,
   incomingSubjects: StripeDeletionSubject[]
@@ -374,7 +482,7 @@ export async function markAccountDeletionFailed(
 export async function markAccountDeletionCompleted(
   userId: string,
   processedFingerprints: string[],
-  processedLiveKitFingerprints: string[] = []
+  processedLiveKitRooms: ProcessedLiveKitDeletionRoom[] = []
 ) {
   const now = new Date();
   await db.transaction(async (tx) => {
@@ -394,11 +502,15 @@ export async function markAccountDeletionCompleted(
     const hasUnprocessedSubjects = stripeSubjects.some(
       ({ providerId }) => providerId !== null
     );
-    const processedLiveKit = new Set(processedLiveKitFingerprints);
+    const processedLiveKit = new Set(
+      processedLiveKitRooms.map(
+        ({ fingerprint, generation }) => `${fingerprint}:${generation}`
+      )
+    );
     const livekitRooms = normalizeLiveKitDeletionRooms(
       request.livekitRooms
     ).map((room) =>
-      processedLiveKit.has(room.fingerprint)
+      processedLiveKit.has(`${room.fingerprint}:${room.generation}`)
         ? { ...room, roomName: null }
         : room
     );
@@ -618,6 +730,7 @@ export function buildLiveKitDeletionRooms(
     .map((roomName) => ({
       roomName,
       fingerprint: createHash("sha256").update(roomName).digest("hex"),
+      generation: 1,
     }));
 }
 
@@ -629,17 +742,23 @@ export function normalizeLiveKitDeletionRooms(
     if (!candidate || typeof candidate !== "object") {
       throw invalidLiveKitDeletionRooms();
     }
-    const { roomName, fingerprint } = candidate as Record<string, unknown>;
+    const {
+      roomName,
+      fingerprint,
+      generation = 1,
+    } = candidate as Record<string, unknown>;
     if (
       (roomName !== null && typeof roomName !== "string") ||
       typeof fingerprint !== "string" ||
       !/^[a-f0-9]{64}$/.test(fingerprint) ||
+      !Number.isSafeInteger(generation) ||
+      (generation as number) < 1 ||
       (typeof roomName === "string" &&
         createHash("sha256").update(roomName).digest("hex") !== fingerprint)
     ) {
       throw invalidLiveKitDeletionRooms();
     }
-    return { roomName, fingerprint };
+    return { roomName, fingerprint, generation: generation as number };
   });
 }
 
