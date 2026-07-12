@@ -129,6 +129,45 @@ export async function finalizeInterviewSession(
     let endedAt = stored.endedAt;
     const wasTerminal = isInterviewTerminalState(state);
 
+    if (
+      shouldRefineProvisionalHardDeadlineReason({
+        state,
+        terminalReason,
+        isValid: validation.isValid,
+      })
+    ) {
+      const refined = await tx
+        .update(interviewSession)
+        .set({
+          lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 1`,
+          terminalReason: "insufficient_signal",
+          status: projectLegacyInterviewSessionStatus({
+            state: "ending",
+            terminalReason: "insufficient_signal",
+          }),
+          lastTransitionAt: now,
+        })
+        .where(
+          and(
+            eq(interviewSession.id, input.sessionId),
+            eq(interviewSession.lifecycleState, "ending"),
+            eq(interviewSession.lifecycleVersion, version),
+            eq(interviewSession.terminalReason, "time_limit")
+          )
+        )
+        .returning({
+          version: interviewSession.lifecycleVersion,
+          terminalReason: interviewSession.terminalReason,
+        });
+      if (!refined[0]) {
+        throw new Error(
+          "Hard-deadline reason changed while its row was locked"
+        );
+      }
+      version = refined[0].version;
+      terminalReason = refined[0].terminalReason;
+    }
+
     const advance = async (
       nextState: InterviewLifecycleState,
       reason: InterviewTerminalReason | null
@@ -307,6 +346,18 @@ export async function finalizeInterviewSession(
         feedbackRecord.completionRecommendations ?? validation.recommendations,
     } as const;
   });
+}
+
+export function shouldRefineProvisionalHardDeadlineReason(input: {
+  state: InterviewLifecycleState;
+  terminalReason: InterviewTerminalReason | null;
+  isValid: boolean;
+}): boolean {
+  return (
+    input.state === "ending" &&
+    input.terminalReason === "time_limit" &&
+    !input.isValid
+  );
 }
 
 export function resolveInterviewTerminalReason(
