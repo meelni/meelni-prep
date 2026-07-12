@@ -35,14 +35,21 @@
 - App: start schedules the deadline before returning credentials; Inngest owns exact enforcement and recovery; the client reflects stored truth.
 - Packages: core owns duration/deadline arithmetic, agent owns metadata parity, integrations owns acknowledged room termination.
 - Runtime: reject already-expired jobs before session start and stop active I/O immediately at the boundary.
-- Data: reuse persisted `started_at` plus normalized duration for this staged slice; a future indexed `deadline_at` column may replace the recovery scan.
+- Data: reuse persisted `started_at` plus normalized duration and persist an
+  indexed room-cleanup claim/acknowledgement on the session; a future indexed
+  `deadline_at` column may replace deadline derivation in the recovery scan.
 - Docs: lifecycle, completion, room metadata, UI state, and operations runbook.
 
 ## Validation
 
 - Required: typecheck, test typecheck, core, agent, integrations, workflows, API, Python runtime contracts, design guardrails, lint, build, and CI checks.
 - Manual: desktop/mobile deadline UI preview; authenticated Preview LiveKit and Inngest rehearsal after environment isolation.
-- Regression cases: exact boundary, stale/malformed events, duplicate commands, recovery identity, mixed-duration recovery order, room-delete failure, already-expired runtime, unauthorized validation, and countdown clamping.
+- Regression cases: exact boundary, stale/malformed events, duplicate commands,
+  recovery identity, mixed-duration recovery order, room-delete failure with
+  deferred dispatch and visibility, acknowledged retry with exactly-once
+  dispatch, skipped/not-required cleanup gating, terminal pending-cleanup
+  recovery after exhausted retries, already-expired runtime, unauthorized
+  validation, and countdown clamping.
 
 ## Rollout
 

@@ -9,6 +9,7 @@ import {
   ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
+  DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -101,9 +102,9 @@ async function run(url: string, environmentIdentity: string) {
         FROM drizzle.__drizzle_migrations
         ORDER BY created_at
       `;
-      if (![2, 6, 7, 8, 9, 10, 11, 12, 13].includes(migrations.length)) {
+      if (![2, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(migrations.length)) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 reconnect, 10 DB-time reconnect, 11 transcript-ingest, 12 transcript-privacy, or 13 runtime-settlement migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, or 14 runtime-settlement migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -251,10 +252,12 @@ async function run(url: string, environmentIdentity: string) {
         | "relaunch_reconciled"
         | "session_lifecycle"
         | "atomic_session_completion"
+        | "deadline_room_cleanup"
         | "interview_reconnect"
         | "interview_reconnect_db_time"
         | "transcript_ingest"
-        | "transcript_privacy";
+        | "transcript_privacy"
+        | "runtime_settlement";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -277,17 +280,21 @@ async function run(url: string, environmentIdentity: string) {
       } else if (migrations.length === 8) {
         startingContract = "atomic_session_completion";
       } else if (migrations.length === 9) {
-        startingContract = "interview_reconnect";
+        startingContract = "deadline_room_cleanup";
       } else if (migrations.length === 10) {
-        startingContract = "interview_reconnect_db_time";
+        startingContract = "interview_reconnect";
       } else if (migrations.length === 11) {
+        startingContract = "interview_reconnect_db_time";
+      } else if (migrations.length === 12) {
         startingContract = "transcript_ingest";
-      } else {
+      } else if (migrations.length === 13) {
         startingContract = "transcript_privacy";
+      } else {
+        startingContract = "runtime_settlement";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
-          migrations.length === 13 ? 25 : migrations.length === 12 ? 24 : 23;
+          migrations.length === 14 ? 25 : migrations.length === 13 ? 24 : 23;
         if (
           summary.tables !== expectedTableCount ||
           summary.rls_tables !== expectedTableCount ||
@@ -309,14 +316,16 @@ async function run(url: string, environmentIdentity: string) {
               : migrations.length === 8
                 ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
                 : migrations.length === 9
-                  ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                  ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
                   : migrations.length === 10
-                    ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                    ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
                     : migrations.length === 11
-                      ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                      ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
                       : migrations.length === 12
-                        ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-                        : RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT;
+                        ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                        : migrations.length === 13
+                          ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                          : RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -394,23 +403,25 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 13
+          migrations.length === 14
             ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
-            : migrations.length === 12
+            : migrations.length === 13
               ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-              : migrations.length === 11
+              : migrations.length === 12
                 ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-                : migrations.length === 10
+                : migrations.length === 11
                   ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                  : migrations.length === 9
+                  : migrations.length === 10
                     ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
-                    : migrations.length === 8
-                      ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                      : migrations.length === 7
-                        ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                        : migrations.length === 6
-                          ? RELAUNCH_SCHEMA_FINGERPRINT
-                          : "pending",
+                    : migrations.length === 9
+                      ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                      : migrations.length === 8
+                        ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                        : migrations.length === 7
+                          ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                          : migrations.length === 6
+                            ? RELAUNCH_SCHEMA_FINGERPRINT
+                            : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }

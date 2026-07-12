@@ -61,36 +61,43 @@
     {
       "idx": 8,
       "version": "7",
-      "when": 1783841963596,
-      "tag": "0008_interview_session_reconnect",
+      "when": 1783885451880,
+      "tag": "0008_deadline_room_cleanup_ack",
       "breakpoints": true
     },
     {
       "idx": 9,
       "version": "7",
-      "when": 1783843837248,
-      "tag": "0009_reconnect_cutoff_owner",
+      "when": 1783890733870,
+      "tag": "0009_interview_session_reconnect",
       "breakpoints": true
     },
     {
       "idx": 10,
       "version": "7",
-      "when": 1783877181910,
-      "tag": "0010_transcript_ingest",
+      "when": 1783890751871,
+      "tag": "0010_reconnect_cutoff_owner",
       "breakpoints": true
     },
     {
       "idx": 11,
       "version": "7",
-      "when": 1783877181911,
-      "tag": "0011_transcript_privacy_integrity",
+      "when": 1783891890423,
+      "tag": "0011_transcript_ingest",
       "breakpoints": true
     },
     {
       "idx": 12,
       "version": "7",
-      "when": 1783877181912,
-      "tag": "0012_runtime_settlement",
+      "when": 1783892380032,
+      "tag": "0012_transcript_privacy_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783892420196,
+      "tag": "0013_runtime_settlement",
       "breakpoints": true
     }
   ]

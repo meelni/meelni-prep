@@ -108,6 +108,42 @@ describe("POST /api/internal/transcript", () => {
     expect(ingestTranscriptEvent).not.toHaveBeenCalled();
   });
 
+  it("quietly rejects an empty signed request body", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    try {
+      const response = await POST(requestRaw(""));
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_runtime_transcript_payload",
+      });
+      expect(consoleError).not.toHaveBeenCalled();
+      expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("quietly rejects a truncated signed JSON body", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    try {
+      const response = await POST(requestRaw("{"));
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_runtime_transcript_payload",
+      });
+      expect(consoleError).not.toHaveBeenCalled();
+      expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("fails closed without logging content when the request body aborts", async () => {
     const consoleError = vi
       .spyOn(console, "error")
@@ -257,7 +293,10 @@ describe("POST /api/internal/transcript", () => {
 });
 
 function request(body: Record<string, unknown>) {
-  const rawBody = JSON.stringify(body);
+  return requestRaw(JSON.stringify(body));
+}
+
+function requestRaw(rawBody: string) {
   const timestamp = String(Math.floor(Date.now() / 1000));
   return new NextRequest("http://localhost/api/internal/transcript", {
     method: "POST",

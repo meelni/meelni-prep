@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canNavigateToInterviewFeedback,
   formatInterviewTime,
   getRemainingSeconds,
 } from "@/lib/interview/deadline-view";
@@ -31,4 +32,28 @@ test("countdown formatting is stable and defensive", () => {
   assert.equal(formatInterviewTime(65), "01:05");
   assert.equal(formatInterviewTime(-1), "00:00");
   assert.equal(formatInterviewTime(Number.NaN), "00:00");
+});
+
+test("feedback navigation requires terminal truth and acknowledged handoff", () => {
+  assert.equal(
+    canNavigateToInterviewFeedback({
+      lifecycleState: "completed",
+      feedbackReady: false,
+    }),
+    false
+  );
+  assert.equal(
+    canNavigateToInterviewFeedback({
+      lifecycleState: "active",
+      feedbackReady: true,
+    }),
+    false
+  );
+  assert.equal(
+    canNavigateToInterviewFeedback({
+      lifecycleState: "completed",
+      feedbackReady: true,
+    }),
+    true
+  );
 });
