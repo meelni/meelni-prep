@@ -81,11 +81,12 @@ Every command emits `evaluation-calibration-report.v6` JSON with:
 - case-level failure codes and unresolved blockers.
 
 Live reports also include `execution.cost`, an
-`evaluation-calibration-cost-report.v3` object with the fixed authorized run
-and authorization identities, logical calls, the physical HTTP-attempt ceiling,
+`evaluation-calibration-cost-report.v4` object with the fixed authorized run,
+Git activation commit, exact activated-plan hash and worst-case reservation,
+logical calls, the physical HTTP-attempt ceiling,
 completed calls, cumulative worst-case reservations, reconciled actual cost,
 unreconciled reservation cost, estimated committed cost, the deterministic stop
-reason, spend-cap-breach state, resumed-call count, and the exact reviewed
+reason, spend-cap-breach state, and the exact reviewed
 pricing contract. Preflight and deterministic self-test reports set
 `execution.cost` to `null`.
 
@@ -141,13 +142,15 @@ pinned expectation. Live reports preserve every provider-reported model and
 service-tier identity, including identities returned with invalid or failed
 responses. Deterministic runs use an explicit local identifier.
 
-Before each provider invocation, the runner reserves a worst-case cost using a
-conservative input-token ceiling and a 2,000 completion-token limit and commits
-that reservation to the durable run ledger. A call is not made when its
-reservation could put estimated committed spend above $3. The runner reads a
-fresh clock at reservation time and again through a callback immediately before
-the physical HTTP request; crossing the 24-hour pricing expiry during request
-preparation therefore stops before HTTP. Successful responses must include
+Before call one, the runner computes all 96 or fewer permitted case/run keys,
+their conservative input ceilings, and their 2,000-token completion ceilings.
+It validates that the complete plan's worst-case cost is at most $3 and binds
+that plan to the approved corpus, adjudication, model, endpoint, tier, and
+pricing hashes in a one-time Git activation. Activation burns the whole plan;
+a crash cannot resume or restore unused capacity. Each in-process call must
+match one activated plan entry. A guarded custom fetch rechecks the activated
+remote ref and a fresh pricing clock at actual transport dispatch before it
+increments the physical-attempt counter. Successful responses must include
 internally consistent usage, and the reservation is then reconciled to actual
 uncached, cached, and output token usage. Missing or malformed usage and provider
 failure stop the run before another call and retain the uncertain reservation.
@@ -177,16 +180,22 @@ operator-selected ledger path, so a new process cannot mint another budget.
 This spend authorization is independent of, and does not replace, the semantic
 adjudication approval described below.
 
-The live CLI holds an exclusive 20-minute lease and stores
-`evaluation-calibration-run-checkpoint.v1` under
-`~/.local/state/meelni/evaluation-calibration/`. Checkpoints are atomically
-written and fsynced before HTTP is permitted. They bind the fixed authorization
-hash and preserve every reservation, attempted call key, provider-attempt
-boundary, reconciled cost, and terminal stop. A concurrent process is rejected.
-After a crash, stale-lock recovery preserves the checkpoint; previously
-attempted call keys are never replayed and unresolved reservations remain
-committed. A terminal run cannot be reopened. Checkpoints and leases contain no
-prompt, transcript, response body, API key, or customer/Production payload.
+The durable authority is the protected payload-free Git ref
+`refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1`. Before call
+one, the CLI requires that ref to point to the validated zero-parent,
+empty-tree authorization commit. It creates a unique empty-tree activation
+child containing only authorization, plan-hash, and activation metadata, then
+performs a normal non-force push. Concurrent children share the authorized
+parent, so only one push can fast-forward and every loser refuses execution.
+An activated head is terminal: a restart, crash, missing local cache, or local
+state reset cannot reopen it. Any additional run requires a new owner
+authorization and reviewed code change.
+
+The branch must be protected against force pushes and deletion before the
+authorization commit is created. Missing protection or a missing/deleted ref is
+an operational launch blocker. The activation tree and local report/cache
+contain no prompt, transcript, provider body, API key, or customer/Production
+payload. Local files are never spend authority.
 
 ## Approval artifact contract
 

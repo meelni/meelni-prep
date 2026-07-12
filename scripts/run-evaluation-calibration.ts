@@ -17,7 +17,8 @@ import {
   generateFeedbackWithUsage,
 } from "@/lib/evaluation/scorer";
 import {
-  DurableCalibrationRunLedger,
+  activateCalibrationRun,
+  getCalibrationRepositoryRemoteUrl,
   SAV_198_SPEND_AUTHORIZATION,
 } from "@/lib/evaluation/calibration-run-ledger";
 import { getCalibrationCliExitCode } from "@/lib/evaluation/calibration-cli";
@@ -45,7 +46,7 @@ async function main() {
   let modelVersion: string | null = null;
   let evaluator;
   let spendGuard: CalibrationSpendGuard | undefined;
-  let runLedger: DurableCalibrationRunLedger | undefined;
+  let runAuthority: ReturnType<typeof activateCalibrationRun> | undefined;
   const adjudicationApproval = args.approval
     ? JSON.parse(await readFile(resolve(process.cwd(), args.approval), "utf8"))
     : undefined;
@@ -65,17 +66,24 @@ async function main() {
     }
     assertCalibrationOpenAIEnvironment(process.env);
     modelVersion = getFeedbackEvaluationModel();
-    runLedger = DurableCalibrationRunLedger.open({
+    if (adjudicationApproval === undefined) {
+      throw new Error("Live calibration requires an adjudication approval");
+    }
+    runAuthority = activateCalibrationRun({
       authorization: SAV_198_SPEND_AUTHORIZATION,
+      adjudicationApproval,
+      model: modelVersion,
+      repetitions,
+      remoteUrl: getCalibrationRepositoryRemoteUrl(),
     });
     try {
       spendGuard = new CalibrationSpendGuard(
         modelVersion,
         () => new Date(),
-        runLedger
+        runAuthority
       );
     } catch (error) {
-      runLedger.release();
+      runAuthority.release();
       throw error;
     }
     evaluator = ({
@@ -108,7 +116,7 @@ async function main() {
       spendGuard,
     });
   } finally {
-    runLedger?.release();
+    runAuthority?.release();
   }
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
   if (args.output) {
