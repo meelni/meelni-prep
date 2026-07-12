@@ -74,7 +74,13 @@ workflows.
   expires. Durable execution wakes at that deadline and retries termination
   before clearing an exact-generation missing result. Duplicate deletion
   requests monotonically extend leases and union subjects without lowering
-  generations or dropping unresolved raw targets.
+  generations or dropping unresolved raw targets. Room snapshots are reduced
+  by fingerprint before every first write and merge. The highest generation
+  owns provisioning state; a known room name from any generation is retained.
+  Within that winning generation, any provisioning claim is preserved and its
+  latest chronological lease wins independent of timestamp offset or array
+  order. Irreconcilable known identities and malformed or offset-less lease
+  timestamps fail closed.
   Legacy null-expiry subjects receive one persisted database-clock lease before
   provider cleanup begins.
   If the post-create fence and direct termination both fail, that provisioning
