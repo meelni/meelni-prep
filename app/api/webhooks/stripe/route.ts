@@ -9,7 +9,7 @@ import {
   paymentHistory,
   stripeCustomerMapping,
 } from "@/lib/db/schema";
-import { eq, and, ne, or, sql } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
@@ -63,7 +63,6 @@ import {
   type StripeSubscriptionResourceProof,
   type StripeSubscriptionEventCursor,
 } from "@/lib/billing/stripe-subscription-event-order";
-import { stripeSubscriptionCursorIsNewer } from "@/lib/db/stripe-subscription-event-order";
 
 const MAX_STRIPE_WEBHOOK_BODY_BYTES = 64 * 1024;
 const PAYMENT_FAILURE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
