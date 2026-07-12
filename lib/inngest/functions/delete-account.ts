@@ -9,6 +9,7 @@ import {
   deleteUserApplicationData,
   getAccountDeletionRequest,
   listRecoverableAccountDeletions,
+  isLiveKitProvisioningLeaseExpired,
   markAccountDeletionCompleted,
   markAccountDeletionFailed,
   markAccountDeletionProcessing,
@@ -140,7 +141,7 @@ export const deleteAccount = inngest.createFunction(
                 }
               },
               markCompleted: markAccountDeletionCompleted,
-              now: () => new Date(),
+              isProvisioningLeaseExpired: isLiveKitProvisioningLeaseExpired,
             }),
           undefined
         )

@@ -413,6 +413,41 @@ export async function clearLateLiveKitDeletionRoom(
   });
 }
 
+export async function isLiveKitProvisioningLeaseExpired(
+  userId: string,
+  roomIdentity: ProcessedLiveKitDeletionRoom
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [request] = await tx
+      .select({ livekitRooms: accountDeletionRequest.livekitRooms })
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1)
+      .for("update");
+    if (!request) throw new Error("Account deletion tombstone is missing");
+    const room = normalizeLiveKitDeletionRooms(request.livekitRooms).find(
+      (candidate) =>
+        candidate.fingerprint === roomIdentity.fingerprint &&
+        candidate.generation === roomIdentity.generation
+    );
+    if (!room || room.roomName === null || !room.provisioning) return false;
+    if (room.provisioningExpiresAt === null) return false;
+    const clockRows = await tx.execute(
+      sql<{ now: Date | string }>`select clock_timestamp() as now`
+    );
+    const clockValue: unknown = clockRows[0]?.now;
+    if (!(clockValue instanceof Date) && typeof clockValue !== "string") {
+      throw new Error("Database clock is unavailable");
+    }
+    const databaseNow = new Date(clockValue).getTime();
+    const provisioningExpiry = Date.parse(room.provisioningExpiresAt);
+    if (!Number.isFinite(databaseNow) || !Number.isFinite(provisioningExpiry)) {
+      throw new Error("Database clock comparison is unavailable");
+    }
+    return databaseNow >= provisioningExpiry;
+  });
+}
+
 export async function recordLateStripeDeletionSubjects(
   userId: string,
   incomingSubjects: StripeDeletionSubject[]

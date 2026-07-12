@@ -53,6 +53,11 @@
 - Risk: high billing trust impact; relaunch remains default-off.
 - Rollback: revert the code change without enabling immediate refunds; use the
   Customer Portal/manual support path while investigating.
+- Restack policy: PR #265 and PR #270 are parent authority for overlapping
+  start-attempt and durable-credit contracts. When this branch is restacked,
+  parent behavior and schema win conflicts; retain these DB-clock and recovery
+  invariants by adapting to the parent's canonical linkage/outbox instead of
+  preserving a duplicate implementation.
 
 ## Verification Evidence
 
@@ -62,5 +67,11 @@
   `npm run test:database-migrations` passed for clean and upgrade paths.
 - Targeted API 78/78, billing 114/114, integration 15/15, and workflow
   173/173 suites passed.
+- Provider-failure remediation: 78/78 focused workflow/ledger tests passed,
+  including application clock skew, database-clock outage retention, release
+  failure followed by recovery, concurrent recovery, and raw-error redaction.
+- Real PostgreSQL clean and legacy-upgrade verification proved that terminal
+  `provider_failure` sessions make their active start reservations discoverable
+  without a schema migration.
 - No Stripe, LiveKit, Supabase Production, or other provider mutation was made;
   the documented test-mode/live-mode rehearsals remain human rollout gates.

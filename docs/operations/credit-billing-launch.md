@@ -1,6 +1,6 @@
 # Credit Billing Launch Runbook
 
-Updated: 2026-07-10
+Updated: 2026-07-12
 
 This runbook must be completed before enabling the credit-based billing catalog in production.
 
