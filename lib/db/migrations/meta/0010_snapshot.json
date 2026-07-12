@@ -1,6 +1,6 @@
 {
-  "id": "d570eb1b-518d-48d0-a76d-b75d63c9cdb1",
-  "prevId": "edd0f69b-fa67-4eb2-95f4-0a2913339713",
+  "id": "77d14097-8d17-4637-9a09-8ee31e9b4e06",
+  "prevId": "90d2bfb4-1a54-4ad2-b5f8-21bcf61dddc0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1560,6 +1560,18 @@
           "notNull": true,
           "default": "now()"
         },
+        "deadline_room_cleanup_status": {
+          "name": "deadline_room_cleanup_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deadline_room_cleanup_acknowledged_at": {
+          "name": "deadline_room_cleanup_acknowledged_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -1750,6 +1762,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "interview_session_deadline_room_cleanup_idx": {
+          "name": "interview_session_deadline_room_cleanup_idx",
+          "columns": [
+            {
+              "expression": "deadline_room_cleanup_status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "terminal_reason",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1810,6 +1843,14 @@
         "interview_session_reconnect_deadline_owner_check": {
           "name": "interview_session_reconnect_deadline_owner_check",
           "value": "(\"interview_session\".\"reconnect_deadline_at\" IS NULL AND \"interview_session\".\"reconnect_deadline_owner\" IS NULL) OR (\"interview_session\".\"reconnect_deadline_at\" IS NOT NULL AND \"interview_session\".\"reconnect_deadline_owner\" IN ('reconnect_grace', 'hard_deadline'))"
+        },
+        "interview_session_deadline_room_cleanup_status_check": {
+          "name": "interview_session_deadline_room_cleanup_status_check",
+          "value": "\"interview_session\".\"deadline_room_cleanup_status\" IS NULL OR \"interview_session\".\"deadline_room_cleanup_status\" IN ('pending', 'deleted', 'already_absent')"
+        },
+        "interview_session_deadline_room_cleanup_ack_check": {
+          "name": "interview_session_deadline_room_cleanup_ack_check",
+          "value": "(\"interview_session\".\"deadline_room_cleanup_status\" IN ('deleted', 'already_absent') AND \"interview_session\".\"deadline_room_cleanup_acknowledged_at\" IS NOT NULL) OR (\"interview_session\".\"deadline_room_cleanup_status\" IS NULL OR \"interview_session\".\"deadline_room_cleanup_status\" = 'pending') AND \"interview_session\".\"deadline_room_cleanup_acknowledged_at\" IS NULL"
         }
       },
       "isRLSEnabled": false
@@ -2936,36 +2977,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "contract_version": {
-          "name": "contract_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "event_id": {
-          "name": "event_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "writer_id": {
-          "name": "writer_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sequence": {
-          "name": "sequence",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "room_name": {
-          "name": "room_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "speaker": {
           "name": "speaker",
           "type": "text",
@@ -3007,93 +3018,9 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "delivery_state": {
-          "name": "delivery_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
-      "indexes": {
-        "transcript_turn_event_id_idx": {
-          "name": "transcript_turn_event_id_idx",
-          "columns": [
-            {
-              "expression": "event_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"transcript_turn\".\"event_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "transcript_turn_session_writer_sequence_idx": {
-          "name": "transcript_turn_session_writer_sequence_idx",
-          "columns": [
-            {
-              "expression": "session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "writer_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sequence",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"transcript_turn\".\"writer_id\" IS NOT NULL AND \"transcript_turn\".\"sequence\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "transcript_turn_chronological_idx": {
-          "name": "transcript_turn_chronological_idx",
-          "columns": [
-            {
-              "expression": "session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "started_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "writer_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sequence",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "transcript_turn_session_id_interview_session_id_fk": {
           "name": "transcript_turn_session_id_interview_session_id_fk",
@@ -3116,22 +3043,6 @@
         "speaker_check": {
           "name": "speaker_check",
           "value": "\"transcript_turn\".\"speaker\" IN ('user', 'interviewer')"
-        },
-        "transcript_turn_contract_version_check": {
-          "name": "transcript_turn_contract_version_check",
-          "value": "\"transcript_turn\".\"contract_version\" IS NULL OR \"transcript_turn\".\"contract_version\" = 2"
-        },
-        "transcript_turn_sequence_check": {
-          "name": "transcript_turn_sequence_check",
-          "value": "\"transcript_turn\".\"sequence\" IS NULL OR \"transcript_turn\".\"sequence\" > 0"
-        },
-        "transcript_turn_delivery_state_check": {
-          "name": "transcript_turn_delivery_state_check",
-          "value": "\"transcript_turn\".\"delivery_state\" IS NULL OR \"transcript_turn\".\"delivery_state\" IN ('delivered', 'partially_delivered')"
-        },
-        "transcript_turn_canonical_identity_check": {
-          "name": "transcript_turn_canonical_identity_check",
-          "value": "(\n        \"transcript_turn\".\"contract_version\" IS NULL AND\n        \"transcript_turn\".\"event_id\" IS NULL AND\n        \"transcript_turn\".\"writer_id\" IS NULL AND\n        \"transcript_turn\".\"sequence\" IS NULL AND\n        \"transcript_turn\".\"room_name\" IS NULL AND\n        \"transcript_turn\".\"delivery_state\" IS NULL\n      ) OR (\n        \"transcript_turn\".\"contract_version\" = 2 AND\n        \"transcript_turn\".\"event_id\" IS NOT NULL AND\n        \"transcript_turn\".\"writer_id\" IS NOT NULL AND\n        \"transcript_turn\".\"sequence\" IS NOT NULL AND\n        \"transcript_turn\".\"room_name\" IS NOT NULL AND\n        \"transcript_turn\".\"started_at\" IS NOT NULL AND\n        \"transcript_turn\".\"ended_at\" IS NOT NULL AND\n        \"transcript_turn\".\"text\" IS NOT NULL AND\n        \"transcript_turn\".\"audio_ms\" IS NOT NULL AND\n        \"transcript_turn\".\"section\" IS NOT NULL AND\n        \"transcript_turn\".\"delivery_state\" IS NOT NULL\n      )"
         }
       },
       "isRLSEnabled": false

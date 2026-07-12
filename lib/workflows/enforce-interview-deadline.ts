@@ -11,17 +11,22 @@ import {
   type TerminatedInterviewRoom,
 } from "@/lib/internal/integrations";
 import {
+  acknowledgeInterviewDeadlineRoomCleanup,
   claimInterviewDeadline,
   getInterviewDeadlineSession,
   type ClaimInterviewDeadlineInput,
   type InterviewDeadlineSession,
 } from "@/lib/db/session-deadlines";
 import {
-  endInterviewSessionWorkflow,
+  dispatchInterviewSessionSettlement,
+  settleInterviewSessionWorkflow,
   type EndInterviewSessionResult,
+  type InterviewSessionSettlement,
+  type SettleInterviewSessionResult,
 } from "./end-interview-session";
 import { createDrizzleInterviewReconnectStore } from "@/lib/db/session-reconnects";
 import { scheduleInterviewDeadline } from "./schedule-interview-deadline";
+import { isFeedbackDispatchReadyForVisibility } from "@/lib/db/feedback-dispatch";
 
 export interface EnforceInterviewDeadlineInput {
   sessionId: string;
@@ -43,13 +48,22 @@ export interface EnforceInterviewDeadlineDeps {
     deadlineAt: Date;
     deliveryId: string;
   }): Promise<unknown>;
-  endSession(sessionId: string): Promise<EndInterviewSessionResult>;
-  endInvalidSession(sessionId: string): Promise<EndInterviewSessionResult>;
+  settleSession(sessionId: string): Promise<SettleInterviewSessionResult>;
+  settleInvalidSession(
+    sessionId: string
+  ): Promise<SettleInterviewSessionResult>;
+  dispatchSettlement(
+    settlement: InterviewSessionSettlement
+  ): Promise<Extract<EndInterviewSessionResult, { ok: true }>>;
   terminateRoom(input: {
     roomName: string;
     participantIdentity: string;
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<TerminatedInterviewRoom>>;
+  acknowledgeRoomCleanup(
+    sessionId: string,
+    disposition: "deleted" | "already_absent"
+  ): Promise<void>;
   markRoomCleanupComplete(sessionId: string): Promise<void>;
 }
 
@@ -114,7 +128,10 @@ export async function enforceInterviewDeadlineWorkflow(
     }
 
     if (session.state === "ending" || isTerminalState(session.state)) {
-      if (!isHardDeadlineReason(session.terminalReason)) {
+      if (
+        !isHardDeadlineReason(session.terminalReason) ||
+        session.deadlineRoomCleanupStatus === null
+      ) {
         return { ok: false, disposition: "stale_event" };
       }
       break;
@@ -151,39 +168,37 @@ export async function enforceInterviewDeadlineWorkflow(
     }
   }
 
-  let room: TerminatedInterviewRoom | null = null;
-  let roomTerminationError: { code: string } | null = null;
-  if (session.roomName) {
-    const terminated = await deps.terminateRoom({
-      roomName: session.roomName,
-      participantIdentity: session.userId,
-      env: input.env,
-    });
-    if (terminated.ok) {
-      room = terminated.data;
-    } else {
-      roomTerminationError = { code: terminated.error.code };
-    }
-  }
-
-  const completion = await deps.endSession(input.sessionId);
-  if (!completion.ok) {
-    if (roomTerminationError) {
-      throw Object.assign(
-        new Error("LiveKit deadline room termination failed"),
-        { code: roomTerminationError.code }
-      );
-    }
+  const settlement = await deps.settleSession(input.sessionId);
+  if (!settlement.ok) {
     return { ok: false, disposition: "not_found" };
   }
 
-  if (roomTerminationError) {
-    throw Object.assign(new Error("LiveKit deadline room termination failed"), {
-      code: roomTerminationError.code,
-    });
+  let room: TerminatedInterviewRoom | null = null;
+  let completionForDispatch = settlement.completion;
+  if (settlement.completion.deadlineRoomCleanupStatus === "pending") {
+    if (session.roomName) {
+      const terminated = await deps.terminateRoom({
+        roomName: session.roomName,
+        participantIdentity: session.userId,
+        env: input.env,
+      });
+      if (!terminated.ok) {
+        throw createRoomTerminationError(terminated.error.code);
+      }
+      room = terminated.data;
+    }
+
+    const disposition = room?.disposition ?? "already_absent";
+    await deps.acknowledgeRoomCleanup(input.sessionId, disposition);
+    completionForDispatch = {
+      ...settlement.completion,
+      deadlineRoomCleanupStatus: disposition,
+    };
   }
 
   await deps.markRoomCleanupComplete(input.sessionId);
+  const completion = await deps.dispatchSettlement(completionForDispatch);
+  requireFeedbackDispatchReady(completion);
 
   return { ok: true, disposition: "enforced", completion, room };
 }
@@ -219,8 +234,8 @@ export async function quarantineInvalidInterviewSessionWorkflow(
     }
   }
 
-  const completion = await deps.endInvalidSession(input.sessionId);
-  if (!completion.ok) {
+  const settlement = await deps.settleInvalidSession(input.sessionId);
+  if (!settlement.ok) {
     if (roomTerminationError) {
       throw createRoomTerminationError(roomTerminationError.code);
     }
@@ -231,6 +246,17 @@ export async function quarantineInvalidInterviewSessionWorkflow(
     throw createRoomTerminationError(roomTerminationError.code);
   }
 
+  if (settlement.completion.deadlineRoomCleanupStatus === "pending") {
+    await deps.acknowledgeRoomCleanup(
+      input.sessionId,
+      room?.disposition ?? "already_absent"
+    );
+  }
+
+  await deps.markRoomCleanupComplete(input.sessionId);
+  const completion = await deps.dispatchSettlement(settlement.completion);
+  requireFeedbackDispatchReady(completion);
+
   return { ok: true, disposition: "quarantined", completion, room };
 }
 
@@ -240,19 +266,21 @@ export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDe
     getSession: getInterviewDeadlineSession,
     claimDue: claimInterviewDeadline,
     scheduleDeadline: scheduleInterviewDeadline,
-    endSession: (sessionId) =>
-      endInterviewSessionWorkflow({
+    settleSession: (sessionId) =>
+      settleInterviewSessionWorkflow({
         sessionId,
         actor: { type: "system", source: "hard_deadline" },
         requestedTerminalReason: "time_limit",
       }),
-    endInvalidSession: (sessionId) =>
-      endInterviewSessionWorkflow({
+    settleInvalidSession: (sessionId) =>
+      settleInterviewSessionWorkflow({
         sessionId,
         actor: { type: "system", source: "invalid_session_recovery" },
         requestedTerminalReason: "provider_failure",
       }),
+    dispatchSettlement: dispatchInterviewSessionSettlement,
     terminateRoom: terminateInterviewRoom,
+    acknowledgeRoomCleanup: acknowledgeInterviewDeadlineRoomCleanup,
     markRoomCleanupComplete: (sessionId) =>
       reconnectStore.markRoomCleanupComplete({ sessionId }),
   };
@@ -293,6 +321,19 @@ function isHardDeadlineReason(
   reason: InterviewDeadlineSession["terminalReason"]
 ): reason is "time_limit" | "insufficient_signal" {
   return reason === "time_limit" || reason === "insufficient_signal";
+}
+
+function requireFeedbackDispatchReady(
+  result: Extract<EndInterviewSessionResult, { ok: true }>
+): void {
+  const status =
+    result.dispatch?.dispatch?.status ??
+    result.completion.feedback.dispatchStatus;
+  if (!isFeedbackDispatchReadyForVisibility({ status })) {
+    throw Object.assign(new Error("Deadline feedback dispatch is not ready"), {
+      code: "feedback_dispatch_not_ready",
+    });
+  }
 }
 
 function createRoomTerminationError(code: string): Error {

@@ -44,7 +44,7 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
   const [currentStage, setCurrentStage] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
   const [status, setStatus] = useState<
-    "pending" | "processing" | "completed" | "failed" | "skipped"
+    "settling" | "pending" | "processing" | "completed" | "failed" | "skipped"
   >("pending");
   const [error, setError] = useState<string | null>(null);
   const [retryMode, setRetryMode] = useState<"dispatch" | "poll" | null>(null);
@@ -72,6 +72,12 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
           data.message ||
             "Your interview is saved, but feedback still needs to be queued."
         );
+        return;
+      }
+
+      if (data.status === "settling") {
+        setStatus("settling");
+        setError(null);
         return;
       }
 
@@ -179,7 +185,12 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
 
   // Message rotation (every 5s)
   useEffect(() => {
-    if (status !== "pending" && status !== "processing") return;
+    if (
+      status !== "settling" &&
+      status !== "pending" &&
+      status !== "processing"
+    )
+      return;
 
     const interval = setInterval(() => {
       setMessageIndex((prev) => (prev + 1) % messages.length);
@@ -317,7 +328,11 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       tone="info"
       icon={<Loader2 className="h-8 w-8 animate-spin" />}
       title="Generating Feedback"
-      description="Your personalized interview review is being prepared."
+      description={
+        status === "settling"
+          ? "Your interview is saved. We’re closing the room safely before feedback begins."
+          : "Your personalized interview review is being prepared."
+      }
       maxWidth="lg"
       contentClassName="max-w-4xl"
     >
@@ -416,7 +431,6 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
               );
             })}
           </ul>
-
         </FeedbackSectionCard>
       </motion.div>
     </FeedbackStatusPage>
