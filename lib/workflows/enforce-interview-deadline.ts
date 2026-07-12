@@ -26,9 +26,16 @@ export interface EnforceInterviewDeadlineInput {
   env: LiveKitEnvironment;
 }
 
+export interface QuarantineInvalidInterviewSessionInput {
+  sessionId: string;
+  recoveryReason: unknown;
+  env: LiveKitEnvironment;
+}
+
 export interface EnforceInterviewDeadlineDeps {
   getSession(sessionId: string): Promise<InterviewDeadlineSession | undefined>;
   endSession(sessionId: string): Promise<EndInterviewSessionResult>;
+  endInvalidSession(sessionId: string): Promise<EndInterviewSessionResult>;
   terminateRoom(input: {
     roomName: string;
     env: LiveKitEnvironment;
@@ -44,6 +51,18 @@ export type EnforceInterviewDeadlineResult =
   | {
       ok: true;
       disposition: "enforced";
+      completion: Extract<EndInterviewSessionResult, { ok: true }>;
+      room: TerminatedInterviewRoom | null;
+    };
+
+export type QuarantineInvalidInterviewSessionResult =
+  | {
+      ok: false;
+      disposition: "invalid_event" | "not_found" | "stale_event";
+    }
+  | {
+      ok: true;
+      disposition: "quarantined";
       completion: Extract<EndInterviewSessionResult, { ok: true }>;
       room: TerminatedInterviewRoom | null;
     };
@@ -113,6 +132,51 @@ export async function enforceInterviewDeadlineWorkflow(
   return { ok: true, disposition: "enforced", completion, room };
 }
 
+export async function quarantineInvalidInterviewSessionWorkflow(
+  input: QuarantineInvalidInterviewSessionInput,
+  deps: EnforceInterviewDeadlineDeps = createEnforceInterviewDeadlineDeps()
+): Promise<QuarantineInvalidInterviewSessionResult> {
+  if (input.recoveryReason !== "missing_started_at") {
+    return { ok: false, disposition: "invalid_event" };
+  }
+
+  const session = await deps.getSession(input.sessionId);
+  if (!session) {
+    return { ok: false, disposition: "not_found" };
+  }
+  if (session.startedAt) {
+    return { ok: false, disposition: "stale_event" };
+  }
+
+  let room: TerminatedInterviewRoom | null = null;
+  let roomTerminationError: { code: string } | null = null;
+  if (session.roomName) {
+    const terminated = await deps.terminateRoom({
+      roomName: session.roomName,
+      env: input.env,
+    });
+    if (terminated.ok) {
+      room = terminated.data;
+    } else {
+      roomTerminationError = { code: terminated.error.code };
+    }
+  }
+
+  const completion = await deps.endInvalidSession(input.sessionId);
+  if (!completion.ok) {
+    if (roomTerminationError) {
+      throw createRoomTerminationError(roomTerminationError.code);
+    }
+    return { ok: false, disposition: "not_found" };
+  }
+
+  if (roomTerminationError) {
+    throw createRoomTerminationError(roomTerminationError.code);
+  }
+
+  return { ok: true, disposition: "quarantined", completion, room };
+}
+
 export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDeps {
   return {
     getSession: getInterviewDeadlineSession,
@@ -122,9 +186,21 @@ export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDe
         actor: { type: "system", source: "hard_deadline" },
         requestedTerminalReason: "time_limit",
       }),
+    endInvalidSession: (sessionId) =>
+      endInterviewSessionWorkflow({
+        sessionId,
+        actor: { type: "system", source: "invalid_session_recovery" },
+        requestedTerminalReason: "provider_failure",
+      }),
     terminateRoom: terminateInterviewRoom,
     now: () => new Date(),
   };
+}
+
+function createRoomTerminationError(code: string): Error {
+  return Object.assign(new Error("LiveKit deadline room termination failed"), {
+    code,
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

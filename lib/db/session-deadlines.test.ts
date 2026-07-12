@@ -28,24 +28,32 @@ test("recovery prioritizes absolute deadlines across mixed durations", () => {
 
   assert.deepEqual(schedules, [
     {
+      kind: "deadline",
       sessionId: "newer-short",
       deadlineAt: "2026-07-10T06:35:00.000Z",
     },
     {
+      kind: "deadline",
       sessionId: "middle-medium",
       deadlineAt: "2026-07-10T06:40:00.000Z",
     },
   ]);
 });
 
-test("recovery ignores rows without a persisted start time", () => {
+test("recovery quarantines an open room without a persisted start time", () => {
   assert.deepEqual(
     buildInterviewDeadlineSchedules(
       [{ id: "missing-start", startedAt: null, config: { duration: 15 } }],
       250,
       new Date("2026-07-10T07:00:00.000Z")
     ),
-    []
+    [
+      {
+        kind: "invalid_session",
+        sessionId: "missing-start",
+        reason: "missing_started_at",
+      },
+    ]
   );
 });
 
@@ -67,6 +75,12 @@ test("recovery emits only deadlines that are already due", () => {
       250,
       new Date("2026-07-10T06:40:00.000Z")
     ),
-    [{ sessionId: "due", deadlineAt: "2026-07-10T06:30:00.000Z" }]
+    [
+      {
+        kind: "deadline",
+        sessionId: "due",
+        deadlineAt: "2026-07-10T06:30:00.000Z",
+      },
+    ]
   );
 });

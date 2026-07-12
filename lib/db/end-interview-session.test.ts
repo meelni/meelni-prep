@@ -20,3 +20,10 @@ test("insufficient durable signal wins before a deadline claim is committed", ()
     "insufficient_signal"
   );
 });
+
+test("invalid-session recovery preserves provider failure without transcript signal", () => {
+  assert.equal(
+    resolveInterviewTerminalReason({ isValid: false }, "provider_failure"),
+    "provider_failure"
+  );
+});

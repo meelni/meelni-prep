@@ -26,6 +26,11 @@ Keep the relaunch feature default-off. With an authenticated Preview account:
 8. Confirm the recovery cron emits a new delivery identity only for an overdue
    open session and does not leave it open beyond the next five-minute recovery
    window. Future sessions must not accumulate duplicate scheduled deliveries.
+9. Create an isolated open voice-session fixture with a room name but no
+   `started_at`. Confirm recovery immediately attempts room deletion, commits
+   `provider_failure`, and retries with the safe room-deletion error code if the
+   provider acknowledgement fails. This quarantine path also covers legacy
+   rooms whose metadata cannot supply a usable deadline.
 
 ## Monitoring
 
@@ -36,6 +41,7 @@ Alert on:
 - deadline enforcement lateness above the product tolerance;
 - repeated recovery scheduling for the same session;
 - deadline-completed sessions without feedback rows;
+- `session_deadline_unavailable` reads or invalid-session quarantine events;
 - start failures caused by missing deadline scheduling acknowledgement.
 
 Never log tokens, credentials, transcript text, customer identifiers, or room metadata payloads. Use redacted aggregate counts and safe correlation suffixes.
@@ -46,4 +52,7 @@ Never log tokens, credentials, transcript text, customer identifiers, or room me
 - Do not reopen a terminal session or rewrite its first terminal reason.
 - If Inngest is unavailable, restore it and run the recovery function; do not bypass the deadline by returning room credentials.
 - If LiveKit deletion fails, retry deletion. Do not reverse committed terminal truth or feedback intent.
+- An open voice room without a valid persisted start time is invalid, not
+  deadline-exempt. Quarantine it, delete the room, and terminalize it as
+  `provider_failure`; never silently omit it from recovery.
 - Roll back application code only with the relaunch flag still off. Keep additive lifecycle and completion schema in place.

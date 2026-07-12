@@ -29,14 +29,9 @@ import {
   StatusPill,
 } from "@/components/ui/app-surface";
 import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
+import { requireInterviewResumeTiming } from "@/lib/interview/resume-session";
 import { analytics } from "@/lib/analytics/analytics-service";
-import {
-  deriveInterviewDeadlineAt,
-  normalizeInterviewDurationMinutes,
-  serializeInterviewDeadlineAt,
-  shouldAnalyzeNudges,
-  type HintMode,
-} from "@meelni/core";
+import { shouldAnalyzeNudges, type HintMode } from "@meelni/core";
 
 const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 
@@ -62,7 +57,8 @@ interface InterviewSession {
 interface PersistedInterviewSession {
   id: string;
   livekitRoomName: string | null;
-  startedAt: string;
+  startedAt: string | null;
+  deadlineAt: string;
   lifecycleState?: string | null;
   roundType?: string | null;
   mode?: string | null;
@@ -774,16 +770,13 @@ function DeadlineReachedOverlay() {
 function normalizePersistedSession(
   session: PersistedInterviewSession
 ): InterviewSession {
+  const timing = requireInterviewResumeTiming(session);
   const config = session.config || {};
-  const deadlineAt = deriveInterviewDeadlineAt({
-    startedAt: new Date(session.startedAt),
-    durationMinutes: normalizeInterviewDurationMinutes(config.duration),
-  });
   return {
     id: session.id,
     livekit_room_name: session.livekitRoomName || "",
-    started_at: session.startedAt,
-    deadline_at: serializeInterviewDeadlineAt(deadlineAt),
+    started_at: timing.startedAt,
+    deadline_at: timing.deadlineAt,
     config: {
       ...config,
       roundType: session.roundType || config.roundType || undefined,
