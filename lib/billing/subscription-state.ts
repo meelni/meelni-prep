@@ -1,8 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
 import { accountDeletionRequest, appUser, subscription } from "@/lib/db/schema";
+import { shouldApplyStripeSubscriptionState } from "./stripe-event-ordering";
 
 type BillingTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -22,6 +23,66 @@ export interface ProviderCancellationObservation {
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: Date;
   observedAt: Date;
+}
+
+export type AuthoritativeSnapshotCommitResult = "applied" | "retry" | "skipped";
+
+export function shouldApplyAuthoritativeProviderSnapshot(input: {
+  current: Pick<
+    CancellationStateSnapshot,
+    "status" | "stripeSubscriptionId" | "lastEventTimestamp"
+  > | null;
+  incomingStatus: string;
+  incomingStripeSubscriptionId: string;
+  triggeringEvent: "subscription_created" | "subscription_updated";
+  eventTimestamp: Date;
+}): boolean {
+  if (!input.current) return true;
+  if (
+    input.current.stripeSubscriptionId === input.incomingStripeSubscriptionId
+  ) {
+    // A fresh read of the current resource is authoritative regardless of the
+    // delayed webhook's timestamp. A terminal local row is never resurrected.
+    return (
+      input.current.status !== "canceled" || input.incomingStatus === "canceled"
+    );
+  }
+  return shouldApplyStripeSubscriptionState({
+    currentStatus: input.current.status,
+    currentStripeSubscriptionId: input.current.stripeSubscriptionId,
+    event: input.triggeringEvent,
+    eventTimestamp: input.eventTimestamp,
+    incomingStripeSubscriptionId: input.incomingStripeSubscriptionId,
+    lastEventTimestamp: input.current.lastEventTimestamp,
+  });
+}
+
+export async function reconcileAuthoritativeProviderSnapshot<T>({
+  readVersion,
+  retrieve,
+  commit,
+  maxAttempts = 3,
+}: {
+  readVersion(): Promise<number | null>;
+  retrieve(): Promise<T>;
+  commit(input: {
+    expectedVersion: number | null;
+    snapshot: T;
+  }): Promise<AuthoritativeSnapshotCommitResult>;
+  maxAttempts?: number;
+}): Promise<"applied" | "skipped"> {
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts <= 0) {
+    throw new Error("billing_subscription_reconciliation_attempts_invalid");
+  }
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const expectedVersion = await readVersion();
+    const snapshot = await retrieve();
+    const result = await commit({ expectedVersion, snapshot });
+    if (result !== "retry") return result;
+  }
+
+  throw new Error("billing_subscription_reconciliation_retry_exhausted");
 }
 
 export function nextProviderCancellationState(
@@ -62,7 +123,7 @@ export function nextProviderCancellationState(
 }
 
 export async function reconcileProviderCancellationState(
-  observation: ProviderCancellationObservation
+  observation: Omit<ProviderCancellationObservation, "observedAt">
 ) {
   return db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, observation.userId);
@@ -82,7 +143,10 @@ export async function reconcileProviderCancellationState(
       .for("update");
     if (!current) throw new Error("billing_subscription_not_found");
 
-    const next = nextProviderCancellationState(current, observation);
+    const next = nextProviderCancellationState(current, {
+      ...observation,
+      observedAt: await getBillingDatabaseTime(tx),
+    });
     const updated = await tx
       .update(subscription)
       .set(next)
@@ -98,6 +162,27 @@ export async function reconcileProviderCancellationState(
     }
     return next;
   });
+}
+
+export async function getBillingDatabaseTime(
+  tx: BillingTransaction
+): Promise<Date> {
+  const rows = await tx.execute(
+    sql<{
+      currentTime: Date | string;
+    }>`select clock_timestamp() as "currentTime"`
+  );
+  const value: unknown = rows[0]?.currentTime;
+  const currentTime =
+    value instanceof Date
+      ? new Date(value)
+      : typeof value === "string"
+        ? new Date(value)
+        : new Date(Number.NaN);
+  if (!Number.isFinite(currentTime.getTime())) {
+    throw new Error("billing_database_clock_invalid");
+  }
+  return currentTime;
 }
 
 export async function retrieveAuthoritativeSubscription(

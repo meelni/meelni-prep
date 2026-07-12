@@ -37,6 +37,59 @@ test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", 
   assert.equal(typeof store.withUserTransaction, "function");
 });
 
+test("production transaction clock is read after the user lock and rejects invalid database time", async () => {
+  function clockDatabase(value: unknown) {
+    return {
+      async transaction(
+        work: (transaction: unknown) => Promise<unknown>
+      ): Promise<unknown> {
+        let selectIndex = 0;
+        const transaction = {
+          select() {
+            const rows = selectIndex++ === 0 ? [{ id: "user-1" }] : [];
+            return {
+              from() {
+                return {
+                  where() {
+                    return {
+                      limit() {
+                        return Object.assign(Promise.resolve(rows), {
+                          for: async () => rows,
+                        });
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          },
+          async execute() {
+            assert.equal(selectIndex, 2);
+            return [{ currentTime: value }];
+          },
+        };
+        return work(transaction);
+      },
+    } as never;
+  }
+
+  const currentTime = await createDrizzleCreditLedgerStore(
+    clockDatabase("2026-08-01T12:00:00.000Z")
+  ).withUserTransaction("user-1", (transaction) =>
+    transaction.getCurrentTime()
+  );
+  assert.equal(currentTime.toISOString(), "2026-08-01T12:00:00.000Z");
+
+  await assert.rejects(
+    createDrizzleCreditLedgerStore(
+      clockDatabase("not-a-date")
+    ).withUserTransaction("user-1", (transaction) =>
+      transaction.getCurrentTime()
+    ),
+    /credit_ledger_clock_invalid/
+  );
+});
+
 test("production transaction mutations cannot escape the locked user scope", async () => {
   let attemptedWrites = 0;
   const database = {
@@ -2091,6 +2144,7 @@ test("period-end policy bounds only subscription-derived credits and reactivatio
   assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 7);
 
   currentTime = periodEnd;
+  store.setCurrentTime(periodEnd);
   assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 5);
   const reservation = await ledger.reserveCredit({
     userId: "user-1",
@@ -2130,6 +2184,66 @@ test("period-end policy bounds only subscription-derived credits and reactivatio
       .find(({ source }) => source === "rollover")
       ?.expiresAt?.toISOString(),
     rolloverExpiry.toISOString()
+  );
+});
+
+test("reservation uses locked database time and denies subscription credits after waiting across equality", async () => {
+  const appTime = new Date("2026-08-01T11:59:59.999Z");
+  const periodEnd = new Date("2026-08-01T12:00:00.000Z");
+  const store = createMemoryCreditLedgerStore();
+  store.setCurrentTime(appTime);
+  const ledger = createCreditLedgerService({
+    store,
+    // A rolled-back application clock must not re-enable entitlement.
+    now: () => new Date("2026-07-01T00:00:00.000Z"),
+  });
+
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "renewal:locked-clock",
+  });
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "interview_pass",
+    source: "checkout",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "checkout:locked-clock",
+  });
+  store.setSubscriptionCreditPolicy("user-1", {
+    restricted: true,
+    availableThrough: periodEnd,
+  });
+
+  const getPolicy = store.getSubscriptionCreditPolicyForUpdate.bind(store);
+  store.getSubscriptionCreditPolicyForUpdate = async (userId) => {
+    const policy = await getPolicy(userId);
+    // Model a transaction that acquired its locks just before the boundary but
+    // resumed authorization exactly at the cutoff.
+    store.setCurrentTime(periodEnd);
+    return policy;
+  };
+
+  const result = await ledger.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:locked-clock",
+  });
+  const [allocation] = result.allocations;
+  const allocatedGrant = (await store.listUserGrants("user-1")).find(
+    (grant) => grant.id === allocation?.grantId
+  );
+  assert.equal(allocatedGrant?.source, "checkout");
+  await assert.rejects(
+    () =>
+      ledger.reserveCredit({
+        userId: "user-1",
+        reservationKey: "session:subscription-only-after-cutoff",
+      }),
+    /insufficient_credits/
   );
 });
 

@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -264,6 +264,26 @@ function createDrizzleCreditLedgerTransaction(
   }
 
   const store: CreditLedgerTransaction = {
+    async getCurrentTime() {
+      requireLockedUser();
+      const rows = await database.execute(
+        sql<{
+          currentTime: Date | string;
+        }>`select clock_timestamp() as "currentTime"`
+      );
+      const value: unknown = rows[0]?.currentTime;
+      const currentTime =
+        value instanceof Date
+          ? new Date(value)
+          : typeof value === "string"
+            ? new Date(value)
+            : new Date(Number.NaN);
+      if (!Number.isFinite(currentTime.getTime())) {
+        throw new Error("credit_ledger_clock_invalid");
+      }
+      return currentTime;
+    },
+
     async createGrant(input) {
       requireActiveTransaction();
       requireLockedUser(input.userId);

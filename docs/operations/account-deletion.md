@@ -139,8 +139,9 @@ the invariant that closes the late-webhook race, rather than delivery timing.
 
 Never manually delete the tombstone before Supabase Auth deletion is confirmed.
 Never issue an automatic refund from account-deletion recovery. Any exceptional
-refund requires the separate [Manual Exceptional Refunds](./manual-exceptional-refunds.md)
-procedure and an explicit human decision.
+refund decision follows [Manual Exceptional Refunds](./manual-exceptional-refunds.md),
+but execution for an existing account remains paused until SAV-231 provides
+verified payment-to-credit-ledger reconciliation.
 The draft currently ends paid product access immediately after irreversible
 account deletion. Do not merge or rehearse that exception as accepted policy
 until the owner explicitly approves it.

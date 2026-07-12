@@ -148,10 +148,12 @@ path relies on another event arriving first.
 
 Historical invoices, charges, PaymentIntents, refunds, disputes, and legally
 required processor records remain subject to Stripe and legal retention. A
-support-approved exceptional refund is a separate manual operation and is not
-performed, promised, or retried by deletion. Provider-originated or manual
-refund webhooks can still reconcile payment history and credit-ledger state for
-an existing account; that reconciliation is not an account-deletion step.
+support-approved exceptional refund is a separate manual decision and is not
+performed, promised, or retried by deletion. Execution for an existing account
+is paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+provides verified payment-to-credit-ledger reconciliation. Current
+`charge.refunded` handling records payment-history status only, does not adjust
+credits, and dispute events are unsupported.
 Subscription-deleted and invoice success/failure state changes also lock the
 user and fail closed on deletion. Stripe timestamps have second resolution, so
 subscription deletion is the terminal tie-breaker for same-resource,

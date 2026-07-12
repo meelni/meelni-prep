@@ -18,6 +18,9 @@
 - Provider dependency: Stripe test-mode rehearsal after code review.
 - Open owner gate: approve or reject immediate paid-access loss after irreversible
   account deletion; this draft does not treat the exception as accepted.
+- Technical gate: SAV-231 must provide verified payment-to-credit-ledger
+  reconciliation before a human-approved exceptional refund can be executed
+  for an existing account.
 
 ## Validation
 

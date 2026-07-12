@@ -278,6 +278,7 @@ export interface CreditLedgerMutationStore {
 export interface CreditLedgerTransaction
   extends CreditLedgerReadStore,
     CreditLedgerMutationStore {
+  getCurrentTime(): Promise<Date>;
   findGrantByIdempotencyKeyForUpdate(
     idempotencyKey: string
   ): Promise<LedgerCreditGrant | null>;
@@ -358,6 +359,7 @@ export interface CreditLedgerTestStore
     userId: string,
     policy: SubscriptionCreditPolicy
   ): void;
+  setCurrentTime(currentTime: Date): void;
 }
 
 export interface SubscriptionCreditPolicy {
@@ -692,7 +694,6 @@ export function createCreditLedgerService({
     ): Promise<ReserveCreditResult> {
       const requestedCredits = input.credits ?? 1;
       assertPositiveCredits(requestedCredits);
-      const currentTime = now();
       let result:
         | (ReserveCreditResult & {
             events: Array<{
@@ -2004,6 +2005,7 @@ export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
   let billingAdjustments: LedgerBillingAdjustment[] = [];
   let billingPaymentStates: LedgerBillingPaymentState[] = [];
   let subscriptionPolicies = new Map<string, SubscriptionCreditPolicy>();
+  let currentTime = new Date(0);
   let transactionTail = Promise.resolve();
 
   function id(prefix: string) {
@@ -2079,6 +2081,17 @@ export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
       };
       grants.push(grant);
       return cloneGrant(grant);
+    },
+
+    async getCurrentTime() {
+      return new Date(currentTime);
+    },
+
+    setCurrentTime(nextCurrentTime) {
+      if (!Number.isFinite(nextCurrentTime.getTime())) {
+        throw new Error("credit_ledger_clock_invalid");
+      }
+      currentTime = new Date(nextCurrentTime);
     },
 
     async findGrantByIdempotencyKey(idempotencyKey) {
@@ -3424,7 +3437,7 @@ export interface ReserveCreditTransactionResult extends ReserveCreditResult {
 export async function reserveCreditInTransaction({
   store,
   input,
-  currentTime,
+  currentTime: _currentTime,
 }: {
   store: CreditLedgerTransaction;
   input: ReserveCreditInput;
@@ -3442,9 +3455,17 @@ export async function reserveCreditInTransaction({
   }
 
   await assertUserReservationIntegrity(store, input.userId);
-  const spendableGrants = await store.listSpendableGrantsForUpdate(
+  const subscriptionPolicy =
+    await store.getSubscriptionCreditPolicyForUpdate(input.userId);
+  // Authorization time is observed after the owning user and subscription
+  // locks so a lock wait cannot spend credits at or beyond the paid cutoff.
+  const authorizationTime = await store.getCurrentTime();
+  const candidateGrants = await store.listSpendableGrantsForUpdate(
     input.userId,
-    currentTime
+    authorizationTime
+  );
+  const spendableGrants = candidateGrants.filter((grant) =>
+    isCreditGrantAvailable(grant, authorizationTime, subscriptionPolicy)
   );
   const availableCredits = sumBy(
     spendableGrants,
@@ -3462,7 +3483,7 @@ export async function reserveCreditInTransaction({
     sessionId: input.sessionId ?? null,
     startContractVersion: input.startContractVersion ?? 0,
     startAttemptId: input.startAttemptId ?? null,
-    expiresAt: input.expiresAt ?? addMinutes(currentTime, 30),
+    expiresAt: input.expiresAt ?? addMinutes(authorizationTime, 30),
     metadata: input.metadata ?? null,
   });
   assertReservationMatchesRequest(reservation, input, requestedCredits);

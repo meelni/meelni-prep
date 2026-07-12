@@ -49,7 +49,11 @@ report success while the authentication account remained active.
   captured customer resources, and does not create payment, invoice,
   customer-balance, or card refunds. Historical financial records remain subject
   to Stripe and legal retention. An exceptional refund is a separate manual
-  support decision, never a deletion-workflow side effect.
+  support decision, never a deletion-workflow side effect. Execution for an
+  existing account is paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+  provides verified payment-to-credit-ledger reconciliation; current
+  `charge.refunded` handling changes payment history only and disputes are not
+  supported.
 - Whether irreversible account deletion may end paid access immediately without
   compensation remains an explicit owner approval gate. This decision does not
   approve that product/economic exception.

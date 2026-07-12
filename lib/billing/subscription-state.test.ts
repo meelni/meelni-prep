@@ -4,7 +4,9 @@ import test from "node:test";
 import { shouldApplyStripeSubscriptionState } from "./stripe-event-ordering";
 import {
   nextProviderCancellationState,
+  reconcileAuthoritativeProviderSnapshot,
   retrieveAuthoritativeSubscription,
+  shouldApplyAuthoritativeProviderSnapshot,
 } from "./subscription-state";
 
 const PERIOD_END = new Date("2026-08-01T12:00:00.000Z");
@@ -180,6 +182,119 @@ test("cancel and reactivate observations fence delayed payloads while same-secon
     }),
     false
   );
+});
+
+test("delayed and same-second events converge from an authoritative current-resource snapshot", () => {
+  const current = snapshot({
+    lastEventTimestamp: new Date("2026-07-12T06:20:12.000Z"),
+  });
+  for (const eventTimestamp of [
+    new Date("2026-07-12T06:20:01.000Z"),
+    new Date("2026-07-12T06:20:12.000Z"),
+  ]) {
+    assert.equal(
+      shouldApplyAuthoritativeProviderSnapshot({
+        current,
+        incomingStatus: "active",
+        incomingStripeSubscriptionId: "sub_current",
+        triggeringEvent: "subscription_updated",
+        eventTimestamp,
+      }),
+      true
+    );
+  }
+});
+
+test("authoritative snapshots preserve terminal and resource-replacement rules", () => {
+  assert.equal(
+    shouldApplyAuthoritativeProviderSnapshot({
+      current: snapshot({ status: "canceled" }),
+      incomingStatus: "active",
+      incomingStripeSubscriptionId: "sub_current",
+      triggeringEvent: "subscription_updated",
+      eventTimestamp: new Date("2026-07-12T06:20:20.000Z"),
+    }),
+    false
+  );
+  assert.equal(
+    shouldApplyAuthoritativeProviderSnapshot({
+      current: snapshot({ status: "canceled" }),
+      incomingStatus: "active",
+      incomingStripeSubscriptionId: "sub_replacement",
+      triggeringEvent: "subscription_updated",
+      eventTimestamp: new Date("2026-07-12T06:20:20.000Z"),
+    }),
+    false
+  );
+});
+
+test("route mutation during provider retrieval forces a fresh snapshot retry", async () => {
+  let version = 7;
+  let cancelAtPeriodEnd = false;
+  let retrievals = 0;
+  const applied: boolean[] = [];
+
+  const result = await reconcileAuthoritativeProviderSnapshot({
+    readVersion: async () => version,
+    retrieve: async () => {
+      retrievals += 1;
+      const snapshotValue = cancelAtPeriodEnd;
+      if (retrievals === 1) {
+        // Route mutation commits after the webhook captured version 7 and
+        // while its first provider read is in flight.
+        version = 8;
+        cancelAtPeriodEnd = true;
+      }
+      return { cancelAtPeriodEnd: snapshotValue };
+    },
+    commit: async ({ expectedVersion, snapshot: providerSnapshot }) => {
+      if (version !== expectedVersion) return "retry";
+      applied.push(providerSnapshot.cancelAtPeriodEnd);
+      version += 1;
+      return "applied";
+    },
+  });
+
+  assert.equal(result, "applied");
+  assert.equal(retrievals, 2);
+  assert.deepEqual(applied, [true]);
+});
+
+test("authoritative reconciliation fails closed after bounded conflicts", async () => {
+  let retrievals = 0;
+  await assert.rejects(
+    () =>
+      reconcileAuthoritativeProviderSnapshot({
+        readVersion: async () => 7,
+        retrieve: async () => {
+          retrievals += 1;
+          return { id: "sub_current" };
+        },
+        commit: async () => "retry",
+        maxAttempts: 3,
+      }),
+    /billing_subscription_reconciliation_retry_exhausted/
+  );
+  assert.equal(retrievals, 3);
+});
+
+test("authoritative reconciliation propagates provider failure without committing", async () => {
+  let commits = 0;
+  await assert.rejects(
+    () =>
+      reconcileAuthoritativeProviderSnapshot({
+        readVersion: async () => 7,
+        retrieve: async () => {
+          throw new Error("provider unavailable");
+        },
+        commit: async () => {
+          commits += 1;
+          return "applied";
+        },
+      }),
+    /provider unavailable/
+  );
+  assert.equal(commits, 0);
 });
 
 function snapshot(overrides: Record<string, unknown> = {}) {
