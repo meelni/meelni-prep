@@ -22,7 +22,11 @@ Keep the relaunch feature default-off. With an authenticated Preview account:
 4. Keep the browser visible for one run and background/close it for another.
 5. At the deadline, confirm room participants are disconnected before feedback dispatch, the session stores `time_limit`, and feedback is queued or skipped according to durable signal.
 6. Replay the deadline event and confirm the stored terminal result is unchanged.
-7. Exercise a room-delete failure in a safe test environment; confirm terminal truth commits and the Inngest run retries deletion.
+7. Exercise a room-delete failure in a safe test environment; confirm terminal
+   truth commits, `feedbackReady` remains false, feedback polling reports
+   `settling`, direct retry is rejected, and the Inngest run retries deletion.
+   After deletion is acknowledged, confirm one feedback event is sent and a
+   later replay sends no duplicate.
 8. Confirm the recovery cron emits a new delivery identity only for an overdue
    open session and does not leave it open beyond the next five-minute recovery
    window. Future sessions must not accumulate duplicate scheduled deliveries.
@@ -41,6 +45,8 @@ Alert on:
 - deadline enforcement lateness above the product tolerance;
 - repeated recovery scheduling for the same session;
 - deadline-completed sessions without feedback rows;
+- deadline-completed sessions with unacknowledged cleanup that expose feedback
+  or remain `feedbackReady=false` after retries are exhausted;
 - `session_deadline_unavailable` reads or invalid-session quarantine events;
 - start failures caused by missing deadline scheduling acknowledgement.
 
@@ -51,7 +57,9 @@ Never log tokens, credentials, transcript text, customer identifiers, or room me
 - The exact event and recovery deliveries are idempotent at the completion and room adapter boundaries. It is safe to replay a due deadline.
 - Do not reopen a terminal session or rewrite its first terminal reason.
 - If Inngest is unavailable, restore it and run the recovery function; do not bypass the deadline by returning room credentials.
-- If LiveKit deletion fails, retry deletion. Do not reverse committed terminal truth or feedback intent.
+- If LiveKit deletion fails, retry deletion. Do not reverse committed terminal
+  truth or feedback intent, and do not dispatch or expose feedback before an
+  acknowledged `deleted` or `already_absent` result.
 - An open voice room without a valid persisted start time is invalid, not
   deadline-exempt. Quarantine it, delete the room, and terminalize it as
   `provider_failure`; never silently omit it from recovery.

@@ -31,6 +31,10 @@ describe("/api/feedback/[sessionId]", () => {
     vi.clearAllMocks();
     mockAuth({ id: "user-1" });
     vi.mocked(isSessionOwnedByUser).mockResolvedValue(true);
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "completed",
+      terminalReason: "user_end",
+    } as never);
   });
 
   it("rejects unauthenticated polling", async () => {
@@ -72,6 +76,23 @@ describe("/api/feedback/[sessionId]", () => {
       dispatch: { status: "failed", retryable: true },
     });
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("keeps hard-deadline feedback hidden until room cleanup is acknowledged", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "completed",
+      terminalReason: "time_limit",
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({ dispatchStatus: "pending" }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "settling",
+      retryable: false,
+    });
   });
 
   it("offers recovery before a sender claims a pending dispatch", async () => {
@@ -190,6 +211,23 @@ describe("/api/feedback/[sessionId]", () => {
     } as never);
     const response = await POST(request("POST"), PARAMS);
     expect(response.status).toBe(409);
+    expect(endInterviewSessionWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("cannot manually bypass pending hard-deadline room cleanup", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "completed",
+      terminalReason: "time_limit",
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({ dispatchStatus: "pending" }) as never
+    );
+
+    const response = await POST(request("POST"), PARAMS);
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "deadline_settlement_pending",
+    });
     expect(endInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 

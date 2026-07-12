@@ -5,10 +5,14 @@ vi.mock("@/lib/db/sessions", () => ({
   getSessionById: vi.fn(),
   isSessionOwnedByUser: vi.fn(),
 }));
+vi.mock("@/lib/db/feedback", () => ({
+  getFeedbackBySessionId: vi.fn(),
+}));
 
 import { NextRequest } from "next/server";
 
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { createClient } from "@/lib/supabase/server";
 import { GET } from "./route";
 
@@ -26,6 +30,9 @@ describe("GET /api/session/:sessionId", () => {
       },
     } as never);
     vi.mocked(isSessionOwnedByUser).mockResolvedValue(true);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue({
+      dispatchStatus: "sent",
+    } as never);
   });
 
   it("returns the canonical server-derived deadline", async () => {
@@ -40,6 +47,25 @@ describe("GET /api/session/:sessionId", () => {
 
     expect(response.status).toBe(200);
     expect(body.session.deadlineAt).toBe("2026-07-10T06:45:00.000Z");
+    expect(body.session.feedbackReady).toBe(true);
+  });
+
+  it("keeps terminal navigation blocked until feedback dispatch is acknowledged", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: SESSION_ID,
+      lifecycleState: "completed",
+      terminalReason: "time_limit",
+      startedAt: new Date("2026-07-10T06:00:00.000Z"),
+      config: { duration: 30 },
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue({
+      dispatchStatus: "pending",
+    } as never);
+
+    const response = await GET(request(), context());
+    await expect(response.json()).resolves.toMatchObject({
+      session: { feedbackReady: false },
+    });
   });
 
   it("returns a safe conflict when persisted start truth is missing", async () => {

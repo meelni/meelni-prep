@@ -19,6 +19,7 @@
  * @response.session.mode {string} - Interview mode (voice_video | text)
  * @response.session.startedAt {string} - ISO 8601 timestamp when session started
  * @response.session.deadlineAt {string} - Canonical server-derived absolute deadline
+ * @response.session.feedbackReady {boolean} - Whether terminal cleanup permits feedback handoff
  * @response.session.endedAt {string|null} - ISO 8601 timestamp when session ended (null if active)
  * @response.session.livekitRoomName {string|null} - LiveKit room name
  * @response.session.config {Object} - Persisted session configuration snapshot
@@ -67,6 +68,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import { getFeedbackBySessionId } from "@/lib/db/feedback";
+import { isFeedbackDispatchReadyForVisibility } from "@/lib/db/feedback-dispatch";
 import {
   attachCanonicalInterviewDeadline,
   InterviewSessionDeadlineUnavailableError,
@@ -106,8 +109,17 @@ export async function GET(
     }
 
     try {
+      const feedback = await getFeedbackBySessionId(sessionId);
       return NextResponse.json({
-        session: attachCanonicalInterviewDeadline(session),
+        session: {
+          ...attachCanonicalInterviewDeadline(session),
+          feedbackReady: Boolean(
+            feedback &&
+              isFeedbackDispatchReadyForVisibility({
+                status: feedback.dispatchStatus,
+              })
+          ),
+        },
       });
     } catch (error) {
       if (error instanceof InterviewSessionDeadlineUnavailableError) {

@@ -129,14 +129,19 @@ a terminal reason.
 
 The server deadline worker remains the sole owner of the durable `time_limit`
 command. It schedules the absolute deadline with a future Inngest event,
-attempts room deletion before settlement, and uses an idempotent completion
-workflow for terminal truth, feedback dispatch, streaks, and completion-time
-achievements. A five-minute recovery scan prioritizes absolute deadlines and
-uses a unique delivery identity per recovery run.
+attempts room deletion before settlement, and uses separate idempotent
+settlement and dispatch boundaries. Terminal truth and completion-time
+motivation may commit when deletion fails, but feedback dispatch remains
+deferred until deletion is acknowledged as `deleted` or `already_absent`.
+Retries preserve the first terminal claim and dispatch at most once. A
+five-minute recovery scan prioritizes absolute deadlines and uses a unique
+delivery identity per recovery run.
 
 The client countdown reflects this deadline but never claims `time_limit`. At
 zero it mutes local input, removes voluntary controls, presents a non-dismissible
-saving state, and polls stored terminal truth before navigating to feedback.
+saving state, and polls stored terminal truth plus feedback readiness before
+navigating to feedback. Direct feedback polling reports `settling`, and direct
+retry cannot bypass unacknowledged hard-deadline room cleanup.
 The relaunch gate remains off until Preview timing evidence and rollback are
 verified.
 

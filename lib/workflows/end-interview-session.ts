@@ -32,6 +32,15 @@ export interface EndInterviewSessionDeps {
   updateMotivation(userId: string): Promise<void>;
 }
 
+export type InterviewSessionSettlement = Extract<
+  FinalizeInterviewSessionResult,
+  { ok: true }
+>;
+
+export type SettleInterviewSessionResult =
+  | { ok: false; reason: "not_found" }
+  | { ok: true; completion: InterviewSessionSettlement };
+
 export type EndInterviewSessionResult =
   | { ok: false; reason: "not_found" }
   | {
@@ -44,6 +53,18 @@ export async function endInterviewSessionWorkflow(
   input: EndInterviewSessionInput,
   deps: EndInterviewSessionDeps = createEndInterviewSessionDeps()
 ): Promise<EndInterviewSessionResult> {
+  const settlement = await settleInterviewSessionWorkflow(input, deps);
+  if (!settlement.ok) return settlement;
+  return dispatchInterviewSessionSettlement(settlement.completion, deps);
+}
+
+export async function settleInterviewSessionWorkflow(
+  input: EndInterviewSessionInput,
+  deps: Pick<
+    EndInterviewSessionDeps,
+    "authorize" | "validate" | "finalize" | "updateMotivation"
+  > = createEndInterviewSessionDeps()
+): Promise<SettleInterviewSessionResult> {
   if (!(await deps.authorize(input))) {
     return { ok: false, reason: "not_found" };
   }
@@ -52,6 +73,27 @@ export async function endInterviewSessionWorkflow(
   const completion = await deps.finalize({ ...input, validation });
   if (!completion.ok) return completion;
 
+  if (
+    completion.disposition === "applied" &&
+    completion.lifecycle.state === "completed"
+  ) {
+    try {
+      await deps.updateMotivation(completion.userId);
+    } catch (error) {
+      console.error("Failed to update completion motivation:", error);
+    }
+  }
+
+  return { ok: true, completion };
+}
+
+export async function dispatchInterviewSessionSettlement(
+  completion: InterviewSessionSettlement,
+  deps: Pick<
+    EndInterviewSessionDeps,
+    "dispatch"
+  > = createEndInterviewSessionDeps()
+): Promise<Extract<EndInterviewSessionResult, { ok: true }>> {
   const shouldDispatch =
     (completion.feedback.status === "pending" ||
       completion.feedback.status === "failed") &&
@@ -60,7 +102,7 @@ export async function endInterviewSessionWorkflow(
   if (shouldDispatch) {
     try {
       dispatch = await deps.dispatch({
-        sessionId: input.sessionId,
+        sessionId: completion.feedback.sessionId,
         userId: completion.userId,
         tier: completion.tier,
       });
@@ -77,17 +119,6 @@ export async function endInterviewSessionWorkflow(
           dispatchedAt: completion.feedback.dispatchedAt,
         },
       };
-    }
-  }
-
-  if (
-    completion.disposition === "applied" &&
-    completion.lifecycle.state === "completed"
-  ) {
-    try {
-      await deps.updateMotivation(completion.userId);
-    } catch (error) {
-      console.error("Failed to update completion motivation:", error);
     }
   }
 

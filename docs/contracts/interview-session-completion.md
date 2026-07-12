@@ -24,6 +24,12 @@ The workflow:
 7. stores a deterministic feedback event ID when feedback is eligible;
 8. commits all database state before attempting provider dispatch.
 
+Settlement and dispatch are separate typed workflow boundaries. Ordinary
+authenticated end commands call both boundaries in sequence. A hard-deadline
+command may commit settlement while LiveKit room deletion is retryable, but it
+must not enter the dispatch boundary until room deletion is acknowledged as
+`deleted` or `already_absent`.
+
 Equivalent replays return the stored result. An existing terminal reason is immutable. A historical terminal session without feedback is repaired by creating the missing feedback result; its lifecycle is not reopened.
 
 ## Durable Signal And Terminal Outcome
@@ -64,6 +70,12 @@ new identity that provider deduplication cannot suppress. The provider event
 always carries the stored event ID. Acknowledgement changes it to `sent`;
 failure changes it to `failed` without changing `feedback.status=pending`.
 
+For `time_limit`, `pending`, `sending`, or `failed` is not sufficient evidence
+that feedback is safe to expose. The deadline consumer retries acknowledged
+room deletion first and considers feedback ready only after dispatch is `sent`
+or feedback is `not_required`. A replay reuses terminal truth and the outbox
+fence, so it cannot emit a second accepted feedback event.
+
 A crash between provider acknowledgement and the `sent` write can cause a
 later attempt. Attempt fencing and the idempotent feedback worker make
 concurrent or delayed events converge on the same feedback row.
@@ -74,7 +86,16 @@ The end response remains HTTP 200 when the session committed but provider dispat
 
 The browser must inspect `response.ok`. On a non-2xx response it keeps the interview room open, keeps the end modal available, shows the user-safe error, and offers retry. It navigates to feedback only after the end command confirms a committed result.
 
-`GET /api/feedback/:sessionId` reports when feedback is pending because dispatch is retryable. Authenticated `POST` on the same route claims a new attempt identity only when the stored state is retryable; it never creates a second feedback row.
+`GET /api/feedback/:sessionId` reports `settling` for a hard-deadline session
+whose room cleanup/dispatch boundary is not ready. Authenticated `POST` cannot
+bypass that boundary; it returns `deadline_settlement_pending` until the
+deadline consumer has acknowledged cleanup. Other terminal reasons preserve
+the existing retry behavior and claim a new attempt identity only when the
+stored state is retryable. No path creates a second feedback row.
+
+`GET /api/session/:sessionId` exposes `feedbackReady`. The deadline UI waits
+for both terminal lifecycle truth and `feedbackReady=true` before navigating
+away from the interview saving state.
 
 ## Acceptance Evidence
 
@@ -84,3 +105,5 @@ The browser must inspect `response.ok`. On a non-2xx response it keeps the inter
 - Terminal-without-feedback repair does not alter terminal lifecycle fields.
 - The worker has no session-status write.
 - Clean and upgrade migrations pass with the outbox checks and indexes present.
+- Delete failure commits terminal truth without dispatch; acknowledged retry
+  dispatches once; later replay emits no duplicate.

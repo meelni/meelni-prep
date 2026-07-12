@@ -16,9 +16,13 @@ import {
   type InterviewDeadlineSession,
 } from "@/lib/db/session-deadlines";
 import {
-  endInterviewSessionWorkflow,
+  dispatchInterviewSessionSettlement,
+  settleInterviewSessionWorkflow,
   type EndInterviewSessionResult,
+  type InterviewSessionSettlement,
+  type SettleInterviewSessionResult,
 } from "./end-interview-session";
+import { isFeedbackDispatchReadyForVisibility } from "@/lib/db/feedback-dispatch";
 
 export interface EnforceInterviewDeadlineInput {
   sessionId: string;
@@ -34,8 +38,13 @@ export interface QuarantineInvalidInterviewSessionInput {
 
 export interface EnforceInterviewDeadlineDeps {
   getSession(sessionId: string): Promise<InterviewDeadlineSession | undefined>;
-  endSession(sessionId: string): Promise<EndInterviewSessionResult>;
-  endInvalidSession(sessionId: string): Promise<EndInterviewSessionResult>;
+  settleSession(sessionId: string): Promise<SettleInterviewSessionResult>;
+  settleInvalidSession(
+    sessionId: string
+  ): Promise<SettleInterviewSessionResult>;
+  dispatchSettlement(
+    settlement: InterviewSessionSettlement
+  ): Promise<Extract<EndInterviewSessionResult, { ok: true }>>;
   terminateRoom(input: {
     roomName: string;
     env: LiveKitEnvironment;
@@ -112,8 +121,8 @@ export async function enforceInterviewDeadlineWorkflow(
     }
   }
 
-  const completion = await deps.endSession(input.sessionId);
-  if (!completion.ok) {
+  const settlement = await deps.settleSession(input.sessionId);
+  if (!settlement.ok) {
     if (roomTerminationError) {
       throw Object.assign(
         new Error("LiveKit deadline room termination failed"),
@@ -128,6 +137,9 @@ export async function enforceInterviewDeadlineWorkflow(
       code: roomTerminationError.code,
     });
   }
+
+  const completion = await deps.dispatchSettlement(settlement.completion);
+  requireFeedbackDispatchReady(completion);
 
   return { ok: true, disposition: "enforced", completion, room };
 }
@@ -162,8 +174,8 @@ export async function quarantineInvalidInterviewSessionWorkflow(
     }
   }
 
-  const completion = await deps.endInvalidSession(input.sessionId);
-  if (!completion.ok) {
+  const settlement = await deps.settleInvalidSession(input.sessionId);
+  if (!settlement.ok) {
     if (roomTerminationError) {
       throw createRoomTerminationError(roomTerminationError.code);
     }
@@ -174,27 +186,44 @@ export async function quarantineInvalidInterviewSessionWorkflow(
     throw createRoomTerminationError(roomTerminationError.code);
   }
 
+  const completion = await deps.dispatchSettlement(settlement.completion);
+  requireFeedbackDispatchReady(completion);
+
   return { ok: true, disposition: "quarantined", completion, room };
 }
 
 export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDeps {
   return {
     getSession: getInterviewDeadlineSession,
-    endSession: (sessionId) =>
-      endInterviewSessionWorkflow({
+    settleSession: (sessionId) =>
+      settleInterviewSessionWorkflow({
         sessionId,
         actor: { type: "system", source: "hard_deadline" },
         requestedTerminalReason: "time_limit",
       }),
-    endInvalidSession: (sessionId) =>
-      endInterviewSessionWorkflow({
+    settleInvalidSession: (sessionId) =>
+      settleInterviewSessionWorkflow({
         sessionId,
         actor: { type: "system", source: "invalid_session_recovery" },
         requestedTerminalReason: "provider_failure",
       }),
+    dispatchSettlement: dispatchInterviewSessionSettlement,
     terminateRoom: terminateInterviewRoom,
     now: () => new Date(),
   };
+}
+
+function requireFeedbackDispatchReady(
+  result: Extract<EndInterviewSessionResult, { ok: true }>
+): void {
+  const status =
+    result.dispatch?.dispatch?.status ??
+    result.completion.feedback.dispatchStatus;
+  if (!isFeedbackDispatchReadyForVisibility({ status })) {
+    throw Object.assign(new Error("Deadline feedback dispatch is not ready"), {
+      code: "feedback_dispatch_not_ready",
+    });
+  }
 }
 
 function createRoomTerminationError(code: string): Error {

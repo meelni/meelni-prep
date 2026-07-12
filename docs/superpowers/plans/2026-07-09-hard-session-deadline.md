@@ -42,7 +42,11 @@
 
 - Required: typecheck, test typecheck, core, agent, integrations, workflows, API, Python runtime contracts, design guardrails, lint, build, and CI checks.
 - Manual: desktop/mobile deadline UI preview; authenticated Preview LiveKit and Inngest rehearsal after environment isolation.
-- Regression cases: exact boundary, stale/malformed events, duplicate commands, recovery identity, mixed-duration recovery order, room-delete failure, already-expired runtime, unauthorized validation, and countdown clamping.
+- Regression cases: exact boundary, stale/malformed events, duplicate commands,
+  recovery identity, mixed-duration recovery order, room-delete failure with
+  deferred dispatch and visibility, acknowledged retry with exactly-once
+  dispatch, already-expired runtime, unauthorized validation, and countdown
+  clamping.
 
 ## Rollout
 
