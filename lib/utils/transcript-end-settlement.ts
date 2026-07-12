@@ -4,10 +4,12 @@ export interface TranscriptEndSettlement {
   failed: number;
 }
 
-export async function establishTranscriptEndCutoff(input: {
+export async function establishTranscriptEndCutoff<
+  Settlement extends TranscriptEndSettlement,
+>(input: {
   setEndIntent(value: boolean): void;
-  flush(): Promise<TranscriptEndSettlement>;
-}): Promise<TranscriptEndSettlement> {
+  flush(): Promise<Settlement>;
+}): Promise<Settlement> {
   input.setEndIntent(true);
   try {
     const settlement = await input.flush();

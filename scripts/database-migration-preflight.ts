@@ -313,10 +313,10 @@ async function run(url: string, environmentIdentity: string) {
                   : migrations.length === 10
                     ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
                     : migrations.length === 11
-                    ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-                    : migrations.length === 12
-                      ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-                      : RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT;
+                      ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                      : migrations.length === 12
+                        ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                        : RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -394,10 +394,6 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 11
-            ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-            : migrations.length === 10
-              ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
           migrations.length === 13
             ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
             : migrations.length === 12
