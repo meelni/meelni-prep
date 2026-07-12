@@ -49,6 +49,26 @@ export async function endInterviewSessionWorkflow(
   }
 
   const validation = await deps.validate(input.sessionId);
+  return completeInterviewSession(input, validation, deps);
+}
+
+export async function endInterviewSessionWithValidationWorkflow(
+  input: EndInterviewSessionInput,
+  validation: SessionValidation,
+  deps: EndInterviewSessionDeps = createEndInterviewSessionDeps()
+): Promise<EndInterviewSessionResult> {
+  if (!(await deps.authorize(input))) {
+    return { ok: false, reason: "not_found" };
+  }
+
+  return completeInterviewSession(input, validation, deps);
+}
+
+async function completeInterviewSession(
+  input: EndInterviewSessionInput,
+  validation: SessionValidation,
+  deps: EndInterviewSessionDeps
+): Promise<EndInterviewSessionResult> {
   const completion = await deps.finalize({ ...input, validation });
   if (!completion.ok) return completion;
 

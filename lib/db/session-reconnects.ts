@@ -21,6 +21,8 @@ export interface InterviewReconnectSession {
   lastTransitionAt: Date;
   reconnectDeadlineAt: Date | null;
   roomCleanupPending: boolean;
+  roomCleanupAttemptedAt: Date | null;
+  presenceReconciledAt: Date | null;
   lastTransportEventAt: Date | null;
   lastTransportEventId: string | null;
   lastTransportEventName: string | null;
@@ -80,6 +82,21 @@ export interface InterviewReconnectStore {
     runtimeReadyAt: Date;
   }): Promise<ApplyInterviewTransportTransitionResult>;
   markRoomCleanupComplete(input: { sessionId: string }): Promise<void>;
+  markRoomCleanupAttempted(input: {
+    sessionId: string;
+    attemptedAt: Date;
+  }): Promise<void>;
+  markPresenceReconciled(input: {
+    sessionId: string;
+    expectedVersion: number;
+    checkedAt: Date;
+  }): Promise<ApplyInterviewTransportTransitionResult>;
+  recoverFromPresence(input: {
+    sessionId: string;
+    expectedVersion: number;
+    deadlineAt: Date;
+    transitionedAt: Date;
+  }): Promise<ApplyInterviewTransportTransitionResult>;
   claimTimeout(input: {
     sessionId: string;
     expectedVersion: number;
@@ -242,6 +259,71 @@ export function createDrizzleInterviewReconnectStore(
             eq(interviewSession.roomCleanupPending, true)
           )
         );
+    },
+    async markRoomCleanupAttempted(input) {
+      await database
+        .update(interviewSession)
+        .set({ roomCleanupAttemptedAt: input.attemptedAt })
+        .where(
+          and(
+            eq(interviewSession.id, input.sessionId),
+            eq(interviewSession.roomCleanupPending, true)
+          )
+        );
+    },
+    async markPresenceReconciled(input) {
+      const rows = await database
+        .update(interviewSession)
+        .set({ presenceReconciledAt: input.checkedAt })
+        .where(
+          and(
+            eq(interviewSession.id, input.sessionId),
+            eq(interviewSession.lifecycleVersion, input.expectedVersion)
+          )
+        )
+        .returning();
+
+      if (rows[0]) {
+        return { applied: true, current: mapReconnectSession(rows[0]) };
+      }
+      const current = await store.getById(input.sessionId);
+      return {
+        applied: false,
+        reason: current ? "conflict" : "not_found",
+        current,
+      };
+    },
+    async recoverFromPresence(input) {
+      const rows = await database
+        .update(interviewSession)
+        .set({
+          lifecycleState: "active",
+          lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 1`,
+          terminalReason: null,
+          status: projectLegacyInterviewSessionStatus({ state: "active" }),
+          lastTransitionAt: input.transitionedAt,
+          reconnectDeadlineAt: null,
+          presenceReconciledAt: input.transitionedAt,
+        })
+        .where(
+          and(
+            eq(interviewSession.id, input.sessionId),
+            eq(interviewSession.lifecycleState, "reconnecting"),
+            eq(interviewSession.lifecycleVersion, input.expectedVersion),
+            eq(interviewSession.reconnectDeadlineAt, input.deadlineAt)
+          )
+        )
+        .returning();
+
+      if (rows[0]) {
+        return { applied: true, current: mapReconnectSession(rows[0]) };
+      }
+      const current = await store.getById(input.sessionId);
+      return {
+        applied: false,
+        reason: current ? "conflict" : "not_found",
+        current,
+      };
     },
     async claimTimeout(input) {
       const rows = await database
@@ -463,10 +545,34 @@ function mapReconnectSession(
     lastTransitionAt: row.lastTransitionAt,
     reconnectDeadlineAt: row.reconnectDeadlineAt,
     roomCleanupPending: row.roomCleanupPending,
+    roomCleanupAttemptedAt: row.roomCleanupAttemptedAt,
+    presenceReconciledAt: row.presenceReconciledAt,
     lastTransportEventAt: row.lastTransportEventAt,
     lastTransportEventId: row.lastTransportEventId,
     lastTransportEventName: row.lastTransportEventName,
   };
+}
+
+export async function listInterviewPresenceReconciliationSessions(
+  limit = 250
+): Promise<Array<{ sessionId: string }>> {
+  return db
+    .select({ sessionId: interviewSession.id })
+    .from(interviewSession)
+    .where(
+      and(
+        inArray(interviewSession.lifecycleState, ["active", "reconnecting"]),
+        isNotNull(interviewSession.livekitRoomName),
+        isNotNull(interviewSession.startedAt)
+      )
+    )
+    .orderBy(
+      sql`${interviewSession.presenceReconciledAt} ASC NULLS FIRST`,
+      asc(interviewSession.presenceReconciledAt),
+      asc(interviewSession.lastTransitionAt),
+      asc(interviewSession.id)
+    )
+    .limit(limit);
 }
 
 export async function listInterviewRoomCleanupSessions(
@@ -486,6 +592,11 @@ export async function listInterviewRoomCleanupSessions(
         isNotNull(interviewSession.livekitRoomName)
       )
     )
-    .orderBy(asc(interviewSession.lastTransitionAt))
+    .orderBy(
+      sql`${interviewSession.roomCleanupAttemptedAt} ASC NULLS FIRST`,
+      asc(interviewSession.roomCleanupAttemptedAt),
+      asc(interviewSession.lastTransitionAt),
+      asc(interviewSession.id)
+    )
     .limit(limit);
 }

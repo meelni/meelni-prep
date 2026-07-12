@@ -1,5 +1,5 @@
 {
-  "id": "a7bb9f6f-d5e9-4117-a6e0-729b4624bc76",
+  "id": "e929cfac-1cdb-4d5d-94e8-d1acdf2ff13f",
   "prevId": "f708d09b-eb28-4f11-84c8-6bfc619798a4",
   "version": "7",
   "dialect": "postgresql",
@@ -1498,6 +1498,18 @@
           "notNull": true,
           "default": false
         },
+        "room_cleanup_attempted_at": {
+          "name": "room_cleanup_attempted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "presence_reconciled_at": {
+          "name": "presence_reconciled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "runtime_ready_at": {
           "name": "runtime_ready_at",
           "type": "timestamp with time zone",
@@ -1626,6 +1638,48 @@
             },
             {
               "expression": "reconnect_deadline_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "interview_session_presence_reconciliation_idx": {
+          "name": "interview_session_presence_reconciliation_idx",
+          "columns": [
+            {
+              "expression": "lifecycle_state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "presence_reconciled_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "interview_session_room_cleanup_recovery_idx": {
+          "name": "interview_session_room_cleanup_recovery_idx",
+          "columns": [
+            {
+              "expression": "room_cleanup_pending",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "room_cleanup_attempted_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

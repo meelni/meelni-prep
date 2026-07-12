@@ -10,6 +10,7 @@ import { interviewSession } from "./schema";
 
 export interface InterviewDeadlineSession {
   id: string;
+  userId: string;
   startedAt: Date | null;
   config: unknown;
   roomName: string | null;
@@ -39,6 +40,7 @@ export async function getInterviewDeadlineSession(
   const session = await db.query.interviewSession.findFirst({
     columns: {
       id: true,
+      userId: true,
       startedAt: true,
       config: true,
       livekitRoomName: true,
@@ -48,6 +50,7 @@ export async function getInterviewDeadlineSession(
   if (!session) return undefined;
   return {
     id: session.id,
+    userId: session.userId,
     startedAt: session.startedAt,
     config: session.config,
     roomName: session.livekitRoomName,

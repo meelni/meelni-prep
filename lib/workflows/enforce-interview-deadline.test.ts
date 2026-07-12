@@ -162,6 +162,7 @@ test("recovery closes an open room with no start time and terminalizes provider 
     createDeps({
       getSession: async () => ({
         id: SESSION_ID,
+        userId: "650e8400-e29b-41d4-a716-446655440000",
         startedAt: null,
         config: { duration: 30 },
         roomName: "interview-invalid-start-room",
@@ -206,6 +207,7 @@ test("invalid-session room cleanup failure commits provider failure then retries
         createDeps({
           getSession: async () => ({
             id: SESSION_ID,
+            userId: "650e8400-e29b-41d4-a716-446655440000",
             startedAt: null,
             config: {},
             roomName: "interview-invalid-start-room",
@@ -236,6 +238,7 @@ function createDeps(
   return {
     getSession: async () => ({
       id: SESSION_ID,
+      userId: "650e8400-e29b-41d4-a716-446655440000",
       startedAt: new Date("2026-07-10T06:00:00.000Z"),
       config: { duration: 30 },
       roomName: "interview-deadline-room",

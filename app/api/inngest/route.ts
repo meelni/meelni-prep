@@ -19,7 +19,14 @@ import {
   enforceInterviewReconnect,
   recoverInterviewReconnects,
 } from "@/lib/inngest/functions/enforce-interview-reconnect";
-import { recoverInterviewRoomCleanup } from "@/lib/inngest/functions/cleanup-interview-rooms";
+import {
+  cleanupInterviewRoom,
+  recoverInterviewRoomCleanup,
+} from "@/lib/inngest/functions/cleanup-interview-rooms";
+import {
+  reconcileInterviewPresence,
+  recoverInterviewPresenceReconciliation,
+} from "@/lib/inngest/functions/reconcile-interview-presence";
 
 /**
  * Serve Inngest functions via Next.js API route
@@ -45,6 +52,9 @@ export const { GET, POST, PUT } = serve({
     recoverInterviewDeadlines, // Requeues missing deadline schedules
     enforceInterviewReconnect, // Server-owned reconnect grace expiry
     recoverInterviewReconnects, // Requeues missing reconnect schedules
+    cleanupInterviewRoom, // Independently retries one terminal room cleanup
     recoverInterviewRoomCleanup, // Reclaims terminal rooms after provider outages
+    reconcileInterviewPresence, // Repairs missed participant webhooks
+    recoverInterviewPresenceReconciliation, // Fairly scans active voice sessions
   ],
 });

@@ -18,8 +18,10 @@ export interface CleanupInterviewRoomDeps {
   store: InterviewReconnectStore;
   terminateRoom(input: {
     roomName: string;
+    participantIdentity: string;
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<TerminatedInterviewRoom>>;
+  now(): Date;
 }
 
 export type CleanupInterviewRoomResult =
@@ -43,8 +45,14 @@ export async function cleanupInterviewRoomWorkflow(
     return { ok: true, disposition: "already_clean", room: null };
   }
 
+  await deps.store.markRoomCleanupAttempted({
+    sessionId: session.sessionId,
+    attemptedAt: deps.now(),
+  });
+
   const terminated = await deps.terminateRoom({
     roomName: session.roomName,
+    participantIdentity: session.userId,
     env: input.env,
   });
   if (!terminated.ok) {
@@ -61,6 +69,7 @@ export function createCleanupInterviewRoomDeps(): CleanupInterviewRoomDeps {
   return {
     store: createDrizzleInterviewReconnectStore(),
     terminateRoom: terminateInterviewRoom,
+    now: () => new Date(),
   };
 }
 

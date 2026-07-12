@@ -63,6 +63,82 @@ test("atomic timeout claim prevents a concurrent restore before room deletion", 
   assert.deepEqual(fixture.calls, ["claim", "terminate", "end"]);
 });
 
+test("authoritative presence recovers before the timeout claim", async () => {
+  const fixture = createFixture(new Date(DEADLINE));
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", {
+      present: true,
+      joinedAt: new Date("2026-07-10T08:00:29.000Z"),
+    });
+
+  const result = await run(fixture.deps);
+
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.disposition, "presence_recovered");
+  assert.equal(fixture.current.state, "active");
+  assert.equal(fixture.current.version, 5);
+  assert.deepEqual(fixture.calls, []);
+});
+
+test("presence provider failure cannot claim or terminate the session", async () => {
+  const fixture = createFixture(new Date(DEADLINE));
+  fixture.deps.inspectPresence = async () =>
+    providerFailure("livekit", {
+      code: "livekit_participant_presence_failed",
+      message: "provider unavailable",
+      retryable: true,
+    });
+
+  await assert.rejects(() => run(fixture.deps), /presence inspection failed/);
+  assert.equal(fixture.current.state, "reconnecting");
+  assert.deepEqual(fixture.calls, []);
+});
+
+test("timeout drains transcripts before taking its single validation snapshot", async () => {
+  const fixture = createFixture(new Date(DEADLINE));
+  const originalValidate = fixture.deps.validate;
+  fixture.deps.waitUntil = async () => {
+    fixture.calls.push("drain");
+  };
+  fixture.deps.validate = async (sessionId) => {
+    fixture.calls.push("validate");
+    return originalValidate(sessionId);
+  };
+
+  const result = await run(fixture.deps);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(fixture.calls, [
+    "claim",
+    "terminate",
+    "drain",
+    "validate",
+    "end",
+  ]);
+});
+
+test("validation stays blocked until the bounded transcript drain completes", async () => {
+  const fixture = createFixture(new Date(DEADLINE));
+  let releaseDrain!: () => void;
+  let validationCalls = 0;
+  fixture.deps.waitUntil = () =>
+    new Promise((resolve) => {
+      releaseDrain = resolve;
+    });
+  fixture.deps.validate = async () => {
+    validationCalls += 1;
+    return validValidation();
+  };
+
+  const enforcement = run(fixture.deps);
+  await waitFor(() => fixture.calls.includes("terminate"));
+  assert.equal(validationCalls, 0);
+
+  releaseDrain();
+  assert.equal((await enforcement).ok, true);
+  assert.equal(validationCalls, 1);
+});
+
 test("timeout claims the authorization fence before transcript validation resolves", async () => {
   const fixture = createFixture(new Date(DEADLINE));
   let releaseValidation!: () => void;
@@ -82,7 +158,7 @@ test("timeout claims the authorization fence before transcript validation resolv
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(fixture.current.state, "ending");
   assert.equal(fixture.current.version, 5);
-  assert.deepEqual(fixture.calls, ["claim"]);
+  assert.deepEqual(fixture.calls, ["claim", "terminate"]);
 
   const restore = await fixture.deps.store.applyTransportTransition({
     sessionId: SESSION_ID,
@@ -261,6 +337,32 @@ function createFixture(
         roomCleanupPending: false,
       };
     },
+    markRoomCleanupAttempted: async () => undefined,
+    markPresenceReconciled: async (input) => {
+      if (current.version !== input.expectedVersion) {
+        return { applied: false, reason: "conflict", current };
+      }
+      current = { ...current, presenceReconciledAt: input.checkedAt };
+      return { applied: true, current };
+    },
+    recoverFromPresence: async (input) => {
+      if (
+        current.state !== "reconnecting" ||
+        current.version !== input.expectedVersion ||
+        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime()
+      ) {
+        return { applied: false, reason: "conflict", current };
+      }
+      current = {
+        ...current,
+        state: "active",
+        version: current.version + 1,
+        reconnectDeadlineAt: null,
+        lastTransitionAt: input.transitionedAt,
+        presenceReconciledAt: input.transitionedAt,
+      };
+      return { applied: true, current };
+    },
     claimTimeout: async (input) => {
       if (
         current.state !== "reconnecting" ||
@@ -321,6 +423,8 @@ function createFixture(
           disposition: "deleted" as const,
         });
       },
+      inspectPresence: async () =>
+        providerSuccess("livekit", { present: false, joinedAt: null }),
       endSession: async () => {
         calls.push("end");
         current = {
@@ -334,6 +438,7 @@ function createFixture(
         return completion();
       },
       now: () => now,
+      waitUntil: async () => undefined,
     },
   };
 }
@@ -393,6 +498,8 @@ function createSession(
     lastTransitionAt: new Date("2026-07-10T08:00:00.000Z"),
     reconnectDeadlineAt: new Date(DEADLINE),
     roomCleanupPending: false,
+    roomCleanupAttemptedAt: null,
+    presenceReconciledAt: null,
     lastTransportEventAt: new Date("2026-07-10T08:00:00.000Z"),
     lastTransportEventId: "lost-1",
     lastTransportEventName: "participant_left",

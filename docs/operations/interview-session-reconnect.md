@@ -29,8 +29,16 @@ Never place an intermediary in front of the route that rewrites the body.
 - Hard deadline: continues during reconnect and wins when earlier than or equal
   to reconnect expiry.
 - Every terminal path persists `room_cleanup_pending`; user end attempts
-  deletion immediately, and a five-minute recovery scan retries until LiveKit
-  acknowledges deletion or absence.
+  candidate-token revocation and deletion immediately, and a five-minute
+  recovery scan retries each room independently until LiveKit acknowledges
+  deletion or absence. Never-attempted and least-recently-attempted rooms run
+  first.
+- Because LiveKit webhooks are best-effort, a one-minute reconciliation scan
+  checks authoritative candidate presence for active and reconnecting rooms.
+  Provider read failure retries without creating a synthetic loss.
+- Reconnect expiry rechecks authoritative presence before claiming timeout,
+  revokes candidate tokens before room deletion, waits a bounded two seconds
+  for durable transcript delivery, and finalizes from one validation snapshot.
 
 ## Preview Rehearsal
 
@@ -49,8 +57,9 @@ ready:
 5. Kill the tab and verify the signed webhook starts grace without a browser
    signal.
 6. Stay disconnected through the exact deadline. Confirm one
-   `disconnect_timeout` claim, room deletion, terminal session, and feedback
-   intent. Replay the event and confirm no duplicate result.
+   `disconnect_timeout` claim, candidate revocation before room deletion, a
+   two-second transcript drain, one validation snapshot, terminal session, and
+   feedback intent. Replay the event and confirm no duplicate result.
 7. Overlap a drop with the hard deadline. Confirm `time_limit` wins when its
    absolute deadline is earlier or equal.
 8. Exercise a room-delete failure. Confirm the accepted timeout claim remains
@@ -61,6 +70,14 @@ ready:
 10. Delay real LiveKit token signing across the computed TTL window. Confirm
     the adapter withholds a JWT whose actual `exp` exceeds the server-owned
     authorization deadline.
+11. Disable or drop one candidate-loss webhook. Confirm the next presence scan
+    synthesizes one loss and schedules grace. Drop a candidate-join webhook and
+    confirm authoritative presence repairs reconnecting exactly once.
+12. Make participant-list inspection fail. Confirm no synthetic loss or
+    timeout claim is written, then restore the provider and verify retry.
+13. Leave one terminal room cleanup permanently failing while another is
+    pending. Confirm per-session retries and the persisted fairness cursor let
+    the healthy room complete without waiting for the poison room.
 
 SAV-194 transcript event identity must be deployed before this ticket can be
 declared launch-ready; repeated packets across reload must not create duplicate
@@ -69,8 +86,9 @@ durable turns.
 ## Monitoring And Rollback
 
 Monitor redacted counts and latency for `active → reconnecting`, recovery,
-timeout, stale provider events, lifecycle conflicts, webhook signature failure,
-room deletion failure, and reconnect schedules recovered by cron. Alert on a
+timeout, presence reconciliation, stale provider events, lifecycle conflicts,
+webhook signature failure, participant revocation failure, room deletion
+failure, and reconnect schedules recovered by cron. Alert on a
 reconnecting row past its deadline, a claimed timeout stuck in `ending`, or a
 terminal row whose reconnect cleanup marker remains set after the provider
 recovery window.
