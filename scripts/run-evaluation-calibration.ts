@@ -21,6 +21,7 @@ import {
   SAV_198_SPEND_AUTHORIZATION,
 } from "@/lib/evaluation/calibration-run-ledger";
 import { getCalibrationCliExitCode } from "@/lib/evaluation/calibration-cli";
+import { assertCalibrationLiveStartupState } from "@/lib/evaluation/calibration-live-startup.mjs";
 
 const LIVE_ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL";
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
@@ -57,6 +58,7 @@ async function main() {
     evaluator = createDeterministicCalibrationEvaluator(modelVersion);
   }
   if (executionKind === "live_provider") {
+    assertCalibrationLiveStartupState();
     if (process.env.MEELNI_ALLOW_PAID_CALIBRATION !== LIVE_ACKNOWLEDGEMENT) {
       throw new Error(
         `Live calibration is disabled. Set MEELNI_ALLOW_PAID_CALIBRATION=${LIVE_ACKNOWLEDGEMENT} only after explicit spend authorization.`
