@@ -57,6 +57,7 @@ const REQUEST: AccountDeletionRecord = {
       fingerprint: "livekit-room-fingerprint",
       generation: 1,
       provisioning: false,
+      provisioningExpiresAt: null,
     },
   ],
   attempts: 1,
@@ -79,7 +80,7 @@ test("durable deletion runs providers and application cleanup in retry-safe orde
     "customer:cus_second",
     `completed:${REQUEST.userId}`,
   ]);
-  assert.deepEqual(result, { alreadyCompleted: false });
+  assert.deepEqual(result, { alreadyCompleted: false, retryAt: null });
 });
 
 test("payment and charge subjects remain correlation tombstones only", async () => {
@@ -166,7 +167,7 @@ test("completed deletion and missing provider records are idempotent", async () 
       },
       createDeps(calls)
     ),
-    { alreadyCompleted: true }
+    { alreadyCompleted: true, retryAt: null }
   );
   assert.deepEqual(calls, []);
   assert.equal(
@@ -242,12 +243,44 @@ test("a missing provisioning room remains durable because provider creation may 
       livekitRooms: REQUEST.livekitRooms.map((room) => ({
         ...room,
         provisioning: true,
+        provisioningExpiresAt: "2026-07-12T00:10:00.000Z",
       })),
     },
     deps
   );
 
   assert.deepEqual(processedRooms, [[]]);
+});
+
+test("a missing provisioning room clears only after its durable lease expires", async () => {
+  const processedRooms: unknown[][] = [];
+  const deps = createDeps([]);
+  deps.now = () => new Date("2026-07-12T00:10:00.000Z");
+  deps.terminateLiveKitRoom = async () => ({ terminated: false });
+  deps.markCompleted = async (_userId, _fingerprints, rooms) => {
+    processedRooms.push(rooms);
+  };
+
+  await deleteAccountWorkflow(
+    {
+      ...REQUEST,
+      livekitRooms: REQUEST.livekitRooms.map((room) => ({
+        ...room,
+        provisioning: true,
+        provisioningExpiresAt: "2026-07-12T00:10:00.000Z",
+      })),
+    },
+    deps
+  );
+
+  assert.deepEqual(processedRooms, [
+    [
+      {
+        fingerprint: "livekit-room-fingerprint",
+        generation: 1,
+      },
+    ],
+  ]);
 });
 
 test("deletion failures are reduced to a stable code without raw details", () => {
@@ -322,5 +355,6 @@ function createDeps(calls: string[]): DeleteAccountWorkflowDeps {
     markCompleted: async (id) => {
       calls.push(`completed:${id}`);
     },
+    now: () => new Date("2026-07-12T00:00:00.000Z"),
   };
 }

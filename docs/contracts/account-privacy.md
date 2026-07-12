@@ -110,9 +110,13 @@ nonterminal LiveKit interview. Session creation takes the account identity lock,
 so it either commits before the snapshot or fails after the tombstone exists.
 Rooms whose local session is still `created` or `connecting` are retained as
 provisioning subjects: a provider 404 cannot clear them because room creation
-may still commit afterward. A duplicate deletion request unions its fresh
+may still commit afterward. Each subject stores a database-clock ten-minute
+lease, chosen as the conservative bound for the LiveKit create/dispatch HTTP
+attempt and delayed outcome uncertainty. A missing room stays protected before
+that deadline; durable execution wakes at the deadline, calls room termination
+again, and may then clear an exact-generation missing result. A duplicate deletion request unions its fresh
 snapshot with the tombstone under the same lock; it cannot drop an unresolved
-room, lower its generation, or replace a newer raw cleanup subject.
+room, shorten its lease, lower its generation, or replace a newer raw cleanup subject.
 Because LiveKit provider creation happens after that database transaction, the
 start workflow takes the identity lock again after provider creation and before
 returning credentials. If deletion won that fence, the workflow durably
@@ -136,6 +140,10 @@ raw room names never enter client responses, stable errors, or job step output.
 Post-create termination failures follow the same rule: the raw room remains in
 the tombstone for recovery, while workflow logs contain only a fixed cleanup
 category and no room name, token, URL, or provider message.
+Provider-start failures use the same containment path: only definitive
+pre-room configuration failures clear immediately; ambiguous failures attempt
+termination and retain a missing room until its lease. Logs expose only the
+stable error code and retryability category, never provider message or cause.
 
 Webhook fulfillment independently requires matching client-reference and
 metadata user IDs. Credit and subscription writes serialize with deletion on

@@ -24,6 +24,7 @@ export interface DeleteAccountWorkflowDeps {
     processedFingerprints: string[],
     processedLiveKitRooms: ProcessedLiveKitDeletionRoom[]
   ): Promise<void>;
+  now(): Date;
 }
 
 export async function deleteAccountWorkflow(
@@ -35,7 +36,7 @@ export async function deleteAccountWorkflow(
     request.stripeSubjects.every(({ providerId }) => providerId === null) &&
     request.livekitRooms.every(({ roomName }) => roomName === null)
   ) {
-    return { alreadyCompleted: true };
+    return { alreadyCompleted: true, retryAt: null };
   }
 
   // Local privacy cleanup does not wait on an external provider. The durable
@@ -48,17 +49,24 @@ export async function deleteAccountWorkflow(
     (room): room is typeof room & { roomName: string } => room.roomName !== null
   );
   const processedLiveKitRooms: ProcessedLiveKitDeletionRoom[] = [];
+  const retainedProvisioningExpiries: string[] = [];
   for (const room of pendingRooms) {
     const result = await deps.terminateLiveKitRoom(room.roomName);
     // A missing room is normally an idempotent success. A provisioning target
     // is different: the create call may still commit after this lookup, so its
     // raw subject must survive until start either advances the generation or a
     // later cleanup actually terminates the room.
-    if (result.terminated || !room.provisioning) {
+    const provisioningLeaseExpired =
+      room.provisioning &&
+      room.provisioningExpiresAt !== null &&
+      deps.now().getTime() >= Date.parse(room.provisioningExpiresAt);
+    if (result.terminated || !room.provisioning || provisioningLeaseExpired) {
       processedLiveKitRooms.push({
         fingerprint: room.fingerprint,
         generation: room.generation,
       });
+    } else if (room.provisioningExpiresAt !== null) {
+      retainedProvisioningExpiries.push(room.provisioningExpiresAt);
     }
   }
 
@@ -94,7 +102,10 @@ export async function deleteAccountWorkflow(
     [...processedFingerprints],
     processedLiveKitRooms
   );
-  return { alreadyCompleted: false };
+  return {
+    alreadyCompleted: false,
+    retryAt: retainedProvisioningExpiries.sort()[0] ?? null,
+  };
 }
 
 export function isAlreadyDeletedProviderError(error: unknown): boolean {

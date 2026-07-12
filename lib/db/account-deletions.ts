@@ -106,7 +106,10 @@ export interface LiveKitDeletionRoom {
   fingerprint: string;
   generation: number;
   provisioning: boolean;
+  provisioningExpiresAt: string | null;
 }
+
+export const LIVEKIT_DELETION_PROVISIONING_LEASE_MS = 10 * 60 * 1000;
 
 export type ProcessedLiveKitDeletionRoom = Pick<
   LiveKitDeletionRoom,
@@ -188,8 +191,16 @@ export async function requestAccountDeletionWithCurrentSubjects(
         .where(eq(appUser.id, userId))
         .limit(1)
         .for("update");
+      const clockRows = await tx.execute(
+        sql<{ now: Date | string }>`select clock_timestamp() as now`
+      );
+      const clockValue: unknown = clockRows[0]?.now;
+      if (!(clockValue instanceof Date) && typeof clockValue !== "string") {
+        throw new Error("Database clock is unavailable");
+      }
+      const databaseNow = new Date(clockValue);
 
-    // Billing webhook fulfillment locks the same user row. Taking the subject
+      // Billing webhook fulfillment locks the same user row. Taking the subject
     // snapshot after this lock prevents a concurrent subscription/mapping
     // commit from falling between the snapshot and durable tombstone.
     const [currentSubscription] = await tx
@@ -240,6 +251,12 @@ export async function requestAccountDeletionWithCurrentSubjects(
       buildLiveKitDeletionRooms([roomName], {
         provisioning:
           lifecycleState === "created" || lifecycleState === "connecting",
+        provisioningExpiresAt:
+          lifecycleState === "created" || lifecycleState === "connecting"
+            ? new Date(
+                databaseNow.getTime() + LIVEKIT_DELETION_PROVISIONING_LEASE_MS
+              ).toISOString()
+            : null,
       })
     );
 
@@ -772,7 +789,10 @@ function toDeletionRecord(record: typeof accountDeletionRequest.$inferSelect) {
 
 export function buildLiveKitDeletionRooms(
   roomNames: Array<string | null | undefined>,
-  { provisioning = false }: { provisioning?: boolean } = {}
+  {
+    provisioning = false,
+    provisioningExpiresAt = null,
+  }: { provisioning?: boolean; provisioningExpiresAt?: string | null } = {}
 ): LiveKitDeletionRoom[] {
   return [...new Set(roomNames.filter((name): name is string => !!name))]
     .sort()
@@ -781,6 +801,7 @@ export function buildLiveKitDeletionRooms(
       fingerprint: createHash("sha256").update(roomName).digest("hex"),
       generation: 1,
       provisioning,
+      provisioningExpiresAt: provisioning ? provisioningExpiresAt : null,
     }));
 }
 
@@ -797,6 +818,7 @@ export function normalizeLiveKitDeletionRooms(
       fingerprint,
       generation = 1,
       provisioning = false,
+      provisioningExpiresAt = null,
     } = candidate as Record<string, unknown>;
     if (
       (roomName !== null && typeof roomName !== "string") ||
@@ -805,6 +827,9 @@ export function normalizeLiveKitDeletionRooms(
       !Number.isSafeInteger(generation) ||
       (generation as number) < 1 ||
       typeof provisioning !== "boolean" ||
+      (provisioningExpiresAt !== null &&
+        (typeof provisioningExpiresAt !== "string" ||
+          !Number.isFinite(Date.parse(provisioningExpiresAt)))) ||
       (typeof roomName === "string" &&
         createHash("sha256").update(roomName).digest("hex") !== fingerprint)
     ) {
@@ -815,6 +840,9 @@ export function normalizeLiveKitDeletionRooms(
       fingerprint,
       generation: generation as number,
       provisioning,
+      provisioningExpiresAt: provisioning
+        ? (provisioningExpiresAt as string | null)
+        : null,
     };
   });
 }
@@ -858,9 +886,21 @@ function mergeLiveKitDeletionRooms(
       rooms.set(candidate.fingerprint, candidate);
       continue;
     }
-    // Duplicate request snapshots never supersede established tombstone state.
-    // Only the post-create fence may advance a room generation.
-    rooms.set(candidate.fingerprint, existing);
+    // Duplicate snapshots cannot shorten an established provisioning lease or
+    // supersede a post-create generation. They may only extend the same raw,
+    // provisioning generation's deadline.
+    const existingExpiry = existing.provisioningExpiresAt;
+    const candidateExpiry = candidate.provisioningExpiresAt;
+    rooms.set(candidate.fingerprint, {
+      ...existing,
+      provisioningExpiresAt:
+        existing.provisioning && candidate.provisioning
+          ? ([existingExpiry, candidateExpiry]
+              .filter((value): value is string => value !== null)
+              .sort()
+              .at(-1) ?? null)
+          : existingExpiry,
+    });
   }
   return [...rooms.values()].sort((left, right) =>
     left.fingerprint.localeCompare(right.fingerprint)
