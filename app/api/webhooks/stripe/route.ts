@@ -625,21 +625,27 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
       .where(eq(subscription.userId, userId))
       .limit(1)
       .for("update");
-    if (
-      currentSub[0] &&
-      !shouldApplyStripeSubscriptionState({
-        currentStatus: currentSub[0].status,
-        currentStripeSubscriptionId: currentSub[0].stripeSubscriptionId,
-        event:
-          event.type === "customer.subscription.created"
-            ? "subscription_created"
-            : "subscription_updated",
-        eventTimestamp,
-        incomingStripeSubscriptionId: stripeSubscription.id,
-        lastEventTimestamp: currentSub[0].lastEventTimestamp,
-      })
-    ) {
-      return;
+    if (currentSub[0]) {
+      const lockedResourceId = currentSub[0].stripeSubscriptionId;
+      if (
+        !mayApplyStripeSubscriptionResource({
+          currentResourceId: lockedResourceId,
+          currentStatus: currentSub[0].status,
+          currentResourceProof: subscriptionResourceProofFromRow(currentSub[0]),
+          retiredResourceIds: currentSub[0].retiredStripeSubscriptionIds ?? [],
+          candidateResourceId: stripeSubscription.id,
+          candidateResourceProof,
+          eventType: event.type,
+        }) ||
+        !stripeSubscriptionCursorMayApply({
+          currentResourceId: lockedResourceId,
+          candidateResourceId: stripeSubscription.id,
+          currentCursor: subscriptionEventCursorFromRow(currentSub[0]),
+          candidateCursor: eventCursor,
+        })
+      ) {
+        return;
+      }
     }
     const currentVersion = currentSub[0]?.version ?? 0;
     const nextSubscriptionData = {
@@ -1684,7 +1690,7 @@ function safeStripeWebhookErrorCode(error: unknown) {
       return reconciliationCode;
     }
   }
-  return "stripe_webhook_processing_failed";
+  return stripeWebhookErrorCode(error);
 }
 
 function isDeletedBillingReconciliationEvent(type: Stripe.Event.Type) {

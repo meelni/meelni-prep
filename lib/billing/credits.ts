@@ -203,9 +203,7 @@ export interface CreditLedgerReadStore {
 }
 
 export interface CreditLedgerMutationStore {
-  createGrant(
-    input: Omit<LedgerCreditGrant, "id" | "createdAt" | "updatedAt">
-  ): Promise<LedgerCreditGrant>;
+  createGrant(input: CreateLedgerGrantInput): Promise<LedgerCreditGrant>;
   updateGrantBalances(
     grantId: string,
     balances: Pick<LedgerCreditGrant, "remainingCredits" | "reservedCredits">
