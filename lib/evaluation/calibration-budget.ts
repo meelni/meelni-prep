@@ -71,11 +71,12 @@ export type CalibrationBudgetStopReason =
   | "provider_usage_exceeded_reservation"
   | "actual_spend_cap_breached"
   | "physical_request_boundary_not_confirmed"
+  | "physical_request_reentry"
   | "pricing_review_expired_before_request"
   | "unresolved_reservation";
 
 export interface CalibrationCostReport {
-  contractVersion: "evaluation-calibration-cost-report.v4";
+  contractVersion: "evaluation-calibration-cost-report.v5";
   authorizedRunId: string | null;
   authorizationId: string | null;
   authorizationHash: string | null;
@@ -86,6 +87,7 @@ export interface CalibrationCostReport {
   maximumCalls: 96;
   maximumSpendUsd: 3;
   attemptedCalls: number;
+  physicalRequestBoundaryAttempts: number;
   physicalHttpAttemptCeiling: number;
   completedCalls: number;
   reservedWorstCaseCostUsd: number;
@@ -108,6 +110,7 @@ export interface CalibrationSpendReservation {
   worstCaseNanoUsd: number;
   settled: boolean;
   usageRecorded: boolean;
+  requestBoundaryAttempts: number;
   requestBoundaryConfirmed: boolean;
 }
 
@@ -246,6 +249,7 @@ export class CalibrationSpendGuard {
       worstCaseNanoUsd,
       settled: false,
       usageRecorded: false,
+      requestBoundaryAttempts: 0,
       requestBoundaryConfirmed: false,
     };
     this.reservations.set(callKey, reservation);
@@ -301,15 +305,22 @@ export class CalibrationSpendGuard {
   }
 
   assertPhysicalRequestAllowed(reservation: CalibrationSpendReservation): void {
+    if (this.reservations.get(reservation.callKey) !== reservation) {
+      throw new Error("calibration_reservation_is_not_current");
+    }
+    reservation.requestBoundaryAttempts += 1;
+    this.persist();
+    if (reservation.requestBoundaryAttempts > 1) {
+      this.stopReason = "physical_request_reentry";
+      this.persist();
+      throw new Error("calibration_physical_request_boundary_already_used");
+    }
     try {
       validateCalibrationPricingFreshness(this.clock(), this.pricing);
     } catch (error) {
       this.stopReason = "pricing_review_expired_before_request";
       this.persist();
       throw error;
-    }
-    if (this.reservations.get(reservation.callKey) !== reservation) {
-      throw new Error("calibration_reservation_is_not_current");
     }
     if (reservation.settled || this.stopReason !== null) {
       throw new Error("calibration_reservation_is_not_active");
@@ -334,7 +345,7 @@ export class CalibrationSpendGuard {
 
   report(): CalibrationCostReport {
     return {
-      contractVersion: "evaluation-calibration-cost-report.v4",
+      contractVersion: "evaluation-calibration-cost-report.v5",
       authorizedRunId: this.persistence?.runId ?? null,
       authorizationId: this.persistence?.authorizationId ?? null,
       authorizationHash: this.persistence?.authorizationHash ?? null,
@@ -347,6 +358,10 @@ export class CalibrationSpendGuard {
       maximumCalls: CALIBRATION_MAX_PROVIDER_CALLS,
       maximumSpendUsd: 3,
       attemptedCalls: this.attemptedCalls,
+      physicalRequestBoundaryAttempts: [...this.reservations.values()].reduce(
+        (total, { requestBoundaryAttempts }) => total + requestBoundaryAttempts,
+        0
+      ),
       physicalHttpAttemptCeiling:
         [...this.reservations.values()].filter(
           ({ requestBoundaryConfirmed }) => requestBoundaryConfirmed
@@ -479,6 +494,13 @@ export class CalibrationSpendGuard {
       settledReservations.some(
         ({ requestBoundaryConfirmed, usageRecorded }) =>
           !requestBoundaryConfirmed || !usageRecorded
+      ) ||
+      state.reservations.some(
+        ({ requestBoundaryAttempts, requestBoundaryConfirmed }) =>
+          !Number.isSafeInteger(requestBoundaryAttempts) ||
+          requestBoundaryAttempts < 0 ||
+          requestBoundaryAttempts > 2 ||
+          (requestBoundaryConfirmed && requestBoundaryAttempts !== 1)
       ) ||
       this.cumulativeReservedNanoUsd !== cumulativeReservedNanoUsd ||
       this.unresolvedReservedNanoUsd !== unresolvedReservedNanoUsd ||
