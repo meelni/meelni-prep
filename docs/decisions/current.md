@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Dynamic Stacked Parent Resolution](2026-07-12-dynamic-stacked-parent-resolution.md): Store immutable PR/ref identities, resolve current heads in trusted CI, and keep dependent-child topology failures off a valid parent's stable context.
 - [Live PM Interview Practice Positioning](2026-07-09-live-pm-interview-practice-positioning.md): Position Meelni as live PM interview practice, remove the fitness metaphor, and treat routes, analytics, and progress claims as explicit compatibility contracts.
 - [Database Reconciliation And Shared Rate Limits](2026-07-09-reconcile-database-history-and-share-rate-limits.md): Use one forward-only reconciliation migration, test RLS as a contract, and enforce LiveKit reconnect budgets atomically in Postgres.
 - [Durable Account Deletion](2026-07-09-durable-account-deletion.md): Persist a tombstone and use retryable provider/data/Auth workflow steps instead of pretending external deletion is transactional.

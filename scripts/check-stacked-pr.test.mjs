@@ -37,16 +37,16 @@ function fixture() {
   return { repo, root, parent, head };
 }
 
-function manifest(expectedParentHead) {
+function manifest() {
   return {
-    version: 1,
+    version: 2,
     repository: "saviii/meelni-prep",
     stacks: [
       {
         pr: 999,
+        parentPr: 998,
         headRef: "child",
         parentRef: "parent",
-        expectedParentHead,
       },
     ],
   };
@@ -68,7 +68,7 @@ test("a child containing the exact current parent passes", (t) => {
   t.after(() => rmSync(state.repo, { recursive: true, force: true }));
   const result = checkStackTopology({
     repo: state.repo,
-    manifest: manifest(state.parent),
+    manifest: manifest(),
     headRef: "child",
     headRevision: state.head,
     parentRevision: state.parent,
@@ -80,20 +80,20 @@ test("a child containing the exact current parent passes", (t) => {
   assert.equal(result.ahead, 1);
 });
 
-test("a stale declared parent head fails after the parent moves", (t) => {
+test("a child that does not contain the dynamically resolved parent fails", (t) => {
   const state = fixture();
   t.after(() => rmSync(state.repo, { recursive: true, force: true }));
   git(state.repo, "switch", "parent");
   const currentParent = commit(state.repo, "parent remediation");
   const result = checkStackTopology({
     repo: state.repo,
-    manifest: manifest(state.parent),
+    manifest: manifest(),
     headRef: "child",
     headRevision: state.head,
     parentRevision: currentParent,
     requireEvidence: false,
   });
-  assert.ok(result.errors.includes("declared_parent_head_is_stale"));
+  assert.ok(result.errors.includes("head_does_not_contain_current_parent"));
   assert.equal(result.actualParentHead, currentParent);
 });
 
@@ -105,7 +105,7 @@ test("PR263-style false ancestry reports merge-base and behind count", (t) => {
   const currentParent = commit(state.repo, "parent remediation two");
   const result = checkStackTopology({
     repo: state.repo,
-    manifest: manifest(currentParent),
+    manifest: manifest(),
     headRef: "child",
     headRevision: state.head,
     parentRevision: currentParent,
@@ -124,7 +124,7 @@ test("evidence is superseded when the child head changes", (t) => {
   const currentHead = commit(state.repo, "review remediation");
   const result = checkStackTopology({
     repo: state.repo,
-    manifest: manifest(state.parent),
+    manifest: manifest(),
     headRef: "child",
     headRevision: currentHead,
     parentRevision: state.parent,
@@ -136,7 +136,7 @@ test("evidence is superseded when the child head changes", (t) => {
 test("a non-main PR cannot omit its stack declaration", () => {
   const result = validatePullRequestDeclaration({
     manifest: {
-      version: 1,
+      version: 2,
       repository: "saviii/meelni-prep",
       stacks: [],
     },
@@ -150,7 +150,7 @@ test("a non-main PR cannot omit its stack declaration", () => {
 
 test("the GitHub base must match the declared parent ref", () => {
   const result = validatePullRequestDeclaration({
-    manifest: manifest("a".repeat(40)),
+    manifest: manifest(),
     prNumber: 999,
     headRef: "child",
     headRepository: "saviii/meelni-prep",
@@ -161,7 +161,7 @@ test("the GitHub base must match the declared parent ref", () => {
 
 test("the manifest PR number is part of the declaration identity", () => {
   const result = validatePullRequestDeclaration({
-    manifest: manifest("a".repeat(40)),
+    manifest: manifest(),
     prNumber: 998,
     headRef: "child",
     headRepository: "saviii/meelni-prep",
@@ -172,7 +172,7 @@ test("the manifest PR number is part of the declaration identity", () => {
 
 test("a fork head-name collision does not consume a main PR declaration", () => {
   const result = validatePullRequestDeclaration({
-    manifest: manifest("a".repeat(40)),
+    manifest: manifest(),
     prNumber: 998,
     headRef: "child",
     headRepository: "contributor/meelni-prep",
@@ -184,7 +184,7 @@ test("a fork head-name collision does not consume a main PR declaration", () => 
 
 test("a fork cannot declare a stack against a non-main branch", () => {
   const result = validatePullRequestDeclaration({
-    manifest: manifest("a".repeat(40)),
+    manifest: manifest(),
     prNumber: 999,
     headRef: "child",
     headRepository: "contributor/meelni-prep",

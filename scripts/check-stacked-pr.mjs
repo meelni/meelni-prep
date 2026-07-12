@@ -12,26 +12,32 @@ const EVIDENCE_PATTERN = /<!--\s*meelni-stack-evidence\s*\n([\s\S]*?)\n\s*-->/m;
 export function loadStackManifest(path = DEFAULT_MANIFEST) {
   const manifest = JSON.parse(readFileSync(path, "utf8"));
   if (
-    manifest.version !== 1 ||
+    manifest.version !== 2 ||
     !REPOSITORY_PATTERN.test(manifest.repository ?? "") ||
     !Array.isArray(manifest.stacks)
   ) {
     throw new Error("stack_manifest_invalid_shape");
   }
-  const seen = new Set();
+  const seenHeads = new Set();
+  const seenPrs = new Set();
   for (const entry of manifest.stacks) {
     if (
       !Number.isInteger(entry.pr) ||
       entry.pr < 1 ||
+      !Number.isInteger(entry.parentPr) ||
+      entry.parentPr < 1 ||
+      entry.parentPr === entry.pr ||
       !REF_PATTERN.test(entry.headRef ?? "") ||
       !REF_PATTERN.test(entry.parentRef ?? "") ||
-      !SHA_PATTERN.test(entry.expectedParentHead ?? "")
+      entry.headRef === entry.parentRef
     ) {
       throw new Error("stack_manifest_invalid_entry");
     }
-    if (seen.has(entry.headRef))
+    if (seenHeads.has(entry.headRef))
       throw new Error("stack_manifest_duplicate_head");
-    seen.add(entry.headRef);
+    if (seenPrs.has(entry.pr)) throw new Error("stack_manifest_duplicate_pr");
+    seenHeads.add(entry.headRef);
+    seenPrs.add(entry.pr);
   }
   return manifest;
 }
@@ -140,9 +146,6 @@ export function checkStackTopology({
     .map(Number);
   const errors = [];
 
-  if (entry.expectedParentHead !== parentHead) {
-    errors.push("declared_parent_head_is_stale");
-  }
   if (mergeBase !== parentHead || behind !== 0) {
     errors.push("head_does_not_contain_current_parent");
   }
@@ -167,10 +170,10 @@ export function checkStackTopology({
   return {
     status: errors.length === 0 ? "pass" : "fail",
     pr: entry.pr,
+    parentPr: entry.parentPr,
     headRef,
     head,
     parentRef: entry.parentRef,
-    declaredParentHead: entry.expectedParentHead,
     actualParentHead: parentHead,
     mergeBase,
     behind,
