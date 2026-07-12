@@ -240,11 +240,11 @@ async function run(url: string, environmentIdentity: string) {
         ? await getCreditLedgerIntegrity(tx)
         : emptyCreditLedgerIntegrity();
       const stableStartIntegrity =
-        migrations.length >= 12
-          ? await getStableStartIntegrity(tx, migrations.length >= 13)
+        migrations.length >= 14
+          ? await getStableStartIntegrity(tx, migrations.length >= 15)
           : emptyStableStartIntegrity();
       const stableStartLaunchReady =
-        migrations.length === 13 &&
+        migrations.length === 15 &&
         Object.values(stableStartIntegrity).every((count) => count === 0);
       if (
         summary.unsupported_tiers > 0 ||
@@ -320,7 +320,7 @@ async function run(url: string, environmentIdentity: string) {
           );
         }
         const schemaFingerprint = databaseSchemaFingerprint(
-          migrations.length === 14
+          migrations.length === 15
             ? await getStableStartDatabaseSchemaContract(tx)
             : await getDatabaseSchemaContract(tx)
         );
