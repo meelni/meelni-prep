@@ -1005,7 +1005,12 @@ function normalizeLiveKitProvisioningExpiry(value: unknown): string | null {
   if (value === null) return null;
   if (typeof value !== "string") throw invalidLiveKitDeletionRooms();
   const epoch = parseExplicitLiveKitProvisioningExpiry(value);
-  return new Date(epoch).toISOString();
+  const canonical = new Date(epoch).toISOString();
+  const canonicalMatch = LIVEKIT_PROVISIONING_EXPIRY_PATTERN.exec(canonical);
+  if (!canonicalMatch || canonicalMatch[1] === "0000") {
+    throw invalidLiveKitDeletionRooms();
+  }
+  return canonical;
 }
 
 const LIVEKIT_PROVISIONING_EXPIRY_PATTERN =
@@ -1031,6 +1036,7 @@ function parseExplicitLiveKitProvisioningExpiry(value: string): number {
   const offsetHours = zone === "Z" ? 0 : Number(offsetHourText);
   const offsetMinutes = zone === "Z" ? 0 : Number(offsetMinuteText);
   if (
+    zone === "-00:00" ||
     year < 1 ||
     month < 1 ||
     month > 12 ||
