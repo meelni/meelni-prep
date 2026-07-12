@@ -231,14 +231,7 @@ function InterviewPageContent() {
       );
       setLoading(false);
     }
-  }, [
-    hintMode,
-    mode,
-    questionId,
-    roundType,
-    router,
-    user,
-  ]);
+  }, [hintMode, mode, questionId, roundType, router, user]);
 
   const fetchSessionDetails = useCallback(async () => {
     if (!sessionId || !user) return;
