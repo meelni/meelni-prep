@@ -90,7 +90,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
-import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
+import {
+  isFeedbackDispatchReadyForVisibility,
+  isFeedbackDispatchRetryable,
+} from "@/lib/db/feedback-dispatch";
 import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
 import { isInterviewTerminalState } from "@meelni/core";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
@@ -125,11 +128,12 @@ export async function GET(
       );
     }
 
+    const session = await getSessionById(sessionId);
+
     // Get feedback
     const feedbackRecord = await getFeedbackBySessionId(sessionId);
 
     if (!feedbackRecord) {
-      const session = await getSessionById(sessionId);
       if (session && isInterviewTerminalState(session.lifecycleState)) {
         return NextResponse.json(
           {
@@ -150,6 +154,23 @@ export async function GET(
           status: 409,
           headers: { "Cache-Control": "private, no-store" },
         }
+      );
+    }
+
+    if (
+      session?.terminalReason === "time_limit" &&
+      !isFeedbackDispatchReadyForVisibility({
+        status: feedbackRecord.dispatchStatus,
+      })
+    ) {
+      return NextResponse.json(
+        {
+          status: "settling",
+          retryable: false,
+          message:
+            "The interview is saved and its room is still being closed safely.",
+        },
+        { headers: { "Cache-Control": "private, no-store" } }
       );
     }
 
@@ -337,6 +358,28 @@ export async function POST(
         },
         { status: 409 }
       );
+    }
+
+    if (session.terminalReason === "time_limit") {
+      const feedback = await getFeedbackBySessionId(sessionId);
+      if (
+        !feedback ||
+        !isFeedbackDispatchReadyForVisibility({
+          status: feedback.dispatchStatus,
+        })
+      ) {
+        return NextResponse.json(
+          {
+            error: "deadline_settlement_pending",
+            message:
+              "The interview room is still being closed safely. Feedback will start automatically.",
+          },
+          {
+            status: 409,
+            headers: { "Cache-Control": "private, no-store" },
+          }
+        );
+      }
     }
 
     const result = await endInterviewSessionWorkflow({

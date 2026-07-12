@@ -52,6 +52,12 @@ export function isFeedbackDispatchRetryable(
   );
 }
 
+export function isFeedbackDispatchReadyForVisibility(
+  dispatch: Pick<FeedbackDispatchRecord, "status">
+): boolean {
+  return dispatch.status === "sent" || dispatch.status === "not_required";
+}
+
 export function createDrizzleFeedbackDispatchStore(
   database: FeedbackDispatchDatabase = db
 ): FeedbackDispatchStore {

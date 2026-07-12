@@ -404,6 +404,19 @@ paths:
               schema:
                 type: object
                 properties:
+                  status:
+                    type: string
+                    enum:
+                      [
+                        missing,
+                        session_not_ended,
+                        settling,
+                        pending,
+                        processing,
+                        completed,
+                        failed,
+                        skipped,
+                      ]
                   feedback:
                     $ref: "#/components/schemas/Feedback"
         "401":
@@ -412,6 +425,32 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags:
+        - Feedback
+      summary: Retry terminal feedback dispatch
+      description: Retries an owned terminal session's feedback dispatch. Hard-deadline cleanup must already be acknowledged.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Dispatch is queued, in progress, sent, or not required
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Session is not terminal or hard-deadline room cleanup is still pending
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -778,6 +817,9 @@ components:
         deadlineAt:
           type: string
           format: date-time
+        feedbackReady:
+          type: boolean
+          description: True only when terminal provider cleanup permits feedback handoff
         endedAt:
           type: string
           format: date-time

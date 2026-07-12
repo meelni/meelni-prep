@@ -30,10 +30,9 @@ import {
 } from "@/components/ui/app-surface";
 import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
 import { requireInterviewResumeTiming } from "@/lib/interview/resume-session";
+import { canNavigateToInterviewFeedback } from "@/lib/interview/deadline-view";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { shouldAnalyzeNudges, type HintMode } from "@meelni/core";
-
-const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 
 interface InterviewSession {
   id: string;
@@ -59,6 +58,7 @@ interface PersistedInterviewSession {
   livekitRoomName: string | null;
   startedAt: string | null;
   deadlineAt: string;
+  feedbackReady?: boolean;
   lifecycleState?: string | null;
   roundType?: string | null;
   mode?: string | null;
@@ -414,12 +414,12 @@ function InterviewPageContent() {
         });
         if (response.ok) {
           const payload = (await response.json()) as {
-            session?: { lifecycleState?: string | null };
+            session?: {
+              lifecycleState?: string | null;
+              feedbackReady?: boolean;
+            };
           };
-          if (
-            payload.session?.lifecycleState &&
-            TERMINAL_SESSION_STATES.has(payload.session.lifecycleState)
-          ) {
+          if (canNavigateToInterviewFeedback(payload.session ?? {})) {
             router.replace(`/feedback/${activeSessionId}/loading`);
             return;
           }
