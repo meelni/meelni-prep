@@ -28,6 +28,15 @@ export interface EndInterviewSessionDeps {
   updateMotivation(userId: string): Promise<void>;
 }
 
+export type InterviewSessionSettlement = Extract<
+  FinalizeInterviewSessionResult,
+  { ok: true }
+>;
+
+export type SettleInterviewSessionResult =
+  | { ok: false; reason: "not_found" }
+  | { ok: true; completion: InterviewSessionSettlement };
+
 export type EndInterviewSessionResult =
   | { ok: false; reason: "not_found" }
   | {
@@ -40,6 +49,18 @@ export async function endInterviewSessionWorkflow(
   input: EndInterviewSessionInput,
   deps: EndInterviewSessionDeps = createEndInterviewSessionDeps()
 ): Promise<EndInterviewSessionResult> {
+  const settlement = await settleInterviewSessionWorkflow(input, deps);
+  if (!settlement.ok) return settlement;
+  return dispatchInterviewSessionSettlement(settlement.completion, deps);
+}
+
+export async function settleInterviewSessionWorkflow(
+  input: EndInterviewSessionInput,
+  deps: Pick<
+    EndInterviewSessionDeps,
+    "authorize" | "finalize" | "updateMotivation"
+  > = createEndInterviewSessionDeps()
+): Promise<SettleInterviewSessionResult> {
   if (!(await deps.authorize(input))) {
     return { ok: false, reason: "not_found" };
   }
@@ -52,6 +73,23 @@ export async function endInterviewSessionWithValidationWorkflow(
   validation: SessionValidation,
   deps: EndInterviewSessionDeps = createEndInterviewSessionDeps()
 ): Promise<EndInterviewSessionResult> {
+  const settlement = await settleInterviewSessionWithValidationWorkflow(
+    input,
+    validation,
+    deps
+  );
+  if (!settlement.ok) return settlement;
+  return dispatchInterviewSessionSettlement(settlement.completion, deps);
+}
+
+export async function settleInterviewSessionWithValidationWorkflow(
+  input: EndInterviewSessionInput,
+  validation: SessionValidation,
+  deps: Pick<
+    EndInterviewSessionDeps,
+    "authorize" | "finalize" | "updateMotivation"
+  > = createEndInterviewSessionDeps()
+): Promise<SettleInterviewSessionResult> {
   if (!(await deps.authorize(input))) {
     return { ok: false, reason: "not_found" };
   }
@@ -60,11 +98,36 @@ export async function endInterviewSessionWithValidationWorkflow(
 
 async function completeInterviewSession(
   input: EndInterviewSessionInput,
-  deps: EndInterviewSessionDeps,
+  deps: Pick<EndInterviewSessionDeps, "finalize" | "updateMotivation">,
   validationOverride?: SessionValidation
-): Promise<EndInterviewSessionResult> {
+): Promise<SettleInterviewSessionResult> {
   const completion = await deps.finalize({ ...input, validationOverride });
   if (!completion.ok) return completion;
+
+  if (
+    completion.disposition === "applied" &&
+    completion.lifecycle.state === "completed"
+  ) {
+    try {
+      await deps.updateMotivation(completion.userId);
+    } catch (error) {
+      console.error("Failed to update completion motivation:", error);
+    }
+  }
+
+  return { ok: true, completion };
+}
+
+export async function dispatchInterviewSessionSettlement(
+  completion: InterviewSessionSettlement,
+  deps: Pick<
+    EndInterviewSessionDeps,
+    "dispatch"
+  > = createEndInterviewSessionDeps()
+): Promise<Extract<EndInterviewSessionResult, { ok: true }>> {
+  if (completion.deadlineRoomCleanupStatus === "pending") {
+    return { ok: true, completion, dispatch: null };
+  }
 
   const shouldDispatch =
     (completion.feedback.status === "pending" ||
@@ -74,7 +137,7 @@ async function completeInterviewSession(
   if (shouldDispatch) {
     try {
       dispatch = await deps.dispatch({
-        sessionId: input.sessionId,
+        sessionId: completion.feedback.sessionId,
         userId: completion.userId,
         tier: completion.tier,
       });
@@ -91,17 +154,6 @@ async function completeInterviewSession(
           dispatchedAt: completion.feedback.dispatchedAt,
         },
       };
-    }
-  }
-
-  if (
-    completion.disposition === "applied" &&
-    completion.lifecycle.state === "completed"
-  ) {
-    try {
-      await deps.updateMotivation(completion.userId);
-    } catch (error) {
-      console.error("Failed to update completion motivation:", error);
     }
   }
 

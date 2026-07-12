@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   FEEDBACK_DISPATCH_LEASE_MS,
+  isFeedbackDispatchReadyForVisibility,
   isFeedbackDispatchRetryable,
 } from "./feedback-dispatch";
 
@@ -57,4 +58,13 @@ test("sent and not-required dispatches are terminal", () => {
     ),
     false
   );
+});
+
+test("only acknowledged or unnecessary dispatch is ready for visibility", () => {
+  for (const status of ["pending", "sending", "failed"] as const) {
+    assert.equal(isFeedbackDispatchReadyForVisibility({ status }), false);
+  }
+  for (const status of ["sent", "not_required"] as const) {
+    assert.equal(isFeedbackDispatchReadyForVisibility({ status }), true);
+  }
 });

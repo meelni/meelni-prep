@@ -144,19 +144,33 @@ command. It schedules the absolute deadline with a future Inngest event,
 reads PostgreSQL time, resolves the existing durable-signal validation, and
 first claims `ending` with `time_limit` or `insufficient_signal` through one
 state/version compare-and-set that also proves the event's exact derived
-deadline is due according to `clock_timestamp()`. Only that claim owner or an
-idempotent retry of the stored outcome may attempt room deletion and settlement.
+deadline is due according to `clock_timestamp()`. That same claim persists the
+independent room-cleanup state as `pending` before any provider call. Only that
+claim owner or an idempotent retry of the stored outcome may settle terminal
+truth and attempt room deletion.
 If a delivery arrives before PostgreSQL says it is due, the worker
 creates a distinct durable retry at the unchanged canonical deadline before it
-returns `not_due`. The idempotent completion workflow owns terminal truth,
-feedback dispatch, streaks, and completion-time achievements. A five-minute
-recovery query filters and orders due absolute deadlines in PostgreSQL rather
-than from a caller-supplied clock, and uses a unique delivery identity per
-recovery run.
+returns `not_due`. The idempotent completion workflow then settles terminal
+truth before provider deletion and owns feedback intent, streaks, and
+completion-time achievements. Validation may refine lifecycle truth to
+`insufficient_signal` without erasing the cleanup claim. A concurrent ordinary
+end never creates the claim and cannot erase one already owned by the deadline
+worker. Provider acknowledgement changes it to `deleted` or `already_absent`;
+the central outbox cannot claim feedback while cleanup remains pending. Only
+then can the client hand off. Retries preserve the first terminal claim and
+dispatch at most once. A five-minute recovery query uses PostgreSQL time to
+prioritize and order overdue open sessions, terminal pending-cleanup claims,
+and acknowledged deadline-owned sessions whose eligible feedback outbox
+remains retryable. Recovery never repeats room deletion after acknowledgement
+and uses a unique delivery identity per recovery run.
 
 The client countdown reflects this deadline but never claims `time_limit`. At
 zero it mutes local input, removes voluntary controls, presents a non-dismissible
-saving state, and polls stored terminal truth before navigating to feedback.
+saving state, and polls stored terminal truth plus feedback readiness before
+navigating to feedback. Direct feedback polling reports `settling` until room
+cleanup is acknowledged. After acknowledgement, polling exposes the durable
+dispatch state and direct retry uses the same idempotent outbox claim as
+scheduled recovery; it cannot bypass unacknowledged hard-deadline room cleanup.
 The relaunch gate remains off until Preview timing evidence and rollback are
 verified.
 

@@ -140,6 +140,13 @@ must remain within the server-owned interval from the stored session start
 through its absolute hard deadline. Operational failures log only a fixed code;
 database errors and transcript content are never written to server logs.
 
+An empty or truncated signed body is an invalid runtime transcript payload. An
+aborted body read is unreadable and receives the same fail-closed HTTP 400
+boundary. None of these cases invokes durable ingest or logs parser errors or
+partial transcript content. Unsupported media types, oversized bodies, and
+invalid service authentication retain their distinct 415, 413, and 401/503
+responses.
+
 Within one writer, measured start times must remain monotonic with sequence.
 The ingest transaction rejects an inversion. Readers therefore order by
 `started_at`, then `writer_id`, `sequence`, `event_id`, and row ID; this obeys
