@@ -134,7 +134,7 @@ export interface CalibrationSpendPersistence {
   readonly planHash: string;
   readonly plannedCalls: number;
   readonly plannedWorstCaseNanoUsd: number;
-  assertRequestAuthority(): void;
+  assertRequestAuthority(): void | Promise<void>;
   assertReservationAuthorized(input: {
     callKey: string;
     inputTokenCeiling: number;
@@ -304,7 +304,9 @@ export class CalibrationSpendGuard {
     this.persist();
   }
 
-  assertPhysicalRequestAllowed(reservation: CalibrationSpendReservation): void {
+  async assertPhysicalRequestAllowed(
+    reservation: CalibrationSpendReservation
+  ): Promise<void> {
     if (this.reservations.get(reservation.callKey) !== reservation) {
       throw new Error("calibration_reservation_is_not_current");
     }
@@ -325,7 +327,7 @@ export class CalibrationSpendGuard {
     if (reservation.settled || this.stopReason !== null) {
       throw new Error("calibration_reservation_is_not_active");
     }
-    this.persistence?.assertRequestAuthority();
+    if (this.persistence) await this.persistence.assertRequestAuthority();
     // The remote authorization check may take time. Re-read pricing after it so
     // the final local decision is adjacent to transport dispatch.
     validateCalibrationPricingFreshness(this.clock(), this.pricing);

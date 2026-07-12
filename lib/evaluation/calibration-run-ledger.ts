@@ -1,5 +1,6 @@
-import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { request as httpsRequest, type RequestOptions } from "node:https";
+import { checkServerIdentity, rootCertificates } from "node:tls";
 
 import {
   EVALUATION_ADJUDICATION_VERSION,
@@ -49,6 +50,34 @@ export const SAV_198_ACTOR_RULESET_NAME =
   "Meelni SAV-198 calibration activation actor";
 
 const GITHUB_API_VERSION = "2022-11-28";
+const GITHUB_API_HOST = "api.github.com";
+const GITHUB_API_PORT = 443;
+const GITHUB_API_TIMEOUT_MS = 10_000;
+const GITHUB_API_MAX_RESPONSE_BYTES = 1_048_576;
+const GITHUB_USER_AGENT = "meelni-sav-198-calibration-authority";
+const DISALLOWED_GITHUB_TRANSPORT_ENV = [
+  "GH_CONFIG_DIR",
+  "GH_HTTP_UNIX_SOCKET",
+  "GH_HOST",
+  "GITHUB_API_URL",
+  "GITHUB_GRAPHQL_URL",
+  "GITHUB_SERVER_URL",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+  "no_proxy",
+  "NODE_EXTRA_CA_CERTS",
+  "NODE_DEBUG",
+  "NODE_OPTIONS",
+  "NODE_TLS_REJECT_UNAUTHORIZED",
+  "NODE_USE_ENV_PROXY",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+] as const;
 const COMMIT_IDENTITY = {
   name: "Meelni Calibration Authorization",
   email: "calibration-ledger@meelni.invalid",
@@ -172,19 +201,22 @@ export interface GitHubRuleset {
 }
 
 export interface CalibrationGitHubCasClient {
-  getRepository(): GitHubRepositoryIdentity;
-  getViewer(): GitHubViewerIdentity;
-  getRulesets(): GitHubRuleset[];
-  getEffectiveBranchRuleTypes(): string[];
-  getRef(): GitHubRef;
-  getCommit(sha: string): GitHubCommit;
+  getRepository(): GitHubRepositoryIdentity | Promise<GitHubRepositoryIdentity>;
+  getViewer(): GitHubViewerIdentity | Promise<GitHubViewerIdentity>;
+  getRulesets(): GitHubRuleset[] | Promise<GitHubRuleset[]>;
+  getEffectiveBranchRuleTypes(): string[] | Promise<string[]>;
+  getRef(): GitHubRef | Promise<GitHubRef>;
+  getCommit(sha: string): GitHubCommit | Promise<GitHubCommit>;
   createCommit(input: {
     message: string;
     treeSha: string;
     parents: string[];
     date: string;
-  }): GitHubCommit;
-  updateRef(input: { sha: string; force: false }): GitHubRef;
+  }): GitHubCommit | Promise<GitHubCommit>;
+  updateRef(input: {
+    sha: string;
+    force: false;
+  }): GitHubRef | Promise<GitHubRef>;
 }
 
 export class ActivatedCalibrationRunAuthority
@@ -213,10 +245,10 @@ export class ActivatedCalibrationRunAuthority
     this.callsByKey = new Map(plan.calls.map((call) => [call.callKey, call]));
   }
 
-  assertRequestAuthority(): void {
+  async assertRequestAuthority(): Promise<void> {
     if (!this.active) throw new Error("calibration_git_activation_released");
-    assertCanonicalGitHubAuthority(this.github);
-    const current = this.github.getRef();
+    await assertCanonicalGitHubAuthority(this.github);
+    const current = await this.github.getRef();
     if (current.ref !== SAV_198_GIT_LEDGER_REF) {
       this.active = false;
       throw new Error("calibration_github_ledger_ref_invalid");
@@ -335,19 +367,19 @@ export function buildCalibrationActivatedPlan(input: {
   return { ...withoutHash, planHash: sha256(stableJson(withoutHash)) };
 }
 
-export function activateCalibrationRun(
+export async function activateCalibrationRun(
   options: ActivateCalibrationRunOptions
-): ActivatedCalibrationRunAuthority {
-  return activateCalibrationRunWithClient(
+): Promise<ActivatedCalibrationRunAuthority> {
+  return await activateCalibrationRunWithClient(
     options,
-    new GhCalibrationGitHubCasClient()
+    createProductionGitHubCasClient()
   );
 }
 
-function activateCalibrationRunWithClient(
+async function activateCalibrationRunWithClient(
   options: ActivateCalibrationRunOptions,
   github: CalibrationGitHubCasClient
-): ActivatedCalibrationRunAuthority {
+): Promise<ActivatedCalibrationRunAuthority> {
   const now = options.now ?? new Date();
   const plan = buildCalibrationActivatedPlan({
     authorization: options.authorization,
@@ -356,20 +388,20 @@ function activateCalibrationRunWithClient(
     repetitions: options.repetitions,
     now,
   });
-  assertCanonicalGitHubAuthority(github);
+  await assertCanonicalGitHubAuthority(github);
 
-  const currentRef = github.getRef();
+  const currentRef = await github.getRef();
   if (currentRef.ref !== SAV_198_GIT_LEDGER_REF) {
     throw new Error("calibration_github_ledger_ref_invalid");
   }
   if (currentRef.sha !== SAV_198_GENESIS_COMMIT_OID) {
-    const current = github.getCommit(currentRef.sha);
+    const current = await github.getCommit(currentRef.sha);
     if (isValidActivationCommit(current)) {
       throw new Error("calibration_authorized_run_is_already_activated");
     }
     throw new Error("calibration_git_authorization_genesis_oid_mismatch");
   }
-  assertPinnedGenesisCommit(github.getCommit(currentRef.sha));
+  assertPinnedGenesisCommit(await github.getCommit(currentRef.sha));
 
   const activationId = options.activationId ?? randomUUID();
   const activationMessage = stableJson({
@@ -381,7 +413,7 @@ function activateCalibrationRunWithClient(
     activationId,
   });
   const activationDate = now.toISOString();
-  const activation = github.createCommit({
+  const activation = await github.createCommit({
     message: activationMessage,
     treeSha: SAV_198_EMPTY_TREE_OID,
     parents: [SAV_198_GENESIS_COMMIT_OID],
@@ -397,16 +429,16 @@ function activateCalibrationRunWithClient(
   }
 
   // Protection is re-read immediately before the one non-force ref update.
-  assertCanonicalGitHubAuthority(github);
+  await assertCanonicalGitHubAuthority(github);
   try {
-    github.updateRef({ sha: activation.sha, force: false });
+    await github.updateRef({ sha: activation.sha, force: false });
   } catch (error) {
     throw new Error("calibration_git_activation_lost_concurrent_cas", {
       cause: error,
     });
   }
-  assertCanonicalGitHubAuthority(github);
-  const durable = github.getRef();
+  await assertCanonicalGitHubAuthority(github);
+  const durable = await github.getRef();
   if (
     durable.ref !== SAV_198_GIT_LEDGER_REF ||
     durable.sha !== activation.sha
@@ -418,6 +450,8 @@ function activateCalibrationRunWithClient(
 
 export const calibrationRunLedgerTestSeam = {
   activateWithClient: activateCalibrationRunWithClient,
+  createGitHubClient: createTestGitHubCasClient,
+  nodeRequestOptions: buildNodeGitHubRequestOptions,
 };
 
 export function calibrationAuthorizationCommitMessage(): string {
@@ -444,10 +478,10 @@ export function parseCalibrationSpendAuthorization(
   return { ...SAV_198_SPEND_AUTHORIZATION };
 }
 
-function assertCanonicalGitHubAuthority(
+async function assertCanonicalGitHubAuthority(
   github: CalibrationGitHubCasClient
-): void {
-  const repository = github.getRepository();
+): Promise<void> {
+  const repository = await github.getRepository();
   if (
     repository.id !== SAV_198_GITHUB_REPOSITORY_ID ||
     repository.fullName !==
@@ -458,7 +492,7 @@ function assertCanonicalGitHubAuthority(
   ) {
     throw new Error("calibration_github_repository_identity_mismatch");
   }
-  const viewer = github.getViewer();
+  const viewer = await github.getViewer();
   if (
     viewer.id !== SAV_198_GITHUB_ACTIVATION_ACTOR_ID ||
     viewer.login !== SAV_198_GITHUB_ACTIVATION_ACTOR_LOGIN
@@ -466,8 +500,8 @@ function assertCanonicalGitHubAuthority(
     throw new Error("calibration_github_activation_actor_mismatch");
   }
   assertCanonicalProtection(
-    github.getRulesets(),
-    github.getEffectiveBranchRuleTypes()
+    await github.getRulesets(),
+    await github.getEffectiveBranchRuleTypes()
   );
 }
 
@@ -594,9 +628,50 @@ function isCommitIdentity(
   );
 }
 
-class GhCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
-  getRepository(): GitHubRepositoryIdentity {
-    const response = this.api("GET", "/repos/saviii/meelni-prep");
+interface GitHubHttpsResponse {
+  statusCode: number;
+  body: AsyncIterable<Uint8Array>;
+}
+
+interface GitHubHttpsTransport {
+  request(input: {
+    method: string;
+    path: string;
+    headers: Record<string, string>;
+    body: string | undefined;
+    signal: AbortSignal;
+  }): Promise<GitHubHttpsResponse>;
+}
+
+interface GitHubClientLimits {
+  timeoutMs: number;
+  maximumResponseBytes: number;
+}
+
+type CalibrationGitHubEnvironment = Record<string, string | undefined> & {
+  GITHUB_TOKEN?: string;
+};
+
+class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
+  readonly #env: CalibrationGitHubEnvironment;
+  readonly #token: string;
+  readonly #transport: GitHubHttpsTransport;
+  readonly #limits: GitHubClientLimits;
+
+  constructor(
+    env: CalibrationGitHubEnvironment,
+    token: string,
+    transport: GitHubHttpsTransport,
+    limits: GitHubClientLimits
+  ) {
+    this.#env = env;
+    this.#token = token;
+    this.#transport = transport;
+    this.#limits = limits;
+  }
+
+  async getRepository(): Promise<GitHubRepositoryIdentity> {
+    const response = await this.api("GET", "/repos/saviii/meelni-prep");
     const record = requireRecord(response, "repository");
     const owner = requireRecord(record.owner, "repository.owner");
     return {
@@ -610,45 +685,47 @@ class GhCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     };
   }
 
-  getViewer(): GitHubViewerIdentity {
-    const record = requireRecord(this.api("GET", "/user"), "viewer");
+  async getViewer(): Promise<GitHubViewerIdentity> {
+    const record = requireRecord(await this.api("GET", "/user"), "viewer");
     return {
       id: requireNumber(record.id, "viewer.id"),
       login: requireString(record.login, "viewer.login"),
     };
   }
 
-  getRulesets(): GitHubRuleset[] {
-    const listed = this.api(
+  async getRulesets(): Promise<GitHubRuleset[]> {
+    const listed = await this.api(
       "GET",
       "/repos/saviii/meelni-prep/rulesets?includes_parents=true&targets=branch&per_page=100"
     );
     if (!Array.isArray(listed)) {
       throw new Error("calibration_github_rulesets_invalid");
     }
-    return listed.flatMap((item) => {
+    const rulesets: GitHubRuleset[] = [];
+    for (const item of listed) {
       const summary = requireRecord(item, "ruleset.summary");
       if (
         summary.name !== SAV_198_IMMUTABLE_RULESET_NAME &&
         summary.name !== SAV_198_ACTOR_RULESET_NAME
       ) {
-        return [];
+        continue;
       }
       const id = requireNumber(summary.id, "ruleset.id");
-      return [
+      rulesets.push(
         parseGitHubRuleset(
-          this.api(
+          await this.api(
             "GET",
             `/repos/saviii/meelni-prep/rulesets/${id}?includes_parents=true`
           )
-        ),
-      ];
-    });
+        )
+      );
+    }
+    return rulesets;
   }
 
-  getEffectiveBranchRuleTypes(): string[] {
+  async getEffectiveBranchRuleTypes(): Promise<string[]> {
     const branch = encodeURIComponent(SAV_198_GIT_LEDGER_BRANCH);
-    const response = this.api(
+    const response = await this.api(
       "GET",
       `/repos/saviii/meelni-prep/rules/branches/${branch}`
     );
@@ -660,9 +737,9 @@ class GhCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     );
   }
 
-  getRef(): GitHubRef {
+  async getRef(): Promise<GitHubRef> {
     const record = requireRecord(
-      this.api(
+      await this.api(
         "GET",
         `/repos/saviii/meelni-prep/git/ref/${SAV_198_GIT_LEDGER_API_REF}`
       ),
@@ -678,20 +755,20 @@ class GhCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     };
   }
 
-  getCommit(sha: string): GitHubCommit {
+  async getCommit(sha: string): Promise<GitHubCommit> {
     return parseGitHubCommit(
-      this.api("GET", `/repos/saviii/meelni-prep/git/commits/${sha}`)
+      await this.api("GET", `/repos/saviii/meelni-prep/git/commits/${sha}`)
     );
   }
 
-  createCommit(input: {
+  async createCommit(input: {
     message: string;
     treeSha: string;
     parents: string[];
     date: string;
-  }): GitHubCommit {
+  }): Promise<GitHubCommit> {
     return parseGitHubCommit(
-      this.api("POST", "/repos/saviii/meelni-prep/git/commits", {
+      await this.api("POST", "/repos/saviii/meelni-prep/git/commits", {
         message: input.message,
         tree: input.treeSha,
         parents: input.parents,
@@ -701,9 +778,9 @@ class GhCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     );
   }
 
-  updateRef(input: { sha: string; force: false }): GitHubRef {
+  async updateRef(input: { sha: string; force: false }): Promise<GitHubRef> {
     const record = requireRecord(
-      this.api(
+      await this.api(
         "PATCH",
         `/repos/saviii/meelni-prep/git/refs/${SAV_198_GIT_LEDGER_API_REF}`,
         input
@@ -717,37 +794,178 @@ class GhCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     };
   }
 
-  private api(method: string, path: string, body?: unknown): unknown {
+  private async api(
+    method: string,
+    path: string,
+    body?: unknown
+  ): Promise<unknown> {
+    assertGitHubTransportEnvironment(this.#env);
+    if (this.#env.GITHUB_TOKEN?.trim() !== this.#token) {
+      throw new Error("calibration_github_token_changed");
+    }
+    const serializedBody =
+      body === undefined ? undefined : JSON.stringify(body);
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      this.#limits.timeoutMs
+    );
     try {
-      const output = execFileSync(
-        "gh",
-        [
-          "api",
-          "--hostname",
-          "github.com",
-          "--method",
-          method,
-          "-H",
-          "Accept: application/vnd.github+json",
-          "-H",
-          `X-GitHub-Api-Version: ${GITHUB_API_VERSION}`,
-          path,
-          ...(body === undefined ? [] : ["--input", "-"]),
-        ],
-        {
-          encoding: "utf8",
-          input: body === undefined ? undefined : `${JSON.stringify(body)}\n`,
-          stdio: ["pipe", "pipe", "pipe"],
-          env: process.env,
-        }
-      );
-      return JSON.parse(output) as unknown;
-    } catch (error) {
-      throw new Error("calibration_github_api_request_failed", {
-        cause: error,
+      const response = await this.#transport.request({
+        method,
+        path,
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${this.#token}`,
+          "User-Agent": GITHUB_USER_AGENT,
+          "X-GitHub-Api-Version": GITHUB_API_VERSION,
+          ...(serializedBody === undefined
+            ? {}
+            : {
+                "Content-Type": "application/json",
+                "Content-Length": String(Buffer.byteLength(serializedBody)),
+              }),
+        },
+        body: serializedBody,
+        signal: controller.signal,
       });
+      if (response.statusCode >= 300 && response.statusCode < 400) {
+        throw new Error("calibration_github_api_redirect_rejected");
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw new Error("calibration_github_api_status_invalid");
+      }
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of response.body) {
+        const buffer = Buffer.from(chunk);
+        size += buffer.length;
+        if (size > this.#limits.maximumResponseBytes) {
+          throw new Error("calibration_github_api_response_too_large");
+        }
+        chunks.push(buffer);
+      }
+      try {
+        return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+      } catch {
+        throw new Error("calibration_github_api_response_invalid");
+      }
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith("calibration_github_")
+      ) {
+        throw error;
+      }
+      throw new Error(
+        controller.signal.aborted
+          ? "calibration_github_api_request_timed_out"
+          : "calibration_github_api_request_failed"
+      );
+    } finally {
+      clearTimeout(timeout);
     }
   }
+}
+
+function createProductionGitHubCasClient(): CalibrationGitHubCasClient {
+  return createDirectGitHubCasClient(
+    process.env,
+    new NodeGitHubHttpsTransport(),
+    {
+      timeoutMs: GITHUB_API_TIMEOUT_MS,
+      maximumResponseBytes: GITHUB_API_MAX_RESPONSE_BYTES,
+    }
+  );
+}
+
+function createTestGitHubCasClient(
+  env: CalibrationGitHubEnvironment,
+  transport: GitHubHttpsTransport,
+  limits: Partial<GitHubClientLimits> = {}
+): CalibrationGitHubCasClient {
+  return createDirectGitHubCasClient(env, transport, {
+    timeoutMs: limits.timeoutMs ?? GITHUB_API_TIMEOUT_MS,
+    maximumResponseBytes:
+      limits.maximumResponseBytes ?? GITHUB_API_MAX_RESPONSE_BYTES,
+  });
+}
+
+function createDirectGitHubCasClient(
+  env: CalibrationGitHubEnvironment,
+  transport: GitHubHttpsTransport,
+  limits: GitHubClientLimits
+): CalibrationGitHubCasClient {
+  assertGitHubTransportEnvironment(env);
+  const token = env.GITHUB_TOKEN?.trim();
+  if (!token || /[\r\n]/.test(token)) {
+    throw new Error("calibration_github_token_missing_or_invalid");
+  }
+  if (
+    !Number.isSafeInteger(limits.timeoutMs) ||
+    limits.timeoutMs <= 0 ||
+    !Number.isSafeInteger(limits.maximumResponseBytes) ||
+    limits.maximumResponseBytes <= 0
+  ) {
+    throw new Error("calibration_github_transport_limits_invalid");
+  }
+  return new DirectCalibrationGitHubCasClient(env, token, transport, limits);
+}
+
+function assertGitHubTransportEnvironment(
+  env: CalibrationGitHubEnvironment
+): void {
+  for (const name of DISALLOWED_GITHUB_TRANSPORT_ENV) {
+    if (env[name] !== undefined) {
+      throw new Error(`calibration_github_transport_env_${name}_rejected`);
+    }
+  }
+}
+
+class NodeGitHubHttpsTransport implements GitHubHttpsTransport {
+  request(input: {
+    method: string;
+    path: string;
+    headers: Record<string, string>;
+    body: string | undefined;
+    signal: AbortSignal;
+  }): Promise<GitHubHttpsResponse> {
+    return new Promise((resolve, reject) => {
+      const request = httpsRequest(
+        buildNodeGitHubRequestOptions(input),
+        (response) => {
+          resolve({
+            statusCode: response.statusCode ?? 0,
+            body: response,
+          });
+        }
+      );
+      request.once("error", reject);
+      request.end(input.body);
+    });
+  }
+}
+
+function buildNodeGitHubRequestOptions(input: {
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  signal: AbortSignal;
+}): RequestOptions {
+  return {
+    protocol: "https:",
+    hostname: GITHUB_API_HOST,
+    port: GITHUB_API_PORT,
+    servername: GITHUB_API_HOST,
+    method: input.method,
+    path: input.path,
+    headers: input.headers,
+    ca: [...rootCertificates],
+    checkServerIdentity,
+    rejectUnauthorized: true,
+    agent: false,
+    signal: input.signal,
+  };
 }
 
 function parseGitHubRuleset(value: unknown): GitHubRuleset {

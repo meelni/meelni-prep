@@ -198,8 +198,16 @@ An activated head is terminal: a restart, crash, missing local cache, or local
 state reset cannot reopen it. Any additional run requires a new owner
 authorization and reviewed code change.
 
-The production client is pinned to GitHub.com; local Git remotes, push URLs,
-URL rewrites, and environment-selected ledger locations are never authority.
+The production authority uses Node HTTPS directly against the fixed
+`api.github.com:443` endpoint. It accepts only `GITHUB_TOKEN`, uses Node's
+bundled TLS roots with standard hostname verification and SNI, disables
+connection-agent reuse and redirects, and bounds request time and response
+size. It has no production client, dispatcher, base-URL, agent, DNS, remote, or
+ledger-location injection seam. Local Git remotes, push URLs, URL rewrites,
+`gh` configuration, and environment-selected ledger locations are never
+authority. Ambient GitHub host/config, proxy, custom-CA, or TLS override
+variables fail before every authority request, and neither their values nor the
+token can enter errors or calibration reports.
 Before activation and every HTTP dispatch it requires two exact active
 repository rulesets: deletion/non-fast-forward with no bypass actors, and
 creation/update restriction whose sole bypass actor is `saviii` user ID

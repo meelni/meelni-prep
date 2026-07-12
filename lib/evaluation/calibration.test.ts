@@ -234,7 +234,7 @@ test("a failed response from an unexpected model preserves identity and known co
     adjudicationApproval: approvalFixture(),
     spendGuard: liveGuard(),
     evaluator: async (input) => {
-      input.beforePhysicalRequest?.();
+      await input.beforePhysicalRequest?.();
       throw Object.assign(new Error("provider response rejected"), {
         observedModel: "unpriced-provider-snapshot",
         observedServiceTier: "default",
@@ -273,7 +273,7 @@ test("missing or mismatched service tier stops after one reconciled call", async
       adjudicationApproval: approvalFixture(),
       spendGuard: liveGuard(),
       evaluator: async (input) => {
-        input.beforePhysicalRequest?.();
+        await input.beforePhysicalRequest?.();
         return {
           evaluation: await baseline(input),
           observedServiceTier,
@@ -307,7 +307,7 @@ test("provider-error tier identity and known usage survive sanitization", async 
     adjudicationApproval: approvalFixture(),
     spendGuard: liveGuard(),
     evaluator: async (input) => {
-      input.beforePhysicalRequest?.();
+      await input.beforePhysicalRequest?.();
       throw Object.assign(new Error("sanitized_provider_failure"), {
         observedModel: LIVE_MODEL,
         observedServiceTier: "priority",
@@ -453,7 +453,7 @@ function withProviderUsage(
   evaluator: CalibrationEvaluator
 ): CalibrationEvaluator {
   return async (input) => {
-    input.beforePhysicalRequest?.();
+    await input.beforePhysicalRequest?.();
     return {
       evaluation: (await evaluator(input)) as FeedbackV2Result,
       usage: {
