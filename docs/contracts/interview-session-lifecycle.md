@@ -141,14 +141,18 @@ acknowledgement changes it to `deleted` or `already_absent`; concurrent ordinary
 ends preserve a claim already owned by the deadline worker, and the central
 outbox cannot claim feedback while it remains pending. Only then can the client hand off. Retries preserve the first
 terminal claim and dispatch at most once. A five-minute recovery scan
-prioritizes overdue open sessions and terminal pending-cleanup claims and uses a
-unique delivery identity per recovery run.
+prioritizes overdue open sessions, terminal pending-cleanup claims, and
+acknowledged deadline-owned sessions whose eligible feedback outbox remains
+retryable. Recovery never repeats room deletion after acknowledgement and uses
+a unique delivery identity per recovery run.
 
 The client countdown reflects this deadline but never claims `time_limit`. At
 zero it mutes local input, removes voluntary controls, presents a non-dismissible
 saving state, and polls stored terminal truth plus feedback readiness before
-navigating to feedback. Direct feedback polling reports `settling`, and direct
-retry cannot bypass unacknowledged hard-deadline room cleanup.
+navigating to feedback. Direct feedback polling reports `settling` until room
+cleanup is acknowledged. After acknowledgement, polling exposes the durable
+dispatch state and direct retry uses the same idempotent outbox claim as
+scheduled recovery; it cannot bypass unacknowledged hard-deadline room cleanup.
 The relaunch gate remains off until Preview timing evidence and rollback are
 verified.
 

@@ -100,11 +100,12 @@ The end response remains HTTP 200 when the session committed but provider dispat
 The browser must inspect `response.ok`. On a non-2xx response it keeps the interview room open, keeps the end modal available, shows the user-safe error, and offers retry. It navigates to feedback only after the end command confirms a committed result.
 
 `GET /api/feedback/:sessionId` reports `settling` for a hard-deadline session
-whose room cleanup/dispatch boundary is not ready. Authenticated `POST` cannot
-bypass that boundary; it returns `deadline_settlement_pending` until the
-deadline consumer has acknowledged cleanup. Other terminal reasons preserve
-the existing retry behavior and claim a new attempt identity only when the
-stored state is retryable. No path creates a second feedback row.
+whose room cleanup is not acknowledged. After acknowledgement it exposes the
+durable feedback/dispatch state. Authenticated `POST` cannot bypass pending
+cleanup; once acknowledged, it uses the same idempotent outbox retry path as
+deadline recovery. Other terminal reasons preserve the existing retry behavior
+and claim a new attempt identity only when the stored state is retryable. No
+path creates a second feedback row.
 
 `GET /api/session/:sessionId` exposes `feedbackReady`. The deadline UI waits
 for both terminal lifecycle truth and `feedbackReady=true` before navigating
@@ -112,8 +113,9 @@ away from the interview saving state.
 
 The five-minute deadline recovery scan includes every terminal session whose
 deadline room-cleanup claim is still `pending`, including refined
-`insufficient_signal` outcomes. Exhausting one event's retry budget
-therefore cannot strand a live room or leave the UI settling indefinitely.
+`insufficient_signal` outcomes, plus acknowledged deadline-owned sessions with
+a retryable eligible feedback outbox. Exhausting one event's retry budget
+therefore cannot strand a live room or an acknowledged feedback dispatch.
 
 ## Acceptance Evidence
 

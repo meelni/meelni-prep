@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, or } from "drizzle-orm";
 
 import {
   deriveInterviewDeadlineAt,
@@ -6,7 +6,8 @@ import {
   serializeInterviewDeadlineAt,
 } from "@/lib/internal/core";
 import { db } from "./index";
-import { interviewSession } from "./schema";
+import { feedback, interviewSession } from "./schema";
+import { FEEDBACK_DISPATCH_LEASE_MS } from "./feedback-dispatch";
 
 export interface InterviewDeadlineSession {
   id: string;
@@ -30,6 +31,9 @@ export interface InterviewDeadlineScheduleRow {
   lifecycleState?: string;
   terminalReason?: string | null;
   deadlineRoomCleanupStatus?: DeadlineRoomCleanupStatus;
+  feedbackStatus?: string | null;
+  feedbackDispatchStatus?: string | null;
+  feedbackDispatchClaimedAt?: Date | null;
 }
 
 export type InterviewDeadlineRecoveryItem =
@@ -128,6 +132,10 @@ export async function acknowledgeInterviewDeadlineRoomCleanup(
 export async function listInterviewDeadlineSchedules(
   limit = 250
 ): Promise<InterviewDeadlineRecoveryItem[]> {
+  const now = new Date();
+  const staleDispatchBefore = new Date(
+    now.getTime() - FEEDBACK_DISPATCH_LEASE_MS
+  );
   const sessions = await db
     .select({
       id: interviewSession.id,
@@ -136,8 +144,12 @@ export async function listInterviewDeadlineSchedules(
       lifecycleState: interviewSession.lifecycleState,
       terminalReason: interviewSession.terminalReason,
       deadlineRoomCleanupStatus: interviewSession.deadlineRoomCleanupStatus,
+      feedbackStatus: feedback.status,
+      feedbackDispatchStatus: feedback.dispatchStatus,
+      feedbackDispatchClaimedAt: feedback.dispatchClaimedAt,
     })
     .from(interviewSession)
+    .leftJoin(feedback, eq(feedback.sessionId, interviewSession.id))
     .where(
       and(
         eq(interviewSession.mode, "voice_video"),
@@ -152,12 +164,30 @@ export async function listInterviewDeadlineSchedules(
               "ending",
             ])
           ),
-          eq(interviewSession.deadlineRoomCleanupStatus, "pending")
+          eq(interviewSession.deadlineRoomCleanupStatus, "pending"),
+          and(
+            inArray(interviewSession.deadlineRoomCleanupStatus, [
+              "deleted",
+              "already_absent",
+            ]),
+            inArray(feedback.status, ["pending", "failed"]),
+            or(
+              inArray(feedback.dispatchStatus, ["pending", "failed"]),
+              and(
+                eq(feedback.status, "failed"),
+                eq(feedback.dispatchStatus, "sent")
+              ),
+              and(
+                eq(feedback.dispatchStatus, "sending"),
+                lt(feedback.dispatchClaimedAt, staleDispatchBefore)
+              )
+            )
+          )
         )
       )
     );
 
-  return buildInterviewDeadlineSchedules(sessions, limit, new Date());
+  return buildInterviewDeadlineSchedules(sessions, limit, now);
 }
 
 export function buildInterviewDeadlineSchedules(
@@ -177,7 +207,8 @@ export function buildInterviewDeadlineSchedules(
         ["created", "connecting", "active", "reconnecting", "ending"].includes(
           session.lifecycleState
         ) ||
-        session.deadlineRoomCleanupStatus === "pending"
+        session.deadlineRoomCleanupStatus === "pending" ||
+        isDeadlineFeedbackDispatchRecoverable(session, now)
     )
     .flatMap<InterviewDeadlineRecoveryItem>((session) => {
       if (!session.startedAt) {
@@ -212,11 +243,43 @@ export function buildInterviewDeadlineSchedules(
           ? left.sessionId.localeCompare(right.sessionId)
           : -1;
       }
-      return right.kind === "deadline"
-        ? left.deadlineAt.localeCompare(right.deadlineAt)
-        : 1;
+      if (right.kind !== "deadline") return 1;
+      const deadlineOrder = left.deadlineAt.localeCompare(right.deadlineAt);
+      return deadlineOrder !== 0
+        ? deadlineOrder
+        : left.sessionId.localeCompare(right.sessionId);
     })
     .slice(0, Math.max(0, limit));
+}
+
+function isDeadlineFeedbackDispatchRecoverable(
+  session: InterviewDeadlineScheduleRow,
+  now: Date
+): boolean {
+  if (
+    !["deleted", "already_absent"].includes(
+      session.deadlineRoomCleanupStatus ?? ""
+    ) ||
+    !["pending", "failed"].includes(session.feedbackStatus ?? "")
+  ) {
+    return false;
+  }
+
+  if (["pending", "failed"].includes(session.feedbackDispatchStatus ?? "")) {
+    return true;
+  }
+  if (
+    session.feedbackStatus === "failed" &&
+    session.feedbackDispatchStatus === "sent"
+  ) {
+    return true;
+  }
+  return (
+    session.feedbackDispatchStatus === "sending" &&
+    session.feedbackDispatchClaimedAt instanceof Date &&
+    session.feedbackDispatchClaimedAt.getTime() <
+      now.getTime() - FEEDBACK_DISPATCH_LEASE_MS
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
