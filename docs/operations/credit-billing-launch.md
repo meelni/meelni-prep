@@ -484,6 +484,9 @@ Before launch, use Stripe test mode to prove:
 - a rolled-back renewal emits no renewal or rollover analytics;
 - durable account deletion immediately denies original and second-device access
   before provider cleanup completes, including while cleanup is retrying;
+- deletion captures every current/historical mapped subscription and customer,
+  and disconnects an already-connected LiveKit interview room; a simulated
+  LiveKit failure remains retryable without restoring access;
 - account deletion cancels provider resources with `prorate=false`, stable retry
   idempotency, and no invoice, charge, PaymentIntent, or customer-balance refund.
 

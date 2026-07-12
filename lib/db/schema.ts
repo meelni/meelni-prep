@@ -117,6 +117,10 @@ export const accountDeletionRequest = pgTable(
       >()
       .default(sql`'[]'::jsonb`)
       .notNull(),
+    livekitRooms: jsonb("livekit_rooms")
+      .$type<Array<{ roomName: string | null; fingerprint: string }>>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     attempts: integer("attempts").default(0).notNull(),
     lastErrorCode: text("last_error_code"),
     requestedAt: timestamp("requested_at", { withTimezone: true })

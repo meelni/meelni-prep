@@ -83,6 +83,7 @@ export function fingerprintStripeSubject(identifier?: string | null) {
 export function buildStripeDeletionSubjects(input: {
   subscriptionId?: string | null;
   subscriptionCustomerId?: string | null;
+  mappedSubscriptionIds?: Array<string | null | undefined>;
   mappedCustomerIds: Array<string | null | undefined>;
   paymentIntentIds?: Array<string | null | undefined>;
   chargeIds?: Array<string | null | undefined>;
@@ -92,6 +93,10 @@ export function buildStripeDeletionSubjects(input: {
     providerId?: string | null;
   }> = [
     { kind: "subscription", providerId: input.subscriptionId },
+    ...(input.mappedSubscriptionIds ?? []).map((providerId) => ({
+      kind: "subscription" as const,
+      providerId,
+    })),
     { kind: "customer", providerId: input.subscriptionCustomerId },
     ...input.mappedCustomerIds.map((providerId) => ({
       kind: "customer" as const,
@@ -106,6 +111,14 @@ export function buildStripeDeletionSubjects(input: {
       providerId,
     })),
   ];
+  candidates.sort((left, right) => {
+    const kindOrder = left.kind === "subscription" ? 0 : 1;
+    const otherKindOrder = right.kind === "subscription" ? 0 : 1;
+    return (
+      kindOrder - otherKindOrder ||
+      (left.providerId ?? "").localeCompare(right.providerId ?? "")
+    );
+  });
   const seen = new Set<string>();
   const subjects: StripeDeletionSubject[] = [];
   for (const candidate of candidates) {

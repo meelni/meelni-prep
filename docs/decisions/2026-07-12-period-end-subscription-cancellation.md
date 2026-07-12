@@ -59,6 +59,15 @@ workflows.
   product access, unused credits are no longer redeemable, and captured
   subscriptions are canceled without proration, refund, or customer-balance
   compensation. Ordinary cancellation remains period-end.
+- Deletion acceptance snapshots the current subscription plus every historical
+  customer mapping's subscription/customer IDs in deterministic order. It also
+  snapshots every nonterminal LiveKit room. Session creation serializes with
+  that snapshot, so a room either commits before acceptance and is captured or
+  is rejected after acceptance.
+- Local data removal remains irreversible and does not wait for LiveKit. Room
+  deletion disconnects participants and is retryable from the tombstone; a
+  provider outage cannot roll back deletion acceptance or restore access. Raw
+  room names are cleared after provider confirmation, leaving fingerprints.
 - An exceptional-refund decision is human-owned, but execution for an existing
   account remains paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
   provides verified payment-to-credit-ledger reconciliation. Today,
@@ -72,5 +81,8 @@ reactivation in Stripe test mode and confirm the subscription, invoice,
 customer balance, payment history, access, and unused-credit states. Rehearse
 the approved deletion exception separately: access denial begins at durable
 intent, while provider cancellation remains retryable and non-compensating.
+Confirm separately that an already-connected LiveKit room is disconnected and
+that a retryable room-deletion failure leaves durable cleanup pending without
+restoring product access.
 Manual refund execution additionally requires SAV-231, an updated support
 runbook, and test-mode evidence.

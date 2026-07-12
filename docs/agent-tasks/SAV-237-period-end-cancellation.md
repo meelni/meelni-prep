@@ -15,9 +15,10 @@
   entitlement to monotonic current-resource ordering, use authoritative DB-time
   read snapshots, apply immediate account-mutation backpressure, recover expired
   Checkout attempts safely, remove automatic account-deletion refunds, tests and
-  durable policy docs.
-- Out: manual support refunds, Stripe credential changes, catalog changes,
-  migrations, and Production/test-mode provider mutations.
+  durable policy docs, capture every known historical Stripe subscription, and
+  terminate captured in-flight LiveKit rooms through retryable cleanup.
+- Out: manual support refunds, Stripe credential changes, catalog changes, and
+  Production/test-mode provider mutations.
 - Provider dependency: Stripe test-mode rehearsal after code review.
 - Accepted deletion exception: durable irreversible deletion intent immediately
   ends product access and credit redemption; captured subscriptions are canceled
@@ -36,10 +37,22 @@
 - Source-aware entitlement boundary tests at, before, and after period end plus
   delayed/same-second webhook permutations.
 - Deletion tests proving tombstone-time access denial, retry-stable
-  `prorate=false` cancellation, and absence of automatic refund operations.
+  `prorate=false` cancellation, deterministic multi-customer/multi-subscription
+  capture, in-flight room termination, and absence of automatic refund
+  operations.
 
 ## Rollout
 
 - Risk: high billing trust impact; relaunch remains default-off.
 - Rollback: revert the code change without enabling immediate refunds; use the
   Customer Portal/manual support path while investigating.
+
+## Verification Evidence
+
+- Node 22.22: `npm run check:ci` passed, including Semgrep with 0 findings.
+- Node 22.22: `npm run build` passed with the public-surface manifest check.
+- Disposable local PostgreSQL: `npm run db:check` and
+  `npm run test:database-migrations` passed for clean and upgrade paths.
+- Targeted API, billing, integration, and workflow suites passed.
+- No Stripe, LiveKit, Supabase Production, or other provider mutation was made;
+  the documented test-mode/live-mode rehearsals remain human rollout gates.
