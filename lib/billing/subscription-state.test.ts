@@ -5,13 +5,14 @@ import { shouldApplyStripeSubscriptionState } from "./stripe-event-ordering";
 import {
   nextProviderCancellationState,
   reconcileAuthoritativeProviderSnapshot,
+  reconcileVersionedProviderMutation,
   retrieveAuthoritativeSubscription,
   shouldApplyAuthoritativeProviderSnapshot,
 } from "./subscription-state";
 
 const PERIOD_END = new Date("2026-08-01T12:00:00.000Z");
 
-test("provider cancellation observations advance version and establish a same-second fence", () => {
+test("provider cancellation observations advance version without inventing a provider event timestamp", () => {
   const next = nextProviderCancellationState(snapshot(), {
     userId: "user-1",
     stripeSubscriptionId: "sub_current",
@@ -24,8 +25,8 @@ test("provider cancellation observations advance version and establish a same-se
   assert.equal(next.currentPeriodEnd, PERIOD_END);
   assert.equal(next.version, 8);
   assert.equal(
-    next.lastEventTimestamp.toISOString(),
-    "2026-07-12T06:20:10.000Z"
+    next.lastEventTimestamp?.toISOString(),
+    "2026-07-12T06:20:09.000Z"
   );
 });
 
@@ -138,7 +139,7 @@ test("authoritative retrieval is one time-bounded read and fails closed", async 
   );
 });
 
-test("cancel and reactivate observations fence delayed payloads while same-second retrieval converges", () => {
+test("direct observations preserve provider-event ordering while retrieval converges", () => {
   const cancel = nextProviderCancellationState(snapshot(), {
     userId: "user-1",
     stripeSubscriptionId: "sub_current",
@@ -162,7 +163,7 @@ test("cancel and reactivate observations fence delayed payloads while same-secon
       currentStatus: "active",
       currentStripeSubscriptionId: "sub_current",
       event: "subscription_retrieved",
-      eventTimestamp: new Date("2026-07-12T06:20:10.000Z"),
+      eventTimestamp: new Date("2026-07-12T06:20:09.000Z"),
       incomingStripeSubscriptionId: "sub_current",
       lastEventTimestamp: cancel.lastEventTimestamp,
     }),
@@ -194,8 +195,38 @@ test("cancel and reactivate observations fence delayed payloads while same-secon
       incomingStripeSubscriptionId: "sub_current",
       lastEventTimestamp: reactivate.lastEventTimestamp,
     }),
-    false
+    true
   );
+});
+
+test("direct provider mutation retries from fresh provider truth after a same-resource webhook wins", async () => {
+  // The webhook committed reactivation while the route response was in flight.
+  let version = 8;
+  const currentProviderState = false;
+  let retrievals = 0;
+  const result = await reconcileVersionedProviderMutation({
+    initialExpectedVersion: 7,
+    initialSnapshot: { cancelAtPeriodEnd: true },
+    readVersion: async () => version,
+    retrieve: async () => {
+      retrievals += 1;
+      return { cancelAtPeriodEnd: currentProviderState };
+    },
+    commit: async ({ expectedVersion, snapshot: providerSnapshot }) => {
+      if (version !== expectedVersion) {
+        return { status: "retry" as const };
+      }
+      version += 1;
+      return {
+        status: "applied" as const,
+        value: providerSnapshot.cancelAtPeriodEnd,
+      };
+    },
+  });
+
+  assert.equal(result.value, false);
+  assert.equal(result.snapshot.cancelAtPeriodEnd, false);
+  assert.equal(retrievals, 1);
 });
 
 test("delayed and same-second events converge from an authoritative current-resource snapshot", () => {

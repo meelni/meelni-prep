@@ -480,6 +480,20 @@ export interface RenewSubscriptionCreditsResult {
   grant: LedgerCreditGrant;
   rolledCredits: number;
   rolloverGrant: LedgerCreditGrant | null;
+  postCommitEffects: SubscriptionRenewalPostCommitEffects;
+}
+
+export interface SubscriptionRenewalPostCommitEffects {
+  userId: string;
+  catalogId: BillingCatalogId;
+  sourceId: string | null;
+  renewalIdempotencyKey: string;
+  rolloverIdempotencyKey: string;
+  renewalGrant: LedgerCreditGrant;
+  renewalDuplicate: boolean;
+  rolledCredits: number;
+  rolloverGrant: LedgerCreditGrant | null;
+  rolloverDuplicate: boolean;
 }
 
 export interface RevokePaidGrantInput {
@@ -1139,39 +1153,55 @@ export function createCreditLedgerService({
         }
       );
 
-      if (outcome.rollover.grant) {
-        trackBillingCreditRolloverCreated({
-          userId: input.userId,
-          catalogId: input.catalogId,
-          creditSource: "rollover",
-          transactionType: "rollover",
-          credits: outcome.rollover.rolledCredits,
-          balanceAfter: outcome.rollover.grant.remainingCredits,
-          idempotencyKey: input.rolloverIdempotencyKey,
-          sourceId: input.sourceId,
-          grantId: outcome.rollover.grant.id,
-          duplicate: outcome.rollover.duplicate,
-        });
-      }
-      trackBillingCreditGranted({
-        userId: outcome.renewal.grant.userId,
-        catalogId: outcome.renewal.grant.catalogId,
-        creditSource: outcome.renewal.grant.source,
-        credits: outcome.renewal.grant.originalCredits,
-        balanceAfter: outcome.renewal.grant.remainingCredits,
-        idempotencyKey: input.renewalIdempotencyKey,
-        sourceId: outcome.renewal.grant.sourceId,
-        grantId: outcome.renewal.grant.id,
-        duplicate: outcome.renewal.duplicate,
-      });
-
       return {
         grant: outcome.renewal.grant,
         rolledCredits: outcome.rollover.rolledCredits,
         rolloverGrant: outcome.rollover.grant,
+        postCommitEffects: {
+          userId: input.userId,
+          catalogId: input.catalogId,
+          sourceId: input.sourceId ?? null,
+          renewalIdempotencyKey: input.renewalIdempotencyKey,
+          rolloverIdempotencyKey: input.rolloverIdempotencyKey,
+          renewalGrant: outcome.renewal.grant,
+          renewalDuplicate: outcome.renewal.duplicate,
+          rolledCredits: outcome.rollover.rolledCredits,
+          rolloverGrant: outcome.rollover.grant,
+          rolloverDuplicate: outcome.rollover.duplicate,
+        },
       };
     },
   };
+}
+
+export function emitSubscriptionRenewalPostCommitEffects(
+  effects: SubscriptionRenewalPostCommitEffects
+): void {
+  if (effects.rolloverGrant) {
+    trackBillingCreditRolloverCreated({
+      userId: effects.userId,
+      catalogId: effects.catalogId,
+      creditSource: "rollover",
+      transactionType: "rollover",
+      credits: effects.rolledCredits,
+      balanceAfter: effects.rolloverGrant.remainingCredits,
+      idempotencyKey: effects.rolloverIdempotencyKey,
+      sourceId: effects.sourceId,
+      grantId: effects.rolloverGrant.id,
+      duplicate: effects.rolloverDuplicate,
+    });
+  }
+  trackBillingCreditGranted({
+    userId: effects.renewalGrant.userId,
+    catalogId: effects.renewalGrant.catalogId,
+    creditSource: effects.renewalGrant.source,
+    credits: effects.renewalGrant.originalCredits,
+    balanceAfter: effects.renewalGrant.remainingCredits,
+    idempotencyKey: effects.renewalIdempotencyKey,
+    sourceId: effects.renewalGrant.sourceId,
+    grantId: effects.renewalGrant.id,
+    duplicate: effects.renewalDuplicate,
+  });
 }
 
 async function grantCreditsInTransaction({

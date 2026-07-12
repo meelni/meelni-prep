@@ -10,7 +10,11 @@ import {
   stripeCustomerMapping,
 } from "@/lib/db/schema";
 import { eq, and, or, sql } from "drizzle-orm";
-import { createCreditLedgerService } from "@/lib/billing/credits";
+import {
+  createCreditLedgerService,
+  emitSubscriptionRenewalPostCommitEffects,
+  type SubscriptionRenewalPostCommitEffects,
+} from "@/lib/billing/credits";
 import {
   createDrizzleCreditLedgerStore,
   createDrizzleCreditLedgerStoreForLockedTransaction,
@@ -594,9 +598,9 @@ async function handleSubscriptionUpdate(event: Stripe.Event, stripe: Stripe) {
         );
         const lastEventTimestamp =
           currentSub?.lastEventTimestamp &&
-          currentSub.lastEventTimestamp > observedAt
+          currentSub.lastEventTimestamp > eventTimestamp
             ? currentSub.lastEventTimestamp
-            : observedAt;
+            : eventTimestamp;
         const trialUpdates =
           catalogId === "pro" &&
           (stripeSubscription.status === "trialing" ||
@@ -842,6 +846,9 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
   const catalogId = getStripeCatalogIdForPrice(getInvoicePriceId(invoice));
   const invoicePayment = await getInvoicePaymentCorrelation(invoice);
   const eventTimestamp = new Date(event.created * 1000);
+  const invoicePeriodStart = providerTimestamp(invoice.period_start);
+  const invoicePeriodEnd = providerTimestamp(invoice.period_end);
+  let postCommitEffects: SubscriptionRenewalPostCommitEffects | null = null;
   await db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, userId);
     const [currentSub] = await tx
@@ -852,10 +859,13 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
       .for("update");
     const observedAt = await getBillingDatabaseTime(tx);
     let creditGrantId: string | null = null;
-    await applyCurrentSubscriptionInvoice({
+    const result = await applyCurrentSubscriptionInvoice({
       current: currentSub ?? null,
       incomingStripeSubscriptionId: getInvoiceSubscriptionId(invoice),
       eventTimestamp,
+      billingReason: invoice.billing_reason,
+      invoicePeriodStart,
+      invoicePeriodEnd,
       invoiceId: invoice.id,
       catalogId,
       userId,
@@ -875,6 +885,8 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
             status: "active",
             gracePeriodEnd: null,
             lastEventTimestamp: eventTimestamp,
+            currentPeriodStart: invoicePeriodStart,
+            currentPeriodEnd: invoicePeriodEnd,
             version: currentSub!.version + 1,
             updatedAt: observedAt,
           })
@@ -890,7 +902,6 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
         }
       },
     });
-
     // Provider correlation is resolved before the transaction; payment truth,
     // entitlement truth, and subscription state commit atomically here.
     await tx
@@ -937,7 +948,11 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
       currency: invoice.currency,
       status: "succeeded",
     });
+    postCommitEffects = result.postCommitEffects;
   });
+  if (postCommitEffects) {
+    emitSubscriptionRenewalPostCommitEffects(postCommitEffects);
+  }
 }
 
 /**
@@ -1505,6 +1520,12 @@ async function cancelDeletedSubscription(
 
 function getInvoiceSubscriptionId(invoice: Stripe.Invoice) {
   return getProviderId(invoice.parent?.subscription_details?.subscription);
+}
+
+function providerTimestamp(value: number | null | undefined): Date | null {
+  if (!value || !Number.isSafeInteger(value)) return null;
+  const timestamp = new Date(value * 1000);
+  return Number.isFinite(timestamp.getTime()) ? timestamp : null;
 }
 
 async function redactDeletedStripeEvent(event: Stripe.Event) {

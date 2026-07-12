@@ -30,9 +30,19 @@ workflows.
   Checkout. The customer must reactivate the current provider resource or wait
   until it has ended before starting another subscription.
 - Subscription invoice credits are granted only when the invoice belongs to the
-  currently locked provider subscription and passes event ordering. Delayed or
-  replaced-resource invoices remain payment history but grant and roll zero
-  credits.
+  currently locked provider subscription and passes resource, billing-reason,
+  and period checks. The exact current period remains eligible across reordered
+  or same-second subscription updates; older periods and replaced resources
+  remain payment history but grant and roll zero credits.
+- Stripe event creation time is the webhook ordering fence. Direct provider
+  observations preserve that fence and use a version-checked local mutation;
+  webhook conflicts require a bounded authoritative provider reread and retry.
+- Subscription Checkout is serialized by the same per-user advisory and row
+  locks as webhook and cancellation work. A user plus locked billing-state
+  version supplies one deterministic idempotency scope across plan choices, and
+  a post-create state change expires and withholds the provider session.
+- Renewal and rollover analytics are emitted only after the outer ledger and
+  subscription transaction commits.
 - Credit and cancellation read truth use one user-fenced database-time snapshot;
   equality with `current_period_end` is unavailable even if an application clock
   rolls backward.
