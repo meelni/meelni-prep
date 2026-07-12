@@ -55,6 +55,11 @@ export type FinalizeInterviewSessionResult =
         endedAt: Date;
       };
       feedback: typeof feedback.$inferSelect;
+      deadlineRoomCleanupStatus:
+        | "pending"
+        | "deleted"
+        | "already_absent"
+        | null;
       stats: SessionValidation["stats"];
       tier: SessionValidation["tier"];
       recommendations: string[];
@@ -128,6 +133,11 @@ export async function finalizeInterviewSession(
     let endingAt = stored.endingAt;
     let endedAt = stored.endedAt;
     const wasTerminal = isInterviewTerminalState(state);
+    const hardDeadlineOwnsCleanup =
+      !wasTerminal &&
+      input.actor.type === "system" &&
+      input.actor.source === "hard_deadline" &&
+      stored.terminalReason === null;
 
     if (
       shouldRefineProvisionalHardDeadlineReason({
@@ -280,6 +290,13 @@ export async function finalizeInterviewSession(
       throw new Error("Interview completion did not reach a terminal outcome");
     }
 
+    if (hardDeadlineOwnsCleanup && stored.deadlineRoomCleanupStatus === null) {
+      await tx
+        .update(interviewSession)
+        .set({ deadlineRoomCleanupStatus: "pending" })
+        .where(eq(interviewSession.id, input.sessionId));
+    }
+
     if (!wasTerminal) {
       await tx
         .update(interviewSession)
@@ -338,6 +355,9 @@ export async function finalizeInterviewSession(
       roomName: stored.livekitRoomName,
       lifecycle: { state, version, terminalReason, endedAt },
       feedback: feedbackRecord,
+      deadlineRoomCleanupStatus: hardDeadlineOwnsCleanup
+        ? (stored.deadlineRoomCleanupStatus ?? "pending")
+        : stored.deadlineRoomCleanupStatus,
       stats: feedbackRecord.completionStats ?? validation.stats,
       tier:
         (feedbackRecord.completionTier as SessionValidation["tier"] | null) ??

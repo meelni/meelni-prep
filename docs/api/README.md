@@ -434,6 +434,7 @@ Retrieves complete information about a specific interview session including conf
     "role": "pm",
     "startedAt": "2025-11-05T10:30:00Z",
     "deadlineAt": "2025-11-05T11:15:00Z",
+    "feedbackReady": true,
     "endedAt": "2025-11-05T11:15:00Z",
     "livekitRoomName": "interview-1699999999-abc123",
     "config": {
@@ -448,6 +449,14 @@ Retrieves complete information about a specific interview session including conf
   }
 }
 ```
+
+`feedbackReady` is server-owned handoff truth. The hard-deadline interview UI
+does not navigate to feedback until the session is terminal and this value is
+`true`, which requires any persisted hard-deadline room-cleanup claim to be
+acknowledged, followed by feedback dispatch (`sent`) or a finalized skipped
+result (`not_required`). Cleanup provenance is persisted independently of the
+refined terminal reason, so `not_required` cannot make a still-live room visible
+as ready.
 
 **Errors**:
 
@@ -750,7 +759,10 @@ Analyzes an interview session transcript and generates comprehensive feedback. I
 
 ### GET /api/feedback/:sessionId
 
-Retrieves the AI-generated feedback for a completed interview session. User must own the session to access feedback. Feedback must have been previously generated via `POST /api/feedback/generate`.
+Retrieves the feedback state or completed feedback for an owned terminal
+interview session. A hard-deadline session returns `settling` until room
+cleanup is acknowledged. After acknowledgement it returns the durable feedback
+and dispatch state, including retryable pending or failed dispatch.
 
 **Authentication**: Required (Supabase Auth JWT)
 
@@ -760,7 +772,7 @@ Retrieves the AI-generated feedback for a completed interview session. User must
 | ----------- | ------ | ------------------- |
 | `sessionId` | string | UUID of the session |
 
-**Response** (200 OK):
+**Response** (200 OK - completed):
 
 ```json
 {
@@ -791,11 +803,28 @@ Retrieves the AI-generated feedback for a completed interview session. User must
 }
 ```
 
+**Response** (200 OK - hard deadline settling):
+
+```json
+{
+  "status": "settling",
+  "retryable": false,
+  "message": "The interview is saved and its room is still being closed safely."
+}
+```
+
+Authenticated `POST /api/feedback/:sessionId` cannot bypass this boundary. It
+returns `409 deadline_settlement_pending` until the deadline consumer has
+acknowledged room cleanup. Feedback starts automatically after cleanup; later
+generation retries and direct retry preserve the existing idempotent dispatch
+behavior.
+
 **Errors**:
 
 - `401 Unauthorized` - Missing or invalid authentication token
 - `403 Forbidden` - User does not own this session
 - `404 Not Found` - Feedback not found for this session (hasn't been generated yet)
+- `409 Conflict` - Direct retry attempted while hard-deadline cleanup is pending
 - `500 Internal Server Error` - Database query failed
 
 ---
