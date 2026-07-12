@@ -133,9 +133,12 @@ attempts room deletion before settlement, and uses separate idempotent
 settlement and dispatch boundaries. Terminal truth and completion-time
 motivation may commit when deletion fails, but feedback dispatch remains
 deferred until deletion is acknowledged as `deleted` or `already_absent`.
-Retries preserve the first terminal claim and dispatch at most once. A
-five-minute recovery scan prioritizes absolute deadlines and uses a unique
-delivery identity per recovery run.
+The terminal transaction persists a separate `pending` cleanup claim, including
+for skipped feedback. A provider acknowledgement changes it to `deleted` or
+`already_absent`; only then can the client hand off. Retries preserve the first
+terminal claim and dispatch at most once. A five-minute recovery scan
+prioritizes overdue open sessions and terminal pending-cleanup claims and uses a
+unique delivery identity per recovery run.
 
 The client countdown reflects this deadline but never claims `time_limit`. At
 zero it mutes local input, removes voluntary controls, presents a non-dismissible

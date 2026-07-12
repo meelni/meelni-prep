@@ -84,3 +84,37 @@ test("recovery emits only deadlines that are already due", () => {
     ]
   );
 });
+
+test("recovery re-emits terminal deadline cleanup claims until provider acknowledgement", () => {
+  assert.deepEqual(
+    buildInterviewDeadlineSchedules(
+      [
+        {
+          id: "terminal-pending",
+          startedAt: new Date("2026-07-10T06:00:00.000Z"),
+          config: { duration: 30 },
+          lifecycleState: "completed",
+          terminalReason: "time_limit",
+          deadlineRoomCleanupStatus: "pending",
+        },
+        {
+          id: "terminal-acknowledged",
+          startedAt: new Date("2026-07-10T06:00:00.000Z"),
+          config: { duration: 30 },
+          lifecycleState: "completed",
+          terminalReason: "time_limit",
+          deadlineRoomCleanupStatus: "already_absent",
+        },
+      ],
+      250,
+      new Date("2026-07-10T07:00:00.000Z")
+    ),
+    [
+      {
+        kind: "deadline",
+        sessionId: "terminal-pending",
+        deadlineAt: "2026-07-10T06:30:00.000Z",
+      },
+    ]
+  );
+});

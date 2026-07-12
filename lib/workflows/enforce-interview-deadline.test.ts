@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { providerFailure, providerSuccess } from "@/lib/internal/integrations";
+import { buildInterviewDeadlineSchedules } from "@/lib/db/session-deadlines";
 import type {
   EndInterviewSessionResult,
   InterviewSessionSettlement,
@@ -117,7 +118,10 @@ test("room deletion failure commits terminal truth but defers feedback until ack
   let deleteAttempts = 0;
   const deps = createDeps({
     settleSession: async () => {
-      if (!stored) stored = settlement().completion;
+      if (!stored) {
+        stored = settlement().completion;
+        stored.feedback.dispatchStatus = "pending";
+      }
       return { ok: true, completion: stored };
     },
     terminateRoom: async ({ roomName }) => {
@@ -135,7 +139,10 @@ test("room deletion failure commits terminal truth but defers feedback until ack
       });
     },
     dispatchSettlement: async (completion) => {
-      if (feedbackEvents === 0) feedbackEvents += 1;
+      if (completion.feedback.dispatchStatus === "pending") {
+        feedbackEvents += 1;
+        completion.feedback.dispatchStatus = "sent";
+      }
       return completedSettlement(completion, "sent");
     },
   });
@@ -164,6 +171,163 @@ test("room deletion failure commits terminal truth but defers feedback until ack
   );
   assert.equal(replay.ok, true);
   assert.equal(feedbackEvents, 1);
+});
+
+test("ineligible deadline settlement stays blocked until room cleanup is acknowledged without dispatch", async () => {
+  let acknowledged = false;
+  let deleteAttempts = 0;
+  let dispatchAttempts = 0;
+  const ineligible = settlement().completion;
+  ineligible.feedback.status = "skipped";
+  ineligible.feedback.dispatchStatus = "not_required";
+  const deps = createDeps({
+    settleSession: async () => ({ ok: true, completion: ineligible }),
+    terminateRoom: async ({ roomName }) => {
+      deleteAttempts += 1;
+      return deleteAttempts === 1
+        ? providerFailure("livekit", {
+            code: "livekit_room_delete_failed",
+            message: "provider unavailable",
+            retryable: true,
+          })
+        : providerSuccess("livekit", {
+            roomName,
+            disposition: "already_absent" as const,
+          });
+    },
+    acknowledgeRoomCleanup: async () => {
+      acknowledged = true;
+    },
+    dispatchSettlement: async (completion) => {
+      dispatchAttempts += 1;
+      return completedSettlement(completion, "not_required");
+    },
+  });
+
+  await assert.rejects(() =>
+    enforceInterviewDeadlineWorkflow(
+      { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
+      deps
+    )
+  );
+  assert.equal(acknowledged, false);
+  assert.equal(dispatchAttempts, 0);
+
+  const retry = await enforceInterviewDeadlineWorkflow(
+    { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
+    deps
+  );
+  assert.equal(retry.ok, true);
+  assert.equal(acknowledged, true);
+  assert.equal(dispatchAttempts, 1);
+  if (retry.ok) {
+    assert.equal(retry.completion.dispatch, null);
+    assert.equal(
+      retry.completion.completion.feedback.dispatchStatus,
+      "not_required"
+    );
+  }
+});
+
+test("recovery rediscovers terminal pending cleanup after exact retries exhaust and finalizes once", async () => {
+  let cleanupStatus: "pending" | "deleted" | "already_absent" = "pending";
+  let feedbackEvents = 0;
+  let deleteAttempts = 0;
+  const stored = settlement().completion;
+  stored.feedback.dispatchStatus = "pending";
+  const deps = createDeps({
+    getSession: async () => ({
+      id: SESSION_ID,
+      startedAt: new Date("2026-07-10T06:00:00.000Z"),
+      config: { duration: 30 },
+      roomName: "interview-deadline-room",
+      terminalReason: "time_limit",
+      deadlineRoomCleanupStatus: cleanupStatus,
+    }),
+    settleSession: async () => ({ ok: true, completion: stored }),
+    terminateRoom: async ({ roomName }) => {
+      deleteAttempts += 1;
+      if (deleteAttempts <= 5) {
+        return providerFailure("livekit", {
+          code: "livekit_room_delete_failed",
+          message: "provider unavailable",
+          retryable: true,
+        });
+      }
+      return providerSuccess("livekit", {
+        roomName,
+        disposition: "already_absent" as const,
+      });
+    },
+    acknowledgeRoomCleanup: async (_sessionId, disposition) => {
+      cleanupStatus = disposition;
+    },
+    dispatchSettlement: async (completion) => {
+      if (stored.feedback.dispatchStatus === "pending") {
+        feedbackEvents += 1;
+        stored.feedback.dispatchStatus = "sent";
+      }
+      return completedSettlement(completion, "sent");
+    },
+  });
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await assert.rejects(() =>
+      enforceInterviewDeadlineWorkflow(
+        { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
+        deps
+      )
+    );
+  }
+  assert.equal(feedbackEvents, 0);
+  assert.deepEqual(
+    buildInterviewDeadlineSchedules(
+      [
+        {
+          id: SESSION_ID,
+          startedAt: new Date("2026-07-10T06:00:00.000Z"),
+          config: { duration: 30 },
+          lifecycleState: "completed",
+          terminalReason: "time_limit",
+          deadlineRoomCleanupStatus: cleanupStatus,
+        },
+      ],
+      250,
+      new Date(DEADLINE)
+    ),
+    [{ kind: "deadline", sessionId: SESSION_ID, deadlineAt: DEADLINE }]
+  );
+
+  const recovered = await enforceInterviewDeadlineWorkflow(
+    { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
+    deps
+  );
+  assert.equal(recovered.ok, true);
+  assert.equal(cleanupStatus, "already_absent");
+  assert.equal(feedbackEvents, 1);
+
+  await enforceInterviewDeadlineWorkflow(
+    { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
+    deps
+  );
+  assert.equal(feedbackEvents, 1);
+  assert.deepEqual(
+    buildInterviewDeadlineSchedules(
+      [
+        {
+          id: SESSION_ID,
+          startedAt: new Date("2026-07-10T06:00:00.000Z"),
+          config: { duration: 30 },
+          lifecycleState: "completed",
+          terminalReason: "time_limit",
+          deadlineRoomCleanupStatus: cleanupStatus,
+        },
+      ],
+      250,
+      new Date(DEADLINE)
+    ),
+    []
+  );
 });
 
 test("acknowledged cleanup keeps retrying until feedback dispatch is ready", async () => {
@@ -242,6 +406,8 @@ test("recovery closes an open room with no start time and terminalizes provider 
         startedAt: null,
         config: { duration: 30 },
         roomName: "interview-invalid-start-room",
+        terminalReason: null,
+        deadlineRoomCleanupStatus: null,
       }),
       terminateRoom: async ({ roomName }) => {
         calls.push(`terminate:${roomName}`);
@@ -286,6 +452,8 @@ test("invalid-session room cleanup failure commits provider failure then retries
             startedAt: null,
             config: {},
             roomName: "interview-invalid-start-room",
+            terminalReason: null,
+            deadlineRoomCleanupStatus: null,
           }),
           terminateRoom: async () =>
             providerFailure("livekit", {
@@ -316,6 +484,8 @@ function createDeps(
       startedAt: new Date("2026-07-10T06:00:00.000Z"),
       config: { duration: 30 },
       roomName: "interview-deadline-room",
+      terminalReason: null,
+      deadlineRoomCleanupStatus: null,
     }),
     settleSession: async () => settlement(),
     settleInvalidSession: async () => settlement("provider_failure", "failed"),
@@ -325,6 +495,7 @@ function createDeps(
         roomName,
         disposition: "already_absent" as const,
       }),
+    acknowledgeRoomCleanup: async () => {},
     now: () => new Date(DEADLINE),
     ...overrides,
   };

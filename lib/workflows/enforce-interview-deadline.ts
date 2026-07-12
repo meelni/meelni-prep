@@ -12,6 +12,7 @@ import {
   type TerminatedInterviewRoom,
 } from "@/lib/internal/integrations";
 import {
+  acknowledgeInterviewDeadlineRoomCleanup,
   getInterviewDeadlineSession,
   type InterviewDeadlineSession,
 } from "@/lib/db/session-deadlines";
@@ -49,6 +50,10 @@ export interface EnforceInterviewDeadlineDeps {
     roomName: string;
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<TerminatedInterviewRoom>>;
+  acknowledgeRoomCleanup(
+    sessionId: string,
+    disposition: "deleted" | "already_absent"
+  ): Promise<void>;
   now(): Date;
 }
 
@@ -138,6 +143,13 @@ export async function enforceInterviewDeadlineWorkflow(
     });
   }
 
+  if (settlement.completion.lifecycle.terminalReason === "time_limit") {
+    await deps.acknowledgeRoomCleanup(
+      input.sessionId,
+      room?.disposition ?? "already_absent"
+    );
+  }
+
   const completion = await deps.dispatchSettlement(settlement.completion);
   requireFeedbackDispatchReady(completion);
 
@@ -186,6 +198,13 @@ export async function quarantineInvalidInterviewSessionWorkflow(
     throw createRoomTerminationError(roomTerminationError.code);
   }
 
+  if (settlement.completion.lifecycle.terminalReason === "time_limit") {
+    await deps.acknowledgeRoomCleanup(
+      input.sessionId,
+      room?.disposition ?? "already_absent"
+    );
+  }
+
   const completion = await deps.dispatchSettlement(settlement.completion);
   requireFeedbackDispatchReady(completion);
 
@@ -209,6 +228,7 @@ export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDe
       }),
     dispatchSettlement: dispatchInterviewSessionSettlement,
     terminateRoom: terminateInterviewRoom,
+    acknowledgeRoomCleanup: acknowledgeInterviewDeadlineRoomCleanup,
     now: () => new Date(),
   };
 }

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 
 import {
   deriveInterviewDeadlineAt,
@@ -13,12 +13,23 @@ export interface InterviewDeadlineSession {
   startedAt: Date | null;
   config: unknown;
   roomName: string | null;
+  terminalReason: string | null;
+  deadlineRoomCleanupStatus: DeadlineRoomCleanupStatus;
 }
+
+export type DeadlineRoomCleanupStatus =
+  | "pending"
+  | "deleted"
+  | "already_absent"
+  | null;
 
 export interface InterviewDeadlineScheduleRow {
   id: string;
   startedAt: Date | null;
   config: unknown;
+  lifecycleState?: string;
+  terminalReason?: string | null;
+  deadlineRoomCleanupStatus?: DeadlineRoomCleanupStatus;
 }
 
 export type InterviewDeadlineRecoveryItem =
@@ -42,6 +53,8 @@ export async function getInterviewDeadlineSession(
       startedAt: true,
       config: true,
       livekitRoomName: true,
+      terminalReason: true,
+      deadlineRoomCleanupStatus: true,
     },
     where: (session, { eq }) => eq(session.id, sessionId),
   });
@@ -51,7 +64,54 @@ export async function getInterviewDeadlineSession(
     startedAt: session.startedAt,
     config: session.config,
     roomName: session.livekitRoomName,
+    terminalReason: session.terminalReason,
+    deadlineRoomCleanupStatus: session.deadlineRoomCleanupStatus,
   };
+}
+
+export function isInterviewDeadlineRoomCleanupAcknowledged(input: {
+  terminalReason: string | null | undefined;
+  deadlineRoomCleanupStatus: DeadlineRoomCleanupStatus | undefined;
+}): boolean {
+  return (
+    input.terminalReason !== "time_limit" ||
+    input.deadlineRoomCleanupStatus === "deleted" ||
+    input.deadlineRoomCleanupStatus === "already_absent"
+  );
+}
+
+export async function acknowledgeInterviewDeadlineRoomCleanup(
+  sessionId: string,
+  disposition: "deleted" | "already_absent"
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const rows = await tx
+      .select({
+        terminalReason: interviewSession.terminalReason,
+        cleanupStatus: interviewSession.deadlineRoomCleanupStatus,
+      })
+      .from(interviewSession)
+      .where(eq(interviewSession.id, sessionId))
+      .limit(1)
+      .for("update");
+    const session = rows[0];
+    if (!session || session.terminalReason !== "time_limit") {
+      throw new Error("Deadline cleanup acknowledgement is not claimable");
+    }
+    if (
+      session.cleanupStatus === "deleted" ||
+      session.cleanupStatus === "already_absent"
+    ) {
+      return;
+    }
+    await tx
+      .update(interviewSession)
+      .set({
+        deadlineRoomCleanupStatus: disposition,
+        deadlineRoomCleanupAcknowledgedAt: new Date(),
+      })
+      .where(eq(interviewSession.id, sessionId));
+  });
 }
 
 export async function listInterviewDeadlineSchedules(
@@ -62,19 +122,30 @@ export async function listInterviewDeadlineSchedules(
       id: interviewSession.id,
       startedAt: interviewSession.startedAt,
       config: interviewSession.config,
+      lifecycleState: interviewSession.lifecycleState,
+      terminalReason: interviewSession.terminalReason,
+      deadlineRoomCleanupStatus: interviewSession.deadlineRoomCleanupStatus,
     })
     .from(interviewSession)
     .where(
       and(
         eq(interviewSession.mode, "voice_video"),
-        isNotNull(interviewSession.livekitRoomName),
-        inArray(interviewSession.lifecycleState, [
-          "created",
-          "connecting",
-          "active",
-          "reconnecting",
-          "ending",
-        ])
+        or(
+          and(
+            isNotNull(interviewSession.livekitRoomName),
+            inArray(interviewSession.lifecycleState, [
+              "created",
+              "connecting",
+              "active",
+              "reconnecting",
+              "ending",
+            ])
+          ),
+          and(
+            eq(interviewSession.terminalReason, "time_limit"),
+            eq(interviewSession.deadlineRoomCleanupStatus, "pending")
+          )
+        )
       )
     );
 
@@ -92,6 +163,15 @@ export function buildInterviewDeadlineSchedules(
   }
 
   return sessions
+    .filter(
+      (session) =>
+        session.lifecycleState === undefined ||
+        ["created", "connecting", "active", "reconnecting", "ending"].includes(
+          session.lifecycleState
+        ) ||
+        (session.terminalReason === "time_limit" &&
+          session.deadlineRoomCleanupStatus === "pending")
+    )
     .flatMap<InterviewDeadlineRecoveryItem>((session) => {
       if (!session.startedAt) {
         return [

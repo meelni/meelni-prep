@@ -28,7 +28,10 @@ Settlement and dispatch are separate typed workflow boundaries. Ordinary
 authenticated end commands call both boundaries in sequence. A hard-deadline
 command may commit settlement while LiveKit room deletion is retryable, but it
 must not enter the dispatch boundary until room deletion is acknowledged as
-`deleted` or `already_absent`.
+`deleted` or `already_absent`. Every `time_limit` settlement independently
+claims `deadline_room_cleanup_status=pending`; provider acknowledgement stores
+the exact terminal disposition and acknowledgement time before dispatch. This
+gate also applies when feedback is skipped and dispatch is `not_required`.
 
 Equivalent replays return the stored result. An existing terminal reason is immutable. A historical terminal session without feedback is repaired by creating the missing feedback result; its lifecycle is not reopened.
 
@@ -73,7 +76,8 @@ failure changes it to `failed` without changing `feedback.status=pending`.
 For `time_limit`, `pending`, `sending`, or `failed` is not sufficient evidence
 that feedback is safe to expose. The deadline consumer retries acknowledged
 room deletion first and considers feedback ready only after dispatch is `sent`
-or feedback is `not_required`. A replay reuses terminal truth and the outbox
+or feedback is `not_required`, and only when the independent room-cleanup claim
+is acknowledged. A replay reuses terminal truth and the outbox
 fence, so it cannot emit a second accepted feedback event.
 
 A crash between provider acknowledgement and the `sent` write can cause a
@@ -96,6 +100,10 @@ stored state is retryable. No path creates a second feedback row.
 `GET /api/session/:sessionId` exposes `feedbackReady`. The deadline UI waits
 for both terminal lifecycle truth and `feedbackReady=true` before navigating
 away from the interview saving state.
+
+The five-minute deadline recovery scan includes terminal `time_limit` sessions
+whose room-cleanup claim is still `pending`. Exhausting one event's retry budget
+therefore cannot strand a live room or leave the UI settling indefinitely.
 
 ## Acceptance Evidence
 

@@ -819,7 +819,7 @@ components:
           format: date-time
         feedbackReady:
           type: boolean
-          description: True only when terminal provider cleanup permits feedback handoff
+          description: True only when independent terminal room cleanup is acknowledged and feedback dispatch is sent or not required
         endedAt:
           type: string
           format: date-time

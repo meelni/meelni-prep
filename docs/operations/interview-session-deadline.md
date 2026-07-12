@@ -25,11 +25,15 @@ Keep the relaunch feature default-off. With an authenticated Preview account:
 7. Exercise a room-delete failure in a safe test environment; confirm terminal
    truth commits, `feedbackReady` remains false, feedback polling reports
    `settling`, direct retry is rejected, and the Inngest run retries deletion.
-   After deletion is acknowledged, confirm one feedback event is sent and a
-   later replay sends no duplicate.
+   Repeat with insufficient signal and confirm `not_required` remains blocked
+   until cleanup acknowledgement. After acknowledgement, confirm eligible signal
+   sends one feedback event, skipped signal sends none, and later replays send no
+   duplicate.
 8. Confirm the recovery cron emits a new delivery identity only for an overdue
-   open session and does not leave it open beyond the next five-minute recovery
-   window. Future sessions must not accumulate duplicate scheduled deliveries.
+   open session or terminal `time_limit` session with
+   `deadline_room_cleanup_status=pending`. Exhaust the exact event's retries and
+   confirm recovery deletes the room, acknowledges the claim, and completes the
+   dispatch/not-required boundary within the next five-minute recovery window.
 9. Create an isolated open voice-session fixture with a room name but no
    `started_at`. Confirm recovery immediately attempts room deletion, commits
    `provider_failure`, and retries with the safe room-deletion error code if the
@@ -63,4 +67,6 @@ Never log tokens, credentials, transcript text, customer identifiers, or room me
 - An open voice room without a valid persisted start time is invalid, not
   deadline-exempt. Quarantine it, delete the room, and terminalize it as
   `provider_failure`; never silently omit it from recovery.
+- Migration `0008_deadline_room_cleanup_ack.sql` is additive and backfills
+  existing `time_limit` sessions to `pending`. Keep it applied during rollback.
 - Roll back application code only with the relaunch flag still off. Keep additive lifecycle and completion schema in place.

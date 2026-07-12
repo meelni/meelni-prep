@@ -70,6 +70,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { isFeedbackDispatchReadyForVisibility } from "@/lib/db/feedback-dispatch";
+import { isInterviewDeadlineRoomCleanupAcknowledged } from "@/lib/db/session-deadlines";
 import {
   attachCanonicalInterviewDeadline,
   InterviewSessionDeadlineUnavailableError,
@@ -115,6 +116,7 @@ export async function GET(
           ...attachCanonicalInterviewDeadline(session),
           feedbackReady: Boolean(
             feedback &&
+              isInterviewDeadlineRoomCleanupAcknowledged(session) &&
               isFeedbackDispatchReadyForVisibility({
                 status: feedback.dispatchStatus,
               })
