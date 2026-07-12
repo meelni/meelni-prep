@@ -45,7 +45,9 @@ async function main() {
   let modelVersion: string | null = null;
   let evaluator;
   let spendGuard: CalibrationSpendGuard | undefined;
-  let runAuthority: ReturnType<typeof activateCalibrationRun> | undefined;
+  let runAuthority:
+    | Awaited<ReturnType<typeof activateCalibrationRun>>
+    | undefined;
   const adjudicationApproval = args.approval
     ? JSON.parse(await readFile(resolve(process.cwd(), args.approval), "utf8"))
     : undefined;
@@ -68,7 +70,7 @@ async function main() {
     if (adjudicationApproval === undefined) {
       throw new Error("Live calibration requires an adjudication approval");
     }
-    runAuthority = activateCalibrationRun({
+    runAuthority = await activateCalibrationRun({
       authorization: SAV_198_SPEND_AUTHORIZATION,
       adjudicationApproval,
       model: modelVersion,

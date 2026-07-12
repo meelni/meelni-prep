@@ -148,10 +148,16 @@ push URL, or a repository redirect for seeding. Then verify repository and
 viewer IDs, both detailed rulesets, all four effective branch rules, the exact
 ref SHA, and the genesis payload before enabling the paid command.
 
-The live CLI repeats those checks, builds and hashes the approved plan, creates
-a unique empty-tree activation child through GitHub REST, and updates the ref
-with `force: false`. Concurrent sibling activations allow exactly one winner;
-the loser refuses before provider work.
+The live CLI does not invoke `gh`. It calls only `api.github.com:443` through
+Node HTTPS, using bundled TLS roots, standard hostname verification and SNI,
+redirect rejection, a ten-second timeout, and a 1 MiB response limit. The
+production path exposes no alternate base URL, dispatcher, client, agent, DNS,
+remote, or ledger path. It accepts only `GITHUB_TOKEN`; ambient GitHub
+host/config, Unix-socket, proxy, custom-CA, and TLS override variables fail
+closed before every request. The CLI then repeats the identity/protection
+checks, builds and hashes the approved plan, creates a unique empty-tree
+activation child, and updates the ref with `force: false`. Concurrent sibling
+activations allow exactly one winner; the loser refuses before provider work.
 
 An activated ref is terminal even when the process crashes before call one.
 There is no stale recovery or resume: all unused pre-reserved capacity is burned,
@@ -161,16 +167,30 @@ reports or caches may be deleted without affecting authority and must never
 contain prompts, transcripts, provider bodies, API keys, customer data, or
 Production data.
 
-After authorization, set the acknowledgement only for the command invocation:
+Derive the short-lived GitHub credential without displaying or pasting it. Do
+not run this command under shell tracing (`set -x`), and do not store the token
+in `.env.local`, documentation, reports, chat, or Linear. Remove any listed
+transport override from `.env.local`, then start the live command from a clean
+shell environment:
 
 ```bash
-MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
+GITHUB_TOKEN="$(gh auth token)" \
+env -u GH_CONFIG_DIR -u GH_HTTP_UNIX_SOCKET -u GH_HOST \
+  -u GITHUB_API_URL -u GITHUB_GRAPHQL_URL -u GITHUB_SERVER_URL \
+  -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
+  -u http_proxy -u https_proxy -u all_proxy -u no_proxy \
+  -u NODE_EXTRA_CA_CERTS -u NODE_DEBUG -u NODE_OPTIONS \
+  -u NODE_TLS_REJECT_UNAUTHORIZED -u NODE_USE_ENV_PROXY \
+  -u SSL_CERT_FILE -u SSL_CERT_DIR \
+  MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   npm run calibration:live -- \
   --approval /secure/path/evaluation-adjudication-approval.json \
   --output /tmp/meelni-calibration-live.json
 ```
 
-The command also requires `OPENAI_API_KEY` and a validated, all-approved
+Command substitution captures `gh auth token` directly into the child
+environment; it must not be echoed or logged. The command also requires
+`OPENAI_API_KEY` and a validated, all-approved
 adjudication artifact. Spend approval does not approve the candidate gold set.
 Never paste a key into chat,
 documentation, Linear, or a report. The acknowledgement is deliberately exact
