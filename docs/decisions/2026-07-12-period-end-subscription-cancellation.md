@@ -62,8 +62,11 @@ workflows.
 - Deletion acceptance snapshots the current subscription plus every historical
   customer mapping's subscription/customer IDs in deterministic order. It also
   snapshots every nonterminal LiveKit room. Session creation serializes with
-  that snapshot, so a room either commits before acceptance and is captured or
-  is rejected after acceptance.
+  that snapshot and provider creation is followed by a second identity-lock
+  fence before credentials are returned. If deletion won between persistence
+  and provider creation, the newly created room is durably re-enrolled with a
+  newer cleanup generation, terminated, and its credentials are withheld.
+  Older cleanup attempts cannot clear the newer generation.
 - Local data removal remains irreversible and does not wait for LiveKit. Room
   deletion disconnects participants and is retryable from the tombstone; a
   provider outage cannot roll back deletion acceptance or restore access. Raw

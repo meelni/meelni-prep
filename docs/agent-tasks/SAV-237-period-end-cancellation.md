@@ -16,7 +16,9 @@
   read snapshots, apply immediate account-mutation backpressure, recover expired
   Checkout attempts safely, remove automatic account-deletion refunds, tests and
   durable policy docs, capture every known historical Stripe subscription, and
-  terminate captured in-flight LiveKit rooms through retryable cleanup.
+  terminate captured in-flight LiveKit rooms through retryable cleanup. Fence
+  provider-created rooms again before returning credentials so deletion cannot
+  win between session persistence and LiveKit creation.
 - Out: manual support refunds, Stripe credential changes, catalog changes, and
   Production/test-mode provider mutations.
 - Provider dependency: Stripe test-mode rehearsal after code review.
@@ -38,8 +40,8 @@
   delayed/same-second webhook permutations.
 - Deletion tests proving tombstone-time access denial, retry-stable
   `prorate=false` cancellation, deterministic multi-customer/multi-subscription
-  capture, in-flight room termination, and absence of automatic refund
-  operations.
+  capture, in-flight room termination, post-create token withholding, cleanup
+  generation fencing, and absence of automatic refund operations.
 
 ## Rollout
 
@@ -53,6 +55,7 @@
 - Node 22.22: `npm run build` passed with the public-surface manifest check.
 - Disposable local PostgreSQL: `npm run db:check` and
   `npm run test:database-migrations` passed for clean and upgrade paths.
-- Targeted API, billing, integration, and workflow suites passed.
+- Targeted API 78/78, billing 114/114, integration 15/15, and workflow
+  171/171 suites passed.
 - No Stripe, LiveKit, Supabase Production, or other provider mutation was made;
   the documented test-mode/live-mode rehearsals remain human rollout gates.
