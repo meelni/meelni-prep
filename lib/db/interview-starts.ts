@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { db } from "./index";
 import { interviewQuestion, interviewSession, sessionQuestion } from "./schema";
@@ -282,7 +282,7 @@ export function createDrizzleInterviewStartStore(
                 "connecting",
               ]),
               isNull(interviewSession.endedAt),
-              sql`CURRENT_TIMESTAMP < ${input.deadlineAt.toISOString()}::timestamptz`
+              sql`clock_timestamp() < ${input.deadlineAt.toISOString()}::timestamptz`
             )
           )
           .returning({ id: interviewSession.id });
@@ -298,31 +298,33 @@ export function createDrizzleInterviewStartStore(
 
     async markProvisioned(input) {
       return database.transaction(async (transaction) => {
-        const databaseNow = await readDatabaseNow(
-          transaction,
-          input.startAttemptId
-        );
+        await transaction
+          .select({ id: interviewSession.id })
+          .from(interviewSession)
+          .where(eq(interviewSession.id, input.startAttemptId))
+          .limit(1)
+          .for("update");
         const rows = await transaction
           .update(interviewSession)
           .set({
             provisioningState: "ready",
             provisioningLeaseId: null,
             provisioningLeaseExpiresAt: null,
-            provisionedAt: databaseNow,
+            provisionedAt: sql`clock_timestamp()`,
           })
           .where(
             and(
               eq(interviewSession.id, input.startAttemptId),
               eq(interviewSession.provisioningState, "provisioning"),
               eq(interviewSession.provisioningLeaseId, input.leaseId),
-              gt(interviewSession.provisioningLeaseExpiresAt, databaseNow),
+              sql`${interviewSession.provisioningLeaseExpiresAt} > clock_timestamp()`,
               inArray(interviewSession.lifecycleState, [
                 "connecting",
                 "active",
                 "reconnecting",
               ]),
               isNull(interviewSession.endedAt),
-              sql`CURRENT_TIMESTAMP < ${input.deadlineAt.toISOString()}::timestamptz`
+              sql`clock_timestamp() < ${input.deadlineAt.toISOString()}::timestamptz`
             )
           )
           .returning({ id: interviewSession.id });
@@ -409,7 +411,7 @@ async function readDatabaseNow(
   sessionId: string
 ): Promise<Date> {
   const rows = await transaction
-    .select({ databaseNow: sql<Date>`CURRENT_TIMESTAMP` })
+    .select({ databaseNow: sql<Date>`clock_timestamp()` })
     .from(interviewSession)
     .where(eq(interviewSession.id, sessionId))
     .limit(1);

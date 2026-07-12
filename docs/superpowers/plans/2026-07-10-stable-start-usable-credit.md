@@ -129,14 +129,16 @@ terminal action, never both.
   `57ad88f0a2dbe151871d7a6e93af0417b02498aa9da6fe532e651fa4ed0110a1`.
 - PostgreSQL 17 clean and legacy-upgrade migrations pass, including concurrent
   same-attempt starts, final-credit races, both usable-signal arrival orders,
-  exact lease-expiry fencing, concurrent settlement replay, stale recovery,
-  strict preflight, and version-1 account deletion.
+  exact lease/deadline fencing after real row-lock waits, concurrent settlement
+  replay, stale recovery, strict preflight, and version-1 account deletion.
 - `npm run check:ci`, application/test typechecks, lint, Semgrep, the production
-  build, 51 Python runtime tests, agent verification, and focused start/token
+  build, 54 Python runtime tests, agent verification, and focused start/token
   regressions pass locally.
-- Independent engineering review found no P0. Its four P1 findings were closed:
-  expired-worker acknowledgement, ambiguous commit acknowledgement, deletion
-  lock ordering, and relaunch-gate coverage for reconnect tokens.
+- Independent engineering review found no P0. Its P1 findings were closed,
+  including expired-worker acknowledgement, ambiguous commit acknowledgement,
+  deletion lock ordering, relaunch-gate coverage, post-lock database wall-clock
+  authorization, non-destructive transient authorization failure, and
+  post-sign token expiry fencing.
 - Independent product/operations review confirmed the callback-origin gap is
   closed in code by trusted `VERCEL_URL` derivation with a non-development
   fail-closed fallback.

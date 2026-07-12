@@ -26,19 +26,72 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
   const h = harness();
   const result = await startInterviewSessionWorkflow(request(), h.deps);
   assert.equal(result.ok, true);
-  if (result.ok) assert.equal(result.body.question?.id, QUESTION_ID);
-  assert.equal(h.calls.includes("provider"), true);
+  if (!result.ok) return;
+  assert.deepEqual(result.body, {
+    sessionId: START_ID,
+    roomName: `interview-${START_ID}`,
+    token: "join",
+    url: "wss://test.livekit.cloud",
+    deadlineAt: "2026-07-10T12:30:00.000Z",
+    config: {
+      difficulty: "intermediate",
+      duration: 30,
+      hintMode: "off",
+      questionPreference: { recency: "very_recent", recentDays: 365 },
+    },
+    question: {
+      id: QUESTION_ID,
+      text: "How would you improve Acme?",
+      company: "Acme",
+    },
+  });
+  assert.equal(h.metadata?.session_id, START_ID);
+  assert.equal(h.metadata?.candidate_identity, USER_ID);
+  assert.equal(h.metadata?.deadline_at, "2026-07-10T12:30:00.000Z");
+  assert.equal(
+    h.metadata?.transcript_ingest_url,
+    "https://meelni.test/api/internal/transcript"
+  );
+  assert.deepEqual(h.calls, [
+    "user",
+    "trial",
+    "prepare",
+    "transition:connecting",
+    "schedule",
+    "provider",
+  ]);
 });
 
 test("selected question converges conflicting round identities before persistence and LiveKit", async () => {
   const h = harness();
   const result = await startInterviewSessionWorkflow(
-    request({ roundType: "strategy" }),
+    request({
+      roundType: "strategy",
+      config: {
+        duration: 30,
+        roundType: "strategy",
+        round_type: "behavioral",
+        interviewType: "execution",
+        interview_type: "strategy",
+      },
+    }),
     h.deps
   );
   assert.equal(result.ok, true);
   assert.equal(h.store.current?.roundType, "product_sense");
   assert.equal(h.metadata?.round_type, "product_sense");
+  for (const key of [
+    "roundType",
+    "round_type",
+    "interviewType",
+    "interview_type",
+  ]) {
+    assert.equal(key in (h.store.current?.config ?? {}), false);
+    assert.equal(
+      key in ((h.metadata?.config as Record<string, unknown>) ?? {}),
+      false
+    );
+  }
 });
 
 test("startInterviewSessionWorkflow rejects an unmappable selected question before side effects", async () => {
@@ -119,6 +172,7 @@ test("startInterviewSessionWorkflow returns no-credit response before session wo
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.status, 402);
   assert.equal(h.calls.includes("provider"), false);
+  assert.equal(h.store.current, null);
 });
 
 test("startInterviewSessionWorkflow activates the trial after user upsert and immediately before reservation", async () => {
@@ -196,7 +250,7 @@ test("a provider exception keeps the provisioning lease when lifecycle and teard
   assert.equal(h.store.current?.provisioningState, "pending");
 });
 
-test("a lost provisioning lease after credit consume fails closed and refunds", async () => {
+test("a lost provisioning lease after room creation fails closed and settles the reservation", async () => {
   const h = harness();
   h.store.markProvisioned = async () => {
     throw new InterviewProvisioningLeaseLostError();
@@ -207,9 +261,10 @@ test("a lost provisioning lease after credit consume fails closed and refunds", 
     assert.equal(result.body.error, "interview_start_acknowledgement_pending");
   assert.equal(h.calls.includes("terminate"), true);
   assert.equal(h.calls.includes("settle"), true);
+  assert.equal(h.calls.includes("provider"), true);
 });
 
-test("deadline scheduling failure closes the room, terminalizes, and releases credit", async () => {
+test("deadline scheduling failure releases the provisioning claim before room creation", async () => {
   const h = harness({
     scheduleDeadline: async () => {
       h.calls.push("schedule");
@@ -224,7 +279,7 @@ test("deadline scheduling failure closes the room, terminalizes, and releases cr
   assert.equal(h.store.current?.provisioningState, "pending");
 });
 
-test("post-provision failure claims cleanup even when signed presence already activated", async () => {
+test("a lost post-provision settlement acknowledgement preserves an authorized ready room", async () => {
   const h = harness({ completeRoomProvisioning: async () => false });
   const result = await startInterviewSessionWorkflow(request(), h.deps);
   assert.equal(result.ok, true);
@@ -232,7 +287,7 @@ test("post-provision failure claims cleanup even when signed presence already ac
   assert.equal(h.calls.includes("terminate"), false);
 });
 
-test("missing persisted start time fails closed before room creation and releases credit", async () => {
+test("missing persisted start time fails closed before room creation", async () => {
   const h = harness({
     prepareStart: async ({ start }) => ({
       ...persisted(start),
@@ -243,7 +298,7 @@ test("missing persisted start time fails closed before room creation and release
   assert.equal(h.calls.includes("provider"), false);
 });
 
-test("provider failure releases credit even when lifecycle persistence fails", async () => {
+test("retryable provider failure preserves the reservation for a safe retry", async () => {
   const h = harness({
     livekitProvider: {
       startInterviewRoom: async () => ({
@@ -257,9 +312,11 @@ test("provider failure releases credit even when lifecycle persistence fails", a
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.status, 503);
   assert.equal(h.calls.includes("terminate"), true);
+  assert.equal(h.calls.includes("release"), false);
+  assert.equal(h.store.current?.provisioningState, "pending");
 });
 
-test("credit consume failure surfaces lifecycle persistence failure after cleanup and release", async () => {
+test("a lost room-settlement acknowledgement preserves the authorized ready room", async () => {
   const h = harness({
     completeRoomProvisioning: async () => {
       throw new Error("credit ledger unavailable");

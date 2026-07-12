@@ -24,7 +24,13 @@ Provisioning uses a fenced, recoverable lease. The LiveKit adapter validates the
 deterministic room's exact metadata and requires exactly one matching agent
 dispatch before acknowledging readiness. It re-lists after dispatch creation so
 concurrent duplicates fail closed. A ready replay performs no provider or
-deadline creation and mints only a fresh participant token.
+deadline creation and mints only a fresh participant token after a new durable
+authorization. Provisioning lease and hard-deadline predicates use
+PostgreSQL's `clock_timestamp()` when the locked write is evaluated, so waiting
+for another transaction cannot preserve a transaction-start timestamp past a
+lease or deadline. A transient authorization read failure withholds the token
+and remains retryable; it is not durable evidence that a healthy ready room
+should be deleted or its credit settled.
 
 Expired leases are never taken over for new provider work because LiveKit does
 not expose a caller-supplied dispatch idempotency key. A five-minute recovery

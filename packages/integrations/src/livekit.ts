@@ -434,10 +434,13 @@ export async function issueInterviewParticipantToken(
 
     const signedToken = await token.toJwt();
     const actualExpiration = readJwtExpiration(signedToken);
+    const signedAtMilliseconds = now().getTime();
     if (
       actualExpiration === null ||
+      !Number.isFinite(signedAtMilliseconds) ||
       actualExpiration > expirationSeconds ||
-      actualExpiration * 1_000 <= observedAtMilliseconds
+      actualExpiration * 1_000 <= observedAtMilliseconds ||
+      actualExpiration * 1_000 <= signedAtMilliseconds
     ) {
       return invalidTokenExpiration();
     }

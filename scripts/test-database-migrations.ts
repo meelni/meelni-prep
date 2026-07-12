@@ -3461,6 +3461,7 @@ async function verifyStableStartConcurrency(
   const sameUser = "51000000-0000-4000-8000-000000000001";
   const distinctUser = "51000000-0000-4000-8000-000000000002";
   const orderingUser = "51000000-0000-4000-8000-000000000003";
+  const lockWaitUser = "51000000-0000-4000-8000-000000000004";
   const sameAttempt = "52000000-0000-4000-8000-000000000001";
   const distinctAttempts = [
     "52000000-0000-4000-8000-000000000002",
@@ -3469,6 +3470,10 @@ async function verifyStableStartConcurrency(
   const orderingAttempts = [
     "52000000-0000-4000-8000-000000000004",
     "52000000-0000-4000-8000-000000000005",
+  ];
+  const lockWaitAttempts = [
+    "52000000-0000-4000-8000-000000000006",
+    "52000000-0000-4000-8000-000000000007",
   ];
   const now = new Date();
   const clients = Array.from({ length: 6 }, () =>
@@ -3536,6 +3541,7 @@ async function verifyStableStartConcurrency(
       sameUser,
       distinctUser,
       orderingUser,
+      lockWaitUser,
     ].entries()) {
       await seedCreditTestUser(sql, userId, `stable-start-${index}`);
     }
@@ -3781,35 +3787,119 @@ async function verifyStableStartConcurrency(
       usable: 2,
       consume_events: 2,
     });
+
+    await ledgers[0]!.grantCredits({
+      userId: lockWaitUser,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: "postgres:stable-start:lock-wait-grant",
+      includedCredits: 2,
+      expiresAt: null,
+    });
+
+    await prepare(startStores[0]!, lockWaitUser, lockWaitAttempts[0]!);
+    const [deadlineRow] = await clients[0]!<
+      {
+        started_at: Date;
+        deadline_at: Date;
+      }[]
+    >`
+      UPDATE interview_session
+      SET started_at = clock_timestamp() - interval '29 minutes 59.8 seconds'
+      WHERE id = ${lockWaitAttempts[0]}::uuid
+      RETURNING started_at, started_at + interval '30 minutes' AS deadline_at
+    `;
+    assert.ok(deadlineRow);
+    let pendingDeadlineClaim:
+      | ReturnType<(typeof startStores)[number]["claimProvisioning"]>
+      | undefined;
+    await clients[0]!.begin(async (transaction) => {
+      await transaction`
+        SELECT id FROM interview_session
+        WHERE id = ${lockWaitAttempts[0]}::uuid
+        FOR UPDATE
+      `;
+      pendingDeadlineClaim = startStores[1]!.claimProvisioning({
+        startAttemptId: lockWaitAttempts[0]!,
+        userId: lockWaitUser,
+        requestFingerprint: "c".repeat(64),
+        leaseId: "f9999999-9999-4999-8999-999999999991",
+        now: new Date(deadlineRow.started_at),
+        deadlineAt: new Date(deadlineRow.deadline_at),
+      });
+      await transaction`SELECT pg_sleep(0.35)`;
+    });
+    const deadlineClaim = await pendingDeadlineClaim!;
+    assert.equal(deadlineClaim?.disposition, "not_joinable");
+
+    await prepare(startStores[2]!, lockWaitUser, lockWaitAttempts[1]!);
+    const leaseDeadlineAt = new Date(now.getTime() + 30 * 60_000);
+    const leaseId = "f9999999-9999-4999-8999-999999999992";
+    const leaseClaim = await startStores[2]!.claimProvisioning({
+      startAttemptId: lockWaitAttempts[1]!,
+      userId: lockWaitUser,
+      requestFingerprint: "c".repeat(64),
+      leaseId,
+      now,
+      deadlineAt: leaseDeadlineAt,
+    });
+    assert.equal(leaseClaim.disposition, "claimed");
+    await clients[2]!`
+      UPDATE interview_session
+      SET lifecycle_state = 'connecting',
+        provisioning_lease_expires_at = clock_timestamp() + interval '200 milliseconds'
+      WHERE id = ${lockWaitAttempts[1]}::uuid
+    `;
+    let delayedAcknowledgement: Promise<unknown> | undefined;
+    await clients[2]!.begin(async (transaction) => {
+      await transaction`
+        SELECT id FROM interview_session
+        WHERE id = ${lockWaitAttempts[1]}::uuid
+        FOR UPDATE
+      `;
+      delayedAcknowledgement = startStores[3]!.markProvisioned({
+        startAttemptId: lockWaitAttempts[1]!,
+        leaseId,
+        provisionedAt: now,
+        deadlineAt: leaseDeadlineAt,
+      });
+      await transaction`SELECT pg_sleep(0.35)`;
+    });
+    await assert.rejects(
+      delayedAcknowledgement!,
+      InterviewProvisioningLeaseLostError
+    );
   } finally {
     // The v1 correlation FK is NO ACTION. Exercise the application-required
     // deletion order: reservation evidence first, then session, then user.
     await sql`
       DELETE FROM credit_transaction
-      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid)
+      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid, ${lockWaitUser}::uuid)
     `;
     await sql`
       DELETE FROM credit_reservation_grant allocation
       USING credit_reservation reservation
       WHERE allocation.reservation_id = reservation.id
         AND reservation.user_id IN (
-          ${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid
+          ${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid,
+          ${lockWaitUser}::uuid
         )
     `;
     await sql`
       DELETE FROM credit_reservation
-      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid)
+      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid, ${lockWaitUser}::uuid)
     `;
     await sql`
       DELETE FROM credit_grant
-      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid)
+      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid, ${lockWaitUser}::uuid)
     `;
     await sql`
       DELETE FROM transcript_turn
       WHERE session_id IN (
         ${sameAttempt}::uuid,
         ${distinctAttempts[0]}::uuid, ${distinctAttempts[1]}::uuid,
-        ${orderingAttempts[0]}::uuid, ${orderingAttempts[1]}::uuid
+        ${orderingAttempts[0]}::uuid, ${orderingAttempts[1]}::uuid,
+        ${lockWaitAttempts[0]}::uuid, ${lockWaitAttempts[1]}::uuid
       )
     `;
     await sql`
@@ -3817,19 +3907,20 @@ async function verifyStableStartConcurrency(
       WHERE session_id IN (
         ${sameAttempt}::uuid,
         ${distinctAttempts[0]}::uuid, ${distinctAttempts[1]}::uuid,
-        ${orderingAttempts[0]}::uuid, ${orderingAttempts[1]}::uuid
+        ${orderingAttempts[0]}::uuid, ${orderingAttempts[1]}::uuid,
+        ${lockWaitAttempts[0]}::uuid, ${lockWaitAttempts[1]}::uuid
       )
     `;
     await sql`
       DELETE FROM interview_session
-      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid)
+      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid, ${lockWaitUser}::uuid)
     `;
     await sql`
       DELETE FROM interview_question WHERE id = ${questionId}::uuid
     `;
     await sql`
       DELETE FROM app_user
-      WHERE id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid)
+      WHERE id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid, ${lockWaitUser}::uuid)
     `;
     await Promise.all(clients.map((client) => client.end()));
   }
