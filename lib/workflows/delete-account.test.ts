@@ -229,7 +229,7 @@ test("LiveKit cleanup failure remains retryable after irreversible local accepta
   );
 });
 
-test("a missing provisioning room remains durable because provider creation may still finish", async () => {
+test("an ahead application clock cannot override the database lease predicate", async () => {
   const processedRooms: unknown[][] = [];
   const deps = createDeps([]);
   deps.terminateLiveKitRoom = async () => ({ terminated: false });
@@ -252,10 +252,10 @@ test("a missing provisioning room remains durable because provider creation may 
   assert.deepEqual(processedRooms, [[]]);
 });
 
-test("a missing provisioning room clears only after its durable lease expires", async () => {
+test("a behind application clock cannot retain a database-expired lease", async () => {
   const processedRooms: unknown[][] = [];
   const deps = createDeps([]);
-  deps.now = () => new Date("2026-07-12T00:10:00.000Z");
+  deps.isProvisioningLeaseExpired = async () => true;
   deps.terminateLiveKitRoom = async () => ({ terminated: false });
   deps.markCompleted = async (_userId, _fingerprints, rooms) => {
     processedRooms.push(rooms);
@@ -281,6 +281,33 @@ test("a missing provisioning room clears only after its durable lease expires", 
       },
     ],
   ]);
+});
+
+test("database clock failure retains the provisioning target for job retry", async () => {
+  const deps = createDeps([]);
+  let completed = false;
+  deps.terminateLiveKitRoom = async () => ({ terminated: false });
+  deps.isProvisioningLeaseExpired = async () => {
+    throw new Error("private database endpoint");
+  };
+  deps.markCompleted = async () => {
+    completed = true;
+  };
+
+  await assert.rejects(() =>
+    deleteAccountWorkflow(
+      {
+        ...REQUEST,
+        livekitRooms: REQUEST.livekitRooms.map((room) => ({
+          ...room,
+          provisioning: true,
+          provisioningExpiresAt: "2026-07-12T00:10:00.000Z",
+        })),
+      },
+      deps
+    )
+  );
+  assert.equal(completed, false);
 });
 
 test("a room that appears after the first missing check remains durable and is terminated on retry", async () => {
@@ -389,6 +416,6 @@ function createDeps(calls: string[]): DeleteAccountWorkflowDeps {
     markCompleted: async (id) => {
       calls.push(`completed:${id}`);
     },
-    now: () => new Date("2026-07-12T00:00:00.000Z"),
+    isProvisioningLeaseExpired: async () => false,
   };
 }

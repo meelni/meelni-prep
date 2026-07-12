@@ -24,7 +24,10 @@ export interface DeleteAccountWorkflowDeps {
     processedFingerprints: string[],
     processedLiveKitRooms: ProcessedLiveKitDeletionRoom[]
   ): Promise<void>;
-  now(): Date;
+  isProvisioningLeaseExpired(
+    userId: string,
+    room: ProcessedLiveKitDeletionRoom
+  ): Promise<boolean>;
 }
 
 export async function deleteAccountWorkflow(
@@ -56,15 +59,16 @@ export async function deleteAccountWorkflow(
     // is different: the create call may still commit after this lookup, so its
     // raw subject must survive until start either advances the generation or a
     // later cleanup actually terminates the room.
+    const roomIdentity = {
+      fingerprint: room.fingerprint,
+      generation: room.generation,
+    };
     const provisioningLeaseExpired =
       room.provisioning &&
-      room.provisioningExpiresAt !== null &&
-      deps.now().getTime() >= Date.parse(room.provisioningExpiresAt);
+      !result.terminated &&
+      (await deps.isProvisioningLeaseExpired(request.userId, roomIdentity));
     if (result.terminated || !room.provisioning || provisioningLeaseExpired) {
-      processedLiveKitRooms.push({
-        fingerprint: room.fingerprint,
-        generation: room.generation,
-      });
+      processedLiveKitRooms.push(roomIdentity);
     } else if (room.provisioningExpiresAt !== null) {
       retainedProvisioningExpiries.push(room.provisioningExpiresAt);
     }

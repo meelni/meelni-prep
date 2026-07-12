@@ -114,8 +114,12 @@ are retained as provisioning subjects: a provider 404 cannot clear them because
 an ambiguous room creation may still commit afterward. Each subject stores a database-clock ten-minute
 lease, chosen as the conservative bound for the LiveKit create/dispatch HTTP
 attempt and delayed outcome uncertainty. A missing room stays protected before
-that deadline; durable execution wakes at the deadline, calls room termination
-again, and may then clear an exact-generation missing result. Legacy null-expiry
+that deadline. After a missing provider result, the deletion worker locks the
+tombstone and asks PostgreSQL `clock_timestamp()` whether that exact fingerprint
+and generation has expired. Application time is not expiry authority. A
+database error retains the subject and fails the job for retry; only a
+database-confirmed expiry may clear the exact-generation missing result. Durable
+execution wakes at the deadline and calls room termination again. Legacy null-expiry
 subjects receive one persisted database-clock lease under the tombstone row lock
 before cleanup begins. A duplicate deletion request unions its fresh
 snapshot with the tombstone under the same lock; it cannot drop an unresolved

@@ -6789,6 +6789,9 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
   const { AccountDeletionPendingError, upsertUser } = await import(
     "../lib/db/users"
   );
+  const { listRecoverableProviderFailureCredits } = await import(
+    "../lib/billing/provider-failure-credit-recovery"
+  );
   await sql`
     INSERT INTO app_user (id, email)
     VALUES (${USER_RECREATION_RACE}::uuid, 'deletion-race@example.invalid')
