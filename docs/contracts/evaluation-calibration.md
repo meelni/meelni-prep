@@ -67,7 +67,7 @@ gold-set preflight and 100% insufficient-handling threshold.
 
 ## Report contract
 
-Every command emits `evaluation-calibration-report.v3` JSON with:
+Every command emits `evaluation-calibration-report.v4` JSON with:
 
 - execution kind, evaluator model, repetition count, and paid-provider status;
 - gold-set, adjudication, schema, prompt, and rubric versions;
@@ -79,6 +79,17 @@ Every command emits `evaluation-calibration-report.v3` JSON with:
 - the thresholds used for that report;
 - separate deterministic, live-provider, and launch gate states;
 - case-level failure codes and unresolved blockers.
+
+Live reports also include `execution.cost`, an
+`evaluation-calibration-cost-report.v1` object with attempted and completed
+calls, cumulative worst-case reservations, reconciled actual cost,
+unreconciled reservation cost, estimated committed cost, the deterministic stop
+reason, and the exact reviewed pricing contract. Preflight and deterministic
+self-test reports set `execution.cost` to `null`.
+
+Reports contain aggregate metrics, case IDs, version identifiers, and failure
+codes only. They never contain prompts, transcript text, provider response
+content, API keys, or provider error bodies.
 
 Evaluator calls and paid-provider calls are separate metrics. A deterministic
 self-test reports its local evaluator invocations but must always report zero
@@ -98,6 +109,7 @@ The acceptance thresholds are:
 | Evaluator model identity matches expectation    |            100% |
 | Repetitions per scored case                     |       exactly 3 |
 | Maximum provider calls                          |              96 |
+| Maximum cumulative paid-run spend               |           $3.00 |
 
 Adjudicated evidence-anchor agreement is also required at 100%. It is reported
 separately from basic evidence validity so a provider cannot pass merely by
@@ -110,12 +122,25 @@ band. Every unstable dimension records case, run, dimension, actual score, and
 observed range. Model mismatches record both configured expectation and observed
 result identity.
 
-For live runs, `execution.modelVersion` is the configured expected model and
-`modelVersionBasis` says `configured_provider_model`; that value alone is not
-provider proof. The OpenAI adapter records the API response's `model` value on
-each validated output, and the report lists those values in
+For live runs, `execution.modelVersion` must be the pinned snapshot
+`gpt-5.1-2025-11-13`; moving aliases and unknown models fail before call one.
+`evaluation-calibration-pricing.v1` records the reviewed Standard pricing from
+the official model page on 2026-07-11: $1.25 per million uncached input tokens,
+$0.125 per million cached input tokens, and $10 per million output tokens.
+`modelVersionBasis` says `configured_provider_model`; configuration alone is
+not provider proof. The OpenAI adapter records the API response's `model` value
+on each validated output, and the report lists those values in
 `observedModelVersions`. Acceptance requires every observed value to match the
-configured expectation. Deterministic runs use an explicit local identifier.
+pinned expectation. Deterministic runs use an explicit local identifier.
+
+Immediately before each provider invocation, the runner reserves a worst-case
+cost using a conservative input-token ceiling and a 2,000 completion-token
+limit. A call is not made when its reservation could put estimated committed
+spend above $3. Successful responses must include internally consistent usage
+within both ceilings; the reservation is then reconciled to actual uncached,
+cached, and output token usage. Missing, malformed, or over-reservation usage,
+as well as provider failure, stops the run before another call. Uncertain spend
+retains its full reservation.
 
 ## Approval artifact contract
 
@@ -152,5 +177,6 @@ required. A live execution that misses any threshold must fail rather than
 downgrade itself to a self-test.
 
 The evaluated modes accept exactly three repetitions. The run budget is
-validated before evaluator work and rejects any plan above 96 calls, so a CLI
-typo cannot create unbounded provider spend.
+validated before evaluator work and rejects any plan above 96 calls. Live mode
+also requires a validated, all-approved adjudication artifact before call one;
+spend authorization does not substitute for PM/product-owner adjudication.

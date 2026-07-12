@@ -21,6 +21,30 @@ export const FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY =
   "feedback_configuration_invalid_openai_key";
 export const FEEDBACK_GENERATION_FAILED = "feedback_generation_failed";
 
+export interface FeedbackProviderUsage {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface FeedbackProviderResult {
+  evaluation: FeedbackV2Result;
+  usage: FeedbackProviderUsage;
+}
+
+export class FeedbackProviderInvocationError extends Error {
+  constructor(
+    message: string,
+    readonly usage?: FeedbackProviderUsage,
+    readonly observedModel?: string,
+    options?: ErrorOptions
+  ) {
+    super(message, options);
+    this.name = "FeedbackProviderInvocationError";
+  }
+}
+
 /**
  * Call the configured evaluation model and accept only strict, transcript-
  * grounded feedback v2. Parsing and score arithmetic stay provider-neutral in
@@ -31,6 +55,26 @@ export async function generateFeedback(
   transcript: FeedbackTranscriptTurn[],
   evaluationState: FeedbackEvaluationState
 ): Promise<FeedbackV2Result> {
+  try {
+    return (
+      await generateFeedbackWithUsage(roundType, transcript, evaluationState)
+    ).evaluation;
+  } catch (error) {
+    const code = getEvaluationFailureCode(error);
+    console.error("[Feedback Evaluation] generation_failed", {
+      code,
+      ...toSafeErrorLog(error),
+    });
+    throw new Error(code);
+  }
+}
+
+export async function generateFeedbackWithUsage(
+  roundType: string,
+  transcript: FeedbackTranscriptTurn[],
+  evaluationState: FeedbackEvaluationState,
+  options: { maxCompletionTokens?: number } = {}
+): Promise<FeedbackProviderResult> {
   const prepared = prepareFeedbackTranscript(transcript);
   if (!prepared.eligible || prepared.transcript.length === 0) {
     throw new Error(
@@ -59,38 +103,95 @@ export async function generateFeedback(
       ],
       temperature: 0.2,
       response_format: { type: "json_object" },
+      ...(options.maxCompletionTokens === undefined
+        ? {}
+        : { max_completion_tokens: options.maxCompletionTokens }),
     });
 
+    const usage = parseProviderUsage(completion.usage, completion.model);
+
     const responseText = completion.choices[0]?.message.content;
-    if (!responseText) throw new Error("Evaluation model returned no content");
+    if (!responseText) {
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_returned_no_content",
+        usage,
+        completion.model
+      );
+    }
 
     let unknownResponse: unknown;
     try {
       unknownResponse = JSON.parse(responseText);
     } catch (error) {
-      throw new Error("Evaluation model returned invalid JSON", {
-        cause: error,
-      });
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_returned_invalid_json",
+        usage,
+        completion.model,
+        { cause: error }
+      );
     }
 
     // Preserve the model identity reported by the provider, which may resolve a
     // configured alias to a dated snapshot.
-    const result = parseFeedbackV2(unknownResponse, {
-      transcript: aliasProjection.transcript,
-      evaluationState,
-      modelVersion: completion.model,
-    });
-    return normalizeFeedbackV2Recommendations(
-      restoreCanonicalTranscriptIds(result, aliasProjection.canonicalIdByAlias)
-    );
+    try {
+      const parsed = parseFeedbackV2(unknownResponse, {
+        transcript: aliasProjection.transcript,
+        evaluationState,
+        modelVersion: completion.model,
+      });
+      return {
+        evaluation: normalizeFeedbackV2Recommendations(
+          restoreCanonicalTranscriptIds(
+            parsed,
+            aliasProjection.canonicalIdByAlias
+          )
+        ),
+        usage,
+      };
+    } catch (error) {
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_returned_invalid_feedback",
+        usage,
+        completion.model,
+        { cause: error }
+      );
+    }
   } catch (error) {
-    const code = getEvaluationFailureCode(error);
-    console.error("[Feedback Evaluation] generation_failed", {
-      code,
-      ...toSafeErrorLog(error),
-    });
-    throw new Error(code);
+    if (error instanceof FeedbackProviderInvocationError) throw error;
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_invocation_failed",
+      undefined,
+      undefined,
+      { cause: error }
+    );
   }
+}
+
+function parseProviderUsage(
+  usage:
+    | {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+        prompt_tokens_details?: { cached_tokens?: number } | null;
+      }
+    | null
+    | undefined,
+  observedModel: string
+): FeedbackProviderUsage {
+  if (!usage) {
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_usage_missing",
+      undefined,
+      observedModel
+    );
+  }
+  return {
+    inputTokens: usage.prompt_tokens ?? Number.NaN,
+    cachedInputTokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
+    outputTokens: usage.completion_tokens ?? Number.NaN,
+    totalTokens: usage.total_tokens ?? Number.NaN,
+  };
 }
 
 export function normalizeFeedbackV2Recommendations(
@@ -107,17 +208,19 @@ export function normalizeFeedbackV2Recommendations(
 }
 
 export function getEvaluationFailureCode(error: unknown): string {
-  if (
-    error instanceof Error &&
-    error.message === "OPENAI_API_KEY environment variable is required"
-  ) {
-    return FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY;
+  let current = error;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (
+      current instanceof Error &&
+      current.message === "OPENAI_API_KEY environment variable is required"
+    ) {
+      return FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY;
+    }
+    if (isInvalidOpenAIKeyError(current)) {
+      return FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY;
+    }
+    current = current instanceof Error ? current.cause : undefined;
   }
-
-  if (isInvalidOpenAIKeyError(error)) {
-    return FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY;
-  }
-
   return FEEDBACK_GENERATION_FAILED;
 }
 
@@ -134,6 +237,7 @@ function isInvalidOpenAIKeyError(error: unknown): boolean {
     safeFields.name === "AuthenticationError"
   );
 }
+
 function getOpenAI() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {

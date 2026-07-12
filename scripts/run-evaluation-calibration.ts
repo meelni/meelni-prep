@@ -8,7 +8,11 @@ import {
   type CalibrationExecutionKind,
 } from "@/lib/evaluation/calibration";
 import { getFeedbackEvaluationModel } from "@/lib/evaluation/model-config";
-import { generateFeedback } from "@/lib/evaluation/scorer";
+import {
+  CALIBRATION_MAX_COMPLETION_TOKENS,
+  CalibrationSpendGuard,
+} from "@/lib/evaluation/calibration-budget";
+import { generateFeedbackWithUsage } from "@/lib/evaluation/scorer";
 import { getCalibrationCliExitCode } from "@/lib/evaluation/calibration-cli";
 
 const LIVE_ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL";
@@ -33,6 +37,7 @@ async function main() {
   }
   let modelVersion: string | null = null;
   let evaluator;
+  let spendGuard: CalibrationSpendGuard | undefined;
   const adjudicationApproval = args.approval
     ? JSON.parse(await readFile(resolve(process.cwd(), args.approval), "utf8"))
     : undefined;
@@ -51,13 +56,19 @@ async function main() {
       throw new Error("OPENAI_API_KEY is required for an authorized live run");
     }
     modelVersion = getFeedbackEvaluationModel();
+    spendGuard = new CalibrationSpendGuard(modelVersion);
     evaluator = ({
       fixture,
       evaluationState,
     }: Parameters<
       ReturnType<typeof createDeterministicCalibrationEvaluator>
     >[0]) =>
-      generateFeedback(fixture.roundType, fixture.transcript, evaluationState);
+      generateFeedbackWithUsage(
+        fixture.roundType,
+        fixture.transcript,
+        evaluationState,
+        { maxCompletionTokens: CALIBRATION_MAX_COMPLETION_TOKENS }
+      );
   }
 
   const report = await runEvaluationCalibration({
@@ -66,6 +77,7 @@ async function main() {
     modelVersion,
     repetitions,
     adjudicationApproval,
+    spendGuard,
   });
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
   if (args.output) {
