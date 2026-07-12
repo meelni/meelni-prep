@@ -79,8 +79,12 @@ It also runs ten real completion transactions over independent connections,
 proves one feedback/event identity, verifies one dispatch lease winner with
 fenced acknowledgements, and repairs terminal-without-feedback state without
 changing terminal truth. The reconnect migration rehearsal additionally proves
-database-clock provisioning and timeout fences, exact cutoff ownership, and
-fair progress beyond a 250-row poison recovery page.
+database-clock provisioning and timeout fences, exact cutoff ownership for rows
+staged between migrations 0008 and 0009, and fair progress beyond a 250-row
+poison recovery page. The 0009 upgrade mirrors runtime duration normalization:
+only numeric JSON values `15`, `30`, and `45` are canonical; missing or legacy
+config shapes use the 30-minute fallback, and equality belongs to the hard
+deadline.
 
 ## Preview and Production rollout
 
