@@ -7,7 +7,7 @@
 ## Stack topology
 
 - [ ] This PR targets `main` and is not stacked.
-- [ ] This PR is declared in `.github/stacked-prs.json` and contains the exact current parent head.
+- [ ] This PR's child and parent PR/ref identities are declared in `.github/stacked-prs.json`, and the child contains the current parent head.
 
 For a stacked PR, replace the values below after the final push. CI rejects
 missing or superseded evidence automatically.

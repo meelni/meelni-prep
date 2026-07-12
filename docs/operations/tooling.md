@@ -209,8 +209,10 @@ rerun TypeScript/Python golden contract fixtures before deployment.
 
 ## Relaunch Pull Request Verification
 
-Stack relationships and exact expected parent heads live in the trusted
-default-branch copy of `.github/stacked-prs.json`. The read-only
+Immutable stack identities live in the trusted default-branch copy of
+`.github/stacked-prs.json`: repository, child PR/head ref, and parent PR/head
+ref. Current commit SHAs are resolved dynamically and are never registry
+state. The read-only
 `pull_request_target` workflow checks out only default-branch code, binds a
 declaration to the exact PR number and source repository, and fetches the
 server-owned PR head plus its declared parent. It never executes proposed PR
@@ -227,7 +229,10 @@ globally serialized, maximum-depth pending queue retains parent movement and
 closure events. The publisher refreshes exact child and parent refs just before
 success; a deleted parent ref fails the child closed. A five-minute trusted
 schedule and manual dispatch remain backstops for manifest movement and
-operator recovery.
+operator recovery. Parent-triggered child topology failures fail the child's
+custom check without failing the parent's stable required context. A triggering
+registered child's own topology failure, or any API/publication failure, fails
+the stable context.
 
 Unregistered PRs targeting `main` publish an explicit successful custom check
 whose output says the PR is not a registered stack child. The required

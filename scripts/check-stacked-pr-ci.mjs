@@ -30,7 +30,7 @@ function fetchExactPullRequest(repo, remote, prNumber) {
       remote,
       `+refs/pull/${prNumber}/head:${revision}`,
     ],
-    { stdio: "inherit" }
+    { stdio: ["ignore", "pipe", "pipe"] }
   );
   return revision;
 }
@@ -47,9 +47,18 @@ function fetchParent(repo, remote, parentRef) {
       remote,
       `+refs/heads/${parentRef}:${revision}`,
     ],
-    { stdio: "inherit" }
+    { stdio: ["ignore", "pipe", "pipe"] }
   );
   return revision;
+}
+
+function isMissingRemoteRef(error) {
+  const output = [error?.message, error?.stderr?.toString()]
+    .filter(Boolean)
+    .join("\n");
+  return /couldn't find remote ref|remote ref does not exist|not our ref/i.test(
+    output
+  );
 }
 
 export function parseStackEvent(eventContent) {
@@ -177,9 +186,191 @@ export async function githubApi({
     }
   );
   if (!response.ok) {
-    throw new Error(`stack_gate_github_api_failed:${response.status}`);
+    const error = new Error(`stack_gate_github_api_failed:${response.status}`);
+    error.status = response.status;
+    throw error;
   }
   return response.status === 204 ? null : response.json();
+}
+
+function pullRequestEvent({ repository, defaultBranch, pullRequest }) {
+  return JSON.stringify({
+    number: pullRequest.number,
+    repository: { full_name: repository, default_branch: defaultBranch },
+    pull_request: {
+      number: pullRequest.number,
+      body: pullRequest.body,
+      head: {
+        ref: pullRequest.head?.ref,
+        sha: pullRequest.head?.sha,
+        repo: { full_name: pullRequest.head?.repo?.full_name },
+      },
+      base: { ref: pullRequest.base?.ref },
+    },
+  });
+}
+
+function topologyFailure(entry, errors, pullRequest) {
+  return {
+    status: "fail",
+    pr: entry.pr,
+    parentPr: entry.parentPr,
+    headRef: entry.headRef,
+    head: pullRequest?.head?.sha,
+    parentRef: entry.parentRef,
+    errors,
+  };
+}
+
+function validatePullRequestSnapshot({ pullRequest, entry, repository }) {
+  const errors = [];
+  if (pullRequest?.number !== entry.pr)
+    errors.push("github_pr_differs_from_manifest_entry");
+  if (pullRequest?.state !== "open") errors.push("child_pr_not_open");
+  if (pullRequest?.head?.ref !== entry.headRef)
+    errors.push("github_head_differs_from_manifest_entry");
+  if (pullRequest?.head?.repo?.full_name !== repository)
+    errors.push("stacked_pr_must_originate_from_manifest_repository");
+  if (pullRequest?.base?.ref !== entry.parentRef)
+    errors.push("github_base_differs_from_declared_parent");
+  if (!/^[0-9a-f]{40}$/.test(pullRequest?.head?.sha ?? ""))
+    errors.push("github_child_head_invalid");
+  return errors;
+}
+
+function validateParentSnapshot({ pullRequest, entry, repository }) {
+  const errors = [];
+  if (pullRequest?.number !== entry.parentPr)
+    errors.push("parent_pr_differs_from_manifest_entry");
+  if (pullRequest?.state !== "open") errors.push("parent_pr_not_open");
+  if (pullRequest?.head?.ref !== entry.parentRef)
+    errors.push("parent_head_differs_from_manifest_entry");
+  if (pullRequest?.head?.repo?.full_name !== repository)
+    errors.push("parent_pr_must_originate_from_manifest_repository");
+  if (!/^[0-9a-f]{40}$/.test(pullRequest?.head?.sha ?? ""))
+    errors.push("github_parent_head_invalid");
+  return errors;
+}
+
+export async function resolveRegisteredStack({
+  prNumber,
+  env = process.env,
+  repo = process.cwd(),
+  remote = "origin",
+  manifestPath,
+  api = githubApi,
+  fetchImpl,
+} = {}) {
+  const manifest = loadStackManifest(manifestPath);
+  const entry = manifest.stacks.find((candidate) => candidate.pr === prNumber);
+  const token = env.GITHUB_TOKEN;
+  const child = await api({
+    token,
+    repository: manifest.repository,
+    path: `/pulls/${prNumber}`,
+    fetchImpl,
+  });
+  if (!entry) {
+    const errors = [];
+    if (child?.number !== prNumber) errors.push("github_pr_number_invalid");
+    if (child?.state !== "open") errors.push("github_pr_not_open");
+    if (!/^[0-9a-f]{40}$/.test(child?.head?.sha ?? ""))
+      errors.push("github_child_head_invalid");
+    const isSameRepository =
+      child?.head?.repo?.full_name === manifest.repository;
+    const defaultBranch = env.GITHUB_DEFAULT_BRANCH ?? "main";
+    if (child?.base?.ref !== defaultBranch) {
+      errors.push(
+        isSameRepository
+          ? "stack_relationship_missing_from_manifest"
+          : "stacked_pr_must_originate_from_manifest_repository"
+      );
+    }
+    return {
+      status: errors.length > 0 ? "fail" : "not_stacked",
+      pr: prNumber,
+      headRef: child?.head?.ref,
+      head: child?.head?.sha,
+      errors,
+    };
+  }
+  const childErrors = validatePullRequestSnapshot({
+    pullRequest: child,
+    entry,
+    repository: manifest.repository,
+  });
+  if (childErrors.length > 0) return topologyFailure(entry, childErrors, child);
+
+  let parent;
+  try {
+    parent = await api({
+      token,
+      repository: manifest.repository,
+      path: `/pulls/${entry.parentPr}`,
+      fetchImpl,
+    });
+  } catch (error) {
+    if (error?.status === 404 || error?.message?.endsWith(":404")) {
+      return topologyFailure(entry, ["parent_pr_missing"], child);
+    }
+    throw error;
+  }
+  const parentErrors = validateParentSnapshot({
+    pullRequest: parent,
+    entry,
+    repository: manifest.repository,
+  });
+  if (parentErrors.length > 0)
+    return topologyFailure(entry, parentErrors, child);
+
+  let headRevision;
+  let parentRevision;
+  try {
+    headRevision = fetchExactPullRequest(repo, remote, entry.pr);
+  } catch (error) {
+    if (isMissingRemoteRef(error))
+      return topologyFailure(entry, ["child_ref_missing"], child);
+    throw error;
+  }
+  try {
+    parentRevision = fetchParent(repo, remote, entry.parentRef);
+  } catch (error) {
+    if (isMissingRemoteRef(error))
+      return topologyFailure(entry, ["parent_ref_missing"], child);
+    throw error;
+  }
+  const fetchedHead = git(repo, [
+    "rev-parse",
+    "--verify",
+    `${headRevision}^{commit}`,
+  ]);
+  const fetchedParent = git(repo, [
+    "rev-parse",
+    "--verify",
+    `${parentRevision}^{commit}`,
+  ]);
+  const refErrors = [];
+  if (fetchedHead !== child.head.sha)
+    refErrors.push("github_child_head_is_stale");
+  if (fetchedParent !== parent.head.sha)
+    refErrors.push("github_parent_head_is_stale");
+  if (refErrors.length > 0) return topologyFailure(entry, refErrors, child);
+
+  return checkStackTopology({
+    repo,
+    manifest,
+    headRef: entry.headRef,
+    headRevision,
+    parentRevision,
+    evidence: extractStackEvidence(
+      pullRequestEvent({
+        repository: manifest.repository,
+        defaultBranch: env.GITHUB_DEFAULT_BRANCH ?? "main",
+        pullRequest: child,
+      })
+    ),
+    requireEvidence: true,
+  });
 }
 
 export async function createStackCheck({
@@ -250,62 +441,69 @@ export async function completeStackCheck({
   });
 }
 
-export function refreshStackGeneration({
-  eventContent,
+export async function refreshStackGeneration({
+  prNumber,
   result,
+  env = process.env,
   repo = process.cwd(),
   remote = "origin",
   manifestPath,
+  api = githubApi,
+  fetchImpl,
 } = {}) {
-  const { pullRequest, prNumber, headSha } = parseStackEvent(eventContent);
-  if (result.status !== "pass") return result;
-
-  const manifest = loadStackManifest(manifestPath);
-  const declaration = validatePullRequestDeclaration({
-    manifest,
+  const current = await resolveRegisteredStack({
     prNumber,
-    headRef: pullRequest.head.ref,
-    headRepository: pullRequest.head.repo.full_name,
-    baseRef: pullRequest.base.ref,
-    defaultBranch:
-      JSON.parse(eventContent).repository?.default_branch ?? "main",
+    env,
+    repo,
+    remote,
+    manifestPath,
+    api,
+    fetchImpl,
   });
-  if (declaration.errors.length > 0 || !declaration.entry) {
+  const errors = [];
+  if (current.head && result.head && current.head !== result.head) {
+    errors.push("child_moved_during_verification");
+  }
+  if (
+    current.actualParentHead &&
+    result.actualParentHead &&
+    current.actualParentHead !== result.actualParentHead
+  ) {
+    errors.push("parent_moved_during_verification");
+  }
+  if (result.status === "not_stacked") {
+    if (current.status === "not_stacked" && errors.length === 0) return current;
     return {
       ...result,
       status: "fail",
       errors: [
-        ...declaration.errors,
-        "stack_declaration_changed_during_verification",
+        ...new Set([
+          ...errors,
+          "topology_changed_during_verification",
+          ...(current.errors ?? []),
+        ]),
       ],
     };
   }
-
-  const currentHead = git(repo, [
-    "rev-parse",
-    "--verify",
-    `${fetchExactPullRequest(repo, remote, prNumber)}^{commit}`,
-  ]);
-  const currentParent = git(repo, [
-    "rev-parse",
-    "--verify",
-    `${fetchParent(repo, remote, declaration.entry.parentRef)}^{commit}`,
-  ]);
-  const errors = [];
-  if (currentHead !== headSha || currentHead !== result.head) {
-    errors.push("child_moved_during_verification");
+  if (result.status === "fail") {
+    if (current.status !== result.status || current.status === "pass") {
+      errors.push("topology_changed_during_verification");
+    }
+    return {
+      ...result,
+      status: "fail",
+      errors: [...new Set([...errors, ...(current.errors ?? result.errors)])],
+    };
   }
-  if (
-    currentParent !== declaration.entry.expectedParentHead ||
-    currentParent !== result.actualParentHead
-  ) {
-    errors.push("parent_moved_during_verification");
-  }
+  if (current.status !== "pass") errors.push(...current.errors);
   return errors.length > 0
     ? { ...result, status: "fail", errors }
     : {
         ...result,
-        generation: { child: currentHead, parent: currentParent },
+        generation: {
+          child: current.head,
+          parent: current.actualParentHead,
+        },
       };
 }
 
@@ -316,10 +514,30 @@ export async function runStackCiAndPublish({
   remote = "origin",
   fetchImpl,
   manifestPath,
+  api = githubApi,
   beforeFreshnessBarrier,
 } = {}) {
-  const { repository, headSha } = parseStackEvent(eventContent);
+  const event = JSON.parse(eventContent);
+  const repository = event.repository?.full_name;
+  const prNumber = event.pull_request?.number ?? event.number;
+  const manifest = loadStackManifest(manifestPath);
+  if (repository !== manifest.repository || !Number.isInteger(prNumber)) {
+    throw new Error("stack_gate_event_invalid");
+  }
   const token = env.GITHUB_TOKEN;
+  let result = await resolveRegisteredStack({
+    prNumber,
+    env,
+    repo,
+    remote,
+    manifestPath,
+    api,
+    fetchImpl,
+  });
+  const headSha = result.head;
+  if (!/^[0-9a-f]{40}$/.test(headSha ?? "")) {
+    throw new Error("stack_gate_current_head_invalid");
+  }
   const checkId = await createStackCheck({
     token,
     repository,
@@ -327,22 +545,17 @@ export async function runStackCiAndPublish({
     fetchImpl,
   });
   try {
-    let result = runStackCiForEvent({
-      eventContent,
+    await beforeFreshnessBarrier?.();
+    result = await refreshStackGeneration({
+      prNumber,
+      result,
+      env,
       repo,
       remote,
       manifestPath,
+      api,
+      fetchImpl,
     });
-    if (result.status === "pass") {
-      await beforeFreshnessBarrier?.();
-      result = refreshStackGeneration({
-        eventContent,
-        result,
-        repo,
-        remote,
-        manifestPath,
-      });
-    }
     await completeStackCheck({
       token,
       repository,

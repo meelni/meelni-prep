@@ -1,90 +1,90 @@
 {
-  "version": 1,
+  "version": 2,
   "repository": "saviii/meelni-prep",
   "stacks": [
     {
       "pr": 253,
+      "parentPr": 249,
       "headRef": "codex/explicit-analytics-consent",
-      "parentRef": "codex/bound-public-demo",
-      "expectedParentHead": "6608360c2309e22449ff67d3833a8af82378bb01"
+      "parentRef": "codex/bound-public-demo"
     },
     {
       "pr": 258,
+      "parentPr": 257,
       "headRef": "codex/sav-190-reconnect-recovery",
-      "parentRef": "codex/sav-189-deadline-server",
-      "expectedParentHead": "12b569159e47f33834b1a5b50ab5850829af3291"
+      "parentRef": "codex/sav-189-deadline-server"
     },
     {
       "pr": 259,
+      "parentPr": 258,
       "headRef": "codex/sav-194-transcript-ingest",
-      "parentRef": "codex/sav-190-reconnect-recovery",
-      "expectedParentHead": "0191d7b78b3659f86ed6e1df27133f722309392a"
+      "parentRef": "codex/sav-190-reconnect-recovery"
     },
     {
       "pr": 260,
+      "parentPr": 259,
       "headRef": "codex/sav-193-transcript-privacy",
-      "parentRef": "codex/sav-194-transcript-ingest",
-      "expectedParentHead": "e4621c305082e5bf67f7162f935092eff67e88e5"
+      "parentRef": "codex/sav-194-transcript-ingest"
     },
     {
       "pr": 263,
+      "parentPr": 260,
       "headRef": "codex/sav-229-stable-start-attempt",
-      "parentRef": "codex/sav-193-transcript-privacy",
-      "expectedParentHead": "55a33ea2a33128422283a7f75e4b8f8ff72bef7d"
+      "parentRef": "codex/sav-193-transcript-privacy"
     },
     {
       "pr": 265,
+      "parentPr": 263,
       "headRef": "codex/sav-230-provider-credit-recovery",
-      "parentRef": "codex/sav-229-stable-start-attempt",
-      "expectedParentHead": "6e8399b712b1240cd12bc12940e48e14d8857c6d"
+      "parentRef": "codex/sav-229-stable-start-attempt"
     },
     {
       "pr": 266,
+      "parentPr": 259,
       "headRef": "codex/sav-195-feedback-v2",
-      "parentRef": "codex/sav-194-transcript-ingest",
-      "expectedParentHead": "e4621c305082e5bf67f7162f935092eff67e88e5"
+      "parentRef": "codex/sav-194-transcript-ingest"
     },
     {
       "pr": 268,
+      "parentPr": 266,
       "headRef": "codex/sav-196-evaluation-validation",
-      "parentRef": "codex/sav-195-feedback-v2",
-      "expectedParentHead": "3313949de91b5919275dea25fd282e33496f67b1"
+      "parentRef": "codex/sav-195-feedback-v2"
     },
     {
       "pr": 270,
+      "parentPr": 265,
       "headRef": "codex/sav-231-billing-truth",
-      "parentRef": "codex/sav-230-provider-credit-recovery",
-      "expectedParentHead": "c456eb436171cc80794b27cb84dfea88173e4e84"
+      "parentRef": "codex/sav-230-provider-credit-recovery"
     },
     {
       "pr": 272,
+      "parentPr": 268,
       "headRef": "codex/sav-197-feedback-workflow",
-      "parentRef": "codex/sav-196-evaluation-validation",
-      "expectedParentHead": "b5fb70dcdc3d2b2f922c45759c94ed8fb472b010"
+      "parentRef": "codex/sav-196-evaluation-validation"
     },
     {
       "pr": 273,
+      "parentPr": 268,
       "headRef": "codex/sav-211-feedback-accessibility",
-      "parentRef": "codex/sav-196-evaluation-validation",
-      "expectedParentHead": "b5fb70dcdc3d2b2f922c45759c94ed8fb472b010"
+      "parentRef": "codex/sav-196-evaluation-validation"
     },
     {
       "pr": 274,
+      "parentPr": 272,
       "headRef": "codex/sav-198-evaluation-calibration",
-      "parentRef": "codex/sav-197-feedback-workflow",
-      "expectedParentHead": "929b2116c12a17b8fece38136abf95ce1b7c3769"
+      "parentRef": "codex/sav-197-feedback-workflow"
     },
     {
       "pr": 277,
+      "parentPr": 259,
       "headRef": "codex/sav-149-transcript-body-hardening",
-      "parentRef": "codex/sav-194-transcript-ingest",
-      "expectedParentHead": "e4621c305082e5bf67f7162f935092eff67e88e5"
+      "parentRef": "codex/sav-194-transcript-ingest"
     },
     {
       "pr": 281,
+      "parentPr": 274,
       "headRef": "codex/sav-201-deterministic-recommendations",
-      "parentRef": "codex/sav-198-evaluation-calibration",
-      "expectedParentHead": "32ab83c42c4f89f8741eb9ff3f7873858557475f"
+      "parentRef": "codex/sav-198-evaluation-calibration"
     }
   ]
 }
