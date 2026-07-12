@@ -129,14 +129,17 @@ a terminal reason.
 
 The server deadline worker remains the sole owner of the durable `time_limit`
 command. It schedules the absolute deadline with a future Inngest event,
-attempts room deletion before settlement, and uses separate idempotent
-settlement and dispatch boundaries. Terminal truth and completion-time
+atomically settles terminal truth and a pending cleanup claim before attempting
+room deletion, then acknowledges deletion before entering the separate
+idempotent dispatch boundary. Terminal truth and completion-time
 motivation may commit when deletion fails, but feedback dispatch remains
 deferred until deletion is acknowledged as `deleted` or `already_absent`.
 The hard-deadline winner persists a separate `pending` cleanup claim, including
 when validation refines lifecycle truth to `insufficient_signal` and skips
 feedback. A concurrent ordinary end never creates that claim. A provider
-acknowledgement changes it to `deleted` or `already_absent`; only then can the client hand off. Retries preserve the first
+acknowledgement changes it to `deleted` or `already_absent`; concurrent ordinary
+ends preserve a claim already owned by the deadline worker, and the central
+outbox cannot claim feedback while it remains pending. Only then can the client hand off. Retries preserve the first
 terminal claim and dispatch at most once. A five-minute recovery scan
 prioritizes overdue open sessions and terminal pending-cleanup claims and uses a
 unique delivery identity per recovery run.

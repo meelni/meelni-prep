@@ -112,45 +112,34 @@ export async function enforceInterviewDeadlineWorkflow(
     return { ok: false, disposition: "not_due" };
   }
 
-  let room: TerminatedInterviewRoom | null = null;
-  let roomTerminationError: { code: string } | null = null;
-  if (session.roomName) {
-    const terminated = await deps.terminateRoom({
-      roomName: session.roomName,
-      env: input.env,
-    });
-    if (terminated.ok) {
-      room = terminated.data;
-    } else {
-      roomTerminationError = { code: terminated.error.code };
-    }
-  }
-
   const settlement = await deps.settleSession(input.sessionId);
   if (!settlement.ok) {
-    if (roomTerminationError) {
-      throw Object.assign(
-        new Error("LiveKit deadline room termination failed"),
-        { code: roomTerminationError.code }
-      );
-    }
     return { ok: false, disposition: "not_found" };
   }
 
-  if (roomTerminationError) {
-    throw Object.assign(new Error("LiveKit deadline room termination failed"), {
-      code: roomTerminationError.code,
-    });
-  }
-
+  let room: TerminatedInterviewRoom | null = null;
+  let completionForDispatch = settlement.completion;
   if (settlement.completion.deadlineRoomCleanupStatus === "pending") {
-    await deps.acknowledgeRoomCleanup(
-      input.sessionId,
-      room?.disposition ?? "already_absent"
-    );
+    if (session.roomName) {
+      const terminated = await deps.terminateRoom({
+        roomName: session.roomName,
+        env: input.env,
+      });
+      if (!terminated.ok) {
+        throw createRoomTerminationError(terminated.error.code);
+      }
+      room = terminated.data;
+    }
+
+    const disposition = room?.disposition ?? "already_absent";
+    await deps.acknowledgeRoomCleanup(input.sessionId, disposition);
+    completionForDispatch = {
+      ...settlement.completion,
+      deadlineRoomCleanupStatus: disposition,
+    };
   }
 
-  const completion = await deps.dispatchSettlement(settlement.completion);
+  const completion = await deps.dispatchSettlement(completionForDispatch);
   requireFeedbackDispatchReady(completion);
 
   return { ok: true, disposition: "enforced", completion, room };

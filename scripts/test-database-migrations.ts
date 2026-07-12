@@ -961,7 +961,7 @@ async function verifyAtomicSessionCompletion(
       createDrizzleFeedbackDispatchStore(database)
     );
     const now = new Date("2026-07-09T22:00:00.000Z");
-    const claims = await Promise.all(
+    let claims = await Promise.all(
       stores.map((store) =>
         store.claim({
           sessionId: SESSION_ATOMIC_END,
@@ -970,6 +970,28 @@ async function verifyAtomicSessionCompletion(
         })
       )
     );
+    if (signatures[0]?.reason === "time_limit") {
+      assert.equal(
+        claims.every((claim) => claim === null),
+        true
+      );
+      await sql`
+        UPDATE interview_session
+        SET deadline_room_cleanup_status = 'already_absent',
+          deadline_room_cleanup_acknowledged_at = now()
+        WHERE id = ${SESSION_ATOMIC_END}::uuid
+          AND deadline_room_cleanup_status = 'pending'
+      `;
+      claims = await Promise.all(
+        stores.map((store) =>
+          store.claim({
+            sessionId: SESSION_ATOMIC_END,
+            now,
+            staleBefore: new Date(now.getTime() - 120_000),
+          })
+        )
+      );
+    }
     const winners = claims.filter((claim) => claim !== null);
     assert.equal(winners.length, 1);
     assert.equal(winners[0]?.attempts, 1);
@@ -1080,6 +1102,28 @@ async function verifyAtomicSessionCompletion(
       };
       let roomDeleteAttempts = 0;
       let feedbackEvents = 0;
+      let signalDeleteStarted: (() => void) | undefined;
+      let resolveDeferredDelete:
+        | ((result: {
+            ok: false;
+            provider: "livekit";
+            error: {
+              code: string;
+              message: string;
+              retryable: boolean;
+            };
+          }) => void)
+        | undefined;
+      const deleteStarted = new Promise<void>((resolve) => {
+        signalDeleteStarted = resolve;
+      });
+      const deferredDelete = new Promise<{
+        ok: false;
+        provider: "livekit";
+        error: { code: string; message: string; retryable: boolean };
+      }>((resolve) => {
+        resolveDeferredDelete = resolve;
+      });
       const deadlineDeps = {
         getSession: getInterviewDeadlineSession,
         settleSession: () =>
@@ -1116,39 +1160,63 @@ async function verifyAtomicSessionCompletion(
           }),
         terminateRoom: async ({ roomName }: { roomName: string }) => {
           roomDeleteAttempts += 1;
-          return roomDeleteAttempts === 1
-            ? {
-                ok: false as const,
-                provider: "livekit" as const,
-                error: {
-                  code: "livekit_room_delete_failed",
-                  message: "provider unavailable",
-                  retryable: true,
-                },
-              }
-            : {
-                ok: true as const,
-                provider: "livekit" as const,
-                data: { roomName, disposition: "already_absent" as const },
-              };
+          if (roomDeleteAttempts === 1) {
+            signalDeleteStarted?.();
+            return deferredDelete;
+          }
+          return {
+            ok: true as const,
+            provider: "livekit" as const,
+            data: { roomName, disposition: "already_absent" as const },
+          };
         },
         acknowledgeRoomCleanup: acknowledgeInterviewDeadlineRoomCleanup,
         now: () => new Date("2026-07-10T06:30:00.000Z"),
       };
-      await assert.rejects(() =>
-        enforceInterviewDeadlineWorkflow(
-          {
-            sessionId: SESSION_DEADLINE_INSUFFICIENT,
-            deadlineAt: "2026-07-10T06:30:00.000Z",
-            env: {
-              apiKey: "test",
-              apiSecret: "test",
-              url: "wss://test.invalid",
-            },
+      const deferredDeadline = enforceInterviewDeadlineWorkflow(
+        {
+          sessionId: SESSION_DEADLINE_INSUFFICIENT,
+          deadlineAt: "2026-07-10T06:30:00.000Z",
+          env: {
+            apiKey: "test",
+            apiSecret: "test",
+            url: "wss://test.invalid",
           },
-          deadlineDeps
-        )
+        },
+        deadlineDeps
       );
+      await deleteStarted;
+      const concurrentUserEnd = await finalizeInterviewSession(
+        {
+          sessionId: SESSION_DEADLINE_INSUFFICIENT,
+          actor: { type: "user", userId: USER_ONE },
+          requestedTerminalReason: "user_end",
+          validation,
+        },
+        databases[1]!
+      );
+      assert.equal(concurrentUserEnd.ok, true);
+      if (concurrentUserEnd.ok) {
+        assert.equal(concurrentUserEnd.disposition, "existing");
+        assert.equal(
+          concurrentUserEnd.lifecycle.terminalReason,
+          "insufficient_signal"
+        );
+        assert.equal(
+          concurrentUserEnd.deadlineRoomCleanupStatus,
+          "pending"
+        );
+      }
+      resolveDeferredDelete?.({
+        ok: false,
+        provider: "livekit",
+        error: {
+          code: "livekit_room_delete_failed",
+          message: "provider unavailable",
+          retryable: true,
+        },
+      });
+      await assert.rejects(deferredDeadline);
       const [pendingInsufficient] = await sql<
         {
           terminal_reason: string;

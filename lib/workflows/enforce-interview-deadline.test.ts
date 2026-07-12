@@ -81,7 +81,7 @@ test("malformed, missing, and stale deadline events have no side effects", async
   assert.equal(ended, 0);
 });
 
-test("deadline attempts room deletion before terminal settlement", async () => {
+test("deadline persists cleanup ownership before room deletion, then acknowledges before dispatch", async () => {
   const calls: string[] = [];
   const result = await enforceInterviewDeadlineWorkflow(
     { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
@@ -91,6 +91,7 @@ test("deadline attempts room deletion before terminal settlement", async () => {
         return settlement();
       },
       dispatchSettlement: async (completion) => {
+        assert.equal(completion.deadlineRoomCleanupStatus, "deleted");
         calls.push("dispatch");
         return completedSettlement(completion);
       },
@@ -101,13 +102,17 @@ test("deadline attempts room deletion before terminal settlement", async () => {
           disposition: "deleted" as const,
         });
       },
+      acknowledgeRoomCleanup: async () => {
+        calls.push("acknowledge");
+      },
     })
   );
 
   assert.equal(result.ok, true);
   assert.deepEqual(calls, [
-    "terminate:interview-deadline-room",
     "settle",
+    "terminate:interview-deadline-room",
+    "acknowledge",
     "dispatch",
   ]);
 });
@@ -229,6 +234,7 @@ test("ineligible deadline settlement stays blocked until room cleanup is acknowl
 
 test("a concurrent user end never creates or acknowledges a deadline cleanup claim", async () => {
   let acknowledgements = 0;
+  let deletions = 0;
   const userEnd = settlement("user_end", "completed").completion;
   const result = await enforceInterviewDeadlineWorkflow(
     { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
@@ -237,6 +243,13 @@ test("a concurrent user end never creates or acknowledges a deadline cleanup cla
       acknowledgeRoomCleanup: async () => {
         acknowledgements += 1;
       },
+      terminateRoom: async ({ roomName }) => {
+        deletions += 1;
+        return providerSuccess("livekit", {
+          roomName,
+          disposition: "deleted" as const,
+        });
+      },
     })
   );
 
@@ -244,6 +257,7 @@ test("a concurrent user end never creates or acknowledges a deadline cleanup cla
   assert.equal(userEnd.lifecycle.terminalReason, "user_end");
   assert.equal(userEnd.deadlineRoomCleanupStatus, null);
   assert.equal(acknowledgements, 0);
+  assert.equal(deletions, 0);
 });
 
 test("recovery rediscovers terminal pending cleanup after exact retries exhaust and finalizes once", async () => {
