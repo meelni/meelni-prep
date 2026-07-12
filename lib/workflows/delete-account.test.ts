@@ -102,28 +102,15 @@ test("auth failure preserves the tombstone and never reports completion", async 
   );
 });
 
-test("financial recovery failure preserves customer references and stops before deletion", async () => {
+test("account deletion never creates automatic payment or invoice refunds", async () => {
   const calls: string[] = [];
-  const deps = createDeps(calls);
-  deps.refundPayment = async (kind, id) => {
-    calls.push(`payment:${kind}:${id}`);
-    throw new Error("refund unavailable");
-  };
-
-  await assert.rejects(() => deleteAccountWorkflow(REQUEST, deps));
-  assert.deepEqual(calls, [
-    `redact:${REQUEST.userId}`,
-    `application:${REQUEST.userId}`,
-    `auth:${REQUEST.userId}`,
-    "subscription:sub_test",
-    "payment:payment_intent:pi_test",
-  ]);
+  await deleteAccountWorkflow(REQUEST, createDeps(calls));
   assert.equal(
-    calls.some((call) => call.startsWith("customer:")),
+    calls.some((call) => call.startsWith("payment:")),
     false
   );
   assert.equal(
-    calls.some((call) => call.startsWith("completed:")),
+    calls.some((call) => call.startsWith("invoice:")),
     false
   );
 });
@@ -159,30 +146,26 @@ test("completed tombstones with late raw references remain recoverable", async (
     { ...REQUEST, status: "completed" },
     createDeps(calls)
   );
-  assert.equal(calls.includes("payment:payment_intent:pi_test"), true);
+  assert.equal(
+    calls.some((call) => call.startsWith("payment:")),
+    false
+  );
   assert.equal(calls.includes("customer:cus_test"), true);
   assert.equal(calls.at(-1), `completed:${REQUEST.userId}`);
 });
 
-test("invoice allocations discovered by recovery are included in snapshot completion", async () => {
+test("known financial fingerprints remain in the completed deletion snapshot", async () => {
   const calls: string[] = [];
   const completedFingerprints: string[][] = [];
   const deps = createDeps(calls);
-  deps.refundInvoice = async (invoiceId) => {
-    calls.push(`invoice:${invoiceId}`);
-    return ["discovered-payment-fingerprint"];
-  };
   deps.markCompleted = async (_userId, fingerprints) => {
     completedFingerprints.push(fingerprints);
   };
 
   await deleteAccountWorkflow(REQUEST, deps);
 
-  assert.equal(
-    completedFingerprints[0]?.includes("discovered-payment-fingerprint"),
-    true
-  );
   assert.equal(completedFingerprints[0]?.includes("invoice-fingerprint"), true);
+  assert.equal(completedFingerprints[0]?.includes("payment-fingerprint"), true);
 });
 
 test("deletion failures are reduced to a stable code without raw details", () => {
@@ -229,13 +212,6 @@ function createDeps(calls: string[]): DeleteAccountWorkflowDeps {
   return {
     cancelSubscription: async (id) => {
       calls.push(`subscription:${id}`);
-    },
-    refundInvoice: async (id) => {
-      calls.push(`invoice:${id}`);
-      return [];
-    },
-    refundPayment: async (kind, id) => {
-      calls.push(`payment:${kind}:${id}`);
     },
     deleteCustomer: async (id) => {
       calls.push(`customer:${id}`);

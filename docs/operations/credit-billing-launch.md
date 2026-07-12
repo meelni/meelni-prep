@@ -393,3 +393,24 @@ Possible outcomes:
 - No top-up: current pass/subscription mix is enough.
 - Small top-up: sell 3 credits with 90-day expiration.
 - Larger top-up: sell 6-10 credits only if variable cost data shows comfortable margin.
+
+## Subscription Cancellation
+
+Cancellation is period-end only. The customer keeps subscription access and
+otherwise valid unused credits through the current paid-through date, and
+Stripe must receive only `cancel_at_period_end: true`. The cancellation path
+does not create prorations, customer-balance compensation, or card refunds.
+
+Before launch, use Stripe test mode to prove:
+
+- the subscription remains active and is marked to cancel at period end;
+- the current invoice and customer balance do not gain a cancellation credit;
+- no Refund object or card refund is created;
+- dashboard access and unused credits remain available through the same date;
+- reactivation clears the scheduled cancellation without creating a charge;
+- account deletion cancels provider resources without automatically refunding
+  invoices, charges, or PaymentIntents.
+
+Exceptional refunds require a separate manual support decision. Real manual or
+provider-originated refund/dispute webhooks still reconcile paid credits; they
+are not part of subscription cancellation.

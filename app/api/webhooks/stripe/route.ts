@@ -14,11 +14,6 @@ import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
 import {
-  ensureStripeInvoicePaymentAllocationRefunded,
-  ensureStripePaymentFullyRefunded,
-} from "@/lib/billing/stripe-refund-reconciliation";
-import { loadStripeInvoicePaymentAllocations } from "@/lib/billing/stripe-invoice-reconciliation";
-import {
   getMappedStripeCustomerUserId,
   resolveAuthoritativeStripeUserId,
   stripeSubjectOwnerMismatch,
@@ -1332,13 +1327,6 @@ async function reconcileCheckoutForDeletedAccount(
       cancelSubscription: async (subscriptionId, idempotencyKey) => {
         await cancelDeletedSubscription(stripe, subscriptionId, idempotencyKey);
       },
-      loadInvoicePayments: async (invoiceId) => {
-        const invoice = await stripe.invoices.retrieve(invoiceId);
-        return loadStripeInvoicePaymentAllocations(stripe, invoice);
-      },
-      refundPayment: async (payment, idempotencyKey) => {
-        await refundDeletedPayment(stripe, payment, idempotencyKey);
-      },
     });
     await cleanupDeletedCustomer(
       stripe,
@@ -1355,13 +1343,6 @@ async function reconcileCheckoutForDeletedAccount(
     );
   }
 }
-
-type DeletedPaymentReference = {
-  allocationAmount?: number;
-  allocationFingerprint?: string;
-  kind: "payment_intent" | "charge";
-  providerId: string;
-};
 
 async function reconcileStripeEventForDeletedAccount(
   event: Stripe.Event,
@@ -1404,51 +1385,11 @@ async function reconcileStripeEventForDeletedAccount(
         deletedBillingIdempotencyKey(stripeSubscription.id, "cancel")
       );
 
-      let reconciledSubjects = lateSubjects;
-      if (event.type === "customer.subscription.created") {
-        if (!latestInvoiceId) {
-          throw deletedBillingError(
-            "deleted_subscription_manual_reconciliation_required"
-          );
-        }
-        const invoice = await stripe.invoices.retrieve(latestInvoiceId);
-        if (
-          !Number.isSafeInteger(invoice.amount_paid) ||
-          invoice.amount_paid < 0
-        ) {
-          throw deletedBillingError(
-            "deleted_subscription_manual_reconciliation_required"
-          );
-        }
-        const payments = await loadStripeInvoicePaymentAllocations(
-          stripe,
-          invoice
-        );
-        if (invoice.amount_paid > 0) {
-          const paymentSubjects = await recordAndRedactLateSubjects(
-            userId,
-            null,
-            null,
-            compactSubjects(
-              payments.map((payment) =>
-                buildStripeDeletionSubject(payment.kind, payment.providerId)
-              )
-            )
-          );
-          reconciledSubjects = dedupeSubjects([
-            ...reconciledSubjects,
-            ...paymentSubjects,
-          ]);
-          for (const payment of payments) {
-            await refundDeletedPayment(stripe, payment);
-          }
-        }
-      }
       await cleanupDeletedCustomer(
         stripe,
         userId,
         customerId,
-        reconciledSubjects.map(({ fingerprint }) => fingerprint)
+        lateSubjects.map(({ fingerprint }) => fingerprint)
       );
     } catch (error) {
       if (userId) await markLateStripeReconciliationFailed(userId);
@@ -1472,24 +1413,6 @@ async function reconcileStripeEventForDeletedAccount(
       compactSubjects([buildStripeDeletionSubject("invoice", invoice.id)])
     );
     try {
-      const payments = await loadStripeInvoicePaymentAllocations(
-        stripe,
-        invoice
-      );
-      const paymentSubjects = await recordAndRedactLateSubjects(
-        userId,
-        null,
-        null,
-        compactSubjects(
-          payments.map((payment) =>
-            buildStripeDeletionSubject(payment.kind, payment.providerId)
-          )
-        )
-      );
-      const lateSubjects = dedupeSubjects([
-        ...initialSubjects,
-        ...paymentSubjects,
-      ]);
       if (subscriptionId) {
         await cancelDeletedSubscription(
           stripe,
@@ -1498,16 +1421,11 @@ async function reconcileStripeEventForDeletedAccount(
         );
       }
 
-      if (invoice.amount_paid > 0) {
-        for (const payment of payments) {
-          await refundDeletedPayment(stripe, payment);
-        }
-      }
       await cleanupDeletedCustomer(
         stripe,
         userId,
         customerId,
-        lateSubjects.map(({ fingerprint }) => fingerprint)
+        initialSubjects.map(({ fingerprint }) => fingerprint)
       );
     } catch (error) {
       if (userId) await markLateStripeReconciliationFailed(userId);
@@ -1607,34 +1525,6 @@ async function cancelDeletedSubscription(
   } catch (error) {
     if (!isAlreadyDeletedProviderError(error)) throw error;
   }
-}
-
-async function refundDeletedPayment(
-  stripe: Stripe,
-  payment: DeletedPaymentReference,
-  idempotencyKey?: string
-) {
-  if (
-    payment.allocationAmount !== undefined &&
-    payment.allocationFingerprint !== undefined
-  ) {
-    await ensureStripeInvoicePaymentAllocationRefunded(stripe, {
-      allocationAmount: payment.allocationAmount,
-      allocationFingerprint: payment.allocationFingerprint,
-      kind: payment.kind,
-      providerId: payment.providerId,
-      baseIdempotencyKey:
-        idempotencyKey ??
-        `account-deletion:invoice-payment-refund:${payment.allocationFingerprint}`,
-    });
-    return;
-  }
-  await ensureStripePaymentFullyRefunded(
-    stripe,
-    payment.kind,
-    payment.providerId,
-    idempotencyKey ?? deletedBillingIdempotencyKey(payment.providerId, "refund")
-  );
 }
 
 function getInvoiceSubscriptionId(invoice: Stripe.Invoice) {

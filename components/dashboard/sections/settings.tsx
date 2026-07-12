@@ -840,9 +840,12 @@ function DataPrivacyPane({
               retryable cleanup for your authentication account, captured
               billing-provider resources, interviews, transcripts, feedback,
               settings, and progress. The request cannot be undone after it is
-              accepted. Limited security, deletion-audit, backup, and legally
-              required billing records may be retained; Meelni does not claim a
-              fixed deletion period for those records yet.
+              accepted. If you have a paid subscription, deletion ends access
+              immediately and does not create an automatic proration or refund;
+              exceptional refund requests require separate support review.
+              Limited security, deletion-audit, backup, and legally required
+              billing records may be retained; Meelni does not claim a fixed
+              deletion period for those records yet.
             </DialogDescription>
           </DialogHeader>
 

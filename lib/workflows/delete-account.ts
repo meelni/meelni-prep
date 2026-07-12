@@ -2,11 +2,6 @@ import type { AccountDeletionRecord } from "@/lib/db/account-deletions";
 
 export interface DeleteAccountWorkflowDeps {
   cancelSubscription(subscriptionId: string): Promise<void>;
-  refundInvoice(invoiceId: string): Promise<string[]>;
-  refundPayment(
-    kind: "charge" | "payment_intent",
-    providerId: string
-  ): Promise<void>;
   deleteCustomer(customerId: string): Promise<void>;
   redactProviderLogs(request: AccountDeletionRecord): Promise<void>;
   deleteApplicationData(userId: string): Promise<void>;
@@ -43,20 +38,10 @@ export async function deleteAccountWorkflow(
       await deps.cancelSubscription(subject.providerId);
     }
   }
-  for (const subject of pendingSubjects) {
-    if (subject.kind === "charge" || subject.kind === "payment_intent") {
-      await deps.refundPayment(subject.kind, subject.providerId);
-    }
-  }
-  for (const subject of pendingSubjects) {
-    if (subject.kind === "invoice") {
-      for (const fingerprint of await deps.refundInvoice(subject.providerId)) {
-        processedFingerprints.add(fingerprint);
-      }
-    }
-  }
-  // Customer deletion is deliberately last: cancellation and every known
-  // refundable payment must reconcile before the provider identity disappears.
+  // Account deletion does not make a billing-refund decision. Historical
+  // invoice and payment records remain subject to Stripe/legal retention, and
+  // any exceptional refund requires a separate manual support decision.
+  // Customer deletion remains last so the subscription is canceled first.
   for (const subject of pendingSubjects) {
     if (subject.kind === "customer") {
       await deps.deleteCustomer(subject.providerId);

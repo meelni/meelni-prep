@@ -122,18 +122,9 @@ the invariant that closes the late-webhook race, rather than delivery timing.
 - Hold the account identity lock while a callback upsert races deletion intent;
   commit the tombstone and local-user removal, then confirm the waiting upsert
   is denied and cannot recreate `app_user`.
-- Manually model a partially refunded PaymentIntent and charge, then replay the
-  event. Confirm Stripe is asked to refund the remaining amount, provider state
-  is retrieved, and customer cleanup proceeds only after the total is fully
-  refunded. Model a response that remains partial and confirm the event stays
-  failed, cleanup does not run, and the retry reference remains.
-- Model a full-amount refund with Stripe status `pending`. Confirm the event and
-  tombstone remain recoverable and customer cleanup does not run. After a
-  `refund.updated` transition to `succeeded`, allow the ten-minute recovery
-  worker or an operator replay of the original billing event to confirm the
-  succeeded total and finish cleanup without another refund. After a transition
-  to `failed`, confirm replay requests the remainder with a new deterministic
-  attempt key and still requires terminal `succeeded` evidence before cleanup.
+- Replay a paid late Checkout and invoice event after deletion intent. Confirm
+  the related subscription is canceled without proration, no refund API is
+  called, no entitlement is granted, and customer cleanup completes.
 - Replay older subscription-deleted and invoice success/failure events after a
   newer subscription state. Confirm payment history remains idempotent and the
   older event cannot overwrite the newer subscription state.
@@ -147,10 +138,8 @@ the invariant that closes the late-webhook race, rather than delivery timing.
   correlated `subscription.created` event scopes and reactivates the row.
   Confirm delete/update/invoice events with a specific subscription ID fail
   closed until the billing sync route backfills the current resource identity.
-- Simulate a paid late Checkout without a refundable PaymentIntent/charge.
-  Confirm the event remains failed with
-  `deleted_checkout_manual_reconciliation_required`, no entitlement is granted,
-  and an operator reconciles the payment in Stripe before treating it as done.
+- Simulate a paid late Checkout without a PaymentIntent/charge reference.
+  Confirm it completes without granting entitlement or creating a refund.
 - Confirm an API retry that receives `401 account_deletion_pending` is displayed
   as an already-durable request, while an ordinary 401 offers sign-in again.
 - Inspect Inngest failure history and confirm provider/database/transcript detail
@@ -159,8 +148,8 @@ the invariant that closes the late-webhook race, rather than delivery timing.
   confirm no committed matching row retains payload or error content.
 
 Never manually delete the tombstone before Supabase Auth deletion is confirmed.
-Never mark a failed deleted-billing reconciliation processed merely to stop
-retries. Resolve or refund the provider payment first, then replay the event.
+Never issue an automatic refund from account-deletion recovery. Any exceptional
+refund requires a separate manual support decision.
 Completed tombstone retention remains intentionally undefined beyond the
 accepted durable-deletion requirement. Do not promise a removal date for the
 tombstone, provider records, logs, or backups until an owner/legal decision is
