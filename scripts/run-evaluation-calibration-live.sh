@@ -7,6 +7,7 @@ case $- in
     ;;
 esac
 set -eu
+umask 077
 
 NODE_VERSION="22.22.0"
 NODE_BIN="/Users/REDACTED/.local/share/fnm/node-versions/v${NODE_VERSION}/installation/bin/node"
@@ -69,7 +70,9 @@ fail() {
 }
 
 read_frame() {
-  frame_file="$channel_dir/frame"
+  frame_fifo="$channel_dir/frame"
+  /usr/bin/mkfifo "$frame_fifo" || return 1
+  /bin/chmod 600 "$frame_fifo" || return 1
   /usr/bin/perl -e '
     $SIG{ALRM}=sub{exit 124}; alarm shift @ARGV; my $line="";
     while (length($line) <= 16384) {
@@ -77,17 +80,20 @@ read_frame() {
       last if $byte eq "\n"; $line.=$byte;
     }
     exit 1 if length($line)>16384; $line=~s/\r\z//; print $line;
-  ' "$test_timeout" <&"$1" >"$frame_file" &
+  ' "$test_timeout" <&"$1" >"$frame_fifo" &
   helper_pid=$!
+  frame=""
+  frame_read=0
+  IFS= read -r frame <"$frame_fifo" || [ -n "$frame" ] || frame_read=1
   if wait "$helper_pid"; then
     helper_pid=""
   else
     helper_pid=""
+    /bin/rm -f -- "$frame_fifo"
     return 1
   fi
-  frame=""
-  IFS= read -r frame <"$frame_file" || [ -n "$frame" ]
-  /bin/rm -f -- "$frame_file"
+  /bin/rm -f -- "$frame_fifo"
+  [ "$frame_read" -eq 0 ]
 }
 
 [ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
