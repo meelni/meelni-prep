@@ -497,6 +497,8 @@ function createSession(
     reconnectDeadlineAt: null,
     roomCleanupPending: false,
     roomCleanupAttemptedAt: null,
+    roomProvisioningPending: false,
+    roomProvisioningStartedAt: null,
     presenceReconciledAt: null,
     lastTransportEventAt: null,
     lastTransportEventId: null,
@@ -593,6 +595,17 @@ function createFixture(
     },
     markRoomCleanupComplete: async () => undefined,
     markRoomCleanupAttempted: async () => undefined,
+    completeRoomProvisioning: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
+    markRoomProvisioningSettled: async () => undefined,
+    claimStaleProvisioning: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
     markPresenceReconciled: async () => ({
       applied: false,
       reason: "conflict",

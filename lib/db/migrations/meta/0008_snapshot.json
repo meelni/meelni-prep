@@ -1,5 +1,5 @@
 {
-  "id": "e929cfac-1cdb-4d5d-94e8-d1acdf2ff13f",
+  "id": "2d7c231b-553e-4c23-b458-29c6ca2ae522",
   "prevId": "f708d09b-eb28-4f11-84c8-6bfc619798a4",
   "version": "7",
   "dialect": "postgresql",
@@ -1504,6 +1504,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "room_provisioning_pending": {
+          "name": "room_provisioning_pending",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "room_provisioning_started_at": {
+          "name": "room_provisioning_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "presence_reconciled_at": {
           "name": "presence_reconciled_at",
           "type": "timestamp with time zone",
@@ -1690,6 +1703,27 @@
           "method": "btree",
           "with": {}
         },
+        "interview_session_room_provisioning_recovery_idx": {
+          "name": "interview_session_room_provisioning_recovery_idx",
+          "columns": [
+            {
+              "expression": "room_provisioning_pending",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "room_provisioning_started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "interview_session_user_lifecycle_state_idx": {
           "name": "interview_session_user_lifecycle_state_idx",
           "columns": [
@@ -1762,6 +1796,10 @@
         "interview_session_ending_at_state_check": {
           "name": "interview_session_ending_at_state_check",
           "value": "\"interview_session\".\"ending_at\" IS NULL OR \"interview_session\".\"lifecycle_state\" IN ('ending', 'completed', 'abandoned', 'failed')"
+        },
+        "interview_session_room_provisioning_claim_check": {
+          "name": "interview_session_room_provisioning_claim_check",
+          "value": "(\"interview_session\".\"room_provisioning_pending\" AND \"interview_session\".\"room_provisioning_started_at\" IS NOT NULL) OR (NOT \"interview_session\".\"room_provisioning_pending\" AND \"interview_session\".\"room_provisioning_started_at\" IS NULL)"
         }
       },
       "isRLSEnabled": false

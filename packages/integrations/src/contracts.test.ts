@@ -221,7 +221,7 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
       url: fixture.input.env.url,
     });
   }
-  assert.deepEqual(calls, ["room", "dispatch", "grant", "jwt"]);
+  assert.deepEqual(calls, ["grant", "jwt", "room", "dispatch"]);
   assert.deepEqual(roomInputs, [
     {
       name: fixture.input.roomName,
@@ -252,6 +252,39 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
       canSubscribe: true,
     },
   ]);
+});
+
+test("LiveKit token signing failure occurs before room or dispatch side effects", async () => {
+  const fixture = createLiveKitStartFixture();
+  const calls: string[] = [];
+  const provider = createLiveKitInterviewProvider({
+    accessTokenFactory: class {
+      addGrant() {
+        calls.push("grant");
+      }
+
+      async toJwt() {
+        calls.push("jwt");
+        throw new Error("signing unavailable");
+      }
+    } as never,
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        calls.push("room");
+      },
+    }),
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        calls.push("dispatch");
+      },
+    }),
+  });
+
+  const result = await provider.startInterviewRoom(fixture.input);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "livekit_token_issue_failed");
+  assert.deepEqual(calls, ["grant", "jwt"]);
 });
 
 test("LiveKit participant webhooks normalize signed provider correlation", async () => {

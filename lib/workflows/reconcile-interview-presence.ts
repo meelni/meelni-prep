@@ -152,16 +152,27 @@ export async function reconcileInterviewPresenceWorkflow(
   }
 
   if (current.state === "reconnecting") {
-    if (!inspected.data.present) {
+    if (
+      !inspected.data.present ||
+      !inspected.data.joined ||
+      !inspected.data.joinedAt ||
+      !Number.isFinite(inspected.data.joinedAt.getTime())
+    ) {
       return { ok: true, disposition: "reconnecting" };
     }
     if (!current.reconnectDeadlineAt) {
       return { ok: false, disposition: "stale_event" };
     }
+    if (
+      inspected.data.joinedAt.getTime() >= current.reconnectDeadlineAt.getTime()
+    ) {
+      return { ok: true, disposition: "reconnecting" };
+    }
     const recovered = await deps.store.recoverFromPresence({
       sessionId: current.sessionId,
       expectedVersion: current.version,
       deadlineAt: current.reconnectDeadlineAt,
+      joinedAt: inspected.data.joinedAt,
       transitionedAt: checkedAt,
     });
     if (!recovered.applied) {

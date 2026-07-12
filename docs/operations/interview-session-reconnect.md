@@ -26,6 +26,9 @@ Never place an intermediary in front of the route that rewrites the body.
   token with a maximum five-minute lifetime, and never reserve another credit
   or dispatch another agent. Decode the signed JWT and withhold it unless its
   actual `exp` is no later than the earlier reconnect or hard deadline.
+- Startup signs the participant token before room creation or agent dispatch.
+  The `created → connecting` CAS establishes a five-minute durable provisioning
+  lease before the first provider side effect.
 - Hard deadline: continues during reconnect and wins when earlier than or equal
   to reconnect expiry.
 - Every terminal path persists `room_cleanup_pending`; user end attempts
@@ -42,7 +45,12 @@ Never place an intermediary in front of the route that rewrites the body.
 - A post-provision start failure atomically terminalizes with cleanup intent
   before immediate teardown. Partial agent dispatch, deadline scheduling, and
   credit consumption failures remain recoverable when LiveKit teardown fails.
+  A stale connecting lease is independently scanned and claimed with exact
+  state, lifecycle-version, lease-timestamp, and age fencing. Recovery releases
+  an active credit reservation or refunds a consumed reservation idempotently.
 - Reconnect expiry rechecks authoritative presence before claiming timeout,
+  accepts only `JOINED`/`ACTIVE` candidate evidence with a finite `joinedAt`
+  strictly before the stored reconnect deadline,
   revokes candidate tokens before room deletion, waits a bounded two seconds
   for durable transcript delivery, and finalizes from one validation snapshot.
 
@@ -94,6 +102,15 @@ ready:
     commits before credit release and terminal-room recovery later clears the
     marker after provider-confirmed teardown. Repeat for deadline-schedule and
     credit-consume failures.
+16. Make token signing fail and confirm no room-create or dispatch call occurs.
+    Then throw after room creation while lifecycle terminalization and immediate
+    teardown both fail. After five minutes, confirm the stale provisioning
+    lease is claimed, teardown retries, active credit releases or consumed
+    credit refunds exactly once, and both durable markers eventually clear.
+17. During reconnect, return candidate states `JOINING`, missing/invalid
+    `joinedAt`, and `joinedAt` equal to or later than the deadline. Confirm each
+    is denied. Confirm `JOINED` or `ACTIVE` at deadline minus one millisecond is
+    accepted only for the matching lifecycle version and stored deadline.
 
 SAV-194 transcript event identity must be deployed before this ticket can be
 declared launch-ready; repeated packets across reload must not create duplicate
@@ -107,7 +124,8 @@ webhook signature failure, participant revocation failure, room deletion
 failure, and reconnect schedules recovered by cron. Alert on a
 reconnecting row past its deadline, a claimed timeout stuck in `ending`, or a
 terminal row whose reconnect cleanup marker remains set after the provider
-recovery window.
+recovery window. Also alert on a connecting provisioning lease older than five
+minutes or a terminal provisioning marker that remains after credit settlement.
 
 Never log participant tokens, webhook bodies, room metadata, transcript text,
 email, or provider credentials.

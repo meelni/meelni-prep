@@ -93,6 +93,12 @@ export const interviewSession = pgTable(
     roomCleanupAttemptedAt: timestamp("room_cleanup_attempted_at", {
       withTimezone: true,
     }),
+    roomProvisioningPending: boolean("room_provisioning_pending")
+      .default(false)
+      .notNull(),
+    roomProvisioningStartedAt: timestamp("room_provisioning_started_at", {
+      withTimezone: true,
+    }),
     presenceReconciledAt: timestamp("presence_reconciled_at", {
       withTimezone: true,
     }),
@@ -148,6 +154,10 @@ export const interviewSession = pgTable(
       "interview_session_ending_at_state_check",
       sql`${table.endingAt} IS NULL OR ${table.lifecycleState} IN ('ending', 'completed', 'abandoned', 'failed')`
     ),
+    roomProvisioningClaimCheck: check(
+      "interview_session_room_provisioning_claim_check",
+      sql`(${table.roomProvisioningPending} AND ${table.roomProvisioningStartedAt} IS NOT NULL) OR (NOT ${table.roomProvisioningPending} AND ${table.roomProvisioningStartedAt} IS NULL)`
+    ),
     // P1-001: Indexes for performance
     userIdStatusIdx: index("interview_session_user_status_idx").on(
       table.userId,
@@ -167,6 +177,9 @@ export const interviewSession = pgTable(
     roomCleanupRecoveryIdx: index(
       "interview_session_room_cleanup_recovery_idx"
     ).on(table.roomCleanupPending, table.roomCleanupAttemptedAt),
+    roomProvisioningRecoveryIdx: index(
+      "interview_session_room_provisioning_recovery_idx"
+    ).on(table.roomProvisioningPending, table.roomProvisioningStartedAt),
     userLifecycleStateIdx: index(
       "interview_session_user_lifecycle_state_idx"
     ).on(table.userId, table.lifecycleState),

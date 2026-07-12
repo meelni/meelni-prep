@@ -101,6 +101,14 @@ export function createDrizzleInterviewSessionLifecycleStore(
                 reconnectDeadlineAt: null,
               }
             : {}),
+          ...(input.nextState === "connecting"
+            ? {
+                roomCleanupPending: sql`${interviewSession.livekitRoomName} IS NOT NULL`,
+                roomCleanupAttemptedAt: null,
+                roomProvisioningPending: sql`${interviewSession.livekitRoomName} IS NOT NULL`,
+                roomProvisioningStartedAt: sql`CASE WHEN ${interviewSession.livekitRoomName} IS NOT NULL THEN ${transitionedAt.toISOString()}::timestamptz ELSE NULL END`,
+              }
+            : {}),
           ...(input.nextState === "ending"
             ? {
                 endingAt: sql`COALESCE(${interviewSession.endingAt}, ${transitionedAt.toISOString()}::timestamptz)`,

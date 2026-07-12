@@ -206,6 +206,36 @@ export function createLiveKitInterviewProvider({
 }: LiveKitProviderDependencies = {}): LiveKitInterviewProvider {
   return {
     async startInterviewRoom(input) {
+      let signedToken: string;
+      try {
+        const token = new accessTokenFactory(
+          input.env.apiKey,
+          input.env.apiSecret,
+          {
+            identity: input.identity,
+            name: input.participantName,
+            ttl: INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS,
+          }
+        );
+
+        token.addGrant({
+          room: input.roomName,
+          roomJoin: true,
+          canPublish: true,
+          canPublishData: false,
+          canPublishSources: [TrackSource.MICROPHONE],
+          canSubscribe: true,
+        });
+        signedToken = await token.toJwt();
+      } catch (error) {
+        return providerFailure("livekit", {
+          code: "livekit_token_issue_failed",
+          message: getErrorMessage(error),
+          retryable: true,
+          cause: error,
+        });
+      }
+
       const roomClient = roomServiceClientFactory(
         input.env.url,
         input.env.apiKey,
@@ -248,28 +278,9 @@ export function createLiveKitInterviewProvider({
         });
       }
 
-      const token = new accessTokenFactory(
-        input.env.apiKey,
-        input.env.apiSecret,
-        {
-          identity: input.identity,
-          name: input.participantName,
-          ttl: INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS,
-        }
-      );
-
-      token.addGrant({
-        room: input.roomName,
-        roomJoin: true,
-        canPublish: true,
-        canPublishData: false,
-        canPublishSources: [TrackSource.MICROPHONE],
-        canSubscribe: true,
-      });
-
       return providerSuccess("livekit", {
         roomName: input.roomName,
-        token: await token.toJwt(),
+        token: signedToken,
         url: input.env.url,
       });
     },

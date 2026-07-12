@@ -692,6 +692,9 @@ test("partial LiveKit dispatch failure durably owns cleanup when immediate teard
       markRoomCleanupComplete: async () => {
         calls.push("clear-cleanup");
       },
+      markRoomProvisioningSettled: async () => {
+        calls.push("clear-provisioning");
+      },
       transitionLifecycle: async (input) => {
         calls.push(`transition:${input.to}`);
         return lifecycle.transition(input);
@@ -717,6 +720,162 @@ test("partial LiveKit dispatch failure durably owns cleanup when immediate teard
   assert.equal(lifecycle.current().state, "failed");
   assert.equal(lifecycle.current().terminalReason, "provider_failure");
   assert.equal(calls.includes("clear-cleanup"), false);
+});
+
+test("a thrown provider exception after connecting is treated as potentially provisioned", async () => {
+  const calls: string[] = [];
+  const lifecycle = createStatefulLifecycleHarness();
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: { roundType: "product_sense" },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      livekitProvider: {
+        startInterviewRoom: async () => {
+          calls.push("provider");
+          throw new Error("provider transport failed after create");
+        },
+      },
+      transitionLifecycle: async (input) => {
+        calls.push(`transition:${input.to}`);
+        return lifecycle.transition(input);
+      },
+      terminateRoom: async () => {
+        calls.push("terminate");
+      },
+      markRoomCleanupComplete: async () => {
+        calls.push("clear-room");
+      },
+      settleFailedReservation: async () => {
+        calls.push("settle-credit");
+      },
+      markRoomProvisioningSettled: async () => {
+        calls.push("clear-provisioning");
+      },
+    })
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.status, 503);
+  assert.deepEqual(calls, [
+    "transition:connecting",
+    "provider",
+    "transition:failed",
+    "terminate",
+    "clear-room",
+    "settle-credit",
+    "clear-provisioning",
+  ]);
+});
+
+test("a provider exception keeps the provisioning lease when lifecycle and teardown both fail", async () => {
+  const calls: string[] = [];
+
+  await assert.rejects(
+    () =>
+      startInterviewSessionWorkflow(
+        {
+          user,
+          body: { roundType: "product_sense" },
+          env: createLiveKitStartFixture().input.env,
+          interviewAgentName: createLiveKitStartFixture().input.agentName,
+        },
+        createDeps({
+          livekitProvider: {
+            startInterviewRoom: async () => {
+              calls.push("provider");
+              throw new Error("provider transport failed after create");
+            },
+          },
+          transitionLifecycle: async (input) => {
+            calls.push(`transition:${input.to}`);
+            if (input.to === "connecting") return createTransitionResult(input);
+            return {
+              ok: false,
+              disposition: "conflict",
+              lifecycle: createTransitionResult(input).lifecycle,
+            };
+          },
+          terminateRoom: async () => {
+            calls.push("terminate");
+            throw new Error("provider teardown unavailable");
+          },
+          settleFailedReservation: async () => {
+            calls.push("settle-credit");
+          },
+          markRoomCleanupComplete: async () => {
+            calls.push("clear-room");
+          },
+          markRoomProvisioningSettled: async () => {
+            calls.push("clear-provisioning");
+          },
+        })
+      ),
+    /session_lifecycle_conflict/
+  );
+
+  assert.deepEqual(calls, [
+    "transition:connecting",
+    "provider",
+    "transition:failed",
+    "transition:ending",
+    "terminate",
+    "settle-credit",
+  ]);
+});
+
+test("a lost provisioning lease after credit consume fails closed and refunds", async () => {
+  const calls: string[] = [];
+  const lifecycle = createStatefulLifecycleHarness();
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: { roundType: "product_sense" },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      transitionLifecycle: async (input) => {
+        calls.push(`transition:${input.to}`);
+        return lifecycle.transition(input);
+      },
+      consumeReservation: async () => {
+        calls.push("consume");
+      },
+      completeRoomProvisioning: async (input) => {
+        calls.push(`complete:${input.expectedVersion}`);
+        return false;
+      },
+      terminateRoom: async () => {
+        calls.push("terminate");
+      },
+      markRoomCleanupComplete: async () => {
+        calls.push("clear-room");
+      },
+      settleFailedReservation: async () => {
+        calls.push("settle-credit");
+      },
+      markRoomProvisioningSettled: async () => {
+        calls.push("clear-provisioning");
+      },
+    })
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.status, 503);
+  assert.deepEqual(calls, [
+    "transition:connecting",
+    "consume",
+    "complete:2",
+    "transition:failed",
+    "terminate",
+    "clear-room",
+    "settle-credit",
+    "clear-provisioning",
+  ]);
 });
 
 test("deadline scheduling failure closes the room, terminalizes, and releases credit", async () => {
@@ -1020,9 +1179,12 @@ function createDeps(
     }),
     consumeReservation: async () => {},
     releaseReservation: async () => {},
+    settleFailedReservation: async () => {},
     scheduleDeadline: async () => {},
     terminateRoom: async () => {},
     markRoomCleanupComplete: async () => {},
+    completeRoomProvisioning: async () => true,
+    markRoomProvisioningSettled: async () => {},
     livekitProvider: {
       startInterviewRoom: async () => ({
         ok: true,
@@ -1040,7 +1202,16 @@ function createDeps(
       ),
   };
 
-  return { ...deps, ...overrides };
+  const result = { ...deps, ...overrides };
+  if (!overrides.settleFailedReservation) {
+    result.settleFailedReservation = async (reservationKey) => {
+      await result.releaseReservation({
+        reservationKey,
+        idempotencyKey: `release:${reservationKey}`,
+      });
+    };
+  }
+  return result;
 }
 
 function createTransitionResult(
