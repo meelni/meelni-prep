@@ -6779,6 +6779,8 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     deleteUserApplicationData,
     getAccountDeletionRequest,
     listRecoverableAccountDeletions,
+    LIVEKIT_DELETION_PROVISIONING_LEASE_MS,
+    markAccountDeletionProcessing,
     markAccountDeletionCompleted,
     recordLateStripeDeletionSubjects,
     redactStripeEventLogs,

@@ -45,7 +45,8 @@
   provisioning-subject retention across a pre-create 404, combined fence/delete
   failure containment, bounded database-clock provisioning leases with
   expiry-aware durable retry, provider-start reconciliation and provider-error
-  redaction, and absence of automatic refund operations.
+  redaction, terminal-session room capture, legacy null-expiry upgrade, late
+  ambiguous-room containment, and absence of automatic refund operations.
 
 ## Rollout
 

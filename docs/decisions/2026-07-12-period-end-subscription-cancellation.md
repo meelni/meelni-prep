@@ -61,18 +61,22 @@ workflows.
   compensation. Ordinary cancellation remains period-end.
 - Deletion acceptance snapshots the current subscription plus every historical
   customer mapping's subscription/customer IDs in deterministic order. It also
-  snapshots every nonterminal LiveKit room. Session creation serializes with
+  snapshots every stored LiveKit room; terminal local state is not provider
+  cleanup proof. Session creation serializes with
   that snapshot and provider creation is followed by a second identity-lock
   fence before credentials are returned. If deletion won between persistence
   and provider creation, the newly created room is durably re-enrolled with a
   newer cleanup generation, terminated, and its credentials are withheld.
   Older cleanup attempts cannot clear the newer generation. A room captured
-  while its session is created/connecting remains a provisioning subject after
+  while its session is created/connecting or terminalized by provider failure
+  remains a provisioning subject after
   a missing-room result until its database-clock ten-minute uncertainty lease
   expires. Durable execution wakes at that deadline and retries termination
   before clearing an exact-generation missing result. Duplicate deletion
   requests monotonically extend leases and union subjects without lowering
   generations or dropping unresolved raw targets.
+  Legacy null-expiry subjects receive one persisted database-clock lease before
+  provider cleanup begins.
   If the post-create fence and direct termination both fail, that provisioning
   subject remains durable for retry. No database lock spans provider I/O.
 - Local data removal remains irreversible and does not wait for LiveKit. Room

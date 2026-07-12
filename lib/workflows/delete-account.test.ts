@@ -283,6 +283,40 @@ test("a missing provisioning room clears only after its durable lease expires", 
   ]);
 });
 
+test("a room that appears after the first missing check remains durable and is terminated on retry", async () => {
+  const processedRooms: unknown[][] = [];
+  const calls: string[] = [];
+  let roomExists = false;
+  const deps = createDeps([]);
+  deps.terminateLiveKitRoom = async () => {
+    calls.push(roomExists ? "terminate:late-room" : "terminate:missing");
+    return { terminated: roomExists };
+  };
+  deps.markCompleted = async (_userId, _fingerprints, rooms) => {
+    processedRooms.push(rooms);
+  };
+  const request = {
+    ...REQUEST,
+    livekitRooms: REQUEST.livekitRooms.map((room) => ({
+      ...room,
+      provisioning: true,
+      provisioningExpiresAt: "2026-07-12T00:10:00.000Z",
+    })),
+  };
+
+  const first = await deleteAccountWorkflow(request, deps);
+  roomExists = true;
+  const retry = await deleteAccountWorkflow(request, deps);
+
+  assert.deepEqual(calls, ["terminate:missing", "terminate:late-room"]);
+  assert.equal(first.retryAt, "2026-07-12T00:10:00.000Z");
+  assert.equal(retry.retryAt, null);
+  assert.deepEqual(processedRooms, [
+    [],
+    [{ fingerprint: "livekit-room-fingerprint", generation: 1 }],
+  ]);
+});
+
 test("deletion failures are reduced to a stable code without raw details", () => {
   const safe = safeAccountDeletionError(
     Object.assign(new Error("postgresql://secret-host transcript text"), {
