@@ -110,14 +110,16 @@ export async function generateFeedbackWithUsage(
   }
   try {
     const client = options.calibrationPaidMode
-      ? createCalibrationOpenAIClient()
+      ? createCalibrationOpenAIClient(
+          process.env,
+          options.beforePhysicalRequest!
+        )
       : getOpenAI();
     const userPrompt = getEvaluationPrompt(
       roundType,
       aliasProjection.transcript,
       evaluationState
     );
-    if (options.calibrationPaidMode) options.beforePhysicalRequest!();
     const completion = await client.chat.completions.create({
       model: modelVersion,
       messages: [
@@ -327,7 +329,11 @@ export function getCalibrationProviderRequestFields(): {
 }
 
 export function createCalibrationOpenAIClient(
-  env: CalibrationOpenAIEnvironment = process.env
+  env: CalibrationOpenAIEnvironment = process.env,
+  beforePhysicalRequest: () => void = () => {
+    throw new Error("calibration_transport_authorization_missing");
+  },
+  fetchImplementation: typeof fetch = globalThis.fetch
 ): OpenAI {
   assertCalibrationOpenAIEnvironment(env);
   const apiKey = env.OPENAI_API_KEY?.trim();
@@ -340,5 +346,22 @@ export function createCalibrationOpenAIClient(
     maxRetries: CALIBRATION_MAX_SDK_RETRIES,
     timeout: CALIBRATION_REQUEST_TIMEOUT_MS,
     fetchOptions: { redirect: "error" },
+    fetch: createGuardedCalibrationFetch(
+      beforePhysicalRequest,
+      fetchImplementation
+    ),
   });
+}
+
+export function createGuardedCalibrationFetch(
+  beforePhysicalRequest: () => void,
+  fetchImplementation: typeof fetch = globalThis.fetch
+): typeof fetch {
+  if (typeof beforePhysicalRequest !== "function") {
+    throw new Error("calibration_transport_authorization_missing");
+  }
+  return async (input, init) => {
+    beforePhysicalRequest();
+    return fetchImplementation(input, { ...init, redirect: "error" });
+  };
 }

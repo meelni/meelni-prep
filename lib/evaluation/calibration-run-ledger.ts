@@ -1,33 +1,37 @@
-import {
-  closeSync,
-  existsSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-  writeSync,
-} from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
+  EVALUATION_ADJUDICATION_VERSION,
+  EVALUATION_GOLD_SET_VERSION,
+  evaluationCalibrationCases,
+} from "@meelni/test-fixtures";
+
+import {
+  getEvaluationAdjudicationHashes,
+  parseEvaluationAdjudicationApproval,
+} from "./calibration-approval";
+import {
+  CALIBRATION_MAX_COMPLETION_TOKENS,
+  CALIBRATION_MAX_PROVIDER_CALLS,
+  CALIBRATION_MAX_SPEND_NANO_USD,
+  CALIBRATION_PRICING_CONTRACT,
+  calibrationInputTokenCeiling,
+  calculateWorstCaseNanoUsd,
   createEmptyCalibrationSpendState,
-  type CalibrationBudgetStopReason,
+  validateCalibrationPricingFreshness,
   type CalibrationPersistedSpendState,
-  type CalibrationProviderUsage,
   type CalibrationSpendPersistence,
-  type CalibrationSpendReservation,
 } from "./calibration-budget";
 
 export const SAV_198_APPROVED_RUN_ID = "sav-198-authorized-paid-calibration.v1";
 export const SAV_198_AUTHORIZATION_ID =
   "sav-198-user-authorization-2026-07-12.v1";
-export const CALIBRATION_LEDGER_LEASE_TTL_MS = 20 * 60 * 1_000;
+export const SAV_198_GIT_LEDGER_REF =
+  "refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1";
 
 export interface CalibrationSpendAuthorization {
   contractVersion: "evaluation-calibration-spend-authorization.v1";
@@ -59,216 +63,336 @@ export const SAV_198_SPEND_AUTHORIZATION: CalibrationSpendAuthorization = {
   productionDataAllowed: false,
 };
 
-interface CalibrationRunCheckpoint {
-  contractVersion: "evaluation-calibration-run-checkpoint.v1";
+export interface CalibrationActivatedPlanCall {
+  callKey: string;
+  inputTokenCeiling: number;
+  outputTokenCeiling: 2_000;
+  worstCaseNanoUsd: number;
+}
+
+export interface CalibrationActivatedPlan {
+  contractVersion: "evaluation-calibration-activated-plan.v1";
   runId: typeof SAV_198_APPROVED_RUN_ID;
   authorizationId: typeof SAV_198_AUTHORIZATION_ID;
   authorizationHash: string;
-  revision: number;
-  createdAt: string;
-  updatedAt: string;
-  spend: CalibrationPersistedSpendState;
+  candidateArtifactHash: string;
+  corpusHash: string;
+  approvalHash: string;
+  goldSetVersion: typeof EVALUATION_GOLD_SET_VERSION;
+  adjudicationVersion: typeof EVALUATION_ADJUDICATION_VERSION;
+  model: typeof CALIBRATION_PRICING_CONTRACT.model;
+  endpoint: typeof CALIBRATION_PRICING_CONTRACT.endpoint;
+  serviceTier: typeof CALIBRATION_PRICING_CONTRACT.serviceTier;
+  pricingHash: string;
+  repetitions: 3;
+  plannedCalls: number;
+  plannedWorstCaseNanoUsd: number;
+  calls: CalibrationActivatedPlanCall[];
+  planHash: string;
 }
 
-interface CalibrationRunLease {
-  contractVersion: "evaluation-calibration-run-lease.v1";
-  runId: typeof SAV_198_APPROVED_RUN_ID;
-  ownerId: string;
-  acquiredAt: string;
-  heartbeatAt: string;
-  expiresAt: string;
-}
-
-export interface OpenCalibrationRunLedgerOptions {
+export interface ActivateCalibrationRunOptions {
   authorization: unknown;
-  clock?: () => Date;
-  ownerId?: string;
-  /** Tests use an isolated directory. The production CLI never exposes it. */
-  stateDirectory?: string;
+  adjudicationApproval: unknown;
+  model: string;
+  repetitions: number;
+  remoteUrl: string;
+  now?: Date;
+  activationId?: string;
+  /** Tests use an isolated Git executable wrapper only. */
+  gitExecutable?: string;
 }
 
-export class DurableCalibrationRunLedger
+export class ActivatedCalibrationRunAuthority
   implements CalibrationSpendPersistence
 {
   readonly durable = true as const;
   readonly runId = SAV_198_APPROVED_RUN_ID;
   readonly authorizationId = SAV_198_AUTHORIZATION_ID;
-  readonly authorization: CalibrationSpendAuthorization;
   readonly authorizationHash: string;
-  readonly checkpointPath: string;
-  readonly leasePath: string;
+  readonly planHash: string;
+  readonly plannedCalls: number;
+  readonly plannedWorstCaseNanoUsd: number;
+  private active = true;
+  private spend = createEmptyCalibrationSpendState();
+  private readonly callsByKey: Map<string, CalibrationActivatedPlanCall>;
 
-  private checkpoint!: CalibrationRunCheckpoint;
-  private released = false;
-
-  private constructor(
-    authorization: CalibrationSpendAuthorization,
-    private readonly ownerId: string,
-    private readonly clock: () => Date,
-    stateDirectory: string
+  constructor(
+    readonly activationCommit: string,
+    readonly plan: CalibrationActivatedPlan,
+    private readonly remoteUrl: string,
+    private readonly gitExecutable = "git"
   ) {
-    this.authorization = authorization;
-    this.authorizationHash = hashAuthorization(authorization);
-    this.checkpointPath = join(
-      stateDirectory,
-      `${SAV_198_APPROVED_RUN_ID}.checkpoint.json`
+    this.authorizationHash = plan.authorizationHash;
+    this.planHash = plan.planHash;
+    this.plannedCalls = plan.plannedCalls;
+    this.plannedWorstCaseNanoUsd = plan.plannedWorstCaseNanoUsd;
+    this.callsByKey = new Map(plan.calls.map((call) => [call.callKey, call]));
+  }
+
+  assertRequestAuthority(): void {
+    if (!this.active) throw new Error("calibration_git_activation_released");
+    const current = readRemoteRef(
+      this.remoteUrl,
+      SAV_198_GIT_LEDGER_REF,
+      this.gitExecutable
     );
-    this.leasePath = join(
-      stateDirectory,
-      `${SAV_198_APPROVED_RUN_ID}.lease.json`
-    );
-    mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
-    this.acquireLease();
-    try {
-      this.checkpoint = this.loadOrCreateCheckpoint();
-    } catch (error) {
-      this.release();
-      throw error;
+    if (current !== this.activationCommit) {
+      this.active = false;
+      throw new Error("calibration_git_activation_is_not_current");
     }
   }
 
-  static open(
-    options: OpenCalibrationRunLedgerOptions
-  ): DurableCalibrationRunLedger {
-    const authorization = parseCalibrationSpendAuthorization(
-      options.authorization
-    );
-    return new DurableCalibrationRunLedger(
-      authorization,
-      options.ownerId ?? randomUUID(),
-      options.clock ?? (() => new Date()),
-      options.stateDirectory ?? approvedCalibrationStateDirectory()
-    );
-  }
-
-  assertExclusiveLease(): void {
-    if (this.released) throw new Error("calibration_run_lease_released");
-    const lease = this.readLease();
-    const now = this.clock();
-    assertValidDate(now, "calibration_run_lease_clock_invalid");
-    if (
-      lease.ownerId !== this.ownerId ||
-      lease.runId !== this.runId ||
-      new Date(lease.expiresAt).getTime() <= now.getTime()
-    ) {
-      throw new Error("calibration_run_exclusive_lease_lost");
+  assertReservationAuthorized(input: CalibrationActivatedPlanCall): void {
+    const planned = this.callsByKey.get(input.callKey);
+    if (!planned || stableJson(planned) !== stableJson(input)) {
+      throw new Error("calibration_reservation_not_in_activated_plan");
     }
-    this.writeLease({
-      ...lease,
-      heartbeatAt: now.toISOString(),
-      expiresAt: new Date(
-        now.getTime() + CALIBRATION_LEDGER_LEASE_TTL_MS
-      ).toISOString(),
-    });
   }
 
   loadSpendState(): CalibrationPersistedSpendState {
-    this.assertExclusiveLease();
-    return cloneSpendState(this.checkpoint.spend);
+    return cloneSpendState(this.spend);
   }
 
   saveSpendState(state: CalibrationPersistedSpendState): void {
-    this.assertExclusiveLease();
-    const now = this.clock();
-    assertValidDate(now, "calibration_checkpoint_clock_invalid");
-    const next: CalibrationRunCheckpoint = {
-      ...this.checkpoint,
-      revision: this.checkpoint.revision + 1,
-      updatedAt: now.toISOString(),
-      spend: cloneSpendState(state),
-    };
-    validateCheckpoint(next, this.authorizationHash);
-    writeJsonAtomic(this.checkpointPath, next);
-    this.checkpoint = next;
+    if (!this.active) throw new Error("calibration_git_activation_released");
+    this.spend = cloneSpendState(state);
   }
 
   release(): void {
-    if (this.released) return;
-    try {
-      const lease = this.readLease();
-      if (lease.ownerId === this.ownerId) rmSync(this.leasePath);
-    } catch {
-      // A lost or corrupt lock is already fail-closed for further writes.
-    }
-    this.released = true;
+    this.active = false;
+  }
+}
+
+export function buildCalibrationActivatedPlan(input: {
+  authorization: unknown;
+  adjudicationApproval: unknown;
+  model: string;
+  repetitions: number;
+  now: Date;
+}): CalibrationActivatedPlan {
+  const authorization = parseCalibrationSpendAuthorization(input.authorization);
+  const approval = parseEvaluationAdjudicationApproval(
+    input.adjudicationApproval
+  );
+  if (approval.decisions.some(({ decision }) => decision !== "approved")) {
+    throw new Error("calibration_git_activation_requires_full_adjudication");
+  }
+  if (input.model !== CALIBRATION_PRICING_CONTRACT.model) {
+    throw new Error("calibration_git_activation_model_mismatch");
+  }
+  if (input.repetitions !== 3) {
+    throw new Error("calibration_git_activation_repetitions_mismatch");
+  }
+  validateCalibrationPricingFreshness(input.now);
+
+  const scoredCases = evaluationCalibrationCases.filter(
+    ({ expectedCompletionState }) =>
+      expectedCompletionState === "full" ||
+      expectedCompletionState === "partial"
+  );
+  const calls = scoredCases.flatMap<CalibrationActivatedPlanCall>((fixture) => {
+    const inputTokenCeiling = calibrationInputTokenCeiling(fixture);
+    const worstCaseNanoUsd = calculateWorstCaseNanoUsd(
+      inputTokenCeiling,
+      CALIBRATION_MAX_COMPLETION_TOKENS,
+      CALIBRATION_PRICING_CONTRACT
+    );
+    return Array.from({ length: input.repetitions }, (_, runIndex) => ({
+      callKey: `${fixture.id}:${runIndex}`,
+      inputTokenCeiling,
+      outputTokenCeiling: CALIBRATION_MAX_COMPLETION_TOKENS,
+      worstCaseNanoUsd,
+    }));
+  });
+  const plannedWorstCaseNanoUsd = calls.reduce(
+    (total, call) => total + call.worstCaseNanoUsd,
+    0
+  );
+  if (
+    calls.length > CALIBRATION_MAX_PROVIDER_CALLS ||
+    calls.length > authorization.maximumProviderCalls ||
+    calls.length > authorization.maximumPhysicalHttpAttempts ||
+    plannedWorstCaseNanoUsd > CALIBRATION_MAX_SPEND_NANO_USD
+  ) {
+    throw new Error("calibration_git_activation_plan_exceeds_authorization");
   }
 
-  private acquireLease(): void {
-    const now = this.clock();
-    assertValidDate(now, "calibration_run_lease_clock_invalid");
-    const lease: CalibrationRunLease = {
-      contractVersion: "evaluation-calibration-run-lease.v1",
-      runId: this.runId,
-      ownerId: this.ownerId,
-      acquiredAt: now.toISOString(),
-      heartbeatAt: now.toISOString(),
-      expiresAt: new Date(
-        now.getTime() + CALIBRATION_LEDGER_LEASE_TTL_MS
-      ).toISOString(),
-    };
+  const adjudicationHashes = getEvaluationAdjudicationHashes();
+  const authorizationHash = sha256(stableJson(authorization));
+  const pricingHash = sha256(stableJson(CALIBRATION_PRICING_CONTRACT));
+  const approvalHash = sha256(
+    stableJson({
+      ...approval,
+      decisions: [...approval.decisions].sort((left, right) =>
+        left.caseId.localeCompare(right.caseId)
+      ),
+    })
+  );
+  const withoutHash = {
+    contractVersion: "evaluation-calibration-activated-plan.v1" as const,
+    runId: SAV_198_APPROVED_RUN_ID as typeof SAV_198_APPROVED_RUN_ID,
+    authorizationId:
+      SAV_198_AUTHORIZATION_ID as typeof SAV_198_AUTHORIZATION_ID,
+    authorizationHash,
+    ...adjudicationHashes,
+    approvalHash,
+    goldSetVersion: EVALUATION_GOLD_SET_VERSION,
+    adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
+    model: CALIBRATION_PRICING_CONTRACT.model,
+    endpoint: CALIBRATION_PRICING_CONTRACT.endpoint,
+    serviceTier: CALIBRATION_PRICING_CONTRACT.serviceTier,
+    pricingHash,
+    repetitions: 3 as const,
+    plannedCalls: calls.length,
+    plannedWorstCaseNanoUsd,
+    calls,
+  };
+  return { ...withoutHash, planHash: sha256(stableJson(withoutHash)) };
+}
 
+export function activateCalibrationRun(
+  options: ActivateCalibrationRunOptions
+): ActivatedCalibrationRunAuthority {
+  const now = options.now ?? new Date();
+  const plan = buildCalibrationActivatedPlan({
+    authorization: options.authorization,
+    adjudicationApproval: options.adjudicationApproval,
+    model: options.model,
+    repetitions: options.repetitions,
+    now,
+  });
+  const gitExecutable = options.gitExecutable ?? "git";
+  const work = mkdtempSync(join(tmpdir(), "meelni-calibration-git-cas-"));
+  try {
+    git(gitExecutable, ["init", "--bare", "--quiet", work]);
+    let current: string;
     try {
-      createExclusiveJson(this.leasePath, lease);
-      return;
+      git(gitExecutable, [
+        `--git-dir=${work}`,
+        "fetch",
+        "--quiet",
+        "--no-tags",
+        options.remoteUrl,
+        SAV_198_GIT_LEDGER_REF,
+      ]);
+      current = git(gitExecutable, [
+        `--git-dir=${work}`,
+        "rev-parse",
+        "FETCH_HEAD",
+      ]).trim();
     } catch (error) {
-      if (!isAlreadyExists(error)) throw error;
-    }
-
-    const stat = statSync(this.leasePath);
-    const existing = readLeaseBestEffort(this.leasePath);
-    const leaseExpired =
-      existing === null ||
-      new Date(existing.expiresAt).getTime() <= now.getTime();
-    const fileStale =
-      stat.mtimeMs + CALIBRATION_LEDGER_LEASE_TTL_MS <= now.getTime();
-    if (!leaseExpired || !fileStale) {
-      throw new Error("calibration_run_already_has_active_process");
-    }
-
-    const stalePath = `${this.leasePath}.stale.${this.ownerId}`;
-    try {
-      renameSync(this.leasePath, stalePath);
-      createExclusiveJson(this.leasePath, lease);
-    } catch (error) {
-      throw new Error("calibration_run_stale_lease_recovery_lost_race", {
+      throw new Error("calibration_git_authorization_ref_missing", {
         cause: error,
       });
-    } finally {
-      if (existsSync(stalePath)) rmSync(stalePath);
     }
-  }
 
-  private readLease(): CalibrationRunLease {
-    const lease = readLeaseBestEffort(this.leasePath);
-    if (!lease) throw new Error("calibration_run_lease_invalid");
-    return lease;
-  }
-
-  private writeLease(lease: CalibrationRunLease): void {
-    validateLease(lease);
-    writeJsonAtomic(this.leasePath, lease);
-  }
-
-  private loadOrCreateCheckpoint(): CalibrationRunCheckpoint {
-    if (existsSync(this.checkpointPath)) {
-      const raw = JSON.parse(readFileSync(this.checkpointPath, "utf8"));
-      return validateCheckpoint(raw, this.authorizationHash);
+    const message = git(gitExecutable, [
+      `--git-dir=${work}`,
+      "show",
+      "-s",
+      "--format=%B",
+      current,
+    ]).trim();
+    const parents = git(gitExecutable, [
+      `--git-dir=${work}`,
+      "show",
+      "-s",
+      "--format=%P",
+      current,
+    ]).trim();
+    const tree = git(gitExecutable, [
+      `--git-dir=${work}`,
+      "show",
+      "-s",
+      "--format=%T",
+      current,
+    ]).trim();
+    const emptyTree = git(gitExecutable, [
+      `--git-dir=${work}`,
+      "mktree",
+    ]).trim();
+    if (tree !== emptyTree) {
+      throw new Error("calibration_git_ledger_commit_must_be_payload_free");
     }
-    const now = this.clock();
-    assertValidDate(now, "calibration_checkpoint_clock_invalid");
-    const checkpoint: CalibrationRunCheckpoint = {
-      contractVersion: "evaluation-calibration-run-checkpoint.v1",
-      runId: this.runId,
-      authorizationId: this.authorization.authorizationId,
-      authorizationHash: this.authorizationHash,
-      revision: 0,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-      spend: createEmptyCalibrationSpendState(),
-    };
-    writeJsonAtomic(this.checkpointPath, checkpoint);
-    return checkpoint;
+    if (message !== calibrationAuthorizationCommitMessage() || parents) {
+      if (isActivationMessage(message)) {
+        throw new Error("calibration_authorized_run_is_already_activated");
+      }
+      throw new Error("calibration_git_authorization_commit_invalid");
+    }
+
+    const activationId = options.activationId ?? randomUUID();
+    const activatedMessage = stableJson({
+      contractVersion: "evaluation-calibration-git-activation.v1",
+      runId: SAV_198_APPROVED_RUN_ID,
+      authorizationId: SAV_198_AUTHORIZATION_ID,
+      authorizationHash: plan.authorizationHash,
+      planHash: plan.planHash,
+      activationId,
+    });
+    const activationCommit = git(
+      gitExecutable,
+      [`--git-dir=${work}`, "commit-tree", emptyTree, "-p", current],
+      activatedMessage,
+      now
+    ).trim();
+    try {
+      git(gitExecutable, [
+        `--git-dir=${work}`,
+        "push",
+        "--porcelain",
+        options.remoteUrl,
+        `${activationCommit}:${SAV_198_GIT_LEDGER_REF}`,
+      ]);
+    } catch (error) {
+      throw new Error("calibration_git_activation_lost_concurrent_cas", {
+        cause: error,
+      });
+    }
+    if (
+      readRemoteRef(
+        options.remoteUrl,
+        SAV_198_GIT_LEDGER_REF,
+        gitExecutable
+      ) !== activationCommit
+    ) {
+      throw new Error("calibration_git_activation_not_durable");
+    }
+    return new ActivatedCalibrationRunAuthority(
+      activationCommit,
+      plan,
+      options.remoteUrl,
+      gitExecutable
+    );
+  } finally {
+    rmSync(work, { recursive: true, force: true });
   }
+}
+
+export function calibrationAuthorizationCommitMessage(): string {
+  return stableJson({
+    contractVersion: "evaluation-calibration-git-authorization.v1",
+    runId: SAV_198_APPROVED_RUN_ID,
+    authorizationId: SAV_198_AUTHORIZATION_ID,
+    authorizationHash: sha256(stableJson(SAV_198_SPEND_AUTHORIZATION)),
+  });
+}
+
+export function getCalibrationRepositoryRemoteUrl(
+  cwd = process.cwd(),
+  gitExecutable = "git"
+): string {
+  const url = git(gitExecutable, [
+    "-C",
+    cwd,
+    "remote",
+    "get-url",
+    "--push",
+    "origin",
+  ]).trim();
+  if (!url) throw new Error("calibration_git_origin_remote_missing");
+  return url;
 }
 
 export function parseCalibrationSpendAuthorization(
@@ -286,208 +410,61 @@ export function parseCalibrationSpendAuthorization(
   return { ...SAV_198_SPEND_AUTHORIZATION };
 }
 
-function approvedCalibrationStateDirectory(): string {
-  return join(homedir(), ".local", "state", "meelni", "evaluation-calibration");
-}
-
-function hashAuthorization(value: CalibrationSpendAuthorization): string {
-  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
-}
-
-function validateCheckpoint(
-  value: unknown,
-  expectedAuthorizationHash: string
-): CalibrationRunCheckpoint {
-  if (!isRecord(value)) throw new Error("calibration_checkpoint_invalid");
-  assertExactKeys(value, [
-    "contractVersion",
-    "runId",
-    "authorizationId",
-    "authorizationHash",
-    "revision",
-    "createdAt",
-    "updatedAt",
-    "spend",
-  ]);
-  if (
-    value.contractVersion !== "evaluation-calibration-run-checkpoint.v1" ||
-    value.runId !== SAV_198_APPROVED_RUN_ID ||
-    value.authorizationId !== SAV_198_AUTHORIZATION_ID ||
-    value.authorizationHash !== expectedAuthorizationHash ||
-    !isNonnegativeInteger(value.revision) ||
-    !isCanonicalDate(value.createdAt) ||
-    !isCanonicalDate(value.updatedAt)
-  ) {
-    throw new Error("calibration_checkpoint_identity_invalid");
-  }
-  return {
-    contractVersion: "evaluation-calibration-run-checkpoint.v1",
-    runId: SAV_198_APPROVED_RUN_ID,
-    authorizationId: SAV_198_AUTHORIZATION_ID,
-    authorizationHash: expectedAuthorizationHash,
-    revision: value.revision,
-    createdAt: value.createdAt,
-    updatedAt: value.updatedAt,
-    spend: parseSpendState(value.spend),
-  };
-}
-
-function parseSpendState(value: unknown): CalibrationPersistedSpendState {
-  if (!isRecord(value)) throw new Error("calibration_spend_state_invalid");
-  assertExactKeys(value, [
-    "attemptedCalls",
-    "completedCalls",
-    "cumulativeReservedNanoUsd",
-    "reconciledActualNanoUsd",
-    "unresolvedReservedNanoUsd",
-    "stopReason",
-    "observedUsage",
-    "reservations",
-    "resumedSkippedCalls",
-  ]);
-  if (
-    !isNonnegativeInteger(value.attemptedCalls) ||
-    !isNonnegativeInteger(value.completedCalls) ||
-    !isNonnegativeInteger(value.cumulativeReservedNanoUsd) ||
-    !isNonnegativeInteger(value.reconciledActualNanoUsd) ||
-    !isNonnegativeInteger(value.unresolvedReservedNanoUsd) ||
-    !isNonnegativeInteger(value.resumedSkippedCalls) ||
-    !Array.isArray(value.reservations)
-  ) {
-    throw new Error("calibration_spend_state_numbers_invalid");
-  }
-  return {
-    attemptedCalls: value.attemptedCalls,
-    completedCalls: value.completedCalls,
-    cumulativeReservedNanoUsd: value.cumulativeReservedNanoUsd,
-    reconciledActualNanoUsd: value.reconciledActualNanoUsd,
-    unresolvedReservedNanoUsd: value.unresolvedReservedNanoUsd,
-    stopReason: parseStopReason(value.stopReason),
-    observedUsage: parseUsage(value.observedUsage),
-    reservations: value.reservations.map(parseReservation),
-    resumedSkippedCalls: value.resumedSkippedCalls,
-  };
-}
-
-function parseReservation(value: unknown): CalibrationSpendReservation {
-  if (!isRecord(value)) throw new Error("calibration_reservation_invalid");
-  assertExactKeys(value, [
-    "id",
-    "callKey",
-    "inputTokenCeiling",
-    "outputTokenCeiling",
-    "worstCaseNanoUsd",
-    "settled",
-    "usageRecorded",
-    "requestBoundaryConfirmed",
-  ]);
-  if (
-    !isNonnegativeInteger(value.id) ||
-    typeof value.callKey !== "string" ||
-    value.callKey.length < 1 ||
-    value.callKey.length > 300 ||
-    !isNonnegativeInteger(value.inputTokenCeiling) ||
-    !isNonnegativeInteger(value.outputTokenCeiling) ||
-    !isNonnegativeInteger(value.worstCaseNanoUsd) ||
-    typeof value.settled !== "boolean" ||
-    typeof value.usageRecorded !== "boolean" ||
-    typeof value.requestBoundaryConfirmed !== "boolean"
-  ) {
-    throw new Error("calibration_reservation_fields_invalid");
-  }
-  return {
-    id: value.id,
-    callKey: value.callKey,
-    inputTokenCeiling: value.inputTokenCeiling,
-    outputTokenCeiling: value.outputTokenCeiling,
-    worstCaseNanoUsd: value.worstCaseNanoUsd,
-    settled: value.settled,
-    usageRecorded: value.usageRecorded,
-    requestBoundaryConfirmed: value.requestBoundaryConfirmed,
-  };
-}
-
-function parseUsage(value: unknown): CalibrationProviderUsage {
-  if (!isRecord(value)) throw new Error("calibration_usage_invalid");
-  assertExactKeys(value, [
-    "inputTokens",
-    "cachedInputTokens",
-    "outputTokens",
-    "totalTokens",
-  ]);
-  if (
-    !isNonnegativeInteger(value.inputTokens) ||
-    !isNonnegativeInteger(value.cachedInputTokens) ||
-    !isNonnegativeInteger(value.outputTokens) ||
-    !isNonnegativeInteger(value.totalTokens) ||
-    value.cachedInputTokens > value.inputTokens ||
-    value.totalTokens !== value.inputTokens + value.outputTokens
-  ) {
-    throw new Error("calibration_usage_fields_invalid");
-  }
-  return {
-    inputTokens: value.inputTokens,
-    cachedInputTokens: value.cachedInputTokens,
-    outputTokens: value.outputTokens,
-    totalTokens: value.totalTokens,
-  };
-}
-
-function parseStopReason(value: unknown): CalibrationBudgetStopReason | null {
-  if (value === null) return null;
-  const supported: readonly CalibrationBudgetStopReason[] = [
-    "completed_plan",
-    "call_cap_reached",
-    "spend_cap_before_next_call",
-    "provider_failure",
-    "provider_model_mismatch",
-    "provider_service_tier_missing",
-    "provider_service_tier_mismatch",
-    "missing_provider_usage",
-    "invalid_provider_usage",
-    "provider_usage_exceeded_reservation",
-    "actual_spend_cap_breached",
-    "physical_request_boundary_not_confirmed",
-    "pricing_review_expired_before_request",
-    "resumed_run_missing_evaluation_evidence",
-    "recovered_unresolved_reservation",
-  ];
-  if (typeof value !== "string" || !supported.includes(value as never)) {
-    throw new Error("calibration_stop_reason_invalid");
-  }
-  return value as CalibrationBudgetStopReason;
-}
-
-function validateLease(value: unknown): CalibrationRunLease {
-  if (!isRecord(value)) throw new Error("calibration_run_lease_invalid");
-  assertExactKeys(value, [
-    "contractVersion",
-    "runId",
-    "ownerId",
-    "acquiredAt",
-    "heartbeatAt",
-    "expiresAt",
-  ]);
-  if (
-    value.contractVersion !== "evaluation-calibration-run-lease.v1" ||
-    value.runId !== SAV_198_APPROVED_RUN_ID ||
-    typeof value.ownerId !== "string" ||
-    value.ownerId.length < 1 ||
-    value.ownerId.length > 200 ||
-    !isCanonicalDate(value.acquiredAt) ||
-    !isCanonicalDate(value.heartbeatAt) ||
-    !isCanonicalDate(value.expiresAt)
-  ) {
-    throw new Error("calibration_run_lease_fields_invalid");
-  }
-  return value as unknown as CalibrationRunLease;
-}
-
-function readLeaseBestEffort(path: string): CalibrationRunLease | null {
+function readRemoteRef(
+  remoteUrl: string,
+  ref: string,
+  gitExecutable: string
+): string {
   try {
-    return validateLease(JSON.parse(readFileSync(path, "utf8")));
+    const output = git(gitExecutable, ["ls-remote", "--refs", remoteUrl, ref]);
+    const [oid, returnedRef, extra] = output.trim().split(/\s+/);
+    if (
+      !oid ||
+      returnedRef !== ref ||
+      extra ||
+      !/^[0-9a-f]{40,64}$/.test(oid)
+    ) {
+      throw new Error("calibration_git_ledger_ref_invalid");
+    }
+    return oid;
+  } catch (error) {
+    throw new Error("calibration_git_ledger_ref_unavailable", { cause: error });
+  }
+}
+
+function git(
+  executable: string,
+  args: string[],
+  input?: string,
+  now = new Date()
+): string {
+  return execFileSync(executable, args, {
+    encoding: "utf8",
+    input: input === undefined ? undefined : `${input}\n`,
+    stdio: ["pipe", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_AUTHOR_NAME: "Meelni Calibration Authorization",
+      GIT_AUTHOR_EMAIL: "calibration-ledger@meelni.invalid",
+      GIT_AUTHOR_DATE: now.toISOString(),
+      GIT_COMMITTER_NAME: "Meelni Calibration Authorization",
+      GIT_COMMITTER_EMAIL: "calibration-ledger@meelni.invalid",
+      GIT_COMMITTER_DATE: now.toISOString(),
+    },
+  });
+}
+
+function isActivationMessage(message: string): boolean {
+  try {
+    const parsed = JSON.parse(message) as Record<string, unknown>;
+    return (
+      parsed.contractVersion === "evaluation-calibration-git-activation.v1" &&
+      parsed.runId === SAV_198_APPROVED_RUN_ID &&
+      parsed.authorizationId === SAV_198_AUTHORIZATION_ID
+    );
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -497,51 +474,23 @@ function cloneSpendState(
   return {
     ...state,
     observedUsage: { ...state.observedUsage },
-    reservations: state.reservations.map((reservation) => ({
-      ...reservation,
-    })),
+    reservations: state.reservations.map((reservation) => ({ ...reservation })),
   };
 }
 
-function createExclusiveJson(path: string, value: unknown): void {
-  const fd = openSync(path, "wx", 0o600);
-  try {
-    writeSync(fd, `${JSON.stringify(value, null, 2)}\n`, undefined, "utf8");
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(",")}}`;
   }
-  fsyncDirectory(dirname(path));
+  return JSON.stringify(value);
 }
 
-function writeJsonAtomic(path: string, value: unknown): void {
-  const temp = `${path}.tmp.${process.pid}.${randomUUID()}`;
-  try {
-    writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-      flag: "wx",
-    });
-    const fd = openSync(temp, "r");
-    try {
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
-    renameSync(temp, path);
-    fsyncDirectory(dirname(path));
-  } finally {
-    if (existsSync(temp)) rmSync(temp);
-  }
-}
-
-function fsyncDirectory(path: string): void {
-  const fd = openSync(path, "r");
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function assertExactKeys(
@@ -552,35 +501,12 @@ function assertExactKeys(
   const wanted = [...expected].sort();
   if (
     actual.length !== wanted.length ||
-    actual.some((key, i) => key !== wanted[i])
+    actual.some((key, index) => key !== wanted[index])
   ) {
-    throw new Error("calibration_checkpoint_unknown_or_missing_field");
+    throw new Error("calibration_authorization_unknown_or_missing_field");
   }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isNonnegativeInteger(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) >= 0;
-}
-
-function isCanonicalDate(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) && date.toISOString() === value;
-}
-
-function assertValidDate(value: Date, message: string): void {
-  if (!Number.isFinite(value.getTime())) throw new Error(message);
-}
-
-function isAlreadyExists(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "EEXIST"
-  );
 }

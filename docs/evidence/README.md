@@ -13,9 +13,9 @@ product-owner adjudication approval.
 boundary for one fixed aggregate paid run: at most 96 provider calls/physical
 attempts and $3, using synthetic or separately approved fixtures only. It is
 code-bound authorization evidence, not a reusable per-process budget, a live
-run result, or semantic approval of the gold-set candidates. The durable local
-checkpoint binds this manifest's SHA-256 and prevents a restart from resetting
-the aggregate allowance.
+run result, or semantic approval of the gold-set candidates. Its one-time spend
+authority is the protected payload-free Git activation ref described in the
+calibration contract. Local reports and caches are never budget authority.
 
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are local evidence only and deliberately keep live-provider launch acceptance

@@ -72,14 +72,17 @@ export type CalibrationBudgetStopReason =
   | "actual_spend_cap_breached"
   | "physical_request_boundary_not_confirmed"
   | "pricing_review_expired_before_request"
-  | "resumed_run_missing_evaluation_evidence"
-  | "recovered_unresolved_reservation";
+  | "unresolved_reservation";
 
 export interface CalibrationCostReport {
-  contractVersion: "evaluation-calibration-cost-report.v3";
+  contractVersion: "evaluation-calibration-cost-report.v4";
   authorizedRunId: string | null;
   authorizationId: string | null;
   authorizationHash: string | null;
+  activationCommit: string | null;
+  activatedPlanHash: string | null;
+  activatedPlanCalls: number | null;
+  activatedPlanWorstCaseCostUsd: number | null;
   maximumCalls: 96;
   maximumSpendUsd: 3;
   attemptedCalls: number;
@@ -91,7 +94,6 @@ export interface CalibrationCostReport {
   estimatedCommittedCostUsd: number;
   actualCostComplete: boolean;
   spendCapBreached: boolean;
-  resumedSkippedCalls: number;
   observedUsage: CalibrationProviderUsage;
   pricingReviewExpiresAt: string;
   stopReason: CalibrationBudgetStopReason | null;
@@ -118,7 +120,6 @@ export interface CalibrationPersistedSpendState {
   stopReason: CalibrationBudgetStopReason | null;
   observedUsage: CalibrationProviderUsage;
   reservations: CalibrationSpendReservation[];
-  resumedSkippedCalls: number;
 }
 
 export interface CalibrationSpendPersistence {
@@ -126,7 +127,17 @@ export interface CalibrationSpendPersistence {
   readonly runId: string;
   readonly authorizationId: string;
   readonly authorizationHash: string;
-  assertExclusiveLease(): void;
+  readonly activationCommit: string;
+  readonly planHash: string;
+  readonly plannedCalls: number;
+  readonly plannedWorstCaseNanoUsd: number;
+  assertRequestAuthority(): void;
+  assertReservationAuthorized(input: {
+    callKey: string;
+    inputTokenCeiling: number;
+    outputTokenCeiling: number;
+    worstCaseNanoUsd: number;
+  }): void;
   loadSpendState(): CalibrationPersistedSpendState;
   saveSpendState(state: CalibrationPersistedSpendState): void;
 }
@@ -146,7 +157,6 @@ export function createEmptyCalibrationSpendState(): CalibrationPersistedSpendSta
       totalTokens: 0,
     },
     reservations: [],
-    resumedSkippedCalls: 0,
   };
 }
 
@@ -161,7 +171,6 @@ export class CalibrationSpendGuard {
   private reconciledActualNanoUsd = 0;
   private unresolvedReservedNanoUsd = 0;
   private stopReason: CalibrationBudgetStopReason | null = null;
-  private resumedSkippedCalls = 0;
   private reservations = new Map<string, CalibrationSpendReservation>();
   private observedUsage: CalibrationProviderUsage = {
     inputTokens: 0,
@@ -190,15 +199,6 @@ export class CalibrationSpendGuard {
     if (persistence) this.hydrate(persistence.loadSpendState());
   }
 
-  hasAttemptedCall(callKey: string): boolean {
-    return this.reservations.has(callKey);
-  }
-
-  recordResumedSkippedCall(): void {
-    this.resumedSkippedCalls += 1;
-    this.persist();
-  }
-
   reserve(
     fixture: EvaluationCalibrationCase,
     callKey = `local:${this.attemptedCalls + 1}`
@@ -218,6 +218,12 @@ export class CalibrationSpendGuard {
       CALIBRATION_MAX_COMPLETION_TOKENS,
       this.pricing
     );
+    this.persistence?.assertReservationAuthorized({
+      callKey,
+      inputTokenCeiling,
+      outputTokenCeiling: CALIBRATION_MAX_COMPLETION_TOKENS,
+      worstCaseNanoUsd,
+    });
     const currentlyCommitted =
       this.reconciledActualNanoUsd + this.unresolvedReservedNanoUsd;
     if (
@@ -308,7 +314,10 @@ export class CalibrationSpendGuard {
     if (reservation.settled || this.stopReason !== null) {
       throw new Error("calibration_reservation_is_not_active");
     }
-    this.persistence?.assertExclusiveLease();
+    this.persistence?.assertRequestAuthority();
+    // The remote authorization check may take time. Re-read pricing after it so
+    // the final local decision is adjacent to transport dispatch.
+    validateCalibrationPricingFreshness(this.clock(), this.pricing);
     reservation.requestBoundaryConfirmed = true;
     this.persist();
   }
@@ -317,20 +326,24 @@ export class CalibrationSpendGuard {
     if (this.stopReason === null) {
       this.stopReason =
         this.unresolvedReservedNanoUsd > 0
-          ? "recovered_unresolved_reservation"
-          : this.resumedSkippedCalls > 0
-            ? "resumed_run_missing_evaluation_evidence"
-            : "completed_plan";
+          ? "unresolved_reservation"
+          : "completed_plan";
     }
     this.persist();
   }
 
   report(): CalibrationCostReport {
     return {
-      contractVersion: "evaluation-calibration-cost-report.v3",
+      contractVersion: "evaluation-calibration-cost-report.v4",
       authorizedRunId: this.persistence?.runId ?? null,
       authorizationId: this.persistence?.authorizationId ?? null,
       authorizationHash: this.persistence?.authorizationHash ?? null,
+      activationCommit: this.persistence?.activationCommit ?? null,
+      activatedPlanHash: this.persistence?.planHash ?? null,
+      activatedPlanCalls: this.persistence?.plannedCalls ?? null,
+      activatedPlanWorstCaseCostUsd: this.persistence
+        ? nanoUsdToUsd(this.persistence.plannedWorstCaseNanoUsd)
+        : null,
       maximumCalls: CALIBRATION_MAX_PROVIDER_CALLS,
       maximumSpendUsd: 3,
       attemptedCalls: this.attemptedCalls,
@@ -349,7 +362,6 @@ export class CalibrationSpendGuard {
       actualCostComplete: this.unresolvedReservedNanoUsd === 0,
       spendCapBreached:
         this.reconciledActualNanoUsd > CALIBRATION_MAX_SPEND_NANO_USD,
-      resumedSkippedCalls: this.resumedSkippedCalls,
       observedUsage: { ...this.observedUsage },
       pricingReviewExpiresAt: pricingReviewExpiresAt(
         this.pricing
@@ -439,7 +451,6 @@ export class CalibrationSpendGuard {
     this.unresolvedReservedNanoUsd = state.unresolvedReservedNanoUsd;
     this.stopReason = state.stopReason;
     this.observedUsage = { ...state.observedUsage };
-    this.resumedSkippedCalls = state.resumedSkippedCalls;
     this.reservations = new Map(
       state.reservations.map((reservation) => [
         reservation.callKey,
@@ -475,10 +486,9 @@ export class CalibrationSpendGuard {
       this.reconciledActualNanoUsd < 0 ||
       this.cumulativeReservedNanoUsd < 0
     ) {
-      throw new Error("calibration_spend_checkpoint_is_inconsistent");
+      throw new Error("calibration_spend_state_is_inconsistent");
     }
-    // A terminal attempt cannot be reopened. Resumption may continue only when
-    // the prior process ended unexpectedly without a deliberate stop reason.
+    // Even in-process state is terminal once a deliberate stop reason exists.
     if (this.stopReason !== null) {
       throw new Error("calibration_authorized_run_is_already_terminal");
     }
@@ -497,7 +507,6 @@ export class CalibrationSpendGuard {
       reservations: [...this.reservations.values()].map((reservation) => ({
         ...reservation,
       })),
-      resumedSkippedCalls: this.resumedSkippedCalls,
     });
   }
 }
@@ -550,7 +559,7 @@ export function calibrationInputTokenCeiling(
   );
 }
 
-function calculateWorstCaseNanoUsd(
+export function calculateWorstCaseNanoUsd(
   inputTokens: number,
   outputTokens: number,
   pricing: CalibrationPricingContract
