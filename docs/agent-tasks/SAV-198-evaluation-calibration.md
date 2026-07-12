@@ -30,7 +30,7 @@
 - Fixture files: `packages/test-fixtures/src/evaluation-calibration.ts` and behavior tests.
 - Workflow files: `lib/evaluation/calibration.ts` and behavior tests using `generateFeedbackWorkflow` with an in-memory store.
 - Operator files: `scripts/run-evaluation-calibration.ts` and package scripts.
-- Provider dependency: optional OpenAI execution through the existing scorer, guarded by an explicit paid-calibration acknowledgement, an all-approved adjudication artifact, the pinned `gpt-5.1-2025-11-13` pricing contract, a 96-call cap, and a $3 hard spend cap.
+- Provider dependency: optional OpenAI execution through the existing scorer, guarded by an explicit paid-calibration acknowledgement, an all-approved adjudication artifact, the fresh pinned `gpt-5.1-2025-11-13` + official endpoint + default-tier pricing contract, zero SDK retries/redirects, a 96-physical-attempt cap, and a $3 hard spend cap.
 - Docs: calibration contract, operations runbook, and a checked preflight report.
 
 ## Validation

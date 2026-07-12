@@ -12,7 +12,10 @@ import {
   CALIBRATION_MAX_COMPLETION_TOKENS,
   CalibrationSpendGuard,
 } from "@/lib/evaluation/calibration-budget";
-import { generateFeedbackWithUsage } from "@/lib/evaluation/scorer";
+import {
+  assertCalibrationOpenAIEnvironment,
+  generateFeedbackWithUsage,
+} from "@/lib/evaluation/scorer";
 import { getCalibrationCliExitCode } from "@/lib/evaluation/calibration-cli";
 
 const LIVE_ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL";
@@ -55,6 +58,7 @@ async function main() {
     if (!process.env.OPENAI_API_KEY?.trim()) {
       throw new Error("OPENAI_API_KEY is required for an authorized live run");
     }
+    assertCalibrationOpenAIEnvironment(process.env);
     modelVersion = getFeedbackEvaluationModel();
     spendGuard = new CalibrationSpendGuard(modelVersion);
     evaluator = ({
@@ -67,7 +71,10 @@ async function main() {
         fixture.roundType,
         fixture.transcript,
         evaluationState,
-        { maxCompletionTokens: CALIBRATION_MAX_COMPLETION_TOKENS }
+        {
+          maxCompletionTokens: CALIBRATION_MAX_COMPLETION_TOKENS,
+          calibrationPaidMode: true,
+        }
       );
   }
 
