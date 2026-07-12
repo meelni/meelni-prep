@@ -114,6 +114,7 @@ export const deleteAccount = inngest.createFunction(
                 if (!result.ok) {
                   throw safeProviderError("livekit_provider_error");
                 }
+                return result.data;
               },
               redactProviderLogs: redactStripeEventLogs,
               deleteApplicationData: deleteUserApplicationData,

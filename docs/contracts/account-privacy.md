@@ -108,6 +108,11 @@ snapshot or is denied after the tombstone; it cannot commit into the gap.
 The same accepted transaction snapshots each room name belonging to a
 nonterminal LiveKit interview. Session creation takes the account identity lock,
 so it either commits before the snapshot or fails after the tombstone exists.
+Rooms whose local session is still `created` or `connecting` are retained as
+provisioning subjects: a provider 404 cannot clear them because room creation
+may still commit afterward. A duplicate deletion request unions its fresh
+snapshot with the tombstone under the same lock; it cannot drop an unresolved
+room, lower its generation, or replace a newer raw cleanup subject.
 Because LiveKit provider creation happens after that database transaction, the
 start workflow takes the identity lock again after provider creation and before
 returning credentials. If deletion won that fence, the workflow durably
@@ -116,7 +121,10 @@ credit reservation, terminalizes the local session when it still exists, and
 returns only `account_deletion_pending`. It never returns the room token or URL.
 An older deletion worker that observed a pre-creation 404 can clear only its
 own generation, so it cannot erase the later room's retry target. The fence
-holds no database lock during LiveKit I/O.
+holds no database lock during LiveKit I/O. If the fence itself fails and direct
+termination returns a provider failure, start retries durable enrollment; the
+earlier provisioning subject remains the fallback retry authority, and no
+credential is returned.
 Cleanup removes local interview data first, then actively calls LiveKit room
 deletion, which disconnects current participants and ends that room. The HTTP
 202 confirms durable acceptance, not synchronous disconnection; a connection

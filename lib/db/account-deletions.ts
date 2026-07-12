@@ -105,6 +105,7 @@ export interface LiveKitDeletionRoom {
   roomName: string | null;
   fingerprint: string;
   generation: number;
+  provisioning: boolean;
 }
 
 export type ProcessedLiveKitDeletionRoom = Pick<
@@ -130,25 +131,44 @@ export async function requestAccountDeletion(input: {
         .limit(1)
         .for("update");
 
-      const [persisted] = await tx
-        .insert(accountDeletionRequest)
-        .values({
-          userId: input.userId,
-          stripeSubjects: input.stripeSubjects,
-          livekitRooms: input.livekitRooms ?? [],
-        })
-        .onConflictDoUpdate({
-          target: accountDeletionRequest.userId,
-          set: {
-            status: "pending",
-            stripeSubjects: input.stripeSubjects,
-            livekitRooms: input.livekitRooms ?? [],
-            lastErrorCode: null,
-            completedAt: null,
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
+    const [existingRequest] = await tx
+      .select()
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, input.userId))
+      .limit(1)
+      .for("update");
+    const stripeSubjects = existingRequest
+      ? mergeStripeDeletionSubjects(
+          existingRequest.stripeSubjects,
+          input.stripeSubjects
+        )
+      : input.stripeSubjects;
+    const livekitRooms = existingRequest
+      ? mergeLiveKitDeletionRooms(
+          existingRequest.livekitRooms,
+          input.livekitRooms ?? []
+        )
+      : (input.livekitRooms ?? []);
+
+    const [persisted] = await tx
+      .insert(accountDeletionRequest)
+      .values({
+        userId: input.userId,
+        stripeSubjects,
+        livekitRooms,
+      })
+      .onConflictDoUpdate({
+        target: accountDeletionRequest.userId,
+        set: {
+          status: existingRequest?.status ?? "pending",
+          stripeSubjects,
+          livekitRooms,
+          lastErrorCode: existingRequest?.lastErrorCode ?? null,
+          completedAt: existingRequest?.completedAt ?? null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
       return persisted;
     })
   );
@@ -169,69 +189,95 @@ export async function requestAccountDeletionWithCurrentSubjects(
         .limit(1)
         .for("update");
 
-      // Billing webhook fulfillment locks the same user row. Taking the subject
-      // snapshot after this lock prevents a concurrent subscription/mapping
-      // commit from falling between the snapshot and durable tombstone.
-      const [currentSubscription] = await tx
-        .select({
-          stripeSubscriptionId: subscription.stripeSubscriptionId,
-          stripeCustomerId: subscription.stripeCustomerId,
-        })
-        .from(subscription)
-        .where(eq(subscription.userId, userId))
-        .limit(1);
-      const customerMappings = await tx
-        .select({
-          stripeCustomerId: stripeCustomerMapping.stripeCustomerId,
-          stripeSubscriptionId: stripeCustomerMapping.stripeSubscriptionId,
-        })
-        .from(stripeCustomerMapping)
-        .where(eq(stripeCustomerMapping.userId, userId))
-        .orderBy(asc(stripeCustomerMapping.stripeCustomerId));
-      const stripeSubjects = buildStripeDeletionSubjects({
-        subscriptionId: currentSubscription?.stripeSubscriptionId,
-        subscriptionCustomerId: currentSubscription?.stripeCustomerId,
-        mappedSubscriptionIds: customerMappings.map(
-          ({ stripeSubscriptionId }) => stripeSubscriptionId
-        ),
-        mappedCustomerIds: customerMappings.map(
-          ({ stripeCustomerId }) => stripeCustomerId
-        ),
-      });
-      const roomRows = await tx
-        .select({ roomName: interviewSession.livekitRoomName })
-        .from(interviewSession)
-        .where(
-          and(
-            eq(interviewSession.userId, userId),
-            isNotNull(interviewSession.livekitRoomName),
-            notInArray(interviewSession.lifecycleState, [
-              "completed",
-              "abandoned",
-              "failed",
-            ])
-          )
+    // Billing webhook fulfillment locks the same user row. Taking the subject
+    // snapshot after this lock prevents a concurrent subscription/mapping
+    // commit from falling between the snapshot and durable tombstone.
+    const [currentSubscription] = await tx
+      .select({
+        stripeSubscriptionId: subscription.stripeSubscriptionId,
+        stripeCustomerId: subscription.stripeCustomerId,
+      })
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1);
+    const customerMappings = await tx
+      .select({
+        stripeCustomerId: stripeCustomerMapping.stripeCustomerId,
+        stripeSubscriptionId: stripeCustomerMapping.stripeSubscriptionId,
+      })
+      .from(stripeCustomerMapping)
+      .where(eq(stripeCustomerMapping.userId, userId))
+      .orderBy(asc(stripeCustomerMapping.stripeCustomerId));
+    const stripeSubjects = buildStripeDeletionSubjects({
+      subscriptionId: currentSubscription?.stripeSubscriptionId,
+      subscriptionCustomerId: currentSubscription?.stripeCustomerId,
+      mappedSubscriptionIds: customerMappings.map(
+        ({ stripeSubscriptionId }) => stripeSubscriptionId
+      ),
+      mappedCustomerIds: customerMappings.map(
+        ({ stripeCustomerId }) => stripeCustomerId
+      ),
+    });
+    const roomRows = await tx
+      .select({
+        roomName: interviewSession.livekitRoomName,
+        lifecycleState: interviewSession.lifecycleState,
+      })
+      .from(interviewSession)
+      .where(
+        and(
+          eq(interviewSession.userId, userId),
+          isNotNull(interviewSession.livekitRoomName),
+          notInArray(interviewSession.lifecycleState, [
+            "completed",
+            "abandoned",
+            "failed",
+          ])
         )
-        .orderBy(asc(interviewSession.livekitRoomName));
-      const livekitRooms = buildLiveKitDeletionRooms(
-        roomRows.map(({ roomName }) => roomName)
-      );
+      )
+      .orderBy(asc(interviewSession.livekitRoomName));
+    const livekitRooms = roomRows.flatMap(({ roomName, lifecycleState }) =>
+      buildLiveKitDeletionRooms([roomName], {
+        provisioning:
+          lifecycleState === "created" || lifecycleState === "connecting",
+      })
+    );
 
-      const [persisted] = await tx
-        .insert(accountDeletionRequest)
-        .values({ userId, stripeSubjects, livekitRooms })
-        .onConflictDoUpdate({
-          target: accountDeletionRequest.userId,
-          set: {
-            status: "pending",
-            stripeSubjects,
-            livekitRooms,
-            lastErrorCode: null,
-            completedAt: null,
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
+    const [existingRequest] = await tx
+      .select()
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, userId))
+      .limit(1)
+      .for("update");
+    const mergedStripeSubjects = existingRequest
+      ? mergeStripeDeletionSubjects(
+          existingRequest.stripeSubjects,
+          stripeSubjects
+        )
+      : stripeSubjects;
+    const mergedLiveKitRooms = existingRequest
+      ? mergeLiveKitDeletionRooms(existingRequest.livekitRooms, livekitRooms)
+      : livekitRooms;
+
+    const [persisted] = await tx
+      .insert(accountDeletionRequest)
+      .values({
+        userId,
+        stripeSubjects: mergedStripeSubjects,
+        livekitRooms: mergedLiveKitRooms,
+      })
+      .onConflictDoUpdate({
+        target: accountDeletionRequest.userId,
+        set: {
+          status: existingRequest?.status ?? "pending",
+          stripeSubjects: mergedStripeSubjects,
+          livekitRooms: mergedLiveKitRooms,
+          lastErrorCode: existingRequest?.lastErrorCode ?? null,
+          completedAt: existingRequest?.completedAt ?? null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
       return persisted;
     })
   );
@@ -275,7 +321,9 @@ export async function fenceInterviewRoomAgainstAccountDeletion(
       .for("update");
     if (!request) return { deletionPending: false };
 
-    const candidate = buildLiveKitDeletionRooms([roomName])[0]!;
+    const candidate = buildLiveKitDeletionRooms([roomName], {
+      provisioning: false,
+    })[0]!;
     const rooms = normalizeLiveKitDeletionRooms(request.livekitRooms);
     const existing = rooms.find(
       ({ fingerprint }) => fingerprint === candidate.fingerprint
@@ -723,7 +771,8 @@ function toDeletionRecord(record: typeof accountDeletionRequest.$inferSelect) {
 }
 
 export function buildLiveKitDeletionRooms(
-  roomNames: Array<string | null | undefined>
+  roomNames: Array<string | null | undefined>,
+  { provisioning = false }: { provisioning?: boolean } = {}
 ): LiveKitDeletionRoom[] {
   return [...new Set(roomNames.filter((name): name is string => !!name))]
     .sort()
@@ -731,6 +780,7 @@ export function buildLiveKitDeletionRooms(
       roomName,
       fingerprint: createHash("sha256").update(roomName).digest("hex"),
       generation: 1,
+      provisioning,
     }));
 }
 
@@ -746,6 +796,7 @@ export function normalizeLiveKitDeletionRooms(
       roomName,
       fingerprint,
       generation = 1,
+      provisioning = false,
     } = candidate as Record<string, unknown>;
     if (
       (roomName !== null && typeof roomName !== "string") ||
@@ -753,13 +804,67 @@ export function normalizeLiveKitDeletionRooms(
       !/^[a-f0-9]{64}$/.test(fingerprint) ||
       !Number.isSafeInteger(generation) ||
       (generation as number) < 1 ||
+      typeof provisioning !== "boolean" ||
       (typeof roomName === "string" &&
         createHash("sha256").update(roomName).digest("hex") !== fingerprint)
     ) {
       throw invalidLiveKitDeletionRooms();
     }
-    return { roomName, fingerprint, generation: generation as number };
+    return {
+      roomName,
+      fingerprint,
+      generation: generation as number,
+      provisioning,
+    };
   });
+}
+
+function mergeStripeDeletionSubjects(
+  existingValue: unknown,
+  incoming: StripeDeletionSubject[]
+): StripeDeletionSubject[] {
+  const subjects = new Map(
+    normalizeStripeDeletionSubjects(existingValue).map((subject) => [
+      subject.fingerprint,
+      subject,
+    ])
+  );
+  for (const subject of incoming) {
+    const existing = subjects.get(subject.fingerprint);
+    subjects.set(subject.fingerprint, {
+      kind: existing?.kind ?? subject.kind,
+      fingerprint: subject.fingerprint,
+      providerId: existing ? existing.providerId : subject.providerId,
+    });
+  }
+  return [...subjects.values()].sort((left, right) =>
+    left.fingerprint.localeCompare(right.fingerprint)
+  );
+}
+
+function mergeLiveKitDeletionRooms(
+  existingValue: unknown,
+  incoming: LiveKitDeletionRoom[]
+): LiveKitDeletionRoom[] {
+  const rooms = new Map(
+    normalizeLiveKitDeletionRooms(existingValue).map((room) => [
+      room.fingerprint,
+      room,
+    ])
+  );
+  for (const candidate of incoming) {
+    const existing = rooms.get(candidate.fingerprint);
+    if (!existing) {
+      rooms.set(candidate.fingerprint, candidate);
+      continue;
+    }
+    // Duplicate request snapshots never supersede established tombstone state.
+    // Only the post-create fence may advance a room generation.
+    rooms.set(candidate.fingerprint, existing);
+  }
+  return [...rooms.values()].sort((left, right) =>
+    left.fingerprint.localeCompare(right.fingerprint)
+  );
 }
 
 function invalidLiveKitDeletionRooms(): Error & { code: string } {

@@ -123,6 +123,7 @@ export const accountDeletionRequest = pgTable(
           roomName: string | null;
           fingerprint: string;
           generation: number;
+          provisioning: boolean;
         }>
       >()
       .default(sql`'[]'::jsonb`)

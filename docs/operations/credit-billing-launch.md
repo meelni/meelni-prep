@@ -490,7 +490,9 @@ Before launch, use Stripe test mode to prove:
 - deletion between session persistence and LiveKit creation causes the
   post-create fence to terminate the later room, withhold its token/URL, release
   the reservation, and retain a newer cleanup generation when termination
-  fails; a prior missing-room result cannot clear that newer retry target;
+  fails; a prior missing-room result cannot clear either a still-provisioning
+  subject or a newer retry target, and a concurrent duplicate deletion request
+  cannot reset/drop either generation;
 - account deletion cancels provider resources with `prorate=false`, stable retry
   idempotency, and no invoice, charge, PaymentIntent, or customer-balance refund.
 
