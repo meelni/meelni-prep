@@ -500,7 +500,11 @@ export function resolveInterviewTerminalReason(
 }
 
 export function shouldPreservePostUsableDisconnectCharge(input: {
-  requestedTerminalReason: "user_end" | "time_limit" | "disconnect_timeout";
+  requestedTerminalReason:
+    | "user_end"
+    | "time_limit"
+    | "provider_failure"
+    | "disconnect_timeout";
   usableAt: Date | null;
   missingRuntimeSettlement: boolean;
   unavailableInterruptions: number;
