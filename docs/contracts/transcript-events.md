@@ -134,8 +134,12 @@ arrivals, and performs a bounded retry/in-flight flush. Once the terminal
 transaction owns the row, it calculates feedback eligibility from the durable
 turns in that transaction and closes new distinct writes. A separately claimed
 `ending` state, including reconnect-timeout cleanup, also closes distinct
-writes. Equivalent replays remain idempotent after the cutoff. System deadlines
-use the durable evidence available when they acquire the same lock.
+writes. Equivalent replays remain idempotent after the cutoff. A hard deadline
+first claims `ending` with a provisional `time_limit` reason, then the locked
+terminal transaction calculates one durable transcript snapshot. If that
+snapshot is insufficient, only that provisional reason is versionedly refined
+to `insufficient_signal` before the terminal transition. Other ending reasons
+and existing terminal truth remain immutable.
 
 The browser remains a temporary authenticated transport bridge and cannot make
 a packet durable until the server acknowledges it. SAV-193 owns removal of raw

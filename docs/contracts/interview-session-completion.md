@@ -13,11 +13,12 @@ checked before transcript validation and rechecked inside the terminalization
 transaction. System `time_limit` authority is available only to the internal
 deadline consumer; actor and requested reason are one discriminated command.
 
-The workflow:
+For an unclaimed user end, the workflow:
 
 1. authorizes the command without reading transcript content;
-2. calculates feedback eligibility from durable transcript turns;
-3. locks the session row and rechecks authority;
+2. locks the session row and rechecks authority;
+3. calculates feedback eligibility from durable transcript turns while holding
+   the same row lock used by canonical ingest;
 4. preserves an existing terminal result or advances a nonterminal session through valid lifecycle edges;
 5. records final statistics;
 6. creates the unique feedback row if it is missing;
@@ -39,8 +40,12 @@ the same session row used by canonical transcript ingest. Explicit browser end
 first performs a bounded in-flight/retry flush. Ingests that acquired the row
 first become visible to terminal validation; once terminal truth commits, new
 distinct events are closed while equivalent event-ID replays stay idempotent.
-System deadlines settle the durable evidence available when they acquire the
-row.
+Hard deadlines first claim `ending` with provisional reason `time_limit`, which
+bars later distinct canonical events. The finalizer then calculates one locked
+transcript snapshot for statistics, feedback eligibility, and outcome. An
+invalid snapshot may versionedly refine only that provisional ending reason to
+`insufficient_signal`; user, provider, reconnect, and terminal reasons are not
+rewritten.
 
 ## Feedback Result
 

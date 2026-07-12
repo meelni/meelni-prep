@@ -61,6 +61,9 @@ const SESSION_RECONNECT_BACKFILL_LEGACY =
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const SESSION_TRANSCRIPT_TWO = "b1000000-0000-4000-8000-000000000001";
+const SESSION_TRANSCRIPT_DEADLINE = "b2000000-0000-4000-8000-000000000002";
+const SESSION_TRANSCRIPT_DEADLINE_INVALID =
+  "b3000000-0000-4000-8000-000000000003";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -1658,12 +1661,16 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
   const [
     { createDrizzleTranscriptIngestStore },
     { finalizeInterviewSession },
+    { claimInterviewDeadline },
     { createTranscriptEvent },
+    { calculateSessionStatsFromTurns, validateSessionStats },
     schema,
   ] = await Promise.all([
     import("../lib/db/transcripts"),
     import("../lib/db/end-interview-session"),
+    import("../lib/db/session-deadlines"),
     import("@meelni/agent"),
+    import("../lib/evaluation/session-validator"),
     import("../lib/db/schema"),
   ]);
 
@@ -1674,6 +1681,39 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
         started_at = '2026-07-10T04:59:00.000Z'::timestamptz,
         activated_at = COALESCE(activated_at, now())
     WHERE id = ${SESSION_ONE}::uuid
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      lifecycle_version, livekit_room_name, config, started_at, activated_at
+    ) VALUES
+      (
+        ${SESSION_TRANSCRIPT_DEADLINE}::uuid,
+        ${USER_ONE}::uuid,
+        'product_sense',
+        'voice_video',
+        'in_progress',
+        'active',
+        1,
+        'transcript-deadline-room',
+        '{"duration":30}'::jsonb,
+        '2026-07-10T05:00:00.000Z'::timestamptz,
+        now()
+      ),
+      (
+        ${SESSION_TRANSCRIPT_DEADLINE_INVALID}::uuid,
+        ${USER_ONE}::uuid,
+        'product_sense',
+        'voice_video',
+        'in_progress',
+        'active',
+        1,
+        'transcript-deadline-invalid-room',
+        '{"duration":30}'::jsonb,
+        '2026-07-10T05:00:00.000Z'::timestamptz,
+        now()
+      )
+    ON CONFLICT (id) DO NOTHING
   `;
   await sql`
     INSERT INTO interview_session (
@@ -1814,9 +1854,224 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
     if (completionResult.ok) {
       assert.equal(completionResult.stats.totalTurns, durableRows);
     }
+
+    const deadlineEvents = [
+      {
+        speaker: "user" as const,
+        text: "I would clarify the customer problem, target segment, constraints, and measurable outcome first.",
+        started_at: "2026-07-10T05:00:00.000Z",
+        ended_at: "2026-07-10T05:00:01.000Z",
+      },
+      {
+        speaker: "interviewer" as const,
+        text: "Please continue.",
+        started_at: "2026-07-10T05:01:00.000Z",
+        ended_at: "2026-07-10T05:01:01.000Z",
+      },
+      {
+        speaker: "user" as const,
+        text: "I would compare reach, severity, strategic fit, confidence, and implementation effort before prioritizing.",
+        started_at: "2026-07-10T05:03:00.000Z",
+        ended_at: "2026-07-10T05:03:01.000Z",
+      },
+      {
+        speaker: "interviewer" as const,
+        text: "What would you measure?",
+        started_at: "2026-07-10T05:04:00.000Z",
+        ended_at: "2026-07-10T05:04:01.000Z",
+      },
+      {
+        speaker: "user" as const,
+        text: "The primary metric would reflect retained customer value, with adoption and guardrail metrics diagnosing movement.",
+        started_at: "2026-07-10T05:05:01.000Z",
+        ended_at: "2026-07-10T05:05:02.000Z",
+      },
+    ].map((input, index) =>
+      createTranscriptEvent({
+        event_id: `deadline-writer:message-${index + 1}`,
+        writer_id: "deadline-writer",
+        sequence: index + 1,
+        session_id: SESSION_TRANSCRIPT_DEADLINE,
+        room_name: "transcript-deadline-room",
+        speaker: input.speaker,
+        text: input.text,
+        started_at: input.started_at,
+        ended_at: input.ended_at,
+        audio_duration_ms: 1_000,
+        section: "product_sense",
+        delivery_state: "delivered",
+      })
+    );
+    for (const deadlineEvent of deadlineEvents.slice(0, 4)) {
+      const persisted = await stores[2]!.persist({
+        userId: USER_ONE,
+        event: deadlineEvent,
+      });
+      assert.equal(persisted.ok, true);
+    }
+    const preClaimTurns = await sql<
+      {
+        speaker: string;
+        text: string | null;
+        started_at: Date | null;
+        ended_at: Date | null;
+      }[]
+    >`
+      SELECT speaker, text, started_at, ended_at
+      FROM transcript_turn
+      WHERE session_id = ${SESSION_TRANSCRIPT_DEADLINE}::uuid
+    `;
+    const preClaimValidation = validateSessionStats(
+      calculateSessionStatsFromTurns(
+        preClaimTurns.map((turn) => ({
+          speaker: turn.speaker,
+          text: turn.text,
+          startedAt: turn.started_at ? new Date(turn.started_at) : null,
+          endedAt: turn.ended_at ? new Date(turn.ended_at) : null,
+        }))
+      )
+    );
+    assert.equal(preClaimValidation.isValid, false);
+    assert.equal(preClaimValidation.stats.totalTurns, 4);
+
+    let thresholdIngest!: ReturnType<(typeof stores)[number]["persist"]>;
+    let deadlineClaim!: ReturnType<typeof claimInterviewDeadline>;
+    const ingestClient = clients[3]!;
+    const claimClient = clients[4]!;
+    const [ingestBackend] = await ingestClient<{ pid: number }[]>`
+      SELECT pg_backend_pid()::int AS pid
+    `;
+    const [claimBackend] = await claimClient<{ pid: number }[]>`
+      SELECT pg_backend_pid()::int AS pid
+    `;
+    await clients[8]!.begin(async (locked) => {
+      await locked`
+        SELECT id FROM interview_session
+        WHERE id = ${SESSION_TRANSCRIPT_DEADLINE}::uuid
+        FOR UPDATE
+      `;
+      thresholdIngest = stores[3]!.persist({
+        userId: USER_ONE,
+        event: deadlineEvents[4]!,
+      });
+      await waitForDatabaseLock(sql, ingestBackend.pid);
+      deadlineClaim = claimInterviewDeadline(
+        {
+          sessionId: SESSION_TRANSCRIPT_DEADLINE,
+          expectedState: "active",
+          expectedVersion: 1,
+          deadlineAt: new Date("2026-07-10T05:30:00.000Z"),
+          terminalReason: "time_limit",
+        },
+        drizzle(clients[4]!, { schema })
+      );
+      await waitForDatabaseLock(sql, claimBackend.pid);
+    });
+    const thresholdIngestResult = await thresholdIngest;
+    assert.equal(
+      thresholdIngestResult.ok && thresholdIngestResult.disposition,
+      "created"
+    );
+    assert.equal(await deadlineClaim, true);
+
+    const postClaimEvent = createTranscriptEvent({
+      ...deadlineEvents[4]!,
+      event_id: "deadline-writer:message-6",
+      sequence: 6,
+      speaker: "interviewer",
+      text: "This event arrived after the hard-deadline fence.",
+      started_at: "2026-07-10T05:06:00.000Z",
+      ended_at: "2026-07-10T05:06:01.000Z",
+    });
+    assert.deepEqual(
+      await stores[5]!.persist({ userId: USER_ONE, event: postClaimEvent }),
+      { ok: false, reason: "session_closed" }
+    );
+
+    const deadlineCompletion = await finalizeInterviewSession(
+      {
+        sessionId: SESSION_TRANSCRIPT_DEADLINE,
+        actor: { type: "system", source: "hard_deadline" },
+        requestedTerminalReason: "time_limit",
+      },
+      drizzle(clients[6]!, { schema })
+    );
+    assert.equal(deadlineCompletion.ok, true);
+    if (deadlineCompletion.ok) {
+      assert.equal(deadlineCompletion.lifecycle.state, "completed");
+      assert.equal(deadlineCompletion.lifecycle.terminalReason, "time_limit");
+      assert.equal(deadlineCompletion.stats.totalTurns, 5);
+      assert.equal(deadlineCompletion.tier, "partial");
+      assert.equal(deadlineCompletion.feedback.status, "pending");
+      const replay = await stores[7]!.persist({
+        userId: USER_ONE,
+        event: deadlineEvents[4]!,
+      });
+      assert.equal(replay.ok && replay.disposition, "existing");
+      const retry = await finalizeInterviewSession(
+        {
+          sessionId: SESSION_TRANSCRIPT_DEADLINE,
+          actor: { type: "system", source: "hard_deadline" },
+          requestedTerminalReason: "time_limit",
+        },
+        drizzle(clients[7]!, { schema })
+      );
+      assert.equal(retry.ok, true);
+      if (retry.ok) {
+        assert.equal(retry.disposition, "existing");
+        assert.deepEqual(retry.lifecycle, deadlineCompletion.lifecycle);
+        assert.deepEqual(retry.stats, deadlineCompletion.stats);
+        assert.equal(retry.feedback.id, deadlineCompletion.feedback.id);
+      }
+    }
+
+    assert.equal(
+      await claimInterviewDeadline(
+        {
+          sessionId: SESSION_TRANSCRIPT_DEADLINE_INVALID,
+          expectedState: "active",
+          expectedVersion: 1,
+          deadlineAt: new Date("2026-07-10T05:30:00.000Z"),
+          terminalReason: "time_limit",
+        },
+        drizzle(clients[4]!, { schema })
+      ),
+      true
+    );
+    const invalidCompletion = await finalizeInterviewSession(
+      {
+        sessionId: SESSION_TRANSCRIPT_DEADLINE_INVALID,
+        actor: { type: "system", source: "hard_deadline" },
+        requestedTerminalReason: "time_limit",
+      },
+      drizzle(clients[6]!, { schema })
+    );
+    assert.equal(invalidCompletion.ok, true);
+    if (invalidCompletion.ok) {
+      assert.equal(invalidCompletion.lifecycle.state, "abandoned");
+      assert.equal(
+        invalidCompletion.lifecycle.terminalReason,
+        "insufficient_signal"
+      );
+      assert.equal(invalidCompletion.lifecycle.version, 4);
+      assert.equal(invalidCompletion.feedback.status, "skipped");
+    }
   } finally {
     await Promise.all(clients.map((client) => client.end()));
   }
+}
+
+async function waitForDatabaseLock(sql: postgres.Sql, pid: number) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const [activity] = await sql<{ wait_event_type: string | null }[]>`
+      SELECT wait_event_type
+      FROM pg_stat_activity
+      WHERE pid = ${pid}
+    `;
+    if (activity?.wait_event_type === "Lock") return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`database backend ${pid} did not wait for the session-row lock`);
 }
 
 function deepEqual(left: unknown, right: unknown): boolean {

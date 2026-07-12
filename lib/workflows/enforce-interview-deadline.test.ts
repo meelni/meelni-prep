@@ -3,10 +3,6 @@ import test from "node:test";
 
 import { providerFailure, providerSuccess } from "@/lib/internal/integrations";
 import type { InterviewDeadlineSession } from "@/lib/db/session-deadlines";
-import {
-  SessionTier,
-  type SessionValidation,
-} from "@/lib/evaluation/session-validator";
 import type { EndInterviewSessionResult } from "./end-interview-session";
 import {
   enforceInterviewDeadlineWorkflow,
@@ -227,25 +223,34 @@ test("reordered deadline events cannot replace another terminal owner", async ()
   assert.equal(terminated, 0);
 });
 
-test("hard deadline claims preserve insufficient-signal validation", async () => {
+test("hard deadline fences ingest with a provisional claim before finalization", async () => {
   let claimedReason: string | null = null;
+  const calls: string[] = [];
   const result = await enforceInterviewDeadlineWorkflow(
     { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
     createDeps({
-      validateSession: async () => validValidation(false),
       claimDue: async (input) => {
+        calls.push("claim");
         claimedReason = input.terminalReason;
         return true;
       },
-      endSession: async (_sessionId, validation) => {
-        assert.equal(validation.isValid, false);
+      terminateRoom: async ({ roomName }) => {
+        calls.push("terminate");
+        return providerSuccess("livekit", {
+          roomName,
+          disposition: "deleted" as const,
+        });
+      },
+      endSession: async () => {
+        calls.push("finalize");
         return completion("insufficient_signal", "abandoned");
       },
     })
   );
 
   assert.equal(result.ok, true);
-  assert.equal(claimedReason, "insufficient_signal");
+  assert.equal(claimedReason, "time_limit");
+  assert.deepEqual(calls, ["claim", "terminate", "finalize"]);
 });
 
 test("recovery closes an open room with no start time and terminalizes provider failure", async () => {
@@ -344,7 +349,6 @@ function createDeps(
     getSession: async () => deadlineSession(new Date(DEADLINE)),
     claimDue: async () => true,
     scheduleDeadline: async () => undefined,
-    validateSession: async () => validValidation(),
     endSession: async () => completion(),
     endInvalidSession: async () => completion("provider_failure", "failed"),
     terminateRoom: async ({ roomName }) =>
@@ -368,22 +372,6 @@ function deadlineSession(databaseNow: Date): InterviewDeadlineSession {
     version: 3,
     terminalReason: null,
     databaseNow,
-  };
-}
-
-function validValidation(isValid = true): SessionValidation {
-  return {
-    tier: isValid ? SessionTier.FULL : SessionTier.INSUFFICIENT,
-    isValid,
-    stats: {
-      totalTurns: isValid ? 20 : 0,
-      userTurns: isValid ? 10 : 0,
-      totalWords: isValid ? 800 : 0,
-      durationSeconds: isValid ? 1_200 : 0,
-      substantiveResponses: isValid ? 8 : 0,
-    },
-    reasons: isValid ? [] : ["Insufficient durable signal"],
-    recommendations: [],
   };
 }
 
