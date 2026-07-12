@@ -100,12 +100,19 @@ attest_file() {
   canonical=$(/bin/realpath "$1") || fail "calibration_live_launcher_file_realpath_failed"
   [ "$canonical" = "$1" ] || fail "calibration_live_launcher_file_canonical_rejected"
   [ -f "$canonical" ] && [ ! -L "$canonical" ] || fail "calibration_live_launcher_file_invalid"
-  metadata=$(/usr/bin/stat -f '%HT|%u|%Lp' "$canonical") || fail "calibration_live_launcher_file_stat_failed"
+  case $(/usr/bin/uname -s) in
+    Darwin) metadata=$(/usr/bin/stat -f '%HT|%u|%Lp' "$canonical") || fail "calibration_live_launcher_file_stat_failed" ;;
+    Linux) metadata=$(/usr/bin/stat -c '%F|%u|%a' "$canonical") || fail "calibration_live_launcher_file_stat_failed" ;;
+    *) fail "calibration_live_launcher_platform_rejected" ;;
+  esac
   file_type=${metadata%%|*}
   metadata=${metadata#*|}
   owner=${metadata%%|*}
   mode=${metadata#*|}
-  [ "$file_type" = "Regular File" ] || fail "calibration_live_launcher_file_type_rejected"
+  case "$file_type" in
+    "Regular File"|"regular file") ;;
+    *) fail "calibration_live_launcher_file_type_rejected" ;;
+  esac
   [ "$owner" = "$(/usr/bin/id -u)" ] || fail "calibration_live_launcher_file_owner_rejected"
   [ $((0$mode & 022)) -eq 0 ] || fail "calibration_live_launcher_file_mode_rejected"
 }
