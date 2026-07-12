@@ -14,14 +14,44 @@ export interface InterviewDeadlineEvent {
   id: string;
   name: typeof INTERVIEW_DEADLINE_EVENT_NAME;
   ts: number;
-  data: {
-    sessionId: string;
-    deadlineAt: string;
-  };
+  data:
+    | {
+        sessionId: string;
+        deadlineAt: string;
+      }
+    | {
+        sessionId: string;
+        recoveryReason: "missing_started_at";
+      };
+}
+
+export interface InvalidInterviewSessionRecoveryInput {
+  sessionId: string;
+  deliveryId: string;
+  occurredAt?: Date;
 }
 
 export interface ScheduleInterviewDeadlineDeps {
   send(event: InterviewDeadlineEvent): Promise<unknown>;
+}
+
+export function buildInvalidInterviewSessionRecoveryEvent(
+  input: InvalidInterviewSessionRecoveryInput
+): InterviewDeadlineEvent {
+  const occurredAt = input.occurredAt ?? new Date();
+  const timestamp = occurredAt.getTime();
+  if (!Number.isFinite(timestamp)) {
+    throw new RangeError("occurredAt must be a valid Date");
+  }
+  return {
+    id: `interview-deadline-quarantine:${input.sessionId}:${input.deliveryId}`,
+    name: INTERVIEW_DEADLINE_EVENT_NAME,
+    ts: timestamp,
+    data: {
+      sessionId: input.sessionId,
+      recoveryReason: "missing_started_at",
+    },
+  };
 }
 
 export function buildInterviewDeadlineEvent(

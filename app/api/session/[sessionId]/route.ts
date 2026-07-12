@@ -17,15 +17,16 @@
  * @response.session.role {string} - User's role (e.g., 'pm')
  * @response.session.roundType {string} - Interview type (behavioral | product_sense | execution | strategy)
  * @response.session.mode {string} - Interview mode (voice_video | text)
- * @response.session.persona {string|null} - Custom interviewer persona
  * @response.session.startedAt {string} - ISO 8601 timestamp when session started
+ * @response.session.deadlineAt {string} - Canonical server-derived absolute deadline
  * @response.session.endedAt {string|null} - ISO 8601 timestamp when session ended (null if active)
  * @response.session.livekitRoomName {string|null} - LiveKit room name
- * @response.session.config {Object} - Session configuration (voice settings, models, etc.)
+ * @response.session.config {Object} - Persisted session configuration snapshot
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
  * @throws {403} Forbidden - User does not own this session
  * @throws {404} Not Found - Session does not exist
+ * @throws {409} Conflict - Session has no valid server-owned deadline
  * @throws {500} Internal Server Error - Database query failed
  *
  * @example
@@ -42,8 +43,8 @@
  *     "roundType": "product_sense",
  *     "mode": "voice_video",
  *     "role": "pm",
- *     "persona": "Friendly Google PM interviewer",
  *     "startedAt": "2025-11-05T10:30:00Z",
+ *     "deadlineAt": "2025-11-05T11:15:00Z",
  *     "endedAt": null,
  *     "livekitRoomName": "interview-1699999999-abc123",
  *     "config": {
@@ -66,6 +67,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import {
+  attachCanonicalInterviewDeadline,
+  InterviewSessionDeadlineUnavailableError,
+} from "@/lib/workflows/interview-session-details";
 
 export async function GET(
   req: NextRequest,
@@ -97,13 +102,25 @@ export async function GET(
     // Get session
     const session = await getSessionById(sessionId);
     if (!session) {
-      return NextResponse.json(
-        { error: "Session not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ session });
+    try {
+      return NextResponse.json({
+        session: attachCanonicalInterviewDeadline(session),
+      });
+    } catch (error) {
+      if (error instanceof InterviewSessionDeadlineUnavailableError) {
+        return NextResponse.json(
+          {
+            error: error.code,
+            message: "This interview session cannot be resumed safely.",
+          },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
   } catch (error) {
     console.error("Error fetching session:", error);
     return NextResponse.json(

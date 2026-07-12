@@ -21,6 +21,18 @@ export interface InterviewDeadlineScheduleRow {
   config: unknown;
 }
 
+export type InterviewDeadlineRecoveryItem =
+  | {
+      kind: "deadline";
+      sessionId: string;
+      deadlineAt: string;
+    }
+  | {
+      kind: "invalid_session";
+      sessionId: string;
+      reason: "missing_started_at";
+    };
+
 export async function getInterviewDeadlineSession(
   sessionId: string
 ): Promise<InterviewDeadlineSession | undefined> {
@@ -44,7 +56,7 @@ export async function getInterviewDeadlineSession(
 
 export async function listInterviewDeadlineSchedules(
   limit = 250
-): Promise<Array<{ sessionId: string; deadlineAt: string }>> {
+): Promise<InterviewDeadlineRecoveryItem[]> {
   const sessions = await db
     .select({
       id: interviewSession.id,
@@ -57,9 +69,11 @@ export async function listInterviewDeadlineSchedules(
         eq(interviewSession.mode, "voice_video"),
         isNotNull(interviewSession.livekitRoomName),
         inArray(interviewSession.lifecycleState, [
+          "created",
           "connecting",
           "active",
           "reconnecting",
+          "ending",
         ])
       )
     );
@@ -71,15 +85,23 @@ export function buildInterviewDeadlineSchedules(
   sessions: InterviewDeadlineScheduleRow[],
   limit: number,
   now: Date
-): Array<{ sessionId: string; deadlineAt: string }> {
+): InterviewDeadlineRecoveryItem[] {
   const nowMs = now.getTime();
   if (!Number.isFinite(nowMs)) {
     throw new RangeError("now must be a valid Date");
   }
 
   return sessions
-    .flatMap((session) => {
-      if (!session.startedAt) return [];
+    .flatMap<InterviewDeadlineRecoveryItem>((session) => {
+      if (!session.startedAt) {
+        return [
+          {
+            kind: "invalid_session" as const,
+            sessionId: session.id,
+            reason: "missing_started_at" as const,
+          },
+        ];
+      }
       const config = isRecord(session.config) ? session.config : {};
       const deadlineAt = deriveInterviewDeadlineAt({
         startedAt: session.startedAt,
@@ -88,12 +110,25 @@ export function buildInterviewDeadlineSchedules(
       if (deadlineAt.getTime() > nowMs) return [];
       return [
         {
+          kind: "deadline" as const,
           sessionId: session.id,
           deadlineAt: serializeInterviewDeadlineAt(deadlineAt),
         },
       ];
     })
-    .sort((left, right) => left.deadlineAt.localeCompare(right.deadlineAt))
+    .sort((left, right) => {
+      if (left.kind !== right.kind) {
+        return left.kind === "invalid_session" ? -1 : 1;
+      }
+      if (left.kind === "invalid_session") {
+        return right.kind === "invalid_session"
+          ? left.sessionId.localeCompare(right.sessionId)
+          : -1;
+      }
+      return right.kind === "deadline"
+        ? left.deadlineAt.localeCompare(right.deadlineAt)
+        : 1;
+    })
     .slice(0, Math.max(0, limit));
 }
 

@@ -5,6 +5,7 @@ import { providerFailure, providerSuccess } from "@/lib/internal/integrations";
 import type { EndInterviewSessionResult } from "./end-interview-session";
 import {
   enforceInterviewDeadlineWorkflow,
+  quarantineInvalidInterviewSessionWorkflow,
   type EnforceInterviewDeadlineDeps,
 } from "./enforce-interview-deadline";
 
@@ -150,6 +151,85 @@ test("duplicate deadline commands converge on one stored terminal claim", async 
   assert.equal(terminalWrites, 1);
 });
 
+test("recovery closes an open room with no start time and terminalizes provider failure", async () => {
+  const calls: string[] = [];
+  const result = await quarantineInvalidInterviewSessionWorkflow(
+    {
+      sessionId: SESSION_ID,
+      recoveryReason: "missing_started_at",
+      env: ENV,
+    },
+    createDeps({
+      getSession: async () => ({
+        id: SESSION_ID,
+        startedAt: null,
+        config: { duration: 30 },
+        roomName: "interview-invalid-start-room",
+      }),
+      terminateRoom: async ({ roomName }) => {
+        calls.push(`terminate:${roomName}`);
+        return providerSuccess("livekit", {
+          roomName,
+          disposition: "deleted" as const,
+        });
+      },
+      endInvalidSession: async () => {
+        calls.push("end:provider_failure");
+        return completion("provider_failure", "failed");
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [
+    "terminate:interview-invalid-start-room",
+    "end:provider_failure",
+  ]);
+  if (result.ok) {
+    assert.equal(
+      result.completion.completion.lifecycle.terminalReason,
+      "provider_failure"
+    );
+  }
+});
+
+test("invalid-session room cleanup failure commits provider failure then retries with a safe code", async () => {
+  let committed = false;
+  await assert.rejects(
+    () =>
+      quarantineInvalidInterviewSessionWorkflow(
+        {
+          sessionId: SESSION_ID,
+          recoveryReason: "missing_started_at",
+          env: ENV,
+        },
+        createDeps({
+          getSession: async () => ({
+            id: SESSION_ID,
+            startedAt: null,
+            config: {},
+            roomName: "interview-invalid-start-room",
+          }),
+          terminateRoom: async () =>
+            providerFailure("livekit", {
+              code: "livekit_room_delete_failed",
+              message: "provider unavailable",
+              retryable: true,
+            }),
+          endInvalidSession: async () => {
+            committed = true;
+            return completion("provider_failure", "failed");
+          },
+        })
+      ),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "livekit_room_delete_failed"
+  );
+  assert.equal(committed, true);
+});
+
 function createDeps(
   overrides: Partial<EnforceInterviewDeadlineDeps> = {}
 ): EnforceInterviewDeadlineDeps {
@@ -161,6 +241,7 @@ function createDeps(
       roomName: "interview-deadline-room",
     }),
     endSession: async () => completion(),
+    endInvalidSession: async () => completion("provider_failure", "failed"),
     terminateRoom: async ({ roomName }) =>
       providerSuccess("livekit", {
         roomName,
@@ -171,7 +252,10 @@ function createDeps(
   };
 }
 
-function completion(): EndInterviewSessionResult {
+function completion(
+  terminalReason: "time_limit" | "provider_failure" = "time_limit",
+  state: "completed" | "failed" = "completed"
+): EndInterviewSessionResult {
   return {
     ok: true,
     completion: {
@@ -180,9 +264,9 @@ function completion(): EndInterviewSessionResult {
       userId: "650e8400-e29b-41d4-a716-446655440000",
       roomName: "interview-deadline-room",
       lifecycle: {
-        state: "completed",
+        state,
         version: 4,
-        terminalReason: "time_limit",
+        terminalReason,
         endedAt: new Date(DEADLINE),
       },
       feedback: {

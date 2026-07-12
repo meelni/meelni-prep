@@ -346,9 +346,12 @@ durable completion workflow. Clients must not recompute or extend it.
 
 ---
 
-### POST /api/session/end
+### POST /api/interview/end
 
-Marks an interview session as completed by setting the `endedAt` timestamp. User must own the session to end it.
+Atomically claims terminal session truth, creates or repairs the feedback row,
+and reports whether feedback dispatch is queued, retryable, or unnecessary.
+Equivalent replays return the stored terminal result; they do not overwrite the
+first terminal reason.
 
 **Authentication**: Required (Supabase Auth JWT)
 
@@ -370,37 +373,40 @@ Marks an interview session as completed by setting the `endedAt` timestamp. User
 
 ```json
 {
-  "success": true,
+  "status": "queued",
   "session": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "userId": "user-123",
-    "roundType": "product_sense",
-    "mode": "voice_video",
-    "role": "pm",
-    "startedAt": "2025-11-05T10:30:00Z",
+    "lifecycleState": "completed",
+    "terminalReason": "user_end",
     "endedAt": "2025-11-05T11:15:00Z",
-    "livekitRoomName": "interview-1699999999-abc123",
-    "config": { ... }
-  }
-}
-```
-
-**Response (Already Ended)**:
-
-```json
-{
-  "success": true,
-  "session": { ... },
-  "message": "Session was already ended"
+    "disposition": "applied"
+  },
+  "feedback": {
+    "id": "650e8400-e29b-41d4-a716-446655440000",
+    "status": "pending",
+    "dispatchStatus": "sent",
+    "retryable": false
+  },
+  "feedbackId": "650e8400-e29b-41d4-a716-446655440000",
+  "tier": "full",
+  "stats": {
+    "totalTurns": 20,
+    "userTurns": 10,
+    "totalWords": 800,
+    "durationSeconds": 1200,
+    "substantiveResponses": 8
+  },
+  "recommendations": [],
+  "nextHref": "/feedback/550e8400-e29b-41d4-a716-446655440000/loading"
 }
 ```
 
 **Errors**:
 
 - `401 Unauthorized` - Missing or invalid authentication token
-- `400 Bad Request` - Missing `sessionId`
-- `403 Forbidden` - User does not own this session
-- `500 Internal Server Error` - Database error
+- `400 Bad Request` - Missing or malformed `sessionId`
+- `404 Not Found` - Session is absent or belongs to another user
+- `429 Too Many Requests` - End-attempt budget exceeded
+- `500 Internal Server Error` - Terminal truth was not confirmed
 
 ---
 
@@ -427,6 +433,7 @@ Retrieves complete information about a specific interview session including conf
     "mode": "voice_video",
     "role": "pm",
     "startedAt": "2025-11-05T10:30:00Z",
+    "deadlineAt": "2025-11-05T11:15:00Z",
     "endedAt": "2025-11-05T11:15:00Z",
     "livekitRoomName": "interview-1699999999-abc123",
     "config": {
@@ -447,6 +454,7 @@ Retrieves complete information about a specific interview session including conf
 - `401 Unauthorized` - Missing or invalid authentication token
 - `403 Forbidden` - User does not own this session
 - `404 Not Found` - Session does not exist
+- `409 Conflict` - Session has no valid server-owned deadline and cannot resume safely
 - `500 Internal Server Error` - Database query failed
 
 ---
@@ -1137,7 +1145,7 @@ async function runFullInterviewFlow() {
   ]);
 
   // 4. End session
-  await fetch("/api/session/end", {
+  await fetch("/api/interview/end", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -1179,7 +1187,7 @@ Planned webhook events:
 **Added**:
 
 - Initial API release
-- Session management endpoints (`POST /api/session/start`, `POST /api/session/end`, `GET /api/session/:sessionId`, `GET /api/sessions`)
+- Session management endpoints (`POST /api/session/start`, `POST /api/interview/end`, `GET /api/session/:sessionId`, `GET /api/sessions`)
 - Transcript storage endpoints (`POST /api/session/transcript`, `GET /api/session/:sessionId/transcript`)
 - Feedback generation endpoints (`POST /api/feedback/generate`, `GET /api/feedback/:sessionId`)
 - LiveKit token generation (`POST /api/livekit/token`, `POST /api/livekit/demo-token`)

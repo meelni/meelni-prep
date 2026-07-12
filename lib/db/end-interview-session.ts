@@ -22,6 +22,10 @@ export type EndInterviewSessionCommand = { sessionId: string } & (
       actor: { type: "system"; source: "hard_deadline" };
       requestedTerminalReason: "time_limit";
     }
+  | {
+      actor: { type: "system"; source: "invalid_session_recovery" };
+      requestedTerminalReason: "provider_failure";
+    }
 );
 
 export type FinalizeInterviewSessionInput = EndInterviewSessionCommand & {
@@ -266,7 +270,10 @@ export async function finalizeInterviewSession(
 
 export function resolveInterviewTerminalReason(
   validation: Pick<SessionValidation, "isValid">,
-  requestedTerminalReason: "user_end" | "time_limit"
+  requestedTerminalReason: "user_end" | "time_limit" | "provider_failure"
 ): InterviewTerminalReason {
+  if (requestedTerminalReason === "provider_failure") {
+    return "provider_failure";
+  }
   return validation.isValid ? requestedTerminalReason : "insufficient_signal";
 }
