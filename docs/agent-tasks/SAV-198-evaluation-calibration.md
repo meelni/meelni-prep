@@ -31,8 +31,8 @@
 - Workflow files: `lib/evaluation/calibration.ts` and behavior tests using `generateFeedbackWorkflow` with an in-memory store.
 - Operator files: `scripts/run-evaluation-calibration.ts` and package scripts.
 - Provider dependency: optional OpenAI execution through the existing scorer, guarded by an explicit paid-calibration acknowledgement, an all-approved adjudication artifact, the fresh pinned `gpt-5.1-2025-11-13` + official endpoint + default-tier pricing contract, zero SDK retries/redirects, a five-minute request timeout, a 96-physical-attempt cap, and a $3 hard spend cap.
-- Authorization boundary: the committed SAV-198 authorization permits one fixed aggregate run only. A protected payload-free Git ref atomically moves once from authorized to activated through a non-force fast-forward. Activation pre-reserves the exact complete plan and burns every unused call on crash; local state cannot mint or resume budget.
-- Request boundary: every request must match the activated plan, then a custom guarded fetch rechecks fresh pricing and the remote activation head and increments physical-attempt accounting at actual dispatch.
+- Authorization boundary: the committed SAV-198 authorization permits one fixed aggregate run only. A production-only GitHub REST client is hard-bound to `saviii/meelni-prep`, repository/user IDs, the exact ref, two exact no-force/no-delete/restricted-writer rulesets, and the deterministic genesis OID. It advances the ref once with `force: false`; local remotes and URL rewrites cannot redirect authority. Activation pre-reserves the complete plan and burns every unused call on crash.
+- Request boundary: every request must match the activated plan, then a custom guarded fetch rechecks fresh pricing and canonical GitHub authority and atomically consumes the reservation's one physical-dispatch allowance. Re-entry is counted and rejected before HTTP.
 - Docs: calibration contract, operations runbook, and a checked preflight report.
 
 ## Validation

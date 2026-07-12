@@ -89,9 +89,11 @@ most one physical HTTP attempt.
 Before activation, the CLI precomputes every permitted call's conservative
 input ceiling plus at most 2,000 completion tokens and refuses unless the whole
 plan is at most 96 calls and $3 worst-case. The one-time Git activation burns
-that complete plan. A custom guarded fetch revalidates the activated remote ref
-and pricing immediately at actual transport dispatch, then increments the
-physical-attempt counter. Provider usage reconciles
+that complete plan. A custom guarded fetch revalidates the fixed GitHub
+repository, effective protection, activated ref, and pricing immediately at
+actual transport dispatch, then atomically consumes a single-use boundary.
+Re-entry increments the boundary-attempt count but is rejected before HTTP.
+Provider usage reconciles
 the reservation to actual cost. Missing/malformed usage or provider failure
 stops the run and forbids another call; unresolved spend retains its full
 worst-case reservation. Valid usage above a reservation is charged at its exact
@@ -104,26 +106,52 @@ totals on failed or mismatched responses. Valid in-reservation usage is
 reconciled to known cost before the identity failure stops the run; absent,
 invalid usage retains the reservation.
 
-### Durable single-run Git activation
+### Durable single-run GitHub activation
 
-Paid execution remains disabled until repository owners configure a ruleset for:
+Paid execution remains disabled until repository owners configure the two
+exact active repository rulesets below for:
 
 ```text
 refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1
 ```
 
-The ruleset must reject force pushes and deletion, apply to administrators and
-automation without bypass, and allow only the explicitly approved activation
-actor to create the one fast-forward child. Configure and verify that protection
-before creating the ref. This PR intentionally does not create or activate the
-remote ledger ref.
+1. `Meelni SAV-198 calibration ledger immutable`: exact ref include, no
+   excludes, no bypass actors, with `deletion` and `non_fast_forward` rules.
+   With no bypass, administrators remain subject to both invariants.
+2. `Meelni SAV-198 calibration activation actor`: the same exact ref include,
+   no excludes, `creation` and `update` restrictions, and exactly one `always`
+   bypass actor: GitHub user `saviii` (`24397508`). The independent immutable
+   ruleset still prevents that actor from deleting or force-updating the ref.
 
-The initial ref must be a zero-parent, empty-tree commit whose entire message is
-the exact output of `calibrationAuthorizationCommitMessage()`. The live CLI
-validates that shape, builds and hashes the exact approved plan, creates a unique
-empty-tree activation child, and performs a normal non-force push. Two
-concurrent activations create sibling children, so only one fast-forward wins.
-The loser refuses before provider work.
+The runtime also requires GitHub's effective branch-rule endpoint to return
+`creation`, `update`, `deletion`, and `non_fast_forward`. Configure and verify
+both rulesets before creating the ref. This PR intentionally does not create,
+configure, query, or activate the real ledger ref during tests.
+
+After both rulesets are active, create the initial commit through GitHub REST
+with these exact immutable fields:
+
+```text
+repository: saviii/meelni-prep (1089904588)
+tree: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+parents: []
+author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
+author/committer date: 2026-07-12T08:00:00.000Z
+message: exact calibrationAuthorizationCommitMessage() output
+expected commit: 5db3fdc9a4d9bd8b57619db03f4a4193d1b9637a
+```
+
+Use `gh api --hostname github.com` against the fixed repository to create only
+that commit object. Verify the returned SHA before using the create-reference
+endpoint once for the exact ledger ref. Do not use local `git push`, `origin`, a
+push URL, or a repository redirect for seeding. Then verify repository and
+viewer IDs, both detailed rulesets, all four effective branch rules, the exact
+ref SHA, and the genesis payload before enabling the paid command.
+
+The live CLI repeats those checks, builds and hashes the approved plan, creates
+a unique empty-tree activation child through GitHub REST, and updates the ref
+with `force: false`. Concurrent sibling activations allow exactly one winner;
+the loser refuses before provider work.
 
 An activated ref is terminal even when the process crashes before call one.
 There is no stale recovery or resume: all unused pre-reserved capacity is burned,
@@ -170,13 +198,14 @@ secrets or provider responses containing sensitive data.
   reservation, it records exact actual cost and `spendCapBreached: true` before
   stopping. It has `completed_plan` only after all 96 calls reconcile
   successfully.
-- The cost report uses `evaluation-calibration-cost-report.v4`, the report uses
+- The cost report uses `evaluation-calibration-cost-report.v5`, the report uses
   `evaluation-calibration-report.v6`, and the fixed run, authorization ID, and
   authorization hash match the committed spend-authorization manifest.
 - The activated plan reports 96 or fewer calls and at most $3 worst-case, the
-  activation commit remains the protected ref head, and the physical-attempt
-  ceiling increments only inside the guarded fetch after fresh pricing and Git
-  authorization checks succeed.
+  activation commit remains the protected ref head, and each reservation has
+  exactly one successful physical-dispatch boundary. A second or concurrent
+  boundary attempt is counted, rejected before transport, and does not increase
+  the physical HTTP-attempt ceiling.
 - `observedServiceTiers` contains only `default` for a passing run. A missing or
   different returned tier stops after the first affected call.
 - Evidence validity, adjudicated evidence match, and insufficient handling are

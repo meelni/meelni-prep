@@ -1,8 +1,5 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import {
   EVALUATION_ADJUDICATION_VERSION,
@@ -30,8 +27,32 @@ import {
 export const SAV_198_APPROVED_RUN_ID = "sav-198-authorized-paid-calibration.v1";
 export const SAV_198_AUTHORIZATION_ID =
   "sav-198-user-authorization-2026-07-12.v1";
+export const SAV_198_GITHUB_OWNER = "saviii";
+export const SAV_198_GITHUB_REPOSITORY = "meelni-prep";
+export const SAV_198_GITHUB_REPOSITORY_ID = 1_089_904_588;
+export const SAV_198_GITHUB_ACTIVATION_ACTOR_LOGIN = "saviii";
+export const SAV_198_GITHUB_ACTIVATION_ACTOR_ID = 24_397_508;
+export const SAV_198_GIT_LEDGER_BRANCH =
+  "meelni-ledger/sav-198-authorized-paid-calibration.v1";
 export const SAV_198_GIT_LEDGER_REF =
-  "refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1";
+  `refs/heads/${SAV_198_GIT_LEDGER_BRANCH}` as const;
+export const SAV_198_GIT_LEDGER_API_REF =
+  `heads/${SAV_198_GIT_LEDGER_BRANCH}` as const;
+export const SAV_198_EMPTY_TREE_OID =
+  "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+export const SAV_198_GENESIS_DATE = "2026-07-12T08:00:00.000Z";
+export const SAV_198_GENESIS_COMMIT_OID =
+  "5db3fdc9a4d9bd8b57619db03f4a4193d1b9637a";
+export const SAV_198_IMMUTABLE_RULESET_NAME =
+  "Meelni SAV-198 calibration ledger immutable";
+export const SAV_198_ACTOR_RULESET_NAME =
+  "Meelni SAV-198 calibration activation actor";
+
+const GITHUB_API_VERSION = "2022-11-28";
+const COMMIT_IDENTITY = {
+  name: "Meelni Calibration Authorization",
+  email: "calibration-ledger@meelni.invalid",
+} as const;
 
 export interface CalibrationSpendAuthorization {
   contractVersion: "evaluation-calibration-spend-authorization.v1";
@@ -96,11 +117,74 @@ export interface ActivateCalibrationRunOptions {
   adjudicationApproval: unknown;
   model: string;
   repetitions: number;
-  remoteUrl: string;
   now?: Date;
   activationId?: string;
-  /** Tests use an isolated Git executable wrapper only. */
-  gitExecutable?: string;
+}
+
+export interface GitHubRepositoryIdentity {
+  id: number;
+  fullName: string;
+  owner: { id: number; login: string };
+  private: boolean;
+}
+
+export interface GitHubViewerIdentity {
+  id: number;
+  login: string;
+}
+
+export interface GitHubRef {
+  ref: string;
+  sha: string;
+}
+
+export interface GitHubCommitIdentity {
+  name: string;
+  email: string;
+  date: string;
+}
+
+export interface GitHubCommit {
+  sha: string;
+  message: string;
+  treeSha: string;
+  parents: string[];
+  author: GitHubCommitIdentity;
+  committer: GitHubCommitIdentity;
+}
+
+export interface GitHubRulesetBypassActor {
+  actorId: number | null;
+  actorType: string;
+  bypassMode: string;
+}
+
+export interface GitHubRuleset {
+  name: string;
+  source: string;
+  sourceType: string;
+  target: string;
+  enforcement: string;
+  bypassActors: GitHubRulesetBypassActor[];
+  includeRefs: string[];
+  excludeRefs: string[];
+  ruleTypes: string[];
+}
+
+export interface CalibrationGitHubCasClient {
+  getRepository(): GitHubRepositoryIdentity;
+  getViewer(): GitHubViewerIdentity;
+  getRulesets(): GitHubRuleset[];
+  getEffectiveBranchRuleTypes(): string[];
+  getRef(): GitHubRef;
+  getCommit(sha: string): GitHubCommit;
+  createCommit(input: {
+    message: string;
+    treeSha: string;
+    parents: string[];
+    date: string;
+  }): GitHubCommit;
+  updateRef(input: { sha: string; force: false }): GitHubRef;
 }
 
 export class ActivatedCalibrationRunAuthority
@@ -120,8 +204,7 @@ export class ActivatedCalibrationRunAuthority
   constructor(
     readonly activationCommit: string,
     readonly plan: CalibrationActivatedPlan,
-    private readonly remoteUrl: string,
-    private readonly gitExecutable = "git"
+    private readonly github: CalibrationGitHubCasClient
   ) {
     this.authorizationHash = plan.authorizationHash;
     this.planHash = plan.planHash;
@@ -132,12 +215,13 @@ export class ActivatedCalibrationRunAuthority
 
   assertRequestAuthority(): void {
     if (!this.active) throw new Error("calibration_git_activation_released");
-    const current = readRemoteRef(
-      this.remoteUrl,
-      SAV_198_GIT_LEDGER_REF,
-      this.gitExecutable
-    );
-    if (current !== this.activationCommit) {
+    assertCanonicalGitHubAuthority(this.github);
+    const current = this.github.getRef();
+    if (current.ref !== SAV_198_GIT_LEDGER_REF) {
+      this.active = false;
+      throw new Error("calibration_github_ledger_ref_invalid");
+    }
+    if (current.sha !== this.activationCommit) {
       this.active = false;
       throw new Error("calibration_git_activation_is_not_current");
     }
@@ -254,6 +338,16 @@ export function buildCalibrationActivatedPlan(input: {
 export function activateCalibrationRun(
   options: ActivateCalibrationRunOptions
 ): ActivatedCalibrationRunAuthority {
+  return activateCalibrationRunWithClient(
+    options,
+    new GhCalibrationGitHubCasClient()
+  );
+}
+
+function activateCalibrationRunWithClient(
+  options: ActivateCalibrationRunOptions,
+  github: CalibrationGitHubCasClient
+): ActivatedCalibrationRunAuthority {
   const now = options.now ?? new Date();
   const plan = buildCalibrationActivatedPlan({
     authorization: options.authorization,
@@ -262,113 +356,69 @@ export function activateCalibrationRun(
     repetitions: options.repetitions,
     now,
   });
-  const gitExecutable = options.gitExecutable ?? "git";
-  const work = mkdtempSync(join(tmpdir(), "meelni-calibration-git-cas-"));
-  try {
-    git(gitExecutable, ["init", "--bare", "--quiet", work]);
-    let current: string;
-    try {
-      git(gitExecutable, [
-        `--git-dir=${work}`,
-        "fetch",
-        "--quiet",
-        "--no-tags",
-        options.remoteUrl,
-        SAV_198_GIT_LEDGER_REF,
-      ]);
-      current = git(gitExecutable, [
-        `--git-dir=${work}`,
-        "rev-parse",
-        "FETCH_HEAD",
-      ]).trim();
-    } catch (error) {
-      throw new Error("calibration_git_authorization_ref_missing", {
-        cause: error,
-      });
-    }
+  assertCanonicalGitHubAuthority(github);
 
-    const message = git(gitExecutable, [
-      `--git-dir=${work}`,
-      "show",
-      "-s",
-      "--format=%B",
-      current,
-    ]).trim();
-    const parents = git(gitExecutable, [
-      `--git-dir=${work}`,
-      "show",
-      "-s",
-      "--format=%P",
-      current,
-    ]).trim();
-    const tree = git(gitExecutable, [
-      `--git-dir=${work}`,
-      "show",
-      "-s",
-      "--format=%T",
-      current,
-    ]).trim();
-    const emptyTree = git(gitExecutable, [
-      `--git-dir=${work}`,
-      "mktree",
-    ]).trim();
-    if (tree !== emptyTree) {
-      throw new Error("calibration_git_ledger_commit_must_be_payload_free");
-    }
-    if (message !== calibrationAuthorizationCommitMessage() || parents) {
-      if (isActivationMessage(message)) {
-        throw new Error("calibration_authorized_run_is_already_activated");
-      }
-      throw new Error("calibration_git_authorization_commit_invalid");
-    }
-
-    const activationId = options.activationId ?? randomUUID();
-    const activatedMessage = stableJson({
-      contractVersion: "evaluation-calibration-git-activation.v1",
-      runId: SAV_198_APPROVED_RUN_ID,
-      authorizationId: SAV_198_AUTHORIZATION_ID,
-      authorizationHash: plan.authorizationHash,
-      planHash: plan.planHash,
-      activationId,
-    });
-    const activationCommit = git(
-      gitExecutable,
-      [`--git-dir=${work}`, "commit-tree", emptyTree, "-p", current],
-      activatedMessage,
-      now
-    ).trim();
-    try {
-      git(gitExecutable, [
-        `--git-dir=${work}`,
-        "push",
-        "--porcelain",
-        options.remoteUrl,
-        `${activationCommit}:${SAV_198_GIT_LEDGER_REF}`,
-      ]);
-    } catch (error) {
-      throw new Error("calibration_git_activation_lost_concurrent_cas", {
-        cause: error,
-      });
-    }
-    if (
-      readRemoteRef(
-        options.remoteUrl,
-        SAV_198_GIT_LEDGER_REF,
-        gitExecutable
-      ) !== activationCommit
-    ) {
-      throw new Error("calibration_git_activation_not_durable");
-    }
-    return new ActivatedCalibrationRunAuthority(
-      activationCommit,
-      plan,
-      options.remoteUrl,
-      gitExecutable
-    );
-  } finally {
-    rmSync(work, { recursive: true, force: true });
+  const currentRef = github.getRef();
+  if (currentRef.ref !== SAV_198_GIT_LEDGER_REF) {
+    throw new Error("calibration_github_ledger_ref_invalid");
   }
+  if (currentRef.sha !== SAV_198_GENESIS_COMMIT_OID) {
+    const current = github.getCommit(currentRef.sha);
+    if (isValidActivationCommit(current)) {
+      throw new Error("calibration_authorized_run_is_already_activated");
+    }
+    throw new Error("calibration_git_authorization_genesis_oid_mismatch");
+  }
+  assertPinnedGenesisCommit(github.getCommit(currentRef.sha));
+
+  const activationId = options.activationId ?? randomUUID();
+  const activationMessage = stableJson({
+    contractVersion: "evaluation-calibration-git-activation.v1",
+    runId: SAV_198_APPROVED_RUN_ID,
+    authorizationId: SAV_198_AUTHORIZATION_ID,
+    authorizationHash: plan.authorizationHash,
+    planHash: plan.planHash,
+    activationId,
+  });
+  const activationDate = now.toISOString();
+  const activation = github.createCommit({
+    message: activationMessage,
+    treeSha: SAV_198_EMPTY_TREE_OID,
+    parents: [SAV_198_GENESIS_COMMIT_OID],
+    date: activationDate,
+  });
+  if (
+    !isValidActivationCommit(activation) ||
+    activation.message !== activationMessage ||
+    !isCommitIdentity(activation.author, activationDate) ||
+    !isCommitIdentity(activation.committer, activationDate)
+  ) {
+    throw new Error("calibration_github_activation_commit_invalid");
+  }
+
+  // Protection is re-read immediately before the one non-force ref update.
+  assertCanonicalGitHubAuthority(github);
+  try {
+    github.updateRef({ sha: activation.sha, force: false });
+  } catch (error) {
+    throw new Error("calibration_git_activation_lost_concurrent_cas", {
+      cause: error,
+    });
+  }
+  assertCanonicalGitHubAuthority(github);
+  const durable = github.getRef();
+  if (
+    durable.ref !== SAV_198_GIT_LEDGER_REF ||
+    durable.sha !== activation.sha
+  ) {
+    throw new Error("calibration_git_activation_not_durable");
+  }
+  return new ActivatedCalibrationRunAuthority(activation.sha, plan, github);
 }
+
+export const calibrationRunLedgerTestSeam = {
+  activateWithClient: activateCalibrationRunWithClient,
+};
 
 export function calibrationAuthorizationCommitMessage(): string {
   return stableJson({
@@ -377,22 +427,6 @@ export function calibrationAuthorizationCommitMessage(): string {
     authorizationId: SAV_198_AUTHORIZATION_ID,
     authorizationHash: sha256(stableJson(SAV_198_SPEND_AUTHORIZATION)),
   });
-}
-
-export function getCalibrationRepositoryRemoteUrl(
-  cwd = process.cwd(),
-  gitExecutable = "git"
-): string {
-  const url = git(gitExecutable, [
-    "-C",
-    cwd,
-    "remote",
-    "get-url",
-    "--push",
-    "origin",
-  ]).trim();
-  if (!url) throw new Error("calibration_git_origin_remote_missing");
-  return url;
 }
 
 export function parseCalibrationSpendAuthorization(
@@ -410,62 +444,372 @@ export function parseCalibrationSpendAuthorization(
   return { ...SAV_198_SPEND_AUTHORIZATION };
 }
 
-function readRemoteRef(
-  remoteUrl: string,
-  ref: string,
-  gitExecutable: string
-): string {
-  try {
-    const output = git(gitExecutable, ["ls-remote", "--refs", remoteUrl, ref]);
-    const [oid, returnedRef, extra] = output.trim().split(/\s+/);
-    if (
-      !oid ||
-      returnedRef !== ref ||
-      extra ||
-      !/^[0-9a-f]{40,64}$/.test(oid)
-    ) {
-      throw new Error("calibration_git_ledger_ref_invalid");
+function assertCanonicalGitHubAuthority(
+  github: CalibrationGitHubCasClient
+): void {
+  const repository = github.getRepository();
+  if (
+    repository.id !== SAV_198_GITHUB_REPOSITORY_ID ||
+    repository.fullName !==
+      `${SAV_198_GITHUB_OWNER}/${SAV_198_GITHUB_REPOSITORY}` ||
+    repository.owner.id !== SAV_198_GITHUB_ACTIVATION_ACTOR_ID ||
+    repository.owner.login !== SAV_198_GITHUB_OWNER ||
+    repository.private !== true
+  ) {
+    throw new Error("calibration_github_repository_identity_mismatch");
+  }
+  const viewer = github.getViewer();
+  if (
+    viewer.id !== SAV_198_GITHUB_ACTIVATION_ACTOR_ID ||
+    viewer.login !== SAV_198_GITHUB_ACTIVATION_ACTOR_LOGIN
+  ) {
+    throw new Error("calibration_github_activation_actor_mismatch");
+  }
+  assertCanonicalProtection(
+    github.getRulesets(),
+    github.getEffectiveBranchRuleTypes()
+  );
+}
+
+function assertCanonicalProtection(
+  rulesets: GitHubRuleset[],
+  effectiveRuleTypes: string[]
+): void {
+  if (
+    rulesets.length !== 2 ||
+    rulesets.filter(({ name }) => name === SAV_198_IMMUTABLE_RULESET_NAME)
+      .length !== 1 ||
+    rulesets.filter(({ name }) => name === SAV_198_ACTOR_RULESET_NAME)
+      .length !== 1
+  ) {
+    throw new Error("calibration_github_ruleset_set_invalid");
+  }
+  const immutable = rulesets.find(
+    ({ name }) => name === SAV_198_IMMUTABLE_RULESET_NAME
+  );
+  if (!immutable || !isExactRepositoryRuleset(immutable)) {
+    throw new Error("calibration_github_immutable_ruleset_missing");
+  }
+  if (
+    immutable.bypassActors.length !== 0 ||
+    !hasExactStrings(immutable.ruleTypes, ["deletion", "non_fast_forward"])
+  ) {
+    throw new Error("calibration_github_immutable_ruleset_unsafe");
+  }
+
+  const actor = rulesets.find(
+    ({ name }) => name === SAV_198_ACTOR_RULESET_NAME
+  );
+  if (!actor || !isExactRepositoryRuleset(actor)) {
+    throw new Error("calibration_github_actor_ruleset_missing");
+  }
+  if (
+    !hasExactStrings(actor.ruleTypes, ["creation", "update"]) ||
+    actor.bypassActors.length !== 1 ||
+    actor.bypassActors[0]?.actorId !== SAV_198_GITHUB_ACTIVATION_ACTOR_ID ||
+    actor.bypassActors[0]?.actorType !== "User" ||
+    actor.bypassActors[0]?.bypassMode !== "always"
+  ) {
+    throw new Error("calibration_github_actor_ruleset_unsafe");
+  }
+  const effective = new Set(effectiveRuleTypes);
+  for (const required of [
+    "creation",
+    "non_fast_forward",
+    "deletion",
+    "update",
+  ]) {
+    if (!effective.has(required)) {
+      throw new Error("calibration_github_effective_protection_missing");
     }
-    return oid;
-  } catch (error) {
-    throw new Error("calibration_git_ledger_ref_unavailable", { cause: error });
   }
 }
 
-function git(
-  executable: string,
-  args: string[],
-  input?: string,
-  now = new Date()
-): string {
-  return execFileSync(executable, args, {
-    encoding: "utf8",
-    input: input === undefined ? undefined : `${input}\n`,
-    stdio: ["pipe", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      GIT_CONFIG_NOSYSTEM: "1",
-      GIT_AUTHOR_NAME: "Meelni Calibration Authorization",
-      GIT_AUTHOR_EMAIL: "calibration-ledger@meelni.invalid",
-      GIT_AUTHOR_DATE: now.toISOString(),
-      GIT_COMMITTER_NAME: "Meelni Calibration Authorization",
-      GIT_COMMITTER_EMAIL: "calibration-ledger@meelni.invalid",
-      GIT_COMMITTER_DATE: now.toISOString(),
-    },
-  });
+function isExactRepositoryRuleset(ruleset: GitHubRuleset): boolean {
+  return (
+    ruleset.source === `${SAV_198_GITHUB_OWNER}/${SAV_198_GITHUB_REPOSITORY}` &&
+    ruleset.sourceType === "Repository" &&
+    ruleset.target === "branch" &&
+    ruleset.enforcement === "active" &&
+    ruleset.includeRefs.length === 1 &&
+    ruleset.includeRefs[0] === SAV_198_GIT_LEDGER_REF &&
+    ruleset.excludeRefs.length === 0
+  );
 }
 
-function isActivationMessage(message: string): boolean {
+function hasExactStrings(actual: string[], expected: string[]): boolean {
+  return (
+    actual.length === expected.length &&
+    expected.every((value) => actual.includes(value))
+  );
+}
+
+function assertPinnedGenesisCommit(commit: GitHubCommit): void {
+  if (
+    commit.sha !== SAV_198_GENESIS_COMMIT_OID ||
+    commit.message !== calibrationAuthorizationCommitMessage() ||
+    commit.treeSha !== SAV_198_EMPTY_TREE_OID ||
+    commit.parents.length !== 0 ||
+    !isCommitIdentity(commit.author, SAV_198_GENESIS_DATE) ||
+    !isCommitIdentity(commit.committer, SAV_198_GENESIS_DATE)
+  ) {
+    throw new Error("calibration_git_authorization_commit_invalid");
+  }
+}
+
+function isValidActivationCommit(commit: GitHubCommit): boolean {
+  if (
+    commit.treeSha !== SAV_198_EMPTY_TREE_OID ||
+    commit.parents.length !== 1 ||
+    commit.parents[0] !== SAV_198_GENESIS_COMMIT_OID ||
+    !isCommitIdentity(commit.author, commit.author.date) ||
+    !isCommitIdentity(commit.committer, commit.author.date)
+  ) {
+    return false;
+  }
   try {
-    const parsed = JSON.parse(message) as Record<string, unknown>;
+    const parsed = JSON.parse(commit.message) as Record<string, unknown>;
     return (
       parsed.contractVersion === "evaluation-calibration-git-activation.v1" &&
       parsed.runId === SAV_198_APPROVED_RUN_ID &&
-      parsed.authorizationId === SAV_198_AUTHORIZATION_ID
+      parsed.authorizationId === SAV_198_AUTHORIZATION_ID &&
+      typeof parsed.authorizationHash === "string" &&
+      typeof parsed.planHash === "string" &&
+      typeof parsed.activationId === "string" &&
+      parsed.activationId.length > 0
     );
   } catch {
     return false;
   }
+}
+
+function isCommitIdentity(
+  identity: GitHubCommitIdentity,
+  date: string
+): boolean {
+  return (
+    identity.name === COMMIT_IDENTITY.name &&
+    identity.email === COMMIT_IDENTITY.email &&
+    normalizeTimestamp(identity.date) === normalizeTimestamp(date)
+  );
+}
+
+class GhCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
+  getRepository(): GitHubRepositoryIdentity {
+    const response = this.api("GET", "/repos/saviii/meelni-prep");
+    const record = requireRecord(response, "repository");
+    const owner = requireRecord(record.owner, "repository.owner");
+    return {
+      id: requireNumber(record.id, "repository.id"),
+      fullName: requireString(record.full_name, "repository.full_name"),
+      owner: {
+        id: requireNumber(owner.id, "repository.owner.id"),
+        login: requireString(owner.login, "repository.owner.login"),
+      },
+      private: record.private === true,
+    };
+  }
+
+  getViewer(): GitHubViewerIdentity {
+    const record = requireRecord(this.api("GET", "/user"), "viewer");
+    return {
+      id: requireNumber(record.id, "viewer.id"),
+      login: requireString(record.login, "viewer.login"),
+    };
+  }
+
+  getRulesets(): GitHubRuleset[] {
+    const listed = this.api(
+      "GET",
+      "/repos/saviii/meelni-prep/rulesets?includes_parents=true&targets=branch&per_page=100"
+    );
+    if (!Array.isArray(listed)) {
+      throw new Error("calibration_github_rulesets_invalid");
+    }
+    return listed.flatMap((item) => {
+      const summary = requireRecord(item, "ruleset.summary");
+      if (
+        summary.name !== SAV_198_IMMUTABLE_RULESET_NAME &&
+        summary.name !== SAV_198_ACTOR_RULESET_NAME
+      ) {
+        return [];
+      }
+      const id = requireNumber(summary.id, "ruleset.id");
+      return [
+        parseGitHubRuleset(
+          this.api(
+            "GET",
+            `/repos/saviii/meelni-prep/rulesets/${id}?includes_parents=true`
+          )
+        ),
+      ];
+    });
+  }
+
+  getEffectiveBranchRuleTypes(): string[] {
+    const branch = encodeURIComponent(SAV_198_GIT_LEDGER_BRANCH);
+    const response = this.api(
+      "GET",
+      `/repos/saviii/meelni-prep/rules/branches/${branch}`
+    );
+    if (!Array.isArray(response)) {
+      throw new Error("calibration_github_effective_rules_invalid");
+    }
+    return response.map((rule) =>
+      requireString(requireRecord(rule, "effective.rule").type, "rule.type")
+    );
+  }
+
+  getRef(): GitHubRef {
+    const record = requireRecord(
+      this.api(
+        "GET",
+        `/repos/saviii/meelni-prep/git/ref/${SAV_198_GIT_LEDGER_API_REF}`
+      ),
+      "ref"
+    );
+    const object = requireRecord(record.object, "ref.object");
+    if (object.type !== "commit") {
+      throw new Error("calibration_github_ledger_ref_not_commit");
+    }
+    return {
+      ref: requireString(record.ref, "ref.ref"),
+      sha: requireOid(object.sha, "ref.object.sha"),
+    };
+  }
+
+  getCommit(sha: string): GitHubCommit {
+    return parseGitHubCommit(
+      this.api("GET", `/repos/saviii/meelni-prep/git/commits/${sha}`)
+    );
+  }
+
+  createCommit(input: {
+    message: string;
+    treeSha: string;
+    parents: string[];
+    date: string;
+  }): GitHubCommit {
+    return parseGitHubCommit(
+      this.api("POST", "/repos/saviii/meelni-prep/git/commits", {
+        message: input.message,
+        tree: input.treeSha,
+        parents: input.parents,
+        author: { ...COMMIT_IDENTITY, date: input.date },
+        committer: { ...COMMIT_IDENTITY, date: input.date },
+      })
+    );
+  }
+
+  updateRef(input: { sha: string; force: false }): GitHubRef {
+    const record = requireRecord(
+      this.api(
+        "PATCH",
+        `/repos/saviii/meelni-prep/git/refs/${SAV_198_GIT_LEDGER_API_REF}`,
+        input
+      ),
+      "updatedRef"
+    );
+    const object = requireRecord(record.object, "updatedRef.object");
+    return {
+      ref: requireString(record.ref, "updatedRef.ref"),
+      sha: requireOid(object.sha, "updatedRef.object.sha"),
+    };
+  }
+
+  private api(method: string, path: string, body?: unknown): unknown {
+    try {
+      const output = execFileSync(
+        "gh",
+        [
+          "api",
+          "--hostname",
+          "github.com",
+          "--method",
+          method,
+          "-H",
+          "Accept: application/vnd.github+json",
+          "-H",
+          `X-GitHub-Api-Version: ${GITHUB_API_VERSION}`,
+          path,
+          ...(body === undefined ? [] : ["--input", "-"]),
+        ],
+        {
+          encoding: "utf8",
+          input: body === undefined ? undefined : `${JSON.stringify(body)}\n`,
+          stdio: ["pipe", "pipe", "pipe"],
+          env: process.env,
+        }
+      );
+      return JSON.parse(output) as unknown;
+    } catch (error) {
+      throw new Error("calibration_github_api_request_failed", {
+        cause: error,
+      });
+    }
+  }
+}
+
+function parseGitHubRuleset(value: unknown): GitHubRuleset {
+  const record = requireRecord(value, "ruleset");
+  const conditions = requireRecord(record.conditions, "ruleset.conditions");
+  const refName = requireRecord(conditions.ref_name, "ruleset.ref_name");
+  if (!Array.isArray(record.bypass_actors) || !Array.isArray(record.rules)) {
+    throw new Error("calibration_github_ruleset_shape_invalid");
+  }
+  return {
+    name: requireString(record.name, "ruleset.name"),
+    source: requireString(record.source, "ruleset.source"),
+    sourceType: requireString(record.source_type, "ruleset.source_type"),
+    target: requireString(record.target, "ruleset.target"),
+    enforcement: requireString(record.enforcement, "ruleset.enforcement"),
+    bypassActors: record.bypass_actors.map((value) => {
+      const actor = requireRecord(value, "ruleset.bypassActor");
+      return {
+        actorId:
+          actor.actor_id === null
+            ? null
+            : requireNumber(actor.actor_id, "ruleset.actor_id"),
+        actorType: requireString(actor.actor_type, "ruleset.actor_type"),
+        bypassMode: requireString(actor.bypass_mode, "ruleset.bypass_mode"),
+      };
+    }),
+    includeRefs: requireStringArray(refName.include, "ruleset.include"),
+    excludeRefs: requireStringArray(refName.exclude, "ruleset.exclude"),
+    ruleTypes: record.rules.map((value) =>
+      requireString(requireRecord(value, "ruleset.rule").type, "rule.type")
+    ),
+  };
+}
+
+function parseGitHubCommit(value: unknown): GitHubCommit {
+  const record = requireRecord(value, "commit");
+  const tree = requireRecord(record.tree, "commit.tree");
+  if (!Array.isArray(record.parents)) {
+    throw new Error("calibration_github_commit_parents_invalid");
+  }
+  return {
+    sha: requireOid(record.sha, "commit.sha"),
+    message: requireString(record.message, "commit.message"),
+    treeSha: requireOid(tree.sha, "commit.tree.sha"),
+    parents: record.parents.map((value) =>
+      requireOid(requireRecord(value, "commit.parent").sha, "parent.sha")
+    ),
+    author: parseGitHubCommitIdentity(record.author, "commit.author"),
+    committer: parseGitHubCommitIdentity(record.committer, "commit.committer"),
+  };
+}
+
+function parseGitHubCommitIdentity(
+  value: unknown,
+  field: string
+): GitHubCommitIdentity {
+  const record = requireRecord(value, field);
+  return {
+    name: requireString(record.name, `${field}.name`),
+    email: requireString(record.email, `${field}.email`),
+    date: requireString(record.date, `${field}.date`),
+  };
 }
 
 function cloneSpendState(
@@ -505,6 +849,53 @@ function assertExactKeys(
   ) {
     throw new Error("calibration_authorization_unknown_or_missing_field");
   }
+}
+
+function requireRecord(value: unknown, field: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`calibration_github_${field}_invalid`);
+  }
+  return value;
+}
+
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== "string" || !value) {
+    throw new Error(`calibration_github_${field}_invalid`);
+  }
+  return value;
+}
+
+function requireStringArray(value: unknown, field: string): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string")
+  ) {
+    throw new Error(`calibration_github_${field}_invalid`);
+  }
+  return [...value];
+}
+
+function requireNumber(value: unknown, field: string): number {
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`calibration_github_${field}_invalid`);
+  }
+  return value as number;
+}
+
+function requireOid(value: unknown, field: string): string {
+  const oid = requireString(value, field);
+  if (!/^[0-9a-f]{40}$/.test(oid)) {
+    throw new Error(`calibration_github_${field}_invalid`);
+  }
+  return oid;
+}
+
+function normalizeTimestamp(value: string): string {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) {
+    throw new Error("calibration_github_commit_date_invalid");
+  }
+  return parsed.toISOString();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

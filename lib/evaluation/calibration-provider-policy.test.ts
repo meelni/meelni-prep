@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { evaluationCalibrationCases } from "@meelni/test-fixtures";
+
 import {
   CALIBRATION_MAX_SDK_RETRIES,
   CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
   CALIBRATION_PRICING_CONTRACT,
   CALIBRATION_REQUEST_TIMEOUT_MS,
   CALIBRATION_SERVICE_TIER,
+  CalibrationSpendGuard,
 } from "./calibration-budget";
 import {
   assertCalibrationOpenAIEnvironment,
@@ -121,4 +124,38 @@ test("guarded transport validates authorization at actual fetch dispatch", async
     redirect: "follow",
   });
   assert.deepEqual(order, ["authorize", "dispatch"]);
+});
+
+test("concurrent guarded fetch re-entry dispatches exactly once", async () => {
+  const fixture = evaluationCalibrationCases.find(
+    ({ expectedCompletionState }) => expectedCompletionState === "full"
+  )!;
+  const guard = new CalibrationSpendGuard(
+    CALIBRATION_PRICING_CONTRACT.model,
+    new Date("2026-07-12T07:00:00.000Z")
+  );
+  const reservation = guard.reserve(fixture)!;
+  let dispatches = 0;
+  const guardedFetch = createGuardedCalibrationFetch(
+    () => guard.assertPhysicalRequestAllowed(reservation),
+    async () => {
+      dispatches += 1;
+      await Promise.resolve();
+      return new Response("{}", { status: 200 });
+    }
+  );
+
+  const results = await Promise.allSettled([
+    guardedFetch("https://api.openai.com/v1/chat/completions"),
+    guardedFetch("https://api.openai.com/v1/chat/completions"),
+  ]);
+  assert.equal(
+    results.filter(({ status }) => status === "fulfilled").length,
+    1
+  );
+  assert.equal(results.filter(({ status }) => status === "rejected").length, 1);
+  assert.equal(dispatches, 1);
+  assert.equal(guard.report().physicalRequestBoundaryAttempts, 2);
+  assert.equal(guard.report().physicalHttpAttemptCeiling, 1);
+  assert.equal(guard.report().stopReason, "physical_request_reentry");
 });
