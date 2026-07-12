@@ -38,6 +38,8 @@ test("compareAndSet guards the write with session, state, and version", async ()
   assert.equal(fake.capturedSet.status, "in_progress");
   assert.equal(fake.capturedSet.lastTransitionAt, TRANSITIONED_AT);
   assert.ok(fake.capturedSet.endingAt);
+  assert.ok(fake.capturedSet.roomCleanupPending);
+  assert.equal(fake.capturedSet.roomCleanupAttemptedAt, null);
 
   const query = new PgDialect().sqlToQuery(requirePredicate(fake));
   assert.match(query.sql, /"interview_session"\."id" = \$1/);
@@ -98,6 +100,8 @@ test("an atomic provider-start failure records both ending and terminal timestam
   assert.equal(result.applied, true);
   assert.ok(fake.capturedSet.endingAt);
   assert.ok(fake.capturedSet.endedAt);
+  assert.ok(fake.capturedSet.roomCleanupPending);
+  assert.equal(fake.capturedSet.roomCleanupAttemptedAt, null);
 });
 
 test("a lost compareAndSet returns the stored winner", async () => {

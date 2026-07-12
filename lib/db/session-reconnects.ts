@@ -561,7 +561,11 @@ export async function listInterviewPresenceReconciliationSessions(
     .from(interviewSession)
     .where(
       and(
-        inArray(interviewSession.lifecycleState, ["active", "reconnecting"]),
+        inArray(interviewSession.lifecycleState, [
+          "connecting",
+          "active",
+          "reconnecting",
+        ]),
         isNotNull(interviewSession.livekitRoomName),
         isNotNull(interviewSession.startedAt)
       )

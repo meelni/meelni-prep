@@ -68,7 +68,9 @@ test("authoritative presence recovers before the timeout claim", async () => {
   fixture.deps.inspectPresence = async () =>
     providerSuccess("livekit", {
       present: true,
+      joined: true,
       joinedAt: new Date("2026-07-10T08:00:29.000Z"),
+      agent: null,
     });
 
   const result = await run(fixture.deps);
@@ -424,7 +426,12 @@ function createFixture(
         });
       },
       inspectPresence: async () =>
-        providerSuccess("livekit", { present: false, joinedAt: null }),
+        providerSuccess("livekit", {
+          present: false,
+          joined: false,
+          joinedAt: null,
+          agent: null,
+        }),
       endSession: async () => {
         calls.push("end");
         current = {

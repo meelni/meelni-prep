@@ -27,10 +27,12 @@ export interface ReconcileInterviewPresenceDeps {
     participantIdentity: string;
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<InterviewParticipantPresence>>;
-  handleTransportLoss(input: {
+  handleTransportEvent(input: {
     eventId: string;
+    eventName: "participant_joined" | "participant_left";
     roomName: string;
     participantIdentity: string;
+    participantKind: number;
     occurredAt: Date;
   }): Promise<HandleLiveKitInterviewEventResult>;
   now(): Date;
@@ -45,6 +47,8 @@ export type ReconcileInterviewPresenceResult =
       ok: true;
       disposition:
         | "present"
+        | "connecting"
+        | "activated"
         | "absence_observed"
         | "reconnecting"
         | "recovered"
@@ -61,7 +65,11 @@ export async function reconcileInterviewPresenceWorkflow(
 
   const current = await deps.store.getById(input.sessionId);
   if (!current) return { ok: false, disposition: "not_found" };
-  if (current.state !== "active" && current.state !== "reconnecting") {
+  if (
+    current.state !== "connecting" &&
+    current.state !== "active" &&
+    current.state !== "reconnecting"
+  ) {
     return { ok: true, disposition: "terminal" };
   }
 
@@ -87,6 +95,60 @@ export async function reconcileInterviewPresenceWorkflow(
     throw Object.assign(new Error("LiveKit presence inspection failed"), {
       code: inspected.error.code,
     });
+  }
+
+  if (current.state === "connecting") {
+    if (
+      !inspected.data.present ||
+      !inspected.data.joined ||
+      !inspected.data.agent
+    ) {
+      return { ok: true, disposition: "connecting" };
+    }
+
+    if (
+      current.runtimeReadyAt === null &&
+      current.lastTransportEventName !== "participant_joined"
+    ) {
+      const candidate = await deps.handleTransportEvent({
+        eventId: `presence:candidate:${current.sessionId}:${input.deliveryId}`,
+        eventName: "participant_joined",
+        roomName: current.roomName,
+        participantIdentity: current.userId,
+        participantKind: 0,
+        occurredAt: inspected.data.joinedAt ?? checkedAt,
+      });
+      if (!candidate.ok) return failedTransportReconciliation(candidate);
+    }
+
+    if (current.runtimeReadyAt === null) {
+      const agent = await deps.handleTransportEvent({
+        eventId: `presence:agent:${current.sessionId}:${input.deliveryId}`,
+        eventName: "participant_joined",
+        roomName: current.roomName,
+        participantIdentity: inspected.data.agent.identity,
+        participantKind: 4,
+        occurredAt: inspected.data.agent.joinedAt ?? checkedAt,
+      });
+      if (!agent.ok) return failedTransportReconciliation(agent);
+    } else {
+      const candidate = await deps.handleTransportEvent({
+        eventId: `presence:candidate:${current.sessionId}:${input.deliveryId}`,
+        eventName: "participant_joined",
+        roomName: current.roomName,
+        participantIdentity: current.userId,
+        participantKind: 0,
+        occurredAt: inspected.data.joinedAt ?? checkedAt,
+      });
+      if (!candidate.ok) return failedTransportReconciliation(candidate);
+    }
+
+    const reconciled = await deps.store.getById(current.sessionId);
+    if (!reconciled) return { ok: false, disposition: "not_found" };
+    return {
+      ok: true,
+      disposition: reconciled.state === "active" ? "activated" : "connecting",
+    };
   }
 
   if (current.state === "reconnecting") {
@@ -116,10 +178,12 @@ export async function reconcileInterviewPresenceWorkflow(
     return { ok: true, disposition: "present" };
   }
 
-  const loss = await deps.handleTransportLoss({
+  const loss = await deps.handleTransportEvent({
     eventId: `presence:${current.sessionId}:${input.deliveryId}`,
+    eventName: "participant_left",
     roomName: current.roomName,
     participantIdentity: current.userId,
+    participantKind: 0,
     occurredAt: checkedAt,
   });
   if (!loss.ok) {
@@ -137,19 +201,22 @@ export function createReconcileInterviewPresenceDeps(): ReconcileInterviewPresen
   return {
     store,
     inspectPresence: inspectInterviewParticipantPresence,
-    handleTransportLoss: (input) =>
-      handleLiveKitInterviewEventWorkflow(
-        {
-          ...input,
-          eventName: "participant_left",
-          participantKind: 0,
-        },
-        {
-          store,
-          scheduleReconnect: scheduleInterviewReconnect,
-          now: () => new Date(),
-        }
-      ),
+    handleTransportEvent: (input) =>
+      handleLiveKitInterviewEventWorkflow(input, {
+        store,
+        scheduleReconnect: scheduleInterviewReconnect,
+        now: () => new Date(),
+      }),
     now: () => new Date(),
+  };
+}
+
+function failedTransportReconciliation(
+  result: Extract<HandleLiveKitInterviewEventResult, { ok: false }>
+): ReconcileInterviewPresenceResult {
+  return {
+    ok: false,
+    disposition:
+      result.disposition === "not_found" ? "not_found" : "stale_event",
   };
 }

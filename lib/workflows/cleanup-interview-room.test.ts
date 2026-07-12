@@ -40,13 +40,20 @@ test("terminal room cleanup deletes once and clears durable intent", async () =>
 
 test("provider failure preserves durable cleanup intent for recovery", async () => {
   const fixture = createFixture();
+  let attempts = 0;
   fixture.deps.terminateRoom = async () => {
     fixture.calls.push("terminate");
-    return providerFailure("livekit", {
-      code: "livekit_room_delete_failed",
-      message: "provider unavailable",
-      retryable: true,
-    });
+    attempts += 1;
+    return attempts === 1
+      ? providerFailure("livekit", {
+          code: "livekit_room_delete_failed",
+          message: "provider unavailable",
+          retryable: true,
+        })
+      : providerSuccess("livekit", {
+          roomName: fixture.current.roomName,
+          disposition: "deleted",
+        });
   };
 
   await assert.rejects(
@@ -59,6 +66,20 @@ test("provider failure preserves durable cleanup intent for recovery", async () 
   );
   assert.equal(fixture.current.roomCleanupPending, true);
   assert.deepEqual(fixture.calls, ["attempt", "terminate"]);
+
+  const recovered = await cleanupInterviewRoomWorkflow(
+    { sessionId: SESSION_ID, env: ENV },
+    fixture.deps
+  );
+  assert.equal(recovered.ok, true);
+  assert.equal(fixture.current.roomCleanupPending, false);
+  assert.deepEqual(fixture.calls, [
+    "attempt",
+    "terminate",
+    "attempt",
+    "terminate",
+    "clear",
+  ]);
 });
 
 test("terminal cleanup recovers a quarantined room without a start time", async () => {

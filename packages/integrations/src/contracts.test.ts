@@ -703,6 +703,7 @@ test("LiveKit presence normalizes candidate connection states", async () => {
               identity: "candidate-id",
               state,
               joinedAtMs: BigInt(1_783_670_430_000),
+              kind: 0,
             },
           ],
         }),
@@ -711,10 +712,12 @@ test("LiveKit presence normalizes candidate connection states", async () => {
     assert.equal(result.ok, true);
     if (result.ok) {
       assert.equal(result.data.present, true);
+      assert.equal(result.data.joined, state !== 0);
       assert.equal(
         result.data.joinedAt?.toISOString(),
         "2026-07-10T08:00:30.000Z"
       );
+      assert.equal(result.data.agent, null);
     }
   }
 
@@ -728,7 +731,12 @@ test("LiveKit presence normalizes candidate connection states", async () => {
       roomServiceClientFactory: () => ({
         createRoom: async () => undefined,
         listParticipants: async () => [
-          { identity: "candidate-id", state: 3, joinedAtMs: BigInt(0) },
+          {
+            identity: "candidate-id",
+            state: 3,
+            joinedAtMs: BigInt(0),
+            kind: 0,
+          },
         ],
       }),
     }
@@ -736,8 +744,61 @@ test("LiveKit presence normalizes candidate connection states", async () => {
   assert.deepEqual(disconnected, {
     ok: true,
     provider: "livekit",
-    data: { present: false, joinedAt: null },
+    data: { present: false, joined: false, joinedAt: null, agent: null },
   });
+});
+
+test("LiveKit presence requires the exact standard candidate and provider agent kind", async () => {
+  const result = await inspectInterviewParticipantPresence(
+    {
+      roomName: "interview-presence-room",
+      participantIdentity: "candidate-id",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        listParticipants: async () => [
+          {
+            identity: "candidate-id",
+            state: 2,
+            joinedAtMs: BigInt(1_783_670_430_000),
+            kind: 4,
+          },
+          {
+            identity: "random-standard-participant",
+            state: 2,
+            joinedAtMs: BigInt(1_783_670_430_001),
+            kind: 0,
+          },
+          {
+            identity: "agent-joining",
+            state: 0,
+            joinedAtMs: BigInt(1_783_670_430_001),
+            kind: 4,
+          },
+          {
+            identity: "agent-worker",
+            state: 2,
+            joinedAtMs: BigInt(1_783_670_430_002),
+            kind: 4,
+          },
+        ],
+      }),
+    }
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.data.present, false);
+    assert.equal(result.data.joined, false);
+    assert.equal(result.data.joinedAt, null);
+    assert.equal(result.data.agent?.identity, "agent-worker");
+  }
 });
 
 test("LiveKit presence treats an absent room as absent and other failures as retryable", async () => {
@@ -770,7 +831,7 @@ test("LiveKit presence treats an absent room as absent and other failures as ret
   assert.deepEqual(absent, {
     ok: true,
     provider: "livekit",
-    data: { present: false, joinedAt: null },
+    data: { present: false, joined: false, joinedAt: null, agent: null },
   });
   assert.equal(failed.ok, false);
   if (!failed.ok) {

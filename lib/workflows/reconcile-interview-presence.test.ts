@@ -23,7 +23,7 @@ const ENV = {
 test("a missed participant loss is synthesized exactly once", async () => {
   const fixture = createFixture(createSession());
   fixture.deps.inspectPresence = async () =>
-    providerSuccess("livekit", { present: false, joinedAt: null });
+    providerSuccess("livekit", presence({ candidate: false, agent: false }));
 
   const first = await run(fixture.deps, "scan-1");
   const replay = await run(fixture.deps, "scan-1");
@@ -43,7 +43,7 @@ test("authoritative presence repairs a missed join exactly once", async () => {
     })
   );
   fixture.deps.inspectPresence = async () =>
-    providerSuccess("livekit", { present: true, joinedAt: NOW });
+    providerSuccess("livekit", presence());
 
   const first = await run(fixture.deps, "scan-1");
   const replay = await run(fixture.deps, "scan-1");
@@ -80,6 +80,149 @@ test("a lifecycle change before the scan mark makes reconciliation stale", async
   assert.equal(fixture.losses, 0);
 });
 
+test("connecting activates when only the initial candidate webhook was lost", async () => {
+  const fixture = createFixture(
+    createSession({
+      state: "connecting",
+      version: 2,
+      activatedAt: null,
+      runtimeReadyAt: new Date("2026-07-10T08:00:05.000Z"),
+      lastTransportEventAt: null,
+      lastTransportEventId: null,
+      lastTransportEventName: null,
+    })
+  );
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", presence());
+
+  const result = await run(fixture.deps, "candidate-missed");
+
+  assert.deepEqual(result, { ok: true, disposition: "activated" });
+  assert.equal(fixture.current.state, "active");
+  assert.deepEqual(fixture.eventKinds, ["candidate:participant_joined"]);
+});
+
+test("connecting activates when only the initial agent webhook was lost", async () => {
+  const fixture = createFixture(
+    createSession({
+      state: "connecting",
+      version: 2,
+      activatedAt: null,
+      runtimeReadyAt: null,
+    })
+  );
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", presence());
+
+  const result = await run(fixture.deps, "agent-missed");
+
+  assert.deepEqual(result, { ok: true, disposition: "activated" });
+  assert.equal(fixture.current.state, "active");
+  assert.deepEqual(fixture.eventKinds, ["agent:participant_joined"]);
+});
+
+test("connecting repairs both missing initial webhooks once", async () => {
+  const fixture = createFixture(
+    createSession({
+      state: "connecting",
+      version: 2,
+      activatedAt: null,
+      runtimeReadyAt: null,
+      lastTransportEventAt: null,
+      lastTransportEventId: null,
+      lastTransportEventName: null,
+    })
+  );
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", presence());
+
+  const first = await run(fixture.deps, "both-missed");
+  const repeat = await run(fixture.deps, "both-missed");
+
+  assert.deepEqual(first, { ok: true, disposition: "activated" });
+  assert.deepEqual(repeat, { ok: true, disposition: "present" });
+  assert.deepEqual(fixture.eventKinds, [
+    "candidate:participant_joined",
+    "agent:participant_joined",
+  ]);
+});
+
+test("connecting never activates unless candidate and agent are both present", async () => {
+  for (const snapshot of [
+    presence({ candidate: false }),
+    presence({ agent: false }),
+    presence({ candidate: false, agent: false }),
+  ]) {
+    const fixture = createFixture(
+      createSession({
+        state: "connecting",
+        version: 2,
+        activatedAt: null,
+        runtimeReadyAt: null,
+        lastTransportEventAt: null,
+        lastTransportEventId: null,
+        lastTransportEventName: null,
+      })
+    );
+    fixture.deps.inspectPresence = async () =>
+      providerSuccess("livekit", snapshot);
+
+    assert.deepEqual(await run(fixture.deps, "missing-presence"), {
+      ok: true,
+      disposition: "connecting",
+    });
+    assert.equal(fixture.current.state, "connecting");
+    assert.deepEqual(fixture.eventKinds, []);
+  }
+});
+
+test("connecting does not treat candidate JOINING as an activation receipt", async () => {
+  const fixture = createFixture(
+    createSession({
+      state: "connecting",
+      version: 2,
+      activatedAt: null,
+      runtimeReadyAt: null,
+      lastTransportEventAt: null,
+      lastTransportEventId: null,
+      lastTransportEventName: null,
+    })
+  );
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", { ...presence(), joined: false });
+
+  assert.deepEqual(await run(fixture.deps, "candidate-joining"), {
+    ok: true,
+    disposition: "connecting",
+  });
+  assert.deepEqual(fixture.eventKinds, []);
+});
+
+test("an older reconciled candidate join cannot override a newer loss", async () => {
+  const fixture = createFixture(
+    createSession({
+      state: "connecting",
+      version: 2,
+      activatedAt: null,
+      runtimeReadyAt: null,
+      lastTransportEventAt: NOW,
+      lastTransportEventId: "newer-loss",
+      lastTransportEventName: "participant_left",
+    })
+  );
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess(
+      "livekit",
+      presence({ joinedAt: new Date(NOW.getTime() - 1_000) })
+    );
+
+  const result = await run(fixture.deps, "reordered");
+
+  assert.deepEqual(result, { ok: true, disposition: "connecting" });
+  assert.equal(fixture.current.state, "connecting");
+  assert.equal(fixture.current.lastTransportEventName, "participant_left");
+});
+
 function run(deps: ReconcileInterviewPresenceDeps, deliveryId: string) {
   return reconcileInterviewPresenceWorkflow(
     { sessionId: SESSION_ID, deliveryId, env: ENV },
@@ -93,6 +236,7 @@ function createFixture(initial: InterviewReconnectSession): {
   losses: number;
   recoveries: number;
   inspections: number;
+  eventKinds: string[];
   conflictOnMark: boolean;
 } {
   let current = initial;
@@ -100,6 +244,7 @@ function createFixture(initial: InterviewReconnectSession): {
   let recoveries = 0;
   let inspections = 0;
   let conflictOnMark = false;
+  const eventKinds: string[] = [];
   const store: InterviewReconnectStore = {
     getById: async () => current,
     getByRoom: async () => current,
@@ -163,18 +308,73 @@ function createFixture(initial: InterviewReconnectSession): {
       store,
       inspectPresence: async () => {
         inspections += 1;
-        return providerSuccess("livekit", { present: true, joinedAt: NOW });
+        return providerSuccess("livekit", presence());
       },
-      handleTransportLoss: async () => {
-        losses += 1;
-        current = {
-          ...current,
-          state: "reconnecting",
-          version: current.version + 1,
-          reconnectDeadlineAt: new Date("2026-07-10T08:00:40.000Z"),
-          lastTransitionAt: NOW,
-        };
-        return { ok: true, disposition: "reconnecting", lifecycle: current };
+      handleTransportEvent: async (input) => {
+        const isCandidate =
+          input.participantIdentity === USER_ID && input.participantKind === 0;
+        const isAgent = input.participantKind === 4;
+        eventKinds.push(
+          `${isCandidate ? "candidate" : isAgent ? "agent" : "other"}:${input.eventName}`
+        );
+        if (
+          isCandidate &&
+          current.lastTransportEventAt &&
+          input.occurredAt.getTime() < current.lastTransportEventAt.getTime()
+        ) {
+          return { ok: true, disposition: "ignored", lifecycle: current };
+        }
+        if (
+          isCandidate &&
+          input.eventName === "participant_left" &&
+          current.state === "active"
+        ) {
+          losses += 1;
+          current = {
+            ...current,
+            state: "reconnecting",
+            version: current.version + 1,
+            reconnectDeadlineAt: new Date("2026-07-10T08:00:40.000Z"),
+            lastTransitionAt: NOW,
+          };
+          return { ok: true, disposition: "reconnecting", lifecycle: current };
+        }
+        if (isCandidate && input.eventName === "participant_joined") {
+          current = {
+            ...current,
+            lastTransportEventAt: input.occurredAt,
+            lastTransportEventId: input.eventId,
+            lastTransportEventName: input.eventName,
+          };
+          if (current.state === "connecting" && current.runtimeReadyAt) {
+            current = {
+              ...current,
+              state: "active",
+              version: current.version + 1,
+              activatedAt: NOW,
+              lastTransitionAt: NOW,
+            };
+            return { ok: true, disposition: "activated", lifecycle: current };
+          }
+        }
+        if (
+          isAgent &&
+          input.eventName === "participant_joined" &&
+          current.state === "connecting"
+        ) {
+          current = { ...current, runtimeReadyAt: NOW };
+          if (current.lastTransportEventName === "participant_joined") {
+            current = {
+              ...current,
+              state: "active",
+              version: current.version + 1,
+              activatedAt: NOW,
+              lastTransitionAt: NOW,
+            };
+            return { ok: true, disposition: "activated", lifecycle: current };
+          }
+        }
+        return { ok: true, disposition: "ignored", lifecycle: current };
       },
       now: () => NOW,
     },
@@ -190,12 +390,34 @@ function createFixture(initial: InterviewReconnectSession): {
     get inspections() {
       return inspections;
     },
+    get eventKinds() {
+      return eventKinds;
+    },
     get conflictOnMark() {
       return conflictOnMark;
     },
     set conflictOnMark(value) {
       conflictOnMark = value;
     },
+  };
+}
+
+function presence({
+  candidate = true,
+  agent = true,
+  joinedAt = NOW,
+}: {
+  candidate?: boolean;
+  agent?: boolean;
+  joinedAt?: Date;
+} = {}) {
+  return {
+    present: candidate,
+    joined: candidate,
+    joinedAt: candidate ? joinedAt : null,
+    agent: agent
+      ? { identity: "agent-worker", joinedAt: new Date(joinedAt.getTime() - 1) }
+      : null,
   };
 }
 
