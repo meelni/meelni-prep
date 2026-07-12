@@ -66,7 +66,12 @@ workflows.
   fence before credentials are returned. If deletion won between persistence
   and provider creation, the newly created room is durably re-enrolled with a
   newer cleanup generation, terminated, and its credentials are withheld.
-  Older cleanup attempts cannot clear the newer generation.
+  Older cleanup attempts cannot clear the newer generation. A room captured
+  while its session is created/connecting remains a provisioning subject after
+  a missing-room result, and duplicate deletion requests monotonically union
+  subjects without lowering generations or dropping unresolved raw targets.
+  If the post-create fence and direct termination both fail, that provisioning
+  subject remains durable for retry. No database lock spans provider I/O.
 - Local data removal remains irreversible and does not wait for LiveKit. Room
   deletion disconnects participants and is retryable from the tombstone; a
   provider outage cannot roll back deletion acceptance or restore access. Raw

@@ -44,7 +44,7 @@ export interface TerminateInterviewRoomInput {
 }
 
 export interface TerminatedInterviewRoom {
-  terminated: true;
+  terminated: boolean;
 }
 
 export interface IssueInterviewParticipantTokenInput {
@@ -425,6 +425,7 @@ export function createLiveKitInterviewProvider({
             retryable: true,
           });
         }
+        return providerSuccess("livekit", { terminated: false });
       }
       return providerSuccess("livekit", { terminated: true });
     },

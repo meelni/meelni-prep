@@ -56,6 +56,7 @@ const REQUEST: AccountDeletionRecord = {
       roomName: "interview-active-room",
       fingerprint: "livekit-room-fingerprint",
       generation: 1,
+      provisioning: false,
     },
   ],
   attempts: 1,
@@ -227,6 +228,28 @@ test("LiveKit cleanup failure remains retryable after irreversible local accepta
   );
 });
 
+test("a missing provisioning room remains durable because provider creation may still finish", async () => {
+  const processedRooms: unknown[][] = [];
+  const deps = createDeps([]);
+  deps.terminateLiveKitRoom = async () => ({ terminated: false });
+  deps.markCompleted = async (_userId, _fingerprints, rooms) => {
+    processedRooms.push(rooms);
+  };
+
+  await deleteAccountWorkflow(
+    {
+      ...REQUEST,
+      livekitRooms: REQUEST.livekitRooms.map((room) => ({
+        ...room,
+        provisioning: true,
+      })),
+    },
+    deps
+  );
+
+  assert.deepEqual(processedRooms, [[]]);
+});
+
 test("deletion failures are reduced to a stable code without raw details", () => {
   const safe = safeAccountDeletionError(
     Object.assign(new Error("postgresql://secret-host transcript text"), {
@@ -285,6 +308,7 @@ function createDeps(calls: string[]): DeleteAccountWorkflowDeps {
     },
     terminateLiveKitRoom: async (roomName) => {
       calls.push(`livekit:${roomName}`);
+      return { terminated: true };
     },
     redactProviderLogs: async (request) => {
       calls.push(`redact:${request.userId}`);

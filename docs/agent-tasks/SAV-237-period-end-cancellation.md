@@ -41,7 +41,9 @@
 - Deletion tests proving tombstone-time access denial, retry-stable
   `prorate=false` cancellation, deterministic multi-customer/multi-subscription
   capture, in-flight room termination, post-create token withholding, cleanup
-  generation fencing, and absence of automatic refund operations.
+  generation fencing, monotonic duplicate deletion subject merging,
+  provisioning-subject retention across a pre-create 404, combined fence/delete
+  failure containment, and absence of automatic refund operations.
 
 ## Rollout
 
@@ -56,6 +58,6 @@
 - Disposable local PostgreSQL: `npm run db:check` and
   `npm run test:database-migrations` passed for clean and upgrade paths.
 - Targeted API 78/78, billing 114/114, integration 15/15, and workflow
-  171/171 suites passed.
+  173/173 suites passed.
 - No Stripe, LiveKit, Supabase Production, or other provider mutation was made;
   the documented test-mode/live-mode rehearsals remain human rollout gates.

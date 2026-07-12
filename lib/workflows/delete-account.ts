@@ -15,7 +15,7 @@ export interface DeleteAccountWorkflowDeps {
     cancellation: AccountDeletionSubscriptionCancellation
   ): Promise<void>;
   deleteCustomer(customerId: string): Promise<void>;
-  terminateLiveKitRoom(roomName: string): Promise<void>;
+  terminateLiveKitRoom(roomName: string): Promise<{ terminated: boolean }>;
   redactProviderLogs(request: AccountDeletionRecord): Promise<void>;
   deleteApplicationData(userId: string): Promise<void>;
   deleteAuthUser(userId: string): Promise<void>;
@@ -47,8 +47,19 @@ export async function deleteAccountWorkflow(
   const pendingRooms = request.livekitRooms.filter(
     (room): room is typeof room & { roomName: string } => room.roomName !== null
   );
+  const processedLiveKitRooms: ProcessedLiveKitDeletionRoom[] = [];
   for (const room of pendingRooms) {
-    await deps.terminateLiveKitRoom(room.roomName);
+    const result = await deps.terminateLiveKitRoom(room.roomName);
+    // A missing room is normally an idempotent success. A provisioning target
+    // is different: the create call may still commit after this lookup, so its
+    // raw subject must survive until start either advances the generation or a
+    // later cleanup actually terminates the room.
+    if (result.terminated || !room.provisioning) {
+      processedLiveKitRooms.push({
+        fingerprint: room.fingerprint,
+        generation: room.generation,
+      });
+    }
   }
 
   const pendingSubjects = request.stripeSubjects.filter(
@@ -81,10 +92,7 @@ export async function deleteAccountWorkflow(
   await deps.markCompleted(
     request.userId,
     [...processedFingerprints],
-    pendingRooms.map(({ fingerprint, generation }) => ({
-      fingerprint,
-      generation,
-    }))
+    processedLiveKitRooms
   );
   return { alreadyCompleted: false };
 }
