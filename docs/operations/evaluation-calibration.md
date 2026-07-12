@@ -154,7 +154,13 @@ redirect rejection, a ten-second timeout, and a 1 MiB response limit. The
 production path exposes no alternate base URL, dispatcher, client, agent, DNS,
 remote, or ledger path. It accepts only `GITHUB_TOKEN`; ambient GitHub
 host/config, Unix-socket, proxy, custom-CA, and TLS override variables fail
-closed before every request. The CLI then repeats the identity/protection
+closed before every request. `npm run calibration:live` uses a dedicated Node
+22 bootstrap with empty `execArgv`, then permits only the exact resolved
+repository-pinned tsx 4.23.0 preflight and loader arguments. It rejects extra
+preloads/imports, inspector/debugger flags, TLS key logging, OpenSSL config,
+custom CA, profiler, coverage, proxy, and endpoint overrides before reading
+either token, again before client construction, and again before every
+authority request. The CLI then repeats the identity/protection
 checks, builds and hashes the approved plan, creates a unique empty-tree
 activation child, and updates the ref with `force: false`. Concurrent sibling
 activations allow exactly one winner; the loser refuses before provider work.
@@ -169,9 +175,9 @@ Production data.
 
 Derive the short-lived GitHub credential without displaying or pasting it. Do
 not run this command under shell tracing (`set -x`), and do not store the token
-in `.env.local`, documentation, reports, chat, or Linear. Remove any listed
-transport override from `.env.local`, then start the live command from a clean
-shell environment:
+in `.env.local`, documentation, reports, chat, or Linear. The live bootstrap
+does not load `.env.local`; provide the short-lived keys only through the clean
+command environment. Start it with the repository's pinned Node 22 runtime:
 
 ```bash
 GITHUB_TOKEN="$(gh auth token)" \
@@ -179,9 +185,11 @@ env -u GH_CONFIG_DIR -u GH_HTTP_UNIX_SOCKET -u GH_HOST \
   -u GITHUB_API_URL -u GITHUB_GRAPHQL_URL -u GITHUB_SERVER_URL \
   -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
   -u http_proxy -u https_proxy -u all_proxy -u no_proxy \
-  -u NODE_EXTRA_CA_CERTS -u NODE_DEBUG -u NODE_OPTIONS \
-  -u NODE_TLS_REJECT_UNAUTHORIZED -u NODE_USE_ENV_PROXY \
-  -u SSL_CERT_FILE -u SSL_CERT_DIR \
+  -u OPENAI_BASE_URL \
+  -u NODE_DEBUG -u NODE_DEBUG_NATIVE -u NODE_EXTRA_CA_CERTS \
+  -u NODE_OPTIONS -u NODE_TLS_REJECT_UNAUTHORIZED \
+  -u NODE_USE_ENV_PROXY -u NODE_USE_SYSTEM_CA -u NODE_V8_COVERAGE \
+  -u OPENSSL_CONF -u SSLKEYLOGFILE -u SSL_CERT_FILE -u SSL_CERT_DIR \
   MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   npm run calibration:live -- \
   --approval /secure/path/evaluation-adjudication-approval.json \
@@ -190,7 +198,8 @@ env -u GH_CONFIG_DIR -u GH_HTTP_UNIX_SOCKET -u GH_HOST \
 
 Command substitution captures `gh auth token` directly into the child
 environment; it must not be echoed or logged. The command also requires
-`OPENAI_API_KEY` and a validated, all-approved
+`OPENAI_API_KEY` to already exist in that clean shell environment and a
+validated, all-approved
 adjudication artifact. Spend approval does not approve the candidate gold set.
 Never paste a key into chat,
 documentation, Linear, or a report. The acknowledgement is deliberately exact

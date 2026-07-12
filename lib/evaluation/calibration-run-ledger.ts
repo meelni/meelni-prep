@@ -24,6 +24,10 @@ import {
   type CalibrationPersistedSpendState,
   type CalibrationSpendPersistence,
 } from "./calibration-budget";
+import {
+  assertCalibrationLiveStartupState,
+  CALIBRATION_LIVE_DISALLOWED_ENV,
+} from "./calibration-live-startup.mjs";
 
 export const SAV_198_APPROVED_RUN_ID = "sav-198-authorized-paid-calibration.v1";
 export const SAV_198_AUTHORIZATION_ID =
@@ -55,29 +59,6 @@ const GITHUB_API_PORT = 443;
 const GITHUB_API_TIMEOUT_MS = 10_000;
 const GITHUB_API_MAX_RESPONSE_BYTES = 1_048_576;
 const GITHUB_USER_AGENT = "meelni-sav-198-calibration-authority";
-const DISALLOWED_GITHUB_TRANSPORT_ENV = [
-  "GH_CONFIG_DIR",
-  "GH_HTTP_UNIX_SOCKET",
-  "GH_HOST",
-  "GITHUB_API_URL",
-  "GITHUB_GRAPHQL_URL",
-  "GITHUB_SERVER_URL",
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "ALL_PROXY",
-  "NO_PROXY",
-  "http_proxy",
-  "https_proxy",
-  "all_proxy",
-  "no_proxy",
-  "NODE_EXTRA_CA_CERTS",
-  "NODE_DEBUG",
-  "NODE_OPTIONS",
-  "NODE_TLS_REJECT_UNAUTHORIZED",
-  "NODE_USE_ENV_PROXY",
-  "SSL_CERT_FILE",
-  "SSL_CERT_DIR",
-] as const;
 const COMMIT_IDENTITY = {
   name: "Meelni Calibration Authorization",
   email: "calibration-ledger@meelni.invalid",
@@ -662,7 +643,8 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     env: CalibrationGitHubEnvironment,
     token: string,
     transport: GitHubHttpsTransport,
-    limits: GitHubClientLimits
+    limits: GitHubClientLimits,
+    private readonly attestStartup: () => void
   ) {
     this.#env = env;
     this.#token = token;
@@ -799,6 +781,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     path: string,
     body?: unknown
   ): Promise<unknown> {
+    this.attestStartup();
     assertGitHubTransportEnvironment(this.#env);
     if (this.#env.GITHUB_TOKEN?.trim() !== this.#token) {
       throw new Error("calibration_github_token_changed");
@@ -869,33 +852,43 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
 }
 
 function createProductionGitHubCasClient(): CalibrationGitHubCasClient {
+  assertCalibrationLiveStartupState();
   return createDirectGitHubCasClient(
     process.env,
     new NodeGitHubHttpsTransport(),
     {
       timeoutMs: GITHUB_API_TIMEOUT_MS,
       maximumResponseBytes: GITHUB_API_MAX_RESPONSE_BYTES,
-    }
+    },
+    assertCalibrationLiveStartupState
   );
 }
 
 function createTestGitHubCasClient(
   env: CalibrationGitHubEnvironment,
   transport: GitHubHttpsTransport,
-  limits: Partial<GitHubClientLimits> = {}
+  limits: Partial<GitHubClientLimits> = {},
+  attestStartup: () => void = () => undefined
 ): CalibrationGitHubCasClient {
-  return createDirectGitHubCasClient(env, transport, {
-    timeoutMs: limits.timeoutMs ?? GITHUB_API_TIMEOUT_MS,
-    maximumResponseBytes:
-      limits.maximumResponseBytes ?? GITHUB_API_MAX_RESPONSE_BYTES,
-  });
+  return createDirectGitHubCasClient(
+    env,
+    transport,
+    {
+      timeoutMs: limits.timeoutMs ?? GITHUB_API_TIMEOUT_MS,
+      maximumResponseBytes:
+        limits.maximumResponseBytes ?? GITHUB_API_MAX_RESPONSE_BYTES,
+    },
+    attestStartup
+  );
 }
 
 function createDirectGitHubCasClient(
   env: CalibrationGitHubEnvironment,
   transport: GitHubHttpsTransport,
-  limits: GitHubClientLimits
+  limits: GitHubClientLimits,
+  attestStartup: () => void
 ): CalibrationGitHubCasClient {
+  attestStartup();
   assertGitHubTransportEnvironment(env);
   const token = env.GITHUB_TOKEN?.trim();
   if (!token || /[\r\n]/.test(token)) {
@@ -909,13 +902,19 @@ function createDirectGitHubCasClient(
   ) {
     throw new Error("calibration_github_transport_limits_invalid");
   }
-  return new DirectCalibrationGitHubCasClient(env, token, transport, limits);
+  return new DirectCalibrationGitHubCasClient(
+    env,
+    token,
+    transport,
+    limits,
+    attestStartup
+  );
 }
 
 function assertGitHubTransportEnvironment(
   env: CalibrationGitHubEnvironment
 ): void {
-  for (const name of DISALLOWED_GITHUB_TRANSPORT_ENV) {
+  for (const name of CALIBRATION_LIVE_DISALLOWED_ENV) {
     if (env[name] !== undefined) {
       throw new Error(`calibration_github_transport_env_${name}_rejected`);
     }

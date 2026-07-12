@@ -1,5 +1,21 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import {
+  createServer as createHttpsServer,
+  request as nodeHttpsRequest,
+  type RequestOptions,
+} from "node:https";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { rootCertificates } from "node:tls";
 import test from "node:test";
 
@@ -10,6 +26,11 @@ import {
 } from "@meelni/test-fixtures";
 
 import { getEvaluationAdjudicationHashes } from "./calibration-approval";
+import {
+  assertCalibrationLiveStartupState,
+  CALIBRATION_LIVE_DISALLOWED_ENV,
+  CALIBRATION_LIVE_RUNTIME_EXEC_ARGV,
+} from "./calibration-live-startup.mjs";
 import {
   CalibrationSpendGuard,
   CALIBRATION_MAX_PROVIDER_CALLS,
@@ -40,6 +61,10 @@ import {
 } from "./calibration-run-ledger";
 
 const NOW = new Date("2026-07-12T09:00:00.000Z");
+const LIVE_BOOTSTRAP = resolve(
+  process.cwd(),
+  "scripts/run-evaluation-calibration-live.mjs"
+);
 
 test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.deepEqual(
@@ -284,26 +309,100 @@ test("production HTTPS options pin GitHub, bundled roots, SNI, and no agent or D
   assert.deepEqual(options.ca, [...rootCertificates]);
 });
 
+test("a real fake TLS peer cannot bypass bundled roots, hostname checks, or redirects", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "meelni-calibration-tls-"));
+  const keyPath = join(directory, "localhost.key");
+  const certificatePath = join(directory, "localhost.crt");
+  const generated = spawnSync(
+    "openssl",
+    [
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-keyout",
+      keyPath,
+      "-out",
+      certificatePath,
+      "-subj",
+      "/CN=localhost",
+      "-days",
+      "1",
+    ],
+    { encoding: "utf8" }
+  );
+  assert.equal(generated.status, 0, generated.stderr);
+  const certificate = readFileSync(certificatePath);
+  const server = createHttpsServer(
+    { key: readFileSync(keyPath), cert: certificate },
+    (_request, response) => {
+      response.writeHead(302, { Location: "https://attacker.invalid/" });
+      response.end("redirect");
+    }
+  );
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const port = (server.address() as AddressInfo).port;
+  const canonical = calibrationRunLedgerTestSeam.nodeRequestOptions({
+    method: "GET",
+    path: "/user",
+    headers: {},
+    signal: new AbortController().signal,
+  });
+  try {
+    await assert.rejects(
+      () => requestLocalTls({ ...canonical, hostname: "127.0.0.1", port }),
+      /self-signed certificate/
+    );
+    await assert.rejects(
+      () =>
+        requestLocalTls({
+          ...canonical,
+          hostname: "127.0.0.1",
+          port,
+          ca: certificate,
+        }),
+      /Hostname\/IP does not match certificate/
+    );
+
+    const client = calibrationRunLedgerTestSeam.createGitHubClient(
+      { GITHUB_TOKEN: "test-github-token" },
+      {
+        request: ({ method, path, headers, body, signal }) =>
+          requestLocalTls(
+            {
+              ...canonical,
+              method,
+              path,
+              headers,
+              signal,
+              hostname: "127.0.0.1",
+              port,
+              servername: "localhost",
+              ca: certificate,
+            },
+            body
+          ),
+      }
+    );
+    await assert.rejects(
+      async () => await client.getViewer(),
+      /redirect_rejected/
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    );
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("GitHub config, Unix-socket, proxy, and custom TLS env fail before request", () => {
-  const overrides = [
-    "GH_CONFIG_DIR",
-    "GH_HTTP_UNIX_SOCKET",
-    "GH_HOST",
-    "GITHUB_API_URL",
-    "HTTP_PROXY",
-    "HTTPS_PROXY",
-    "ALL_PROXY",
-    "NO_PROXY",
-    "NODE_EXTRA_CA_CERTS",
-    "NODE_DEBUG",
-    "NODE_OPTIONS",
-    "NODE_TLS_REJECT_UNAUTHORIZED",
-    "NODE_USE_ENV_PROXY",
-    "SSL_CERT_FILE",
-    "SSL_CERT_DIR",
-  ];
   let requests = 0;
-  for (const name of overrides) {
+  for (const name of CALIBRATION_LIVE_DISALLOWED_ENV) {
     assert.throws(
       () =>
         calibrationRunLedgerTestSeam.createGitHubClient(
@@ -319,6 +418,202 @@ test("GitHub config, Unix-socket, proxy, and custom TLS env fail before request"
     );
   }
   assert.equal(requests, 0);
+});
+
+test("startup attestation accepts only the pinned empty-argv Node runtime", () => {
+  assert.doesNotThrow(() =>
+    assertCalibrationLiveStartupState({
+      env: { PATH: "/irrelevant" },
+      execArgv: [],
+      releaseName: "node",
+      nodeVersion: "22.22.0",
+      invocation: "bootstrap",
+    })
+  );
+  assert.doesNotThrow(() =>
+    assertCalibrationLiveStartupState({
+      env: { PATH: "/irrelevant" },
+      execArgv: [...CALIBRATION_LIVE_RUNTIME_EXEC_ARGV],
+      releaseName: "node",
+      nodeVersion: "22.22.0",
+      invocation: "runtime",
+    })
+  );
+  for (const execArgv of [
+    ["--require", "/tmp/preload.cjs"],
+    ["--import", "file:///tmp/preload.mjs"],
+    ["--inspect=127.0.0.1:0"],
+    ["--debug-port=0"],
+    ["--tls-keylog=/tmp/keys"],
+    ["--openssl-config=/tmp/openssl.cnf"],
+    ["--prof"],
+  ]) {
+    assert.throws(
+      () =>
+        assertCalibrationLiveStartupState({
+          env: {},
+          execArgv,
+          releaseName: "node",
+          nodeVersion: "22.22.0",
+          invocation: "bootstrap",
+        }),
+      /startup_exec_argv_rejected/
+    );
+  }
+  assert.throws(
+    () =>
+      assertCalibrationLiveStartupState({
+        env: {},
+        execArgv: [],
+        releaseName: "node",
+        nodeVersion: "20.10.0",
+        invocation: "bootstrap",
+      }),
+    /startup_runtime_rejected/
+  );
+});
+
+test("startup environment fails before any token property is read", () => {
+  for (const name of CALIBRATION_LIVE_DISALLOWED_ENV) {
+    let tokenReads = 0;
+    const env = new Proxy<Record<string, string | undefined>>(
+      { [name]: "unsafe" },
+      {
+        get(target, property, receiver) {
+          if (property === "GITHUB_TOKEN" || property === "OPENAI_API_KEY") {
+            tokenReads += 1;
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }
+    );
+    assert.throws(
+      () =>
+        assertCalibrationLiveStartupState({
+          env,
+          execArgv: [],
+          releaseName: "node",
+          nodeVersion: "22.22.0",
+          invocation: "bootstrap",
+        }),
+      new RegExp(`startup_env_${name}_rejected`)
+    );
+    assert.equal(tokenReads, 0);
+  }
+});
+
+test("startup attestation runs before client token reads and again before every request", async () => {
+  let tokenReads = 0;
+  let attestations = 0;
+  let requests = 0;
+  let rejected = true;
+  const env = new Proxy<Record<string, string | undefined>>(
+    { GITHUB_TOKEN: "test-github-token" },
+    {
+      get(target, property, receiver) {
+        if (property === "GITHUB_TOKEN") tokenReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    }
+  );
+  const attest = () => {
+    attestations += 1;
+    if (rejected) throw new Error("test_startup_rejected");
+  };
+  assert.throws(
+    () =>
+      calibrationRunLedgerTestSeam.createGitHubClient(
+        env,
+        {
+          async request() {
+            requests += 1;
+            return jsonResponse({});
+          },
+        },
+        {},
+        attest
+      ),
+    /test_startup_rejected/
+  );
+  assert.equal(tokenReads, 0);
+  assert.equal(requests, 0);
+
+  rejected = false;
+  const client = calibrationRunLedgerTestSeam.createGitHubClient(
+    env,
+    {
+      async request() {
+        requests += 1;
+        return jsonResponse({ id: 1, login: "viewer" });
+      },
+    },
+    {},
+    attest
+  );
+  assert.equal(tokenReads, 1);
+  rejected = true;
+  await assert.rejects(
+    async () => await client.getViewer(),
+    /test_startup_rejected/
+  );
+  assert.equal(requests, 0);
+  assert.equal(attestations, 3);
+});
+
+test("paid bootstrap rejects malicious preload, inspector, and TLS keylog child processes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "meelni-calibration-startup-"));
+  const marker = join(directory, "transport-called");
+  const preload = join(directory, "preload.cjs");
+  const keylog = join(directory, "tls.keys");
+  const token = "startup-secret-must-not-leak";
+  writeFileSync(
+    preload,
+    [
+      'const fs = require("node:fs");',
+      'const https = require("node:https");',
+      "delete process.env.NODE_OPTIONS;",
+      `https.request = () => { fs.writeFileSync(${JSON.stringify(marker)}, "called"); throw new Error("patched"); };`,
+    ].join("\n")
+  );
+  try {
+    const scenarios = [
+      ["--require", preload],
+      ["--inspect=127.0.0.1:0"],
+      [`--tls-keylog=${keylog}`],
+    ];
+    for (const flags of scenarios) {
+      const result = spawnSync(process.execPath, [...flags, LIVE_BOOTSTRAP], {
+        encoding: "utf8",
+        env: {
+          NODE_ENV: "test",
+          PATH: process.env.PATH,
+          GITHUB_TOKEN: token,
+          OPENAI_API_KEY: token,
+        },
+        timeout: 10_000,
+      });
+      const output = `${result.stdout}${result.stderr}`;
+      assert.notEqual(result.status, 0);
+      assert.match(output, /calibration_live_startup_exec_argv_rejected/);
+      assert.equal(output.includes(token), false);
+    }
+    assert.equal(existsSync(marker), false);
+    assert.equal(existsSync(keylog), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("canonical paid bootstrap reaches the acknowledgement gate without authority traffic", () => {
+  const result = spawnSync(process.execPath, [LIVE_BOOTSTRAP], {
+    encoding: "utf8",
+    env: { NODE_ENV: "test", PATH: process.env.PATH },
+    timeout: 10_000,
+  });
+  const output = `${result.stdout}${result.stderr}`;
+  assert.equal(result.status, 1);
+  assert.doesNotMatch(output, /startup_.*_rejected/);
+  assert.match(output, /Live calibration is disabled/);
 });
 
 test("direct GitHub transport rejects redirects, malformed and oversized bodies, and timeouts", async () => {
@@ -646,6 +941,22 @@ function textResponse(value: string, statusCode = 200) {
       },
     },
   };
+}
+
+function requestLocalTls(
+  options: RequestOptions,
+  body?: string
+): Promise<{ statusCode: number; body: AsyncIterable<Uint8Array> }> {
+  return new Promise((resolve, reject) => {
+    const request = nodeHttpsRequest(options, (response) => {
+      resolve({
+        statusCode: response.statusCode ?? 0,
+        body: response,
+      });
+    });
+    request.once("error", reject);
+    request.end(body);
+  });
 }
 
 function fakeGitHubApiTransport(state: FakeGitHubState) {
