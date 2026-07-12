@@ -627,14 +627,17 @@ function transportEventIsNewerThanStored(
   )`;
 }
 
-export async function listInterviewReconnectSchedules(limit = 250): Promise<
+export async function listInterviewReconnectSchedules(
+  limit = 250,
+  database: Pick<typeof db, "select"> = db
+): Promise<
   Array<{
     sessionId: string;
     expectedVersion: number;
     deadlineAt: string;
   }>
 > {
-  const rows = await db
+  const rows = await database
     .select({
       sessionId: interviewSession.id,
       state: interviewSession.lifecycleState,

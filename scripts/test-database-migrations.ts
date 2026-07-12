@@ -28,6 +28,7 @@ import {
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
+  INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
@@ -52,6 +53,11 @@ const SESSION_PROVIDER_START_FAILURE = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const SESSION_PROVISIONING_COMPLETE = "a1000000-0000-4000-8000-000000000001";
 const SESSION_PROVISIONING_STALE = "a2000000-0000-4000-8000-000000000002";
 const SESSION_PRESENCE_RECOVERY = "a3000000-0000-4000-8000-000000000003";
+const SESSION_RECONNECT_BACKFILL_GRACE = "a4000000-0000-4000-8000-000000000004";
+const SESSION_RECONNECT_BACKFILL_HARD = "a5000000-0000-4000-8000-000000000005";
+const SESSION_RECONNECT_BACKFILL_TIE = "a6000000-0000-4000-8000-000000000006";
+const SESSION_RECONNECT_BACKFILL_LEGACY =
+  "a7000000-0000-4000-8000-000000000007";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
@@ -183,14 +189,30 @@ async function run() {
         "ready_for_session_lifecycle"
       );
       assertLegacyCreditLedgerIntegrity(lifecyclePreview!);
-      const countsBefore = await protectedRowCounts(upgrade);
-      await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
+      const reconnectV1Folder = await createMigrationFolderThrough(8);
+      try {
+        await migrate(drizzle(upgrade), {
+          migrationsFolder: reconnectV1Folder,
+        });
+      } finally {
+        await rm(reconnectV1Folder, { recursive: true, force: true });
+      }
+      assert.equal(
+        databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
+        INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+      );
       const lifecycleApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLifecycleBackfillCountsMatch(lifecyclePreview!, lifecycleApplied!);
       assertLegacyCreditLedgerIntegrity(lifecycleApplied!);
+      await seedReconnectCutoffOwnerFixtures(upgrade);
+      const countsBefore = await protectedRowCounts(upgrade);
+      await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
+      const reconnectApplied = runPreflight(upgradeUrl, true, "reconciled");
+      assertLegacyCreditLedgerIntegrity(reconnectApplied!);
       assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
+      await verifyReconnectCutoffOwnerBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl);
       await verifyAuthorization(upgrade);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
@@ -441,6 +463,97 @@ async function seedAuthorizationFixtures(sql: postgres.Sql) {
     )
     ON CONFLICT (id) DO NOTHING
   `;
+}
+
+async function seedReconnectCutoffOwnerFixtures(sql: postgres.Sql) {
+  const startedAt = "2026-07-10T08:00:00.000Z";
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, livekit_room_name, config,
+      started_at, lifecycle_state, lifecycle_version, reconnect_deadline_at,
+      last_transport_event_at, last_transport_event_id,
+      last_transport_event_name
+    ) VALUES
+      (
+        ${SESSION_RECONNECT_BACKFILL_GRACE}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'reconnect-backfill-grace-room', '{"duration": 15}'::jsonb,
+        ${startedAt}::timestamptz, 'reconnecting', 4,
+        ${startedAt}::timestamptz + interval '5 minutes',
+        ${startedAt}::timestamptz + interval '4 minutes 30 seconds',
+        'backfill-grace-loss', 'participant_left'
+      ),
+      (
+        ${SESSION_RECONNECT_BACKFILL_HARD}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'reconnect-backfill-hard-room', '{"duration": 15}'::jsonb,
+        ${startedAt}::timestamptz, 'reconnecting', 5,
+        ${startedAt}::timestamptz + interval '15 minutes',
+        ${startedAt}::timestamptz + interval '14 minutes 50 seconds',
+        'backfill-hard-loss', 'participant_left'
+      ),
+      (
+        ${SESSION_RECONNECT_BACKFILL_TIE}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'reconnect-backfill-tie-room', '{"duration": 45}'::jsonb,
+        ${startedAt}::timestamptz, 'reconnecting', 6,
+        ${startedAt}::timestamptz + interval '45 minutes',
+        ${startedAt}::timestamptz + interval '44 minutes 30 seconds',
+        'backfill-tie-loss', 'participant_left'
+      ),
+      (
+        ${SESSION_RECONNECT_BACKFILL_LEGACY}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'reconnect-backfill-legacy-room', '{"duration": "15"}'::jsonb,
+        ${startedAt}::timestamptz, 'reconnecting', 7,
+        ${startedAt}::timestamptz + interval '30 minutes',
+        ${startedAt}::timestamptz + interval '29 minutes 50 seconds',
+        'backfill-legacy-loss', 'participant_left'
+      )
+  `;
+}
+
+async function verifyReconnectCutoffOwnerBackfill(sql: postgres.Sql) {
+  const rows = await sql<
+    Array<{ id: string; reconnect_deadline_owner: string | null }>
+  >`
+    SELECT id::text, reconnect_deadline_owner
+    FROM interview_session
+    WHERE id IN (
+      ${SESSION_RECONNECT_BACKFILL_GRACE}::uuid,
+      ${SESSION_RECONNECT_BACKFILL_HARD}::uuid,
+      ${SESSION_RECONNECT_BACKFILL_TIE}::uuid,
+      ${SESSION_RECONNECT_BACKFILL_LEGACY}::uuid
+    )
+    ORDER BY id
+  `;
+  assert.deepEqual(
+    new Map(rows.map((row) => [row.id, row.reconnect_deadline_owner])),
+    new Map([
+      [SESSION_RECONNECT_BACKFILL_GRACE, "reconnect_grace"],
+      [SESSION_RECONNECT_BACKFILL_HARD, "hard_deadline"],
+      [SESSION_RECONNECT_BACKFILL_TIE, "hard_deadline"],
+      [SESSION_RECONNECT_BACKFILL_LEGACY, "hard_deadline"],
+    ])
+  );
+
+  const { listInterviewReconnectSchedules } = await import(
+    "../lib/db/session-reconnects"
+  );
+  const schedules = await listInterviewReconnectSchedules(250, drizzle(sql));
+  const seededSessionIds = new Set([
+    SESSION_RECONNECT_BACKFILL_GRACE,
+    SESSION_RECONNECT_BACKFILL_HARD,
+    SESSION_RECONNECT_BACKFILL_TIE,
+    SESSION_RECONNECT_BACKFILL_LEGACY,
+  ]);
+  const seededSchedules = schedules.filter((schedule) =>
+    seededSessionIds.has(schedule.sessionId)
+  );
+  assert.deepEqual(
+    seededSchedules.map((schedule) => schedule.sessionId),
+    [SESSION_RECONNECT_BACKFILL_GRACE]
+  );
 }
 
 async function seedLifecycleBackfillFixtures(sql: postgres.Sql) {
