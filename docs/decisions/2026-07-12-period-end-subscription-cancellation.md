@@ -36,11 +36,19 @@ workflows.
   remain payment history but grant and roll zero credits.
 - Stripe event creation time is the webhook ordering fence. Direct provider
   observations preserve that fence and use a version-checked local mutation;
-  webhook conflicts require a bounded authoritative provider reread and retry.
+  accepting a reordered current-period invoice never moves the fence backward.
+- Cancellation and reactivation take the immediate per-account mutation lock
+  before checking state or calling Stripe. A concurrent loser receives retry
+  backpressure; an exact later replay observes committed state and makes no
+  provider mutation. Provider mutations use deterministic user/version/action
+  idempotency.
 - Subscription Checkout is serialized by the same per-user advisory and row
-  locks as webhook and cancellation work. A user plus locked billing-state
-  version supplies one deterministic idempotency scope across plan choices, and
-  a post-create state change expires and withholds the provider session.
+  locks as webhook and cancellation work. Lock acquisition is immediate so
+  waiters do not occupy pooled connections. Each new creation attempt has a
+  deterministic user/plan/price/nonce idempotency scope, while a mapped Stripe
+  customer lets concurrent calls reuse the winning open session. Provider
+  active/trialing state and local state are both rechecked after create/reuse;
+  drift expires and withholds the candidate session.
 - Renewal and rollover analytics are emitted only after the outer ledger and
   subscription transaction commits.
 - Credit and cancellation read truth use one user-fenced database-time snapshot;

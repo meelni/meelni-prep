@@ -6,6 +6,16 @@ export type StripeSubscriptionStateEvent =
   | "subscription_retrieved"
   | "subscription_updated";
 
+export function monotonicStripeEventTimestamp(
+  current: Date | null | undefined,
+  incoming: Date
+): Date {
+  if (!Number.isFinite(incoming.getTime())) {
+    throw new Error("stripe_event_timestamp_invalid");
+  }
+  return current && current > incoming ? current : incoming;
+}
+
 export function shouldApplyStripeSubscriptionState(input: {
   currentStatus?: string | null;
   currentStripeSubscriptionId?: string | null;

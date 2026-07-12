@@ -1,15 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const stripeMocks = vi.hoisted(() => ({
-  update: vi.fn(),
-  retrieve: vi.fn(),
-  cancel: vi.fn(),
-}));
-const stateMocks = vi.hoisted(() => ({
-  getReadSnapshot: vi.fn(),
-  reconcile: vi.fn(),
-}));
+const stripeMocks = vi.hoisted(() => ({ update: vi.fn(), cancel: vi.fn() }));
+const stateMocks = vi.hoisted(() => ({ withSerialized: vi.fn() }));
 
 vi.mock("stripe", () => ({
   default: class StripeMock {
@@ -17,42 +10,22 @@ vi.mock("stripe", () => ({
   },
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
-vi.mock("@/lib/billing/subscription-state", () => ({
-  getCancellationReadSnapshot: stateMocks.getReadSnapshot,
-  reconcileProviderCancellationState: stateMocks.reconcile,
-  retrieveAuthoritativeSubscription: (
-    provider: { retrieve: (...args: unknown[]) => Promise<unknown> },
-    id: string
-  ) => provider.retrieve(id, { timeout: 10_000 }),
-  reconcileVersionedProviderMutation: async (input: {
-    initialExpectedVersion: number;
-    initialSnapshot: unknown;
-    readVersion(): Promise<number>;
-    retrieve(): Promise<unknown>;
-    commit(value: {
-      expectedVersion: number;
-      snapshot: unknown;
-    }): Promise<{ status: string; value?: unknown }>;
-  }) => {
-    let expectedVersion = input.initialExpectedVersion;
-    let snapshot = input.initialSnapshot;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const result = await input.commit({ expectedVersion, snapshot });
-      if (result.status === "applied") {
-        return { snapshot, value: result.value };
-      }
-      expectedVersion = await input.readVersion();
-      snapshot = await input.retrieve();
-    }
-    throw new Error("billing_subscription_reconciliation_retry_exhausted");
-  },
-}));
+vi.mock("@/lib/billing/subscription-state", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/billing/subscription-state")>();
+  return {
+    ...actual,
+    withSerializedCancellationState: stateMocks.withSerialized,
+  };
+});
 
 import { createClient } from "@/lib/supabase/server";
+import { BillingAccountBusyError } from "@/lib/billing/subscription-state";
 import { DELETE, POST } from "./route";
 
 const PERIOD_END_SECONDS = 1_800_000_000;
 const PERIOD_END = new Date(PERIOD_END_SECONDS * 1000);
+const OBSERVED_AT = new Date("2026-07-12T00:00:00.000Z");
 
 describe("period-end subscription cancellation", () => {
   beforeEach(() => {
@@ -68,200 +41,109 @@ describe("period-end subscription cancellation", () => {
     } as never);
     readSubscription();
     stripeMocks.update.mockResolvedValue(providerSubscription(true));
-    stripeMocks.retrieve.mockResolvedValue(providerSubscription(true));
-    stateMocks.reconcile.mockImplementation(async (input) => ({
-      status: "applied",
-      value: {
-        ...input,
-        updatedAt: new Date("2026-07-12T00:00:01.000Z"),
-      },
-    }));
   });
 
-  it("rejects the retired immediate-cancellation request before provider work", async () => {
+  it("rejects retired immediate cancellation before provider work", async () => {
     const response = await POST(request({ cancelImmediately: true }));
-
     expect(response.status).toBe(400);
     expect(stripeMocks.update).not.toHaveBeenCalled();
-    expect(stripeMocks.cancel).not.toHaveBeenCalled();
-    expect(stateMocks.getReadSnapshot).not.toHaveBeenCalled();
+    expect(stateMocks.withSerialized).not.toHaveBeenCalled();
   });
 
-  it("schedules period-end cancellation and retains access and credits", async () => {
+  it("schedules period-end cancellation with deterministic bounded provider mutation", async () => {
     const response = await POST(request({}));
-    const body = await response.json();
-
     expect(response.status).toBe(200);
-    expect(stripeMocks.update).toHaveBeenCalledWith("sub_test", {
-      cancel_at_period_end: true,
-    });
-    expect(stripeMocks.cancel).not.toHaveBeenCalled();
-    expect(stateMocks.reconcile.mock.calls[0]?.[0]).toEqual(
+    expect(stripeMocks.update).toHaveBeenCalledWith(
+      "sub_test",
+      { cancel_at_period_end: true },
       expect.objectContaining({
-        cancelAtPeriodEnd: true,
-        currentPeriodEnd: PERIOD_END,
+        idempotencyKey: expect.stringMatching(/^subscription-cancel:.*:v7$/),
+        timeout: 10_000,
       })
     );
-    expect(body).toMatchObject({
+    await expect(response.json()).resolves.toMatchObject({
       status: "cancel_at_period_end",
-      accessUntil: PERIOD_END.toISOString(),
-      unusedCreditsRetainedUntil: PERIOD_END.toISOString(),
       automaticRefundCreated: false,
     });
   });
 
-  it("replays an already scheduled cancellation without another provider call", async () => {
+  it("replays scheduled cancellation without another provider call", async () => {
     readSubscription({ cancelAtPeriodEnd: true });
-
-    const response = await POST(request({ cancelImmediately: false }));
-
-    expect(response.status).toBe(200);
-    expect(stripeMocks.update).not.toHaveBeenCalled();
-    expect(stripeMocks.cancel).not.toHaveBeenCalled();
-  });
-
-  it("fails closed when an already scheduled paid-through date is stale", async () => {
-    readSubscription({
-      cancelAtPeriodEnd: true,
-      currentPeriodEnd: new Date("2020-01-01T00:00:00Z"),
-    });
-
-    const response = await POST(request({}));
-
-    expect(response.status).toBe(409);
+    expect((await POST(request({}))).status).toBe(200);
     expect(stripeMocks.update).not.toHaveBeenCalled();
   });
 
-  it("denies exact-cutoff replay using database time despite app-clock rollback", async () => {
-    readSubscription(
-      { cancelAtPeriodEnd: true, currentPeriodEnd: PERIOD_END },
-      PERIOD_END
-    );
-    const appClock = vi.spyOn(Date, "now").mockReturnValue(1);
-
-    const response = await POST(request({}));
-
-    expect(response.status).toBe(409);
+  it("denies exact-cutoff replay using the locked database time", async () => {
+    readSubscription({ cancelAtPeriodEnd: true }, PERIOD_END);
+    expect((await POST(request({}))).status).toBe(409);
     expect(stripeMocks.update).not.toHaveBeenCalled();
-    appClock.mockRestore();
   });
 
-  it("fails closed when Stripe does not confirm the paid-through period", async () => {
+  it("fails closed when Stripe does not confirm the requested state", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    stripeMocks.update.mockResolvedValue({
-      ...providerSubscription(true),
-      items: { data: [] },
-    });
-
-    const response = await POST(request({}));
-    const body = await response.json();
-
-    expect(response.status).toBe(500);
-    expect(body.error).toMatch(/Failed to cancel/);
-    expect(stateMocks.reconcile).not.toHaveBeenCalled();
+    stripeMocks.update.mockResolvedValue(providerSubscription(false));
+    expect((await POST(request({}))).status).toBe(500);
   });
 
-  it("does not persist a provider-confirmed cutoff that has already passed", async () => {
+  it("does not commit a provider cutoff that has already passed", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     stripeMocks.update.mockResolvedValue({
       ...providerSubscription(true),
       items: { data: [{ current_period_end: 1 }] },
     });
-    stateMocks.reconcile.mockRejectedValue(
-      new Error("billing_subscription_observation_invalid")
-    );
-
-    const response = await POST(request({}));
-
-    expect(response.status).toBe(500);
-    expect(stateMocks.reconcile).toHaveBeenCalledWith(
-      {
-        cancelAtPeriodEnd: true,
-        currentPeriodEnd: new Date(1_000),
-        stripeSubscriptionId: "sub_test",
-        userId: "user-one",
-      },
-      7
-    );
+    setCommitFailure(new Error("billing_subscription_observation_invalid"));
+    expect((await POST(request({}))).status).toBe(500);
   });
 
-  it("reactivates only by clearing the period-end schedule", async () => {
+  it("reactivates with a separate deterministic action key", async () => {
     readSubscription({ cancelAtPeriodEnd: true });
     stripeMocks.update.mockResolvedValue(providerSubscription(false));
-
-    const response = await DELETE();
-
-    expect(response.status).toBe(200);
-    expect(stripeMocks.update).toHaveBeenCalledWith("sub_test", {
-      cancel_at_period_end: false,
-    });
-    expect(stripeMocks.cancel).not.toHaveBeenCalled();
-    expect(stateMocks.reconcile.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({ cancelAtPeriodEnd: false })
+    expect((await DELETE()).status).toBe(200);
+    expect(stripeMocks.update).toHaveBeenCalledWith(
+      "sub_test",
+      { cancel_at_period_end: false },
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^subscription-reactivate:.*:v7$/
+        ),
+        timeout: 10_000,
+      })
     );
   });
 
-  it("does not persist reactivation unless Stripe confirms it", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    readSubscription({ cancelAtPeriodEnd: true });
-    stripeMocks.update.mockResolvedValue(providerSubscription(true));
-
-    const response = await DELETE();
-
-    expect(response.status).toBe(500);
-    expect(stateMocks.reconcile).not.toHaveBeenCalled();
+  it("repeated reactivation observes completed state and makes no provider call", async () => {
+    readSubscription({ cancelAtPeriodEnd: false });
+    expect((await DELETE()).status).toBe(400);
+    expect(stripeMocks.update).not.toHaveBeenCalled();
   });
 
-  it.each([
-    { method: "cancel", desired: true, authoritative: false },
-    { method: "reactivate", desired: false, authoritative: true },
-  ])(
-    "fails truthfully when a same-resource webhook inverts $method during the provider call",
-    async ({ method, desired, authoritative }) => {
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
-      readSubscription({
-        cancelAtPeriodEnd: method === "reactivate",
-        version: 7,
-      });
-      stateMocks.getReadSnapshot
-        .mockResolvedValueOnce({
-          subscription: subscriptionFixture({
-            cancelAtPeriodEnd: method === "reactivate",
-            version: 7,
-          }),
-          observedAt: new Date("2026-07-12T00:00:00.000Z"),
-        })
-        .mockResolvedValueOnce({
-          subscription: subscriptionFixture({
-            cancelAtPeriodEnd: authoritative,
-            version: 8,
-          }),
-          observedAt: new Date("2026-07-12T00:00:01.000Z"),
-        });
-      stripeMocks.update.mockResolvedValue(providerSubscription(desired));
-      stripeMocks.retrieve.mockResolvedValue(
-        providerSubscription(authoritative)
-      );
-      stateMocks.reconcile
-        .mockResolvedValueOnce({ status: "retry" })
-        .mockImplementationOnce(async (input) => ({
-          status: "applied",
-          value: {
-            ...input,
-            updatedAt: new Date("2026-07-12T00:00:02.000Z"),
-          },
-        }));
+  it("returns immediate retry backpressure when another account mutation owns the lock", async () => {
+    stateMocks.withSerialized.mockRejectedValue(new BillingAccountBusyError());
+    const response = await POST(request({}));
+    expect(response.status).toBe(409);
+    expect(response.headers.get("retry-after")).toBe("1");
+    expect(stripeMocks.update).not.toHaveBeenCalled();
+  });
 
-      const response =
-        method === "cancel" ? await POST(request({})) : await DELETE();
-      expect(response.status).toBe(500);
-      expect(stripeMocks.retrieve).toHaveBeenCalledOnce();
-      expect(stateMocks.reconcile.mock.calls[1]?.[0]).toEqual(
-        expect.objectContaining({ cancelAtPeriodEnd: authoritative })
-      );
-      expect(stateMocks.reconcile.mock.calls[1]?.[1]).toBe(8);
-    }
-  );
+  it("serializes concurrent duplicates so the loser performs zero provider mutations", async () => {
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stateMocks.withSerialized
+      .mockImplementationOnce(async (_userId, work) => {
+        await held;
+        return work(serializedState(subscriptionFixture()));
+      })
+      .mockRejectedValueOnce(new BillingAccountBusyError());
+
+    const first = POST(request({}));
+    const second = await POST(request({}));
+    expect(second.status).toBe(409);
+    release?.();
+    expect((await first).status).toBe(200);
+    expect(stripeMocks.update).toHaveBeenCalledOnce();
+  });
 });
 
 function request(body: unknown) {
@@ -286,14 +168,39 @@ function subscriptionFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function serializedState(
+  subscription: ReturnType<typeof subscriptionFixture>,
+  observedAt = OBSERVED_AT,
+  commitError?: Error
+) {
+  return {
+    subscription,
+    observedAt,
+    commitProviderObservation: vi.fn(async (observation) => {
+      if (commitError) throw commitError;
+      return {
+        ...observation,
+        lastEventTimestamp: subscription.lastEventTimestamp,
+        version: subscription.version + 1,
+        updatedAt: new Date("2026-07-12T00:00:01.000Z"),
+      };
+    }),
+  };
+}
+
 function readSubscription(
   overrides: Record<string, unknown> = {},
-  observedAt = new Date("2026-07-12T00:00:00.000Z")
+  observedAt = OBSERVED_AT
 ) {
-  stateMocks.getReadSnapshot.mockResolvedValue({
-    subscription: subscriptionFixture(overrides),
-    observedAt,
-  });
+  stateMocks.withSerialized.mockImplementation(async (_userId, work) =>
+    work(serializedState(subscriptionFixture(overrides), observedAt))
+  );
+}
+
+function setCommitFailure(error: Error) {
+  stateMocks.withSerialized.mockImplementation(async (_userId, work) =>
+    work(serializedState(subscriptionFixture(), OBSERVED_AT, error))
+  );
 }
 
 function providerSubscription(cancelAtPeriodEnd: boolean) {

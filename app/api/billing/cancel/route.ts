@@ -4,12 +4,12 @@ import Stripe from "stripe";
 import { z } from "zod";
 import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
 import {
-  getCancellationReadSnapshot,
-  reconcileProviderCancellationState,
-  reconcileVersionedProviderMutation,
-  retrieveAuthoritativeSubscription,
-  type CancellationStateSnapshot,
+  BillingAccountBusyError,
+  subscriptionMutationIdempotencyKey,
+  withSerializedCancellationState,
 } from "@/lib/billing/subscription-state";
+
+const SUBSCRIPTION_MUTATION_TIMEOUT_MS = 10_000;
 
 // Keep the legacy false value deploy-compatible while rejecting the retired
 // immediate-cancellation path and every unrecognized input.
@@ -50,43 +50,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userId = user.id;
-
-    // Get user's subscription
-    const readSnapshot = await getCancellationReadSnapshot(userId);
-    if (!readSnapshot) {
-      return NextResponse.json(
-        { error: "No subscription found" },
-        { status: 404 }
-      );
-    }
-
-    const { subscription: sub, observedAt } = readSnapshot;
-
-    // Check if already canceled
-    if (sub.status === "canceled") {
-      return NextResponse.json(
-        {
-          error: "Subscription has already ended",
-          currentPeriodEnd: sub.currentPeriodEnd,
-        },
-        { status: 409 }
-      );
-    }
-
-    if (sub.cancelAtPeriodEnd) {
-      return cancellationResponse(sub.currentPeriodEnd, observedAt);
-    }
-
-    // Check if free tier
-    if (sub.tier === "free") {
-      return NextResponse.json(
-        { error: "Free tier subscriptions cannot be canceled" },
-        { status: 400 }
-      );
-    }
-
-    // Require Stripe configuration
     const stripe = createStripeClient();
     if (!stripe) {
       return NextResponse.json(
@@ -95,34 +58,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cancel in Stripe
-    if (!sub.stripeSubscriptionId) {
-      return NextResponse.json(
-        { error: "No Stripe subscription found. Please contact support." },
-        { status: 400 }
-      );
-    }
-
     try {
-      const providerSubscription = await stripe.subscriptions.update(
-        sub.stripeSubscriptionId,
-        { cancel_at_period_end: true }
-      );
-      if (!providerSubscription.cancel_at_period_end) {
-        throw new Error("billing_cancel_provider_not_scheduled");
-      }
-      const converged = await convergeCancellationMutation({
+      return await mutateCancellationState({
+        userId: user.id,
         stripe,
-        initial: providerSubscription,
-        expected: sub,
         desiredCancelAtPeriodEnd: true,
       });
-
-      return cancellationResponse(
-        converged.currentPeriodEnd,
-        converged.updatedAt
-      );
-    } catch {
+    } catch (error) {
+      if (error instanceof BillingAccountBusyError)
+        return billingBusyResponse();
+      if (isSubscriptionNotFoundError(error)) {
+        return NextResponse.json(
+          { error: "No subscription found" },
+          { status: 404 }
+        );
+      }
       console.error("billing_cancel_provider_failed");
       return NextResponse.json(
         {
@@ -197,39 +147,8 @@ export async function DELETE() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = user.id;
-
-    // Get user's subscription
-    const readSnapshot = await getCancellationReadSnapshot(userId);
-    if (!readSnapshot) {
-      return NextResponse.json(
-        { error: "No subscription found" },
-        { status: 404 }
-      );
-    }
-
-    const sub = readSnapshot.subscription;
-
-    // Check if subscription can be reactivated
-    if (sub.status === "canceled") {
-      return NextResponse.json(
-        {
-          error:
-            "Subscription has already been canceled and cannot be reactivated. Please start a new subscription.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!sub.cancelAtPeriodEnd) {
-      return NextResponse.json(
-        { error: "Subscription is not scheduled for cancellation" },
-        { status: 400 }
-      );
-    }
-
     const stripe = createStripeClient();
-    if (!stripe || !sub.stripeSubscriptionId) {
+    if (!stripe) {
       return NextResponse.json(
         { error: "Unable to reactivate subscription. Please contact support." },
         { status: 500 }
@@ -237,27 +156,20 @@ export async function DELETE() {
     }
 
     try {
-      // Reactivate in Stripe
-      const providerSubscription = await stripe.subscriptions.update(
-        sub.stripeSubscriptionId,
-        { cancel_at_period_end: false }
-      );
-      if (providerSubscription.cancel_at_period_end) {
-        throw new Error("billing_reactivate_provider_not_confirmed");
-      }
-      await convergeCancellationMutation({
+      return await mutateCancellationState({
+        userId: user.id,
         stripe,
-        initial: providerSubscription,
-        expected: sub,
         desiredCancelAtPeriodEnd: false,
       });
-
-      return NextResponse.json({
-        success: true,
-        message: "Your subscription has been reactivated.",
-        status: "active",
-      });
-    } catch {
+    } catch (error) {
+      if (error instanceof BillingAccountBusyError)
+        return billingBusyResponse();
+      if (isSubscriptionNotFoundError(error)) {
+        return NextResponse.json(
+          { error: "No subscription found" },
+          { status: 404 }
+        );
+      }
       console.error("billing_reactivate_provider_failed");
       return NextResponse.json(
         { error: "Failed to reactivate subscription. Please contact support." },
@@ -273,59 +185,103 @@ export async function DELETE() {
   }
 }
 
-async function convergeCancellationMutation({
+async function mutateCancellationState({
+  userId,
   stripe,
-  initial,
-  expected,
   desiredCancelAtPeriodEnd,
 }: {
+  userId: string;
   stripe: Stripe;
-  initial: Stripe.Subscription;
-  expected: CancellationStateSnapshot;
   desiredCancelAtPeriodEnd: boolean;
 }) {
-  if (!expected.stripeSubscriptionId) {
-    throw new Error("billing_subscription_provider_mismatch");
-  }
-  const subscriptionId = expected.stripeSubscriptionId;
-  const result = await reconcileVersionedProviderMutation({
-    initialExpectedVersion: expected.version,
-    initialSnapshot: initial,
-    readVersion: async () => {
-      const current = await getCancellationReadSnapshot(expected.userId);
-      if (
-        !current ||
-        current.subscription.stripeSubscriptionId !== subscriptionId ||
-        current.subscription.status === "canceled"
-      ) {
-        throw new Error("billing_subscription_provider_mismatch");
-      }
-      return current.subscription.version;
-    },
-    retrieve: () =>
-      retrieveAuthoritativeSubscription(stripe.subscriptions, subscriptionId),
-    commit: async ({ expectedVersion, snapshot }) => {
-      if (snapshot.id !== subscriptionId || snapshot.status === "canceled") {
-        throw new Error("billing_subscription_provider_mismatch");
-      }
-      return reconcileProviderCancellationState(
+  return withSerializedCancellationState(userId, async (state) => {
+    const sub = state.subscription;
+    if (sub.status === "canceled") {
+      return NextResponse.json(
         {
-          userId: expected.userId,
-          stripeSubscriptionId: subscriptionId,
-          cancelAtPeriodEnd: snapshot.cancel_at_period_end,
-          currentPeriodEnd: providerPeriodEnd(snapshot),
+          error:
+            "Subscription has already ended and cannot be changed. Please start a new subscription.",
+          currentPeriodEnd: sub.currentPeriodEnd,
         },
-        expectedVersion
+        { status: 409 }
       );
-    },
+    }
+    if (desiredCancelAtPeriodEnd && sub.cancelAtPeriodEnd) {
+      return cancellationResponse(sub.currentPeriodEnd, state.observedAt);
+    }
+    if (!desiredCancelAtPeriodEnd && !sub.cancelAtPeriodEnd) {
+      return NextResponse.json(
+        { error: "Subscription is not scheduled for cancellation" },
+        { status: 400 }
+      );
+    }
+    if (sub.tier === "free") {
+      return NextResponse.json(
+        { error: "Free tier subscriptions cannot be canceled" },
+        { status: 400 }
+      );
+    }
+    if (!sub.stripeSubscriptionId) {
+      return NextResponse.json(
+        { error: "No Stripe subscription found. Please contact support." },
+        { status: 400 }
+      );
+    }
+
+    const action = desiredCancelAtPeriodEnd ? "cancel" : "reactivate";
+    const providerSubscription = await stripe.subscriptions.update(
+      sub.stripeSubscriptionId,
+      { cancel_at_period_end: desiredCancelAtPeriodEnd },
+      {
+        idempotencyKey: subscriptionMutationIdempotencyKey({
+          userId,
+          version: sub.version,
+          action,
+        }),
+        timeout: SUBSCRIPTION_MUTATION_TIMEOUT_MS,
+      }
+    );
+    if (
+      providerSubscription.id !== sub.stripeSubscriptionId ||
+      providerSubscription.status === "canceled" ||
+      providerSubscription.cancel_at_period_end !== desiredCancelAtPeriodEnd
+    ) {
+      throw new Error("billing_subscription_provider_state_changed");
+    }
+    const committed = await state.commitProviderObservation({
+      stripeSubscriptionId: sub.stripeSubscriptionId,
+      cancelAtPeriodEnd: providerSubscription.cancel_at_period_end,
+      currentPeriodEnd: providerPeriodEnd(providerSubscription),
+    });
+    if (desiredCancelAtPeriodEnd) {
+      return cancellationResponse(
+        committed.currentPeriodEnd,
+        committed.updatedAt
+      );
+    }
+    return NextResponse.json({
+      success: true,
+      message: "Your subscription has been reactivated.",
+      status: "active",
+    });
   });
-  if (
-    result.snapshot.cancel_at_period_end !== desiredCancelAtPeriodEnd ||
-    result.value.cancelAtPeriodEnd !== desiredCancelAtPeriodEnd
-  ) {
-    throw new Error("billing_subscription_provider_state_changed");
-  }
-  return result.value;
+}
+
+function billingBusyResponse() {
+  return NextResponse.json(
+    {
+      error: "billing_account_busy",
+      message: "Another billing request is already in progress. Please retry.",
+      retryable: true,
+    },
+    { status: 409, headers: { "Retry-After": "1" } }
+  );
+}
+
+function isSubscriptionNotFoundError(error: unknown) {
+  return (
+    error instanceof Error && error.message === "billing_subscription_not_found"
+  );
 }
 
 function providerPeriodEnd(providerSubscription: Stripe.Subscription) {

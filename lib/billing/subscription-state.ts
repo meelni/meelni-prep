@@ -1,8 +1,13 @@
+import { createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
-import { lockAccountIdentity } from "@/lib/db/account-identity-lock";
+import {
+  AccountIdentityBusyError,
+  lockAccountIdentity,
+  tryLockAccountIdentity,
+} from "@/lib/db/account-identity-lock";
 import { accountDeletionRequest, appUser, subscription } from "@/lib/db/schema";
 import { shouldApplyStripeSubscriptionState } from "./stripe-event-ordering";
 
@@ -31,6 +36,21 @@ export interface CancellationReadSnapshot {
     tier: string;
   };
   observedAt: Date;
+}
+
+export interface SerializedCancellationState {
+  subscription: CancellationStateSnapshot & { tier: string };
+  observedAt: Date;
+  commitProviderObservation(
+    observation: Omit<ProviderCancellationObservation, "userId" | "observedAt">
+  ): Promise<ReturnType<typeof nextProviderCancellationState>>;
+}
+
+export class BillingAccountBusyError extends Error {
+  constructor() {
+    super("billing_account_busy");
+    this.name = "BillingAccountBusyError";
+  }
 }
 
 export type AuthoritativeSnapshotCommitResult = "applied" | "retry" | "skipped";
@@ -192,6 +212,78 @@ export async function getCancellationReadSnapshot(
   });
 }
 
+export async function withSerializedCancellationState<T>(
+  userId: string,
+  work: (state: SerializedCancellationState) => Promise<T>
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tryLockBillingUserUnlessDeleting(tx, userId);
+    const [current] = await tx
+      .select({
+        userId: subscription.userId,
+        tier: subscription.tier,
+        status: subscription.status,
+        stripeSubscriptionId: subscription.stripeSubscriptionId,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        version: subscription.version,
+        lastEventTimestamp: subscription.lastEventTimestamp,
+      })
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1)
+      .for("update");
+    if (!current) throw new Error("billing_subscription_not_found");
+    const observedAt = await getBillingDatabaseTime(tx);
+    let committed = false;
+    return work({
+      subscription: current,
+      observedAt,
+      commitProviderObservation: async (observation) => {
+        if (committed) {
+          throw new Error("billing_subscription_observation_already_committed");
+        }
+        const next = nextProviderCancellationState(current, {
+          ...observation,
+          userId,
+          observedAt: await getBillingDatabaseTime(tx),
+        });
+        const updated = await tx
+          .update(subscription)
+          .set(next)
+          .where(
+            and(
+              eq(subscription.userId, userId),
+              eq(subscription.version, current.version)
+            )
+          )
+          .returning({ id: subscription.id });
+        if (updated.length !== 1) {
+          throw new Error("billing_subscription_version_conflict");
+        }
+        committed = true;
+        return next;
+      },
+    });
+  });
+}
+
+export function subscriptionMutationIdempotencyKey(input: {
+  userId: string;
+  version: number;
+  action: "cancel" | "reactivate";
+}): string {
+  if (
+    !input.userId ||
+    !Number.isSafeInteger(input.version) ||
+    input.version < 0
+  ) {
+    throw new Error("billing_subscription_mutation_identity_invalid");
+  }
+  const identity = createHash("sha256").update(input.userId).digest("hex");
+  return `subscription-${input.action}:${identity}:v${input.version}`;
+}
+
 export async function reconcileProviderCancellationState(
   observation: Omit<ProviderCancellationObservation, "observedAt">,
   expectedVersion: number
@@ -279,6 +371,28 @@ export async function lockBillingUserUnlessDeleting(
   userId: string
 ) {
   await lockAccountIdentity(tx, userId);
+  await lockBillingUserRowsUnlessDeleting(tx, userId);
+}
+
+export async function tryLockBillingUserUnlessDeleting(
+  tx: BillingTransaction,
+  userId: string
+) {
+  try {
+    await tryLockAccountIdentity(tx, userId);
+  } catch (error) {
+    if (error instanceof AccountIdentityBusyError) {
+      throw new BillingAccountBusyError();
+    }
+    throw error;
+  }
+  await lockBillingUserRowsUnlessDeleting(tx, userId);
+}
+
+async function lockBillingUserRowsUnlessDeleting(
+  tx: BillingTransaction,
+  userId: string
+) {
   const [user] = await tx
     .select({ id: appUser.id })
     .from(appUser)
