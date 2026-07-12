@@ -103,6 +103,8 @@ Canonical target:
 
 - Account: `saviii`
 - App repo: `saviii/meelni-prep`
+- Repository ID: `1089904588`
+- Canonical user/owner ID: `24397508`
 - Local remote: `https://github.com/saviii/meelni-prep.git`
 
 Install, authenticate, and upgrade:
@@ -129,6 +131,11 @@ Production guardrails:
 - Confirm the current branch, diff, and intended remote before pushing or opening a PR.
 - Do not print or document the keyring token reported by `gh auth status`.
 - Do not change repository settings, protections, secrets, or Actions variables without explicit scope from the user.
+- SAV-198 paid calibration never trusts the local remote. Its one-time authority
+  is hard-bound to GitHub.com, repository `saviii/meelni-prep`/`1089904588`,
+  actor `saviii`/`24397508`, and the exact protected ledger ref and genesis OID.
+  Follow `docs/operations/evaluation-calibration.md` for the two-ruleset and
+  deterministic seed gate. Do not create the real ref or rulesets during tests.
 
 ## LiveKit
 

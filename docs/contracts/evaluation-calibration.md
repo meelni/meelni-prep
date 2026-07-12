@@ -81,9 +81,10 @@ Every command emits `evaluation-calibration-report.v6` JSON with:
 - case-level failure codes and unresolved blockers.
 
 Live reports also include `execution.cost`, an
-`evaluation-calibration-cost-report.v4` object with the fixed authorized run,
+`evaluation-calibration-cost-report.v5` object with the fixed authorized run,
 Git activation commit, exact activated-plan hash and worst-case reservation,
-logical calls, the physical HTTP-attempt ceiling,
+logical calls, every physical-request boundary attempt, the physical
+HTTP-attempt ceiling,
 completed calls, cumulative worst-case reservations, reconciled actual cost,
 unreconciled reservation cost, estimated committed cost, the deterministic stop
 reason, spend-cap-breach state, and the exact reviewed
@@ -148,9 +149,11 @@ It validates that the complete plan's worst-case cost is at most $3 and binds
 that plan to the approved corpus, adjudication, model, endpoint, tier, and
 pricing hashes in a one-time Git activation. Activation burns the whole plan;
 a crash cannot resume or restore unused capacity. Each in-process call must
-match one activated plan entry. A guarded custom fetch rechecks the activated
-remote ref and a fresh pricing clock at actual transport dispatch before it
-increments the physical-attempt counter. Successful responses must include
+match one activated plan entry. A guarded custom fetch rechecks the canonical
+GitHub repository identity, active no-bypass protection, activated ref, and a
+fresh pricing clock at actual transport dispatch before it consumes the
+reservation's single-use boundary. Re-entry is counted and rejected before
+HTTP. Successful responses must include
 internally consistent usage, and the reservation is then reconciled to actual
 uncached, cached, and output token usage. Missing or malformed usage and provider
 failure stop the run before another call and retain the uncertain reservation.
@@ -180,20 +183,29 @@ operator-selected ledger path, so a new process cannot mint another budget.
 This spend authorization is independent of, and does not replace, the semantic
 adjudication approval described below.
 
-The durable authority is the protected payload-free Git ref
+The durable authority is the protected payload-free Git ref in the fixed
+private GitHub repository `saviii/meelni-prep` (repository ID `1089904588`):
 `refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1`. Before call
-one, the CLI requires that ref to point to the validated zero-parent,
-empty-tree authorization commit. It creates a unique empty-tree activation
+one, the CLI requires that ref to point to deterministic genesis commit
+`5db3fdc9a4d9bd8b57619db03f4a4193d1b9637a`, whose zero-parent tree is empty
+and whose complete message and identity encode this authorization. It creates
+a unique empty-tree activation
 child containing only authorization, plan-hash, and activation metadata, then
-performs a normal non-force push. Concurrent children share the authorized
-parent, so only one push can fast-forward and every loser refuses execution.
+performs a GitHub REST ref update with `force: false`. Concurrent children share
+the authorized parent, so only one update can fast-forward and every loser
+refuses execution.
 An activated head is terminal: a restart, crash, missing local cache, or local
 state reset cannot reopen it. Any additional run requires a new owner
 authorization and reviewed code change.
 
-The branch must be protected against force pushes and deletion before the
-authorization commit is created. Missing protection or a missing/deleted ref is
-an operational launch blocker. The activation tree and local report/cache
+The production client is pinned to GitHub.com; local Git remotes, push URLs,
+URL rewrites, and environment-selected ledger locations are never authority.
+Before activation and every HTTP dispatch it requires two exact active
+repository rulesets: deletion/non-fast-forward with no bypass actors, and
+creation/update restriction whose sole bypass actor is `saviii` user ID
+`24397508`. GitHub's effective branch rules must expose all four restrictions.
+Missing protection or a missing/deleted ref is an operational launch blocker.
+The activation tree and local report/cache
 contain no prompt, transcript, provider body, API key, or customer/Production
 payload. Local files are never spend authority.
 

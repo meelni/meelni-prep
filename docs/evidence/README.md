@@ -14,8 +14,9 @@ boundary for one fixed aggregate paid run: at most 96 provider calls/physical
 attempts and $3, using synthetic or separately approved fixtures only. It is
 code-bound authorization evidence, not a reusable per-process budget, a live
 run result, or semantic approval of the gold-set candidates. Its one-time spend
-authority is the protected payload-free Git activation ref described in the
-calibration contract. Local reports and caches are never budget authority.
+authority is the deterministic genesis and protected payload-free activation
+ref in the canonical GitHub repository described in the calibration contract.
+Local remotes, reports, and caches are never budget authority.
 
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are local evidence only and deliberately keep live-provider launch acceptance
