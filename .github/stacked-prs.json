@@ -12,7 +12,7 @@
       "pr": 258,
       "headRef": "codex/sav-190-reconnect-recovery",
       "parentRef": "codex/sav-189-deadline-server",
-      "expectedParentHead": "6ddc71dba11dd665c42299762aef32f1823d4cc5"
+      "expectedParentHead": "12b569159e47f33834b1a5b50ab5850829af3291"
     },
     {
       "pr": 259,
