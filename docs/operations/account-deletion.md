@@ -20,10 +20,10 @@ The `account-deletion` Inngest function performs these idempotent stages:
 2. remove application data in a database transaction while preserving the
    tombstone, deleting `user_insights` before its `last_session_id` target;
 3. delete the Supabase Auth user through the server-only service-role client;
-4. cancel captured Stripe subscriptions and refund any typed late
-   invoice/PaymentIntent/charge references;
+4. cancel captured Stripe subscriptions without proration and never create an
+   automatic invoice, PaymentIntent, charge, or customer-balance refund;
 5. delete every captured Stripe customer, including pass-only and historical
-   mapped customers, only after financial reconciliation;
+   mapped customers, only after subscription cancellation;
 6. clear only processed raw provider IDs and mark the tombstone completed, or
    leave concurrent late references recoverable.
 
@@ -78,37 +78,27 @@ the invariant that closes the late-webhook race, rather than delivery timing.
   window.
 - Replay `checkout.session.completed` with matching user metadata and client
   reference after deletion. Confirm no credit, subscription row, or customer
-  mapping is created; the event payload is `{}`; and subscription cancellation
-  plus refundable payment reversal are attempted idempotently.
+  mapping is created; the event payload is `{}`; subscription cancellation and
+  customer cleanup are attempted idempotently; and no refund API is called.
 - Replay a signed Checkout event with mismatched metadata and
   `client_reference_id`, and replay a subscription/invoice event whose metadata
   disagrees with the persisted customer mapping. Confirm both fail before any
-  event-log, tombstone, entitlement, cancellation, refund, or customer mutation.
+  event-log, tombstone, entitlement, cancellation, or customer mutation.
 - Replay `customer.subscription.created` or `.updated` without a Checkout
-  event. For creation, confirm the initial invoice and paid payment are retained
-  and reconciled before customer deletion. Missing initial-invoice evidence
-  must retain the customer and fail for recovery. For update, confirm the
-  subscription is canceled with no local entitlement or raw event payload
-  retained.
+  event. Confirm the subscription is canceled without proration, the customer
+  is cleaned up, and no local entitlement, raw event payload, or automatic
+  refund is created.
 - Replay `invoice.payment_succeeded` without a Checkout event. Confirm the
-  referenced subscription is canceled, every paid InvoicePayment allocation is
-  refunded, and the event payload remains `{}`. Checkout, subscription, and
-  invoice events must reconcile safely in any order using shared idempotency
-  keys.
-- Model multiple and partial InvoicePayments across more than one response
-  page. Confirm the allocation amounts sum exactly to `invoice.amount_paid`,
-  every refundable allocation reaches terminal succeeded evidence, and customer
-  cleanup runs only afterward. Confirm `payment_record`, `has_more` beyond the
-  bounded page limit, currency/amount/total mismatches, and ambiguous untagged
-  partial refunds retain provider subjects and fail for operator recovery.
-- For each late Checkout/subscription/invoice event, confirm financial
-  reconciliation finishes before the Stripe customer deletion call. On cleanup
+  referenced subscription is canceled without proration, no refund API is
+  called, no entitlement is granted, and the event payload remains `{}`.
+- For each late Checkout/subscription/invoice event, confirm subscription
+  cancellation finishes before the Stripe customer deletion call. On cleanup
   failure, confirm the tombstone retains raw cleanup IDs and becomes recoverable;
   on retry success, confirm only fingerprints remain.
-- Fail cancellation, invoice lookup, and refund before customer deletion.
-  Confirm each failure retains explicit typed subscription/invoice/payment/
-  customer references, marks the tombstone recoverable, and that the recovery
-  worker retries cancel → refund → customer delete before clearing raw IDs.
+- Fail cancellation and customer deletion. Confirm each failure retains the
+  required typed subscription/customer references, marks the tombstone
+  recoverable, and that recovery retries cancel → customer delete before
+  clearing raw IDs.
 - Pause a deletion worker after it reads its subject snapshot, append late
   invoice/payment/customer subjects, then complete the worker. Confirm only the
   original snapshot is fingerprint-only, the late subjects remain recoverable,
@@ -149,7 +139,11 @@ the invariant that closes the late-webhook race, rather than delivery timing.
 
 Never manually delete the tombstone before Supabase Auth deletion is confirmed.
 Never issue an automatic refund from account-deletion recovery. Any exceptional
-refund requires a separate manual support decision.
+refund requires the separate [Manual Exceptional Refunds](./manual-exceptional-refunds.md)
+procedure and an explicit human decision.
+The draft currently ends paid product access immediately after irreversible
+account deletion. Do not merge or rehearse that exception as accepted policy
+until the owner explicitly approves it.
 Completed tombstone retention remains intentionally undefined beyond the
 accepted durable-deletion requirement. Do not promise a removal date for the
 tombstone, provider records, logs, or backups until an owner/legal decision is

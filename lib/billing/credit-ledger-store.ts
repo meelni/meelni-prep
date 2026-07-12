@@ -13,6 +13,7 @@ import {
   creditReservationGrant,
   creditTransaction,
   paymentHistory,
+  subscription,
 } from "@/lib/db/schema";
 import type { BillingCatalogId } from "@meelni/core";
 
@@ -66,6 +67,7 @@ export function createDrizzleCreditLedgerStore(
     findTransactionByIdempotencyKey: operations.findTransactionByIdempotencyKey,
     listSpendableGrants: operations.listSpendableGrants,
     listUserGrants: operations.listUserGrants,
+    getSubscriptionCreditPolicy: operations.getSubscriptionCreditPolicy,
     findReservationByKey: operations.findReservationByKey,
     listAllocations: operations.listAllocations,
     async withUserTransaction<T>(
@@ -429,6 +431,37 @@ function createDrizzleCreditLedgerTransaction(
         .for("update");
 
       return rows.map(mapGrant);
+    },
+
+    async getSubscriptionCreditPolicy(userId) {
+      requireActiveTransaction();
+      if (lockedUserId) requireLockedUser(userId);
+      const rows = await database
+        .select({
+          status: subscription.status,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+        })
+        .from(subscription)
+        .where(eq(subscription.userId, userId))
+        .limit(1);
+      return subscriptionCreditPolicy(rows[0]);
+    },
+
+    async getSubscriptionCreditPolicyForUpdate(userId) {
+      requireActiveTransaction();
+      requireLockedUser(userId);
+      const rows = await database
+        .select({
+          status: subscription.status,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+        })
+        .from(subscription)
+        .where(eq(subscription.userId, userId))
+        .limit(1)
+        .for("update");
+      return subscriptionCreditPolicy(rows[0]);
     },
 
     async listUserReservationsForUpdate(userId) {
@@ -1065,6 +1098,24 @@ function mapTransaction(row: CreditTransactionRow): LedgerCreditTransaction {
     balanceAfter: row.balanceAfter,
     metadata: row.metadata ?? null,
     createdAt: row.createdAt,
+  };
+}
+
+function subscriptionCreditPolicy(
+  row:
+    | {
+        status: string;
+        cancelAtPeriodEnd: boolean;
+        currentPeriodEnd: Date | null;
+      }
+    | undefined
+) {
+  const restricted = Boolean(
+    row && (row.cancelAtPeriodEnd || row.status === "canceled")
+  );
+  return {
+    restricted,
+    availableThrough: restricted ? (row?.currentPeriodEnd ?? null) : null,
   };
 }
 

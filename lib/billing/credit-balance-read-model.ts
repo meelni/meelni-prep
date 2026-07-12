@@ -1,6 +1,7 @@
 import {
   createCreditLedgerService,
   getTrialGrantIdempotencyKey,
+  isCreditGrantAvailable,
   type CreditLedgerStore,
 } from "./credits";
 
@@ -37,9 +38,10 @@ export async function getCreditBalanceReadModel({
 }): Promise<CreditBalanceReadModel> {
   const ledger = createCreditLedgerService({ store, now });
   const currentTime = now();
-  const [balance, allGrants] = await Promise.all([
+  const [balance, allGrants, subscriptionPolicy] = await Promise.all([
     ledger.getCreditBalance(userId),
     store.listUserGrants(userId),
+    store.getSubscriptionCreditPolicy(userId),
   ]);
   const trialAvailable = !allGrants.some(
     (grant) => grant.idempotencyKey === getTrialGrantIdempotencyKey(userId)
@@ -48,8 +50,12 @@ export async function getCreditBalanceReadModel({
     .filter((grant) => {
       const hasCredits =
         grant.remainingCredits > 0 || grant.reservedCredits > 0;
-      const isActive = !grant.expiresAt || grant.expiresAt > currentTime;
-      return hasCredits && isActive && grant.revokedAt === null;
+      const isActive = isCreditGrantAvailable(
+        grant,
+        currentTime,
+        subscriptionPolicy
+      );
+      return hasCredits && isActive;
     })
     .map((grant) => ({
       id: grant.id,

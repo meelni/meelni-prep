@@ -194,6 +194,9 @@ export interface CreditLedgerReadStore {
   ): Promise<LedgerCreditTransaction | null>;
   listSpendableGrants(userId: string, now: Date): Promise<LedgerCreditGrant[]>;
   listUserGrants(userId: string): Promise<LedgerCreditGrant[]>;
+  getSubscriptionCreditPolicy(
+    userId: string
+  ): Promise<SubscriptionCreditPolicy>;
   findReservationByKey(
     reservationKey: string
   ): Promise<LedgerCreditReservation | null>;
@@ -286,6 +289,9 @@ export interface CreditLedgerTransaction
     now: Date
   ): Promise<LedgerCreditGrant[]>;
   listUserGrantsForUpdate(userId: string): Promise<LedgerCreditGrant[]>;
+  getSubscriptionCreditPolicyForUpdate(
+    userId: string
+  ): Promise<SubscriptionCreditPolicy>;
   listUserReservationsForUpdate(
     userId: string
   ): Promise<LedgerCreditReservation[]>;
@@ -347,7 +353,17 @@ export interface CreditLedgerStore extends CreditLedgerReadStore {
 
 export interface CreditLedgerTestStore
   extends CreditLedgerStore,
-    CreditLedgerTransaction {}
+    CreditLedgerTransaction {
+  setSubscriptionCreditPolicy(
+    userId: string,
+    policy: SubscriptionCreditPolicy
+  ): void;
+}
+
+export interface SubscriptionCreditPolicy {
+  restricted: boolean;
+  availableThrough: Date | null;
+}
 
 export interface CreditBalance {
   availableCredits: number;
@@ -525,8 +541,12 @@ export function createCreditLedgerService({
 
     async getCreditBalance(userId: string): Promise<CreditBalance> {
       const currentTime = now();
-      const activeGrants = (await store.listUserGrants(userId)).filter(
-        (grant) => isGrantActive(grant, currentTime)
+      const [grants, subscriptionPolicy] = await Promise.all([
+        store.listUserGrants(userId),
+        store.getSubscriptionCreditPolicy(userId),
+      ]);
+      const activeGrants = grants.filter((grant) =>
+        isCreditGrantAvailable(grant, currentTime, subscriptionPolicy)
       );
       const availableCredits = sumBy(
         activeGrants,
@@ -1493,12 +1513,15 @@ async function rolloverSubscriptionCreditsInTransaction({
   }
 
   await assertUserReservationIntegrity(store, input.userId);
+  const subscriptionPolicy = await store.getSubscriptionCreditPolicyForUpdate(
+    input.userId
+  );
   const sourceGrants = (await store.listUserGrantsForUpdate(input.userId))
     .filter(
       (grant) =>
         grant.catalogId === input.catalogId &&
         grant.rolloverEligible &&
-        isGrantActive(grant, currentTime) &&
+        isCreditGrantAvailable(grant, currentTime, subscriptionPolicy) &&
         grant.remainingCredits > 0
     )
     .sort(compareGrantSpendOrder);
@@ -1980,6 +2003,7 @@ export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
   let transactions: LedgerCreditTransaction[] = [];
   let billingAdjustments: LedgerBillingAdjustment[] = [];
   let billingPaymentStates: LedgerBillingPaymentState[] = [];
+  let subscriptionPolicies = new Map<string, SubscriptionCreditPolicy>();
   let transactionTail = Promise.resolve();
 
   function id(prefix: string) {
@@ -2009,6 +2033,12 @@ export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
         billingPaymentStates: billingPaymentStates.map(
           cloneBillingPaymentState
         ),
+        subscriptionPolicies: new Map(
+          [...subscriptionPolicies].map(([userId, policy]) => [
+            userId,
+            cloneSubscriptionCreditPolicy(policy),
+          ])
+        ),
       };
 
       try {
@@ -2023,6 +2053,7 @@ export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
         transactions = snapshot.transactions;
         billingAdjustments = snapshot.billingAdjustments;
         billingPaymentStates = snapshot.billingPaymentStates;
+        subscriptionPolicies = snapshot.subscriptionPolicies;
         throw error;
       } finally {
         release();
@@ -2097,6 +2128,20 @@ export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
         .filter((grant) => grant.userId === userId)
         .sort((left, right) => left.id.localeCompare(right.id))
         .map(cloneGrant);
+    },
+
+    async getSubscriptionCreditPolicy(userId) {
+      return cloneSubscriptionCreditPolicy(
+        subscriptionPolicies.get(userId) ?? UNRESTRICTED_SUBSCRIPTION_CREDITS
+      );
+    },
+
+    async getSubscriptionCreditPolicyForUpdate(userId) {
+      return store.getSubscriptionCreditPolicy(userId);
+    },
+
+    setSubscriptionCreditPolicy(userId, policy) {
+      subscriptionPolicies.set(userId, cloneSubscriptionCreditPolicy(policy));
     },
 
     async listUserReservationsForUpdate(userId) {
@@ -4116,6 +4161,30 @@ function assertReservationTerminalHistory(
   if (!valid) throw new Error("credit_ledger_reconciliation_required");
 }
 
+const UNRESTRICTED_SUBSCRIPTION_CREDITS: SubscriptionCreditPolicy = {
+  restricted: false,
+  availableThrough: null,
+};
+
+export function isCreditGrantAvailable(
+  grant: LedgerCreditGrant,
+  currentTime: Date,
+  subscriptionPolicy: SubscriptionCreditPolicy
+): boolean {
+  if (!isGrantActive(grant, currentTime)) return false;
+  if (!isSubscriptionDerivedGrant(grant) || !subscriptionPolicy.restricted) {
+    return true;
+  }
+  return Boolean(
+    subscriptionPolicy.availableThrough &&
+      currentTime < subscriptionPolicy.availableThrough
+  );
+}
+
+function isSubscriptionDerivedGrant(grant: LedgerCreditGrant): boolean {
+  return grant.source === "subscription_renewal" || grant.source === "rollover";
+}
+
 function isGrantActive(grant: LedgerCreditGrant, currentTime: Date): boolean {
   return (
     grant.revokedAt === null &&
@@ -4190,6 +4259,17 @@ function cloneBillingPaymentState(
     })),
     createdAt: new Date(state.createdAt),
     updatedAt: new Date(state.updatedAt),
+  };
+}
+
+function cloneSubscriptionCreditPolicy(
+  policy: SubscriptionCreditPolicy
+): SubscriptionCreditPolicy {
+  return {
+    restricted: policy.restricted,
+    availableThrough: policy.availableThrough
+      ? new Date(policy.availableThrough)
+      : null,
   };
 }
 

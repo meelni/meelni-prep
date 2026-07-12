@@ -10,6 +10,9 @@ const dbMocks = vi.hoisted(() => ({
   updateSet: vi.fn(),
   updateWhere: vi.fn(),
 }));
+const stateMocks = vi.hoisted(() => ({
+  reconcile: vi.fn(),
+}));
 
 vi.mock("stripe", () => ({
   default: class StripeMock {
@@ -17,6 +20,9 @@ vi.mock("stripe", () => ({
   },
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/billing/subscription-state", () => ({
+  reconcileProviderCancellationState: stateMocks.reconcile,
+}));
 vi.mock("@/lib/db", () => ({
   db: {
     select: vi.fn(() => ({
@@ -50,6 +56,7 @@ describe("period-end subscription cancellation", () => {
     dbMocks.updateWhere.mockResolvedValue(undefined);
     dbMocks.selectLimit.mockResolvedValue([subscriptionFixture()]);
     stripeMocks.update.mockResolvedValue(providerSubscription(true));
+    stateMocks.reconcile.mockResolvedValue(undefined);
   });
 
   it("rejects the retired immediate-cancellation request before provider work", async () => {
@@ -70,7 +77,7 @@ describe("period-end subscription cancellation", () => {
       cancel_at_period_end: true,
     });
     expect(stripeMocks.cancel).not.toHaveBeenCalled();
-    expect(dbMocks.updateSet).toHaveBeenCalledWith(
+    expect(stateMocks.reconcile).toHaveBeenCalledWith(
       expect.objectContaining({
         cancelAtPeriodEnd: true,
         currentPeriodEnd: PERIOD_END,
@@ -122,7 +129,20 @@ describe("period-end subscription cancellation", () => {
 
     expect(response.status).toBe(500);
     expect(body.error).toMatch(/Failed to cancel/);
-    expect(dbMocks.updateSet).not.toHaveBeenCalled();
+    expect(stateMocks.reconcile).not.toHaveBeenCalled();
+  });
+
+  it("does not persist a provider-confirmed cutoff that has already passed", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    stripeMocks.update.mockResolvedValue({
+      ...providerSubscription(true),
+      items: { data: [{ current_period_end: 1 }] },
+    });
+
+    const response = await POST(request({}));
+
+    expect(response.status).toBe(500);
+    expect(stateMocks.reconcile).not.toHaveBeenCalled();
   });
 
   it("reactivates only by clearing the period-end schedule", async () => {
@@ -138,7 +158,7 @@ describe("period-end subscription cancellation", () => {
       cancel_at_period_end: false,
     });
     expect(stripeMocks.cancel).not.toHaveBeenCalled();
-    expect(dbMocks.updateSet).toHaveBeenCalledWith(
+    expect(stateMocks.reconcile).toHaveBeenCalledWith(
       expect.objectContaining({ cancelAtPeriodEnd: false })
     );
   });
@@ -153,7 +173,7 @@ describe("period-end subscription cancellation", () => {
     const response = await DELETE();
 
     expect(response.status).toBe(500);
-    expect(dbMocks.updateSet).not.toHaveBeenCalled();
+    expect(stateMocks.reconcile).not.toHaveBeenCalled();
   });
 });
 

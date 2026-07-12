@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { z } from "zod";
 import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
+import { reconcileProviderCancellationState } from "@/lib/billing/subscription-state";
 
 // Keep the legacy false value deploy-compatible while rejecting the retired
 // immediate-cancellation path and every unrecognized input.
@@ -112,24 +113,15 @@ export async function POST(req: NextRequest) {
       if (!providerSubscription.cancel_at_period_end) {
         throw new Error("billing_cancel_provider_not_scheduled");
       }
-      const periodEndSeconds =
-        providerSubscription.items.data[0]?.current_period_end;
-      if (!periodEndSeconds || !Number.isSafeInteger(periodEndSeconds)) {
-        throw new Error("billing_cancel_period_end_missing");
-      }
-      const periodEnd = new Date(periodEndSeconds * 1000);
-      if (!Number.isFinite(periodEnd.getTime())) {
-        throw new Error("billing_cancel_period_end_invalid");
-      }
-
-      await db
-        .update(subscription)
-        .set({
-          cancelAtPeriodEnd: true,
-          currentPeriodEnd: periodEnd,
-          updatedAt: new Date(),
-        })
-        .where(eq(subscription.userId, userId));
+      const observedAt = new Date();
+      const periodEnd = providerPeriodEnd(providerSubscription, observedAt);
+      await reconcileProviderCancellationState({
+        userId,
+        stripeSubscriptionId: sub.stripeSubscriptionId,
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: periodEnd,
+        observedAt,
+      });
 
       return cancellationResponse(periodEnd);
     } catch {
@@ -259,15 +251,15 @@ export async function DELETE() {
       if (providerSubscription.cancel_at_period_end) {
         throw new Error("billing_reactivate_provider_not_confirmed");
       }
-
-      // Update database
-      await db
-        .update(subscription)
-        .set({
-          cancelAtPeriodEnd: false,
-          updatedAt: new Date(),
-        })
-        .where(eq(subscription.userId, userId));
+      const observedAt = new Date();
+      const periodEnd = providerPeriodEnd(providerSubscription, observedAt);
+      await reconcileProviderCancellationState({
+        userId,
+        stripeSubscriptionId: sub.stripeSubscriptionId,
+        cancelAtPeriodEnd: false,
+        currentPeriodEnd: periodEnd,
+        observedAt,
+      });
 
       return NextResponse.json({
         success: true,
@@ -288,4 +280,23 @@ export async function DELETE() {
       { status: 500 }
     );
   }
+}
+
+function providerPeriodEnd(
+  providerSubscription: Stripe.Subscription,
+  observedAt: Date
+) {
+  const periodEndSeconds =
+    providerSubscription.items.data[0]?.current_period_end;
+  if (!periodEndSeconds || !Number.isSafeInteger(periodEndSeconds)) {
+    throw new Error("billing_subscription_period_end_missing");
+  }
+  const periodEnd = new Date(periodEndSeconds * 1000);
+  if (!Number.isFinite(periodEnd.getTime())) {
+    throw new Error("billing_subscription_period_end_invalid");
+  }
+  if (periodEnd <= observedAt) {
+    throw new Error("billing_subscription_period_end_not_future");
+  }
+  return periodEnd;
 }

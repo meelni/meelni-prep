@@ -400,6 +400,11 @@ Cancellation is period-end only. The customer keeps subscription access and
 otherwise valid unused credits through the current paid-through date, and
 Stripe must receive only `cancel_at_period_end: true`. The cancellation path
 does not create prorations, customer-balance compensation, or card refunds.
+At the exact provider timestamp (`now >= current_period_end`), subscription
+renewal and rollover grants stop being spendable even if a deletion webhook is
+late. Trial, pass/checkout, admin, refund, and migration grants keep their own
+expiry semantics. Reactivation before the cutoff removes only this subscription
+restriction.
 
 Before launch, use Stripe test mode to prove:
 
@@ -414,3 +419,6 @@ Before launch, use Stripe test mode to prove:
 Exceptional refunds require a separate manual support decision. Real manual or
 provider-originated refund/dispute webhooks still reconcile paid credits; they
 are not part of subscription cancellation.
+
+See [Manual Exceptional Refunds](./manual-exceptional-refunds.md) for the
+human-owned, non-automated support procedure.
