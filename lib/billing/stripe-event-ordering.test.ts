@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { shouldApplyStripeSubscriptionState } from "./stripe-event-ordering";
+import {
+  monotonicStripeEventTimestamp,
+  shouldApplyStripeSubscriptionState,
+} from "./stripe-event-ordering";
 
 const at = (seconds: number) => new Date(seconds * 1000);
 
@@ -25,6 +28,23 @@ test("newer subscription state applies and older state is rejected", () => {
       eventTimestamp: at(9),
       incomingStripeSubscriptionId: "sub_current",
       lastEventTimestamp: at(10),
+    }),
+    false
+  );
+});
+
+test("reordered current-period invoice acceptance never reopens the event fence", () => {
+  const currentFence = at(20);
+  const preservedFence = monotonicStripeEventTimestamp(currentFence, at(10));
+  assert.equal(preservedFence, currentFence);
+  assert.equal(
+    shouldApplyStripeSubscriptionState({
+      currentStatus: "active",
+      currentStripeSubscriptionId: "sub_current",
+      event: "invoice_failed",
+      eventTimestamp: at(15),
+      incomingStripeSubscriptionId: "sub_current",
+      lastEventTimestamp: preservedFence,
     }),
     false
   );

@@ -8,6 +8,7 @@ import {
   reconcileVersionedProviderMutation,
   retrieveAuthoritativeSubscription,
   shouldApplyAuthoritativeProviderSnapshot,
+  subscriptionMutationIdempotencyKey,
 } from "./subscription-state";
 
 const PERIOD_END = new Date("2026-08-01T12:00:00.000Z");
@@ -27,6 +28,38 @@ test("provider cancellation observations advance version without inventing a pro
   assert.equal(
     next.lastEventTimestamp?.toISOString(),
     "2026-07-12T06:20:09.000Z"
+  );
+});
+
+test("direct provider mutation keys bind account version and action", () => {
+  const cancel = subscriptionMutationIdempotencyKey({
+    userId: "user-1",
+    version: 7,
+    action: "cancel",
+  });
+  assert.equal(
+    cancel,
+    subscriptionMutationIdempotencyKey({
+      userId: "user-1",
+      version: 7,
+      action: "cancel",
+    })
+  );
+  assert.notEqual(
+    cancel,
+    subscriptionMutationIdempotencyKey({
+      userId: "user-1",
+      version: 7,
+      action: "reactivate",
+    })
+  );
+  assert.notEqual(
+    cancel,
+    subscriptionMutationIdempotencyKey({
+      userId: "user-1",
+      version: 8,
+      action: "cancel",
+    })
   );
 });
 

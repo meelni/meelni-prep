@@ -19,7 +19,10 @@ import {
   createDrizzleCreditLedgerStore,
   createDrizzleCreditLedgerStoreForLockedTransaction,
 } from "@/lib/billing/credit-ledger-store";
-import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
+import {
+  monotonicStripeEventTimestamp,
+  shouldApplyStripeSubscriptionState,
+} from "@/lib/billing/stripe-event-ordering";
 import { applyCurrentSubscriptionInvoice } from "@/lib/billing/subscription-invoice";
 import {
   getMappedStripeCustomerUserId,
@@ -884,7 +887,10 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
           .set({
             status: "active",
             gracePeriodEnd: null,
-            lastEventTimestamp: eventTimestamp,
+            lastEventTimestamp: monotonicStripeEventTimestamp(
+              currentSub!.lastEventTimestamp,
+              eventTimestamp
+            ),
             currentPeriodStart: invoicePeriodStart,
             currentPeriodEnd: invoicePeriodEnd,
             version: currentSub!.version + 1,

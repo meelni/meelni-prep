@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { subscription } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { stripeCustomerMapping, subscription } from "@/lib/db/schema";
+import { desc, eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { z } from "zod";
 import {
@@ -14,10 +14,17 @@ import { obtainCheckoutSessionUnlessDeleting } from "@/lib/billing/account-delet
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import {
   obtainSerializedSubscriptionCheckout,
+  subscriptionCustomerIdempotencyKey,
   subscriptionCheckoutExpiryIdempotencyKey,
   type SubscriptionCheckoutState,
 } from "@/lib/billing/subscription-checkout";
-import { lockBillingUserUnlessDeleting } from "@/lib/billing/subscription-state";
+import {
+  BillingAccountBusyError,
+  tryLockBillingUserUnlessDeleting,
+} from "@/lib/billing/subscription-state";
+
+const SUBSCRIPTION_CHECKOUT_PROVIDER_DEADLINE_MS = 90_000;
+const SUBSCRIPTION_CHECKOUT_PROVIDER_CALL_TIMEOUT_MS = 10_000;
 
 // Request validation schema
 const checkoutSchema = z.object({
@@ -62,17 +69,30 @@ export async function POST(req: NextRequest) {
       if (catalogId !== "starter" && catalogId !== "pro") {
         throw new Error("billing_subscription_catalog_invalid");
       }
+      const providerDeadline = createProviderDeadline(
+        SUBSCRIPTION_CHECKOUT_PROVIDER_DEADLINE_MS
+      );
       const checkout = await obtainSerializedSubscriptionCheckout({
         userId,
         catalogId,
+        priceId,
         withUserLock: (work) =>
           db.transaction(async (tx) => {
-            await lockBillingUserUnlessDeleting(tx, userId);
+            await tryLockBillingUserUnlessDeleting(tx, userId);
             const readState = async (): Promise<SubscriptionCheckoutState> => {
               const [row] = await tx
                 .select()
                 .from(subscription)
                 .where(eq(subscription.userId, userId))
+                .limit(1)
+                .for("update");
+              const [mapping] = await tx
+                .select({
+                  stripeCustomerId: stripeCustomerMapping.stripeCustomerId,
+                })
+                .from(stripeCustomerMapping)
+                .where(eq(stripeCustomerMapping.userId, userId))
+                .orderBy(desc(stripeCustomerMapping.updatedAt))
                 .limit(1)
                 .for("update");
               return row
@@ -81,22 +101,57 @@ export async function POST(req: NextRequest) {
                     tier: row.tier,
                     status: row.status,
                     cancelAtPeriodEnd: row.cancelAtPeriodEnd,
-                    stripeCustomerId: row.stripeCustomerId,
+                    stripeCustomerId:
+                      row.stripeCustomerId ?? mapping?.stripeCustomerId ?? null,
                     stripeSubscriptionId: row.stripeSubscriptionId,
                   }
-                : emptySubscriptionCheckoutState();
+                : {
+                    ...emptySubscriptionCheckoutState(),
+                    stripeCustomerId: mapping?.stripeCustomerId ?? null,
+                  };
             };
-            return work(readState);
+            const recordCustomerId = async (customerId: string) => {
+              const [existing] = await tx
+                .select({ userId: stripeCustomerMapping.userId })
+                .from(stripeCustomerMapping)
+                .where(eq(stripeCustomerMapping.stripeCustomerId, customerId))
+                .limit(1)
+                .for("update");
+              if (existing && existing.userId !== userId) {
+                throw new Error("billing_subscription_customer_owner_mismatch");
+              }
+              if (!existing) {
+                await tx.insert(stripeCustomerMapping).values({
+                  stripeCustomerId: customerId,
+                  stripeSubscriptionId: null,
+                  userId,
+                });
+              }
+            };
+            return work({ readState, recordCustomerId });
           }),
+        createCustomer: async () => {
+          const customer = await stripe.customers.create(
+            {
+              ...(userEmail ? { email: userEmail } : {}),
+              metadata: { userId },
+            },
+            {
+              idempotencyKey: subscriptionCustomerIdempotencyKey(userId),
+              timeout: providerDeadline.timeout(),
+            }
+          );
+          return customer.id;
+        },
         hasProviderActiveSubscription: async (customerId) => {
           const [active, trialing] = await Promise.all([
             stripe.subscriptions.list(
               { customer: customerId, status: "active", limit: 1 },
-              { timeout: 10_000 }
+              { timeout: providerDeadline.timeout() }
             ),
             stripe.subscriptions.list(
               { customer: customerId, status: "trialing", limit: 1 },
-              { timeout: 10_000 }
+              { timeout: providerDeadline.timeout() }
             ),
           ]);
           return active.data.length > 0 || trialing.data.length > 0;
@@ -104,7 +159,7 @@ export async function POST(req: NextRequest) {
         listOpenSessions: async (customerId) => {
           const sessions = await stripe.checkout.sessions.list(
             { customer: customerId, status: "open", limit: 100 },
-            { timeout: 10_000 }
+            { timeout: providerDeadline.timeout() }
           );
           if (sessions.has_more) {
             throw new Error("billing_checkout_open_sessions_incomplete");
@@ -117,6 +172,7 @@ export async function POST(req: NextRequest) {
               catalogId: session.metadata?.catalogId ?? null,
               userId:
                 session.metadata?.userId ?? session.client_reference_id ?? null,
+              customerId: getStripeCustomerId(session.customer) ?? customerId,
             }));
         },
         createSession: async (idempotencyKey, customerId) => {
@@ -130,13 +186,14 @@ export async function POST(req: NextRequest) {
               metadata,
               existingStripeCustomerId: customerId,
             }),
-            { idempotencyKey, timeout: 10_000 }
+            { idempotencyKey, timeout: providerDeadline.timeout() }
           );
           return {
             id: session.id,
             url: session.url,
             catalogId,
             userId,
+            customerId: getStripeCustomerId(session.customer) ?? customerId,
           };
         },
         expireSession: (sessionId) =>
@@ -147,7 +204,7 @@ export async function POST(req: NextRequest) {
               {
                 idempotencyKey:
                   subscriptionCheckoutExpiryIdempotencyKey(sessionId),
-                timeout: 10_000,
+                timeout: providerDeadline.timeout(),
               }
             )
             .then(() => undefined),
@@ -240,12 +297,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (error instanceof BillingAccountBusyError) {
+      return billingBusyResponse();
+    }
+
     console.error("[Checkout] Checkout session request failed");
     return NextResponse.json(
       { error: "Failed to create checkout session" },
       { status: 500 }
     );
   }
+}
+
+function createProviderDeadline(totalMs: number) {
+  const expiresAt = Date.now() + totalMs;
+  return {
+    timeout() {
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) {
+        throw new Error("billing_subscription_provider_deadline_exceeded");
+      }
+      return Math.max(
+        1,
+        Math.min(SUBSCRIPTION_CHECKOUT_PROVIDER_CALL_TIMEOUT_MS, remaining)
+      );
+    },
+  };
+}
+
+function getStripeCustomerId(
+  customer: string | Stripe.Customer | Stripe.DeletedCustomer | null
+) {
+  return customer
+    ? typeof customer === "string"
+      ? customer
+      : customer.id
+    : null;
 }
 
 function checkoutSessionParams({
@@ -325,6 +412,17 @@ function accountDeletionPendingResponse() {
         "Checkout is unavailable because account deletion is already in progress.",
     },
     { status: 409 }
+  );
+}
+
+function billingBusyResponse() {
+  return NextResponse.json(
+    {
+      error: "billing_account_busy",
+      message: "Another billing request is already in progress. Please retry.",
+      retryable: true,
+    },
+    { status: 409, headers: { "Retry-After": "1" } }
   );
 }
 

@@ -421,12 +421,13 @@ for an older/replaced subscription can still be recorded idempotently in
 payment history but grants zero entitlement.
 
 Webhook ordering uses Stripe's event creation timestamp; local observation time
-must not advance that provider fence. A direct cancellation or reactivation has
-no provider event timestamp, so it preserves the existing provider fence and
-uses the locked subscription version as its concurrency boundary. If a webhook
-wins that race, retrieve the same provider subscription and retry the
-version-checked reconciliation from authoritative truth. Retry only a bounded
-number of times and fail closed if the provider read or convergence fails.
+must not advance that provider fence, and an accepted reordered invoice must
+not move it backward. A direct cancellation or reactivation has no provider
+event timestamp, so it preserves the existing provider fence. It takes the
+immediate account mutation lock before reading state or calling Stripe and uses
+a deterministic user/version/action idempotency key plus a ten-second provider
+timeout. A concurrent loser gets `billing_account_busy` with `Retry-After`; a
+later exact replay sees committed state and performs no provider mutation.
 
 For invoice entitlement, require the currently locked subscription resource, a
 supported subscription billing reason, and valid invoice/current periods. An
@@ -436,14 +437,19 @@ to a later period additionally requires an event newer than the stored provider
 fence. Older periods, terminal subscriptions, and replaced resources grant and
 roll zero credits.
 
-Subscription Checkout takes the same per-user advisory lock before the billing
-row lock used by webhook and cancellation paths. Hold that serialization
-boundary through provider active-subscription and open-session checks, Checkout
-creation, and the final local-state recheck. Use a deterministic idempotency key
-from the user and locked billing-state version (shared across plan choices for
-that version); if local state changes after creation, expire the session and
-return no Checkout URL. Provider reads and writes are time-bounded and ambiguous
-pagination fails closed.
+Subscription Checkout tries the same per-user advisory lock before the account,
+mapping, and billing row locks used by webhook and cancellation paths. A loser
+returns immediate retry backpressure instead of waiting while holding a pooled
+database connection. The winner may hold one connection while it creates or
+recovers the user's mapped Stripe customer, checks active/trialing subscriptions
+and open sessions, creates Checkout, and rechecks provider and local truth. Each
+provider call is capped at ten seconds within a ninety-second aggregate
+deadline. Each actual creation attempt uses one user/plan/price/nonce
+idempotency key and retries an ambiguous create once with that exact key.
+Concurrent calls reuse the winning mapped customer's open session; after an
+abandoned or expired session, a new attempt gets a new key, including when the
+user switches plans. Provider or local drift after create/reuse expires and
+withholds the candidate. Ambiguous pagination fails closed.
 
 Renewal and rollover analytics are post-commit effects. The locked renewal
 transaction returns the effect description, and the webhook emits it only after
@@ -463,10 +469,10 @@ Before launch, use Stripe test mode to prove:
   credits, while reordered exact-current-period and duplicate current-resource
   events grant at most once;
 - concurrent same-plan and different-plan subscription Checkout requests create
-  at most one provider session for one locked billing-state version, and a
-  post-create state change expires and withholds that session;
-- a webhook racing cancellation/reactivation converges through a fresh bounded
-  provider read without moving the provider-event fence to local clock time;
+  at most one open provider session, expired attempts can be replaced, and
+  provider/local post-create drift expires and withholds the candidate;
+- concurrent cancellation/reactivation duplicates produce one provider
+  mutation at most, and no direct observation moves the provider-event fence;
 - a rolled-back renewal emits no renewal or rollover analytics;
 - account deletion cancels provider resources without automatically refunding
   invoices, charges, or PaymentIntents.
