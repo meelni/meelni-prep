@@ -206,6 +206,44 @@ test("startAttemptId is required before any start mutation", async () => {
   assert.deepEqual(fixture.calls, []);
 });
 
+test("terminal cleanup wins when the session ends while provider creation is in flight", async () => {
+  const fixture = createFixture({ terminalDuringProvider: true });
+
+  const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.equal(result.ok, false);
+  if (!result.ok)
+    assert.equal(result.body.error, "interview_start_acknowledgement_pending");
+  assert.deepEqual(fixture.tokenTtls, []);
+  assert.equal(
+    fixture.calls.filter((call) => call === "terminate-room").length,
+    1
+  );
+  assert.equal(
+    fixture.calls.filter((call) => call === "settle-credit").length,
+    1
+  );
+});
+
+test("deadline cleanup wins during token signing and withholds late credentials", async () => {
+  const fixture = createFixture({ expireDuringToken: true });
+
+  const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.equal(result.ok, false);
+  if (!result.ok)
+    assert.equal(result.body.error, "interview_start_not_joinable");
+  assert.equal(fixture.tokenTtls.length, 1);
+  assert.equal(
+    fixture.calls.filter((call) => call === "terminate-room").length,
+    1
+  );
+  assert.equal(
+    fixture.calls.filter((call) => call === "settle-credit").length,
+    1
+  );
+});
+
 function input(
   overrides: Partial<StartInterviewSessionInput> = {}
 ): StartInterviewSessionInput {
@@ -246,6 +284,8 @@ function createFixture({
   releaseFailures = 0,
   acknowledgementCommitThenThrow = 0,
   acknowledgementLeaseLost = 0,
+  terminalDuringProvider = false,
+  expireDuringToken = false,
 } = {}) {
   const calls: string[] = [];
   const reservations: ReserveCreditInput[] = [];
@@ -262,6 +302,7 @@ function createFixture({
   const store = createMemoryStartStore({
     acknowledgementCommitThenThrow,
     acknowledgementLeaseLost,
+    now: () => currentTime,
   });
   const deps: StartInterviewSessionDeps = {
     startStore: store,
@@ -299,10 +340,17 @@ function createFixture({
     markRoomCleanupComplete: async () => undefined,
     completeRoomProvisioning: async () => true,
     markRoomProvisioningSettled: async () => undefined,
+    settleCredit: async () => {
+      calls.push("settle-credit");
+    },
     livekitProvider: {
       startInterviewRoom: async (providerInput) => {
         calls.push("provider");
         metadata = providerInput.metadata as Record<string, unknown>;
+        if (terminalDuringProvider && store.current) {
+          store.current.lifecycleState = "completed";
+          store.current.endedAt = currentTime;
+        }
         if (remainingProviderFailures-- > 0) {
           return {
             ok: false as const,
@@ -338,6 +386,9 @@ function createFixture({
     },
     issueParticipantToken: async (tokenInput) => {
       tokenTtls.push(tokenInput.ttlSeconds);
+      if (expireDuringToken) {
+        currentTime = tokenInput.expiresAt;
+      }
       return {
         ok: true,
         provider: "livekit",
@@ -416,6 +467,7 @@ function createFixture({
 function createMemoryStartStore({
   acknowledgementCommitThenThrow = 0,
   acknowledgementLeaseLost = 0,
+  now = () => STARTED_AT,
 } = {}): InterviewStartStore & {
   current: PersistedStableInterviewStart | null;
 } {
@@ -471,6 +523,18 @@ function createMemoryStartStore({
       if (store.current.provisioningState === "failed") {
         throw new InterviewStartFailedError();
       }
+      if (
+        store.current.endedAt !== null ||
+        !["created", "connecting", "active", "reconnecting"].includes(
+          store.current.lifecycleState
+        ) ||
+        now().getTime() >= input.deadlineAt.getTime()
+      ) {
+        return {
+          disposition: "not_joinable",
+          start: structuredClone(store.current),
+        };
+      }
       if (store.current.provisioningState === "ready") {
         return { disposition: "ready", start: structuredClone(store.current) };
       }
@@ -486,12 +550,42 @@ function createMemoryStartStore({
       if (remainingAcknowledgementLeaseLost-- > 0) {
         throw new InterviewProvisioningLeaseLostError();
       }
+      if (
+        store.current.endedAt !== null ||
+        !["connecting", "active", "reconnecting"].includes(
+          store.current.lifecycleState
+        ) ||
+        now().getTime() >= input.deadlineAt.getTime()
+      ) {
+        throw new InterviewProvisioningLeaseLostError();
+      }
       store.current.provisioningState = "ready";
       store.current.provisionedAt = input.provisionedAt;
       if (remainingAcknowledgementCommitThenThrow-- > 0) {
         throw new Error("provisioning acknowledgement was lost");
       }
       return structuredClone(store.current);
+    },
+    async authorizeProvisioned(input) {
+      if (!store.current) throw new Error("missing start");
+      if (
+        store.current.userId !== input.userId ||
+        store.current.requestFingerprint !== input.requestFingerprint
+      ) {
+        throw new InterviewStartConflictError();
+      }
+      const databaseNow = now();
+      return {
+        start: structuredClone(store.current),
+        databaseNow,
+        joinable:
+          store.current.provisioningState === "ready" &&
+          store.current.endedAt === null &&
+          ["connecting", "active", "reconnecting"].includes(
+            store.current.lifecycleState
+          ) &&
+          databaseNow.getTime() < input.deadlineAt.getTime(),
+      };
     },
     async releaseProvisioningClaim() {
       if (store.current) store.current.provisioningState = "pending";

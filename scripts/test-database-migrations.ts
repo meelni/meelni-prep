@@ -3470,7 +3470,7 @@ async function verifyStableStartConcurrency(
     "52000000-0000-4000-8000-000000000004",
     "52000000-0000-4000-8000-000000000005",
   ];
-  const now = new Date("2026-07-10T12:00:00.000Z");
+  const now = new Date();
   const clients = Array.from({ length: 6 }, () =>
     postgres(databaseUrl, { max: 1, prepare: false })
   );
@@ -3581,14 +3581,21 @@ async function verifyStableStartConcurrency(
     });
 
     const expiredLeaseId = "f8888888-8888-4888-8888-888888888888";
+    const provisioningDeadlineAt = new Date(now.getTime() + 30 * 60_000);
     const provisioningClaim = await startStores[0]!.claimProvisioning({
       startAttemptId: sameAttempt,
       userId: sameUser,
       requestFingerprint: "c".repeat(64),
       leaseId: expiredLeaseId,
       now,
+      deadlineAt: provisioningDeadlineAt,
     });
     assert.equal(provisioningClaim.disposition, "claimed");
+    await sql`
+      UPDATE interview_session
+      SET provisioning_lease_expires_at = CURRENT_TIMESTAMP - interval '1 second'
+      WHERE id = ${sameAttempt}::uuid
+    `;
     await assert.rejects(
       () =>
         startStores[1]!.markProvisioned({
@@ -3597,6 +3604,7 @@ async function verifyStableStartConcurrency(
           provisionedAt: new Date(
             now.getTime() + INTERVIEW_PROVISIONING_LEASE_MS
           ),
+          deadlineAt: provisioningDeadlineAt,
         }),
       InterviewProvisioningLeaseLostError
     );
