@@ -35,7 +35,7 @@ test("terminal room cleanup deletes once and clears durable intent", async () =>
     disposition: "already_clean",
     room: null,
   });
-  assert.deepEqual(fixture.calls, ["terminate", "clear"]);
+  assert.deepEqual(fixture.calls, ["attempt", "terminate", "clear"]);
 });
 
 test("provider failure preserves durable cleanup intent for recovery", async () => {
@@ -58,7 +58,7 @@ test("provider failure preserves durable cleanup intent for recovery", async () 
     /room cleanup failed/
   );
   assert.equal(fixture.current.roomCleanupPending, true);
-  assert.deepEqual(fixture.calls, ["terminate"]);
+  assert.deepEqual(fixture.calls, ["attempt", "terminate"]);
 });
 
 test("terminal cleanup recovers a quarantined room without a start time", async () => {
@@ -71,7 +71,7 @@ test("terminal cleanup recovers a quarantined room without a start time", async 
   );
 
   assert.equal(result.ok, true);
-  assert.deepEqual(fixture.calls, ["terminate", "clear"]);
+  assert.deepEqual(fixture.calls, ["attempt", "terminate", "clear"]);
   assert.equal(fixture.current.roomCleanupPending, false);
 });
 
@@ -119,6 +119,19 @@ function createFixture(): {
         roomCleanupPending: false,
       };
     },
+    markRoomCleanupAttempted: async () => {
+      calls.push("attempt");
+    },
+    markPresenceReconciled: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
+    recoverFromPresence: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
   };
   return {
     calls,
@@ -137,6 +150,7 @@ function createFixture(): {
           disposition: "deleted" as const,
         });
       },
+      now: () => new Date("2026-07-10T08:00:05.000Z"),
     },
   };
 }
@@ -156,6 +170,8 @@ function createSession(): InterviewReconnectSession {
     lastTransitionAt: new Date("2026-07-10T08:00:00.000Z"),
     reconnectDeadlineAt: null,
     roomCleanupPending: true,
+    roomCleanupAttemptedAt: null,
+    presenceReconciledAt: null,
     lastTransportEventAt: new Date("2026-07-10T07:45:00.000Z"),
     lastTransportEventId: "candidate-joined",
     lastTransportEventName: "participant_joined",

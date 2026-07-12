@@ -39,6 +39,7 @@ export interface EnforceInterviewDeadlineDeps {
   endInvalidSession(sessionId: string): Promise<EndInterviewSessionResult>;
   terminateRoom(input: {
     roomName: string;
+    participantIdentity: string;
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<TerminatedInterviewRoom>>;
   markRoomCleanupComplete(sessionId: string): Promise<void>;
@@ -105,6 +106,7 @@ export async function enforceInterviewDeadlineWorkflow(
   if (session.roomName) {
     const terminated = await deps.terminateRoom({
       roomName: session.roomName,
+      participantIdentity: session.userId,
       env: input.env,
     });
     if (terminated.ok) {
@@ -157,6 +159,7 @@ export async function quarantineInvalidInterviewSessionWorkflow(
   if (session.roomName) {
     const terminated = await deps.terminateRoom({
       roomName: session.roomName,
+      participantIdentity: session.userId,
       env: input.env,
     });
     if (terminated.ok) {

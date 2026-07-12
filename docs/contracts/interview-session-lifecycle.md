@@ -24,6 +24,8 @@ A lifecycle-aware session exposes these domain facts:
 | `reconnectDeadlineAt`                                                      | Immutable deadline for the accepted reconnect generation and durable room-cleanup marker; cleared on recovery or successful room deletion. A null value while reconnecting means the hard deadline owns expiry.                                                                      |
 | `runtimeReadyAt`                                                           | First signed provider evidence that the dispatched interviewer runtime is active. Initial activation also requires current candidate presence.                                                                                                                                       |
 | `roomCleanupPending`                                                       | Durable provider-cleanup intent set by terminal settlement when a room exists; cleared only after idempotent room deletion succeeds.                                                                                                                                                 |
+| `roomCleanupAttemptedAt`                                                   | Fairness cursor updated before each provider cleanup attempt so one failing room cannot starve older or never-attempted terminal rooms.                                                                                                                                              |
+| `presenceReconciledAt`                                                     | Fairness cursor for authoritative participant-list reconciliation. It is not transport-event ordering evidence and never changes lifecycle state by itself.                                                                                                                          |
 | `lastTransportEventAt` / `lastTransportEventId` / `lastTransportEventName` | Signed candidate-presence ordering and replay evidence. These values never replace the lifecycle version as the write-conflict authority.                                                                                                                                            |
 | `runtimeRef`                                                               | Provider-neutral `{ provider, id }` correlation. Provider-specific room fields are adapter compatibility only.                                                                                                                                                                       |
 
@@ -166,8 +168,15 @@ overriding a later join.
 
 The accepted reconnecting lifecycle version is the generation fence. The
 grace event carries that version and the exact stored deadline. At expiry the
-worker atomically claims provisional `ending (disconnect_timeout)` only while
-all three facts still match. Before terminalization, insufficient durable
+worker first checks authoritative candidate presence. Current presence repairs
+a missed join through the same lifecycle-version and deadline compare-and-set;
+provider read failure leaves the session reconnecting for retry. Confirmed
+absence allows the worker to atomically claim provisional
+`ending (disconnect_timeout)` only while all three facts still match. The claim
+is followed by candidate-token revocation, room deletion, and a bounded
+two-second transcript drain. One durable validation snapshot both selects any
+reason refinement and drives finalization; completion does not revalidate that
+snapshot. Before terminalization, insufficient durable
 signal may refine that provisional reason exactly once through a compare-and-set
 that also matches the prior `disconnect_timeout` reason and lifecycle version.
 It can never refine `insufficient_signal` back to `disconnect_timeout`.
@@ -176,18 +185,28 @@ completed or abandoned terminal settlement commits first.
 A restored session, later disconnect generation, user end, or hard deadline
 makes the old event stale before any room deletion. Inngest sleeps to the exact
 deadline, and a five-minute recovery scan re-emits distinct deliveries for
-missing schedules or already-claimed retries. The reconnect deadline also acts
-as a durable room-cleanup marker after terminal settlement; it is cleared only
-after idempotent LiveKit deletion succeeds, so recovery continues after
+missing schedules or already-claimed retries. The reconnect deadline remains
+durable schedule evidence after terminal settlement; room cleanup has its own
+explicit pending marker and fair retry cursor, so recovery continues after
 provider retries are exhausted.
+
+LiveKit webhooks are best-effort delivery. A bounded one-minute recovery scan
+lists provider participants for active and reconnecting voice sessions, with
+never-checked and least-recently-checked sessions first. Confirmed absence from
+an active room synthesizes one ordered candidate-loss observation; confirmed
+presence in reconnecting repairs a missed join by version/deadline CAS. A stale
+scan cannot overwrite a newer lifecycle version, and a provider read failure
+never invents absence.
 
 Every terminal path also sets `roomCleanupPending` when a LiveKit room exists.
 User end attempts cleanup immediately but still returns committed terminal
 truth if the provider is unavailable. Hard-deadline and reconnect workers clear
-the same marker after acknowledged deletion. A five-minute terminal-room
-recovery scan retries any remaining marker independently of reconnect state or
-deadline, preventing a retained agent or issued token from surviving an
-exhausted provider retry window.
+the same marker after acknowledged deletion. Cleanup removes the candidate with
+an explicit token-revocation timestamp before deleting the room; room absence
+is idempotent success. A five-minute terminal-room recovery scan fans each
+pending room into an independently retryable event and prioritizes never-tried,
+then least-recently-tried work, preventing one poison room from starving peers
+or a retained agent or issued token from surviving an exhausted retry window.
 
 Browser history contains only `sessionId`. Reload requests a fresh short-lived
 participant token from the owned session; it never creates a room, redispatches

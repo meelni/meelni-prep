@@ -469,6 +469,8 @@ function createSession(
     lastTransitionAt: new Date("2026-07-10T07:45:02.000Z"),
     reconnectDeadlineAt: null,
     roomCleanupPending: false,
+    roomCleanupAttemptedAt: null,
+    presenceReconciledAt: null,
     lastTransportEventAt: null,
     lastTransportEventId: null,
     lastTransportEventName: "participant_joined",
@@ -563,6 +565,17 @@ function createFixture(
       return { applied: true, current };
     },
     markRoomCleanupComplete: async () => undefined,
+    markRoomCleanupAttempted: async () => undefined,
+    markPresenceReconciled: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
+    recoverFromPresence: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
     claimTimeout: async () => ({ applied: false, reason: "conflict", current }),
     refineTimeoutClaim: async () => ({
       applied: false,

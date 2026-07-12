@@ -55,12 +55,19 @@ export interface IssuedInterviewParticipantToken {
 
 export interface TerminateInterviewRoomInput {
   roomName: string;
+  participantIdentity: string;
+  revokedAt?: Date;
   env: LiveKitEnvironment;
 }
 
 export interface TerminatedInterviewRoom {
   roomName: string;
   disposition: "deleted" | "already_absent";
+}
+
+export interface InterviewParticipantPresence {
+  present: boolean;
+  joinedAt: Date | null;
 }
 
 export interface LiveKitInterviewProvider {
@@ -113,6 +120,18 @@ interface RoomServiceClientLike {
     departureTimeout: number;
   }): Promise<unknown>;
   deleteRoom?(roomName: string): Promise<void>;
+  removeParticipant?(
+    roomName: string,
+    identity: string,
+    options?: { revokeTokenTs?: bigint }
+  ): Promise<void>;
+  listParticipants?(roomName: string): Promise<
+    Array<{
+      identity: string;
+      state: number;
+      joinedAtMs: bigint;
+    }>
+  >;
 }
 
 type RoomServiceClientFactory = (
@@ -345,6 +364,7 @@ export async function terminateInterviewRoom(
   {
     roomServiceClientFactory = (url, apiKey, apiSecret) =>
       new RoomServiceClient(url, apiKey, apiSecret),
+    now = () => new Date(),
   }: LiveKitProviderDependencies = {}
 ): Promise<ProviderResult<TerminatedInterviewRoom>> {
   const roomClient = roomServiceClientFactory(
@@ -353,12 +373,41 @@ export async function terminateInterviewRoom(
     input.env.apiSecret
   );
 
-  if (!roomClient.deleteRoom) {
+  if (!roomClient.deleteRoom || !roomClient.removeParticipant) {
     return providerFailure("livekit", {
-      code: "livekit_room_delete_unsupported",
-      message: "The LiveKit room adapter cannot delete rooms.",
+      code: "livekit_room_termination_unsupported",
+      message: "The LiveKit room adapter cannot revoke and delete rooms.",
       retryable: false,
     });
+  }
+
+  const revokedAt = input.revokedAt ?? now();
+  if (
+    !input.participantIdentity.trim() ||
+    !Number.isFinite(revokedAt.getTime())
+  ) {
+    return providerFailure("livekit", {
+      code: "livekit_participant_revoke_invalid",
+      message: "The LiveKit participant revocation input is invalid.",
+      retryable: false,
+    });
+  }
+
+  try {
+    await roomClient.removeParticipant(
+      input.roomName,
+      input.participantIdentity,
+      { revokeTokenTs: BigInt(Math.floor(revokedAt.getTime() / 1_000) + 1) }
+    );
+  } catch (error) {
+    if (!isLiveKitNotFoundError(error)) {
+      return providerFailure("livekit", {
+        code: "livekit_participant_revoke_failed",
+        message: getErrorMessage(error),
+        retryable: true,
+        cause: error,
+      });
+    }
   }
 
   try {
@@ -377,6 +426,57 @@ export async function terminateInterviewRoom(
 
     return providerFailure("livekit", {
       code: "livekit_room_delete_failed",
+      message: getErrorMessage(error),
+      retryable: true,
+      cause: error,
+    });
+  }
+}
+
+export async function inspectInterviewParticipantPresence(
+  input: {
+    roomName: string;
+    participantIdentity: string;
+    env: LiveKitEnvironment;
+  },
+  {
+    roomServiceClientFactory = (url, apiKey, apiSecret) =>
+      new RoomServiceClient(url, apiKey, apiSecret),
+  }: LiveKitProviderDependencies = {}
+): Promise<ProviderResult<InterviewParticipantPresence>> {
+  const roomClient = roomServiceClientFactory(
+    input.env.url,
+    input.env.apiKey,
+    input.env.apiSecret
+  );
+  if (!roomClient.listParticipants) {
+    return providerFailure("livekit", {
+      code: "livekit_participant_presence_unsupported",
+      message: "The LiveKit room adapter cannot inspect participant presence.",
+      retryable: false,
+    });
+  }
+
+  try {
+    const participants = await roomClient.listParticipants(input.roomName);
+    const participant = participants.find(
+      (candidate) => candidate.identity === input.participantIdentity
+    );
+    const present = Boolean(participant && participant.state !== 3);
+    const joinedAtMs = participant ? Number(participant.joinedAtMs) : 0;
+    return providerSuccess("livekit", {
+      present,
+      joinedAt:
+        present && Number.isSafeInteger(joinedAtMs) && joinedAtMs > 0
+          ? new Date(joinedAtMs)
+          : null,
+    });
+  } catch (error) {
+    if (isLiveKitNotFoundError(error)) {
+      return providerSuccess("livekit", { present: false, joinedAt: null });
+    }
+    return providerFailure("livekit", {
+      code: "livekit_participant_presence_failed",
       message: getErrorMessage(error),
       retryable: true,
       cause: error,

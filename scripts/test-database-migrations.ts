@@ -1254,6 +1254,34 @@ async function verifyDatabase(sql: postgres.Sql) {
   `;
   assert.equal(lifecycleIndexes.length, 2);
 
+  const reconnectColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'interview_session'
+      AND column_name IN (
+        'reconnect_deadline_at', 'room_cleanup_pending',
+        'room_cleanup_attempted_at', 'presence_reconciled_at',
+        'runtime_ready_at', 'last_transport_event_at',
+        'last_transport_event_id', 'last_transport_event_name'
+      )
+    ORDER BY column_name
+  `;
+  assert.equal(reconnectColumns.length, 8);
+
+  const reconnectIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'interview_session_reconnect_deadline_idx',
+        'interview_session_presence_reconciliation_idx',
+        'interview_session_room_cleanup_recovery_idx'
+      )
+    ORDER BY indexname
+  `;
+  assert.equal(reconnectIndexes.length, 3);
+
   const completionColumns = await sql<{ column_name: string }[]>`
     SELECT column_name
     FROM information_schema.columns

@@ -103,6 +103,7 @@ export interface StartInterviewSessionDeps {
   }): Promise<unknown>;
   terminateRoom(input: {
     roomName: string;
+    participantIdentity: string;
     env: LiveKitEnvironment;
   }): Promise<unknown>;
   livekitProvider: LiveKitInterviewProvider;
@@ -285,7 +286,12 @@ export async function startInterviewSessionWorkflow(
     await deps.scheduleDeadline({ sessionId: session.id, deadlineAt });
   } catch (error) {
     console.error("Interview deadline schedule error:", getErrorMessage(error));
-    await safelyTerminateInterviewRoom(roomName, input.env, deps);
+    await safelyTerminateInterviewRoom(
+      roomName,
+      input.user.id,
+      input.env,
+      deps
+    );
     await safelyTerminalizeProviderFailureAndRelease(
       session.id,
       reservationKey,
@@ -309,7 +315,12 @@ export async function startInterviewSessionWorkflow(
     });
   } catch (error) {
     console.error("Credit consume error:", getErrorMessage(error));
-    await safelyTerminateInterviewRoom(roomName, input.env, deps);
+    await safelyTerminateInterviewRoom(
+      roomName,
+      input.user.id,
+      input.env,
+      deps
+    );
     await safelyTerminalizeProviderFailureAndRelease(
       session.id,
       reservationKey,
@@ -417,11 +428,12 @@ function requireSessionStartedAt(startedAt: Date | null): Date {
 
 async function safelyTerminateInterviewRoom(
   roomName: string,
+  participantIdentity: string,
   env: LiveKitEnvironment,
   deps: StartInterviewSessionDeps
 ): Promise<void> {
   try {
-    await deps.terminateRoom({ roomName, env });
+    await deps.terminateRoom({ roomName, participantIdentity, env });
   } catch (error) {
     console.error("Interview room cleanup error:", getErrorMessage(error));
   }

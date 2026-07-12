@@ -8,13 +8,15 @@ import {
   type InterviewReconnectStore,
 } from "@/lib/db/session-reconnects";
 import {
+  inspectInterviewParticipantPresence,
   terminateInterviewRoom,
+  type InterviewParticipantPresence,
   type LiveKitEnvironment,
   type ProviderResult,
   type TerminatedInterviewRoom,
 } from "@/lib/internal/integrations";
 import {
-  endInterviewSessionWorkflow,
+  endInterviewSessionWithValidationWorkflow,
   type EndInterviewSessionResult,
 } from "./end-interview-session";
 import {
@@ -32,13 +34,25 @@ export interface EnforceInterviewReconnectInput {
 export interface EnforceInterviewReconnectDeps {
   store: InterviewReconnectStore;
   validate(sessionId: string): Promise<SessionValidation>;
-  endSession(sessionId: string): Promise<EndInterviewSessionResult>;
+  endSession(
+    sessionId: string,
+    validation: SessionValidation
+  ): Promise<EndInterviewSessionResult>;
   terminateRoom(input: {
     roomName: string;
+    participantIdentity: string;
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<TerminatedInterviewRoom>>;
+  inspectPresence(input: {
+    roomName: string;
+    participantIdentity: string;
+    env: LiveKitEnvironment;
+  }): Promise<ProviderResult<InterviewParticipantPresence>>;
   now(): Date;
+  waitUntil(deadlineAt: Date): Promise<void>;
 }
+
+export const INTERVIEW_TRANSCRIPT_DRAIN_MS = 2_000;
 
 export type EnforceInterviewReconnectResult =
   | {
@@ -47,7 +61,7 @@ export type EnforceInterviewReconnectResult =
     }
   | {
       ok: true;
-      disposition: "enforced" | "already_terminal";
+      disposition: "enforced" | "already_terminal" | "presence_recovered";
       completion: Extract<EndInterviewSessionResult, { ok: true }> | null;
       room: TerminatedInterviewRoom | null;
     };
@@ -67,6 +81,7 @@ export async function enforceInterviewReconnectWorkflow(
   if (["completed", "abandoned", "failed"].includes(current.state)) {
     const room = await requireRoomTermination(
       current.roomName,
+      current.userId,
       input.env,
       deps
     );
@@ -100,6 +115,38 @@ export async function enforceInterviewReconnectWorkflow(
       return { ok: false, disposition: "not_due" };
     }
 
+    const presence = await deps.inspectPresence({
+      roomName: current.roomName,
+      participantIdentity: current.userId,
+      env: input.env,
+    });
+    if (!presence.ok) {
+      throw Object.assign(new Error("LiveKit presence inspection failed"), {
+        code: presence.error.code,
+      });
+    }
+    if (presence.data.present) {
+      const recovered = await deps.store.recoverFromPresence({
+        sessionId: input.sessionId,
+        expectedVersion: input.expectedVersion,
+        deadlineAt,
+        transitionedAt: deps.now(),
+      });
+      if (!recovered.applied) {
+        return {
+          ok: false,
+          disposition:
+            recovered.reason === "not_found" ? "not_found" : "stale_event",
+        };
+      }
+      return {
+        ok: true,
+        disposition: "presence_recovered",
+        completion: null,
+        room: null,
+      };
+    }
+
     const claim = await deps.store.claimTimeout({
       sessionId: input.sessionId,
       expectedVersion: input.expectedVersion,
@@ -115,6 +162,20 @@ export async function enforceInterviewReconnectWorkflow(
     }
     current = claim.current;
   }
+
+  let room: TerminatedInterviewRoom | null = null;
+  let roomError: string | null = null;
+  const terminated = await deps.terminateRoom({
+    roomName: current.roomName,
+    participantIdentity: current.userId,
+    env: input.env,
+  });
+  if (terminated.ok) room = terminated.data;
+  else roomError = terminated.error.code;
+
+  await deps.waitUntil(
+    new Date(current.lastTransitionAt.getTime() + INTERVIEW_TRANSCRIPT_DRAIN_MS)
+  );
 
   const validation = await deps.validate(input.sessionId);
   const terminalReason = validation.isValid
@@ -141,16 +202,7 @@ export async function enforceInterviewReconnectWorkflow(
     current = refined.current;
   }
 
-  let room: TerminatedInterviewRoom | null = null;
-  let roomError: string | null = null;
-  const terminated = await deps.terminateRoom({
-    roomName: current.roomName,
-    env: input.env,
-  });
-  if (terminated.ok) room = terminated.data;
-  else roomError = terminated.error.code;
-
-  const completion = await deps.endSession(input.sessionId);
+  const completion = await deps.endSession(input.sessionId, validation);
   if (!completion.ok) return { ok: false, disposition: "not_found" };
   if (roomError) {
     throw Object.assign(
@@ -170,10 +222,15 @@ export async function enforceInterviewReconnectWorkflow(
 
 async function requireRoomTermination(
   roomName: string,
+  participantIdentity: string,
   env: LiveKitEnvironment,
   deps: EnforceInterviewReconnectDeps
 ): Promise<TerminatedInterviewRoom> {
-  const terminated = await deps.terminateRoom({ roomName, env });
+  const terminated = await deps.terminateRoom({
+    roomName,
+    participantIdentity,
+    env,
+  });
   if (!terminated.ok) {
     throw Object.assign(
       new Error("LiveKit reconnect room termination failed"),
@@ -187,14 +244,24 @@ export function createEnforceInterviewReconnectDeps(): EnforceInterviewReconnect
   return {
     store: createDrizzleInterviewReconnectStore(),
     validate: validateSessionCompleteness,
-    endSession: (sessionId) =>
-      endInterviewSessionWorkflow({
-        sessionId,
-        actor: { type: "system", source: "reconnect_timeout" },
-        requestedTerminalReason: "disconnect_timeout",
-      }),
+    endSession: (sessionId, validation) =>
+      endInterviewSessionWithValidationWorkflow(
+        {
+          sessionId,
+          actor: { type: "system", source: "reconnect_timeout" },
+          requestedTerminalReason: "disconnect_timeout",
+        },
+        validation
+      ),
     terminateRoom: terminateInterviewRoom,
+    inspectPresence: inspectInterviewParticipantPresence,
     now: () => new Date(),
+    waitUntil: async (deadlineAt) => {
+      const remainingMs = deadlineAt.getTime() - Date.now();
+      if (remainingMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingMs));
+      }
+    },
   };
 }
 

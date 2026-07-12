@@ -90,6 +90,12 @@ export const interviewSession = pgTable(
     roomCleanupPending: boolean("room_cleanup_pending")
       .default(false)
       .notNull(),
+    roomCleanupAttemptedAt: timestamp("room_cleanup_attempted_at", {
+      withTimezone: true,
+    }),
+    presenceReconciledAt: timestamp("presence_reconciled_at", {
+      withTimezone: true,
+    }),
     runtimeReadyAt: timestamp("runtime_ready_at", { withTimezone: true }),
     lastTransportEventAt: timestamp("last_transport_event_at", {
       withTimezone: true,
@@ -155,6 +161,12 @@ export const interviewSession = pgTable(
       table.lifecycleState,
       table.reconnectDeadlineAt
     ),
+    presenceReconciliationIdx: index(
+      "interview_session_presence_reconciliation_idx"
+    ).on(table.lifecycleState, table.presenceReconciledAt),
+    roomCleanupRecoveryIdx: index(
+      "interview_session_room_cleanup_recovery_idx"
+    ).on(table.roomCleanupPending, table.roomCleanupAttemptedAt),
     userLifecycleStateIdx: index(
       "interview_session_user_lifecycle_state_idx"
     ).on(table.userId, table.lifecycleState),
