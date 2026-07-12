@@ -25,7 +25,9 @@ Never place an intermediary in front of the route that rewrites the body.
 - Resume behavior: use the same session ID and room, mint a fresh participant
   token with a maximum five-minute lifetime, and never reserve another credit
   or dispatch another agent. Decode the signed JWT and withhold it unless its
-  actual `exp` is no later than the earlier reconnect or hard deadline.
+  actual `exp` is strictly later than a second PostgreSQL-time authorization
+  snapshot and no later than the whole-second floor of the earlier reconnect
+  or hard deadline.
 - Startup signs the participant token before room creation or agent dispatch.
   The `created → connecting` CAS establishes a five-minute durable provisioning
   lease from PostgreSQL's clock before the first provider side effect.
@@ -127,6 +129,15 @@ ready:
     stored as the effective cutoff, no grace-timeout job is scheduled, recovery
     succeeds only before that cutoff, and the hard-deadline worker wins at
     equality.
+21. Deliver the hard-deadline event one millisecond early. Confirm PostgreSQL
+    returns `not_due`, a distinct durable retry remains scheduled at the exact
+    canonical deadline, and equality/+1 millisecond atomically claim
+    `ending (time_limit)` by state, version, and derived deadline even when the
+    application clock is slow or fast.
+22. Advance PostgreSQL time through a JWT's decoded `exp` while token signing
+    is in flight. Confirm the second authorization read withholds the token and
+    returns a retryable provider-unavailable response; repeat with slow and fast
+    signer clocks and confirm no token exceeds the canonical cutoff.
 
 SAV-194 transcript event identity must be deployed before this ticket can be
 declared launch-ready; repeated packets across reload must not create duplicate

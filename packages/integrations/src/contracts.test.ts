@@ -397,6 +397,7 @@ test("LiveKit reconnect tokens use a short TTL and the authorized room grant", a
       participantName: "owner@example.com",
       roomName: "interview-server-owned-room",
       ttlSeconds: 300,
+      observedAt: signingAt,
       expiresAt,
       env: {
         apiKey: "key",
@@ -457,12 +458,14 @@ test("a delayed real LiveKit token is withheld when its actual exp crosses the a
   }
 
   const expiresAt = new Date(Date.now() + 2_500);
+  const observedAt = new Date();
   const result = await issueInterviewParticipantToken(
     {
       identity: "authenticated-user-id",
       participantName: "Candidate",
       roomName: "interview-server-owned-room",
       ttlSeconds: 300,
+      observedAt,
       expiresAt,
       env: {
         apiKey: "key",
@@ -485,12 +488,14 @@ test("a delayed real LiveKit token is withheld when its actual exp crosses the a
 
 test("a real LiveKit token is bounded by the absolute authorization deadline", async () => {
   const issuedAtSeconds = Math.floor(Date.now() / 1_000);
+  const observedAt = new Date(issuedAtSeconds * 1_000);
   const expiresAt = new Date((issuedAtSeconds + 90) * 1_000);
   const result = await issueInterviewParticipantToken({
     identity: "authenticated-user-id",
     participantName: "Candidate",
     roomName: "interview-server-owned-room",
     ttlSeconds: 300,
+    observedAt,
     expiresAt,
     env: {
       apiKey: "key",
@@ -505,6 +510,85 @@ test("a real LiveKit token is bounded by the absolute authorization deadline", a
     assert.ok(actualExpiration <= Math.floor(expiresAt.getTime() / 1_000));
     assert.ok(actualExpiration <= issuedAtSeconds + 300);
   }
+});
+
+test("LiveKit reconnect token TTL compensates for a slow signer clock", async () => {
+  const databaseNow = new Date("2026-07-10T08:00:00.000Z");
+  const signerNow = new Date("2026-07-10T07:50:00.000Z");
+  const expiresAt = new Date("2026-07-10T08:00:30.000Z");
+  let ttl = 0;
+  const result = await issueInterviewParticipantToken(
+    {
+      identity: "authenticated-user-id",
+      participantName: "Candidate",
+      roomName: "interview-server-owned-room",
+      ttlSeconds: 30,
+      observedAt: databaseNow,
+      expiresAt,
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      now: () => signerNow,
+      accessTokenFactory: class {
+        constructor(
+          _apiKey: string,
+          _apiSecret: string,
+          options: { ttl?: number }
+        ) {
+          ttl = options.ttl ?? 0;
+        }
+        addGrant() {}
+        async toJwt() {
+          return jwtWithExpiration(Math.floor(expiresAt.getTime() / 1_000));
+        }
+      },
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(ttl, 630);
+  if (result.ok)
+    assert.equal(result.data.expiresAt.getTime(), expiresAt.getTime());
+});
+
+test("LiveKit reconnect token issuance fails closed for a signer past the canonical cutoff", async () => {
+  let constructed = false;
+  const result = await issueInterviewParticipantToken(
+    {
+      identity: "authenticated-user-id",
+      participantName: "Candidate",
+      roomName: "interview-server-owned-room",
+      ttlSeconds: 30,
+      observedAt: new Date("2026-07-10T08:00:00.000Z"),
+      expiresAt: new Date("2026-07-10T08:00:30.000Z"),
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      now: () => new Date("2026-07-10T08:10:00.000Z"),
+      accessTokenFactory: class {
+        constructor() {
+          constructed = true;
+        }
+        addGrant() {}
+        async toJwt() {
+          return jwtWithExpiration(0);
+        }
+      },
+    }
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(constructed, false);
+  if (!result.ok)
+    assert.equal(result.error.code, "livekit_token_expiry_invalid");
 });
 
 test("LiveKit room termination revokes the candidate before deleting the room", async () => {

@@ -62,6 +62,7 @@ export interface JoinInterviewSessionDeps {
     participantName: string;
     roomName: string;
     ttlSeconds: number;
+    observedAt: Date;
     expiresAt: Date;
     env: LiveKitEnvironment;
   }): ReturnType<typeof issueInterviewParticipantToken>;
@@ -184,6 +185,7 @@ export async function joinInterviewSessionWorkflow(
     participantName: "Candidate",
     roomName: session.livekitRoomName!,
     ttlSeconds: authorization.ttlSeconds,
+    observedAt: session.databaseNow,
     expiresAt: authorization.expiresAt,
     env: input.env,
   });
@@ -203,6 +205,9 @@ export async function joinInterviewSessionWorkflow(
   }
 
   const current = await deps.getSession(input.sessionId);
+  const currentAuthorization = current
+    ? deriveJoinAuthorization(current, current.databaseNow)
+    : null;
   if (
     !current ||
     current.userId !== input.user.id ||
@@ -213,7 +218,8 @@ export async function joinInterviewSessionWorkflow(
       current.reconnectDeadlineAt ?? null,
       authorization.reconnectDeadlineAt
     ) ||
-    !deriveJoinAuthorization(current, current.databaseNow)
+    !currentAuthorization ||
+    !sameInstant(currentAuthorization.expiresAt, authorization.expiresAt)
   ) {
     deps.audit({
       outcome: "denied",
@@ -228,6 +234,27 @@ export async function joinInterviewSessionWorkflow(
         error: "session_not_joinable",
         message: "This interview session is no longer active.",
       },
+    };
+  }
+
+  const tokenExpirationMs = tokenResult.data.expiresAt.getTime();
+  const canonicalCutoffMs =
+    Math.floor(currentAuthorization.expiresAt.getTime() / 1_000) * 1_000;
+  if (
+    !Number.isFinite(tokenExpirationMs) ||
+    tokenExpirationMs <= current.databaseNow.getTime() ||
+    tokenExpirationMs > canonicalCutoffMs
+  ) {
+    deps.audit({
+      outcome: "failed",
+      reason: "livekit_token_expiry_invalid_after_authorization",
+      sessionId: input.sessionId,
+      userId: input.user.id,
+    });
+    return {
+      ok: false,
+      status: 503,
+      body: { error: "livekit_token_unavailable" },
     };
   }
 
