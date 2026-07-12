@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   subscriptionWrites: [] as Array<Record<string, unknown>>,
   transactionUpdateResults: [] as boolean[],
   selectResponses: [] as Array<Array<Record<string, unknown>>>,
+  lastSelectResponse: [] as Array<Record<string, unknown>>,
   tombstoneFingerprints: new Set<string>(),
   signatureCalls: 0,
 }));
@@ -31,10 +32,14 @@ vi.mock("@/lib/db", () => ({
     select: () => ({
       from: () => ({
         where: () => ({
-          limit: async () =>
-            state.selectResponses.length > 0
-              ? (state.selectResponses.shift() ?? [])
-              : state.logs.slice(0, 1),
+          limit: async () => {
+            const response =
+              state.selectResponses.length > 0
+                ? (state.selectResponses.shift() ?? [])
+                : state.logs.slice(0, 1);
+            state.lastSelectResponse = response;
+            return response;
+          },
         }),
       }),
     }),
@@ -86,31 +91,75 @@ vi.mock("@/lib/db", () => ({
     }),
     transaction: async (
       work: (tx: Record<string, (...args: never[]) => unknown>) => unknown
-    ) =>
-      work({
+    ) => {
+      let selectCount = 0;
+      return work({
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              limit: () => {
+                selectCount += 1;
+                const response =
+                  selectCount === 1
+                    ? [{ id: "billing-user" }]
+                    : selectCount === 2
+                      ? []
+                      : state.selectResponses.length > 0
+                        ? (state.selectResponses.shift() ?? [])
+                        : selectCount >= 4
+                          ? [
+                              {
+                                status: "active",
+                                stripeSubscriptionId: "sub_route_test",
+                                version: 1,
+                                lastEventTimestamp: null,
+                              },
+                            ]
+                          : state.lastSelectResponse;
+                return Object.assign(Promise.resolve(response), {
+                  for: async () => response,
+                });
+              },
+            }),
+          }),
+        }),
         insert: () => ({
           values: (value: Record<string, unknown>) => {
             if ("stripeSubscriptionId" in value && "status" in value) {
               state.subscriptionWrites.push(value);
             }
+            if ("stripeInvoiceId" in value && "status" in value) {
+              const duplicate = state.payments.some(
+                (row) =>
+                  row.stripeInvoiceId === value.stripeInvoiceId &&
+                  row.status === value.status
+              );
+              if (!duplicate) state.payments.push(value);
+            }
             return {
               onConflictDoUpdate: async () => undefined,
+              onConflictDoNothing: async () => undefined,
             };
           },
         }),
         update: () => ({
-          set: (value: Record<string, unknown>) => ({
-            where: () => ({
-              returning: async () => {
-                const applies = state.transactionUpdateResults.shift() ?? true;
-                if (!applies) return [];
-                state.subscriptionWrites.push(value);
-                return [{ id: "subscription-route" }];
-              },
-            }),
-          }),
+          set: (value: Record<string, unknown>) => {
+            state.updates.push(value);
+            return {
+              where: () => ({
+                returning: async () => {
+                  const applies =
+                    state.transactionUpdateResults.shift() ?? true;
+                  if (!applies) return [];
+                  state.subscriptionWrites.push(value);
+                  return [{ id: "subscription-route" }];
+                },
+              }),
+            };
+          },
         }),
-      }),
+      });
+    },
   },
 }));
 
@@ -127,6 +176,24 @@ vi.mock("@/lib/billing/credit-ledger-store", () => ({
   createDrizzleCreditLedgerStore: vi.fn(() => ({})),
 }));
 
+vi.mock("@/lib/billing/stripe-customer-ownership", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/lib/billing/stripe-customer-ownership")
+    >();
+  return {
+    ...actual,
+    getMappedStripeCustomerUserId: vi.fn(async () => {
+      const mappingResponse = state.selectResponses[1];
+      const mapping = mappingResponse?.[0];
+      if (mappingResponse?.length === 0 || mapping?.userId === "mapped_user") {
+        state.selectResponses.splice(1, 1);
+      }
+      return mapping?.userId === "mapped_user" ? mapping.userId : null;
+    }),
+  };
+});
+
 vi.mock("@/lib/db/account-deletions", () => ({
   findStripeDeletionTombstoneFingerprint: vi.fn(
     async (fingerprints: string[]) =>
@@ -134,6 +201,23 @@ vi.mock("@/lib/db/account-deletions", () => ({
         state.tombstoneFingerprints.has(fingerprint)
       ) ?? null
   ),
+  getAccountDeletionRequestByStripeFingerprint: vi.fn(
+    async (fingerprint: string) =>
+      state.tombstoneFingerprints.has(fingerprint)
+        ? {
+            userId: "11111111-1111-4111-8111-111111111111",
+            status: "completed",
+            stripeSubjects: [],
+            attempts: 1,
+          }
+        : undefined
+  ),
+  hasAccountDeletionTombstone: vi.fn(async () => false),
+  getAccountDeletionRequest: vi.fn(async () => undefined),
+  clearLateStripeDeletionSubjects: vi.fn(async () => true),
+  markLateStripeReconciliationFailed: vi.fn(async () => undefined),
+  recordLateStripeDeletionSubjects: vi.fn(async () => true),
+  redactStripeEventLogs: vi.fn(async () => undefined),
 }));
 
 import { fingerprintStripeSubject } from "@/lib/billing/stripe-privacy";
@@ -147,6 +231,7 @@ describe("POST /api/webhooks/stripe", () => {
     state.subscriptionWrites.length = 0;
     state.transactionUpdateResults.length = 0;
     state.selectResponses.length = 0;
+    state.lastSelectResponse = [];
     state.tombstoneFingerprints.clear();
     state.signatureCalls = 0;
     process.env.STRIPE_SECRET_KEY = "sk_test_route";
@@ -285,10 +370,9 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await POST(request(payload));
 
       expect(response.status).toBe(500);
-      expect(state.logs[0]).toMatchObject({
-        status: "failed",
-        lastError: "stripe_customer_owner_mismatch",
-      });
+      expect(state.logs).toHaveLength(0);
+      expect(state.updates).toHaveLength(0);
+      expect(state.subscriptionWrites).toHaveLength(0);
     }
   );
 
@@ -306,7 +390,7 @@ describe("POST /api/webhooks/stripe", () => {
       status: "failed",
       createdAt: new Date(firstCreated * 1_000),
     };
-    state.selectResponses.push([], [], [persistedPayment]);
+    state.selectResponses.push([], [], [], [persistedPayment]);
     expect(
       (
         await POST(
@@ -315,7 +399,7 @@ describe("POST /api/webhooks/stripe", () => {
       ).status
     ).toBe(200);
 
-    state.selectResponses.push([state.logs[0]!], [], [persistedPayment]);
+    state.selectResponses.push([state.logs[0]!], [], [], [persistedPayment]);
     const replay = await POST(
       request(failedInvoiceEvent("evt_failed_replay", firstCreated + 86_400))
     );
@@ -363,7 +447,7 @@ describe("POST /api/webhooks/stripe", () => {
       };
 
       if (order === "failure_then_success") {
-        state.selectResponses.push([], [], [failedPayment]);
+        state.selectResponses.push([], [], [], [failedPayment]);
         expect((await POST(request(failed))).status).toBe(200);
         state.selectResponses.push([], [succeededPayment]);
         expect((await POST(request(succeeded))).status).toBe(200);
@@ -478,6 +562,7 @@ describe("POST /api/webhooks/stripe", () => {
           object: {
             id: "cs_route",
             object: "checkout.session",
+            client_reference_id: "user_route",
             metadata: {
               userId: "user_route",
               catalogId: "interview_pass",

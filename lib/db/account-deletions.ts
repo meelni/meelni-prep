@@ -40,41 +40,90 @@ export interface AccountDeletionRecord {
   attempts: number;
 }
 
+export async function withStripeDeletionSerializationRetry<T>(
+  operation: () => Promise<T>,
+  options: {
+    sleep?: (milliseconds: number) => Promise<void>;
+    random?: () => number;
+  } = {}
+): Promise<T> {
+  let lastError: unknown;
+  const sleep =
+    options.sleep ??
+    ((milliseconds: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  const random = options.random ?? Math.random;
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!hasPostgresCode(error, "40001")) throw error;
+      if (attempt < 7) {
+        const backoff = Math.min(250, 20 * 2 ** attempt);
+        await sleep(backoff + Math.floor(random() * 21));
+      }
+    }
+  }
+  throw lastError;
+}
+
+function hasPostgresCode(error: unknown, code: string): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current; depth += 1) {
+    if (
+      typeof current === "object" &&
+      "code" in current &&
+      (current as { code?: unknown }).code === code
+    ) {
+      return true;
+    }
+    current =
+      typeof current === "object" && "cause" in current
+        ? (current as { cause?: unknown }).cause
+        : undefined;
+  }
+  return false;
+}
+
 export async function requestAccountDeletion(input: {
   userId: string;
   stripeSubjects: StripeDeletionSubject[];
 }): Promise<AccountDeletionRecord> {
-  const record = await db.transaction(async (tx) => {
-    await lockAccountIdentity(tx, input.userId);
-    // Serialize deletion intent with credit-ledger fulfillment. The ledger
-    // locks the same app_user row before checking this tombstone, so either a
-    // grant commits before deletion intent or it fails closed afterward.
-    await tx
-      .select({ id: appUser.id })
-      .from(appUser)
-      .where(eq(appUser.id, input.userId))
-      .limit(1)
-      .for("update");
+  const record = await withStripeDeletionSerializationRetry(() =>
+    db.transaction(async (tx) => {
+      await lockAccountIdentity(tx, input.userId);
+      // Serialize deletion intent with credit-ledger fulfillment. The ledger
+      // locks the same app_user row before checking this tombstone, so either a
+      // grant commits before deletion intent or it fails closed afterward.
+      await tx
+        .select({ id: appUser.id })
+        .from(appUser)
+        .where(eq(appUser.id, input.userId))
+        .limit(1)
+        .for("update");
 
-    const [persisted] = await tx
-      .insert(accountDeletionRequest)
-      .values({
-        userId: input.userId,
-        stripeSubjects: input.stripeSubjects,
-      })
-      .onConflictDoUpdate({
-        target: accountDeletionRequest.userId,
-        set: {
-          status: "pending",
+      const [persisted] = await tx
+        .insert(accountDeletionRequest)
+        .values({
+          userId: input.userId,
           stripeSubjects: input.stripeSubjects,
-          lastErrorCode: null,
-          completedAt: null,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return persisted;
-  });
+        })
+        .onConflictDoUpdate({
+          target: accountDeletionRequest.userId,
+          set: {
+            status: "pending",
+            stripeSubjects: input.stripeSubjects,
+            lastErrorCode: null,
+            completedAt: null,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return persisted;
+    })
+  );
   if (!record) throw new Error("Account deletion request was not persisted");
   return toDeletionRecord(record);
 }
@@ -82,54 +131,56 @@ export async function requestAccountDeletion(input: {
 export async function requestAccountDeletionWithCurrentSubjects(
   userId: string
 ): Promise<AccountDeletionRecord> {
-  const record = await db.transaction(async (tx) => {
-    await lockAccountIdentity(tx, userId);
-    await tx
-      .select({ id: appUser.id })
-      .from(appUser)
-      .where(eq(appUser.id, userId))
-      .limit(1)
-      .for("update");
+  const record = await withStripeDeletionSerializationRetry(() =>
+    db.transaction(async (tx) => {
+      await lockAccountIdentity(tx, userId);
+      await tx
+        .select({ id: appUser.id })
+        .from(appUser)
+        .where(eq(appUser.id, userId))
+        .limit(1)
+        .for("update");
 
-    // Billing webhook fulfillment locks the same user row. Taking the subject
-    // snapshot after this lock prevents a concurrent subscription/mapping
-    // commit from falling between the snapshot and durable tombstone.
-    const [currentSubscription] = await tx
-      .select({
-        stripeSubscriptionId: subscription.stripeSubscriptionId,
-        stripeCustomerId: subscription.stripeCustomerId,
-      })
-      .from(subscription)
-      .where(eq(subscription.userId, userId))
-      .limit(1);
-    const customerMappings = await tx
-      .select({ stripeCustomerId: stripeCustomerMapping.stripeCustomerId })
-      .from(stripeCustomerMapping)
-      .where(eq(stripeCustomerMapping.userId, userId));
-    const stripeSubjects = buildStripeDeletionSubjects({
-      subscriptionId: currentSubscription?.stripeSubscriptionId,
-      subscriptionCustomerId: currentSubscription?.stripeCustomerId,
-      mappedCustomerIds: customerMappings.map(
-        ({ stripeCustomerId }) => stripeCustomerId
-      ),
-    });
+      // Billing webhook fulfillment locks the same user row. Taking the subject
+      // snapshot after this lock prevents a concurrent subscription/mapping
+      // commit from falling between the snapshot and durable tombstone.
+      const [currentSubscription] = await tx
+        .select({
+          stripeSubscriptionId: subscription.stripeSubscriptionId,
+          stripeCustomerId: subscription.stripeCustomerId,
+        })
+        .from(subscription)
+        .where(eq(subscription.userId, userId))
+        .limit(1);
+      const customerMappings = await tx
+        .select({ stripeCustomerId: stripeCustomerMapping.stripeCustomerId })
+        .from(stripeCustomerMapping)
+        .where(eq(stripeCustomerMapping.userId, userId));
+      const stripeSubjects = buildStripeDeletionSubjects({
+        subscriptionId: currentSubscription?.stripeSubscriptionId,
+        subscriptionCustomerId: currentSubscription?.stripeCustomerId,
+        mappedCustomerIds: customerMappings.map(
+          ({ stripeCustomerId }) => stripeCustomerId
+        ),
+      });
 
-    const [persisted] = await tx
-      .insert(accountDeletionRequest)
-      .values({ userId, stripeSubjects })
-      .onConflictDoUpdate({
-        target: accountDeletionRequest.userId,
-        set: {
-          status: "pending",
-          stripeSubjects,
-          lastErrorCode: null,
-          completedAt: null,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return persisted;
-  });
+      const [persisted] = await tx
+        .insert(accountDeletionRequest)
+        .values({ userId, stripeSubjects })
+        .onConflictDoUpdate({
+          target: accountDeletionRequest.userId,
+          set: {
+            status: "pending",
+            stripeSubjects,
+            lastErrorCode: null,
+            completedAt: null,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return persisted;
+    })
+  );
   if (!record) throw new Error("Account deletion request was not persisted");
   return toDeletionRecord(record);
 }

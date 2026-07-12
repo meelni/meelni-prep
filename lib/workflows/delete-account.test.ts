@@ -63,6 +63,8 @@ test("durable deletion runs providers and application cleanup in retry-safe orde
     `auth:${REQUEST.userId}`,
     "subscription:sub_test",
     "payment:payment_intent:pi_test",
+    "payment:payment_intent:pi_tombstone_only",
+    "payment:charge:ch_tombstone_only",
     "invoice:in_test",
     "customer:cus_test",
     "customer:cus_second",
