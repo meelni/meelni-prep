@@ -52,6 +52,7 @@ export interface CalibrationEvaluatorInput {
   fixture: EvaluationCalibrationCase;
   evaluationState: FeedbackEvaluationState;
   runIndex: number;
+  beforePhysicalRequest?: () => void;
 }
 
 export interface CalibrationEvaluatorResult {
@@ -88,7 +89,7 @@ export interface CalibrationFailure {
 }
 
 export interface EvaluationCalibrationReport {
-  contractVersion: "evaluation-calibration-report.v5";
+  contractVersion: "evaluation-calibration-report.v6";
   generatedAt: string;
   execution: {
     kind: CalibrationExecutionKind;
@@ -221,6 +222,12 @@ export async function runEvaluationCalibration(
   ) {
     throw new Error("live_calibration_requires_matching_spend_guard");
   }
+  if (
+    options.executionKind === "live_provider" &&
+    !options.spendGuard!.durable
+  ) {
+    throw new Error("live_calibration_requires_durable_spend_ledger");
+  }
   if (options.executionKind === "live_provider") {
     validateCalibrationPricingFreshness(now, options.spendGuard!.pricing);
   }
@@ -309,6 +316,19 @@ export async function runEvaluationCalibration(
         evaluation: FeedbackV2Result;
       }> = [];
       for (let runIndex = 0; runIndex < repetitions; runIndex += 1) {
+        const callKey = `${fixture.id}:${runIndex}`;
+        if (
+          options.executionKind === "live_provider" &&
+          options.spendGuard!.hasAttemptedCall(callKey)
+        ) {
+          options.spendGuard!.recordResumedSkippedCall();
+          failures.push({
+            caseId: fixture.id,
+            runIndex,
+            code: "recovered_call_not_replayed",
+          });
+          continue;
+        }
         let reservation:
           | ReturnType<CalibrationSpendGuard["reserve"]>
           | undefined;
@@ -320,14 +340,20 @@ export async function runEvaluationCalibration(
             now,
             evaluator: async (input) => {
               if (options.executionKind === "live_provider") {
-                reservation = options.spendGuard!.reserve(fixture);
+                reservation = options.spendGuard!.reserve(fixture, callKey);
                 if (!reservation) {
                   throw new Error("calibration_paid_run_stopped");
                 }
               }
               evaluatorCalls += 1;
               try {
-                const raw = await options.evaluator!(input);
+                const raw = await options.evaluator!({
+                  ...input,
+                  beforePhysicalRequest: () =>
+                    options.spendGuard!.assertPhysicalRequestAllowed(
+                      reservation!
+                    ),
+                });
                 const normalized = normalizeEvaluatorResult(raw);
                 observedModelVersions.add(normalized.evaluation.modelVersion);
                 if (options.executionKind === "live_provider") {
@@ -437,6 +463,11 @@ export async function runEvaluationCalibration(
       options.spendGuard!.finishPlan();
     }
   }
+
+  const liveCostReport =
+    options.executionKind === "live_provider"
+      ? options.spendGuard!.report()
+      : null;
 
   const expectedOutputs = scoredCases.length * repetitions;
   let validEvidenceOutputs = 0;
@@ -595,8 +626,7 @@ export async function runEvaluationCalibration(
     modelVersionMatchRate:
       expectedOutputs === 0 ? null : matchingModelVersions / expectedOutputs,
     evaluatorCalls,
-    providerEvaluationCalls:
-      options.executionKind === "live_provider" ? evaluatorCalls : 0,
+    providerEvaluationCalls: liveCostReport?.physicalHttpAttemptCeiling ?? 0,
   };
   const corpusPassed =
     failures.every((failure) => failure.code !== "expected_state_mismatch") &&
@@ -640,14 +670,15 @@ export async function runEvaluationCalibration(
   const adjudicationPassed = pendingAdjudicationSignoffs === 0;
 
   return {
-    contractVersion: "evaluation-calibration-report.v5",
+    contractVersion: "evaluation-calibration-report.v6",
     generatedAt: now.toISOString(),
     execution: {
       kind: options.executionKind,
       modelVersion: options.modelVersion,
       repetitions,
       customerDataUsed: false,
-      paidProviderCalled: liveProvider && evaluatorCalls > 0,
+      paidProviderCalled:
+        liveProvider && (liveCostReport?.physicalHttpAttemptCeiling ?? 0) > 0,
       modelVersionBasis:
         options.executionKind === "preflight"
           ? "not_applicable"
@@ -658,10 +689,7 @@ export async function runEvaluationCalibration(
       observedServiceTiers: [...observedServiceTiers].sort((left, right) =>
         String(left).localeCompare(String(right))
       ),
-      cost:
-        options.executionKind === "live_provider"
-          ? options.spendGuard!.report()
-          : null,
+      cost: liveCostReport,
     },
     versions: {
       goldSet: EVALUATION_GOLD_SET_VERSION,

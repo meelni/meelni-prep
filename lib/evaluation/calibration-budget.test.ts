@@ -39,6 +39,7 @@ test("the 96-call boundary refuses call 97 before invocation", () => {
   for (let index = 0; index < CALIBRATION_MAX_PROVIDER_CALLS; index += 1) {
     const reservation = guard.reserve(SCORED_FIXTURE);
     assert.ok(reservation);
+    guard.assertPhysicalRequestAllowed(reservation);
     assert.equal(
       guard.settleSuccess(reservation, usageWithin(reservation)),
       true
@@ -72,6 +73,7 @@ test("an over-budget next call is stopped without increasing attempted calls", (
 test("provider failure reconciles known usage and forbids another call", () => {
   const guard = createGuard();
   const reservation = guard.reserve(SCORED_FIXTURE)!;
+  guard.assertPhysicalRequestAllowed(reservation);
   guard.settleFailure(reservation, usageWithin(reservation));
 
   assert.equal(guard.reserve(SCORED_FIXTURE), null);
@@ -84,6 +86,7 @@ test("provider failure reconciles known usage and forbids another call", () => {
 test("missing usage retains the reservation and forbids another call", () => {
   const guard = createGuard();
   const reservation = guard.reserve(SCORED_FIXTURE)!;
+  guard.assertPhysicalRequestAllowed(reservation);
 
   assert.equal(guard.settleSuccess(reservation, undefined), false);
   assert.equal(guard.reserve(SCORED_FIXTURE), null);
@@ -98,6 +101,7 @@ test("missing usage retains the reservation and forbids another call", () => {
 test("usage outside the reservation fails closed and forbids another call", () => {
   const guard = createGuard();
   const reservation = guard.reserve(SCORED_FIXTURE)!;
+  guard.assertPhysicalRequestAllowed(reservation);
   const usage = usageWithin(reservation);
   usage.outputTokens = reservation.outputTokenCeiling + 1;
   usage.totalTokens = usage.inputTokens + usage.outputTokens;
@@ -136,9 +140,46 @@ test("pricing review must be current and never future-dated before call one", ()
   );
 });
 
+test("pricing expiry during request preparation stops before physical HTTP", () => {
+  const expiresAt = REVIEWED_AT.getTime() + CALIBRATION_PRICING_REVIEW_TTL_MS;
+  const reads = [expiresAt - 2, expiresAt - 1, expiresAt + 1];
+  const guard = new CalibrationSpendGuard(
+    MODEL,
+    () => new Date(reads.shift() ?? expiresAt + 1)
+  );
+  const reservation = guard.reserve(SCORED_FIXTURE)!;
+
+  assert.throws(
+    () => guard.assertPhysicalRequestAllowed(reservation),
+    /review_is_stale/
+  );
+  assert.equal(guard.report().attemptedCalls, 1);
+  assert.equal(guard.report().physicalHttpAttemptCeiling, 0);
+  assert.equal(
+    guard.report().stopReason,
+    "pricing_review_expired_before_request"
+  );
+  assert.equal(guard.report().actualCostComplete, false);
+});
+
+test("freshness is re-read before every subsequent reservation", () => {
+  const expiresAt = REVIEWED_AT.getTime() + CALIBRATION_PRICING_REVIEW_TTL_MS;
+  let now = expiresAt - 1;
+  const guard = new CalibrationSpendGuard(MODEL, () => new Date(now));
+  const first = guard.reserve(SCORED_FIXTURE)!;
+  guard.assertPhysicalRequestAllowed(first);
+  assert.equal(guard.settleSuccess(first, usageWithin(first)), true);
+
+  now = expiresAt + 1;
+  assert.throws(() => guard.reserve(SCORED_FIXTURE), /review_is_stale/);
+  assert.equal(guard.report().attemptedCalls, 1);
+  assert.equal(guard.report().physicalHttpAttemptCeiling, 1);
+});
+
 test("identity mismatch preserves exact usage and reconciled cost", () => {
   const guard = createGuard();
   const reservation = guard.reserve(SCORED_FIXTURE)!;
+  guard.assertPhysicalRequestAllowed(reservation);
   const usage = usageWithin(reservation);
   guard.rejectObservedModel(reservation, usage);
 
@@ -148,6 +189,49 @@ test("identity mismatch preserves exact usage and reconciled cost", () => {
   assert.equal(report.unreconciledReservedCostUsd, 0);
   assert.equal(report.reconciledActualCostUsd, 0.000625);
   assert.deepEqual(report.observedUsage, usage);
+});
+
+test("valid over-ceiling usage records the exact actual $3 breach", () => {
+  const guard = createGuard();
+  const fixture = fixtureWithInputTokenCeiling(2_384_000);
+  const reservation = guard.reserve(fixture)!;
+  guard.assertPhysicalRequestAllowed(reservation);
+  const usage = {
+    inputTokens: 2_384_000,
+    cachedInputTokens: 0,
+    outputTokens: 2_001,
+    totalTokens: 2_386_001,
+  };
+
+  assert.equal(guard.settleSuccess(reservation, usage), false);
+  const report = guard.report();
+  assert.equal(report.stopReason, "actual_spend_cap_breached");
+  assert.equal(report.reconciledActualCostUsd, 3.00001);
+  assert.equal(report.unreconciledReservedCostUsd, 0);
+  assert.equal(report.estimatedCommittedCostUsd, 3.00001);
+  assert.equal(report.spendCapBreached, true);
+  assert.deepEqual(report.observedUsage, usage);
+  assert.equal(guard.reserve(SCORED_FIXTURE), null);
+});
+
+test("an exact $3 actual settles but cannot authorize another request", () => {
+  const guard = createGuard();
+  const fixture = fixtureWithInputTokenCeiling(2_384_000);
+  const reservation = guard.reserve(fixture)!;
+  guard.assertPhysicalRequestAllowed(reservation);
+  assert.equal(
+    guard.settleSuccess(reservation, {
+      inputTokens: 2_384_000,
+      cachedInputTokens: 0,
+      outputTokens: 2_000,
+      totalTokens: 2_386_000,
+    }),
+    true
+  );
+  assert.equal(guard.report().reconciledActualCostUsd, 3);
+  assert.equal(guard.report().spendCapBreached, false);
+  assert.equal(guard.reserve(SCORED_FIXTURE), null);
+  assert.equal(guard.report().stopReason, "spend_cap_before_next_call");
 });
 
 function usageWithin(reservation: {

@@ -1,6 +1,6 @@
 {
-  "contractVersion": "evaluation-calibration-report.v5",
-  "generatedAt": "2026-07-12T06:54:38.552Z",
+  "contractVersion": "evaluation-calibration-report.v6",
+  "generatedAt": "2026-07-12T07:25:05.651Z",
   "execution": {
     "kind": "deterministic_self_test",
     "modelVersion": "deterministic-calibration-self-test.v1",

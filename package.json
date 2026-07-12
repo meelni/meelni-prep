@@ -71,7 +71,7 @@
     "test:auth-ui": "tsx --test components/auth/*.test.tsx app/setup/components/*.test.tsx && vitest run components/explore/question-signin-modal.test.tsx app/auth/*.test.tsx app/interview/page-lifecycle.test.tsx app/setup/use-selected-question-intent.test.tsx",
     "test:billing": "tsx --test lib/billing/*.test.ts",
     "test:operations": "tsx --test lib/operations/*.test.ts && node --test scripts/check-service-health.test.mjs scripts/migration-docs-contract.test.mjs",
-    "test:calibration": "tsx --test lib/evaluation/calibration.test.ts lib/evaluation/calibration-approval.test.ts lib/evaluation/calibration-budget.test.ts lib/evaluation/calibration-cli.test.ts lib/evaluation/calibration-provider-policy.test.ts packages/test-fixtures/src/evaluation-calibration.test.ts",
+    "test:calibration": "tsx --test lib/evaluation/calibration.test.ts lib/evaluation/calibration-approval.test.ts lib/evaluation/calibration-budget.test.ts lib/evaluation/calibration-cli.test.ts lib/evaluation/calibration-provider-policy.test.ts lib/evaluation/calibration-run-ledger.test.ts packages/test-fixtures/src/evaluation-calibration.test.ts",
     "test:packages": "tsx --test scripts/package-entrypoints.test.ts",
     "test:feature-flags": "vitest run lib/feature-flags/config.test.ts lib/feature-flags/server-deployment-context.test.ts lib/feature-flags/server-resolver.test.ts && tsx --test lib/feature-flags/reactivation-access.test.ts",
     "test:deploy-preflight": "tsx --test lib/deployment/*.test.ts lib/supabase/supabase-jwt.test.ts && node --test scripts/deployment-preflight.test.mjs",
