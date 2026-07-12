@@ -36,6 +36,11 @@ import {
   getEvaluationAdjudicationHashes,
   parseEvaluationAdjudicationApproval,
 } from "./calibration-approval";
+import {
+  CalibrationSpendGuard,
+  type CalibrationCostReport,
+  type CalibrationProviderUsage,
+} from "./calibration-budget";
 
 export type CalibrationExecutionKind =
   | "preflight"
@@ -48,9 +53,14 @@ export interface CalibrationEvaluatorInput {
   runIndex: number;
 }
 
+export interface CalibrationEvaluatorResult {
+  evaluation: FeedbackV2Result;
+  usage?: CalibrationProviderUsage;
+}
+
 export type CalibrationEvaluator = (
   input: CalibrationEvaluatorInput
-) => Promise<FeedbackV2Result>;
+) => Promise<FeedbackV2Result | CalibrationEvaluatorResult>;
 
 export interface CalibrationRunOptions {
   executionKind: CalibrationExecutionKind;
@@ -59,6 +69,7 @@ export interface CalibrationRunOptions {
   repetitions?: number;
   now?: Date;
   adjudicationApproval?: unknown;
+  spendGuard?: CalibrationSpendGuard;
 }
 
 export interface CalibrationFailure {
@@ -75,7 +86,7 @@ export interface CalibrationFailure {
 }
 
 export interface EvaluationCalibrationReport {
-  contractVersion: "evaluation-calibration-report.v3";
+  contractVersion: "evaluation-calibration-report.v4";
   generatedAt: string;
   execution: {
     kind: CalibrationExecutionKind;
@@ -88,6 +99,7 @@ export interface EvaluationCalibrationReport {
       | "deterministic_identifier"
       | "configured_provider_model";
     observedModelVersions: string[];
+    cost: CalibrationCostReport | null;
   };
   versions: {
     goldSet: typeof EVALUATION_GOLD_SET_VERSION;
@@ -193,6 +205,19 @@ export async function runEvaluationCalibration(
     options.adjudicationApproval === undefined
       ? null
       : parseEvaluationAdjudicationApproval(options.adjudicationApproval);
+  const approvalPassed =
+    approval !== null &&
+    approval.decisions.length === 32 &&
+    approval.decisions.every(({ decision }) => decision === "approved");
+  if (options.executionKind === "live_provider" && !approvalPassed) {
+    throw new Error("live_calibration_requires_approved_adjudication");
+  }
+  if (
+    options.executionKind === "live_provider" &&
+    (!options.spendGuard || options.spendGuard.model !== options.modelVersion)
+  ) {
+    throw new Error("live_calibration_requires_matching_spend_guard");
+  }
   const adjudicationHashes = getEvaluationAdjudicationHashes();
   const repetitions =
     options.executionKind === "preflight"
@@ -269,7 +294,7 @@ export async function runEvaluationCalibration(
         "Calibration execution requires an evaluator and modelVersion"
       );
     }
-    for (const fixture of scoredCases) {
+    paidRun: for (const fixture of scoredCases) {
       const expectedState =
         fixture.expectedCompletionState as FeedbackEvaluationState;
       const caseOutputs: Array<{
@@ -277,6 +302,9 @@ export async function runEvaluationCalibration(
         evaluation: FeedbackV2Result;
       }> = [];
       for (let runIndex = 0; runIndex < repetitions; runIndex += 1) {
+        let reservation:
+          | ReturnType<CalibrationSpendGuard["reserve"]>
+          | undefined;
         try {
           const result = await runCaseThroughGenerationWorkflow({
             fixture,
@@ -284,8 +312,51 @@ export async function runEvaluationCalibration(
             evaluationState: expectedState,
             now,
             evaluator: async (input) => {
+              if (options.executionKind === "live_provider") {
+                reservation = options.spendGuard!.reserve(fixture);
+                if (!reservation) {
+                  throw new Error("calibration_paid_run_stopped");
+                }
+              }
               evaluatorCalls += 1;
-              return options.evaluator!(input);
+              try {
+                const raw = await options.evaluator!(input);
+                const normalized = normalizeEvaluatorResult(raw);
+                if (
+                  options.executionKind === "live_provider" &&
+                  normalized.evaluation.modelVersion !== options.modelVersion
+                ) {
+                  options.spendGuard!.rejectObservedModel(reservation!);
+                  throw new Error("calibration_provider_model_mismatch");
+                }
+                if (
+                  options.executionKind === "live_provider" &&
+                  !options.spendGuard!.settleSuccess(
+                    reservation!,
+                    normalized.usage
+                  )
+                ) {
+                  throw new Error("calibration_paid_run_stopped");
+                }
+                return normalized.evaluation;
+              } catch (error) {
+                if (
+                  options.executionKind === "live_provider" &&
+                  reservation &&
+                  !reservation.settled
+                ) {
+                  const observedModel = getObservedModelFromError(error);
+                  if (observedModel && observedModel !== options.modelVersion) {
+                    options.spendGuard!.rejectObservedModel(reservation);
+                  } else {
+                    options.spendGuard!.settleFailure(
+                      reservation,
+                      getUsageFromError(error)
+                    );
+                  }
+                }
+                throw error;
+              }
             },
           });
           if (result.status !== "completed" || !result.evaluation) {
@@ -304,8 +375,18 @@ export async function runEvaluationCalibration(
             code: "evaluation_failed",
           });
         }
+        if (
+          options.executionKind === "live_provider" &&
+          options.spendGuard!.report().stopReason !== null
+        ) {
+          outputs.set(fixture.id, caseOutputs);
+          break paidRun;
+        }
       }
       outputs.set(fixture.id, caseOutputs);
+    }
+    if (options.executionKind === "live_provider") {
+      options.spendGuard!.finishPlan();
     }
   }
 
@@ -511,7 +592,7 @@ export async function runEvaluationCalibration(
   const adjudicationPassed = pendingAdjudicationSignoffs === 0;
 
   return {
-    contractVersion: "evaluation-calibration-report.v3",
+    contractVersion: "evaluation-calibration-report.v4",
     generatedAt: now.toISOString(),
     execution: {
       kind: options.executionKind,
@@ -526,6 +607,10 @@ export async function runEvaluationCalibration(
             ? "configured_provider_model"
             : "deterministic_identifier",
       observedModelVersions: [...observedModelVersions].sort(),
+      cost:
+        options.executionKind === "live_provider"
+          ? options.spendGuard!.report()
+          : null,
     },
     versions: {
       goldSet: EVALUATION_GOLD_SET_VERSION,
@@ -621,7 +706,7 @@ export async function runEvaluationCalibration(
 
 export function createDeterministicCalibrationEvaluator(
   modelVersion = "deterministic-calibration-self-test.v1"
-): CalibrationEvaluator {
+): (input: CalibrationEvaluatorInput) => Promise<FeedbackV2Result> {
   return async ({ fixture, evaluationState }) => {
     if (!fixture.scoreBands || fixture.evidenceAnchors.length < 2) {
       throw new Error("Deterministic evaluator received an insufficient case");
@@ -671,7 +756,7 @@ async function runCaseThroughGenerationWorkflow(input: {
   fixture: EvaluationCalibrationCase;
   runIndex: number;
   evaluationState: FeedbackEvaluationState | null;
-  evaluator: CalibrationEvaluator;
+  evaluator: (input: CalibrationEvaluatorInput) => Promise<FeedbackV2Result>;
   now: Date;
 }): Promise<{
   status: string;
@@ -902,4 +987,31 @@ function everyRateAtLeast(
   return Object.values(rates).every(
     (value) => value !== null && value >= floor
   );
+}
+
+function normalizeEvaluatorResult(
+  result: FeedbackV2Result | CalibrationEvaluatorResult
+): CalibrationEvaluatorResult {
+  return "evaluation" in result ? result : { evaluation: result };
+}
+
+function getUsageFromError(
+  error: unknown
+): CalibrationProviderUsage | undefined {
+  if (typeof error !== "object" || error === null || !("usage" in error)) {
+    return undefined;
+  }
+  return (error as { usage?: CalibrationProviderUsage }).usage;
+}
+
+function getObservedModelFromError(error: unknown): string | undefined {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("observedModel" in error)
+  ) {
+    return undefined;
+  }
+  const value = (error as { observedModel?: unknown }).observedModel;
+  return typeof value === "string" ? value : undefined;
 }
