@@ -7,8 +7,9 @@ base label and a previously green test run are not proof of that relationship.
 
 `.github/stacked-prs.json` is the default-branch-owned, machine-readable
 relationship registry. Each entry declares the repository, child branch,
-parent branch, PR number, and exact parent head the child is expected to
-contain. The declaration is stale as soon as the parent branch moves.
+parent branch, child PR number, and parent PR number. Mutable commit SHAs do
+not belong in the registry: trusted CI resolves both PRs and refs from GitHub
+for every run.
 
 The PR body carries evidence because a commit cannot contain its own final SHA.
 The `meelni-stack-evidence` block records the exact child head, parent head, and
@@ -17,7 +18,7 @@ invalidates it after either branch moves.
 
 The verifier reports:
 
-- declared and actual parent head;
+- resolved child and parent heads;
 - actual merge-base;
 - commits the child is behind and ahead of the parent;
 - missing or superseded evidence fields.
@@ -53,7 +54,7 @@ The JSON result must show:
 
 ```text
 status: pass
-declaredParentHead = actualParentHead = mergeBase
+actualParentHead = mergeBase
 behind: 0
 ```
 
@@ -76,12 +77,11 @@ git switch codex/child-branch
 git merge --no-ff origin/codex/parent-branch
 ```
 
-Then update that child's `expectedParentHead` in the authoritative manifest on
-`main`, run relevant functional checks, push the child, and replace the PR-body
-evidence block. Do not rely on a manifest edit that exists only inside the
-stacked child; the trusted workflow intentionally ignores PR-controlled copies.
-A parent's new remediation commit invalidates every descendant's evidence, so
-repeat in order.
+Then run relevant functional checks, push the child, and replace the PR-body
+evidence block. A normal parent movement does not require a default-branch
+manifest edit. Change the trusted registry only when the child/parent PR or ref
+identity changes. A parent's new remediation commit invalidates every
+descendant's evidence, so repeat in order.
 
 Current runtime/privacy/billing order:
 
@@ -117,13 +117,24 @@ runs the verifier and registry from that trusted checkout. It never checks out
 or executes a pull request's code. On every same-repository PR event the hosted
 adapter revalidates the triggering PR and each open registered child whose
 declared parent ref is the triggering PR's head ref. It fetches each
-server-owned `refs/pull/<n>/head` plus its declared parent and supplies the exact
-PR body to the deterministic verifier. It creates a dedicated
-custom `Stack Topology / Verify` Check Run on that child head before Git verification,
-then refreshes both exact refs immediately before completing success. A changed
-child or parent generation fails the in-progress check instead of publishing a
-stale success. Classic protection requires the stable `Trusted Publisher`
-Actions job; the custom Check Run remains the detailed exact-head audit record.
+server-owned `refs/pull/<n>/head` plus its declared parent. Before fetching Git
+refs, it loads both child and parent PRs from GitHub and validates their PR
+numbers, head refs, repository, open state, and child base. It supplies the
+server-returned child PR body to the deterministic verifier; event body, head,
+repository, and base fields are not verification authority. After initial
+trusted resolution and verification identifies the exact child head, it creates
+a dedicated custom `Stack Topology / Verify` Check Run on that head. It then
+reloads both PRs and refreshes both exact refs immediately before every
+completion. Initial API, transport, or malformed-evidence errors fail the stable
+publisher even when they occur before a custom check can be created. A changed
+child or parent generation fails the in-progress check instead of publishing
+stale success. Classic protection requires the stable
+`Trusted Publisher` Actions job. A registered triggering child with invalid
+topology fails that stable context. When a parent event discovers an invalid
+dependent child, the child's custom check fails while the parent's stable
+context succeeds. API or publication failures always fail the stable job.
+Scheduled/manual topology failures are recorded on child checks without making
+the sweep itself fail; API or publication failures fail the sweep.
 Push events fail closed in this adapter; local branch work uses the command
 above.
 
