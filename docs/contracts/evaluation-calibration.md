@@ -67,7 +67,7 @@ gold-set preflight and 100% insufficient-handling threshold.
 
 ## Report contract
 
-Every command emits `evaluation-calibration-report.v5` JSON with:
+Every command emits `evaluation-calibration-report.v6` JSON with:
 
 - execution kind, evaluator model, repetition count, and paid-provider status;
 - gold-set, adjudication, schema, prompt, and rubric versions;
@@ -81,12 +81,13 @@ Every command emits `evaluation-calibration-report.v5` JSON with:
 - case-level failure codes and unresolved blockers.
 
 Live reports also include `execution.cost`, an
-`evaluation-calibration-cost-report.v2` object with logical calls, the physical
-HTTP-attempt ceiling, completed calls,
-calls, cumulative worst-case reservations, reconciled actual cost,
+`evaluation-calibration-cost-report.v3` object with the fixed authorized run
+and authorization identities, logical calls, the physical HTTP-attempt ceiling,
+completed calls, cumulative worst-case reservations, reconciled actual cost,
 unreconciled reservation cost, estimated committed cost, the deterministic stop
-reason, and the exact reviewed pricing contract. Preflight and deterministic
-self-test reports set `execution.cost` to `null`.
+reason, spend-cap-breach state, resumed-call count, and the exact reviewed
+pricing contract. Preflight and deterministic self-test reports set
+`execution.cost` to `null`.
 
 Reports contain aggregate metrics, case IDs, version identifiers, and failure
 codes only. They never contain prompts, transcript text, provider response
@@ -140,24 +141,52 @@ pinned expectation. Live reports preserve every provider-reported model and
 service-tier identity, including identities returned with invalid or failed
 responses. Deterministic runs use an explicit local identifier.
 
-Immediately before each provider invocation, the runner reserves a worst-case
-cost using a conservative input-token ceiling and a 2,000 completion-token
-limit. A call is not made when its reservation could put estimated committed
-spend above $3. Successful responses must include internally consistent usage
-within both ceilings; the reservation is then reconciled to actual uncached,
-cached, and output token usage. Missing, malformed, or over-reservation usage,
-as well as provider failure, stops the run before another call. Uncertain spend
-retains its full reservation.
+Before each provider invocation, the runner reserves a worst-case cost using a
+conservative input-token ceiling and a 2,000 completion-token limit and commits
+that reservation to the durable run ledger. A call is not made when its
+reservation could put estimated committed spend above $3. The runner reads a
+fresh clock at reservation time and again through a callback immediately before
+the physical HTTP request; crossing the 24-hour pricing expiry during request
+preparation therefore stops before HTTP. Successful responses must include
+internally consistent usage, and the reservation is then reconciled to actual
+uncached, cached, and output token usage. Missing or malformed usage and provider
+failure stop the run before another call and retain the uncertain reservation.
+Valid usage above a reservation is charged at its exact known actual cost before
+the run stops. If that unavoidable provider-reported cost exceeds $3, the report
+truthfully sets `spendCapBreached` and records the amount rather than hiding it
+behind the reservation.
 
 The paid client rejects any ambient `OPENAI_BASE_URL`, accepts no injected
-client, pins the official endpoint, requests `service_tier: "default"`, disables
-SDK retries, and rejects HTTP redirects. One fully reserved logical call can
-therefore create at most one physical HTTP attempt; the 96-call cap is also a
-96-attempt cap. Missing or non-default returned tier fails after at most one
-call. When a mismatched model/tier response includes valid in-reservation usage,
-the report preserves its identity and token totals, reconciles known cost, and
-then stops. Only absent, invalid, or over-ceiling usage retains an unresolved
-worst-case reservation.
+client, pins the official endpoint, requests `service_tier: "default"`, uses a
+five-minute request timeout, disables SDK retries, and rejects HTTP redirects.
+One fully reserved logical call can therefore create at most one physical HTTP
+attempt; the 96-call cap is also a 96-attempt cap. Missing or non-default
+returned tier fails after at most one call. When a mismatched model/tier response
+includes valid usage, the report preserves its identity and token totals,
+reconciles known cost, and then stops. Only absent or invalid usage retains an
+unresolved worst-case reservation.
+
+## Paid-run authorization and ledger contract
+
+The approved spend is one aggregate run, not a reusable per-process allowance.
+`docs/evidence/sav-198-paid-run-authorization.json` binds it to
+`sav-198-authorized-paid-calibration.v1`, at most 96 provider calls and physical
+attempts, and at most $3 of committed spend using synthetic or separately
+approved fixtures only. The live CLI accepts neither an arbitrary run ID nor an
+operator-selected ledger path, so a new process cannot mint another budget.
+This spend authorization is independent of, and does not replace, the semantic
+adjudication approval described below.
+
+The live CLI holds an exclusive 20-minute lease and stores
+`evaluation-calibration-run-checkpoint.v1` under
+`~/.local/state/meelni/evaluation-calibration/`. Checkpoints are atomically
+written and fsynced before HTTP is permitted. They bind the fixed authorization
+hash and preserve every reservation, attempted call key, provider-attempt
+boundary, reconciled cost, and terminal stop. A concurrent process is rejected.
+After a crash, stale-lock recovery preserves the checkpoint; previously
+attempted call keys are never replayed and unresolved reservations remain
+committed. A terminal run cannot be reopened. Checkpoints and leases contain no
+prompt, transcript, response body, API key, or customer/Production payload.
 
 ## Approval artifact contract
 
