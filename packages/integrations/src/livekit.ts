@@ -38,6 +38,15 @@ export interface StartedInterviewRoom {
   url: string;
 }
 
+export interface TerminateInterviewRoomInput {
+  roomName: string;
+  env: LiveKitEnvironment;
+}
+
+export interface TerminatedInterviewRoom {
+  terminated: true;
+}
+
 export interface IssueInterviewParticipantTokenInput {
   identity: string;
   participantName: string;
@@ -79,6 +88,16 @@ export interface LiveKitInterviewProvider {
     input: StartInterviewRoomInput
   ): Promise<ProviderResult<StartedInterviewRoom>>;
 }
+
+export interface LiveKitRoomTerminationProvider {
+  terminateInterviewRoom(
+    input: TerminateInterviewRoomInput
+  ): Promise<ProviderResult<TerminatedInterviewRoom>>;
+}
+
+export interface LiveKitProvider
+  extends LiveKitInterviewProvider,
+    LiveKitRoomTerminationProvider {}
 
 export interface LiveKitProviderDependencies {
   accessTokenFactory?: AccessTokenFactory;
@@ -218,7 +237,7 @@ export function createLiveKitInterviewProvider({
     new AgentDispatchClient(url, apiKey, apiSecret),
   roomServiceClientFactory = (url, apiKey, apiSecret) =>
     new RoomServiceClient(url, apiKey, apiSecret),
-}: LiveKitProviderDependencies = {}): LiveKitInterviewProvider {
+}: LiveKitProviderDependencies = {}): LiveKitProvider {
   return {
     async startInterviewRoom(input) {
       let signedToken: string;
@@ -382,6 +401,32 @@ export function createLiveKitInterviewProvider({
         token: signedToken,
         url: input.env.url,
       });
+    },
+    async terminateInterviewRoom(input) {
+      const roomClient = roomServiceClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
+      if (!roomClient.deleteRoom) {
+        return providerFailure("livekit", {
+          code: "livekit_room_termination_unsupported",
+          message: "The LiveKit room adapter cannot delete rooms.",
+          retryable: false,
+        });
+      }
+      try {
+        await roomClient.deleteRoom(input.roomName);
+      } catch (error) {
+        if (!isMissingRoomError(error)) {
+          return providerFailure("livekit", {
+            code: "livekit_room_delete_failed",
+            message: "LiveKit room termination failed",
+            retryable: true,
+          });
+        }
+      }
+      return providerSuccess("livekit", { terminated: true });
     },
   };
 }
@@ -649,4 +694,18 @@ function isLiveKitNotFoundError(error: unknown): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isMissingRoomError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const code = String(record.code ?? "").toLowerCase();
+  const status = Number(record.status ?? record.statusCode ?? 0);
+  return (
+    status === 404 ||
+    code === "404" ||
+    code === "5" ||
+    code === "not_found" ||
+    code === "room_not_found"
+  );
 }

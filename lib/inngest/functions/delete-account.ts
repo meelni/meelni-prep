@@ -1,4 +1,8 @@
 import Stripe from "stripe";
+import {
+  createLiveKitInterviewProvider,
+  getLiveKitEnvironment,
+} from "@meelni/integrations";
 import { deletedBillingIdempotencyKey } from "@/lib/billing/account-deletion-guard";
 import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
 import {
@@ -45,7 +49,8 @@ export const deleteAccount = inngest.createFunction(
     }
     if (
       request.status === "completed" &&
-      request.stripeSubjects.every(({ providerId }) => providerId === null)
+      request.stripeSubjects.every(({ providerId }) => providerId === null) &&
+      request.livekitRooms.every(({ roomName }) => roomName === null)
     ) {
       return { status: "completed" };
     }
@@ -95,6 +100,19 @@ export const deleteAccount = inngest.createFunction(
                   if (!isAlreadyDeletedProviderError(error)) {
                     throw safeProviderError("stripe_provider_error");
                   }
+                }
+              },
+              terminateLiveKitRoom: async (roomName) => {
+                const environment = getLiveKitEnvironment();
+                if (!environment.ok) {
+                  throw safeProviderError("livekit_provider_error");
+                }
+                const result =
+                  await createLiveKitInterviewProvider().terminateInterviewRoom(
+                    { roomName, env: environment.data }
+                  );
+                if (!result.ok) {
+                  throw safeProviderError("livekit_provider_error");
                 }
               },
               redactProviderLogs: redactStripeEventLogs,

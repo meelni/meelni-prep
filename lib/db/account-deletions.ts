@@ -1,4 +1,17 @@
-import { and, asc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  lt,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import {
   buildStripeDeletionSubjects,
@@ -37,6 +50,7 @@ export interface AccountDeletionRecord {
   userId: string;
   status: AccountDeletionStatus;
   stripeSubjects: StripeDeletionSubject[];
+  livekitRooms: LiveKitDeletionRoom[];
   attempts: number;
 }
 
@@ -87,9 +101,15 @@ function hasPostgresCode(error: unknown, code: string): boolean {
   return false;
 }
 
+export interface LiveKitDeletionRoom {
+  roomName: string | null;
+  fingerprint: string;
+}
+
 export async function requestAccountDeletion(input: {
   userId: string;
   stripeSubjects: StripeDeletionSubject[];
+  livekitRooms?: LiveKitDeletionRoom[];
 }): Promise<AccountDeletionRecord> {
   const record = await withStripeDeletionSerializationRetry(() =>
     db.transaction(async (tx) => {
@@ -109,12 +129,14 @@ export async function requestAccountDeletion(input: {
         .values({
           userId: input.userId,
           stripeSubjects: input.stripeSubjects,
+          livekitRooms: input.livekitRooms ?? [],
         })
         .onConflictDoUpdate({
           target: accountDeletionRequest.userId,
           set: {
             status: "pending",
             stripeSubjects: input.stripeSubjects,
+            livekitRooms: input.livekitRooms ?? [],
             lastErrorCode: null,
             completedAt: null,
             updatedAt: new Date(),
@@ -153,25 +175,51 @@ export async function requestAccountDeletionWithCurrentSubjects(
         .where(eq(subscription.userId, userId))
         .limit(1);
       const customerMappings = await tx
-        .select({ stripeCustomerId: stripeCustomerMapping.stripeCustomerId })
+        .select({
+          stripeCustomerId: stripeCustomerMapping.stripeCustomerId,
+          stripeSubscriptionId: stripeCustomerMapping.stripeSubscriptionId,
+        })
         .from(stripeCustomerMapping)
-        .where(eq(stripeCustomerMapping.userId, userId));
+        .where(eq(stripeCustomerMapping.userId, userId))
+        .orderBy(asc(stripeCustomerMapping.stripeCustomerId));
       const stripeSubjects = buildStripeDeletionSubjects({
         subscriptionId: currentSubscription?.stripeSubscriptionId,
         subscriptionCustomerId: currentSubscription?.stripeCustomerId,
+        mappedSubscriptionIds: customerMappings.map(
+          ({ stripeSubscriptionId }) => stripeSubscriptionId
+        ),
         mappedCustomerIds: customerMappings.map(
           ({ stripeCustomerId }) => stripeCustomerId
         ),
       });
+      const roomRows = await tx
+        .select({ roomName: interviewSession.livekitRoomName })
+        .from(interviewSession)
+        .where(
+          and(
+            eq(interviewSession.userId, userId),
+            isNotNull(interviewSession.livekitRoomName),
+            notInArray(interviewSession.lifecycleState, [
+              "completed",
+              "abandoned",
+              "failed",
+            ])
+          )
+        )
+        .orderBy(asc(interviewSession.livekitRoomName));
+      const livekitRooms = buildLiveKitDeletionRooms(
+        roomRows.map(({ roomName }) => roomName)
+      );
 
       const [persisted] = await tx
         .insert(accountDeletionRequest)
-        .values({ userId, stripeSubjects })
+        .values({ userId, stripeSubjects, livekitRooms })
         .onConflictDoUpdate({
           target: accountDeletionRequest.userId,
           set: {
             status: "pending",
             stripeSubjects,
+            livekitRooms,
             lastErrorCode: null,
             completedAt: null,
             updatedAt: new Date(),
@@ -325,7 +373,8 @@ export async function markAccountDeletionFailed(
 
 export async function markAccountDeletionCompleted(
   userId: string,
-  processedFingerprints: string[]
+  processedFingerprints: string[],
+  processedLiveKitFingerprints: string[] = []
 ) {
   const now = new Date();
   await db.transaction(async (tx) => {
@@ -345,15 +394,35 @@ export async function markAccountDeletionCompleted(
     const hasUnprocessedSubjects = stripeSubjects.some(
       ({ providerId }) => providerId !== null
     );
+    const processedLiveKit = new Set(processedLiveKitFingerprints);
+    const livekitRooms = normalizeLiveKitDeletionRooms(
+      request.livekitRooms
+    ).map((room) =>
+      processedLiveKit.has(room.fingerprint)
+        ? { ...room, roomName: null }
+        : room
+    );
+    const hasUnprocessedRooms = livekitRooms.some(
+      ({ roomName }) => roomName !== null
+    );
     await tx
       .update(accountDeletionRequest)
       .set({
-        status: hasUnprocessedSubjects ? "failed" : "completed",
+        status:
+          hasUnprocessedSubjects || hasUnprocessedRooms
+            ? "failed"
+            : "completed",
         lastErrorCode: hasUnprocessedSubjects
           ? "stripe_late_reconciliation_failed"
-          : null,
-        completedAt: hasUnprocessedSubjects ? request.completedAt : now,
+          : hasUnprocessedRooms
+            ? "livekit_provider_error"
+            : null,
+        completedAt:
+          hasUnprocessedSubjects || hasUnprocessedRooms
+            ? request.completedAt
+            : now,
         stripeSubjects,
+        livekitRooms,
         updatedAt: now,
       })
       .where(eq(accountDeletionRequest.userId, userId));
@@ -451,6 +520,14 @@ export async function listRecoverableAccountDeletions(
           )`
         ),
         and(
+          eq(accountDeletionRequest.status, "completed"),
+          sql`EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(${accountDeletionRequest.livekitRooms}) room
+            WHERE room->>'roomName' IS NOT NULL
+          )`
+        ),
+        and(
           eq(accountDeletionRequest.status, "processing"),
           lt(accountDeletionRequest.updatedAt, staleBefore)
         )
@@ -528,6 +605,46 @@ function toDeletionRecord(record: typeof accountDeletionRequest.$inferSelect) {
     userId: record.userId,
     status: record.status as AccountDeletionStatus,
     stripeSubjects: normalizeStripeDeletionSubjects(record.stripeSubjects),
+    livekitRooms: normalizeLiveKitDeletionRooms(record.livekitRooms),
     attempts: record.attempts,
   };
+}
+
+export function buildLiveKitDeletionRooms(
+  roomNames: Array<string | null | undefined>
+): LiveKitDeletionRoom[] {
+  return [...new Set(roomNames.filter((name): name is string => !!name))]
+    .sort()
+    .map((roomName) => ({
+      roomName,
+      fingerprint: createHash("sha256").update(roomName).digest("hex"),
+    }));
+}
+
+export function normalizeLiveKitDeletionRooms(
+  value: unknown
+): LiveKitDeletionRoom[] {
+  if (!Array.isArray(value)) throw invalidLiveKitDeletionRooms();
+  return value.map((candidate) => {
+    if (!candidate || typeof candidate !== "object") {
+      throw invalidLiveKitDeletionRooms();
+    }
+    const { roomName, fingerprint } = candidate as Record<string, unknown>;
+    if (
+      (roomName !== null && typeof roomName !== "string") ||
+      typeof fingerprint !== "string" ||
+      !/^[a-f0-9]{64}$/.test(fingerprint) ||
+      (typeof roomName === "string" &&
+        createHash("sha256").update(roomName).digest("hex") !== fingerprint)
+    ) {
+      throw invalidLiveKitDeletionRooms();
+    }
+    return { roomName, fingerprint };
+  });
+}
+
+function invalidLiveKitDeletionRooms(): Error & { code: string } {
+  return Object.assign(new Error("Account deletion rooms are invalid"), {
+    code: "account_deletion_rooms_invalid",
+  });
 }

@@ -12,10 +12,15 @@ export interface DeleteAccountWorkflowDeps {
     cancellation: AccountDeletionSubscriptionCancellation
   ): Promise<void>;
   deleteCustomer(customerId: string): Promise<void>;
+  terminateLiveKitRoom(roomName: string): Promise<void>;
   redactProviderLogs(request: AccountDeletionRecord): Promise<void>;
   deleteApplicationData(userId: string): Promise<void>;
   deleteAuthUser(userId: string): Promise<void>;
-  markCompleted(userId: string, processedFingerprints: string[]): Promise<void>;
+  markCompleted(
+    userId: string,
+    processedFingerprints: string[],
+    processedLiveKitFingerprints: string[]
+  ): Promise<void>;
 }
 
 export async function deleteAccountWorkflow(
@@ -24,7 +29,8 @@ export async function deleteAccountWorkflow(
 ) {
   if (
     request.status === "completed" &&
-    request.stripeSubjects.every(({ providerId }) => providerId === null)
+    request.stripeSubjects.every(({ providerId }) => providerId === null) &&
+    request.livekitRooms.every(({ roomName }) => roomName === null)
   ) {
     return { alreadyCompleted: true };
   }
@@ -34,6 +40,13 @@ export async function deleteAccountWorkflow(
   await deps.redactProviderLogs(request);
   await deps.deleteApplicationData(request.userId);
   await deps.deleteAuthUser(request.userId);
+
+  const pendingRooms = request.livekitRooms.filter(
+    (room): room is typeof room & { roomName: string } => room.roomName !== null
+  );
+  for (const room of pendingRooms) {
+    await deps.terminateLiveKitRoom(room.roomName);
+  }
 
   const pendingSubjects = request.stripeSubjects.filter(
     (subject): subject is typeof subject & { providerId: string } =>
@@ -62,7 +75,11 @@ export async function deleteAccountWorkflow(
       await deps.deleteCustomer(subject.providerId);
     }
   }
-  await deps.markCompleted(request.userId, [...processedFingerprints]);
+  await deps.markCompleted(
+    request.userId,
+    [...processedFingerprints],
+    pendingRooms.map(({ fingerprint }) => fingerprint)
+  );
   return { alreadyCompleted: false };
 }
 
@@ -81,6 +98,7 @@ export function accountDeletionFailureCode(error: unknown): string {
     if (
       code === "stripe_provider_error" ||
       code === "auth_provider_error" ||
+      code === "livekit_provider_error" ||
       code === "account_deletion_step_failed" ||
       code === "account_deletion_state_update_failed" ||
       code === "account_deletion_tombstone_missing"

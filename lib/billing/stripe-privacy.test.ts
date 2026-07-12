@@ -9,17 +9,22 @@ import {
   payloadContainsProviderIdentifier,
 } from "./stripe-privacy";
 
-test("deletion subjects include pass-only and multiple mapped customers", () => {
+test("deletion subjects deterministically include every historical subscription and customer", () => {
   const subjects = buildStripeDeletionSubjects({
-    subscriptionId: null,
-    subscriptionCustomerId: null,
-    mappedCustomerIds: ["cus_pass", "cus_second", "cus_pass"],
+    subscriptionId: "sub_current",
+    subscriptionCustomerId: "cus_current",
+    mappedSubscriptionIds: ["sub_legacy_b", "sub_current", "sub_legacy_a"],
+    mappedCustomerIds: ["cus_pass", "cus_current", "cus_second", "cus_pass"],
     paymentIntentIds: ["pi_pass"],
     chargeIds: ["ch_pass"],
   });
   assert.deepEqual(
     subjects.map(({ kind, providerId }) => ({ kind, providerId })),
     [
+      { kind: "subscription", providerId: "sub_current" },
+      { kind: "subscription", providerId: "sub_legacy_a" },
+      { kind: "subscription", providerId: "sub_legacy_b" },
+      { kind: "customer", providerId: "cus_current" },
       { kind: "customer", providerId: "cus_pass" },
       { kind: "customer", providerId: "cus_second" },
       { kind: "payment_intent", providerId: "pi_pass" },

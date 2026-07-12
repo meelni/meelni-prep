@@ -84,8 +84,8 @@ The account-deletion job normalizes provider, redaction, and application errors
 inside the Inngest step boundary so raw database/provider messages do not enter
 job history; the tombstone and job retain only a stable failure code.
 Local webhook redaction and application-data cleanup run before Supabase Auth
-and Stripe provider operations. Provider outages therefore retain only the
-durable typed cleanup references, not the user's local product data.
+and Stripe/LiveKit provider operations. Provider outages therefore retain only
+the durable typed cleanup references, not the user's local product data.
 
 ## Checkout and deletion concurrency
 
@@ -99,9 +99,23 @@ above Stripe's documented minimum so request latency cannot invalidate it. That
 expiry narrows exposure but is not treated as a guarantee against completion.
 
 The deletion request locks the local user row before taking its subscription
-and customer-mapping snapshot and committing the tombstone. Billing fulfillment
+and customer-mapping snapshot and committing the tombstone. The snapshot
+contains the current subscription and every subscription/customer ID on every
+historical mapping, sorted and deduplicated deterministically. Billing fulfillment
 uses the same lock, so a local mapping/subscription either commits before the
 snapshot or is denied after the tombstone; it cannot commit into the gap.
+
+The same accepted transaction snapshots each room name belonging to a
+nonterminal LiveKit interview. Session creation takes the account identity lock,
+so it either commits before the snapshot or fails after the tombstone exists.
+Cleanup removes local interview data first, then actively calls LiveKit room
+deletion, which disconnects current participants and ends that room. The HTTP
+202 confirms durable acceptance, not synchronous disconnection; a connection
+may persist until the background cleanup attempt reaches LiveKit. LiveKit
+failures persist only the stable `livekit_provider_error` category and remain
+recoverable. They never roll back the tombstone or restore product access.
+Successful cleanup clears the raw room name and retains only its fingerprint;
+raw room names never enter client responses, stable errors, or job step output.
 
 Webhook fulfillment independently requires matching client-reference and
 metadata user IDs. Credit and subscription writes serialize with deletion on

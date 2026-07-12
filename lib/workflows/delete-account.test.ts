@@ -51,6 +51,12 @@ const REQUEST: AccountDeletionRecord = {
       fingerprint: "charge-fingerprint",
     },
   ],
+  livekitRooms: [
+    {
+      roomName: "interview-active-room",
+      fingerprint: "livekit-room-fingerprint",
+    },
+  ],
   attempts: 1,
 };
 
@@ -61,6 +67,7 @@ test("durable deletion runs providers and application cleanup in retry-safe orde
     `redact:${REQUEST.userId}`,
     `application:${REQUEST.userId}`,
     `auth:${REQUEST.userId}`,
+    "livekit:interview-active-room",
     "subscription:sub_test",
     "payment:payment_intent:pi_test",
     "payment:payment_intent:pi_tombstone_only",
@@ -150,6 +157,10 @@ test("completed deletion and missing provider records are idempotent", async () 
           ...subject,
           providerId: null,
         })),
+        livekitRooms: REQUEST.livekitRooms.map((room) => ({
+          ...room,
+          roomName: null,
+        })),
       },
       createDeps(calls)
     ),
@@ -192,6 +203,29 @@ test("known financial fingerprints remain in the completed deletion snapshot", a
   assert.equal(completedFingerprints[0]?.includes("payment-fingerprint"), true);
 });
 
+test("LiveKit cleanup failure remains retryable after irreversible local acceptance", async () => {
+  const calls: string[] = [];
+  const deps = createDeps(calls);
+  deps.terminateLiveKitRoom = async (roomName) => {
+    calls.push(`livekit:${roomName}`);
+    throw Object.assign(new Error("wss://secret-livekit-host"), {
+      code: "livekit_provider_error",
+    });
+  };
+
+  await assert.rejects(() => deleteAccountWorkflow(REQUEST, deps));
+  assert.deepEqual(calls, [
+    `redact:${REQUEST.userId}`,
+    `application:${REQUEST.userId}`,
+    `auth:${REQUEST.userId}`,
+    "livekit:interview-active-room",
+  ]);
+  assert.equal(
+    calls.some((call) => call.startsWith("completed:")),
+    false
+  );
+});
+
 test("deletion failures are reduced to a stable code without raw details", () => {
   const safe = safeAccountDeletionError(
     Object.assign(new Error("postgresql://secret-host transcript text"), {
@@ -212,6 +246,14 @@ test("deletion preserves accepted provider failure categories", () => {
       })
     ).code,
     "stripe_provider_error"
+  );
+  assert.equal(
+    safeAccountDeletionError(
+      Object.assign(new Error("private room name"), {
+        code: "livekit_provider_error",
+      })
+    ).code,
+    "livekit_provider_error"
   );
 });
 
@@ -239,6 +281,9 @@ function createDeps(calls: string[]): DeleteAccountWorkflowDeps {
     },
     deleteCustomer: async (id) => {
       calls.push(`customer:${id}`);
+    },
+    terminateLiveKitRoom: async (roomName) => {
+      calls.push(`livekit:${roomName}`);
     },
     redactProviderLogs: async (request) => {
       calls.push(`redact:${request.userId}`);
