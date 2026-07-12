@@ -73,18 +73,6 @@ export interface DeletedCheckoutReconciliationDeps {
     subscriptionId: string,
     idempotencyKey: string
   ): Promise<void>;
-  loadInvoicePayments(invoiceId: string): Promise<
-    Array<{
-      allocationAmount?: number;
-      allocationFingerprint?: string;
-      kind: "payment_intent" | "charge";
-      providerId: string;
-    }>
-  >;
-  refundPayment(
-    payment: { kind: "payment_intent" | "charge"; providerId: string },
-    idempotencyKey: string
-  ): Promise<void>;
 }
 
 export async function reconcileDeletedCheckoutSession(
@@ -127,45 +115,10 @@ export async function reconcileDeletedCheckoutSession(
     );
   }
 
-  let payments: Array<{
-    allocationAmount?: number;
-    allocationFingerprint?: string;
-    kind: "payment_intent" | "charge";
-    providerId: string;
-  }> = providerId(session.payment_intent)
-    ? [
-        {
-          kind: "payment_intent" as const,
-          providerId: providerId(session.payment_intent)!,
-        },
-      ]
-    : [];
-  const invoiceId = providerId(session.invoice);
-  if (payments.length === 0 && invoiceId) {
-    payments = await callSafely(() => deps.loadInvoicePayments(invoiceId));
-  }
-
-  if (session.payment_status === "paid" && payments.length === 0) {
-    throw safeCheckoutDeletionError(
-      "deleted_checkout_manual_reconciliation_required"
-    );
-  }
-
-  for (const payment of payments) {
-    await callSafely(() =>
-      deps.refundPayment(
-        payment,
-        payment.allocationFingerprint
-          ? `account-deletion:invoice-payment-refund:${payment.allocationFingerprint}`
-          : deletedBillingIdempotencyKey(payment.providerId, "refund")
-      )
-    );
-  }
-
   return {
     status: "reconciled",
     subscriptionCanceled: Boolean(subscriptionId),
-    paymentRefunded: payments.length > 0,
+    paymentRefunded: false,
   };
 }
 
