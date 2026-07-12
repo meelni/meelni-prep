@@ -208,6 +208,13 @@ ledger-location injection seam. Local Git remotes, push URLs, URL rewrites,
 authority. Ambient GitHub host/config, proxy, custom-CA, or TLS override
 variables fail before every authority request, and neither their values nor the
 token can enter errors or calibration reports.
+The paid command starts through a dedicated Node 22 bootstrap with empty
+`execArgv`, then launches only the repository-pinned tsx 4.23.0 preflight and
+loader arguments. Both stages attest the exact runtime and unsafe environment
+before reading either provider token. The runtime repeats that attestation
+before GitHub client construction and every authority request. Any additional
+preload/import, inspector, debugger, TLS-keylog, OpenSSL/custom-CA, proxy,
+profiler, coverage, or endpoint override fails closed.
 Before activation and every HTTP dispatch it requires two exact active
 repository rulesets: deletion/non-fast-forward with no bypass actors, and
 creation/update restriction whose sole bypass actor is `saviii` user ID

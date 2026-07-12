@@ -57,9 +57,9 @@ test("security quality gate checks Semgrep through the uvx wrapper", () => {
   assert.equal(scripts["quality:security"], "node scripts/run-semgrep.mjs");
 });
 
-test("live calibration loads the local env file explicitly", () => {
+test("live calibration enters through the clean startup-attestation bootstrap", () => {
   assert.equal(
     scripts["calibration:live"],
-    "tsx --env-file=.env.local scripts/run-evaluation-calibration.ts --mode live"
+    "node scripts/run-evaluation-calibration-live.mjs"
   );
 });
