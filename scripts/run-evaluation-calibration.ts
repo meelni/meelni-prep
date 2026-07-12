@@ -18,7 +18,6 @@ import {
 } from "@/lib/evaluation/scorer";
 import {
   activateCalibrationRun,
-  getCalibrationRepositoryRemoteUrl,
   SAV_198_SPEND_AUTHORIZATION,
 } from "@/lib/evaluation/calibration-run-ledger";
 import { getCalibrationCliExitCode } from "@/lib/evaluation/calibration-cli";
@@ -74,7 +73,6 @@ async function main() {
       adjudicationApproval,
       model: modelVersion,
       repetitions,
-      remoteUrl: getCalibrationRepositoryRemoteUrl(),
     });
     try {
       spendGuard = new CalibrationSpendGuard(

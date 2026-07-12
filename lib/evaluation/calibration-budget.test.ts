@@ -47,6 +47,7 @@ test("the 96-call boundary refuses call 97 before invocation", () => {
   }
   assert.equal(guard.reserve(SCORED_FIXTURE), null);
   assert.equal(guard.report().attemptedCalls, 96);
+  assert.equal(guard.report().physicalRequestBoundaryAttempts, 96);
   assert.equal(guard.report().physicalHttpAttemptCeiling, 96);
   assert.equal(guard.report().completedCalls, 96);
   assert.equal(guard.report().stopReason, "call_cap_reached");
@@ -154,12 +155,30 @@ test("pricing expiry during request preparation stops before physical HTTP", () 
     /review_is_stale/
   );
   assert.equal(guard.report().attemptedCalls, 1);
+  assert.equal(guard.report().physicalRequestBoundaryAttempts, 1);
   assert.equal(guard.report().physicalHttpAttemptCeiling, 0);
   assert.equal(
     guard.report().stopReason,
     "pricing_review_expired_before_request"
   );
   assert.equal(guard.report().actualCostComplete, false);
+});
+
+test("a physical request reservation is atomically single-use", () => {
+  const guard = createGuard();
+  const reservation = guard.reserve(SCORED_FIXTURE)!;
+  guard.assertPhysicalRequestAllowed(reservation);
+
+  assert.throws(
+    () => guard.assertPhysicalRequestAllowed(reservation),
+    /boundary_already_used/
+  );
+  const report = guard.report();
+  assert.equal(report.contractVersion, "evaluation-calibration-cost-report.v5");
+  assert.equal(report.physicalRequestBoundaryAttempts, 2);
+  assert.equal(report.physicalHttpAttemptCeiling, 1);
+  assert.equal(report.stopReason, "physical_request_reentry");
+  assert.equal(guard.reserve(SCORED_FIXTURE), null);
 });
 
 test("freshness is re-read before every subsequent reservation", () => {
