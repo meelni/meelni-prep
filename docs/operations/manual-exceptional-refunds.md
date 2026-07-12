@@ -18,31 +18,26 @@ Keep the audit record redacted. Do not copy customer transcripts, interview
 recordings, API keys, webhook secrets, card data, database URLs, or raw provider
 payloads into support notes, Linear, or repository documentation.
 
-## Provider operation
+## Execution is paused
 
-1. Confirm the Stripe Dashboard is in the explicitly approved mode. Test and
-   live operations are separate decisions and must never share credentials or
-   evidence.
-2. Locate the exact PaymentIntent/charge or invoice payment from the approved
-   case. Do not infer a refund from subscription cancellation or account
-   deletion alone.
-3. Have the named human owner create the exact approved refund manually in
-   Stripe. Do not add an application endpoint, background retry, or reusable
-   automatic refund path for this procedure.
-4. Record only the case ID, redacted provider reference/fingerprint, amount,
-   currency, mode, human owner, timestamp, and resulting provider status.
+A human may approve or reject an exceptional-refund request, but must not
+execute an approved refund for an existing account yet. [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+must first ship and verify exact payment-to-credit-ledger reconciliation. This
+runbook intentionally does not invent a Dashboard procedure or ledger-adjustment
+procedure while that technical control is absent.
 
-## Reconciliation evidence
+Current behavior is narrower:
 
-- Confirm the signed Stripe refund event was processed idempotently.
-- For an existing account, confirm payment history and any required
-  credit-ledger adjustment match the approved refund exactly and do not revoke
-  unrelated trial, pass, admin, refund, or migration credits.
-- For a deleted account, preserve financial/legal processor retention and the
-  redacted support audit record; do not recreate product identity or transcript
-  data to perform reconciliation.
-- If webhook or ledger evidence is incomplete, stop and escalate to the human
-  owner. Do not issue a second refund to repair application state.
+- `charge.refunded` records refunded status in payment history only; it does not
+  adjust, revoke, or restore credits;
+- dispute events are not supported;
+- no application route, webhook, or background job executes an exceptional
+  payment refund.
 
-The support intake channel and Stripe test-mode rehearsal evidence are launch
-gates outside this repository runbook.
+After SAV-231, this runbook must be revised with verified idempotency, exact
+payment/credit allocation, test/live separation, and redacted evidence before
+exceptional-refund execution can begin. Do not issue a second refund to repair
+uncertain application state.
+
+The support intake channel, SAV-231, and Stripe test-mode rehearsal evidence are
+launch gates outside this repository runbook.

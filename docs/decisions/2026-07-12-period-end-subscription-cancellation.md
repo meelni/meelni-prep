@@ -30,12 +30,16 @@ workflows.
   draft implementation also ends access immediately because the account is
   removed; that irreversible exception is not approved by this decision and is
   an explicit owner gate before merge.
-- Provider refund and dispute webhooks continue to reconcile real manual or
-  provider-originated adjustments with the credit ledger.
+- An exceptional-refund decision is human-owned, but execution for an existing
+  account remains paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+  provides verified payment-to-credit-ledger reconciliation. Today,
+  `charge.refunded` updates payment history only, no refund webhook adjusts
+  credits, and dispute events are unsupported.
 
 ## Rollout
 
 The relaunch flag remains off. Before launch, rehearse cancellation and
 reactivation in Stripe test mode and confirm the subscription, invoice,
 customer balance, payment history, access, and unused-credit states. Manual
-refund handling requires a separate support runbook and evidence.
+refund execution additionally requires SAV-231, an updated support runbook, and
+test-mode evidence.

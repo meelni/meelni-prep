@@ -120,7 +120,6 @@ export async function POST(req: NextRequest) {
         stripeSubscriptionId: sub.stripeSubscriptionId,
         cancelAtPeriodEnd: true,
         currentPeriodEnd: periodEnd,
-        observedAt,
       });
 
       return cancellationResponse(periodEnd);
@@ -258,7 +257,6 @@ export async function DELETE() {
         stripeSubscriptionId: sub.stripeSubscriptionId,
         cancelAtPeriodEnd: false,
         currentPeriodEnd: periodEnd,
-        observedAt,
       });
 
       return NextResponse.json({

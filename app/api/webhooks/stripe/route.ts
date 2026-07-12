@@ -44,8 +44,11 @@ import {
 } from "@/lib/billing/account-deletion-guard";
 import { isAlreadyDeletedProviderError } from "@/lib/workflows/delete-account";
 import {
+  getBillingDatabaseTime,
   lockBillingUserUnlessDeleting,
+  reconcileAuthoritativeProviderSnapshot,
   retrieveAuthoritativeSubscription,
+  shouldApplyAuthoritativeProviderSnapshot,
 } from "@/lib/billing/subscription-state";
 import {
   STRIPE_API_VERSION,
@@ -497,205 +500,187 @@ async function getUserIdFromStripe(
  */
 async function handleSubscriptionUpdate(event: Stripe.Event, stripe: Stripe) {
   const eventSubscription = event.data.object as Stripe.Subscription;
-  // A retrieved snapshot is authoritative even when multiple update events have
-  // Stripe's same second-resolution timestamp or arrive out of order.
-  const stripeSubscription = await retrieveAuthoritativeSubscription(
-    stripe.subscriptions,
-    eventSubscription.id
-  );
-
-  // Phase 0.5C: Use metadata fallback (P0 fix #3)
   const userId = await getUserIdFromStripe(
-    stripeSubscription.customer as string,
-    stripeSubscription.metadata.userId
+    eventSubscription.customer as string,
+    eventSubscription.metadata.userId
   );
-
   const eventTimestamp = new Date(event.created * 1000);
   const eventCursor = stripeSubscriptionEventCursor(event);
-  const candidateResourceProof = subscriptionResourceProofFromEvent(
-    stripeSubscription,
-    eventCursor,
-    event.type
-  );
-
-  // Get current subscription (for optimistic locking)
-  const currentSub = await db
-    .select()
-    .from(subscription)
-    .where(eq(subscription.userId, userId))
-    .limit(1);
-
-  const currentResourceId = currentSub[0]?.stripeSubscriptionId ?? null;
-  const currentResourceProof = subscriptionResourceProofFromRow(currentSub[0]);
-  const replacingResource = Boolean(
-    currentResourceId && currentResourceId !== stripeSubscription.id
-  );
-  if (
-    !mayApplyStripeSubscriptionResource({
-      currentResourceId,
-      currentStatus: currentSub[0]?.status ?? null,
-      currentResourceProof,
-      retiredResourceIds: currentSub[0]?.retiredStripeSubscriptionIds ?? [],
-      candidateResourceId: stripeSubscription.id,
-      candidateResourceProof,
-      eventType: event.type,
-    })
-  ) {
-    console.log("Stripe event skipped for superseded subscription resource");
-    return;
-  }
-  const currentCursor = subscriptionEventCursorFromRow(currentSub[0]);
-  if (
-    !stripeSubscriptionCursorMayApply({
-      currentResourceId,
-      candidateResourceId: stripeSubscription.id,
-      currentCursor,
-      candidateCursor: eventCursor,
-    })
-  ) {
-    console.log("Stripe subscription event skipped as stale");
-    return;
-  }
-
-  const catalogId = getStripeCatalogIdForPrice(
-    stripeSubscription.items.data[0]?.price.id
-  );
-
-  // Phase 0.5C: Set trial tracking flags (P0 fix #4)
-  let trialUpdates = {};
-  if (
-    stripeSubscription.status === "trialing" ||
-    (stripeSubscription.trial_end &&
-      new Date(stripeSubscription.trial_end * 1000) < new Date())
-  ) {
-    if (catalogId === "pro") {
-      trialUpdates = { proTrialUsed: true };
-    }
-  }
-
-  // In recent Stripe API versions, current_period_start/end are read from the SubscriptionItem.
-  const firstItem = stripeSubscription.items.data[0];
-
-  const subscriptionData = {
-    userId,
-    tier: catalogId,
-    status: mapStripeStatus(stripeSubscription.status),
-    billingCycle:
-      firstItem?.price.recurring?.interval === "month"
-        ? ("monthly" as const)
-        : ("annual" as const),
-    stripeCustomerId: stripeSubscription.customer as string,
-    stripeSubscriptionId: stripeSubscription.id,
-    stripePriceId: firstItem?.price.id,
-    stripeResourceCreatedAt: candidateResourceProof.resourceCreatedAt,
-    stripeResourceCreatedEventTimestamp:
-      candidateResourceProof.createdEventCursor?.createdAt ??
-      currentSub[0]?.stripeResourceCreatedEventTimestamp ??
-      null,
-    stripeResourceCreatedEventId:
-      candidateResourceProof.createdEventCursor?.eventId ??
-      currentSub[0]?.stripeResourceCreatedEventId ??
-      null,
-    retiredStripeSubscriptionIds:
-      replacingResource && currentResourceId
-        ? sql`array_append(${subscription.retiredStripeSubscriptionIds}, ${currentResourceId})`
-        : (currentSub[0]?.retiredStripeSubscriptionIds ?? []),
-    currentPeriodStart: firstItem?.current_period_start
-      ? new Date(firstItem.current_period_start * 1000)
-      : null,
-    currentPeriodEnd: firstItem?.current_period_end
-      ? new Date(firstItem.current_period_end * 1000)
-      : null,
-    trialEnd: stripeSubscription.trial_end
-      ? new Date(stripeSubscription.trial_end * 1000)
-      : null,
-    canceledAt: stripeSubscription.canceled_at
-      ? new Date(stripeSubscription.canceled_at * 1000)
-      : null,
-    cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
-    lastEventTimestamp: eventTimestamp,
-    lastEventPriority: eventCursor.priority,
-    lastEventId: eventCursor.eventId,
-    updatedAt: new Date(),
-    ...trialUpdates,
-  };
-
-  // Wrap all updates in a transaction for atomicity (P1 fix #5)
-  await db.transaction(async (tx) => {
-    await lockBillingUserUnlessDeleting(tx, userId);
-    const currentSub = await tx
-      .select()
-      .from(subscription)
-      .where(eq(subscription.userId, userId))
-      .limit(1)
-      .for("update");
-    if (currentSub[0]) {
-      const lockedResourceId = currentSub[0].stripeSubscriptionId;
-      if (
-        !mayApplyStripeSubscriptionResource({
-          currentResourceId: lockedResourceId,
-          currentStatus: currentSub[0].status,
-          currentResourceProof: subscriptionResourceProofFromRow(currentSub[0]),
-          retiredResourceIds: currentSub[0].retiredStripeSubscriptionIds ?? [],
-          candidateResourceId: stripeSubscription.id,
-          candidateResourceProof,
-          eventType: event.type,
-        }) ||
-        !stripeSubscriptionCursorMayApply({
-          currentResourceId: lockedResourceId,
-          candidateResourceId: stripeSubscription.id,
-          currentCursor: subscriptionEventCursorFromRow(currentSub[0]),
-          candidateCursor: eventCursor,
-        })
-      ) {
-        return;
+  await reconcileAuthoritativeProviderSnapshot({
+    readVersion: async () => {
+      const [current] = await db
+        .select({ version: subscription.version })
+        .from(subscription)
+        .where(eq(subscription.userId, userId))
+        .limit(1);
+      return current?.version ?? null;
+    },
+    retrieve: () =>
+      retrieveAuthoritativeSubscription(
+        stripe.subscriptions,
+        eventSubscription.id
+      ),
+    commit: async ({ expectedVersion, snapshot: stripeSubscription }) => {
+      const snapshotUserId = await getUserIdFromStripe(
+        stripeSubscription.customer as string,
+        stripeSubscription.metadata.userId
+      );
+      if (snapshotUserId !== userId) {
+        throw new Error("billing_subscription_snapshot_owner_mismatch");
       }
-    }
-    const currentVersion = currentSub[0]?.version ?? 0;
-    const nextSubscriptionData = {
-      ...subscriptionData,
-      version: currentVersion + 1,
-    };
 
-    if (currentSub.length === 0) {
-      // Create new subscription
-      await tx.insert(subscription).values(nextSubscriptionData);
-    } else {
-      // Update with optimistic locking
-      const result = await tx
-        .update(subscription)
-        .set(nextSubscriptionData)
-        .where(
-          and(
-            eq(subscription.userId, userId),
-            eq(subscription.version, currentVersion)
-          )
-        )
-        .returning({ id: subscription.id });
+      return db.transaction(async (tx) => {
+        await lockBillingUserUnlessDeleting(tx, userId);
+        const [currentSub] = await tx
+          .select()
+          .from(subscription)
+          .where(eq(subscription.userId, userId))
+          .limit(1)
+          .for("update");
+        if ((currentSub?.version ?? null) !== expectedVersion) return "retry";
 
-      // If no rows updated, version mismatch (concurrent update detected)
-      if (result.length === 0) {
-        throw new Error("stripe_subscription_version_conflict");
-      }
-    }
+        const incomingStatus = mapStripeStatus(stripeSubscription.status);
+        const currentResourceId = currentSub?.stripeSubscriptionId ?? null;
+        const candidateResourceProof = subscriptionResourceProofFromEvent(
+          stripeSubscription,
+          eventCursor,
+          event.type
+        );
+        if (
+          !mayApplyStripeSubscriptionResource({
+            currentResourceId,
+            currentStatus: currentSub?.status ?? null,
+            currentResourceProof: subscriptionResourceProofFromRow(currentSub),
+            retiredResourceIds: currentSub?.retiredStripeSubscriptionIds ?? [],
+            candidateResourceId: stripeSubscription.id,
+            candidateResourceProof,
+            eventType: event.type,
+          }) ||
+          !stripeSubscriptionCursorMayApply({
+            currentResourceId,
+            candidateResourceId: stripeSubscription.id,
+            currentCursor: subscriptionEventCursorFromRow(currentSub),
+            candidateCursor: eventCursor,
+          })
+        ) {
+          return "skipped";
+        }
+        if (
+          !shouldApplyAuthoritativeProviderSnapshot({
+            current: currentSub ?? null,
+            incomingStatus,
+            incomingStripeSubscriptionId: stripeSubscription.id,
+            triggeringEvent:
+              event.type === "customer.subscription.created"
+                ? "subscription_created"
+                : "subscription_updated",
+            eventTimestamp,
+          })
+        ) {
+          return "skipped";
+        }
 
-    // Phase 0.5C: Upsert stripe_customer_mapping (P0 fix #2)
-    // CRITICAL: This is the source of truth if Stripe metadata gets overwritten
-    await tx
-      .insert(stripeCustomerMapping)
-      .values({
-        stripeCustomerId: stripeSubscription.customer as string,
-        stripeSubscriptionId: stripeSubscription.id,
-        userId,
-      })
-      .onConflictDoUpdate({
-        target: stripeCustomerMapping.stripeCustomerId,
-        set: {
-          stripeSubscriptionId: stripeSubscription.id,
+        const observedAt = await getBillingDatabaseTime(tx);
+        const catalogId = getStripeCatalogIdForPrice(
+          stripeSubscription.items.data[0]?.price.id
+        );
+        const firstItem = stripeSubscription.items.data[0];
+        const replacingResource = Boolean(
+          currentResourceId && currentResourceId !== stripeSubscription.id
+        );
+        const lastEventTimestamp =
+          currentSub?.lastEventTimestamp &&
+          currentSub.lastEventTimestamp > observedAt
+            ? currentSub.lastEventTimestamp
+            : observedAt;
+        const trialUpdates =
+          catalogId === "pro" &&
+          (stripeSubscription.status === "trialing" ||
+            Boolean(
+              stripeSubscription.trial_end &&
+                new Date(stripeSubscription.trial_end * 1000) < observedAt
+            ))
+            ? { proTrialUsed: true }
+            : {};
+        const nextSubscriptionData = {
           userId,
-          updatedAt: new Date(),
-        },
+          tier: catalogId,
+          status: incomingStatus,
+          billingCycle:
+            firstItem?.price.recurring?.interval === "month"
+              ? ("monthly" as const)
+              : ("annual" as const),
+          stripeCustomerId: stripeSubscription.customer as string,
+          stripeSubscriptionId: stripeSubscription.id,
+          stripePriceId: firstItem?.price.id,
+          stripeResourceCreatedAt: candidateResourceProof.resourceCreatedAt,
+          stripeResourceCreatedEventTimestamp:
+            candidateResourceProof.createdEventCursor?.createdAt ??
+            currentSub?.stripeResourceCreatedEventTimestamp ??
+            null,
+          stripeResourceCreatedEventId:
+            candidateResourceProof.createdEventCursor?.eventId ??
+            currentSub?.stripeResourceCreatedEventId ??
+            null,
+          retiredStripeSubscriptionIds:
+            replacingResource && currentResourceId
+              ? sql`array_append(${subscription.retiredStripeSubscriptionIds}, ${currentResourceId})`
+              : (currentSub?.retiredStripeSubscriptionIds ?? []),
+          currentPeriodStart: firstItem?.current_period_start
+            ? new Date(firstItem.current_period_start * 1000)
+            : null,
+          currentPeriodEnd: firstItem?.current_period_end
+            ? new Date(firstItem.current_period_end * 1000)
+            : null,
+          trialEnd: stripeSubscription.trial_end
+            ? new Date(stripeSubscription.trial_end * 1000)
+            : null,
+          canceledAt: stripeSubscription.canceled_at
+            ? new Date(stripeSubscription.canceled_at * 1000)
+            : null,
+          cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+          lastEventTimestamp,
+          lastEventPriority: eventCursor.priority,
+          lastEventId: eventCursor.eventId,
+          updatedAt: observedAt,
+          version: (currentSub?.version ?? 0) + 1,
+          ...trialUpdates,
+        };
+
+        if (!currentSub) {
+          await tx.insert(subscription).values(nextSubscriptionData);
+        } else {
+          const updated = await tx
+            .update(subscription)
+            .set(nextSubscriptionData)
+            .where(
+              and(
+                eq(subscription.userId, userId),
+                eq(subscription.version, currentSub.version)
+              )
+            )
+            .returning({ id: subscription.id });
+          if (updated.length !== 1) return "retry";
+        }
+
+        await tx
+          .insert(stripeCustomerMapping)
+          .values({
+            stripeCustomerId: stripeSubscription.customer as string,
+            stripeSubscriptionId: stripeSubscription.id,
+            userId,
+          })
+          .onConflictDoUpdate({
+            target: stripeCustomerMapping.stripeCustomerId,
+            set: {
+              stripeSubscriptionId: stripeSubscription.id,
+              userId,
+              updatedAt: observedAt,
+            },
+          });
+        return "applied";
       });
+    },
   });
 }
 

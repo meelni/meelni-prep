@@ -416,9 +416,11 @@ Before launch, use Stripe test mode to prove:
 - account deletion cancels provider resources without automatically refunding
   invoices, charges, or PaymentIntents.
 
-Exceptional refunds require a separate manual support decision. Real manual or
-provider-originated refund/dispute webhooks still reconcile paid credits; they
-are not part of subscription cancellation.
+Exceptional-refund decisions are manual. Execution for an existing account is
+paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+ships verified payment-to-credit-ledger reconciliation. Current
+`charge.refunded` handling updates payment history only, does not adjust
+credits, and there is no dispute-event support.
 
 See [Manual Exceptional Refunds](./manual-exceptional-refunds.md) for the
-human-owned, non-automated support procedure.
+human-owned decision policy and the SAV-231 execution gate.
