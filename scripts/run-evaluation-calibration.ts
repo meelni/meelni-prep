@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { closeSync, createReadStream, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import {
@@ -21,7 +22,11 @@ import {
   SAV_198_SPEND_AUTHORIZATION,
 } from "@/lib/evaluation/calibration-run-ledger";
 import { getCalibrationCliExitCode } from "@/lib/evaluation/calibration-cli";
-import { assertCalibrationLiveStartupState } from "@/lib/evaluation/calibration-live-startup.mjs";
+import {
+  assertCalibrationLiveStartupState,
+  CALIBRATION_LIVE_RUNTIME_READY,
+  readCalibrationLiveCredentials,
+} from "@/lib/evaluation/calibration-live-startup.mjs";
 
 const LIVE_ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL";
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
@@ -59,25 +64,33 @@ async function main() {
   }
   if (executionKind === "live_provider") {
     assertCalibrationLiveStartupState();
-    if (process.env.MEELNI_ALLOW_PAID_CALIBRATION !== LIVE_ACKNOWLEDGEMENT) {
+    writeFileSync(4, `${CALIBRATION_LIVE_RUNTIME_READY}\n`);
+    closeSync(4);
+    const liveCredentials = await readCalibrationLiveCredentials(
+      createReadStream("/dev/null", { fd: 3, autoClose: true })
+    );
+    if (
+      process.env.MEELNI_ALLOW_PAID_CALIBRATION !== LIVE_ACKNOWLEDGEMENT ||
+      liveCredentials.acknowledgement !== LIVE_ACKNOWLEDGEMENT
+    ) {
       throw new Error(
         `Live calibration is disabled. Set MEELNI_ALLOW_PAID_CALIBRATION=${LIVE_ACKNOWLEDGEMENT} only after explicit spend authorization.`
       );
-    }
-    if (!process.env.OPENAI_API_KEY?.trim()) {
-      throw new Error("OPENAI_API_KEY is required for an authorized live run");
     }
     assertCalibrationOpenAIEnvironment(process.env);
     modelVersion = getFeedbackEvaluationModel();
     if (adjudicationApproval === undefined) {
       throw new Error("Live calibration requires an adjudication approval");
     }
-    runAuthority = await activateCalibrationRun({
-      authorization: SAV_198_SPEND_AUTHORIZATION,
-      adjudicationApproval,
-      model: modelVersion,
-      repetitions,
-    });
+    runAuthority = await activateCalibrationRun(
+      {
+        authorization: SAV_198_SPEND_AUTHORIZATION,
+        adjudicationApproval,
+        model: modelVersion,
+        repetitions,
+      },
+      { githubToken: liveCredentials.githubToken }
+    );
     try {
       spendGuard = new CalibrationSpendGuard(
         modelVersion,
@@ -103,6 +116,9 @@ async function main() {
           maxCompletionTokens: CALIBRATION_MAX_COMPLETION_TOKENS,
           calibrationPaidMode: true,
           beforePhysicalRequest,
+          calibrationCredentials: {
+            openaiApiKey: liveCredentials.openaiKey,
+          },
         }
       );
   }

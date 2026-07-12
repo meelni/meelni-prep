@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import test from "node:test";
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
@@ -57,9 +57,10 @@ test("security quality gate checks Semgrep through the uvx wrapper", () => {
   assert.equal(scripts["quality:security"], "node scripts/run-semgrep.mjs");
 });
 
-test("live calibration enters through the clean startup-attestation bootstrap", () => {
-  assert.equal(
-    scripts["calibration:live"],
-    "node scripts/run-evaluation-calibration-live.mjs"
+test("live calibration cannot enter through credential-inheriting npm", () => {
+  assert.equal(scripts["calibration:live"], undefined);
+  assert.notEqual(
+    statSync("scripts/run-evaluation-calibration-live.sh").mode & 0o111,
+    0
   );
 });

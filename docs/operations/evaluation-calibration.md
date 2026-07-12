@@ -64,14 +64,15 @@ override. Spend authorization permits the bounded paid run only after the
 separate candidate adjudication is approved; it does not approve those semantic
 judgments itself.
 
-`calibration:live` loads `.env.local` through `tsx --env-file=.env.local`, just
-like other local feedback tooling. Run `npm run setup:local` first if the file
-does not exist. Keep both the provider key and model configuration only in that
-gitignored file.
+The paid launcher never loads `.env.local` and has no npm script. It retrieves
+the OpenAI key from the macOS Keychain service
+`meelni-calibration-openai`; add or rotate that item through Keychain Access,
+not a shell argument, environment variable, repository file, or chat message.
 
-Set `OPENAI_FEEDBACK_MODEL=gpt-5.1-2025-11-13`. That exact snapshot is bound to
-the repository's reviewed `evaluation-calibration-pricing.v1` contract; a
-moving alias or any other model fails before call one. The pricing contract was
+The launcher pins `OPENAI_FEEDBACK_MODEL=gpt-5.1-2025-11-13` in the minimal
+attested runtime environment. That exact snapshot is bound to the repository's
+reviewed `evaluation-calibration-pricing.v1` contract; a moving alias or any
+other model fails before call one. The pricing contract was
 re-verified against the official OpenAI GPT-5.1 model page at
 `2026-07-12T06:28:08.000Z` and uses Standard rates of $1.25/M uncached input,
 $0.125/M cached input, and $10/M output tokens. The review is valid for only 24
@@ -148,18 +149,25 @@ push URL, or a repository redirect for seeding. Then verify repository and
 viewer IDs, both detailed rulesets, all four effective branch rules, the exact
 ref SHA, and the genesis payload before enabling the paid command.
 
-The live CLI does not invoke `gh`. It calls only `api.github.com:443` through
-Node HTTPS, using bundled TLS roots, standard hostname verification and SNI,
-redirect rejection, a ten-second timeout, and a 1 MiB response limit. The
+The trusted shell launcher invokes the fixed `/opt/homebrew/bin/gh auth token
+--hostname github.com` command only after the credential-free bootstrap
+attests and returns its exact readiness handshake. The runtime then calls only
+`api.github.com:443` through Node HTTPS, using bundled TLS roots, standard
+hostname verification and SNI, redirect rejection, a ten-second timeout, and a
+1 MiB response limit. The
 production path exposes no alternate base URL, dispatcher, client, agent, DNS,
 remote, or ledger path. It accepts only `GITHUB_TOKEN`; ambient GitHub
 host/config, Unix-socket, proxy, custom-CA, and TLS override variables fail
-closed before every request. `npm run calibration:live` uses a dedicated Node
-22 bootstrap with empty `execArgv`, then permits only the exact resolved
+closed before every request. The executable POSIX launcher starts the absolute
+fnm Node 22.22.0 runtime under `env -i`, with no tokens, preload flags, debug
+state, proxy configuration, or TLS overrides. The bootstrap attests empty
+`execArgv` and returns `MEELNI_CALIBRATION_READY_V1` over a private FIFO
+before the launcher derives or transmits either credential over a second
+mode-0600 FIFO. It then permits only the exact resolved
 repository-pinned tsx 4.23.0 preflight and loader arguments. It rejects extra
 preloads/imports, inspector/debugger flags, TLS key logging, OpenSSL config,
-custom CA, profiler, coverage, proxy, and endpoint overrides before reading
-either token, again before client construction, and again before every
+custom CA, profiler, coverage, proxy, and endpoint overrides before credential
+delivery, again before client construction, and again before every
 authority request. The CLI then repeats the identity/protection
 checks, builds and hashes the approved plan, creates a unique empty-tree
 activation child, and updates the ref with `force: false`. Concurrent sibling
@@ -173,37 +181,26 @@ reports or caches may be deleted without affecting authority and must never
 contain prompts, transcripts, provider bodies, API keys, customer data, or
 Production data.
 
-Derive the short-lived GitHub credential without displaying or pasting it. Do
-not run this command under shell tracing (`set -x`), and do not store the token
-in `.env.local`, documentation, reports, chat, or Linear. The live bootstrap
-does not load `.env.local`; provide the short-lived keys only through the clean
-command environment. Start it with the repository's pinned Node 22 runtime:
+Do not run this command under shell tracing (`set -x`); the launcher rejects
+xtrace. Do not export `GITHUB_TOKEN` or `OPENAI_API_KEY`: the launcher
+rejects both so they cannot appear in inherited process environments. It
+sanitizes PATH and provider configuration, derives the short-lived GitHub token
+through the authenticated GitHub CLI, and reads the OpenAI key from Keychain
+only after readiness. Run it directly:
 
 ```bash
-GITHUB_TOKEN="$(gh auth token)" \
-env -u GH_CONFIG_DIR -u GH_HTTP_UNIX_SOCKET -u GH_HOST \
-  -u GITHUB_API_URL -u GITHUB_GRAPHQL_URL -u GITHUB_SERVER_URL \
-  -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-  -u http_proxy -u https_proxy -u all_proxy -u no_proxy \
-  -u OPENAI_BASE_URL \
-  -u NODE_DEBUG -u NODE_DEBUG_NATIVE -u NODE_EXTRA_CA_CERTS \
-  -u NODE_OPTIONS -u NODE_TLS_REJECT_UNAUTHORIZED \
-  -u NODE_USE_ENV_PROXY -u NODE_USE_SYSTEM_CA -u NODE_V8_COVERAGE \
-  -u OPENSSL_CONF -u SSLKEYLOGFILE -u SSL_CERT_FILE -u SSL_CERT_DIR \
-  MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
-  npm run calibration:live -- \
+MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
+  ./scripts/run-evaluation-calibration-live.sh \
   --approval /secure/path/evaluation-adjudication-approval.json \
   --output /tmp/meelni-calibration-live.json
 ```
 
-Command substitution captures `gh auth token` directly into the child
-environment; it must not be echoed or logged. The command also requires
-`OPENAI_API_KEY` to already exist in that clean shell environment and a
-validated, all-approved
-adjudication artifact. Spend approval does not approve the candidate gold set.
-Never paste a key into chat,
-documentation, Linear, or a report. The acknowledgement is deliberately exact
-so an ambient boolean cannot accidentally enable paid calibration.
+The launcher sends credentials only through the private pipe after the exact
+handshake, never through argv, logs, reports, environment files, or temporary
+regular files. It requires a validated, all-approved adjudication artifact.
+Spend approval does not approve the candidate gold set. The acknowledgement is
+deliberately exact so an ambient boolean cannot accidentally enable paid
+calibration.
 
 The live CLI exits zero only when the combined `launchAcceptance` gate is
 `passed`. A provider-quality pass still exits nonzero when adjudication approval
