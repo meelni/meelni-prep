@@ -864,7 +864,8 @@ export function normalizeLiveKitDeletionRooms(
   value: unknown
 ): LiveKitDeletionRoom[] {
   if (!Array.isArray(value)) throw invalidLiveKitDeletionRooms();
-  return value.map((candidate) => {
+  const rooms = new Map<string, LiveKitDeletionRoom>();
+  for (const candidate of value) {
     if (!candidate || typeof candidate !== "object") {
       throw invalidLiveKitDeletionRooms();
     }
@@ -890,7 +891,7 @@ export function normalizeLiveKitDeletionRooms(
     ) {
       throw invalidLiveKitDeletionRooms();
     }
-    return {
+    const room = {
       roomName,
       fingerprint,
       generation: generation as number,
@@ -899,7 +900,15 @@ export function normalizeLiveKitDeletionRooms(
         ? normalizedProvisioningExpiresAt
         : null,
     };
-  });
+    const existing = rooms.get(room.fingerprint);
+    rooms.set(
+      room.fingerprint,
+      existing ? mergeNormalizedLiveKitDeletionRoom(existing, room) : room
+    );
+  }
+  return [...rooms.values()].sort((left, right) =>
+    left.fingerprint.localeCompare(right.fingerprint)
+  );
 }
 
 function mergeStripeDeletionSubjects(
@@ -929,34 +938,53 @@ function mergeLiveKitDeletionRooms(
   existingValue: unknown,
   incoming: LiveKitDeletionRoom[]
 ): LiveKitDeletionRoom[] {
-  const rooms = new Map(
-    normalizeLiveKitDeletionRooms(existingValue).map((room) => [
-      room.fingerprint,
-      room,
-    ])
-  );
-  for (const candidate of normalizeLiveKitDeletionRooms(incoming)) {
-    const existing = rooms.get(candidate.fingerprint);
-    if (!existing) {
-      rooms.set(candidate.fingerprint, candidate);
-      continue;
-    }
-    // Duplicate snapshots cannot shorten an established provisioning lease or
-    // supersede a post-create generation. They may only extend the same raw,
-    // provisioning generation's deadline.
-    const existingExpiry = existing.provisioningExpiresAt;
-    const candidateExpiry = candidate.provisioningExpiresAt;
-    rooms.set(candidate.fingerprint, {
-      ...existing,
-      provisioningExpiresAt:
-        existing.provisioning && candidate.provisioning
-          ? laterLiveKitProvisioningExpiry(existingExpiry, candidateExpiry)
-          : existingExpiry,
-    });
+  return normalizeLiveKitDeletionRooms([
+    ...normalizeLiveKitDeletionRooms(existingValue),
+    ...normalizeLiveKitDeletionRooms(incoming),
+  ]);
+}
+
+function mergeNormalizedLiveKitDeletionRoom(
+  left: LiveKitDeletionRoom,
+  right: LiveKitDeletionRoom
+): LiveKitDeletionRoom {
+  if (left.fingerprint !== right.fingerprint) {
+    throw invalidLiveKitDeletionRooms();
   }
-  return [...rooms.values()].sort((left, right) =>
-    left.fingerprint.localeCompare(right.fingerprint)
+  if (
+    left.roomName !== null &&
+    right.roomName !== null &&
+    left.roomName !== right.roomName
+  ) {
+    throw invalidLiveKitDeletionRooms();
+  }
+
+  // A newer post-create fence supersedes the uncertainty state of an older
+  // generation. Duplicate snapshots within that winning generation are
+  // unioned conservatively and can only extend its provisioning lease.
+  const generation = Math.max(left.generation, right.generation);
+  const winners = [left, right].filter(
+    (room) => room.generation === generation
   );
+  const provisioning = winners.some((room) => room.provisioning);
+  const provisioningExpiresAt = provisioning
+    ? winners.reduce<string | null>(
+        (expiry, room) =>
+          laterLiveKitProvisioningExpiry(
+            expiry,
+            room.provisioning ? room.provisioningExpiresAt : null
+          ),
+        null
+      )
+    : null;
+
+  return {
+    roomName: left.roomName ?? right.roomName,
+    fingerprint: left.fingerprint,
+    generation,
+    provisioning,
+    provisioningExpiresAt,
+  };
 }
 
 function laterLiveKitProvisioningExpiry(
@@ -976,9 +1004,67 @@ function laterLiveKitProvisioningExpiry(
 function normalizeLiveKitProvisioningExpiry(value: unknown): string | null {
   if (value === null) return null;
   if (typeof value !== "string") throw invalidLiveKitDeletionRooms();
-  const epoch = Date.parse(value);
-  if (!Number.isFinite(epoch)) throw invalidLiveKitDeletionRooms();
+  const epoch = parseExplicitLiveKitProvisioningExpiry(value);
   return new Date(epoch).toISOString();
+}
+
+const LIVEKIT_PROVISIONING_EXPIRY_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/;
+
+function parseExplicitLiveKitProvisioningExpiry(value: string): number {
+  const match = LIVEKIT_PROVISIONING_EXPIRY_PATTERN.exec(value);
+  if (!match) throw invalidLiveKitDeletionRooms();
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] =
+    match;
+  const fractionText = match[7] ?? "";
+  const zone = match[8]!;
+  const offsetSign = match[9];
+  const offsetHourText = match[10];
+  const offsetMinuteText = match[11];
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const millisecond = Number(fractionText.padEnd(3, "0"));
+  const offsetHours = zone === "Z" ? 0 : Number(offsetHourText);
+  const offsetMinutes = zone === "Z" ? 0 : Number(offsetMinuteText);
+  if (
+    year < 1 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHours > 23 ||
+    offsetMinutes > 59
+  ) {
+    throw invalidLiveKitDeletionRooms();
+  }
+
+  const local = new Date(0);
+  local.setUTCFullYear(year, month - 1, day);
+  local.setUTCHours(hour, minute, second, millisecond);
+  if (
+    local.getUTCFullYear() !== year ||
+    local.getUTCMonth() !== month - 1 ||
+    local.getUTCDate() !== day ||
+    local.getUTCHours() !== hour ||
+    local.getUTCMinutes() !== minute ||
+    local.getUTCSeconds() !== second
+  ) {
+    throw invalidLiveKitDeletionRooms();
+  }
+
+  const signedOffsetMinutes =
+    zone === "Z"
+      ? 0
+      : (offsetSign === "+" ? 1 : -1) * (offsetHours * 60 + offsetMinutes);
+  const epoch = local.getTime() - signedOffsetMinutes * 60_000;
+  if (!Number.isFinite(epoch)) throw invalidLiveKitDeletionRooms();
+  return epoch;
 }
 
 function invalidLiveKitDeletionRooms(): Error & { code: string } {
