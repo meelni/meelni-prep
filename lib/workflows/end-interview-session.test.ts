@@ -77,6 +77,25 @@ test("skipped feedback never dispatches", async () => {
   if (result.ok) assert.equal(result.dispatch, null);
 });
 
+test("pending deadline cleanup blocks feedback dispatch", async () => {
+  let dispatches = 0;
+  const pendingCleanup = completion({ deadlineRoomCleanupStatus: "pending" });
+  const result = await endInterviewSessionWorkflow(
+    userEndInput(),
+    createDeps({
+      finalize: async () => pendingCleanup,
+      dispatch: async () => {
+        dispatches += 1;
+        return sentDispatch();
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(dispatches, 0);
+  if (result.ok) assert.equal(result.dispatch, null);
+});
+
 test("failed generation can redispatch its stored event identity", async () => {
   let dispatches = 0;
   const failed = completion({
@@ -326,6 +345,7 @@ function completion(
       endedAt: new Date("2026-07-09T22:00:00.000Z"),
     },
     feedback: feedbackRecord(),
+    deadlineRoomCleanupStatus: null,
     stats: validation().stats,
     tier: SessionTier.FULL,
     recommendations: [],
