@@ -453,7 +453,9 @@ Retrieves complete information about a specific interview session including conf
 `feedbackReady` is server-owned handoff truth. The hard-deadline interview UI
 does not navigate to feedback until the session is terminal and this value is
 `true`, which requires acknowledged room cleanup followed by feedback dispatch
-(`sent`) or a skipped result (`not_required`).
+(`sent`) or a finalized skipped result (`not_required`). Cleanup acknowledgement
+is persisted independently, so `not_required` cannot make a still-live room
+visible as ready.
 
 **Errors**:
 

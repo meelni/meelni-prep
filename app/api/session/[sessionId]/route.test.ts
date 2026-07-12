@@ -40,6 +40,8 @@ describe("GET /api/session/:sessionId", () => {
       id: SESSION_ID,
       startedAt: new Date("2026-07-10T06:00:00.000Z"),
       config: { duration: 45 },
+      terminalReason: null,
+      deadlineRoomCleanupStatus: null,
     } as never);
 
     const response = await GET(request(), context());
@@ -57,9 +59,29 @@ describe("GET /api/session/:sessionId", () => {
       terminalReason: "time_limit",
       startedAt: new Date("2026-07-10T06:00:00.000Z"),
       config: { duration: 30 },
+      deadlineRoomCleanupStatus: "pending",
     } as never);
     vi.mocked(getFeedbackBySessionId).mockResolvedValue({
       dispatchStatus: "pending",
+    } as never);
+
+    const response = await GET(request(), context());
+    await expect(response.json()).resolves.toMatchObject({
+      session: { feedbackReady: false },
+    });
+  });
+
+  it("keeps skipped deadline feedback blocked until room cleanup is acknowledged", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: SESSION_ID,
+      lifecycleState: "abandoned",
+      terminalReason: "time_limit",
+      deadlineRoomCleanupStatus: "pending",
+      startedAt: new Date("2026-07-10T06:00:00.000Z"),
+      config: { duration: 30 },
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue({
+      dispatchStatus: "not_required",
     } as never);
 
     const response = await GET(request(), context());
@@ -73,6 +95,8 @@ describe("GET /api/session/:sessionId", () => {
       id: SESSION_ID,
       startedAt: null,
       config: { duration: 30 },
+      terminalReason: null,
+      deadlineRoomCleanupStatus: null,
     } as never);
 
     const response = await GET(request(), context());

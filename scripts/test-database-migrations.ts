@@ -23,9 +23,9 @@ import {
 import { ACCOUNT_IDENTITY_LOCK_NAMESPACE } from "../lib/db/account-identity-lock";
 
 import {
-  ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
+  DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
@@ -47,6 +47,7 @@ const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const SESSION_DEADLINE_BACKFILL = "cccccccc-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
@@ -118,10 +119,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -178,11 +176,21 @@ async function run() {
       );
       assertLegacyCreditLedgerIntegrity(lifecyclePreview!);
       const countsBefore = await protectedRowCounts(upgrade);
-      await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
+      const throughAtomicCompletion = await createMigrationFolderThrough(7);
+      try {
+        await migrate(drizzle(upgrade), {
+          migrationsFolder: throughAtomicCompletion,
+        });
+      } finally {
+        await rm(throughAtomicCompletion, { recursive: true, force: true });
+      }
       const lifecycleApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLifecycleBackfillCountsMatch(lifecyclePreview!, lifecycleApplied!);
       assertLegacyCreditLedgerIntegrity(lifecycleApplied!);
       assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
+      await seedDeadlineCleanupBackfillFixture(upgrade);
+      await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
+      await verifyDeadlineCleanupBackfill(upgrade);
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl);
@@ -1030,6 +1038,46 @@ async function verifyAtomicSessionCompletion(
   }
 }
 
+async function seedDeadlineCleanupBackfillFixture(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      lifecycle_version, terminal_reason, ended_at, last_transition_at,
+      livekit_room_name
+    ) VALUES (
+      ${SESSION_DEADLINE_BACKFILL}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'completed',
+      'completed',
+      4,
+      'time_limit',
+      now(),
+      now(),
+      'interview-deadline-backfill-room'
+    )
+  `;
+}
+
+async function verifyDeadlineCleanupBackfill(sql: postgres.Sql) {
+  const rows = await sql<
+    {
+      deadline_room_cleanup_status: string | null;
+      deadline_room_cleanup_acknowledged_at: Date | null;
+    }[]
+  >`
+    SELECT deadline_room_cleanup_status,
+      deadline_room_cleanup_acknowledged_at
+    FROM interview_session
+    WHERE id = ${SESSION_DEADLINE_BACKFILL}::uuid
+  `;
+  assert.deepEqual(rows[0], {
+    deadline_room_cleanup_status: "pending",
+    deadline_room_cleanup_acknowledged_at: null,
+  });
+}
+
 function deepEqual(left: unknown, right: unknown): boolean {
   try {
     assert.deepEqual(left, right);
@@ -1052,7 +1100,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 8);
+  assert.equal(await migrationCount(sql), 9);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -1077,11 +1125,13 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND table_name = 'interview_session'
       AND column_name IN (
         'lifecycle_state', 'lifecycle_version', 'terminal_reason',
-        'activated_at', 'ending_at', 'last_transition_at'
+        'activated_at', 'ending_at', 'last_transition_at',
+        'deadline_room_cleanup_status',
+        'deadline_room_cleanup_acknowledged_at'
       )
     ORDER BY column_name
   `;
-  assert.equal(lifecycleColumns.length, 6);
+  assert.equal(lifecycleColumns.length, 8);
 
   const lifecycleIndexes = await sql<{ indexname: string }[]>`
     SELECT indexname

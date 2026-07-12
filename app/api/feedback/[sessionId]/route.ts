@@ -96,6 +96,7 @@ import {
 } from "@/lib/db/feedback-dispatch";
 import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
 import { isInterviewTerminalState } from "@meelni/core";
+import { isInterviewDeadlineRoomCleanupAcknowledged } from "@/lib/db/session-deadlines";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 
 // Estimated total processing time (seconds)
@@ -159,9 +160,10 @@ export async function GET(
 
     if (
       session?.terminalReason === "time_limit" &&
-      !isFeedbackDispatchReadyForVisibility({
-        status: feedbackRecord.dispatchStatus,
-      })
+      (!isInterviewDeadlineRoomCleanupAcknowledged(session) ||
+        !isFeedbackDispatchReadyForVisibility({
+          status: feedbackRecord.dispatchStatus,
+        }))
     ) {
       return NextResponse.json(
         {
@@ -364,6 +366,7 @@ export async function POST(
       const feedback = await getFeedbackBySessionId(sessionId);
       if (
         !feedback ||
+        !isInterviewDeadlineRoomCleanupAcknowledged(session) ||
         !isFeedbackDispatchReadyForVisibility({
           status: feedback.dispatchStatus,
         })

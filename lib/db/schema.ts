@@ -87,6 +87,13 @@ export const interviewSession = pgTable(
     lastTransitionAt: timestamp("last_transition_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    deadlineRoomCleanupStatus: text("deadline_room_cleanup_status").$type<
+      "pending" | "deleted" | "already_absent"
+    >(),
+    deadlineRoomCleanupAcknowledgedAt: timestamp(
+      "deadline_room_cleanup_acknowledged_at",
+      { withTimezone: true }
+    ),
 
     // P1-001: Session validation and status tracking
     status: text("status")
@@ -130,6 +137,14 @@ export const interviewSession = pgTable(
       "interview_session_ending_at_state_check",
       sql`${table.endingAt} IS NULL OR ${table.lifecycleState} IN ('ending', 'completed', 'abandoned', 'failed')`
     ),
+    deadlineRoomCleanupStatusCheck: check(
+      "interview_session_deadline_room_cleanup_status_check",
+      sql`${table.deadlineRoomCleanupStatus} IS NULL OR ${table.deadlineRoomCleanupStatus} IN ('pending', 'deleted', 'already_absent')`
+    ),
+    deadlineRoomCleanupAcknowledgementCheck: check(
+      "interview_session_deadline_room_cleanup_ack_check",
+      sql`(${table.deadlineRoomCleanupStatus} IN ('deleted', 'already_absent') AND ${table.deadlineRoomCleanupAcknowledgedAt} IS NOT NULL) OR (${table.deadlineRoomCleanupStatus} IS NULL OR ${table.deadlineRoomCleanupStatus} = 'pending') AND ${table.deadlineRoomCleanupAcknowledgedAt} IS NULL`
+    ),
     // P1-001: Indexes for performance
     userIdStatusIdx: index("interview_session_user_status_idx").on(
       table.userId,
@@ -142,6 +157,9 @@ export const interviewSession = pgTable(
     userLifecycleStateIdx: index(
       "interview_session_user_lifecycle_state_idx"
     ).on(table.userId, table.lifecycleState),
+    deadlineRoomCleanupIdx: index(
+      "interview_session_deadline_room_cleanup_idx"
+    ).on(table.terminalReason, table.deadlineRoomCleanupStatus),
   })
 );
 

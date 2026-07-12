@@ -199,6 +199,16 @@ export async function finalizeInterviewSession(
       throw new Error("Interview completion did not reach a terminal outcome");
     }
 
+    if (
+      terminalReason === "time_limit" &&
+      stored.deadlineRoomCleanupStatus === null
+    ) {
+      await tx
+        .update(interviewSession)
+        .set({ deadlineRoomCleanupStatus: "pending" })
+        .where(eq(interviewSession.id, input.sessionId));
+    }
+
     if (!wasTerminal) {
       await tx
         .update(interviewSession)
@@ -257,6 +267,10 @@ export async function finalizeInterviewSession(
       roomName: stored.livekitRoomName,
       lifecycle: { state, version, terminalReason, endedAt },
       feedback: feedbackRecord,
+      deadlineRoomCleanupStatus:
+        terminalReason === "time_limit"
+          ? (stored.deadlineRoomCleanupStatus ?? "pending")
+          : stored.deadlineRoomCleanupStatus,
       stats: feedbackRecord.completionStats ?? input.validation.stats,
       tier:
         (feedbackRecord.completionTier as SessionValidation["tier"] | null) ??

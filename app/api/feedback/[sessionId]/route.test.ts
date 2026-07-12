@@ -82,9 +82,31 @@ describe("/api/feedback/[sessionId]", () => {
     vi.mocked(getSessionById).mockResolvedValue({
       lifecycleState: "completed",
       terminalReason: "time_limit",
+      deadlineRoomCleanupStatus: "pending",
     } as never);
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({ dispatchStatus: "pending" }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "settling",
+      retryable: false,
+    });
+  });
+
+  it("keeps skipped hard-deadline feedback hidden while room cleanup is pending", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "abandoned",
+      terminalReason: "time_limit",
+      deadlineRoomCleanupStatus: "pending",
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+      }) as never
     );
 
     const response = await GET(request(), PARAMS);
@@ -218,9 +240,31 @@ describe("/api/feedback/[sessionId]", () => {
     vi.mocked(getSessionById).mockResolvedValue({
       lifecycleState: "completed",
       terminalReason: "time_limit",
+      deadlineRoomCleanupStatus: "pending",
     } as never);
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({ dispatchStatus: "pending" }) as never
+    );
+
+    const response = await POST(request("POST"), PARAMS);
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "deadline_settlement_pending",
+    });
+    expect(endInterviewSessionWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("cannot manually bypass skipped hard-deadline cleanup", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "abandoned",
+      terminalReason: "time_limit",
+      deadlineRoomCleanupStatus: "pending",
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+      }) as never
     );
 
     const response = await POST(request("POST"), PARAMS);
