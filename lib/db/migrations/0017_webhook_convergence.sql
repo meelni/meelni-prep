@@ -1,0 +1,2 @@
+ALTER TABLE "stripe_event_log" ADD COLUMN "logical_event_key" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "stripe_event_log_logical_event_key_unique" ON "stripe_event_log" USING btree ("logical_event_key") WHERE "stripe_event_log"."logical_event_key" IS NOT NULL;
