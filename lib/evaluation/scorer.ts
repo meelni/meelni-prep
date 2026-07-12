@@ -86,7 +86,7 @@ export async function generateFeedbackWithUsage(
   options: {
     maxCompletionTokens?: number;
     calibrationPaidMode?: boolean;
-    beforePhysicalRequest?: () => void;
+    beforePhysicalRequest?: () => void | Promise<void>;
   } = {}
 ): Promise<FeedbackProviderResult> {
   const prepared = prepareFeedbackTranscript(transcript);
@@ -307,7 +307,7 @@ export function assertCalibrationOpenAIEnvironment(
 export function assertCalibrationProviderRequestPolicy(
   model: string,
   maxCompletionTokens: number | undefined,
-  beforePhysicalRequest: (() => void) | undefined
+  beforePhysicalRequest: (() => void | Promise<void>) | undefined
 ): void {
   if (
     model !== CALIBRATION_PRICING_CONTRACT.model ||
@@ -330,7 +330,7 @@ export function getCalibrationProviderRequestFields(): {
 
 export function createCalibrationOpenAIClient(
   env: CalibrationOpenAIEnvironment = process.env,
-  beforePhysicalRequest: () => void = () => {
+  beforePhysicalRequest: () => void | Promise<void> = () => {
     throw new Error("calibration_transport_authorization_missing");
   },
   fetchImplementation: typeof fetch = globalThis.fetch
@@ -354,14 +354,14 @@ export function createCalibrationOpenAIClient(
 }
 
 export function createGuardedCalibrationFetch(
-  beforePhysicalRequest: () => void,
+  beforePhysicalRequest: () => void | Promise<void>,
   fetchImplementation: typeof fetch = globalThis.fetch
 ): typeof fetch {
   if (typeof beforePhysicalRequest !== "function") {
     throw new Error("calibration_transport_authorization_missing");
   }
   return async (input, init) => {
-    beforePhysicalRequest();
+    await beforePhysicalRequest();
     return fetchImplementation(input, { ...init, redirect: "error" });
   };
 }

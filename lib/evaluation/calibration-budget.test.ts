@@ -34,12 +34,12 @@ test("the exact $3 reservation boundary is allowed and another call is refused",
   assert.equal(guard.report().estimatedCommittedCostUsd, 3);
 });
 
-test("the 96-call boundary refuses call 97 before invocation", () => {
+test("the 96-call boundary refuses call 97 before invocation", async () => {
   const guard = createGuard();
   for (let index = 0; index < CALIBRATION_MAX_PROVIDER_CALLS; index += 1) {
     const reservation = guard.reserve(SCORED_FIXTURE);
     assert.ok(reservation);
-    guard.assertPhysicalRequestAllowed(reservation);
+    await guard.assertPhysicalRequestAllowed(reservation);
     assert.equal(
       guard.settleSuccess(reservation, usageWithin(reservation)),
       true
@@ -71,10 +71,10 @@ test("an over-budget next call is stopped without increasing attempted calls", (
   assert.equal(guard.report().stopReason, "spend_cap_before_next_call");
 });
 
-test("provider failure reconciles known usage and forbids another call", () => {
+test("provider failure reconciles known usage and forbids another call", async () => {
   const guard = createGuard();
   const reservation = guard.reserve(SCORED_FIXTURE)!;
-  guard.assertPhysicalRequestAllowed(reservation);
+  await guard.assertPhysicalRequestAllowed(reservation);
   guard.settleFailure(reservation, usageWithin(reservation));
 
   assert.equal(guard.reserve(SCORED_FIXTURE), null);
@@ -84,10 +84,10 @@ test("provider failure reconciles known usage and forbids another call", () => {
   assert.equal(guard.report().actualCostComplete, true);
 });
 
-test("missing usage retains the reservation and forbids another call", () => {
+test("missing usage retains the reservation and forbids another call", async () => {
   const guard = createGuard();
   const reservation = guard.reserve(SCORED_FIXTURE)!;
-  guard.assertPhysicalRequestAllowed(reservation);
+  await guard.assertPhysicalRequestAllowed(reservation);
 
   assert.equal(guard.settleSuccess(reservation, undefined), false);
   assert.equal(guard.reserve(SCORED_FIXTURE), null);
@@ -99,10 +99,10 @@ test("missing usage retains the reservation and forbids another call", () => {
   );
 });
 
-test("usage outside the reservation fails closed and forbids another call", () => {
+test("usage outside the reservation fails closed and forbids another call", async () => {
   const guard = createGuard();
   const reservation = guard.reserve(SCORED_FIXTURE)!;
-  guard.assertPhysicalRequestAllowed(reservation);
+  await guard.assertPhysicalRequestAllowed(reservation);
   const usage = usageWithin(reservation);
   usage.outputTokens = reservation.outputTokenCeiling + 1;
   usage.totalTokens = usage.inputTokens + usage.outputTokens;
@@ -141,7 +141,7 @@ test("pricing review must be current and never future-dated before call one", ()
   );
 });
 
-test("pricing expiry during request preparation stops before physical HTTP", () => {
+test("pricing expiry during request preparation stops before physical HTTP", async () => {
   const expiresAt = REVIEWED_AT.getTime() + CALIBRATION_PRICING_REVIEW_TTL_MS;
   const reads = [expiresAt - 2, expiresAt - 1, expiresAt + 1];
   const guard = new CalibrationSpendGuard(
@@ -150,8 +150,8 @@ test("pricing expiry during request preparation stops before physical HTTP", () 
   );
   const reservation = guard.reserve(SCORED_FIXTURE)!;
 
-  assert.throws(
-    () => guard.assertPhysicalRequestAllowed(reservation),
+  await assert.rejects(
+    async () => await guard.assertPhysicalRequestAllowed(reservation),
     /review_is_stale/
   );
   assert.equal(guard.report().attemptedCalls, 1);
@@ -164,13 +164,13 @@ test("pricing expiry during request preparation stops before physical HTTP", () 
   assert.equal(guard.report().actualCostComplete, false);
 });
 
-test("a physical request reservation is atomically single-use", () => {
+test("a physical request reservation is atomically single-use", async () => {
   const guard = createGuard();
   const reservation = guard.reserve(SCORED_FIXTURE)!;
-  guard.assertPhysicalRequestAllowed(reservation);
+  await guard.assertPhysicalRequestAllowed(reservation);
 
-  assert.throws(
-    () => guard.assertPhysicalRequestAllowed(reservation),
+  await assert.rejects(
+    async () => await guard.assertPhysicalRequestAllowed(reservation),
     /boundary_already_used/
   );
   const report = guard.report();
@@ -181,12 +181,12 @@ test("a physical request reservation is atomically single-use", () => {
   assert.equal(guard.reserve(SCORED_FIXTURE), null);
 });
 
-test("freshness is re-read before every subsequent reservation", () => {
+test("freshness is re-read before every subsequent reservation", async () => {
   const expiresAt = REVIEWED_AT.getTime() + CALIBRATION_PRICING_REVIEW_TTL_MS;
   let now = expiresAt - 1;
   const guard = new CalibrationSpendGuard(MODEL, () => new Date(now));
   const first = guard.reserve(SCORED_FIXTURE)!;
-  guard.assertPhysicalRequestAllowed(first);
+  await guard.assertPhysicalRequestAllowed(first);
   assert.equal(guard.settleSuccess(first, usageWithin(first)), true);
 
   now = expiresAt + 1;
@@ -195,10 +195,10 @@ test("freshness is re-read before every subsequent reservation", () => {
   assert.equal(guard.report().physicalHttpAttemptCeiling, 1);
 });
 
-test("identity mismatch preserves exact usage and reconciled cost", () => {
+test("identity mismatch preserves exact usage and reconciled cost", async () => {
   const guard = createGuard();
   const reservation = guard.reserve(SCORED_FIXTURE)!;
-  guard.assertPhysicalRequestAllowed(reservation);
+  await guard.assertPhysicalRequestAllowed(reservation);
   const usage = usageWithin(reservation);
   guard.rejectObservedModel(reservation, usage);
 
@@ -210,11 +210,11 @@ test("identity mismatch preserves exact usage and reconciled cost", () => {
   assert.deepEqual(report.observedUsage, usage);
 });
 
-test("valid over-ceiling usage records the exact actual $3 breach", () => {
+test("valid over-ceiling usage records the exact actual $3 breach", async () => {
   const guard = createGuard();
   const fixture = fixtureWithInputTokenCeiling(2_384_000);
   const reservation = guard.reserve(fixture)!;
-  guard.assertPhysicalRequestAllowed(reservation);
+  await guard.assertPhysicalRequestAllowed(reservation);
   const usage = {
     inputTokens: 2_384_000,
     cachedInputTokens: 0,
@@ -233,11 +233,11 @@ test("valid over-ceiling usage records the exact actual $3 breach", () => {
   assert.equal(guard.reserve(SCORED_FIXTURE), null);
 });
 
-test("an exact $3 actual settles but cannot authorize another request", () => {
+test("an exact $3 actual settles but cannot authorize another request", async () => {
   const guard = createGuard();
   const fixture = fixtureWithInputTokenCeiling(2_384_000);
   const reservation = guard.reserve(fixture)!;
-  guard.assertPhysicalRequestAllowed(reservation);
+  await guard.assertPhysicalRequestAllowed(reservation);
   assert.equal(
     guard.settleSuccess(reservation, {
       inputTokens: 2_384_000,
