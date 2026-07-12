@@ -31,6 +31,11 @@ must not enter the dispatch boundary until room deletion is acknowledged as
 `deleted` or `already_absent`. The accepted hard-deadline command independently
 claims `deadline_room_cleanup_status=pending`; provider acknowledgement stores
 the exact terminal disposition and acknowledgement time before dispatch. The
+claim commits before the first provider deletion attempt, remains immutable
+through concurrent ordinary-end and idempotent settlement calls, and is the
+recovery worker's durable ownership record after a deletion failure. Both the
+settlement dispatch boundary and the central outbox claim refuse dispatch while
+that record is `pending`.
 claim remains authoritative when validation refines the lifecycle reason to
 `insufficient_signal`, so this gate also applies when feedback is skipped and
 dispatch is `not_required`. A concurrent `user_end` winner never gains a
@@ -68,7 +73,8 @@ The feedback row carries a provider-neutral outbox:
 | `dispatched_at`       | Provider acknowledgement time                             |
 | `dispatch_last_error` | Redacted failure summary for recovery and operations      |
 
-Only `pending`, `failed`, or an expired `sending` lease can be claimed. A
+Only `pending`, `failed`, or an expired `sending` lease can be claimed, and no
+claim is accepted while the session has pending deadline room cleanup. A
 successful claim atomically changes the row to `sending`, increments the
 attempt, and assigns an attempt-scoped provider event ID. Concurrent claimers
 therefore converge on one stored identity, while a later accepted retry gets a

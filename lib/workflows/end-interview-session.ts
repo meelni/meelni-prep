@@ -94,6 +94,10 @@ export async function dispatchInterviewSessionSettlement(
     "dispatch"
   > = createEndInterviewSessionDeps()
 ): Promise<Extract<EndInterviewSessionResult, { ok: true }>> {
+  if (completion.deadlineRoomCleanupStatus === "pending") {
+    return { ok: true, completion, dispatch: null };
+  }
+
   const shouldDispatch =
     (completion.feedback.status === "pending" ||
       completion.feedback.status === "failed") &&

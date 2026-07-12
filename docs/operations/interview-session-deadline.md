@@ -20,11 +20,17 @@ Keep the relaunch feature default-off. With an authenticated Preview account:
 2. Confirm the API response and room metadata carry the same canonical `deadline_at` derived from persisted `started_at`.
 3. Confirm reconnect succeeds one millisecond before the deadline and is denied at the deadline.
 4. Keep the browser visible for one run and background/close it for another.
-5. At the deadline, confirm room participants are disconnected before feedback dispatch, the session stores `time_limit`, and feedback is queued or skipped according to durable signal.
+5. At the deadline, confirm the session atomically stores terminal truth plus
+   `deadline_room_cleanup_status=pending` before room deletion starts, then room
+   participants are disconnected and cleanup is acknowledged before feedback
+   dispatch. Feedback is queued or skipped according to durable signal.
 6. Replay the deadline event and confirm the stored terminal result is unchanged.
 7. Exercise a room-delete failure in a safe test environment; confirm terminal
    truth commits, `feedbackReady` remains false, feedback polling reports
    `settling`, direct retry is rejected, and the Inngest run retries deletion.
+   While deletion is deferred, race an ordinary end command and confirm it
+   preserves the pending claim and stored terminal owner; confirm the central
+   feedback outbox refuses a claim until cleanup is acknowledged.
    Repeat with insufficient signal and confirm `not_required` remains blocked
    until cleanup acknowledgement. After acknowledgement, confirm eligible signal
    sends one feedback event, skipped signal sends none, and later replays send no

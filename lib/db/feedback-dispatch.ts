@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
 import { db } from "./index";
 import { FEEDBACK_GENERATION_EVENT_PREFIX } from "./feedback-event-id";
-import { feedback } from "./schema";
+import { feedback, interviewSession } from "./schema";
 
 export const FEEDBACK_DISPATCH_LEASE_MS = 2 * 60 * 1000;
 
@@ -84,6 +84,12 @@ export function createDrizzleFeedbackDispatchStore(
         .where(
           and(
             eq(feedback.sessionId, sessionId),
+            sql`NOT EXISTS (
+              SELECT 1
+              FROM ${interviewSession}
+              WHERE ${interviewSession.id} = ${feedback.sessionId}
+                AND ${interviewSession.deadlineRoomCleanupStatus} = 'pending'
+            )`,
             inArray(feedback.status, ["pending", "failed"]),
             or(
               inArray(feedback.dispatchStatus, ["pending", "failed"]),
