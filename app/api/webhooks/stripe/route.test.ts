@@ -6,6 +6,8 @@ const state = vi.hoisted(() => ({
   payments: [] as Array<Record<string, unknown>>,
   updates: [] as Array<Record<string, unknown>>,
   subscriptionWrites: [] as Array<Record<string, unknown>>,
+  mappingWrites: [] as Array<Record<string, unknown>>,
+  grantCalls: [] as Array<Record<string, unknown>>,
   transactionUpdateResults: [] as boolean[],
   selectResponses: [] as Array<Array<Record<string, unknown>>>,
   lastSelectResponse: [] as Array<Record<string, unknown>>,
@@ -128,6 +130,13 @@ vi.mock("@/lib/db", () => ({
             if ("stripeSubscriptionId" in value && "status" in value) {
               state.subscriptionWrites.push(value);
             }
+            if (
+              "stripeCustomerId" in value &&
+              "userId" in value &&
+              !("status" in value)
+            ) {
+              state.mappingWrites.push(value);
+            }
             if ("stripeInvoiceId" in value && "status" in value) {
               const duplicate = state.payments.some(
                 (row) =>
@@ -165,7 +174,10 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/billing/credits", () => ({
   createCreditLedgerService: vi.fn(() => ({
-    grantCredits: vi.fn(async () => ({ grant: { id: "grant_route" } })),
+    grantCredits: vi.fn(async (input: Record<string, unknown>) => {
+      state.grantCalls.push(input);
+      return { grant: { id: "grant_route" } };
+    }),
     renewSubscriptionCredits: vi.fn(async () => ({
       grant: { id: "grant_renewal_route" },
     })),
@@ -229,6 +241,8 @@ describe("POST /api/webhooks/stripe", () => {
     state.payments.length = 0;
     state.updates.length = 0;
     state.subscriptionWrites.length = 0;
+    state.mappingWrites.length = 0;
+    state.grantCalls.length = 0;
     state.transactionUpdateResults.length = 0;
     state.selectResponses.length = 0;
     state.lastSelectResponse = [];
@@ -582,6 +596,42 @@ describe("POST /api/webhooks/stripe", () => {
       status: "failed",
       lastError: "billing_payment_truth_mismatch",
     });
+  });
+
+  it("rejects an unpaid async checkout before every fulfillment mutation", async () => {
+    state.selectResponses.push([]);
+    const response = await POST(
+      request({
+        id: "evt_checkout_unpaid",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_route_unpaid",
+            object: "checkout.session",
+            client_reference_id: "user_route",
+            metadata: {
+              userId: "user_route",
+              catalogId: "interview_pass",
+            },
+            customer: "cus_route_unpaid",
+            payment_status: "unpaid",
+            payment_intent: "pi_route_unpaid",
+            amount_total: 900,
+            currency: "usd",
+          },
+        },
+      })
+    );
+
+    expect(response.status).toBe(500);
+    expect(state.logs[0]).toMatchObject({
+      status: "failed",
+      lastError: "checkout_payment_not_settled",
+    });
+    expect(state.grantCalls).toHaveLength(0);
+    expect(state.mappingWrites).toHaveLength(0);
+    expect(state.payments).toHaveLength(0);
+    expect(state.subscriptionWrites).toHaveLength(0);
   });
 
   it("accepts a newer cross-resource creation and retires the prior identity", async () => {

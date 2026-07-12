@@ -716,20 +716,15 @@ async function handleCheckoutCompleted(
     return "deleted_checkout_reconciled";
   }
 
-  try {
-    if (catalogId === "interview_pass") {
-      const ledger = createCreditLedgerService({
-        store: createDrizzleCreditLedgerStore(),
-      });
-      await ledger.grantCredits({
-        userId,
-        catalogId,
-        source: "checkout",
-        sourceId: session.id,
-        idempotencyKey: `stripe:checkout:${session.id}:interview_pass`,
-      });
-    }
+  if (session.payment_status !== "paid") {
+    throw new Error("checkout_payment_not_settled");
+  }
+  const paymentIntentId = getExpandableId(session.payment_intent);
+  if (!paymentIntentId || session.amount_total === null || !session.currency) {
+    throw new Error("billing_payment_correlation_required");
+  }
 
+  try {
     const customerId = getStripeCustomerId(session.customer);
     if (customerId) {
       await upsertStripeCustomerMapping({
@@ -742,14 +737,6 @@ async function handleCheckoutCompleted(
     await redactDeletedStripeEvent(event);
     await reconcileCheckoutForDeletedAccount(session, stripe, userId);
     return "deleted_checkout_reconciled";
-  }
-
-  if (session.payment_status !== "paid") {
-    throw new Error("checkout_payment_not_settled");
-  }
-  const paymentIntentId = getExpandableId(session.payment_intent);
-  if (!paymentIntentId || session.amount_total === null || !session.currency) {
-    throw new Error("billing_payment_correlation_required");
   }
 
   const ledger = createCreditLedgerService({
@@ -1807,7 +1794,7 @@ async function readBoundedStripeWebhookBody(
 function stripeWebhookErrorCode(error: unknown) {
   if (!(error instanceof Error)) return "stripe_webhook_processing_failed";
   const code = error.message.split(":", 1)[0];
-  return /^(billing_|credit_|stripe_)[a-z0-9_]+$/.test(code)
+  return /^(billing_|checkout_|credit_|stripe_)[a-z0-9_]+$/.test(code)
     ? code
     : "stripe_webhook_processing_failed";
 }

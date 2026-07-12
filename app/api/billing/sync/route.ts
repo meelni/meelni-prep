@@ -9,6 +9,7 @@ import {
   getStripeCatalogIdForPrice,
 } from "@/lib/billing/stripe-catalog";
 import { mayApplyStripeSubscriptionResource } from "@/lib/billing/stripe-subscription-event-order";
+import { cancelObservedMissingStripeSubscription } from "@/lib/db/stripe-subscription-sync";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -133,18 +134,27 @@ export async function POST() {
       } catch (stripeError) {
         // Subscription may have been deleted
         if (isStripeResourceMissing(stripeError)) {
-          // Mark as canceled in our database
-          await db
-            .update(subscription)
-            .set({
-              status: "canceled",
-              updatedAt: new Date(),
-            })
-            .where(eq(subscription.userId, userId));
+          const cancellation = await cancelObservedMissingStripeSubscription({
+            userId,
+            observedStripeSubscriptionId: sub.stripeSubscriptionId,
+            observedVersion: sub.version,
+          });
+          if (cancellation.status === "conflict") {
+            return NextResponse.json(
+              {
+                synced: false,
+                message: "Subscription changed while syncing; retry required",
+              },
+              { status: 409 }
+            );
+          }
 
           return NextResponse.json({
             synced: true,
-            subscription: { tier: sub.tier, status: "canceled" },
+            subscription: {
+              tier: cancellation.tier,
+              status: "canceled",
+            },
             message: "Subscription marked as canceled (not found in Stripe)",
           });
         }
