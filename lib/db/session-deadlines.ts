@@ -74,9 +74,20 @@ export function isInterviewDeadlineRoomCleanupAcknowledged(input: {
   deadlineRoomCleanupStatus: DeadlineRoomCleanupStatus | undefined;
 }): boolean {
   return (
-    input.terminalReason !== "time_limit" ||
     input.deadlineRoomCleanupStatus === "deleted" ||
-    input.deadlineRoomCleanupStatus === "already_absent"
+    input.deadlineRoomCleanupStatus === "already_absent" ||
+    (input.deadlineRoomCleanupStatus == null &&
+      input.terminalReason !== "time_limit")
+  );
+}
+
+export function hasInterviewDeadlineRoomCleanupClaim(input: {
+  terminalReason: string | null | undefined;
+  deadlineRoomCleanupStatus: DeadlineRoomCleanupStatus | undefined;
+}): boolean {
+  return (
+    input.deadlineRoomCleanupStatus != null ||
+    input.terminalReason === "time_limit"
   );
 }
 
@@ -95,7 +106,7 @@ export async function acknowledgeInterviewDeadlineRoomCleanup(
       .limit(1)
       .for("update");
     const session = rows[0];
-    if (!session || session.terminalReason !== "time_limit") {
+    if (!session || session.cleanupStatus === null) {
       throw new Error("Deadline cleanup acknowledgement is not claimable");
     }
     if (
@@ -141,10 +152,7 @@ export async function listInterviewDeadlineSchedules(
               "ending",
             ])
           ),
-          and(
-            eq(interviewSession.terminalReason, "time_limit"),
-            eq(interviewSession.deadlineRoomCleanupStatus, "pending")
-          )
+          eq(interviewSession.deadlineRoomCleanupStatus, "pending")
         )
       )
     );
@@ -169,8 +177,7 @@ export function buildInterviewDeadlineSchedules(
         ["created", "connecting", "active", "reconnecting", "ending"].includes(
           session.lifecycleState
         ) ||
-        (session.terminalReason === "time_limit" &&
-          session.deadlineRoomCleanupStatus === "pending")
+        session.deadlineRoomCleanupStatus === "pending"
     )
     .flatMap<InterviewDeadlineRecoveryItem>((session) => {
       if (!session.startedAt) {

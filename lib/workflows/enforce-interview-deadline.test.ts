@@ -177,9 +177,7 @@ test("ineligible deadline settlement stays blocked until room cleanup is acknowl
   let acknowledged = false;
   let deleteAttempts = 0;
   let dispatchAttempts = 0;
-  const ineligible = settlement().completion;
-  ineligible.feedback.status = "skipped";
-  ineligible.feedback.dispatchStatus = "not_required";
+  const ineligible = settlement("insufficient_signal", "abandoned").completion;
   const deps = createDeps({
     settleSession: async () => ({ ok: true, completion: ineligible }),
     terminateRoom: async ({ roomName }) => {
@@ -227,6 +225,25 @@ test("ineligible deadline settlement stays blocked until room cleanup is acknowl
       "not_required"
     );
   }
+});
+
+test("a concurrent user end never creates or acknowledges a deadline cleanup claim", async () => {
+  let acknowledgements = 0;
+  const userEnd = settlement("user_end", "completed").completion;
+  const result = await enforceInterviewDeadlineWorkflow(
+    { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
+    createDeps({
+      settleSession: async () => ({ ok: true, completion: userEnd }),
+      acknowledgeRoomCleanup: async () => {
+        acknowledgements += 1;
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(userEnd.lifecycle.terminalReason, "user_end");
+  assert.equal(userEnd.deadlineRoomCleanupStatus, null);
+  assert.equal(acknowledgements, 0);
 });
 
 test("recovery rediscovers terminal pending cleanup after exact retries exhaust and finalizes once", async () => {
@@ -502,8 +519,12 @@ function createDeps(
 }
 
 function settlement(
-  terminalReason: "time_limit" | "provider_failure" = "time_limit",
-  state: "completed" | "failed" = "completed"
+  terminalReason:
+    | "time_limit"
+    | "provider_failure"
+    | "insufficient_signal"
+    | "user_end" = "time_limit",
+  state: "completed" | "abandoned" | "failed" = "completed"
 ): Extract<SettleInterviewSessionResult, { ok: true }> {
   const result = completion(terminalReason, state);
   assert.equal(result.ok, true);
@@ -546,8 +567,12 @@ function completedSettlement(
 }
 
 function completion(
-  terminalReason: "time_limit" | "provider_failure" = "time_limit",
-  state: "completed" | "failed" = "completed"
+  terminalReason:
+    | "time_limit"
+    | "provider_failure"
+    | "insufficient_signal"
+    | "user_end" = "time_limit",
+  state: "completed" | "abandoned" | "failed" = "completed"
 ): EndInterviewSessionResult {
   return {
     ok: true,
@@ -563,9 +588,16 @@ function completion(
         endedAt: new Date(DEADLINE),
       },
       feedback: {
-        status: "pending",
-        dispatchStatus: "sent",
+        status:
+          terminalReason === "insufficient_signal" ? "skipped" : "pending",
+        dispatchStatus:
+          terminalReason === "insufficient_signal" ? "not_required" : "sent",
       },
+      deadlineRoomCleanupStatus:
+        terminalReason === "time_limit" ||
+        terminalReason === "insufficient_signal"
+          ? "pending"
+          : null,
       stats: {},
       tier: "full",
       recommendations: [],

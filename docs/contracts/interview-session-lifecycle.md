@@ -133,9 +133,10 @@ attempts room deletion before settlement, and uses separate idempotent
 settlement and dispatch boundaries. Terminal truth and completion-time
 motivation may commit when deletion fails, but feedback dispatch remains
 deferred until deletion is acknowledged as `deleted` or `already_absent`.
-The terminal transaction persists a separate `pending` cleanup claim, including
-for skipped feedback. A provider acknowledgement changes it to `deleted` or
-`already_absent`; only then can the client hand off. Retries preserve the first
+The hard-deadline winner persists a separate `pending` cleanup claim, including
+when validation refines lifecycle truth to `insufficient_signal` and skips
+feedback. A concurrent ordinary end never creates that claim. A provider
+acknowledgement changes it to `deleted` or `already_absent`; only then can the client hand off. Retries preserve the first
 terminal claim and dispatch at most once. A five-minute recovery scan
 prioritizes overdue open sessions and terminal pending-cleanup claims and uses a
 unique delivery identity per recovery run.

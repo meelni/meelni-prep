@@ -94,7 +94,7 @@ test("recovery re-emits terminal deadline cleanup claims until provider acknowle
           startedAt: new Date("2026-07-10T06:00:00.000Z"),
           config: { duration: 30 },
           lifecycleState: "completed",
-          terminalReason: "time_limit",
+          terminalReason: "insufficient_signal",
           deadlineRoomCleanupStatus: "pending",
         },
         {

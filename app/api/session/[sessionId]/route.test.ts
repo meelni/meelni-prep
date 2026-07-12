@@ -75,7 +75,7 @@ describe("GET /api/session/:sessionId", () => {
     vi.mocked(getSessionById).mockResolvedValue({
       id: SESSION_ID,
       lifecycleState: "abandoned",
-      terminalReason: "time_limit",
+      terminalReason: "insufficient_signal",
       deadlineRoomCleanupStatus: "pending",
       startedAt: new Date("2026-07-10T06:00:00.000Z"),
       config: { duration: 30 },
@@ -87,6 +87,25 @@ describe("GET /api/session/:sessionId", () => {
     const response = await GET(request(), context());
     await expect(response.json()).resolves.toMatchObject({
       session: { feedbackReady: false },
+    });
+  });
+
+  it("marks skipped deadline feedback ready after cleanup acknowledgement", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      id: SESSION_ID,
+      lifecycleState: "abandoned",
+      terminalReason: "insufficient_signal",
+      deadlineRoomCleanupStatus: "already_absent",
+      startedAt: new Date("2026-07-10T06:00:00.000Z"),
+      config: { duration: 30 },
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue({
+      dispatchStatus: "not_required",
+    } as never);
+
+    const response = await GET(request(), context());
+    await expect(response.json()).resolves.toMatchObject({
+      session: { feedbackReady: true },
     });
   });
 
