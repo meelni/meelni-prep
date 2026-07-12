@@ -35,7 +35,6 @@ export interface ReconcileInterviewPresenceDeps {
     participantKind: number;
     occurredAt: Date;
   }): Promise<HandleLiveKitInterviewEventResult>;
-  now(): Date;
 }
 
 export type ReconcileInterviewPresenceResult =
@@ -73,7 +72,7 @@ export async function reconcileInterviewPresenceWorkflow(
     return { ok: true, disposition: "terminal" };
   }
 
-  const checkedAt = deps.now();
+  const checkedAt = await deps.store.getDatabaseTime();
   const marked = await deps.store.markPresenceReconciled({
     sessionId: current.sessionId,
     expectedVersion: current.version,
@@ -152,16 +151,16 @@ export async function reconcileInterviewPresenceWorkflow(
   }
 
   if (current.state === "reconnecting") {
+    const recoveryObservedAt = await deps.store.getDatabaseTime();
     if (
       !inspected.data.present ||
       !inspected.data.joined ||
       !inspected.data.joinedAt ||
-      !Number.isFinite(inspected.data.joinedAt.getTime())
+      !Number.isFinite(inspected.data.joinedAt.getTime()) ||
+      !current.reconnectDeadlineAt ||
+      recoveryObservedAt.getTime() >= current.reconnectDeadlineAt.getTime()
     ) {
       return { ok: true, disposition: "reconnecting" };
-    }
-    if (!current.reconnectDeadlineAt) {
-      return { ok: false, disposition: "stale_event" };
     }
     if (
       inspected.data.joinedAt.getTime() >= current.reconnectDeadlineAt.getTime()
@@ -173,7 +172,7 @@ export async function reconcileInterviewPresenceWorkflow(
       expectedVersion: current.version,
       deadlineAt: current.reconnectDeadlineAt,
       joinedAt: inspected.data.joinedAt,
-      transitionedAt: checkedAt,
+      transitionedAt: recoveryObservedAt,
     });
     if (!recovered.applied) {
       return {
@@ -216,9 +215,7 @@ export function createReconcileInterviewPresenceDeps(): ReconcileInterviewPresen
       handleLiveKitInterviewEventWorkflow(input, {
         store,
         scheduleReconnect: scheduleInterviewReconnect,
-        now: () => new Date(),
       }),
-    now: () => new Date(),
   };
 }
 

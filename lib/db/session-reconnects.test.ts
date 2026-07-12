@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 import { createDrizzleInterviewReconnectStore } from "./session-reconnects";
 
 test("a reconnect timeout claim persists the durable room cleanup marker", async () => {
   let claimedCleanupPending: unknown;
+  let capturedPredicate: SQL | null = null;
   const database = {
     update() {
       const builder = {
@@ -12,7 +15,8 @@ test("a reconnect timeout claim persists the durable room cleanup marker", async
           claimedCleanupPending = values.roomCleanupPending;
           return builder;
         },
-        where() {
+        where(predicate: SQL) {
+          capturedPredicate = predicate;
           return builder;
         },
         async returning() {
@@ -35,6 +39,9 @@ test("a reconnect timeout claim persists the durable room cleanup marker", async
   assert.equal(result.applied, true);
   assert.equal(claimedCleanupPending, true);
   if (result.applied) assert.equal(result.current.roomCleanupPending, true);
+  const query = new PgDialect().sqlToQuery(capturedPredicate!);
+  assert.match(query.sql, /reconnect_deadline_owner/);
+  assert.match(query.sql, /clock_timestamp\(\)/);
 });
 
 function reconnectRow(roomCleanupPending: boolean) {
@@ -51,6 +58,7 @@ function reconnectRow(roomCleanupPending: boolean) {
     runtimeReadyAt: new Date("2026-07-10T07:30:01.000Z"),
     lastTransitionAt: new Date("2026-07-10T08:00:30.000Z"),
     reconnectDeadlineAt: new Date("2026-07-10T08:00:30.000Z"),
+    reconnectDeadlineOwner: "reconnect_grace",
     roomCleanupPending,
     roomCleanupAttemptedAt: null,
     roomProvisioningPending: false,

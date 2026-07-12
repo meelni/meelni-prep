@@ -137,7 +137,9 @@ export async function finalizeInterviewSession(
             terminalReason: reason,
           }),
           lastTransitionAt: now,
-          ...(nextState === "active" ? { reconnectDeadlineAt: null } : {}),
+          ...(nextState === "active"
+            ? { reconnectDeadlineAt: null, reconnectDeadlineOwner: null }
+            : {}),
           ...(nextState === "active" ? { activatedAt: nextActivatedAt } : {}),
           ...(nextState === "ending"
             ? {
@@ -152,7 +154,10 @@ export async function finalizeInterviewSession(
                 (reason === "disconnect_timeout" ||
                   reason === "insufficient_signal")
                   ? {}
-                  : { reconnectDeadlineAt: null }),
+                  : {
+                      reconnectDeadlineAt: null,
+                      reconnectDeadlineOwner: null,
+                    }),
               }
             : {}),
         })

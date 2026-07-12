@@ -48,7 +48,6 @@ export interface EnforceInterviewReconnectDeps {
     participantIdentity: string;
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<InterviewParticipantPresence>>;
-  now(): Date;
   waitUntil(deadlineAt: Date): Promise<void>;
 }
 
@@ -101,17 +100,22 @@ export async function enforceInterviewReconnectWorkflow(
     (current.terminalReason === "disconnect_timeout" ||
       current.terminalReason === "insufficient_signal") &&
     current.version === input.expectedVersion + 1 &&
+    current.reconnectDeadlineOwner === "reconnect_grace" &&
     sameInstant(current.reconnectDeadlineAt, deadlineAt);
 
   if (!isClaimedRetry) {
     if (
       current.state !== "reconnecting" ||
       current.version !== input.expectedVersion ||
+      current.reconnectDeadlineOwner !== "reconnect_grace" ||
       !sameInstant(current.reconnectDeadlineAt, deadlineAt)
     ) {
       return { ok: false, disposition: "stale_event" };
     }
-    if (!isInterviewReconnectDeadlineReached({ deadlineAt, now: deps.now() })) {
+    const databaseNow = await deps.store.getDatabaseTime();
+    if (
+      !isInterviewReconnectDeadlineReached({ deadlineAt, now: databaseNow })
+    ) {
       return { ok: false, disposition: "not_due" };
     }
 
@@ -126,6 +130,7 @@ export async function enforceInterviewReconnectWorkflow(
       });
     }
     if (
+      (await deps.store.getDatabaseTime()).getTime() < deadlineAt.getTime() &&
       presence.data.present &&
       presence.data.joined &&
       presence.data.joinedAt &&
@@ -137,7 +142,7 @@ export async function enforceInterviewReconnectWorkflow(
         expectedVersion: input.expectedVersion,
         deadlineAt,
         joinedAt: presence.data.joinedAt,
-        transitionedAt: deps.now(),
+        transitionedAt: await deps.store.getDatabaseTime(),
       });
       if (!recovered.applied) {
         return {
@@ -159,7 +164,7 @@ export async function enforceInterviewReconnectWorkflow(
       expectedVersion: input.expectedVersion,
       deadlineAt,
       terminalReason: "disconnect_timeout",
-      transitionedAt: deps.now(),
+      transitionedAt: await deps.store.getDatabaseTime(),
     });
     if (!claim.applied) {
       return {
@@ -262,7 +267,6 @@ export function createEnforceInterviewReconnectDeps(): EnforceInterviewReconnect
       ),
     terminateRoom: terminateInterviewRoom,
     inspectPresence: inspectInterviewParticipantPresence,
-    now: () => new Date(),
     waitUntil: async (deadlineAt) => {
       const remainingMs = deadlineAt.getTime() - Date.now();
       if (remainingMs > 0) {

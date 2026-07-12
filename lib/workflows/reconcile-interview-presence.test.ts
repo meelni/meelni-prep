@@ -84,6 +84,33 @@ test("reconnect reconciliation requires a valid join strictly before grace expir
   }
 });
 
+test("presence repair accepts database time 1ms before cutoff and denies equality or later", async () => {
+  const deadlineAt = new Date("2026-07-10T08:00:30.000Z");
+  for (const [offset, disposition] of [
+    [-1, "recovered"],
+    [0, "reconnecting"],
+    [1, "reconnecting"],
+  ] as const) {
+    const fixture = createFixture(
+      createSession({
+        state: "reconnecting",
+        version: 4,
+        reconnectDeadlineAt: deadlineAt,
+      }),
+      new Date(deadlineAt.getTime() + offset)
+    );
+    fixture.deps.inspectPresence = async () =>
+      providerSuccess(
+        "livekit",
+        presence({ joinedAt: new Date(deadlineAt.getTime() - 1) })
+      );
+
+    const result = await run(fixture.deps, `database-cutoff:${offset}`);
+    assert.equal(result.ok, true);
+    if (result.ok) assert.equal(result.disposition, disposition);
+  }
+});
+
 test("provider failure records scan fairness but never invents a loss", async () => {
   const fixture = createFixture(createSession());
   fixture.deps.inspectPresence = async () =>
@@ -260,7 +287,10 @@ function run(deps: ReconcileInterviewPresenceDeps, deliveryId: string) {
   );
 }
 
-function createFixture(initial: InterviewReconnectSession): {
+function createFixture(
+  initial: InterviewReconnectSession,
+  databaseNow = NOW
+): {
   deps: ReconcileInterviewPresenceDeps;
   current: InterviewReconnectSession;
   losses: number;
@@ -276,6 +306,7 @@ function createFixture(initial: InterviewReconnectSession): {
   let conflictOnMark = false;
   const eventKinds: string[] = [];
   const store: InterviewReconnectStore = {
+    getDatabaseTime: async () => new Date(databaseNow),
     getById: async () => current,
     getByRoom: async () => current,
     applyTransportTransition: async () => ({
@@ -318,6 +349,7 @@ function createFixture(initial: InterviewReconnectSession): {
         current.state !== "reconnecting" ||
         current.version !== input.expectedVersion ||
         current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime() ||
+        databaseNow.getTime() >= input.deadlineAt.getTime() ||
         input.joinedAt.getTime() >= input.deadlineAt.getTime()
       ) {
         return { applied: false, reason: "conflict", current };
@@ -328,6 +360,7 @@ function createFixture(initial: InterviewReconnectSession): {
         state: "active",
         version: current.version + 1,
         reconnectDeadlineAt: null,
+        reconnectDeadlineOwner: null,
         lastTransitionAt: input.transitionedAt,
         presenceReconciledAt: input.transitionedAt,
       };
@@ -377,6 +410,7 @@ function createFixture(initial: InterviewReconnectSession): {
             state: "reconnecting",
             version: current.version + 1,
             reconnectDeadlineAt: new Date("2026-07-10T08:00:40.000Z"),
+            reconnectDeadlineOwner: "reconnect_grace",
             lastTransitionAt: NOW,
           };
           return { ok: true, disposition: "reconnecting", lifecycle: current };
@@ -418,7 +452,6 @@ function createFixture(initial: InterviewReconnectSession): {
         }
         return { ok: true, disposition: "ignored", lifecycle: current };
       },
-      now: () => NOW,
     },
     get current() {
       return current;
@@ -488,5 +521,8 @@ function createSession(
     lastTransportEventId: "joined-1",
     lastTransportEventName: "participant_joined",
     ...overrides,
+    reconnectDeadlineOwner:
+      overrides.reconnectDeadlineOwner ??
+      (overrides.reconnectDeadlineAt ? "reconnect_grace" : null),
   };
 }

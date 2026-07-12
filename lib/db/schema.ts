@@ -87,6 +87,9 @@ export const interviewSession = pgTable(
     reconnectDeadlineAt: timestamp("reconnect_deadline_at", {
       withTimezone: true,
     }),
+    reconnectDeadlineOwner: text("reconnect_deadline_owner").$type<
+      "reconnect_grace" | "hard_deadline"
+    >(),
     roomCleanupPending: boolean("room_cleanup_pending")
       .default(false)
       .notNull(),
@@ -157,6 +160,10 @@ export const interviewSession = pgTable(
     roomProvisioningClaimCheck: check(
       "interview_session_room_provisioning_claim_check",
       sql`(${table.roomProvisioningPending} AND ${table.roomProvisioningStartedAt} IS NOT NULL) OR (NOT ${table.roomProvisioningPending} AND ${table.roomProvisioningStartedAt} IS NULL)`
+    ),
+    reconnectDeadlineOwnerCheck: check(
+      "interview_session_reconnect_deadline_owner_check",
+      sql`(${table.reconnectDeadlineAt} IS NULL AND ${table.reconnectDeadlineOwner} IS NULL) OR (${table.reconnectDeadlineAt} IS NOT NULL AND ${table.reconnectDeadlineOwner} IN ('reconnect_grace', 'hard_deadline'))`
     ),
     // P1-001: Indexes for performance
     userIdStatusIdx: index("interview_session_user_status_idx").on(

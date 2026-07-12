@@ -56,7 +56,7 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with nine
+six ledger entries. Expected post-migration status is `reconciled` with ten
 ledger entries, 23 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, and reconnect
@@ -78,7 +78,9 @@ least-privilege RLS, and shared limiter concurrency.
 It also runs ten real completion transactions over independent connections,
 proves one feedback/event identity, verifies one dispatch lease winner with
 fenced acknowledgements, and repairs terminal-without-feedback state without
-changing terminal truth.
+changing terminal truth. The reconnect migration rehearsal additionally proves
+database-clock provisioning and timeout fences, exact cutoff ownership, and
+fair progress beyond a 250-row poison recovery page.
 
 ## Preview and Production rollout
 

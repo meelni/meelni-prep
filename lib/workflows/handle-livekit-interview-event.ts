@@ -30,7 +30,6 @@ export interface HandleLiveKitInterviewEventDeps {
     expectedVersion: number;
     deadlineAt: Date;
   }): Promise<unknown>;
-  now(): Date;
 }
 
 export type HandleLiveKitInterviewEventResult =
@@ -116,7 +115,8 @@ export async function handleLiveKitInterviewEventWorkflow(
       return { ok: true, disposition: "ignored", lifecycle: current };
     }
 
-    const desired = deriveDesiredTransition(input, current, deps.now());
+    const databaseNow = await deps.store.getDatabaseTime();
+    const desired = deriveDesiredTransition(input, current, databaseNow);
     if (!desired) {
       if (isCandidate) {
         const observation = await deps.store.recordTransportObservation({
@@ -145,7 +145,7 @@ export async function handleLiveKitInterviewEventWorkflow(
           sessionId: current.sessionId,
           expectedState: "connecting",
           expectedVersion: current.version,
-          runtimeReadyAt: deps.now(),
+          runtimeReadyAt: databaseNow,
         });
         if (!observation.applied) {
           if (observation.reason === "not_found" || !observation.current) {
@@ -166,6 +166,7 @@ export async function handleLiveKitInterviewEventWorkflow(
       expectedVersion: current.version,
       nextState: desired.nextState,
       reconnectDeadlineAt: desired.reconnectDeadlineAt,
+      reconnectDeadlineOwner: desired.reconnectDeadlineOwner,
       transportEventAt: input.occurredAt,
       transportEventId: input.eventId,
       transportEventName: input.eventName,
@@ -208,6 +209,7 @@ function deriveDesiredTransition(
 ): {
   nextState: "active" | "reconnecting";
   reconnectDeadlineAt: Date | null;
+  reconnectDeadlineOwner: "reconnect_grace" | "hard_deadline" | null;
   transitionedAt: Date;
   disposition: "activated" | "reconnecting" | "recovered";
   runtimeReadyAt?: Date;
@@ -237,6 +239,7 @@ function deriveDesiredTransition(
       return {
         nextState: "active",
         reconnectDeadlineAt: null,
+        reconnectDeadlineOwner: null,
         transitionedAt: now,
         disposition: "activated",
         runtimeReadyAt: now,
@@ -250,6 +253,7 @@ function deriveDesiredTransition(
       return {
         nextState: "active",
         reconnectDeadlineAt: null,
+        reconnectDeadlineOwner: null,
         transitionedAt: now,
         disposition: "activated",
       };
@@ -265,6 +269,7 @@ function deriveDesiredTransition(
       return {
         nextState: "active",
         reconnectDeadlineAt: null,
+        reconnectDeadlineOwner: null,
         transitionedAt: now,
         disposition: "recovered",
       };
@@ -282,6 +287,7 @@ function deriveDesiredTransition(
   return {
     nextState: "reconnecting",
     reconnectDeadlineAt: reconnect.deadlineAt,
+    reconnectDeadlineOwner: reconnect.owner,
     transitionedAt: now,
     disposition: "reconnecting",
   };
@@ -323,7 +329,13 @@ async function reschedulePersistedReconnect(
   current: InterviewReconnectSession,
   deps: HandleLiveKitInterviewEventDeps
 ): Promise<void> {
-  if (current.state !== "reconnecting" || !current.reconnectDeadlineAt) return;
+  if (
+    current.state !== "reconnecting" ||
+    !current.reconnectDeadlineAt ||
+    current.reconnectDeadlineOwner !== "reconnect_grace"
+  ) {
+    return;
+  }
   await deps.scheduleReconnect({
     sessionId: current.sessionId,
     expectedVersion: current.version,
@@ -335,7 +347,6 @@ export function createHandleLiveKitInterviewEventDeps(): HandleLiveKitInterviewE
   return {
     store: createDrizzleInterviewReconnectStore(),
     scheduleReconnect: scheduleInterviewReconnect,
-    now: () => new Date(),
   };
 }
 

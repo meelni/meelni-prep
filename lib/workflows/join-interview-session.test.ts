@@ -156,22 +156,26 @@ test("join workflow rejects expired sessions even if their status was never fina
 });
 
 test("join workflow allows one token-second before the deadline and rejects at the deadline", async () => {
-  const session = createSession({
-    startedAt: new Date("2026-07-09T12:00:00.000Z"),
-    config: { duration: 30 },
-  });
   const before = await joinInterviewSessionWorkflow(
     { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
     createDeps({
-      getSession: async () => session,
-      now: () => new Date("2026-07-09T12:29:59.000Z"),
+      getSession: async () =>
+        createSession({
+          startedAt: new Date("2026-07-09T12:00:00.000Z"),
+          config: { duration: 30 },
+          databaseNow: new Date("2026-07-09T12:29:59.000Z"),
+        }),
     })
   );
   const at = await joinInterviewSessionWorkflow(
     { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
     createDeps({
-      getSession: async () => session,
-      now: () => new Date("2026-07-09T12:30:00.000Z"),
+      getSession: async () =>
+        createSession({
+          startedAt: new Date("2026-07-09T12:00:00.000Z"),
+          config: { duration: 30 },
+          databaseNow: new Date("2026-07-09T12:30:00.000Z"),
+        }),
     })
   );
 
@@ -182,22 +186,26 @@ test("join workflow allows one token-second before the deadline and rejects at t
 
 test("join workflow binds token lifetime to reconnect expiry", async () => {
   const reconnectDeadlineAt = new Date("2026-07-09T12:20:30.000Z");
-  const session = createSession({
-    lifecycleState: "reconnecting",
-    reconnectDeadlineAt,
-  });
   const before = await joinInterviewSessionWorkflow(
     { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
     createDeps({
-      getSession: async () => session,
-      now: () => new Date(reconnectDeadlineAt.getTime() - 1_000),
+      getSession: async () =>
+        createSession({
+          lifecycleState: "reconnecting",
+          reconnectDeadlineAt,
+          databaseNow: new Date(reconnectDeadlineAt.getTime() - 1_000),
+        }),
     })
   );
   const at = await joinInterviewSessionWorkflow(
     { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
     createDeps({
-      getSession: async () => session,
-      now: () => reconnectDeadlineAt,
+      getSession: async () =>
+        createSession({
+          lifecycleState: "reconnecting",
+          reconnectDeadlineAt,
+          databaseNow: reconnectDeadlineAt,
+        }),
     })
   );
 
@@ -214,12 +222,12 @@ test("a corrupt reconnect deadline cannot extend credentials past the hard deadl
   const result = await joinInterviewSessionWorkflow(
     { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
     createDeps({
-      now: () => new Date("2026-07-09T12:29:50.000Z"),
       getSession: async () =>
         createSession({
           lifecycleState: "reconnecting",
           lifecycleVersion: 4,
           reconnectDeadlineAt: new Date("2026-07-09T12:31:00.000Z"),
+          databaseNow: new Date("2026-07-09T12:29:50.000Z"),
         }),
     })
   );
@@ -452,7 +460,6 @@ function createDeps(
         roomName: input.roomName,
       },
     }),
-    now: () => NOW,
     ...overrides,
   };
 }
@@ -471,6 +478,11 @@ function createSession(
     status: "in_progress",
     lifecycleState: "active",
     lifecycleVersion: 3,
+    reconnectDeadlineAt: null,
     ...overrides,
+    reconnectDeadlineOwner:
+      overrides.reconnectDeadlineOwner ??
+      (overrides.reconnectDeadlineAt ? "reconnect_grace" : null),
+    databaseNow: overrides.databaseNow ?? NOW,
   };
 }

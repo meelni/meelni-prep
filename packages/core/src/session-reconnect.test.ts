@@ -31,7 +31,7 @@ test("hard deadline wins ties and earlier limits", () => {
         disconnectedAt: DISCONNECTED_AT,
         hardDeadlineAt,
       }),
-      { deadlineAt: null, owner: "hard_deadline" }
+      { deadlineAt: hardDeadlineAt, owner: "hard_deadline" }
     );
   }
 });

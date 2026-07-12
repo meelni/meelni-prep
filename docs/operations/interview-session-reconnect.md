@@ -28,14 +28,16 @@ Never place an intermediary in front of the route that rewrites the body.
   actual `exp` is no later than the earlier reconnect or hard deadline.
 - Startup signs the participant token before room creation or agent dispatch.
   The `created → connecting` CAS establishes a five-minute durable provisioning
-  lease before the first provider side effect.
+  lease from PostgreSQL's clock before the first provider side effect.
 - Hard deadline: continues during reconnect and wins when earlier than or equal
-  to reconnect expiry.
+  to reconnect expiry. Every accepted loss persists the earlier effective
+  cutoff and whether reconnect grace or the hard deadline owns termination.
 - Every terminal path persists `room_cleanup_pending`; user end attempts
   candidate-token revocation and deletion immediately, and a five-minute
-  recovery scan retries each room independently until LiveKit acknowledges
+  recovery scan retries each row independently until LiveKit acknowledges
   deletion or absence. Never-attempted and least-recently-attempted rooms run
-  first.
+  first; the same cursor advances before cleanup, provisioning, and credit-only
+  recovery attempts.
 - Because LiveKit webhooks are best-effort, a one-minute reconciliation scan
   checks authoritative participant presence for connecting, active, and
   reconnecting rooms. Connecting activation requires the exact standard
@@ -53,6 +55,9 @@ Never place an intermediary in front of the route that rewrites the body.
   strictly before the stored reconnect deadline,
   revokes candidate tokens before room deletion, waits a bounded two seconds
   for durable transcript delivery, and finalizes from one validation snapshot.
+  Token authorization, signed rejoin, presence repair, stale-provisioning
+  claims, and timeout claims use PostgreSQL time. The cutoff is exclusive:
+  database time or participant `joinedAt` equal to the cutoff is denied.
 
 ## Preview Rehearsal
 
@@ -111,6 +116,17 @@ ready:
     `joinedAt`, and `joinedAt` equal to or later than the deadline. Confirm each
     is denied. Confirm `JOINED` or `ACTIVE` at deadline minus one millisecond is
     accepted only for the matching lifecycle version and stored deadline.
+18. Simulate application clocks that are slow, fast, and roll backward. Confirm
+    token issuance, presence repair, stale provisioning, and timeout claims
+    still follow PostgreSQL time and never extend the stored cutoff.
+19. Create more than 250 retryable poison rows ahead of one healthy cleanup,
+    including credit-only rows. Confirm every attempted row advances the shared
+    cursor, the healthy row reaches the next scan, and a failed credit settlement
+    remains retryable until its marker is acknowledged.
+20. Lose transport inside the final 30 seconds. Confirm the hard deadline is
+    stored as the effective cutoff, no grace-timeout job is scheduled, recovery
+    succeeds only before that cutoff, and the hard-deadline worker wins at
+    equality.
 
 SAV-194 transcript event identity must be deployed before this ticket can be
 declared launch-ready; repeated packets across reload must not create duplicate
