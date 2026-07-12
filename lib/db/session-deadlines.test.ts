@@ -118,3 +118,79 @@ test("recovery re-emits terminal deadline cleanup claims until provider acknowle
     ]
   );
 });
+
+test("recovery retains acknowledged deadline feedback until its outbox is ready", () => {
+  const now = new Date("2026-07-10T07:00:00.000Z");
+  const base = {
+    startedAt: new Date("2026-07-10T06:00:00.000Z"),
+    config: { duration: 30 },
+    lifecycleState: "completed",
+    terminalReason: "time_limit",
+    deadlineRoomCleanupStatus: "already_absent" as const,
+    feedbackStatus: "pending",
+  };
+
+  assert.deepEqual(
+    buildInterviewDeadlineSchedules(
+      [
+        {
+          ...base,
+          id: "dispatch-pending",
+          feedbackDispatchStatus: "pending",
+        },
+        {
+          ...base,
+          id: "dispatch-failed",
+          feedbackDispatchStatus: "failed",
+        },
+        {
+          ...base,
+          id: "dispatch-sending-stale",
+          feedbackDispatchStatus: "sending",
+          feedbackDispatchClaimedAt: new Date("2026-07-10T06:57:59.999Z"),
+        },
+        {
+          ...base,
+          id: "dispatch-sending-fresh",
+          feedbackDispatchStatus: "sending",
+          feedbackDispatchClaimedAt: new Date("2026-07-10T06:58:00.001Z"),
+        },
+        {
+          ...base,
+          id: "dispatch-sent",
+          feedbackDispatchStatus: "sent",
+        },
+        {
+          ...base,
+          id: "generation-failed-after-send",
+          feedbackStatus: "failed",
+          feedbackDispatchStatus: "sent",
+        },
+      ],
+      250,
+      now
+    ),
+    [
+      {
+        kind: "deadline",
+        sessionId: "dispatch-failed",
+        deadlineAt: "2026-07-10T06:30:00.000Z",
+      },
+      {
+        kind: "deadline",
+        sessionId: "dispatch-pending",
+        deadlineAt: "2026-07-10T06:30:00.000Z",
+      },
+      {
+        kind: "deadline",
+        sessionId: "dispatch-sending-stale",
+        deadlineAt: "2026-07-10T06:30:00.000Z",
+      },
+      {
+        kind: "deadline",
+        sessionId: "generation-failed-after-send",
+        deadlineAt: "2026-07-10T06:30:00.000Z",
+      },
+    ]
+  );
+});

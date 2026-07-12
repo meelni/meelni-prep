@@ -142,6 +142,25 @@ describe("/api/feedback/[sessionId]", () => {
     await expect(response.json()).resolves.toMatchObject({ status: "skipped" });
   });
 
+  it("shows acknowledged hard-deadline dispatch failure as directly retryable", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "completed",
+      terminalReason: "time_limit",
+      deadlineRoomCleanupStatus: "already_absent",
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({ dispatchStatus: "failed" }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "pending",
+      dispatch: { status: "failed", retryable: true },
+    });
+  });
+
   it("offers recovery before a sender claims a pending dispatch", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({
@@ -328,6 +347,45 @@ describe("/api/feedback/[sessionId]", () => {
     await expect(response.json()).resolves.toMatchObject({
       status: "skipped",
       dispatch: { status: "not_required", retryable: false },
+    });
+  });
+
+  it("redispatches acknowledged hard-deadline feedback through the normal idempotent path", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      lifecycleState: "completed",
+      terminalReason: "time_limit",
+      deadlineRoomCleanupStatus: "deleted",
+    } as never);
+    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue({
+      ok: true,
+      completion: {
+        feedback: feedbackRecord({ dispatchStatus: "sent" }),
+      },
+      dispatch: {
+        ok: true,
+        disposition: "sent",
+        dispatch: {
+          sessionId: SESSION_ID,
+          eventId: `feedback/generate.requested:${SESSION_ID}:2`,
+          status: "sent",
+          attempts: 2,
+          claimedAt: new Date("2026-07-09T22:00:00.000Z"),
+          dispatchedAt: new Date("2026-07-09T22:00:01.000Z"),
+        },
+      },
+    } as never);
+
+    const response = await POST(request("POST"), PARAMS);
+
+    expect(response.status).toBe(200);
+    expect(endInterviewSessionWorkflow).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      actor: { type: "user", userId: "user-1" },
+      requestedTerminalReason: "user_end",
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      status: "pending",
+      dispatch: { status: "sent", retryable: false },
     });
   });
 

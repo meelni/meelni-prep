@@ -36,11 +36,13 @@ Keep the relaunch feature default-off. With an authenticated Preview account:
    sends one feedback event, skipped signal sends none, and later replays send no
    duplicate.
 8. Confirm the recovery cron emits a new delivery identity only for an overdue
-   open session or any terminal session with
-   `deadline_room_cleanup_status=pending`, including an
-   `insufficient_signal` refinement. Exhaust the exact event's retries and
-   confirm recovery deletes the room, acknowledges the claim, and completes the
-   dispatch/not-required boundary within the next five-minute recovery window.
+   open session, any terminal session with
+   `deadline_room_cleanup_status=pending`, or an acknowledged deadline-owned
+   session whose eligible feedback dispatch remains retryable. Exhaust the exact
+   event's retries and confirm recovery deletes the room, acknowledges the claim,
+   and completes the dispatch/not-required boundary within the next five-minute
+   recovery window. Then force dispatch failure after acknowledgement and confirm
+   the next recovery sends one new outbox attempt without deleting the room again.
 9. Create an isolated open voice-session fixture with a room name but no
    `started_at`. Confirm recovery immediately attempts room deletion, commits
    `provider_failure`, and retries with the safe room-deletion error code if the
@@ -71,6 +73,9 @@ Never log tokens, credentials, transcript text, customer identifiers, or room me
 - If LiveKit deletion fails, retry deletion. Do not reverse committed terminal
   truth or feedback intent, and do not dispatch or expose feedback before an
   acknowledged `deleted` or `already_absent` result.
+- If feedback dispatch fails after cleanup acknowledgement, leave the outbox
+  retryable. The five-minute deadline recovery scan and authenticated direct
+  retry both use the same idempotent claim; neither repeats room deletion.
 - An open voice room without a valid persisted start time is invalid, not
   deadline-exempt. Quarantine it, delete the room, and terminalize it as
   `provider_failure`; never silently omit it from recovery.

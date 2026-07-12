@@ -761,7 +761,8 @@ Analyzes an interview session transcript and generates comprehensive feedback. I
 
 Retrieves the feedback state or completed feedback for an owned terminal
 interview session. A hard-deadline session returns `settling` until room
-cleanup is acknowledged and feedback dispatch is `sent` or `not_required`.
+cleanup is acknowledged. After acknowledgement it returns the durable feedback
+and dispatch state, including retryable pending or failed dispatch.
 
 **Authentication**: Required (Supabase Auth JWT)
 
@@ -815,7 +816,8 @@ cleanup is acknowledged and feedback dispatch is `sent` or `not_required`.
 Authenticated `POST /api/feedback/:sessionId` cannot bypass this boundary. It
 returns `409 deadline_settlement_pending` until the deadline consumer has
 acknowledged room cleanup. Feedback starts automatically after cleanup; later
-generation retries preserve the existing idempotent dispatch behavior.
+generation retries and direct retry preserve the existing idempotent dispatch
+behavior.
 
 **Errors**:
 

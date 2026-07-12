@@ -90,10 +90,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
-import {
-  isFeedbackDispatchReadyForVisibility,
-  isFeedbackDispatchRetryable,
-} from "@/lib/db/feedback-dispatch";
+import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
 import { isInterviewTerminalState } from "@meelni/core";
 import {
@@ -164,10 +161,7 @@ export async function GET(
     if (
       session &&
       hasInterviewDeadlineRoomCleanupClaim(session) &&
-      (!isInterviewDeadlineRoomCleanupAcknowledged(session) ||
-        !isFeedbackDispatchReadyForVisibility({
-          status: feedbackRecord.dispatchStatus,
-        }))
+      !isInterviewDeadlineRoomCleanupAcknowledged(session)
     ) {
       return NextResponse.json(
         {
@@ -366,27 +360,21 @@ export async function POST(
       );
     }
 
-    if (hasInterviewDeadlineRoomCleanupClaim(session)) {
-      const feedback = await getFeedbackBySessionId(sessionId);
-      if (
-        !feedback ||
-        !isInterviewDeadlineRoomCleanupAcknowledged(session) ||
-        !isFeedbackDispatchReadyForVisibility({
-          status: feedback.dispatchStatus,
-        })
-      ) {
-        return NextResponse.json(
-          {
-            error: "deadline_settlement_pending",
-            message:
-              "The interview room is still being closed safely. Feedback will start automatically.",
-          },
-          {
-            status: 409,
-            headers: { "Cache-Control": "private, no-store" },
-          }
-        );
-      }
+    if (
+      hasInterviewDeadlineRoomCleanupClaim(session) &&
+      !isInterviewDeadlineRoomCleanupAcknowledged(session)
+    ) {
+      return NextResponse.json(
+        {
+          error: "deadline_settlement_pending",
+          message:
+            "The interview room is still being closed safely. Feedback will start automatically.",
+        },
+        {
+          status: 409,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
     }
 
     const result = await endInterviewSessionWorkflow({
