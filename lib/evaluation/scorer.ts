@@ -9,6 +9,13 @@ import {
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
 import { getFeedbackEvaluationModel } from "./model-config";
 import { normalizePracticeRecommendations } from "@/lib/product-language";
+import {
+  CALIBRATION_MAX_COMPLETION_TOKENS,
+  CALIBRATION_MAX_SDK_RETRIES,
+  CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
+  CALIBRATION_SERVICE_TIER,
+  CALIBRATION_PRICING_CONTRACT,
+} from "./calibration-budget";
 
 export interface FeedbackProviderUsage {
   inputTokens: number;
@@ -20,6 +27,7 @@ export interface FeedbackProviderUsage {
 export interface FeedbackProviderResult {
   evaluation: FeedbackV2Result;
   usage: FeedbackProviderUsage;
+  observedServiceTier: string | null;
 }
 
 export class FeedbackProviderInvocationError extends Error {
@@ -27,6 +35,7 @@ export class FeedbackProviderInvocationError extends Error {
     message: string,
     readonly usage?: FeedbackProviderUsage,
     readonly observedModel?: string,
+    readonly observedServiceTier?: string | null,
     options?: ErrorOptions
   ) {
     super(message, options);
@@ -53,7 +62,10 @@ export async function generateFeedbackWithUsage(
   roundType: string,
   transcript: FeedbackTranscriptTurn[],
   evaluationState: FeedbackEvaluationState,
-  options: { maxCompletionTokens?: number } = {}
+  options: {
+    maxCompletionTokens?: number;
+    calibrationPaidMode?: boolean;
+  } = {}
 ): Promise<FeedbackProviderResult> {
   const prepared = prepareFeedbackTranscript(transcript);
   if (!prepared.eligible || prepared.transcript.length === 0) {
@@ -64,8 +76,17 @@ export async function generateFeedbackWithUsage(
   }
 
   const modelVersion = getFeedbackEvaluationModel();
+  if (options.calibrationPaidMode) {
+    assertCalibrationProviderRequestPolicy(
+      modelVersion,
+      options.maxCompletionTokens
+    );
+  }
   try {
-    const completion = await getOpenAI().chat.completions.create({
+    const client = options.calibrationPaidMode
+      ? createCalibrationOpenAIClient()
+      : getOpenAI();
+    const completion = await client.chat.completions.create({
       model: modelVersion,
       messages: [
         { role: "system", content: EVALUATION_SYSTEM_PROMPT },
@@ -80,19 +101,27 @@ export async function generateFeedbackWithUsage(
       ],
       temperature: 0.2,
       response_format: { type: "json_object" },
-      ...(options.maxCompletionTokens === undefined
-        ? {}
-        : { max_completion_tokens: options.maxCompletionTokens }),
+      ...(options.calibrationPaidMode
+        ? getCalibrationProviderRequestFields()
+        : options.maxCompletionTokens === undefined
+          ? {}
+          : { max_completion_tokens: options.maxCompletionTokens }),
     });
 
-    const usage = parseProviderUsage(completion.usage, completion.model);
+    const observedServiceTier = completion.service_tier ?? null;
+    const usage = parseProviderUsage(
+      completion.usage,
+      completion.model,
+      observedServiceTier
+    );
 
     const responseText = completion.choices[0]?.message.content;
     if (!responseText) {
       throw new FeedbackProviderInvocationError(
         "evaluation_provider_returned_no_content",
         usage,
-        completion.model
+        completion.model,
+        observedServiceTier
       );
     }
 
@@ -104,6 +133,7 @@ export async function generateFeedbackWithUsage(
         "evaluation_provider_returned_invalid_json",
         usage,
         completion.model,
+        observedServiceTier,
         { cause: error }
       );
     }
@@ -122,12 +152,14 @@ export async function generateFeedbackWithUsage(
           drills: normalizePracticeRecommendations(evaluation.drills),
         },
         usage,
+        observedServiceTier,
       };
     } catch (error) {
       throw new FeedbackProviderInvocationError(
         "evaluation_provider_returned_invalid_feedback",
         usage,
         completion.model,
+        observedServiceTier,
         { cause: error }
       );
     }
@@ -135,6 +167,7 @@ export async function generateFeedbackWithUsage(
     if (error instanceof FeedbackProviderInvocationError) throw error;
     throw new FeedbackProviderInvocationError(
       "evaluation_provider_invocation_failed",
+      undefined,
       undefined,
       undefined,
       { cause: error }
@@ -152,13 +185,15 @@ function parseProviderUsage(
       }
     | null
     | undefined,
-  observedModel: string
+  observedModel: string,
+  observedServiceTier: string | null
 ): FeedbackProviderUsage {
   if (!usage) {
     throw new FeedbackProviderInvocationError(
       "evaluation_provider_usage_missing",
       undefined,
-      observedModel
+      observedModel,
+      observedServiceTier
     );
   }
   return {
@@ -175,4 +210,58 @@ function getOpenAI() {
     throw new Error("OPENAI_API_KEY environment variable is required");
   }
   return new OpenAI({ apiKey });
+}
+
+export type CalibrationOpenAIEnvironment = Record<
+  string,
+  string | undefined
+> & {
+  OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
+};
+
+export function assertCalibrationOpenAIEnvironment(
+  env: CalibrationOpenAIEnvironment = process.env
+): void {
+  if (env.OPENAI_BASE_URL !== undefined) {
+    throw new Error("calibration_rejects_ambient_openai_base_url");
+  }
+}
+
+export function assertCalibrationProviderRequestPolicy(
+  model: string,
+  maxCompletionTokens: number | undefined
+): void {
+  if (
+    model !== CALIBRATION_PRICING_CONTRACT.model ||
+    maxCompletionTokens !== CALIBRATION_MAX_COMPLETION_TOKENS
+  ) {
+    throw new Error("calibration_provider_request_policy_mismatch");
+  }
+}
+
+export function getCalibrationProviderRequestFields(): {
+  max_completion_tokens: 2_000;
+  service_tier: "default";
+} {
+  return {
+    max_completion_tokens: CALIBRATION_MAX_COMPLETION_TOKENS,
+    service_tier: CALIBRATION_SERVICE_TIER,
+  };
+}
+
+export function createCalibrationOpenAIClient(
+  env: CalibrationOpenAIEnvironment = process.env
+): OpenAI {
+  assertCalibrationOpenAIEnvironment(env);
+  const apiKey = env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required for an authorized live run");
+  }
+  return new OpenAI({
+    apiKey,
+    baseURL: CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
+    maxRetries: CALIBRATION_MAX_SDK_RETRIES,
+    fetchOptions: { redirect: "error" },
+  });
 }
