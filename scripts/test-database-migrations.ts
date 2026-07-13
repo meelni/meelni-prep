@@ -36,6 +36,7 @@ import {
   CLEAN_0001_SCHEMA_FINGERPRINT,
   DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
   DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
+  FEEDBACK_V2_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -179,6 +180,7 @@ async function run() {
     await verifyAtomicSessionCompletion(clean, cleanUrl, true);
     await verifyTranscriptIngest(clean, cleanUrl);
     await verifyReconnectTimeoutRuntimeIntegrity(clean, cleanUrl);
+    await verifyFeedbackV2VersionTuple(clean);
     await verifyAuthorization(clean);
     await verifyStripeSubscriptionOrdering(clean);
     await verifyDeletionWebhookConcurrency(clean, cleanUrl);
@@ -199,7 +201,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, FEEDBACK_V2_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -362,6 +364,7 @@ async function run() {
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl, false);
       await verifyTranscriptIngest(upgrade, upgradeUrl);
       await verifyReconnectTimeoutRuntimeIntegrity(upgrade, upgradeUrl);
+      await verifyFeedbackV2VersionTuple(upgrade);
       await verifyAuthorization(upgrade);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
       await verifyStableStartContract(upgrade);
@@ -4758,10 +4761,7 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(
-      refundedPreflight.startingContract,
-      "durable_livekit_deletion"
-    );
+    assert.equal(refundedPreflight.startingContract, "feedback_v2");
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -5025,7 +5025,7 @@ async function verifyProviderCreditRecovery(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 21);
+  assert.equal(await migrationCount(sql), 22);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -5229,6 +5229,25 @@ async function verifyDatabase(sql: postgres.Sql) {
     ORDER BY indexname
   `;
   assert.equal(completionIndexes.length, 2);
+
+  const feedbackV2Columns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'feedback'
+      AND column_name IN (
+        'schema_version', 'prompt_version', 'model_version', 'evaluation_state'
+      )
+    ORDER BY column_name
+  `;
+  assert.equal(feedbackV2Columns.length, 4);
+
+  const feedbackV2Constraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname = 'feedback_version_tuple_check'
+  `;
+  assert.equal(feedbackV2Constraints.length, 1);
 
   const transcriptColumns = await sql<{ column_name: string }[]>`
     SELECT column_name
@@ -5495,6 +5514,50 @@ async function verifyDatabase(sql: postgres.Sql) {
     anon_limiter_select: false,
     anon_limiter_insert: false,
     service_limiter_execute: true,
+  });
+}
+
+async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
+  let [legacy] = await sql<{ id: string; rubric_version: string }[]>`
+    SELECT id, rubric_version
+    FROM feedback
+    WHERE schema_version IS NULL
+    LIMIT 1
+  `;
+  if (!legacy) {
+    [legacy] = await sql<{ id: string; rubric_version: string }[]>`
+      INSERT INTO feedback (session_id, status, rubric_version)
+      SELECT interview_session.id, 'pending', '1.0.0'
+      FROM interview_session
+      LEFT JOIN feedback ON feedback.session_id = interview_session.id
+      WHERE feedback.id IS NULL
+      LIMIT 1
+      RETURNING feedback.id, feedback.rubric_version
+    `;
+  }
+  assert.ok(legacy, "expected a legacy-compatible feedback row");
+  assert.equal(legacy.rubric_version, "1.0.0");
+
+  await sql.begin(async (tx) => {
+    await tx`
+      UPDATE feedback
+      SET schema_version = 'feedback.v2',
+          prompt_version = 'feedback.prompt.v2',
+          model_version = 'fixture-model-v1',
+          rubric_version = 'pm-feedback-rubric.v2',
+          evaluation_state = 'partial'
+      WHERE id = ${legacy.id}::uuid
+    `;
+    await assert.rejects(
+      tx.savepoint("invalid_feedback_v2_tuple", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET prompt_version = NULL
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_version_tuple_check/
+    );
   });
 }
 
