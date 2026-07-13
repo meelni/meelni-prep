@@ -22,7 +22,7 @@ Local remotes, reports, and caches are never budget authority.
 conservative acceptance of the exact rebased plan within that existing
 authorization: 96 calls, 2,754,487,500 nano-USD ($2.7544875) deterministic
 worst case, and plan hash
-`c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1`.
+`22a0f4da11a7dd5c618f39fdd187b40fe8d17807b0404407c95c5dec16172804`.
 This is not a new or expanded authorization. The $3 cap, model, fixtures,
 semantic approval, and one-run boundary are unchanged; the artifact performs
 no provider call or ledger activation and grants no launch authority.

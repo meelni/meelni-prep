@@ -29,7 +29,9 @@ import {
 
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
 const LIVE_MODEL = CALIBRATION_PRICING_CONTRACT.model;
-const NOW = new Date("2026-07-12T07:00:00.000Z");
+const NOW = new Date(
+  new Date(CALIBRATION_PRICING_CONTRACT.reviewedAt).getTime() + 60 * 60 * 1_000
+);
 test("calibration preflight validates 40 synthetic cases without claiming readiness", async () => {
   const report = await runEvaluationCalibration({
     executionKind: "preflight",

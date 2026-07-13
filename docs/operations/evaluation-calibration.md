@@ -86,7 +86,7 @@ attested runtime environment. That exact snapshot is bound to the repository's
 reviewed `evaluation-calibration-pricing.v1` contract; a moving alias or any
 other model fails before call one. The pricing contract was
 re-verified against the official OpenAI GPT-5.1 model page at
-`2026-07-12T06:28:08.000Z` and uses Standard rates of $1.25/M uncached input,
+`2026-07-13T11:13:07.000Z` and uses Standard rates of $1.25/M uncached input,
 $0.125/M cached input, and $10/M output tokens. The review is valid for only 24
 hours. Refresh the reviewed timestamp in code only after rechecking the official
 page; stale or future-dated reviews fail before call one. A pricing change
@@ -129,7 +129,7 @@ npm run calibration:plan-acceptance -- \
 
 The expected plan is 96 physical calls, 2,754,487,500 nano-USD ($2.7544875)
 worst case, and hash
-`c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1`.
+`22a0f4da11a7dd5c618f39fdd187b40fe8d17807b0404407c95c5dec16172804`.
 Treat any other value as stale or mismatched. This acceptance is within the
 existing $3 authorization and does not activate the ledger or authorize a
 provider call.

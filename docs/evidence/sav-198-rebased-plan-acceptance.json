@@ -3,7 +3,7 @@
   "decision": "accepted",
   "decisionSource": "product_owner_task_thread_delegation",
   "humanReviewerIdentity": null,
-  "acceptedAt": "2026-07-13T04:21:30.000Z",
+  "acceptedAt": "2026-07-13T11:14:00.000Z",
   "acceptanceBasis": "conservative_rebased_exact_plan_within_existing_authorization",
   "existingAuthorization": {
     "authorizationId": "sav-198-user-authorization-2026-07-12.v1",
@@ -14,7 +14,7 @@
     "authorizationChanged": false
   },
   "acceptedPlan": {
-    "planHash": "c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1",
+    "planHash": "22a0f4da11a7dd5c618f39fdd187b40fe8d17807b0404407c95c5dec16172804",
     "plannedCalls": 96,
     "plannedWorstCaseNanoUsd": 2754487500,
     "plannedWorstCaseUsd": 2.7544875,
@@ -25,7 +25,7 @@
     "endpoint": "https://api.openai.com/v1",
     "serviceTier": "default",
     "repetitions": 3,
-    "pricingHash": "6a31e91d4b47e3aa57c794adab0bc29410ea62dcfb9587cbca10066670a0f568"
+    "pricingHash": "aac74c59eb1a5e04d1601033796c83e533b6144e72926c21f2f7bb2b65a4b7eb"
   },
   "unchangedControls": {
     "model": true,
