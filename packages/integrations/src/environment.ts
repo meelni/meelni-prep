@@ -94,6 +94,12 @@ export const PROVIDER_ENV_CONTRACTS: Record<
         false
       ),
       env(
+        "MEELNI_PREVIEW_LIVEKIT_URL",
+        "Non-secret Preview LiveKit Cloud URL used to bind Preview runtime identity.",
+        "server",
+        false
+      ),
+      env(
         "LIVEKIT_INTERVIEW_AGENT_NAME",
         "LiveKit dispatch name for the full interview agent.",
         "server",

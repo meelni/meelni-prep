@@ -225,6 +225,22 @@ export function getLiveKitEnvironment(
       "MEELNI_PRODUCTION_LIVEKIT_URL must identify the Production project."
     );
   }
+  const previewValue = envSource.MEELNI_PREVIEW_LIVEKIT_URL;
+  const previewAnchor = previewValue
+    ? canonicalLiveKitCloudOrigin(previewValue)
+    : undefined;
+  if (previewValue && !previewAnchor) {
+    return liveKitIdentityFailure(
+      "livekit_preview_identity_invalid",
+      "MEELNI_PREVIEW_LIVEKIT_URL must identify the Preview project."
+    );
+  }
+  if (previewAnchor === productionAnchor) {
+    return liveKitIdentityFailure(
+      "livekit_environment_identity_conflict",
+      "Preview and Production LiveKit identity anchors must differ."
+    );
+  }
   if (
     deployment.environment === "production" &&
     currentOrigin !== productionAnchor
@@ -234,8 +250,20 @@ export function getLiveKitEnvironment(
       "Production LiveKit URL does not match the Production identity anchor."
     );
   }
+  if (deployment.environment === "preview" && !previewAnchor) {
+    return liveKitIdentityFailure(
+      "livekit_preview_identity_missing",
+      "MEELNI_PREVIEW_LIVEKIT_URL must identify the Preview project."
+    );
+  }
+  if (deployment.environment === "preview" && currentOrigin !== previewAnchor) {
+    return liveKitIdentityFailure(
+      "livekit_preview_identity_mismatch",
+      "Preview LiveKit URL does not match the Preview identity anchor."
+    );
+  }
   if (
-    deployment.environment !== "production" &&
+    deployment.environment === "development" &&
     currentOrigin === productionAnchor
   ) {
     return liveKitIdentityFailure(

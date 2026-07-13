@@ -34,6 +34,8 @@ as appropriate:
 LIVEKIT_API_KEY=...
 LIVEKIT_API_SECRET=...
 NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud
+MEELNI_PREVIEW_LIVEKIT_URL=wss://your-preview-project.livekit.cloud
+MEELNI_PRODUCTION_LIVEKIT_URL=wss://your-production-project.livekit.cloud
 LIVEKIT_INTERVIEW_AGENT_NAME=...
 LIVEKIT_DEMO_AGENT_NAME=...
 ```
@@ -46,10 +48,13 @@ chat; use Vercel env pull scripts or the provider dashboards.
 
 1. Create or select the new LiveKit Cloud project.
 2. Create a server API key and secret for room, token, and dispatch APIs.
-3. Configure `NEXT_PUBLIC_LIVEKIT_URL` from the project WebSocket URL.
-4. Update `agent/livekit.toml`, `agent/interview/livekit.toml`, and
-   `agent/demo/livekit.toml` with the new project subdomain and agent IDs.
-5. Deploy the interview and demo agents from `agent/interview` and `agent/demo`.
+3. Configure `NEXT_PUBLIC_LIVEKIT_URL` and the non-secret Preview/Production
+   identity anchors. Preview must exactly match its anchor; the anchors differ.
+4. Keep each environment-and-worker TOML outside the repository and set its
+   `MEELNI_LIVEKIT_*_CONFIG` path and matching `MEELNI_LIVEKIT_*_AGENT_ID`.
+5. Deploy the interview and demo agents with an explicit `preview` or
+   `production` argument. The script binds one absolute config path to exact
+   project and agent identities before invoking `lk`.
 6. Set `LIVEKIT_INTERVIEW_AGENT_NAME` and `LIVEKIT_DEMO_AGENT_NAME` to the names
    used by those deployed agents.
 7. In Vercel, set the same LiveKit server env vars for Preview and Production.

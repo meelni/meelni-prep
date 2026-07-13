@@ -61,6 +61,9 @@ cd interview
 ./deploy.sh preview # or production
 ```
 
+The selected external config must match the corresponding Preview/Production
+project anchor and `MEELNI_LIVEKIT_{PREVIEW,PRODUCTION}_INTERVIEW_AGENT_ID`.
+
 **Dispatch name**: `LIVEKIT_INTERVIEW_AGENT_NAME`
 
 ## Dependencies

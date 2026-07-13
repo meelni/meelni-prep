@@ -83,6 +83,7 @@ function validateWith(overrides) {
         LIVEKIT_API_KEY: "livekit-api-key",
         LIVEKIT_API_SECRET: "livekit-api-secret",
         NEXT_PUBLIC_LIVEKIT_URL: "wss://preview.livekit.cloud",
+        MEELNI_PREVIEW_LIVEKIT_URL: "wss://preview.livekit.cloud",
         MEELNI_PRODUCTION_LIVEKIT_URL: "wss://production.livekit.cloud",
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJvalid",
         NEXT_PUBLIC_SUPABASE_URL: `https://${previewRef}.supabase.co`,

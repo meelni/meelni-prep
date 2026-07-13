@@ -688,7 +688,7 @@ test("Preview rejects the canonical Production LiveKit project", () => {
         }),
         "preview"
       ),
-    /Production identity boundary/
+    /does not match the Preview identity anchor/
   );
 });
 
@@ -719,7 +719,7 @@ test("unsafe Preview provider pulls keep the prior target byte-for-byte", async 
       pulled: scopedEnv(previewRef, {
         NEXT_PUBLIC_LIVEKIT_URL: "wss://production.livekit.cloud",
       }),
-      pattern: /Production identity boundary/,
+      pattern: /does not match the Preview identity anchor/,
     },
     {
       name: "conflicting public and server LiveKit projects",
@@ -775,6 +775,30 @@ test("a blank pulled Production LiveKit anchor cannot inherit stale Preview iden
   assert.equal(await readFile(target, "utf8"), previous);
 });
 
+test("a blank pulled Preview LiveKit anchor never inherits stale identity", async (t) => {
+  const root = await fixtureRoot(t);
+  const target = resolve(root, ".env.local");
+  const previous = scopedEnv(previewRef, {
+    MEELNI_PREVIEW_LIVEKIT_URL: "wss://stale-preview.livekit.cloud",
+  });
+  await writeFile(target, previous);
+
+  await assert.rejects(
+    refreshEnvironment({
+      environment: "preview",
+      logger: { log: () => {} },
+      pull: () =>
+        scopedEnv(previewRef, {
+          MEELNI_PREVIEW_LIVEKIT_URL: '""',
+        }),
+      root,
+      target: ".env.local",
+    }),
+    /MEELNI_PREVIEW_LIVEKIT_URL/
+  );
+  assert.equal(await readFile(target, "utf8"), previous);
+});
+
 test("symlink targets are rejected", async (t) => {
   const root = await mkdtemp(resolve(tmpdir(), "meelni-env-symlink-"));
   t.after(async () =>
@@ -818,6 +842,7 @@ function scopedEnv(ref, overrides = {}, environment = "preview") {
       DATABASE_URL: databaseUrl(ref, "secret"),
       LIVEKIT_API_KEY: "livekit-api-key",
       LIVEKIT_API_SECRET: "livekit-api-secret",
+      MEELNI_PREVIEW_LIVEKIT_URL: "wss://preview.livekit.cloud",
       MEELNI_PRODUCTION_LIVEKIT_URL: "wss://production.livekit.cloud",
       MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: productionRef,
       NEXT_PUBLIC_LIVEKIT_URL: liveKitUrl,

@@ -52,6 +52,9 @@ cd demo
 ./deploy.sh preview # or production
 ```
 
+The selected external config must match the corresponding Preview/Production
+project anchor and `MEELNI_LIVEKIT_{PREVIEW,PRODUCTION}_DEMO_AGENT_ID`.
+
 **Dispatch name**: `LIVEKIT_DEMO_AGENT_NAME`
 
 ## Dependencies

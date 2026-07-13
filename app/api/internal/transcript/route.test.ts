@@ -50,6 +50,7 @@ describe("POST /api/internal/transcript", () => {
     process.env.LIVEKIT_API_SECRET = SECRET;
     process.env.LIVEKIT_URL = "wss://preview.livekit.cloud";
     delete process.env.NEXT_PUBLIC_LIVEKIT_URL;
+    process.env.MEELNI_PREVIEW_LIVEKIT_URL = "wss://preview.livekit.cloud";
     process.env.MEELNI_PRODUCTION_LIVEKIT_URL =
       "wss://production.livekit.cloud";
   });
