@@ -245,7 +245,7 @@ export function calculateValidatedSessionFromTurns(
   }>
 ): SessionValidation {
   const hasCanonicalFields = turns.some(
-    (turn) => "eventId" in turn || "contractVersion" in turn
+    (turn) => turn.contractVersion === 2 || turn.eventId != null
   );
   if (!hasCanonicalFields) {
     return validateSessionStats(calculateSessionStatsFromTurns(turns));
