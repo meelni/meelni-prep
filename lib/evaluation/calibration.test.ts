@@ -26,6 +26,7 @@ import {
   SAV_198_SPEND_AUTHORIZATION,
   buildCalibrationActivatedPlan,
 } from "./calibration-run-ledger";
+import { FeedbackProviderInvocationError } from "./scorer";
 
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
 const LIVE_MODEL = CALIBRATION_PRICING_CONTRACT.model;
@@ -259,6 +260,158 @@ test("a failed response from an unexpected model preserves identity and known co
   assert.deepEqual(report.execution.observedServiceTiers, ["default"]);
   assert.equal(report.execution.cost?.actualCostComplete, true);
   assert.equal(report.execution.cost?.reconciledActualCostUsd, 0.001125);
+});
+
+test("live reports preserve only allowlisted provider failure categories", async () => {
+  for (const failureCode of [
+    "evaluation_provider_returned_no_content",
+    "evaluation_provider_returned_invalid_json",
+    "evaluation_provider_returned_invalid_feedback",
+  ] as const) {
+    const report = await runEvaluationCalibration({
+      executionKind: "live_provider",
+      modelVersion: LIVE_MODEL,
+      repetitions: 3,
+      now: NOW,
+      adjudicationApproval: approvalFixture(),
+      spendGuard: liveGuard(),
+      evaluator: async (input) => {
+        await input.beforePhysicalRequest?.();
+        throw new FeedbackProviderInvocationError(
+          failureCode,
+          {
+            inputTokens: 100,
+            cachedInputTokens: 0,
+            outputTokens: 100,
+            totalTokens: 200,
+          },
+          LIVE_MODEL,
+          "default"
+        );
+      },
+    });
+
+    assert.equal(report.failures[0]?.code, failureCode);
+    assert.equal(report.execution.cost?.attemptedCalls, 1);
+    assert.equal(report.execution.cost?.completedCalls, 0);
+    assert.equal(report.execution.cost?.stopReason, "provider_failure");
+    assert.equal(report.execution.cost?.actualCostComplete, true);
+    assert.equal(report.execution.cost?.reconciledActualCostUsd, 0.001125);
+    assert.equal(report.execution.cost?.unreconciledReservedCostUsd, 0);
+  }
+
+  for (const failureCode of [
+    "evaluation_provider_usage_missing",
+    "evaluation_provider_invocation_failed",
+  ] as const) {
+    const report = await runEvaluationCalibration({
+      executionKind: "live_provider",
+      modelVersion: LIVE_MODEL,
+      repetitions: 3,
+      now: NOW,
+      adjudicationApproval: approvalFixture(),
+      spendGuard: liveGuard(),
+      evaluator: async (input) => {
+        await input.beforePhysicalRequest?.();
+        throw new FeedbackProviderInvocationError(failureCode);
+      },
+    });
+
+    assert.equal(report.failures[0]?.code, failureCode);
+    assert.equal(report.execution.cost?.attemptedCalls, 1);
+    assert.equal(report.execution.cost?.completedCalls, 0);
+    assert.equal(report.execution.cost?.stopReason, "missing_provider_usage");
+    assert.equal(report.execution.cost?.actualCostComplete, false);
+    assert.equal(report.execution.cost?.reconciledActualCostUsd, 0);
+    assert.ok(report.execution.cost!.unreconciledReservedCostUsd > 0);
+  }
+
+  const secret = "provider-body-must-not-appear";
+  const report = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 3,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      throw Object.assign(new Error(secret), {
+        observedModel: LIVE_MODEL,
+        observedServiceTier: "default",
+        usage: {
+          inputTokens: 100,
+          cachedInputTokens: 0,
+          outputTokens: 100,
+          totalTokens: 200,
+        },
+      });
+    },
+  });
+
+  assert.equal(report.failures[0]?.code, "evaluation_failed");
+  assert.equal(JSON.stringify(report).includes(secret), false);
+
+  const forged = new FeedbackProviderInvocationError(
+    "evaluation_provider_returned_invalid_feedback",
+    {
+      inputTokens: 100,
+      cachedInputTokens: 0,
+      outputTokens: 100,
+      totalTokens: 200,
+    },
+    LIVE_MODEL,
+    "default"
+  );
+  Object.defineProperty(forged, "code", {
+    configurable: true,
+    value: secret,
+  });
+  const forgedReport = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 3,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      throw forged;
+    },
+  });
+
+  assert.equal(forgedReport.failures[0]?.code, "evaluation_failed");
+  assert.equal(JSON.stringify(forgedReport).includes(secret), false);
+
+  let codeReads = 0;
+  Object.defineProperty(forged, "code", {
+    configurable: true,
+    get: () => {
+      codeReads += 1;
+      return codeReads === 1
+        ? "evaluation_provider_returned_invalid_feedback"
+        : secret;
+    },
+  });
+  const changingCodeReport = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 3,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      throw forged;
+    },
+  });
+
+  assert.equal(codeReads, 1);
+  assert.equal(
+    changingCodeReport.failures[0]?.code,
+    "evaluation_provider_returned_invalid_feedback"
+  );
+  assert.equal(JSON.stringify(changingCodeReport).includes(secret), false);
 });
 
 test("missing or mismatched service tier stops after one reconciled call", async () => {
