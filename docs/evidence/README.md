@@ -22,10 +22,11 @@ SAV-198 includes a calibration preflight and deterministic harness report. Both
 are local evidence only and deliberately keep live-provider launch acceptance
 pending.
 
-Its adjudication review manifest contains agent-authored synthetic candidates,
-not approved ground truth. It carries no approval flag or reviewer identity.
-It records the task-thread product-owner delegation, two independent agent
-panel decisions, and the conservative 17-case correction union, while keeping
-independent exact-hash review visibly pending. Product-owner/PM signoff requires
-a separate validated hash-bound artifact, which is intentionally absent while
-review remains pending and cannot be satisfied by an agent panel or model run.
+Its adjudication review manifest contains agent-authored synthetic candidates.
+The separate `sav-198-adjudication-approval.json` records the product owner's
+explicit task-thread delegation, the exact reviewed head and candidate/corpus
+hashes, three review rounds, and two named independent agent-panel signoffs.
+The delegated authority is represented as a non-human identity with a null
+human reviewer identity; no person's identity is inferred or fabricated. The
+approval is limited to the 32-case semantic adjudication. It does not authorize
+provider calls, spend, ledger mutation, Production data, or launch acceptance.

@@ -1,6 +1,6 @@
 {
   "contractVersion": "evaluation-calibration-report.v7",
-  "generatedAt": "2026-07-13T03:58:20.826Z",
+  "generatedAt": "2026-07-13T04:07:11.102Z",
   "execution": {
     "kind": "deterministic_self_test",
     "modelVersion": "deterministic-calibration-self-test.v1",
@@ -38,7 +38,7 @@
       "average": 8,
       "strong": 16
     },
-    "pendingAdjudicationSignoffs": 32,
+    "pendingAdjudicationSignoffs": 0,
     "insufficientFixturesRequireScoredAdjudicationApproval": false,
     "expectedStateMismatches": 0,
     "invalidEvidenceAnchors": 0
@@ -71,11 +71,16 @@
     "providerEvaluationCalls": 0
   },
   "adjudication": {
-    "approvalProvided": false,
+    "approvalProvided": true,
     "requiredScoredCases": 32,
-    "approvedCases": 0,
+    "approvedCases": 32,
     "changesRequiredCases": 0,
-    "reviewer": null
+    "reviewer": {
+      "identity": "product_owner_task_thread_delegation",
+      "role": "product_owner",
+      "identityType": "delegated_task_thread",
+      "reviewedAt": "2026-07-13T04:03:34.000Z"
+    }
   },
   "thresholds": {
     "evidenceValidityRate": 1,
@@ -92,13 +97,12 @@
   },
   "gate": {
     "deterministicHarness": "passed",
-    "adjudicationAcceptance": "pending_product_owner_pm_signoff",
+    "adjudicationAcceptance": "passed",
     "liveProviderAcceptance": "pending",
-    "launchAcceptance": "pending_adjudication_signoff"
+    "launchAcceptance": "pending_live_provider_run"
   },
   "failures": [],
   "blockers": [
-    "The agent-authored synthetic adjudication candidates require product-owner/PM review and signoff. Model runs cannot satisfy this gate.",
     "No authorized live provider calibration has been run. Deterministic evidence proves only the harness and candidate-set contract."
   ]
 }

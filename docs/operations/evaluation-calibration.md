@@ -35,15 +35,24 @@ npm run calibration:adjudication-manifest -- \
 
 The manifest contains the exact strength and improvement evidence, observation,
 dimension, and next step for all 32 scored cases. A product owner or PM reviewer
-must approve or correct these candidates in a separate
+must approve or explicitly delegate review of these candidates in a separate
 `evaluation-adjudication-approval.v2` JSON file. That approval contains the
-manifest/corpus hashes, versions, reviewer identity/role, review time, an
+manifest/corpus hashes, versions, reviewer authority/role, review time, an
 independent exact-hash review attestation, and one decision per scored case.
-Neither the candidate manifest, delegated agent panels, deterministic harness,
-nor a live model run counts as signoff. The manifest records two delegated
-agent panels, their `changes_required` result, and the conservative 17-case
-correction union. No approval artifact is committed while SAV-198 review remains
-pending independent review of the regenerated v4 hashes.
+For delegated review, generate the hash-bound approval and resolved manifest:
+
+```bash
+npm run calibration:adjudication-approval -- \
+  --output docs/evidence/sav-198-adjudication-approval.json
+npm run calibration:adjudication-manifest -- \
+  --approval docs/evidence/sav-198-adjudication-approval.json \
+  --output docs/evidence/sav-198-adjudication-review-manifest.json
+```
+
+The delegated artifact uses the canonical non-human task-thread identity,
+records a null human reviewer identity, and requires exactly two distinct
+32/32 exact-hash agent-panel approvals. Its scope is semantic adjudication
+only; it does not authorize paid/provider/ledger/Production work or launch.
 
 The eight insufficient fixtures are separately enforced validator negatives,
 not scored adjudication candidates. They have no score bands or findings;
