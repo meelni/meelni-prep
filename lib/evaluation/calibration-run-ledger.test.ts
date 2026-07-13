@@ -80,7 +80,7 @@ test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.equal(plan.runId, SAV_198_APPROVED_RUN_ID);
   assert.equal(plan.plannedCalls, 96);
   assert.equal(plan.calls.length, CALIBRATION_MAX_PROVIDER_CALLS);
-  assert.equal(plan.plannedWorstCaseNanoUsd, 2_622_997_500);
+  assert.equal(plan.plannedWorstCaseNanoUsd, 2_754_487_500);
   assert.ok(plan.plannedWorstCaseNanoUsd <= CALIBRATION_MAX_SPEND_NANO_USD);
   assert.equal(plan.planHash.length, 64);
   assert.equal(plan.corpusHash.length, 64);
@@ -843,11 +843,15 @@ function assertPayloadFreeActivation(
 
 function approvalFixture() {
   return {
-    contractVersion: "evaluation-adjudication-approval.v1",
+    contractVersion: "evaluation-adjudication-approval.v2",
     ...getEvaluationAdjudicationHashes(),
     goldSetVersion: EVALUATION_GOLD_SET_VERSION,
     adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
     reviewer: { identity: "test-reviewer", role: "pm_reviewer" },
+    reviewBasis: {
+      candidateManifestVersion: "evaluation-adjudication-review.v2",
+      independentExactHashReview: true,
+    },
     reviewedAt: NOW.toISOString(),
     decisions: evaluationCalibrationCases
       .filter(({ expectedQuality }) => expectedQuality !== null)

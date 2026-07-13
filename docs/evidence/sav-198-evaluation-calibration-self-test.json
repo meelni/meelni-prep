@@ -1,6 +1,6 @@
 {
-  "contractVersion": "evaluation-calibration-report.v6",
-  "generatedAt": "2026-07-12T07:25:05.651Z",
+  "contractVersion": "evaluation-calibration-report.v7",
+  "generatedAt": "2026-07-13T03:49:29.935Z",
   "execution": {
     "kind": "deterministic_self_test",
     "modelVersion": "deterministic-calibration-self-test.v1",
@@ -8,18 +8,20 @@
     "customerDataUsed": false,
     "paidProviderCalled": false,
     "modelVersionBasis": "deterministic_identifier",
-    "observedModelVersions": ["deterministic-calibration-self-test.v1"],
+    "observedModelVersions": [
+      "deterministic-calibration-self-test.v1"
+    ],
     "observedServiceTiers": [],
     "cost": null
   },
   "versions": {
-    "goldSet": "pm-gold-set.v3",
-    "adjudication": "pm-gold-adjudication-candidates.v3",
+    "goldSet": "pm-gold-set.v4",
+    "adjudication": "pm-gold-adjudication-candidates.v4",
     "schema": "feedback.v2",
     "prompt": "feedback.prompt.v2",
     "rubric": "pm-feedback-rubric.v2",
-    "candidateArtifactHash": "f7c76bc1b5f84a5c077c5cc3882b3e1e33d10612993ca872570d43c3644618d2",
-    "corpusHash": "f31999ba2c0aab9bfaf5d4af76d2cf70d0b90558f6de9f5d09570d14b55d132b"
+    "candidateArtifactHash": "e02ec10f89b0bf83bdd5e1085f2b2250e4c3a79babd0e9f50b53db5b70e844f7",
+    "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe"
   },
   "corpus": {
     "totalCases": 40,

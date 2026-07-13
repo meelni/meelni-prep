@@ -508,11 +508,15 @@ function liveGuard(): CalibrationSpendGuard {
 
 function approvalFixture(changesRequiredCaseId?: string) {
   return {
-    contractVersion: "evaluation-adjudication-approval.v1",
+    contractVersion: "evaluation-adjudication-approval.v2",
     ...getEvaluationAdjudicationHashes(),
     goldSetVersion: EVALUATION_GOLD_SET_VERSION,
     adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
     reviewer: { identity: "test-reviewer", role: "pm_reviewer" },
+    reviewBasis: {
+      candidateManifestVersion: "evaluation-adjudication-review.v2",
+      independentExactHashReview: true,
+    },
     reviewedAt: NOW.toISOString(),
     decisions: evaluationCalibrationCases
       .filter(({ expectedQuality }) => expectedQuality !== null)

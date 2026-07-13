@@ -193,11 +193,152 @@ test("weak, average, and strong semantics are reviewed in every round", () => {
   }
 });
 
+test("delegated PM corrections preserve exact source evidence and dimensions", () => {
+  const expected = {
+    "product_sense:01:caregiver-planning": {
+      strength: ["structure", 1, "define the intended user outcome"],
+    },
+    "product_sense:02:accessible-transit": {
+      strength: ["structure", 1, "define the intended user outcome"],
+      improvement: ["insight", 2, "ask users whether they like it"],
+    },
+    "product_sense:04:community-kitchens": {
+      strength: ["structure", 1, "choose one broad user group"],
+      improvement: [
+        "insight",
+        2,
+        "segmentation and comparison with alternatives are still fairly surface level",
+      ],
+    },
+    "product_sense:05:language-practice": {
+      improvement: ["insight", 2, "psychologically safe prompt"],
+    },
+    "execution:04:mobile-migration": {
+      strength: ["structure", 1, "identify the main workstreams"],
+    },
+    "execution:07:warehouse-pilot": {
+      improvement: [
+        "leadership",
+        1,
+        "choose one warehouse with stable scanning behavior and define a manual fallback before the pilot",
+      ],
+    },
+    "strategy:01:creator-market": {
+      strength: ["structure", 1, "test whether customers have an unmet need"],
+    },
+    "strategy:02:regional-expansion": {
+      strength: ["insight", 1, "test whether customers have an unmet need"],
+    },
+    "strategy:05:education-entry": {
+      improvement: ["leadership", 2, "an administrator can later evaluate"],
+    },
+    "strategy:07:ai-positioning": {
+      strength: [
+        "insight",
+        1,
+        "costly customer decision the product can improve",
+      ],
+    },
+    "behavioral:01:roadmap-conflict": {
+      strength: [
+        "communication",
+        2,
+        "scheduled one discussion and summarized the disagreement",
+      ],
+    },
+    "behavioral:02:failed-launch": {
+      strength: ["communication", 2, "summarized the disagreement"],
+    },
+    "behavioral:05:team-disagreement": {
+      improvement: [
+        "leadership",
+        2,
+        "sponsored a prototype with five target users",
+      ],
+    },
+    "behavioral:07:mentoring": {
+      improvement: ["leadership", 3, "led the review successfully"],
+    },
+  } as const;
+
+  for (const [caseId, findings] of Object.entries(expected)) {
+    const candidate = SCORED_ADJUDICATIONS[caseId];
+    assert.ok(candidate, caseId);
+    for (const [kind, tuple] of Object.entries(findings)) {
+      const finding = candidate[kind as "strength" | "improvement"];
+      assert.deepEqual(
+        [finding.dimension, finding.turnSequence, finding.quote],
+        tuple,
+        `${caseId}:${kind}`
+      );
+      const fixture = evaluationCalibrationCases.find(
+        ({ id }) => id === caseId
+      )!;
+      const turn = fixture.transcript.find(
+        ({ eventId }) => eventId === `${caseId}:user:${finding.turnSequence}`
+      )!;
+      assert.ok(turn.text.includes(finding.quote), `${caseId}:${kind}:exact`);
+    }
+  }
+});
+
+test("delegated PM band corrections normalize paired weak and average cases", () => {
+  const weakOne = {
+    structure: { minimum: 2, maximum: 4 },
+    clarity: { minimum: 3, maximum: 5 },
+    insight: { minimum: 2, maximum: 4 },
+    communication: { minimum: 3, maximum: 5 },
+    leadership: { minimum: 2, maximum: 4 },
+  };
+  const averageOne = {
+    structure: { minimum: 4, maximum: 6 },
+    clarity: { minimum: 5, maximum: 7 },
+    insight: { minimum: 4, maximum: 6 },
+    communication: { minimum: 5, maximum: 7 },
+    leadership: { minimum: 4, maximum: 6 },
+  };
+  for (const id of [
+    "product_sense:02:accessible-transit",
+    "execution:02:search-latency",
+    "strategy:02:regional-expansion",
+    "behavioral:02:failed-launch",
+  ]) {
+    assert.deepEqual(
+      evaluationCalibrationCases.find((fixture) => fixture.id === id)
+        ?.scoreBands,
+      weakOne,
+      id
+    );
+  }
+  for (const id of [
+    "product_sense:04:community-kitchens",
+    "execution:04:mobile-migration",
+    "strategy:04:open-platform",
+    "behavioral:04:customer-escalation",
+  ]) {
+    assert.deepEqual(
+      evaluationCalibrationCases.find((fixture) => fixture.id === id)
+        ?.scoreBands,
+      averageOne,
+      id
+    );
+  }
+});
+
 test("review manifest keeps human PM signoff visibly pending", () => {
   const manifest = buildEvaluationAdjudicationReviewManifest();
-  assert.equal(manifest.contractVersion, "evaluation-adjudication-review.v1");
+  assert.equal(manifest.contractVersion, "evaluation-adjudication-review.v2");
   assert.equal(manifest.provenance, "agent_authored_synthetic_candidate");
   assert.equal(manifest.approvalRequired, true);
+  assert.equal(manifest.reviewStatus, "pending_independent_exact_hash_review");
+  assert.equal(manifest.delegatedReview.panelCount, 2);
+  assert.equal(manifest.delegatedReview.panelOutcome, "changes_required");
+  assert.equal(
+    manifest.delegatedReview.decisions.filter(
+      ({ decision }) => decision === "corrected_pending_independent_review"
+    ).length,
+    17
+  );
   assert.equal(manifest.scoredCaseCount, 32);
   assert.equal(manifest.cases.length, 32);
   assert.ok(

@@ -20,9 +20,9 @@ export const SCORED_ADJUDICATIONS: Readonly<
     finding(
       1,
       "define the intended user outcome",
-      "insight",
-      "Recognizes that an intended user outcome should be defined before ideation.",
-      "Specify the outcome and then narrow to one user segment."
+      "structure",
+      "Starts with the user outcome before ideation, providing a basic sequence for the response.",
+      "Make the outcome measurable and choose the priority user segment before ideating."
     ),
     finding(
       1,
@@ -36,14 +36,14 @@ export const SCORED_ADJUDICATIONS: Readonly<
     finding(
       1,
       "define the intended user outcome",
-      "insight",
-      "Recognizes that an intended user outcome should be defined before ideation.",
-      "Make the outcome concrete for one accessibility need."
+      "structure",
+      "Begins with an intended user outcome before proposing accessibility features.",
+      "Make the accessibility outcome measurable for one priority user segment."
     ),
     finding(
       2,
       "ask users whether they like it",
-      "communication",
+      "insight",
       "Uses a vague preference question that will not reveal whether the problem was solved.",
       "Ask a behavior-based validation question tied to the intended outcome."
     )
@@ -68,15 +68,15 @@ export const SCORED_ADJUDICATIONS: Readonly<
     finding(
       1,
       "choose one broad user group",
-      "insight",
-      "Makes an initial user choice rather than designing for everyone.",
+      "structure",
+      "Makes an explicit initial user choice before selecting a solution.",
       "Subsegment the broad group by the highest-cost unmet need."
     ),
     finding(
       2,
       "segmentation and comparison with alternatives are still fairly surface level",
-      "leadership",
-      "Leaves the prioritization rationale too shallow for a confident product choice.",
+      "insight",
+      "Leaves the segmentation and alternative analysis too shallow to support the product choice.",
       "Compare two segments and alternatives using explicit decision criteria."
     )
   ),
@@ -91,8 +91,8 @@ export const SCORED_ADJUDICATIONS: Readonly<
     finding(
       2,
       "psychologically safe prompt",
-      "communication",
-      "Claims psychological safety without explaining what makes the prompt feel safe.",
+      "insight",
+      "Assumes psychological safety without explaining the user insight or evidence behind that need.",
       "Describe the prompt mechanics and how safety would be validated with learners."
     )
   ),
@@ -195,10 +195,10 @@ export const SCORED_ADJUDICATIONS: Readonly<
   "execution:04:mobile-migration": candidate(
     finding(
       1,
-      "give each one an owner",
+      "identify the main workstreams",
       "structure",
-      "Assigns ownership to the identified workstreams.",
-      "Keep owners and acceptance criteria visible in the migration plan."
+      "Identifies the main workstreams before prioritizing the migration plan.",
+      "Order those workstreams by dependency and define acceptance criteria for each."
     ),
     finding(
       2,
@@ -250,9 +250,9 @@ export const SCORED_ADJUDICATIONS: Readonly<
     ),
     finding(
       1,
-      "choose one warehouse",
+      "choose one warehouse with stable scanning behavior and define a manual fallback before the pilot",
       "leadership",
-      "Selects a site but does not name the local owner accountable for the fallback.",
+      "Defines a bounded pilot and fallback but does not name the local accountable owner.",
       "Name the warehouse owner and decision authority for pausing the pilot."
     )
   ),
@@ -276,9 +276,9 @@ export const SCORED_ADJUDICATIONS: Readonly<
     finding(
       1,
       "test whether customers have an unmet need",
-      "insight",
-      "Starts with evidence of unmet need rather than a feature.",
-      "Define the customer and evidence that would confirm the need."
+      "structure",
+      "Starts with a customer-need test before deciding whether to enter the market.",
+      "Define the customer, the evidence threshold, and the next entry decision."
     ),
     finding(
       3,
@@ -292,9 +292,9 @@ export const SCORED_ADJUDICATIONS: Readonly<
     finding(
       1,
       "test whether customers have an unmet need",
-      "structure",
-      "Begins with a testable customer-need question.",
-      "Sequence market size, constraints, and alternatives after the need test."
+      "insight",
+      "Recognizes that unmet customer need must be tested before choosing an expansion strategy.",
+      "Define the customer segment and evidence that would confirm the unmet need."
     ),
     finding(
       2,
@@ -348,8 +348,8 @@ export const SCORED_ADJUDICATIONS: Readonly<
       2,
       "an administrator can later evaluate",
       "leadership",
-      "Defers evaluation to an administrator without naming the owner or decision process.",
-      "Name who owns the go/no-go decision and what evidence they require."
+      "Treats administrator evaluation as a buyer gate without defining evidence criteria or a go/no-go owner.",
+      "Name the required evidence, the decision owner, and the go/no-go rule."
     )
   ),
   "strategy:06:marketplace-liquidity": candidate(
@@ -372,9 +372,9 @@ export const SCORED_ADJUDICATIONS: Readonly<
     finding(
       1,
       "costly customer decision the product can improve",
-      "clarity",
-      "Anchors positioning in a concrete customer decision.",
-      "Name the decision, current cost, and improvement target."
+      "insight",
+      "Anchors positioning in a costly customer decision rather than generic model access.",
+      "Quantify the decision cost and the improvement target."
     ),
     finding(
       3,
@@ -404,9 +404,9 @@ export const SCORED_ADJUDICATIONS: Readonly<
     finding(
       2,
       "scheduled one discussion and summarized the disagreement",
-      "structure",
-      "Took a concrete organizing action to surface the conflict.",
-      "Keep the action and connect it to a clear decision sequence."
+      "communication",
+      "Uses a discussion and summary to make the stakeholder disagreement explicit.",
+      "Connect the summary to a recommendation and decision owner."
     ),
     finding(
       2,
@@ -420,9 +420,9 @@ export const SCORED_ADJUDICATIONS: Readonly<
     finding(
       2,
       "summarized the disagreement",
-      "insight",
-      "Captured competing perspectives instead of ignoring them.",
-      "Use the disagreement to identify the failed assumption."
+      "communication",
+      "Communicates the competing perspectives instead of ignoring the disagreement.",
+      "Use the summary to identify the failed assumption and recommend a decision."
     ),
     finding(
       3,
@@ -473,11 +473,11 @@ export const SCORED_ADJUDICATIONS: Readonly<
       "Keep the test request and decision criteria explicit."
     ),
     finding(
-      3,
-      "both leads adopted the test-first decision pattern",
+      2,
+      "sponsored a prototype with five target users",
       "leadership",
-      "Reports adoption but not how a future inconclusive test would be resolved.",
-      "Explain the decision rule and owner when evidence is inconclusive."
+      "Sponsors a concrete test but does not define its success threshold or decision owner.",
+      "Define the prototype success threshold and who owns the resulting decision."
     )
   ),
   "behavioral:06:missed-goal": candidate(
@@ -505,11 +505,11 @@ export const SCORED_ADJUDICATIONS: Readonly<
       "Keep the coaching method and expected learner decision explicit."
     ),
     finding(
-      2,
-      "gave them ownership of the next executive review",
+      3,
+      "led the review successfully",
       "leadership",
-      "Delegates ownership without stating success criteria or an escalation boundary.",
-      "Define success criteria and when the mentor should intervene."
+      "Asserts success without criteria or evidence of independent decision quality.",
+      "Define review success criteria and the threshold for mentor intervention."
     )
   ),
   "behavioral:08:ethical-tradeoff": candidate(
