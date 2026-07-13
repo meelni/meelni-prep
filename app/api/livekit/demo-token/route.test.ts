@@ -79,6 +79,26 @@ describe("POST /api/livekit/demo-token provider isolation", () => {
       },
     },
     {
+      name: "malformed Preview project identity",
+      arrange: () => {
+        process.env.MEELNI_PREVIEW_LIVEKIT_URL =
+          "https://preview-route-test.livekit.cloud";
+      },
+    },
+    {
+      name: "Preview runtime and project identity mismatch",
+      arrange: () => {
+        process.env.LIVEKIT_URL =
+          "wss://other-preview-route-test.livekit.cloud";
+      },
+    },
+    {
+      name: "missing Production project identity",
+      arrange: () => {
+        delete process.env.MEELNI_PRODUCTION_LIVEKIT_URL;
+      },
+    },
+    {
       name: "conflicting deployment markers",
       arrange: () => {
         process.env.MEELNI_ENV_PULL_ENVIRONMENT = "production";
@@ -89,6 +109,12 @@ describe("POST /api/livekit/demo-token provider isolation", () => {
       arrange: () => {
         process.env.MEELNI_PREVIEW_LIVEKIT_URL =
           process.env.MEELNI_PRODUCTION_LIVEKIT_URL;
+      },
+    },
+    {
+      name: "missing demo agent identity",
+      arrange: () => {
+        delete process.env.LIVEKIT_DEMO_AGENT_NAME;
       },
     },
   ])("fails closed for $name before provider work", async ({ arrange }) => {

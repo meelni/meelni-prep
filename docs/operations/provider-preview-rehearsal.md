@@ -102,10 +102,13 @@ any Production-scoped command during this phase.
   configuration has not been independently verified. Feedback handoff remains
   blocked until a Preview event key and matching signing configuration pass
   the service-health gate.
-- Route denial tests cover session start and demo token issuance with missing or
-  conflicting Preview identity and prove that no LiveKit client, room, token,
-  dispatch, session-start workflow, or credit mutation begins. Fuller portal
-  route coverage remains follow-up work under SAV-184/SAV-186.
+- Route denial tests cover session start and demo token issuance with missing,
+  invalid, or conflicting Preview identity and dispatch configuration.
+  Session start performs the required Supabase authentication read before
+  runtime configuration validation; no application database, session, credit,
+  or provider mutation begins, and no LiveKit client, room, token, or dispatch
+  is initialized. Fuller portal route coverage remains follow-up work under
+  SAV-184/SAV-186.
 
 ## Live Preview Go/No-Go
 
