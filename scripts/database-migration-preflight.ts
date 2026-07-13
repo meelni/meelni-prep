@@ -13,6 +13,7 @@ import {
   DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
   DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
   FEEDBACK_V2_SCHEMA_FINGERPRINT,
+  SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   getStableStartDatabaseSchemaContract,
@@ -127,11 +128,11 @@ async function run(url: string, environmentIdentity: string) {
       `;
       if (
         ![
-          2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+          2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
         ].includes(migrations.length)
       ) {
         throw new Error(
-          `Expected 2 pre-reconciliation through 22 feedback-v2 migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation through 23 server-owned-billing-privilege migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -213,6 +214,8 @@ async function run(url: string, environmentIdentity: string) {
           legacy_premium_trials: number;
           unsafe_policies: number;
           unique_contracts: number;
+          server_owned_billing_client_privileges: number;
+          server_owned_billing_service_privileges: number;
         }[]
       >`
         SELECT
@@ -247,7 +250,29 @@ async function run(url: string, environmentIdentity: string) {
                 'user_achievement_user_achievement_idx',
                 'bookmarked_question_user_question_idx',
                 'practice_set_question_set_question_idx'
-              )) AS unique_contracts
+              )) AS unique_contracts,
+          (SELECT count(*)::int
+            FROM information_schema.table_privileges
+            WHERE table_schema = 'public'
+              AND table_name IN (
+                'billing_adjustment',
+                'billing_payment_state',
+                'credit_rollover_lot',
+                'credit_rollover_lot_allocation'
+              )
+              AND grantee IN ('PUBLIC', 'anon', 'authenticated'))
+            AS server_owned_billing_client_privileges,
+          (SELECT count(*)::int
+            FROM information_schema.table_privileges
+            WHERE table_schema = 'public'
+              AND table_name IN (
+                'billing_adjustment',
+                'billing_payment_state',
+                'credit_rollover_lot',
+                'credit_rollover_lot_allocation'
+              )
+              AND grantee = 'service_role')
+            AS server_owned_billing_service_privileges
       `;
 
       if (!summaryBase) {
@@ -342,7 +367,8 @@ async function run(url: string, environmentIdentity: string) {
         | "invoice_convergence"
         | "subscription_resource_convergence"
         | "durable_livekit_deletion"
-        | "feedback_v2";
+        | "feedback_v2"
+        | "server_owned_billing_privileges";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -390,8 +416,10 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "subscription_resource_convergence";
       } else if (migrations.length === 21) {
         startingContract = "durable_livekit_deletion";
-      } else {
+      } else if (migrations.length === 22) {
         startingContract = "feedback_v2";
+      } else {
+        startingContract = "server_owned_billing_privileges";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
@@ -406,7 +434,10 @@ async function run(url: string, environmentIdentity: string) {
           summary.tables !== expectedTableCount ||
           summary.rls_tables !== expectedTableCount ||
           summary.unsafe_policies !== 0 ||
-          summary.unique_contracts !== 3
+          summary.unique_contracts !== 3 ||
+          (migrations.length >= 23 &&
+            (summary.server_owned_billing_client_privileges !== 0 ||
+              summary.server_owned_billing_service_privileges !== 28))
         ) {
           throw new Error(
             "Reconciled database does not satisfy the launch schema contract"
@@ -450,7 +481,9 @@ async function run(url: string, environmentIdentity: string) {
                                         ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
                                         : migrations.length === 21
                                           ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
-                                          : FEEDBACK_V2_SCHEMA_FINGERPRINT;
+                                          : migrations.length === 22
+                                            ? FEEDBACK_V2_SCHEMA_FINGERPRINT
+                                            : SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -528,41 +561,43 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 22
-            ? FEEDBACK_V2_SCHEMA_FINGERPRINT
-            : migrations.length === 21
-              ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
-              : migrations.length === 20
-                ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
-                : migrations.length === 19
-                  ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
-                  : migrations.length === 18
-                    ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
-                    : migrations.length === 17
-                      ? BILLING_TRUTH_SCHEMA_FINGERPRINT
-                      : migrations.length === 16
-                        ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
-                        : migrations.length === 15
-                          ? STABLE_START_SCHEMA_FINGERPRINT
-                          : migrations.length === 14
-                            ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
-                            : migrations.length === 13
-                              ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-                              : migrations.length === 12
-                                ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-                                : migrations.length === 11
-                                  ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                                  : migrations.length === 10
-                                    ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
-                                    : migrations.length === 9
-                                      ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
-                                      : migrations.length === 8
-                                        ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                                        : migrations.length === 7
-                                          ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                                          : migrations.length === 6
-                                            ? RELAUNCH_SCHEMA_FINGERPRINT
-                                            : "pending",
+          migrations.length === 23
+            ? SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
+            : migrations.length === 22
+              ? FEEDBACK_V2_SCHEMA_FINGERPRINT
+              : migrations.length === 21
+                ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
+                : migrations.length === 20
+                  ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
+                  : migrations.length === 19
+                    ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
+                    : migrations.length === 18
+                      ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
+                      : migrations.length === 17
+                        ? BILLING_TRUTH_SCHEMA_FINGERPRINT
+                        : migrations.length === 16
+                          ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
+                          : migrations.length === 15
+                            ? STABLE_START_SCHEMA_FINGERPRINT
+                            : migrations.length === 14
+                              ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+                              : migrations.length === 13
+                                ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                                : migrations.length === 12
+                                  ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                                  : migrations.length === 11
+                                    ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                                    : migrations.length === 10
+                                      ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                                      : migrations.length === 9
+                                        ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                                        : migrations.length === 8
+                                          ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                                          : migrations.length === 7
+                                            ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                                            : migrations.length === 6
+                                              ? RELAUNCH_SCHEMA_FINGERPRINT
+                                              : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }
@@ -585,6 +620,11 @@ async function run(url: string, environmentIdentity: string) {
       if (!("stableStartLaunchReady" in result)) {
         throw new Error(
           "Clean database bootstrap is not launch ready; apply the canonical migration chain and rerun preflight"
+        );
+      }
+      if (result.migrationCount !== expected.length) {
+        throw new Error(
+          `Strict launch preflight requires the exact latest migration count ${expected.length}; found ${result.migrationCount}`
         );
       }
       if (
