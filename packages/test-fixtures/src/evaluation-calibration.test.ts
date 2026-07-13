@@ -227,7 +227,7 @@ test("delegated PM corrections preserve exact source evidence and dimensions", (
       strength: ["structure", 1, "test whether customers have an unmet need"],
     },
     "strategy:02:regional-expansion": {
-      strength: ["insight", 1, "test whether customers have an unmet need"],
+      strength: ["structure", 1, "test whether customers have an unmet need"],
     },
     "strategy:05:education-entry": {
       improvement: ["leadership", 2, "an administrator can later evaluate"],
@@ -279,6 +279,47 @@ test("delegated PM corrections preserve exact source evidence and dimensions", (
       )!;
       assert.ok(turn.text.includes(finding.quote), `${caseId}:${kind}:exact`);
     }
+  }
+});
+
+test("round-two panel union keeps the four semantic corrections exact", () => {
+  const expected = {
+    "product_sense:05:language-practice": {
+      kind: "improvement",
+      observation:
+        "Introduces psychological safety as a product need without explaining what design property would create it or how that safety would be validated.",
+      nextStep:
+        "Describe the prompt mechanics and how safety would be validated with learners.",
+    },
+    "strategy:02:regional-expansion": {
+      kind: "strength",
+      observation:
+        "Starts with a customer-need test before deciding whether to expand.",
+      nextStep:
+        "Define the segment and evidence threshold, then compare market size, constraints, and alternatives.",
+    },
+    "behavioral:02:failed-launch": {
+      kind: "strength",
+      observation:
+        "Makes the disagreement explicit by summarizing it for the group.",
+      nextStep:
+        "Name each perspective and connect the summary to a recommendation and decision owner.",
+    },
+    "behavioral:07:mentoring": {
+      kind: "improvement",
+      observation:
+        "Reports the review as successful without defining the criteria used to judge success.",
+      nextStep:
+        "Define review success criteria and the threshold for mentor intervention.",
+    },
+  } as const;
+  for (const [caseId, correction] of Object.entries(expected)) {
+    const finding =
+      SCORED_ADJUDICATIONS[caseId][
+        correction.kind as "strength" | "improvement"
+      ];
+    assert.equal(finding.observation, correction.observation, caseId);
+    assert.equal(finding.nextStep, correction.nextStep, caseId);
   }
 });
 
