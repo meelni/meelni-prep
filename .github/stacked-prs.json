@@ -40,9 +40,9 @@
     },
     {
       "pr": 266,
-      "parentPr": 259,
+      "parentPr": 298,
       "headRef": "codex/sav-195-feedback-v2",
-      "parentRef": "codex/sav-194-transcript-ingest"
+      "parentRef": "codex/sav-237-period-end-cancellation"
     },
     {
       "pr": 268,
@@ -55,6 +55,12 @@
       "parentPr": 265,
       "headRef": "codex/sav-231-billing-truth",
       "parentRef": "codex/sav-230-provider-credit-recovery"
+    },
+    {
+      "pr": 298,
+      "parentPr": 270,
+      "headRef": "codex/sav-237-period-end-cancellation",
+      "parentRef": "codex/sav-231-billing-truth"
     },
     {
       "pr": 272,
