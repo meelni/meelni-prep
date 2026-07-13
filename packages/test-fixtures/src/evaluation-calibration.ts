@@ -506,6 +506,32 @@ export function buildEvaluationAdjudicationReviewManifest() {
       panelCount: 2 as const,
       panelOutcome: "changes_required" as const,
       correctionPolicy: "conservative_17_case_union" as const,
+      reviewRounds: [
+        {
+          round: 1 as const,
+          correctionPolicy: "conservative_17_case_union" as const,
+          correctedCaseCount: 17 as const,
+        },
+        {
+          round: 2 as const,
+          reviewedCandidateArtifactHash:
+            "e02ec10f89b0bf83bdd5e1085f2b2250e4c3a79babd0e9f50b53db5b70e844f7",
+          reviewedCorpusHash:
+            "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+          panelOneChangesRequired: [
+            "product_sense:05:language-practice",
+            "strategy:02:regional-expansion",
+            "behavioral:02:failed-launch",
+            "behavioral:07:mentoring",
+          ],
+          panelTwoChangesRequired: [
+            "product_sense:05:language-practice",
+            "strategy:02:regional-expansion",
+            "behavioral:07:mentoring",
+          ],
+          correctionPolicy: "conservative_4_case_union" as const,
+        },
+      ],
       decisions: evaluationCalibrationCases
         .filter(({ expectedQuality }) => expectedQuality !== null)
         .map(({ id }) => ({

@@ -92,7 +92,7 @@ export const SCORED_ADJUDICATIONS: Readonly<
       2,
       "psychologically safe prompt",
       "insight",
-      "Assumes psychological safety without explaining the user insight or evidence behind that need.",
+      "Introduces psychological safety as a product need without explaining what design property would create it or how that safety would be validated.",
       "Describe the prompt mechanics and how safety would be validated with learners."
     )
   ),
@@ -292,9 +292,9 @@ export const SCORED_ADJUDICATIONS: Readonly<
     finding(
       1,
       "test whether customers have an unmet need",
-      "insight",
-      "Recognizes that unmet customer need must be tested before choosing an expansion strategy.",
-      "Define the customer segment and evidence that would confirm the unmet need."
+      "structure",
+      "Starts with a customer-need test before deciding whether to expand.",
+      "Define the segment and evidence threshold, then compare market size, constraints, and alternatives."
     ),
     finding(
       2,
@@ -421,8 +421,8 @@ export const SCORED_ADJUDICATIONS: Readonly<
       2,
       "summarized the disagreement",
       "communication",
-      "Communicates the competing perspectives instead of ignoring the disagreement.",
-      "Use the summary to identify the failed assumption and recommend a decision."
+      "Makes the disagreement explicit by summarizing it for the group.",
+      "Name each perspective and connect the summary to a recommendation and decision owner."
     ),
     finding(
       3,
@@ -508,7 +508,7 @@ export const SCORED_ADJUDICATIONS: Readonly<
       3,
       "led the review successfully",
       "leadership",
-      "Asserts success without criteria or evidence of independent decision quality.",
+      "Reports the review as successful without defining the criteria used to judge success.",
       "Define review success criteria and the threshold for mentor intervention."
     )
   ),
