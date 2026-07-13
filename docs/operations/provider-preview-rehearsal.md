@@ -54,8 +54,9 @@ that exception.
 LiveKit deploys require an explicit `preview` or `production` argument, the
 matching external environment-and-agent config path, both project anchors, and
 the matching expected agent ID documented in `agent/README.md`. Before any
-`lk agent deploy`, the script resolves one absolute config path and uses it for
-both validation and deployment. `[project].subdomain` must match the selected
+`lk agent deploy`, the script resolves one absolute config path, validates that
+file, then derives a relative CLI argument whose join from `agent/` resolves
+back to the exact same file. `[project].subdomain` must match the selected
 environment anchor and `[agent].id` must match the selected worker's expected
 ID. Tracked TOML files intentionally contain no project or agent identifiers.
 Preview-scoped env pulls require a fresh nonblank Preview anchor and never

@@ -23,10 +23,10 @@ fi
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 agent_dir="$(cd "$script_dir/.." && pwd)"
-python3 "$agent_dir/shared/validate_livekit_deploy.py" \
+config_argument="$(python3 "$agent_dir/shared/validate_livekit_deploy.py" \
   "$environment" "demo" "$config_path" \
   "${MEELNI_PRODUCTION_LIVEKIT_URL:-}" \
-  "${MEELNI_PREVIEW_LIVEKIT_URL:-}" "$expected_agent_id"
+  "${MEELNI_PREVIEW_LIVEKIT_URL:-}" "$expected_agent_id")"
 
 cd "$agent_dir"
 
@@ -39,4 +39,4 @@ restore_dockerfile() {
 trap restore_dockerfile EXIT
 
 cp demo/Dockerfile Dockerfile
-lk --config "$config_path" agent deploy .
+lk --config "$config_argument" agent deploy .
