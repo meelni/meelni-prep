@@ -38,6 +38,13 @@ attempt at $0.015545 with no cap breach. The report is a launch NO-GO: unused
 calls are not reusable, and another paid attempt requires a separately reviewed
 fix and new explicit authorization.
 
+`sav-226-relaunch-decision.md` is the human-readable release record for the
+exact relaunch candidate. It preserves the passed Preview evidence, the failed
+calibration and unavailable Production-health evidence, the remaining
+deployment-specific Stripe and golden-path gaps, and the criteria required to
+reconsider the current NO-GO decision. It grants no Production or paid-provider
+authority.
+
 Its adjudication review manifest contains agent-authored synthetic candidates.
 The separate `sav-198-adjudication-approval.json` records the product owner's
 explicit task-thread delegation, the exact reviewed head and candidate/corpus
