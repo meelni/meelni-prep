@@ -33,6 +33,37 @@ test("Inngest runs in explicit dev mode for local scripts with pulled Vercel met
   );
 });
 
+test("Next production builds can evaluate function definitions without runtime secrets", () => {
+  assert.deepEqual(
+    getInngestConfigurationStatus({
+      NODE_ENV: "production",
+      NEXT_PHASE: "phase-production-build",
+      VERCEL: "1",
+      VERCEL_ENV: "preview",
+      VERCEL_GIT_COMMIT_REF: "codex/sav-226-provider-isolation",
+    }),
+    {
+      ok: true,
+      mode: "build",
+      options: { id: "meelni" },
+    }
+  );
+});
+
+test("non-build hosted execution cannot use the build-only credential exemption", () => {
+  assert.throws(
+    () =>
+      getInngestClientOptions({
+        NODE_ENV: "production",
+        NEXT_PHASE: "phase-production-server",
+        VERCEL: "1",
+        VERCEL_ENV: "preview",
+        VERCEL_GIT_COMMIT_REF: "codex/sav-226-provider-isolation",
+      }),
+    /Invalid hosted Inngest configuration/
+  );
+});
+
 test("Inngest uses cloud mode outside local development", () => {
   assert.deepEqual(
     getInngestClientOptions({
