@@ -577,6 +577,7 @@ async function handleSubscriptionUpdate(event: Stripe.Event, stripe: Stripe) {
           return "skipped";
         }
         if (
+          currentResourceId === stripeSubscription.id &&
           !shouldApplyAuthoritativeProviderSnapshot({
             current: currentSub ?? null,
             incomingStatus,

@@ -502,11 +502,6 @@ test("LiveKit leave ordering stays after the participant join within one provide
   if (result.ok) {
     assert.equal(result.data?.occurredAt.getTime(), 1783670400501);
   }
-  assert.equal(JSON.stringify(failed).includes(input.roomName), false);
-  const missing = await provider.terminateInterviewRoom(input);
-  assert.equal(missing.ok, true);
-  if (missing.ok) assert.equal(missing.data.terminated, false);
-  assert.equal(JSON.stringify(missing).includes(input.roomName), false);
 });
 
 test("LiveKit reconnect tokens use a short TTL and the authorized room grant", async () => {

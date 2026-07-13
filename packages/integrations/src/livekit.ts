@@ -38,15 +38,6 @@ export interface StartedInterviewRoom {
   url: string;
 }
 
-export interface TerminateInterviewRoomInput {
-  roomName: string;
-  env: LiveKitEnvironment;
-}
-
-export interface TerminatedInterviewRoom {
-  terminated: boolean;
-}
-
 export interface IssueInterviewParticipantTokenInput {
   identity: string;
   participantName: string;
@@ -237,6 +228,7 @@ export function createLiveKitInterviewProvider({
     new AgentDispatchClient(url, apiKey, apiSecret),
   roomServiceClientFactory = (url, apiKey, apiSecret) =>
     new RoomServiceClient(url, apiKey, apiSecret),
+  now = () => new Date(),
 }: LiveKitProviderDependencies = {}): LiveKitProvider {
   return {
     async startInterviewRoom(input) {
@@ -403,31 +395,10 @@ export function createLiveKitInterviewProvider({
       });
     },
     async terminateInterviewRoom(input) {
-      const roomClient = roomServiceClientFactory(
-        input.env.url,
-        input.env.apiKey,
-        input.env.apiSecret
-      );
-      if (!roomClient.deleteRoom) {
-        return providerFailure("livekit", {
-          code: "livekit_room_termination_unsupported",
-          message: "The LiveKit room adapter cannot delete rooms.",
-          retryable: false,
-        });
-      }
-      try {
-        await roomClient.deleteRoom(input.roomName);
-      } catch (error) {
-        if (!isMissingRoomError(error)) {
-          return providerFailure("livekit", {
-            code: "livekit_room_delete_failed",
-            message: "LiveKit room termination failed",
-            retryable: true,
-          });
-        }
-        return providerSuccess("livekit", { terminated: false });
-      }
-      return providerSuccess("livekit", { terminated: true });
+      return terminateInterviewRoom(input, {
+        roomServiceClientFactory,
+        now,
+      });
     },
   };
 }

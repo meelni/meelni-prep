@@ -403,6 +403,15 @@ function harness(overrides: Partial<StartInterviewSessionDeps> = {}) {
     settleCredit: async () => {
       calls.push("settle");
     },
+    fenceCreatedRoomAgainstDeletion: async () => ({
+      deletionPending: false,
+    }),
+    clearDeletionRoom: async () => {
+      calls.push("clear-deletion-room");
+    },
+    markDeletionCleanupFailed: async () => {
+      calls.push("mark-deletion-failed");
+    },
     livekitProvider: {
       startInterviewRoom: async (input) => {
         calls.push("provider");

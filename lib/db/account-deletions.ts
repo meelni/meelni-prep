@@ -123,44 +123,44 @@ export async function requestAccountDeletion(input: {
         .limit(1)
         .for("update");
 
-    const [existingRequest] = await tx
-      .select()
-      .from(accountDeletionRequest)
-      .where(eq(accountDeletionRequest.userId, input.userId))
-      .limit(1)
-      .for("update");
-    const stripeSubjects = existingRequest
-      ? mergeStripeDeletionSubjects(
-          existingRequest.stripeSubjects,
-          input.stripeSubjects
-        )
-      : input.stripeSubjects;
-    const livekitRooms = existingRequest
-      ? mergeLiveKitDeletionRooms(
-          existingRequest.livekitRooms,
-          input.livekitRooms ?? []
-        )
-      : normalizeLiveKitDeletionRooms(input.livekitRooms ?? []);
+      const [existingRequest] = await tx
+        .select()
+        .from(accountDeletionRequest)
+        .where(eq(accountDeletionRequest.userId, input.userId))
+        .limit(1)
+        .for("update");
+      const stripeSubjects = existingRequest
+        ? mergeStripeDeletionSubjects(
+            existingRequest.stripeSubjects,
+            input.stripeSubjects
+          )
+        : input.stripeSubjects;
+      const livekitRooms = existingRequest
+        ? mergeLiveKitDeletionRooms(
+            existingRequest.livekitRooms,
+            input.livekitRooms ?? []
+          )
+        : normalizeLiveKitDeletionRooms(input.livekitRooms ?? []);
 
-    const [persisted] = await tx
-      .insert(accountDeletionRequest)
-      .values({
-        userId: input.userId,
-        stripeSubjects,
-        livekitRooms,
-      })
-      .onConflictDoUpdate({
-        target: accountDeletionRequest.userId,
-        set: {
-          status: existingRequest?.status ?? "pending",
+      const [persisted] = await tx
+        .insert(accountDeletionRequest)
+        .values({
+          userId: input.userId,
           stripeSubjects,
           livekitRooms,
-          lastErrorCode: existingRequest?.lastErrorCode ?? null,
-          completedAt: existingRequest?.completedAt ?? null,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
+        })
+        .onConflictDoUpdate({
+          target: accountDeletionRequest.userId,
+          set: {
+            status: existingRequest?.status ?? "pending",
+            stripeSubjects,
+            livekitRooms,
+            lastErrorCode: existingRequest?.lastErrorCode ?? null,
+            completedAt: existingRequest?.completedAt ?? null,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
       return persisted;
     })
   );
@@ -190,103 +190,103 @@ export async function requestAccountDeletionWithCurrentSubjects(
       const databaseNow = new Date(clockValue);
 
       // Billing webhook fulfillment locks the same user row. Taking the subject
-    // snapshot after this lock prevents a concurrent subscription/mapping
-    // commit from falling between the snapshot and durable tombstone.
-    const [currentSubscription] = await tx
-      .select({
-        stripeSubscriptionId: subscription.stripeSubscriptionId,
-        stripeCustomerId: subscription.stripeCustomerId,
-      })
-      .from(subscription)
-      .where(eq(subscription.userId, userId))
-      .limit(1);
-    const customerMappings = await tx
-      .select({
-        stripeCustomerId: stripeCustomerMapping.stripeCustomerId,
-        stripeSubscriptionId: stripeCustomerMapping.stripeSubscriptionId,
-      })
-      .from(stripeCustomerMapping)
-      .where(eq(stripeCustomerMapping.userId, userId))
-      .orderBy(asc(stripeCustomerMapping.stripeCustomerId));
-    const stripeSubjects = buildStripeDeletionSubjects({
-      subscriptionId: currentSubscription?.stripeSubscriptionId,
-      subscriptionCustomerId: currentSubscription?.stripeCustomerId,
-      mappedSubscriptionIds: customerMappings.map(
-        ({ stripeSubscriptionId }) => stripeSubscriptionId
-      ),
-      mappedCustomerIds: customerMappings.map(
-        ({ stripeCustomerId }) => stripeCustomerId
-      ),
-    });
-    const roomRows = await tx
-      .select({
-        roomName: interviewSession.livekitRoomName,
-        lifecycleState: interviewSession.lifecycleState,
-        terminalReason: interviewSession.terminalReason,
-      })
-      .from(interviewSession)
-      .where(
-        and(
-          eq(interviewSession.userId, userId),
-          isNotNull(interviewSession.livekitRoomName)
+      // snapshot after this lock prevents a concurrent subscription/mapping
+      // commit from falling between the snapshot and durable tombstone.
+      const [currentSubscription] = await tx
+        .select({
+          stripeSubscriptionId: subscription.stripeSubscriptionId,
+          stripeCustomerId: subscription.stripeCustomerId,
+        })
+        .from(subscription)
+        .where(eq(subscription.userId, userId))
+        .limit(1);
+      const customerMappings = await tx
+        .select({
+          stripeCustomerId: stripeCustomerMapping.stripeCustomerId,
+          stripeSubscriptionId: stripeCustomerMapping.stripeSubscriptionId,
+        })
+        .from(stripeCustomerMapping)
+        .where(eq(stripeCustomerMapping.userId, userId))
+        .orderBy(asc(stripeCustomerMapping.stripeCustomerId));
+      const stripeSubjects = buildStripeDeletionSubjects({
+        subscriptionId: currentSubscription?.stripeSubscriptionId,
+        subscriptionCustomerId: currentSubscription?.stripeCustomerId,
+        mappedSubscriptionIds: customerMappings.map(
+          ({ stripeSubscriptionId }) => stripeSubscriptionId
+        ),
+        mappedCustomerIds: customerMappings.map(
+          ({ stripeCustomerId }) => stripeCustomerId
+        ),
+      });
+      const roomRows = await tx
+        .select({
+          roomName: interviewSession.livekitRoomName,
+          lifecycleState: interviewSession.lifecycleState,
+          terminalReason: interviewSession.terminalReason,
+        })
+        .from(interviewSession)
+        .where(
+          and(
+            eq(interviewSession.userId, userId),
+            isNotNull(interviewSession.livekitRoomName)
+          )
         )
-      )
-      .orderBy(asc(interviewSession.livekitRoomName));
-    const livekitRooms = roomRows.flatMap(
-      ({ roomName, lifecycleState, terminalReason }) => {
-        // Terminal lifecycle truth does not prove provider cleanup. In
-        // particular, provider-start failure can terminalize locally while an
-        // ambiguous LiveKit create commits late.
-        const provisioning =
-          lifecycleState === "created" ||
-          lifecycleState === "connecting" ||
-          terminalReason === "provider_failure";
-        return buildLiveKitDeletionRooms([roomName], {
-          provisioning,
-          provisioningExpiresAt: provisioning
-            ? new Date(
-                databaseNow.getTime() + LIVEKIT_DELETION_PROVISIONING_LEASE_MS
-              ).toISOString()
-            : null,
-        });
-      }
-    );
+        .orderBy(asc(interviewSession.livekitRoomName));
+      const livekitRooms = roomRows.flatMap(
+        ({ roomName, lifecycleState, terminalReason }) => {
+          // Terminal lifecycle truth does not prove provider cleanup. In
+          // particular, provider-start failure can terminalize locally while an
+          // ambiguous LiveKit create commits late.
+          const provisioning =
+            lifecycleState === "created" ||
+            lifecycleState === "connecting" ||
+            terminalReason === "provider_failure";
+          return buildLiveKitDeletionRooms([roomName], {
+            provisioning,
+            provisioningExpiresAt: provisioning
+              ? new Date(
+                  databaseNow.getTime() + LIVEKIT_DELETION_PROVISIONING_LEASE_MS
+                ).toISOString()
+              : null,
+          });
+        }
+      );
 
-    const [existingRequest] = await tx
-      .select()
-      .from(accountDeletionRequest)
-      .where(eq(accountDeletionRequest.userId, userId))
-      .limit(1)
-      .for("update");
-    const mergedStripeSubjects = existingRequest
-      ? mergeStripeDeletionSubjects(
-          existingRequest.stripeSubjects,
-          stripeSubjects
-        )
-      : stripeSubjects;
-    const mergedLiveKitRooms = existingRequest
-      ? mergeLiveKitDeletionRooms(existingRequest.livekitRooms, livekitRooms)
-      : normalizeLiveKitDeletionRooms(livekitRooms);
+      const [existingRequest] = await tx
+        .select()
+        .from(accountDeletionRequest)
+        .where(eq(accountDeletionRequest.userId, userId))
+        .limit(1)
+        .for("update");
+      const mergedStripeSubjects = existingRequest
+        ? mergeStripeDeletionSubjects(
+            existingRequest.stripeSubjects,
+            stripeSubjects
+          )
+        : stripeSubjects;
+      const mergedLiveKitRooms = existingRequest
+        ? mergeLiveKitDeletionRooms(existingRequest.livekitRooms, livekitRooms)
+        : normalizeLiveKitDeletionRooms(livekitRooms);
 
-    const [persisted] = await tx
-      .insert(accountDeletionRequest)
-      .values({
-        userId,
-        stripeSubjects: mergedStripeSubjects,
-        livekitRooms: mergedLiveKitRooms,
-      })
-      .onConflictDoUpdate({
-        target: accountDeletionRequest.userId,
-        set: {
-          status: existingRequest?.status ?? "pending",
+      const [persisted] = await tx
+        .insert(accountDeletionRequest)
+        .values({
+          userId,
           stripeSubjects: mergedStripeSubjects,
           livekitRooms: mergedLiveKitRooms,
-          lastErrorCode: existingRequest?.lastErrorCode ?? null,
-          completedAt: existingRequest?.completedAt ?? null,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
+        })
+        .onConflictDoUpdate({
+          target: accountDeletionRequest.userId,
+          set: {
+            status: existingRequest?.status ?? "pending",
+            stripeSubjects: mergedStripeSubjects,
+            livekitRooms: mergedLiveKitRooms,
+            lastErrorCode: existingRequest?.lastErrorCode ?? null,
+            completedAt: existingRequest?.completedAt ?? null,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
       return persisted;
     })
   );

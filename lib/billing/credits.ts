@@ -730,7 +730,7 @@ export function createCreditLedgerService({
           reserveCreditInTransaction({
             store: transaction,
             input,
-            currentTime,
+            currentTime: operationNow(),
           })
         );
       } catch (error) {
@@ -816,7 +816,7 @@ export function createCreditLedgerService({
     async revokePaidGrant(
       input: RevokePaidGrantInput
     ): Promise<RevokePaidGrantResult> {
-      const adjustedAt = now();
+      const adjustedAt = operationNow();
       const outcome = await store.withUserTransaction(
         input.userId,
         async (transaction) => {
@@ -931,7 +931,7 @@ export function createCreditLedgerService({
     async reinstatePaidGrant(
       input: ReinstatePaidGrantInput
     ): Promise<RevokePaidGrantResult> {
-      const adjustedAt = now();
+      const adjustedAt = operationNow();
       const outcome = await store.withUserTransaction(
         input.userId,
         async (transaction) => {
@@ -3499,8 +3499,9 @@ export async function reserveCreditInTransaction({
   }
 
   await assertUserReservationIntegrity(store, input.userId);
-  const subscriptionPolicy =
-    await store.getSubscriptionCreditPolicyForUpdate(input.userId);
+  const subscriptionPolicy = await store.getSubscriptionCreditPolicyForUpdate(
+    input.userId
+  );
   // Authorization time is observed after the owning user and subscription
   // locks so a lock wait cannot spend credits at or beyond the paid cutoff.
   const authorizationTime = await store.getCurrentTime();
