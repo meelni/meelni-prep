@@ -83,6 +83,14 @@ any Production-scoped command during this phase.
 
 ## Open Operational Blockers
 
+- A pristine dedicated Preview database may report
+  `ready_for_clean_bootstrap` only when its Drizzle ledger is absent and its
+  public application schema contains no non-extension objects. That diagnostic
+  result is not rehearsal- or launch-ready. Apply the exact canonical migration
+  chain only after backup/rehearsal requirements are satisfied, then require a
+  clean postflight result. Any partial schema, unexpected object, or catalog
+  ambiguity remains a hard stop; do not copy Production data, seed migration
+  history manually, or create an alternate repair chain.
 - The current Vercel metadata shows one `STRIPE_WEBHOOK_SECRET` entry scoped to
   both Preview and Production. A webhook secret has no test/live prefix, so
   static validation cannot prove endpoint identity. Preview needs its own test
