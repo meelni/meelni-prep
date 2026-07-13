@@ -27,8 +27,10 @@ from provider_environment import canonical_livekit_origin
 
 PREVIEW_PROJECT_ALIAS = "meelni-preview"
 PREVIEW_REGION = "us-east"
+EXPECTED_LK_VERSION = "2.12.8"
 MAX_PROVIDER_OUTPUT_BYTES = 1_000_000
 MAX_LOCAL_FILE_BYTES = 65_536
+CLI_VERSION_TIMEOUT_SECONDS = 15
 PROJECT_LIST_TIMEOUT_SECONDS = 60
 AGENT_CREATE_TIMEOUT_SECONDS = 900
 CHILD_ENVIRONMENT_ALLOWLIST = {
@@ -80,6 +82,15 @@ class FileIdentity:
     sha256: str
 
 
+@dataclass(frozen=True, repr=False)
+class VerifiedProject:
+    name: str
+    project_id: str
+    url: str
+    api_key: str
+    api_secret: str
+
+
 def bootstrap_preview_agent(
     kind: str,
     *,
@@ -127,28 +138,64 @@ def bootstrap_preview_agent(
     executable = _resolve_lk_executable(lk_executable, source)
 
     with _exclusive_bootstrap_lock(resolved_agent_root):
-        _verify_preview_project(
-            executable,
-            source,
-            resolved_agent_root,
-            preview_origin,
-            production_origin,
-            _test_child_environment,
-        )
-        _assert_output_absent(config_path)
-        _assert_file_unchanged(secrets_path, secrets_identity)
-
-        with _selected_dockerfile(kind, resolved_agent_root):
-            _create_agent(
-                executable,
-                source,
-                resolved_agent_root,
-                config_path,
-                secrets_path,
-                _test_child_environment,
+        with _handled_bootstrap_termination():
+            initial_child_environment = _sanitized_child_environment(
+                source, _test_child_environment
             )
+            _verify_lk_version(
+                executable, resolved_agent_root, initial_child_environment
+            )
+            verified_project = _verify_preview_project(
+                executable,
+                resolved_agent_root,
+                preview_origin,
+                production_origin,
+                initial_child_environment,
+            )
+            _assert_output_absent(config_path)
+            _assert_file_unchanged(secrets_path, secrets_identity)
 
-        agent_id = _validate_generated_config(config_path, preview_origin)
+            with _private_bootstrap_workspace(config_path.parent) as workspace:
+                frozen_home = workspace / "home"
+                frozen_registry = frozen_home / ".livekit" / "cli-config.yaml"
+                frozen_secrets = workspace / "agent.env"
+                generated_config = workspace / "livekit.toml"
+                frozen_home.mkdir(mode=0o700)
+                frozen_registry.parent.mkdir(mode=0o700)
+                _write_private_new(
+                    frozen_registry, _project_registry_snapshot(verified_project)
+                )
+                _write_private_new(frozen_secrets, secrets_text.encode("utf-8"))
+
+                bound_child_environment = dict(initial_child_environment)
+                bound_child_environment["HOME"] = str(frozen_home)
+                bound_child_environment.pop("XDG_CONFIG_HOME", None)
+                snapshot_project = _verify_preview_project(
+                    executable,
+                    resolved_agent_root,
+                    preview_origin,
+                    production_origin,
+                    bound_child_environment,
+                )
+                if snapshot_project != verified_project:
+                    raise PreviewBootstrapError(
+                        "livekit_preview_project_snapshot_mismatch"
+                    )
+
+                _assert_output_absent(config_path)
+                with _selected_dockerfile(kind, resolved_agent_root):
+                    _create_agent(
+                        executable,
+                        resolved_agent_root,
+                        generated_config,
+                        frozen_secrets,
+                        bound_child_environment,
+                    )
+
+                agent_id, config_bytes = _validate_generated_config(
+                    generated_config, preview_origin
+                )
+                _install_generated_config(config_bytes, config_path, workspace)
 
     return PreviewBootstrapResult(
         kind=kind,
@@ -212,23 +259,20 @@ def _required_private_file(
     value: Optional[str], repo_root: Path, env_name: str
 ) -> tuple[Path, FileIdentity, str]:
     path = _canonical_operator_path(value, repo_root, env_name)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
-        metadata = os.lstat(path)
-    except OSError as error:
-        raise PreviewBootstrapError("livekit_preview_secrets_file_missing") from error
-    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+            metadata = os.fstat(handle.fileno())
+            text = handle.read(MAX_LOCAL_FILE_BYTES + 1)
+    except (OSError, UnicodeError) as error:
+        raise PreviewBootstrapError("livekit_preview_secrets_file_unreadable") from error
+    if not stat.S_ISREG(metadata.st_mode):
         raise PreviewBootstrapError("livekit_preview_secrets_file_not_regular")
     if stat.S_IMODE(metadata.st_mode) != 0o600:
         raise PreviewBootstrapError("livekit_preview_secrets_file_mode_invalid")
     if metadata.st_size > MAX_LOCAL_FILE_BYTES:
         raise PreviewBootstrapError("livekit_preview_secrets_file_too_large")
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        descriptor = os.open(path, flags)
-        with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
-            text = handle.read(MAX_LOCAL_FILE_BYTES + 1)
-    except (OSError, UnicodeError) as error:
-        raise PreviewBootstrapError("livekit_preview_secrets_file_unreadable") from error
     if len(text.encode("utf-8")) > MAX_LOCAL_FILE_BYTES:
         raise PreviewBootstrapError("livekit_preview_secrets_file_too_large")
     return path, _file_identity(metadata, text.encode("utf-8")), text
@@ -246,16 +290,15 @@ def _file_identity(metadata: os.stat_result, content: bytes = b"") -> FileIdenti
 
 def _assert_file_unchanged(path: Path, expected: FileIdentity) -> None:
     try:
-        metadata = os.lstat(path)
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(path, flags)
         with os.fdopen(descriptor, "rb") as handle:
+            metadata = os.fstat(handle.fileno())
             content = handle.read(MAX_LOCAL_FILE_BYTES + 1)
     except OSError as error:
         raise PreviewBootstrapError("livekit_preview_secrets_file_changed") from error
     if (
-        stat.S_ISLNK(metadata.st_mode)
-        or not stat.S_ISREG(metadata.st_mode)
+        not stat.S_ISREG(metadata.st_mode)
         or stat.S_IMODE(metadata.st_mode) != 0o600
         or len(content) > MAX_LOCAL_FILE_BYTES
         or _file_identity(metadata, content) != expected
@@ -330,19 +373,17 @@ def _resolve_lk_executable(
 
 def _verify_preview_project(
     executable: Path,
-    source: Mapping[str, str],
     agent_root: Path,
     preview_origin: str,
     production_origin: str,
-    test_child_environment: Optional[Mapping[str, str]],
-) -> None:
+    child_environment: Mapping[str, str],
+) -> VerifiedProject:
     result = _run_lk(
         executable,
         ["--project", PREVIEW_PROJECT_ALIAS, "project", "list", "--json"],
-        source,
         agent_root,
         PROJECT_LIST_TIMEOUT_SECONDS,
-        test_child_environment,
+        child_environment,
     )
     if result.returncode != 0 or len(result.stdout.encode("utf-8")) > MAX_PROVIDER_OUTPUT_BYTES:
         raise PreviewBootstrapError("livekit_preview_project_inventory_failed")
@@ -362,29 +403,123 @@ def _verify_preview_project(
     project = matches[0]
     project_id = project.get("ProjectId")
     url = project.get("URL")
+    api_key = project.get("APIKey")
+    api_secret = project.get("APISecret")
     if not isinstance(project_id, str) or not re.fullmatch(r"p_[A-Za-z0-9]+", project_id):
         raise PreviewBootstrapError("livekit_preview_project_id_invalid")
     if not isinstance(url, str) or canonical_livekit_origin(url) != preview_origin:
         raise PreviewBootstrapError("livekit_preview_project_url_mismatch")
     if canonical_livekit_origin(url) == production_origin:
         raise PreviewBootstrapError("livekit_preview_project_is_production")
+    if not _valid_registry_credential(api_key) or not _valid_registry_credential(
+        api_secret
+    ):
+        raise PreviewBootstrapError("livekit_preview_project_credentials_invalid")
+    return VerifiedProject(
+        name=PREVIEW_PROJECT_ALIAS,
+        project_id=project_id,
+        url=preview_origin,
+        api_key=api_key,
+        api_secret=api_secret,
+    )
+
+
+def _verify_lk_version(
+    executable: Path,
+    agent_root: Path,
+    child_environment: Mapping[str, str],
+) -> None:
+    result = _run_lk(
+        executable,
+        ["--version"],
+        agent_root,
+        CLI_VERSION_TIMEOUT_SECONDS,
+        child_environment,
+    )
+    if (
+        result.returncode != 0
+        or result.stdout.strip() != f"lk version {EXPECTED_LK_VERSION}"
+    ):
+        raise PreviewBootstrapError("livekit_cli_version_unverified")
+
+
+def _valid_registry_credential(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeError:
+        return False
+    return (
+        8 <= len(encoded) <= MAX_LOCAL_FILE_BYTES
+        and value == value.strip()
+        and not any(character in value for character in ("\x00", "\r", "\n"))
+    )
+
+
+def _project_registry_snapshot(project: VerifiedProject) -> bytes:
+    payload = {
+        "default_project": project.name,
+        "projects": [
+            {
+                "name": project.name,
+                "project_id": project.project_id,
+                "url": project.url,
+                "api_key": project.api_key,
+                "api_secret": project.api_secret,
+            }
+        ],
+        "device_name": "",
+    }
+    return (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+def _write_private_new(path: Path, content: bytes) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError as error:
+        raise PreviewBootstrapError("livekit_preview_snapshot_write_failed") from error
+
+
+@contextmanager
+def _private_bootstrap_workspace(parent: Path) -> Iterator[Path]:
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix=".meelni-livekit-bootstrap-", dir=parent
+        ) as directory:
+            workspace = Path(directory)
+            metadata = os.lstat(workspace)
+            if not stat.S_ISDIR(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o700:
+                raise PreviewBootstrapError("livekit_preview_workspace_invalid")
+            yield workspace
+    except PreviewBootstrapError:
+        raise
+    except OSError as error:
+        raise PreviewBootstrapError("livekit_preview_workspace_failed") from error
 
 
 def _create_agent(
     executable: Path,
-    source: Mapping[str, str],
     agent_root: Path,
     config_path: Path,
     secrets_path: Path,
-    test_child_environment: Optional[Mapping[str, str]],
+    child_environment: Mapping[str, str],
 ) -> None:
+    config_argument = os.path.relpath(config_path, agent_root)
+    if (agent_root / config_argument).resolve() != config_path:
+        raise PreviewBootstrapError("livekit_preview_config_argument_invalid")
     result = _run_lk(
         executable,
         [
             "--project",
             PREVIEW_PROJECT_ALIAS,
             "--config",
-            str(config_path),
+            config_argument,
             "agent",
             "create",
             "--region",
@@ -394,10 +529,9 @@ def _create_agent(
             "--silent",
             ".",
         ],
-        source,
         agent_root,
         AGENT_CREATE_TIMEOUT_SECONDS,
-        test_child_environment,
+        child_environment,
     )
     if result.returncode != 0:
         raise PreviewBootstrapError("livekit_preview_agent_create_failed")
@@ -406,22 +540,22 @@ def _create_agent(
 def _run_lk(
     executable: Path,
     arguments: list[str],
-    source: Mapping[str, str],
     agent_root: Path,
     timeout_seconds: int,
-    test_child_environment: Optional[Mapping[str, str]] = None,
+    child_environment: Mapping[str, str],
 ) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
             [str(executable), *arguments],
             cwd=agent_root,
-            env=_sanitized_child_environment(source, test_child_environment),
+            env=dict(child_environment),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             check=False,
             timeout=timeout_seconds,
+            umask=0o077,
         )
     except subprocess.TimeoutExpired as error:
         raise PreviewBootstrapError("livekit_cli_execution_timed_out") from error
@@ -445,19 +579,21 @@ def _sanitized_child_environment(
     return environment
 
 
-def _validate_generated_config(config_path: Path, preview_origin: str) -> str:
-    try:
-        metadata = os.lstat(config_path)
-    except OSError as error:
-        raise PreviewBootstrapError("livekit_preview_generated_config_missing") from error
-    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-        raise PreviewBootstrapError("livekit_preview_generated_config_not_regular")
+def _validate_generated_config(
+    config_path: Path, preview_origin: str
+) -> tuple[str, bytes]:
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(config_path, flags)
         with os.fdopen(descriptor, "rb") as handle:
+            metadata = os.fstat(handle.fileno())
+            if not stat.S_ISREG(metadata.st_mode):
+                raise PreviewBootstrapError(
+                    "livekit_preview_generated_config_not_regular"
+                )
             os.fchmod(handle.fileno(), 0o600)
             data = handle.read(MAX_LOCAL_FILE_BYTES + 1)
+            os.fsync(handle.fileno())
     except OSError as error:
         raise PreviewBootstrapError("livekit_preview_generated_config_unreadable") from error
     if len(data) > MAX_LOCAL_FILE_BYTES:
@@ -473,7 +609,41 @@ def _validate_generated_config(config_path: Path, preview_origin: str) -> str:
     agent_id = config.get("agent", {}).get("id")
     if not isinstance(agent_id, str) or not re.fullmatch(r"CA_[A-Za-z0-9]+", agent_id):
         raise PreviewBootstrapError("livekit_preview_generated_agent_id_invalid")
-    return agent_id
+    return agent_id, data
+
+
+def _install_generated_config(
+    data: bytes, destination: Path, workspace: Path
+) -> None:
+    publish_path = workspace / "validated-livekit.toml"
+    _write_private_new(publish_path, data)
+    try:
+        os.link(publish_path, destination, follow_symlinks=False)
+    except FileExistsError as error:
+        raise PreviewBootstrapError(
+            "livekit_preview_config_install_conflict"
+        ) from error
+    except OSError as error:
+        raise PreviewBootstrapError("livekit_preview_config_install_failed") from error
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(destination, flags)
+        with os.fdopen(descriptor, "rb") as handle:
+            metadata = os.fstat(handle.fileno())
+            installed = handle.read(MAX_LOCAL_FILE_BYTES + 1)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or stat.S_IMODE(metadata.st_mode) != 0o600
+                or metadata.st_size != len(data)
+                or installed != data
+            ):
+                raise PreviewBootstrapError(
+                    "livekit_preview_config_install_verification_failed"
+                )
+    except PreviewBootstrapError:
+        raise
+    except OSError as error:
+        raise PreviewBootstrapError("livekit_preview_config_install_failed") from error
 
 
 def _livekit_subdomain(origin: str) -> str:
@@ -501,6 +671,34 @@ def _exclusive_bootstrap_lock(agent_root: Path) -> Iterator[None]:
                 lock_path.unlink()
         except OSError:
             pass
+
+
+@contextmanager
+def _handled_bootstrap_termination() -> Iterator[None]:
+    handled_signals = tuple(
+        candidate
+        for candidate in (
+            signal.SIGHUP,
+            signal.SIGTERM,
+            getattr(signal, "SIGQUIT", None),
+        )
+        if candidate is not None
+    )
+    previous_handlers = {
+        handled_signal: signal.getsignal(handled_signal)
+        for handled_signal in handled_signals
+    }
+
+    def interrupt(_signum: int, _frame: Optional[FrameType]) -> None:
+        raise PreviewBootstrapError("livekit_preview_bootstrap_interrupted")
+
+    for handled_signal in handled_signals:
+        signal.signal(handled_signal, interrupt)
+    try:
+        yield
+    finally:
+        for handled_signal, previous_handler in previous_handlers.items():
+            signal.signal(handled_signal, previous_handler)
 
 
 @contextmanager

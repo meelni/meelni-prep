@@ -58,7 +58,10 @@ It requires the fixed `meelni-preview` CLI alias, canonical and distinct
 Preview/Production project anchors, an absent external config path, and a
 mode-`0600` external secrets file containing only the required Preview marker,
 both anchors, the fixed worker dispatch name, and `OPENAI_API_KEY`. It performs
-the exact project inventory and `agent create` boundary documented in
+the exact project inventory, freezes the verified project registry and secrets
+inside a private one-run workspace, and performs the `agent create` boundary
+against those snapshots. The validated generated TOML is installed at the
+operator target with no-clobber semantics. This boundary is documented in
 `docs/operations/provider-preview-rehearsal.md`. Do not run a manual first
 `lk agent create` around this guard.
 
