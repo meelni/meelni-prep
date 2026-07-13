@@ -52,7 +52,7 @@ export const SAV_248_EMPTY_TREE_OID =
   "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 export const SAV_248_GENESIS_DATE = "2026-07-13T14:00:00.000Z";
 export const SAV_248_GENESIS_COMMIT_OID =
-  "9a5b2209f049d575e8edef35ce5fd18d916d6c9b";
+  "73064d382c37335e4d2bd895954aeb83ce5e768e";
 export const SAV_248_IMMUTABLE_RULESET_NAME =
   "Meelni SAV-248 calibration ledger immutable";
 export const SAV_248_ACTOR_RULESET_NAME =

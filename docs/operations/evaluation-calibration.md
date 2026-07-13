@@ -169,7 +169,7 @@ parents: []
 author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
 author/committer date: 2026-07-13T14:00:00.000Z
 message: exact calibrationAuthorizationCommitMessage() output
-expected commit: 9a5b2209f049d575e8edef35ce5fd18d916d6c9b
+expected commit: 73064d382c37335e4d2bd895954aeb83ce5e768e
 ```
 
 Use `gh api --hostname github.com` against the fixed repository to create only

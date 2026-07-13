@@ -244,7 +244,7 @@ The durable authority is the protected payload-free Git ref in the fixed
 private GitHub repository `saviii/meelni-prep` (repository ID `1089904588`):
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v2`. Before call
 one, the CLI requires that ref to point to deterministic genesis commit
-`9a5b2209f049d575e8edef35ce5fd18d916d6c9b`, whose zero-parent tree is empty
+`73064d382c37335e4d2bd895954aeb83ce5e768e`, whose zero-parent tree is empty
 and whose complete message and identity encode this authorization. It creates
 a unique empty-tree activation
 child containing only authorization, plan-hash, and activation metadata, then
