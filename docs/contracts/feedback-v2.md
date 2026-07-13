@@ -9,6 +9,12 @@ evidence. `packages/core/src/feedback-v2.ts` owns the types, exact object shape,
 canonical score calculation, and strict parser. Provider adapters receive
 unknown JSON and may persist it only after this parser accepts it.
 
+Rejected writes use the closed `feedback-v2-rejection.v1` taxonomy exported by
+`@meelni/core`. A `FeedbackV2ParseError` contains one allowlisted invariant code
+and a local developer message. Provider adapters may propagate the code, but
+must not retain or log the rejected response, evidence text, transcript text,
+unknown field names, paths, or the parser error as a cause.
+
 ## Versions and evaluation state
 
 Every v2 result stores:
@@ -62,6 +68,43 @@ Each strength and improvement contains exactly these fields:
 - `confidence` is a finite number from zero through one. It is a finding-level
   evidence signal, not a readiness probability.
 - Unknown fields at the result, score, finding, or evidence level are rejected.
+
+## Rejection taxonomy
+
+The closed codes identify only the rejected invariant. They are grouped as:
+
+- envelope and identity: `response_not_object`, `response_unknown_field`,
+  `schema_version_mismatch`, `prompt_version_mismatch`,
+  `rubric_version_mismatch`, `evaluation_state_mismatch`, and
+  `model_version_invalid`;
+- canonical input: `canonical_transcript_empty`,
+  `canonical_transcript_turn_invalid`, and
+  `canonical_transcript_duplicate_event_id`;
+- scores and findings: `scores_not_object`, `scores_unknown_field`,
+  `score_invalid`, `findings_count_invalid`, `finding_not_object`,
+  `finding_unknown_field`, `finding_dimension_invalid`,
+  `finding_rubric_version_mismatch`, `finding_text_invalid`,
+  `transcript_refs_invalid`, `transcript_refs_duplicate`, and
+  `confidence_invalid`;
+- evidence: `evidence_count_invalid`, `evidence_not_object`,
+  `evidence_unknown_field`, `evidence_turn_ref_invalid`,
+  `evidence_turn_ref_duplicate`, `evidence_turn_ref_not_found`,
+  `evidence_turn_ref_wrong_speaker`, `evidence_quote_invalid`,
+  `evidence_quote_not_grounded`, `evidence_reference_set_mismatch`, and
+  `evidence_reused_across_findings`;
+- terminal copy and fail-closed fallback: `drills_invalid`, `summary_invalid`,
+  and `parser_internal_failure`.
+
+Unknown, absent, forged, or mutable diagnostic values normalize to
+`parser_internal_failure` at a report boundary. The fallback means the parser
+failed without a trustworthy invariant classification; it never permits output
+repair or acceptance.
+
+The provider adapter, not the provider response or an arbitrary caller,
+authenticates the diagnostic. A module-private association backs a
+non-configurable error accessor, so constructing or mutating an exported error
+cannot mint a trusted allowlisted code. The report boundary reads the private
+association directly, so proxying the error cannot mint one either.
 
 ## Scores
 

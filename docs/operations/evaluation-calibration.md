@@ -272,6 +272,10 @@ secrets or provider responses containing sensitive data.
   different returned tier stops after the first affected call.
 - Evidence validity, adjudicated evidence match, and insufficient handling are
   all 100%.
+- An adjudicated match may quote a larger exact span from the same user turn,
+  but it must preserve the complete approved anchor plus the approved finding
+  kind and dimension. Do not reinterpret a different grounded phrase as an
+  automatic semantic match; follow the SAV-250 review boundary.
 - Pooled and per-dimension score-band agreement are at least 80%; each round and
   completion state is at least 75%.
 - Maximum repeated-run score range is at most 1.
@@ -286,8 +290,13 @@ secrets or provider responses containing sensitive data.
 - The report contains no prompt text, transcript text, provider body, secret,
   or Production/customer-data payload.
 
-If the v2 live run fails or crashes, keep the launch gate closed. Inspect available
-case/run/dimension failure records, update the evaluator or adjudication
-deliberately, and obtain a separate new authorization before any paid retry.
+If the v2 live run fails or crashes, keep the launch gate closed. Inspect
+available case/run/dimension failure records. For invalid-feedback failures, use
+only the closed `feedbackRejectionCode` to identify the failed invariant; do not
+add raw provider output, parser causes, transcript text, or evidence text to a
+report or ticket. A `parser_internal_failure` requires a provider-free parser
+investigation before any new authorization. Update the evaluator or
+adjudication deliberately, and obtain a separate new authorization before any
+paid retry.
 The activated SAV-248 v2 run never resumes. The consumed SAV-198 v1 run is
 historical only and is never a fallback authority.

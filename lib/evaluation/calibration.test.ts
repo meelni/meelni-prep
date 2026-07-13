@@ -26,7 +26,10 @@ import {
   SAV_248_SPEND_AUTHORIZATION,
   buildCalibrationActivatedPlan,
 } from "./calibration-run-ledger";
-import { FeedbackProviderInvocationError } from "./scorer";
+import {
+  FeedbackProviderInvocationError,
+  parseFeedbackProviderCompletion,
+} from "./scorer";
 
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
 const LIVE_MODEL = CALIBRATION_PRICING_CONTRACT.model;
@@ -98,6 +101,86 @@ test("deterministic self-test proves the harness but keeps live acceptance pendi
   assert.equal(report.gate.liveProviderAcceptance, "pending");
   assert.equal(report.gate.launchAcceptance, "pending_adjudication_signoff");
   assert.equal(report.failures.length, 0);
+});
+
+test("adjudicated evidence accepts a larger exact quote span that preserves the complete anchor", async () => {
+  const baseline = createDeterministicCalibrationEvaluator(SELF_TEST_MODEL);
+  const target = evaluationCalibrationCases.find(
+    ({ id }) => id === "product_sense:01:caregiver-planning"
+  )!;
+  const targetTurn = target.transcript.find(
+    ({ eventId }) => eventId === target.evidenceAnchors[0].turnRef
+  )!;
+  const report = await runEvaluationCalibration({
+    executionKind: "deterministic_self_test",
+    modelVersion: SELF_TEST_MODEL,
+    repetitions: 3,
+    now: NOW,
+    evaluator: async (input) => {
+      const output = await baseline(input);
+      if (input.fixture.id !== target.id || input.runIndex !== 0) return output;
+      return {
+        ...output,
+        strengths: output.strengths.map((item, index) =>
+          index === 0
+            ? {
+                ...item,
+                evidence: [{ ...item.evidence[0], quote: targetTurn.text }],
+              }
+            : item
+        ),
+      };
+    },
+  });
+
+  assert.equal(report.metrics.evidenceValidityRate, 1);
+  assert.equal(report.metrics.adjudicatedEvidenceMatchRate, 1);
+  assert.equal(
+    report.failures.some(
+      ({ code }) => code === "adjudicated_evidence_not_matched"
+    ),
+    false
+  );
+});
+
+test("adjudicated evidence still rejects a grounded quote that omits the canonical anchor", async () => {
+  const baseline = createDeterministicCalibrationEvaluator(SELF_TEST_MODEL);
+  const target = evaluationCalibrationCases.find(
+    ({ id }) => id === "product_sense:01:caregiver-planning"
+  )!;
+  const alternativeQuote = "After that I would brainstorm features";
+  const report = await runEvaluationCalibration({
+    executionKind: "deterministic_self_test",
+    modelVersion: SELF_TEST_MODEL,
+    repetitions: 3,
+    now: NOW,
+    evaluator: async (input) => {
+      const output = await baseline(input);
+      if (input.fixture.id !== target.id || input.runIndex !== 0) return output;
+      return {
+        ...output,
+        strengths: output.strengths.map((item, index) =>
+          index === 0
+            ? {
+                ...item,
+                evidence: [{ ...item.evidence[0], quote: alternativeQuote }],
+              }
+            : item
+        ),
+      };
+    },
+  });
+
+  assert.equal(report.metrics.evidenceValidityRate, 1);
+  assert.ok(report.metrics.adjudicatedEvidenceMatchRate! < 1);
+  assert.ok(
+    report.failures.some(
+      ({ caseId, runIndex, code }) =>
+        caseId === target.id &&
+        runIndex === 0 &&
+        code === "adjudicated_evidence_not_matched"
+    )
+  );
 });
 
 test("calibration fails a live report when repeated scores are unstable", async () => {
@@ -296,6 +379,12 @@ test("live reports preserve only allowlisted provider failure categories", async
     });
 
     assert.equal(report.failures[0]?.code, failureCode);
+    assert.equal(
+      report.failures[0]?.feedbackRejectionCode,
+      failureCode === "evaluation_provider_returned_invalid_feedback"
+        ? "parser_internal_failure"
+        : undefined
+    );
     assert.equal(report.execution.cost?.attemptedCalls, 1);
     assert.equal(report.execution.cost?.completedCalls, 0);
     assert.equal(report.execution.cost?.stopReason, "provider_failure");
@@ -355,6 +444,125 @@ test("live reports preserve only allowlisted provider failure categories", async
 
   assert.equal(report.failures[0]?.code, "evaluation_failed");
   assert.equal(JSON.stringify(report).includes(secret), false);
+
+  const classifiedInvalidFeedback = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 3,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      return parseFeedbackProviderCompletion(
+        {
+          model: LIVE_MODEL,
+          service_tier: "default",
+          usage: {
+            prompt_tokens: 100,
+            prompt_tokens_details: { cached_tokens: 0 },
+            completion_tokens: 100,
+            total_tokens: 200,
+          },
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  schemaVersion: "feedback.v2",
+                  unexpectedProviderField: secret,
+                }),
+              },
+            },
+          ],
+        },
+        input.fixture.transcript,
+        input.evaluationState
+      );
+    },
+  });
+
+  assert.deepEqual(classifiedInvalidFeedback.failures[0], {
+    caseId: "product_sense:01:caregiver-planning",
+    runIndex: 0,
+    code: "evaluation_provider_returned_invalid_feedback",
+    feedbackRejectionCode: "response_unknown_field",
+  });
+  assert.equal(
+    classifiedInvalidFeedback.execution.cost?.reconciledActualCostUsd,
+    0.001125
+  );
+  assert.equal(
+    classifiedInvalidFeedback.execution.cost?.unreconciledReservedCostUsd,
+    0
+  );
+
+  const forgedRejection = new FeedbackProviderInvocationError(
+    "evaluation_provider_returned_invalid_feedback",
+    {
+      inputTokens: 100,
+      cachedInputTokens: 0,
+      outputTokens: 100,
+      totalTokens: 200,
+    },
+    LIVE_MODEL,
+    "default"
+  );
+  assert.throws(
+    () =>
+      Object.defineProperty(forgedRejection, "feedbackRejectionCode", {
+        value: "evidence_quote_not_grounded",
+      }),
+    TypeError
+  );
+  const forgedRejectionReport = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 3,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      throw forgedRejection;
+    },
+  });
+  assert.equal(
+    forgedRejectionReport.failures[0]?.feedbackRejectionCode,
+    "parser_internal_failure"
+  );
+  assert.equal(JSON.stringify(forgedRejectionReport).includes(secret), false);
+
+  const proxiedRejection = new Proxy(forgedRejection, {
+    get: (target, property, receiver) =>
+      property === "feedbackRejectionCode"
+        ? "evidence_quote_not_grounded"
+        : Reflect.get(target, property, receiver),
+  });
+  assert.equal(
+    proxiedRejection instanceof FeedbackProviderInvocationError,
+    true
+  );
+  assert.equal(
+    proxiedRejection.feedbackRejectionCode,
+    "evidence_quote_not_grounded"
+  );
+  const proxiedRejectionReport = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 3,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      throw proxiedRejection;
+    },
+  });
+  assert.equal(
+    proxiedRejectionReport.failures[0]?.feedbackRejectionCode,
+    "parser_internal_failure"
+  );
 
   const forged = new FeedbackProviderInvocationError(
     "evaluation_provider_returned_invalid_feedback",
