@@ -18,6 +18,10 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).parent))
 
 from shared.config import parse_room_metadata
+from shared.provider_environment import (
+    ProviderEnvironmentError,
+    validate_livekit_runtime_environment,
+)
 from shared.utils.prompt_builder import build_agent_prompt
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.runtime_events import (
@@ -71,6 +75,66 @@ from shared.transcript_events import (
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_livekit_runtime_identity_is_provider_neutral_and_fail_closed(self):
+        base = {
+            "VERCEL_ENV": "preview",
+            "LIVEKIT_API_KEY": "key",
+            "LIVEKIT_API_SECRET": "secret",
+            "LIVEKIT_URL": "wss://preview.livekit.cloud",
+            "MEELNI_PRODUCTION_LIVEKIT_URL": "wss://production.livekit.cloud",
+            "NODE_ENV": "production",
+        }
+        resolved = validate_livekit_runtime_environment(base)
+        self.assertEqual(resolved.deployment, "preview")
+        self.assertEqual(resolved.url, "wss://preview.livekit.cloud")
+
+        unsafe = [
+            {**base, "LIVEKIT_URL": "wss://production.livekit.cloud"},
+            {
+                **base,
+                "NEXT_PUBLIC_LIVEKIT_URL": "wss://other.livekit.cloud",
+            },
+            {**base, "LIVEKIT_URL": "https://preview.livekit.cloud"},
+            {**base, "MEELNI_ENV_PULL_ENVIRONMENT": "production"},
+            {key: value for key, value in base.items() if key != "VERCEL_ENV"},
+        ]
+        for environment in unsafe:
+            with self.assertRaises(ProviderEnvironmentError):
+                validate_livekit_runtime_environment(environment)
+
+    def test_livekit_runtime_production_requires_the_canonical_anchor(self):
+        production = {
+            "VERCEL_ENV": "production",
+            "LIVEKIT_API_KEY": "key",
+            "LIVEKIT_API_SECRET": "secret",
+            "NEXT_PUBLIC_LIVEKIT_URL": "wss://PRODUCTION.livekit.cloud.:443/",
+            "MEELNI_PRODUCTION_LIVEKIT_URL": "wss://production.livekit.cloud",
+        }
+        self.assertEqual(
+            validate_livekit_runtime_environment(production).url,
+            "wss://production.livekit.cloud",
+        )
+        with self.assertRaises(ProviderEnvironmentError):
+            validate_livekit_runtime_environment(
+                {**production, "NEXT_PUBLIC_LIVEKIT_URL": "wss://preview.livekit.cloud"}
+            )
+
+    def test_both_workers_validate_identity_before_provider_initialization(self):
+        for relative_path in ("interview/agent.py", "demo/agent.py"):
+            source = (Path(__file__).parent / relative_path).read_text()
+            run_worker = source[source.index("def run_worker()") :]
+            self.assertLess(
+                run_worker.index("validate_livekit_runtime_environment(os.environ)"),
+                run_worker.index("cli.run_app("),
+            )
+            entrypoint = source[source.index("async def entrypoint") :]
+            self.assertLess(
+                entrypoint.index("validate_livekit_runtime_environment(os.environ)"),
+                entrypoint.index("ctx.connect(")
+                if "ctx.connect(" in entrypoint
+                else entrypoint.index("AgentSession("),
+            )
+
     def test_runtime_provider_error_codes_are_allowlisted_and_payload_free(self):
         self.assertEqual(provider_failure_code("stt_error"), "stt_provider_failed")
         self.assertEqual(provider_failure_code("llm_error"), "llm_provider_failed")

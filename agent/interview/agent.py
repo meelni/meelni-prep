@@ -36,6 +36,7 @@ from livekit.plugins.turn_detector.english import EnglishModel
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import parse_room_metadata
+from shared.provider_environment import validate_livekit_runtime_environment
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.runtime_config import get_model_config, get_tts_config
 from shared.runtime_events import (
@@ -68,22 +69,6 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def configure_livekit_worker_env() -> None:
-    """Allow local agents to reuse the browser LiveKit URL from root env files."""
-    livekit_url = os.getenv("LIVEKIT_URL")
-    public_livekit_url = os.getenv("NEXT_PUBLIC_LIVEKIT_URL")
-
-    if (
-        (not livekit_url or not livekit_url.strip())
-        and public_livekit_url
-        and public_livekit_url.strip()
-    ):
-        os.environ["LIVEKIT_URL"] = public_livekit_url.strip()
-
-
-configure_livekit_worker_env()
 
 
 def get_required_env(name: str) -> str:
@@ -126,6 +111,7 @@ def prewarm(proc: JobProcess):
 
 async def entrypoint(ctx: JobContext):
     """Entrypoint - reads configuration and starts agent with dynamic prompts"""
+    validate_livekit_runtime_environment(os.environ)
     logger.info(f"Starting agent for room: {ctx.room.name}")
 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
@@ -803,7 +789,9 @@ async def entrypoint(ctx: JobContext):
         return
 
 
-if __name__ == "__main__":
+def run_worker() -> None:
+    runtime_environment = validate_livekit_runtime_environment(os.environ)
+    os.environ["LIVEKIT_URL"] = runtime_environment.url
     # Detect if running on LiveKit Cloud (Cloud provides LIVEKIT_URL automatically)
     is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
 
@@ -826,3 +814,7 @@ if __name__ == "__main__":
                 load_threshold=0.9,  # Increase threshold to accept more jobs (default: 0.7)
             ),
         )
+
+
+if __name__ == "__main__":
+    run_worker()

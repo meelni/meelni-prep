@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const triggerBlock = workflow.slice(
   workflow.indexOf("on:"),
   workflow.indexOf("permissions:")
@@ -42,11 +43,19 @@ test("cost control preserves exact-head cancellation and the complete validation
     "Run local tooling tests",
     "Verify clean and legacy database migrations",
     "Run type, lint, quality, and regression checks",
-    "Run Python agent contract tests",
     "Build production application",
   ]) {
     assert.match(workflow, new RegExp(`- name: ${step}`));
   }
+});
+
+test("Python agent contracts run exactly once through the aggregate CI gate", () => {
+  assert.equal(
+    packageJson.scripts["check:ci"].match(/npm\s+run\s+test:python-agent/g)
+      ?.length,
+    1
+  );
+  assert.doesNotMatch(workflow, /run:\s+npm\s+run\s+test:python-agent/);
 });
 
 test("feature branches cannot reintroduce a duplicate push-triggered Validate run", () => {

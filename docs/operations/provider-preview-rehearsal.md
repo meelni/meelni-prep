@@ -34,6 +34,15 @@ LiveKit Preview requires:
 Production must match the canonical Production LiveKit origin. Preview and
 Development must differ from it. If both LiveKit URL variables exist, they must
 canonicalize to the same credential-free `wss://*.livekit.cloud` origin.
+The web runtime, internal transcript authentication, and both Python voice
+workers enforce this identity before provider initialization or transcript
+mutation. The Production anchor is scoped identity metadata and is never
+restored from an older local env file when a Vercel pull omits it.
+
+The Stripe catalog setup command applies the same trusted deployment identity
+and key-mode boundary before constructing a Stripe client. `--dry-run` remains
+provider-free; Production live-mode setup additionally requires
+`--confirm-live`.
 
 ## Provider-Free Gate
 
