@@ -5,6 +5,7 @@ import {
   FIXTURE_CLOCK,
   createAccountDataExportFixture,
   createDashboardProgressFixtures,
+  createFocusedPracticePlanGoldenFixtures,
   createLiveKitStartFixture,
   createProductSenseInterviewFixture,
 } from "./index";
@@ -31,6 +32,18 @@ test("dashboard progress fixtures cover zero, one, many, and every feedback stat
   assert.equal(
     fixtures.everyFeedbackStatus.at(-1)?.feedback?.overallScore,
     "6.2"
+  );
+});
+
+test("focused-practice plan fixtures are available from the public fixture entrypoint", () => {
+  const fixtures = createFocusedPracticePlanGoldenFixtures();
+
+  assert.equal(fixtures.length, 4);
+  assert.deepEqual(
+    fixtures.map(
+      ({ recommendationFixture }) => recommendationFixture.roundType
+    ),
+    ["product_sense", "execution", "behavioral", "strategy"]
   );
 });
 
