@@ -431,6 +431,32 @@ describe("/api/feedback/[sessionId]", () => {
     expect(response.headers.get("cache-control")).toBe("private, max-age=3600");
   });
 
+  it("normalizes discontinued-era recommendations before returning completed feedback", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        overallScore: "8.0",
+        drills: [
+          "Do three reps of this drill before the interview.",
+          "Schedule drills for each weak area.",
+          "Ask the sales rep which objections appear most often.",
+        ],
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toMatchObject({
+      status: "completed",
+      feedback: {
+        drills: [
+          "Do three practice attempts of this exercise before the interview.",
+          "Ask the sales rep which objections appear most often.",
+        ],
+      },
+    });
+  });
+
   it("returns structured feedback v2 findings and stored versions", async () => {
     const finding = {
       dimension: "insight",

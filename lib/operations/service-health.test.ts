@@ -68,6 +68,21 @@ test("healthy report exposes only fixed non-secret readiness fields", async () =
   ]);
 });
 
+test("LiveKit readiness covers the core interview agent, not the de-scoped demo", async () => {
+  const report = await assessServiceHealth(
+    dependencies(store(CLEAR_EVIDENCE), {
+      ...READY_ENV,
+      LIVEKIT_DEMO_AGENT_NAME: undefined,
+    })
+  );
+
+  assert.deepEqual(report.checks[2], {
+    name: "livekit",
+    status: "healthy",
+    code: "livekit_ready",
+  });
+});
+
 test("configuration and backlog failures degrade without leaking details", async () => {
   const report = await assessServiceHealth(
     dependencies(

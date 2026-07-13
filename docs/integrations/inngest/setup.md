@@ -67,6 +67,8 @@ their Vercel identity:
   `INNGEST_SIGNING_KEY`.
 - Production requires `VERCEL_GIT_COMMIT_REF=main`, both keys, and no
   branch-only `INNGEST_ENV` override.
-- `/api/inngest` registers 14 functions and exports a 300-second Vercel
-  duration. Verify the dashboard sync count and a synthetic run; key presence
-  and the service-health response do not prove provider connectivity.
+- `/api/inngest` registers 14 named source functions. The SDK adds exactly one
+  `Generate Interview Feedback (failure)` handler for a 15-entry dashboard
+  inventory. The route exports a 300-second Vercel duration. Verify that exact
+  inventory and a synthetic run; key presence and the service-health response
+  do not prove provider connectivity.

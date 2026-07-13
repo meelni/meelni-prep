@@ -21,22 +21,24 @@ degradation is received and acknowledged by an approved operator destination.
 
 ## Check Interpretation
 
-| Check             | Healthy evidence                                     | Degraded/unavailable response                                      |
-| ----------------- | ---------------------------------------------------- | ------------------------------------------------------------------ |
-| Web               | The dynamic route executed.                          | Transport failure is detected by the external synthetic.           |
-| Database          | Bounded workflow-evidence queries completed in time. | `database_unavailable`; investigate connectivity/migrations.       |
-| LiveKit           | Server credentials, URL, and interview agent name.   | `livekit_unavailable`; do not attempt a shared-provider rehearsal. |
-| Feedback dispatch | Hosted Inngest config and no stale or failed work.   | Preserve rows; use the feedback recovery workflow.                 |
-| Stripe webhook    | Signing config and no stale or failed work.          | Inspect Stripe delivery and redacted durable evidence.             |
+| Check             | Healthy evidence                                        | Degraded/unavailable response                                      |
+| ----------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
+| Web               | The dynamic route executed.                             | Transport failure is detected by the external synthetic.           |
+| Database          | Bounded workflow-evidence queries completed in time.    | `database_unavailable`; investigate connectivity/migrations.       |
+| LiveKit           | Server credentials, URL, and core interview agent name. | `livekit_unavailable`; do not attempt a shared-provider rehearsal. |
+| Feedback dispatch | Hosted Inngest config and no stale or failed work.      | Preserve rows; use the feedback recovery workflow.                 |
+| Stripe webhook    | Signing config and no stale or failed work.             | Inspect Stripe delivery and redacted durable evidence.             |
 
 Unresolved failed workflow evidence takes precedence over stale evidence. The
 database evidence transaction has a PostgreSQL statement timeout shorter than
 the route deadline, and one unresolved underlying read remains single-flight
 across application timeout and cache expiry.
 
-The endpoint intentionally does not call LiveKit or Stripe. Provider-backed
-reachability and the full fresh-user path belong to the controlled Preview
-rehearsal and SAV-186 golden-path verification.
+The endpoint intentionally does not call LiveKit or Stripe. `livekit_ready`
+covers only the core authenticated interview path; the public voice demo is
+de-scoped from relaunch and its retained dormant route/worker are not part of
+this health contract. Provider-backed reachability and the full fresh-user path
+belong to the controlled Preview rehearsal and SAV-186 golden-path verification.
 
 ## Controlled Preview Rehearsal
 

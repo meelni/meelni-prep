@@ -117,7 +117,7 @@ All protected endpoints require authentication via Supabase Auth JWT tokens.
 
 These endpoints do **not** require authentication:
 
-- `POST /api/livekit/demo-token` - Demo token generation
+- `POST /api/livekit/demo-token` - Retired public-demo compatibility endpoint; always `404`
 - `GET /api/cartesia/voices` - Legacy informational voice catalog; not a session-start control
 
 ---
@@ -707,47 +707,21 @@ Issues a short-lived JWT access token for reconnecting to an existing, active in
 
 ### POST /api/livekit/demo-token
 
-Generates LiveKit access tokens specifically for 60-second demo conversations on the landing page. Creates ephemeral rooms that auto-delete after 2 minutes and dispatches a Cloud-hosted demo agent to conduct a brief product demo.
+The public voice demo is de-scoped from relaunch. This retained compatibility
+endpoint always returns `404` before parsing input or constructing a LiveKit
+client. It creates no room, dispatch, or participant token.
 
-**Authentication**: Public (no authentication required - for landing page demo)
+**Authentication**: Public, provider-free retired endpoint
 
-**Request Body**:
-
-```json
-{
-  "participantName": "Guest"
-}
-```
-
-**Request Parameters**:
-
-| Field             | Type   | Required | Default | Description                                      |
-| ----------------- | ------ | -------- | ------- | ------------------------------------------------ |
-| `participantName` | string | ✅ Yes   | -       | Display name for the participant (e.g., "Guest") |
-
-**Response** (200 OK):
+**Response** (404 Not Found):
 
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIs...",
-  "url": "wss://meelni-ek4vaisp.livekit.cloud",
-  "roomName": "demo-1699999999999-abc123"
+  "error": "voice_demo_unavailable",
+  "message": "The public voice demo is not part of the current experience.",
+  "retryable": false
 }
 ```
-
-**Implementation Details**:
-
-- Room naming format: `demo-{timestamp}-{random}` for tracking and analytics
-- Room lifetime: Auto-deletes 2 minutes after last participant leaves
-- Max participants: 2 (user + demo agent only)
-- Agent: Cloud-hosted demo agent (CA_Wp8bi3bRroE2) explicitly dispatched via AgentDispatchClient
-- Agent behavior: 60-second product demo with one quick question and feedback
-- Token TTL: 2 minutes (matches demo duration)
-
-**Errors**:
-
-- `400 Bad Request` - Missing `participantName`
-- `500 Internal Server Error` - LiveKit credentials not configured, room creation failed, or agent dispatch failed
 
 ---
 
@@ -956,7 +930,7 @@ async function runFullInterviewFlow() {
   console.log("Interview complete! Your score:", feedback.overallScore);
   console.log("Strengths:", feedback.strengths);
   console.log("Areas to improve:", feedback.improvements);
-  console.log("Practice drills:", feedback.drills);
+  console.log("Practice recommendations:", feedback.drills);
 }
 ```
 

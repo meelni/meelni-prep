@@ -42,6 +42,8 @@ agent/
 
 ### Demo Agent (`demo/`)
 
+- **Relaunch status**: Dormant and de-scoped; not advertised, deployed, or part
+  of core readiness without a separate reintroduction decision
 - **Purpose**: Quick 5-minute demos for landing page visitors
 - **Duration**: 5 minutes (auto-terminates)
 - **Questions**: 1 question from bank or fallback
@@ -138,7 +140,9 @@ python agent.py dev
 
 ## 🚀 Deployment
 
-Both agents are deployed to LiveKit Cloud.
+The interview agent is the only LiveKit Cloud worker required for the current
+relaunch. Demo deployment instructions remain for a separately approved future
+reintroduction and must not be used as launch-readiness evidence.
 
 Keep project/agent TOML files outside the repository and select the target
 explicitly. Each config must contain its environment's `[project].subdomain`
@@ -188,9 +192,11 @@ The first deployment has no agent ID or TOML to validate, so it uses the one
 shared fail-closed bootstrap instead of either deploy script:
 
 ```bash
-python3 agent/shared/bootstrap_livekit_preview.py demo
 python3 agent/shared/bootstrap_livekit_preview.py interview
 ```
+
+The bootstrap accepts `demo` only for a separately approved reintroduction; the
+current relaunch must not create or require a demo agent.
 
 Before either command, set both canonical URL anchors plus the worker-specific
 external paths:

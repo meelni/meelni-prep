@@ -2,8 +2,12 @@
 
 This directory contains two separate LiveKit agents:
 
-1. **Demo Agent** - Quick 60-second demos on the landing page
+1. **Demo Agent** - Dormant implementation, de-scoped from the current relaunch
 2. **Main Interview Agent** - Full interview sessions
+
+Only the main interview agent is a current launch dependency. Demo commands are
+retained for a separately approved future reintroduction and do not establish
+current demo availability.
 
 ## Quick Deployment
 
@@ -50,9 +54,11 @@ For the first isolated Preview deployment, use the shared bootstrap from the
 repository root:
 
 ```bash
-python3 agent/shared/bootstrap_livekit_preview.py demo
 python3 agent/shared/bootstrap_livekit_preview.py interview
 ```
+
+Do not create the demo agent for the current relaunch. The bootstrap's `demo`
+mode remains guarded code for a separately approved future reintroduction.
 
 It requires the fixed `meelni-preview` CLI alias, canonical and distinct
 Preview/Production project anchors, an absent external config path, and a

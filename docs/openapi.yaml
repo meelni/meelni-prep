@@ -397,45 +397,11 @@ paths:
     post:
       tags:
         - LiveKit
-      summary: Generate demo token
-      description: Generates LiveKit tokens for 60-second demo sessions with Cloud agent
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - participantName
-              properties:
-                participantName:
-                  type: string
-                  description: Participant display name
-                  default: Guest
-            example:
-              participantName: "Guest"
+      summary: Retired public voice demo compatibility endpoint
+      description: The public voice demo is de-scoped from relaunch. This endpoint performs no LiveKit work.
       responses:
-        "200":
-          description: Demo token generated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                    description: JWT access token (2 min TTL)
-                  url:
-                    type: string
-                    format: uri
-                    description: LiveKit server WebSocket URL
-                  roomName:
-                    type: string
-                    description: Generated demo room name
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
+        "404":
+          description: Public voice demo is not part of the current experience
 
   /api/cartesia/voices:
     get:

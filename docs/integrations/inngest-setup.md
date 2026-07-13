@@ -24,8 +24,10 @@ The feedback generation system was stuck in "pending" status because the Inngest
    INNGEST_EVENT_KEY=your_event_key
    INNGEST_SIGNING_KEY=your_signing_key
    ```
-4. Inngest Cloud syncs the `/api/inngest` endpoint. The endpoint currently
-   registers 14 function IDs.
+4. Inngest Cloud syncs the `/api/inngest` endpoint. The source registers 14
+   named function IDs. The SDK expands `feedback-generate` into one additional
+   `Generate Interview Feedback (failure)` handler, so the dashboard should
+   show exactly 15 entries.
 
 ### Option 2: Inngest Dev Server (Local Development)
 
@@ -115,5 +117,7 @@ DATABASE_URL=your_postgres_connection_string
    `INNGEST_ENV` branch override.
 3. Add `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` to the matching Vercel
    scope, then redeploy.
-4. Confirm all 14 function IDs sync from `/api/inngest` and run an approved
-   synthetic event. Configuration health alone does not prove cloud reachability.
+4. Confirm all 14 named source function IDs and exactly one SDK-generated
+   `Generate Interview Feedback (failure)` handler sync from `/api/inngest`,
+   then run an approved synthetic event. Configuration health alone does not
+   prove cloud reachability.

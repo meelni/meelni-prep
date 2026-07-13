@@ -1,10 +1,19 @@
 # Demo Agent
 
-Quick 5-minute demo agent for landing page visitors.
+Retained, dormant voice-demo agent implementation.
+
+## Relaunch Status
+
+The public voice demo is de-scoped from the current relaunch and is not linked
+from the landing page. This worker is not a launch prerequisite, and core
+LiveKit health does not assert that it is deployed or usable. Do not deploy or
+advertise it without a separate product and operational decision.
 
 ## Overview
 
-This agent provides a short, engaging demo experience for prospective users on the landing page. It asks one quick PM interview question and provides immediate feedback within a 5-minute time window.
+If separately reintroduced, this agent provides a short demo experience for
+prospective users. It asks one PM interview question and provides immediate
+feedback within a five-minute window.
 
 ## Features
 

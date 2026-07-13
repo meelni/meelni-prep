@@ -100,6 +100,7 @@ import {
   hasInterviewDeadlineRoomCleanupClaim,
   isInterviewDeadlineRoomCleanupAcknowledged,
 } from "@/lib/db/session-deadlines";
+import { normalizePracticeRecommendations } from "@/lib/product-language";
 import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
 
 // Estimated total processing time (seconds)
@@ -262,7 +263,7 @@ export async function GET(
               : null,
             strengths: feedbackRecord.strengths as unknown[],
             improvements: feedbackRecord.improvements as unknown[],
-            drills: feedbackRecord.drills as string[],
+            drills: normalizePracticeRecommendations(feedbackRecord.drills),
             summary: feedbackRecord.summary,
             rubricVersion: feedbackRecord.rubricVersion,
             schemaVersion: feedbackRecord.schemaVersion,
