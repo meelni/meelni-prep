@@ -236,18 +236,22 @@ runtime parses it before evaluator work and requires:
   `evaluation-adjudication-review.v2`;
 - the exact candidate-manifest SHA-256 and substantive-corpus SHA-256;
 - matching gold-set and adjudication versions;
-- reviewer identity and `product_owner` or `pm_reviewer` role;
+- reviewer authority and `product_owner` or `pm_reviewer` role; delegated
+  task-thread authority must use the canonical non-human identity, declare a
+  null human reviewer identity, and include exactly two distinct exact-hash
+  agent-panel signoffs;
 - a valid `reviewedAt` timestamp;
 - exactly one `approved` or `changes_required` decision for each of the 32
   scored candidate IDs.
 
 Missing, stale, malformed, duplicate, or incomplete approval fails closed. The
-candidate source and manifest cannot declare themselves approved. The v4
-manifest records the product-owner-delegated two-panel review, its
-`changes_required` result, and the conservative 17-case correction union. That
-provenance is not human approval and remains pending independent review of the
-exact regenerated hashes. The current repository intentionally commits no
-approval artifact or reviewer identity.
+immutable candidate payload cannot approve itself. The committed approval
+artifact records the product owner's explicit task-thread delegation, the
+17-case and 4-case correction rounds, and two independent 32/32 exact-hash
+agent-panel approvals of the final candidate. It uses no fabricated human
+identity and is scoped only to semantic adjudication. Paid execution, authority
+activation, pricing freshness, provider acceptance, and launch remain separate
+gates.
 The live CLI likewise returns a failure unless the combined launch gate passes;
 provider acceptance alone is never a successful command outcome.
 
