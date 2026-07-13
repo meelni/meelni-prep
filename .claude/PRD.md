@@ -87,7 +87,9 @@ The discontinued experience is intentionally behind a relaunch feature flag. The
 
 - Keep the relaunch experience off by default while launch-readiness work remains open.
 - Test the enabled experience deliberately in development and preview environments.
-- Change the default to on only as an explicit launch action after the relaunch criteria pass.
+- Treat agent reviews, provider rehearsals, and automated gates as launch-readiness evidence, not the launch decision.
+- Only the human product owner makes the final launch GO/NO-GO for the exact candidate.
+- Change the default to on only after an explicit owner GO and a separately authorized launch action; passing criteria alone does not authorize the change.
 - Preserve an operational way to disable the experience if launch monitoring exposes a material issue.
 
 ## Relaunch Scope

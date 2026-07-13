@@ -360,24 +360,28 @@ agent-panel approvals of the final candidate. It uses no fabricated human
 identity and is scoped only to semantic adjudication. Paid execution, authority
 activation, pricing freshness, provider acceptance, and launch remain separate
 gates.
-The live CLI likewise returns a failure unless the combined launch gate passes;
-provider acceptance alone is never a successful command outcome.
+The live CLI likewise returns a failure unless the combined calibration
+evidence gate passes; provider acceptance alone is never a successful command
+outcome. In the version-7 report, the historical field name for this technical
+gate is `launchAcceptance`. It never represents or authorizes the human product
+owner's launch GO/NO-GO.
 
 ## Gate semantics
 
 `preflight` validates the corpus and workflow skip path without an evaluator.
 `deterministic_self_test` proves the harness math and contracts with a local,
-predictable evaluator. Neither can pass `liveProviderAcceptance` or
-`launchAcceptance`.
+predictable evaluator. Neither can pass `liveProviderAcceptance` or the legacy
+technical `launchAcceptance` evidence field.
 
-Only an explicitly authorized `live_provider` execution can pass launch
-acceptance. A deterministic report must retain
-an unresolved launch gate even when every harness metric is perfect. Until the
-candidate manifest receives product-owner/PM signoff, launch acceptance remains
+Only an explicitly authorized `live_provider` execution can pass calibration
+evidence acceptance. A deterministic report must retain an unresolved evidence
+gate even when every harness metric is perfect. Until the candidate manifest
+receives product-owner/PM signoff, the legacy `launchAcceptance` field remains
 `pending_adjudication_signoff`. A validated all-approved artifact moves a
 non-live report only to `pending_live_provider_run`; a passing live run is still
 required. A live execution that misses any threshold must fail rather than
-downgrade itself to a self-test.
+downgrade itself to a self-test. Even a passing evidence field cannot make the
+human product owner's launch decision.
 
 The evaluated modes accept exactly three repetitions. The run budget is
 validated before evaluator work and rejects any plan above 96 calls. Live mode

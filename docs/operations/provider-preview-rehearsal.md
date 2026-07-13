@@ -1,7 +1,8 @@
 # Stripe And LiveKit Preview Rehearsal
 
 Status: isolated Preview providers are configured and their bounded rehearsals
-are partially complete. The current release decision is NO-GO; see
+are partially complete. The current agent readiness recommendation is
+`not ready`, and the product owner's launch decision is pending; see
 `../evidence/sav-226-relaunch-decision.md` for exact evidence and blockers.
 
 Keep the relaunch feature gate off throughout this rehearsal. This runbook does
@@ -222,11 +223,13 @@ any Production-scoped command during this phase.
   is initialized. Fuller portal route coverage remains follow-up work under
   SAV-184/SAV-186.
 
-## Live Preview Go/No-Go
+## Live Preview Rehearsal Preconditions
 
 Proceed to a separately authorized provider-connected rehearsal only when all
 provider-free checks pass, Preview Stripe uses test mode with a distinct
 webhook endpoint, the three test prices are verified, LiveKit uses a distinct
 project with a deployed matching interview agent, Inngest is ready, and the
-feature gate remains off. Any identity ambiguity is a no-go. Do not infer demo
+feature gate remains off. Any identity ambiguity is a hard stop. Do not infer demo
 availability from `livekit_ready`; the relaunch UI has no public demo action.
+Passing these preconditions authorizes only the separately bounded rehearsal;
+it does not make or imply the human product owner's launch GO/NO-GO.

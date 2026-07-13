@@ -35,7 +35,7 @@ Do not imply that Meelni can guarantee interview outcomes, predict hiring decisi
 | --------------------------- | ------------------------------------------------------------------------------------------------- |
 | PM interview gym            | Live PM interview practice                                                                        |
 | rep / reps                  | mock interview, practice session, completed interview, or interview history, according to context |
-| drill / workout             | focused practice, practice question, or suggested exercise, according to context                   |
+| drill / workout             | focused practice, practice question, or suggested exercise, according to context                  |
 | New Rep                     | New Mock Interview                                                                                |
 | Practice Home               | Overview                                                                                          |
 | readiness / readiness score | practice progress, recent practice score, or the specific measured trend                          |
@@ -65,7 +65,9 @@ The fitness-language restriction applies to Meelni's own product framing, includ
 - The discontinued experience is intentionally behind a relaunch feature flag. Its default-off state is a rollout control, not a defect.
 - Keep the experience off by default while relaunch-readiness work remains open.
 - Test the enabled path in controlled development and preview environments.
-- Enable it by default only as a deliberate launch action after the accepted launch criteria pass, with an operational disable path retained for rollback.
+- Treat accepted criteria as evidence for a readiness recommendation, not the launch decision.
+- Only the human product owner makes the final launch GO/NO-GO for the exact candidate.
+- Enable it by default only after explicit owner GO and a separately authorized launch action, with an operational disable path retained for rollback.
 
 ## Consequences
 

@@ -1,6 +1,6 @@
 # Authenticated Preview Golden Path
 
-Status: provider-free preflight is implemented; the provider-connected receipt is not yet complete. The relaunch decision remains NO-GO.
+Status: provider-free preflight is implemented; the provider-connected receipt is not yet complete. The agent readiness recommendation is `not ready`, the product owner's launch decision is pending, and the relaunch remains default-off.
 
 This runbook proves one exact synthetic path:
 
@@ -75,7 +75,7 @@ Create one private directory outside the repository with mode `0700`. Store all 
 10. Remove the temporary Statsig allow rule. With the same authenticated synthetic account and a new attempt UUID, re-prove HTTP 403 plus zero mutation delta.
 11. Remove the synthetic account through the normal immediate-deletion path, prove the LiveKit room absent, revoke or rotate only the dedicated rehearsal bypasses, preserve independently verified consumer credentials, and remove every temporary private artifact except the receipt.
 
-If any step fails, restore default-off first, stop provider work, preserve only the private diagnostic needed for recovery, and record NO-GO. Do not weaken authentication, broaden the feature gate, forge transcript rows, call the internal transcript endpoint as the browser, seed credits directly, or manually mark feedback complete.
+If any step fails, restore default-off first, stop provider work, preserve only the private diagnostic needed for recovery, and record a failed rehearsal with a `not ready` recommendation. Do not infer or record a product-owner NO-GO. Do not weaken authentication, broaden the feature gate, forge transcript rows, call the internal transcript endpoint as the browser, seed credits directly, or manually mark feedback complete.
 
 ## Receipt Verification
 
@@ -100,6 +100,12 @@ node scripts/verify-preview-golden-path-receipt.mjs \
 
 The only successful stdout is a compact object containing the contract/version, pass code, exact commit/deployment IDs, and SHA-256 receipt hash. It contains no candidate, question, room, transcript, feedback content, token, cookie, or secret. Publish only that object plus provider-owned safe receipt IDs after cleanup, then remove the private receipt.
 
-## Go/No-Go
+## Slice Evidence Gate
 
-This slice is GO only when the verifier passes on a fresh complete receipt and the exact sources behind every observation remain inspectable. Health, unit tests, a running agent, an Inngest sync, or a manually inserted transcript is not a substitute. Until then SAV-186 and the relaunch remain NO-GO.
+This slice is evidence-complete only when the verifier passes on a fresh
+complete receipt and the exact sources behind every observation remain
+inspectable. Health, unit tests, a running agent, an Inngest sync, or a manually
+inserted transcript is not a substitute. Until then the readiness
+recommendation remains `not ready` and the relaunch remains default-off. A
+passing verifier does not make the launch decision; only the human product
+owner can issue GO/NO-GO for the exact candidate.

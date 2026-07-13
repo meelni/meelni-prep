@@ -309,11 +309,13 @@ Spend approval does not approve the candidate gold set. The acknowledgement is
 deliberately exact so an ambient boolean cannot accidentally enable paid
 calibration.
 
-The live CLI exits zero only when the combined `launchAcceptance` gate is
-`passed`. A provider-quality pass still exits nonzero when adjudication approval
-is missing, stale, incomplete, or contains `changes_required` decisions.
-Review the report's model and all five version fields before accepting it as
-evidence. Store approved launch evidence in the release record without adding
+The live CLI exits zero only when the combined calibration evidence gate is
+`passed`. Its version-7 field name is the legacy `launchAcceptance`; this is a
+technical compatibility field, not the human product owner's launch decision.
+A provider-quality pass still exits nonzero when adjudication approval is
+missing, stale, incomplete, or contains `changes_required` decisions. Review
+the report's model and all five version fields before accepting it as evidence.
+Store approved calibration evidence in the release record without adding
 secrets or provider responses containing sensitive data.
 
 ## Review checklist
@@ -353,7 +355,9 @@ secrets or provider responses containing sensitive data.
 - Every output model identity matches the configured expected model and the
   observed identities are reviewed.
 - Report versions match the code intended for launch.
-- `launchAcceptance` is `passed`; a deterministic `passed` state is not enough.
+- The legacy technical `launchAcceptance` evidence field is `passed`; a
+  deterministic `passed` state is not enough, and this field never authorizes
+  launch.
 - Adjudication acceptance records completed product-owner/PM signoff; candidate
   status is never treated as ground truth.
 - Candidate and corpus hashes match the separately stored approval artifact,

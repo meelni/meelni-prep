@@ -198,8 +198,9 @@ application database, session/credit, or participant-token mutation.
 Cancellation, billing-portal access, account deletion, and existing account data
 remain available while the launch gate is off. `MEELNI_REACTIVATION_DEFAULT` is
 the explicit provider-outage
-fallback: keep it `false` before relaunch and change it to `true` only as part of
-the rehearsed launch flip. Rollback changes the Statsig gate and this fallback
+fallback: keep it `false` before relaunch and change it to `true` only after an
+explicit product-owner GO and separately authorized launch action for the exact
+candidate. Rollback changes the Statsig gate and this fallback
 together so a Statsig outage cannot invert the intended product state.
 
 In local development, the feature-flag menu stores an on/off cookie and reloads the page so the server-rendered body, metadata, and client controls use the same state.
@@ -230,9 +231,9 @@ npm run calibration:preflight
 npm run calibration:self-test
 ```
 
-They intentionally leave launch acceptance pending. The paid live-provider
-mode requires a separate exact acknowledgement and is documented in the
-[Evaluation Calibration Runbook](./evaluation-calibration.md).
+They intentionally leave calibration evidence acceptance pending. The paid
+live-provider mode requires a separate exact acknowledgement and is documented
+in the [Evaluation Calibration Runbook](./evaluation-calibration.md).
 
 ## Validation
 
