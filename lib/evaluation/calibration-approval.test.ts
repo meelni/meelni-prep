@@ -48,11 +48,15 @@ test("approval contract rejects stale candidate or corpus hashes", () => {
 
 export function testApproval(changesRequiredCaseId?: string) {
   return {
-    contractVersion: "evaluation-adjudication-approval.v1",
+    contractVersion: "evaluation-adjudication-approval.v2",
     ...getEvaluationAdjudicationHashes(),
     goldSetVersion: EVALUATION_GOLD_SET_VERSION,
     adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
     reviewer: { identity: "test-reviewer", role: "product_owner" },
+    reviewBasis: {
+      candidateManifestVersion: "evaluation-adjudication-review.v2",
+      independentExactHashReview: true,
+    },
     reviewedAt: "2026-07-10T16:00:00.000Z",
     decisions: evaluationCalibrationCases
       .filter(({ expectedQuality }) => expectedQuality !== null)
