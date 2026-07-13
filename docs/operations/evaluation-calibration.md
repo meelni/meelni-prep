@@ -50,6 +50,53 @@ This review is not wired into the paid launcher. It grants no provider access
 or spend authority. A future live run requires a distinct reviewed plan and
 owner authorization after this gate is operationally integrated.
 
+### Provider-free capture and retention
+
+Use `calibration-semantic-capture.ts` only from a trusted local operator or
+orchestrator boundary. Initialize a new absolute capture directory; the
+workflow creates it as `0700`, stores its private manifest and every exact
+response byte sequence as `0600`, and generates random opaque case/output IDs.
+The canonical parent must already exist and must not be inside a Git worktree,
+including through a symlink.
+The private manifest binds the approved plan, corpus, prompt, response schema,
+model, run, and complete hashed case/run inventory. Finalization requires one
+and only one byte-exact output for every expected case/run and rechecks every
+file hash before review and publication.
+
+Run two actual, distinct agent review tasks against the same finalized private
+capture. The orchestrator—not either reviewer artifact—constructs one
+content-free execution receipt for each completed task and then a separate
+trusted-execution authority. The constructor is a trust-boundary formatter and
+hash binder, not cryptographic proof that a task ran; the operator must verify
+the canonical task path and execution event before calling it. Never construct
+authority from panel-authored JSON or invent a human reviewer identity.
+
+`completePrivateSemanticReview` delegates decisions to the SAV-251 validator.
+It writes only a sanitized, content-free public report. It first publishes a
+truthful report with `rawCaptureDeleted: false`; only then does it delete the
+private directory and atomically replace the report with
+`rawCaptureDeleted: true`. A publication failure therefore preserves the raw
+capture. A validation failure publishes nothing and retains the capture for
+bounded investigation or explicit cleanup. Call
+`cleanupPrivateSemanticCapture` when aborting, and remove any retained capture
+no later than its private `retentionExpiresAt`. Public report paths inside the
+private capture are forbidden, including paths whose existing parent resolves
+through a symlink into that directory.
+
+The issued capture handle is an opaque, module-authenticated, same-process
+capability. Reconstructed, spread, serialized, or post-restart handles are not
+accepted. The process running this workflow must either complete or explicitly
+clean up before exit. An operator/watchdog in that same process must schedule
+`purgeExpiredPrivateSemanticCapture`; expiry blocks capture, finalization, and
+completion, while authenticated cleanup/purge remains available even when the
+private manifest is corrupt. This flow does not claim crash-surviving automatic
+deletion. A future restart-capable workflow would require a separate durable
+authenticated capability design, not a plain serialized handle.
+
+This flow is synthetic-only and provider-free. It must not receive Production
+or customer data, call a model, reuse the consumed v2 authority, or imply a v3
+plan, spend authorization, provider acceptance, or launch approval.
+
 Review the agent-authored candidate adjudications separately:
 
 ```bash

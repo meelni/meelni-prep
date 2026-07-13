@@ -95,3 +95,33 @@ invalid, forged, incomplete, contradictory, or disagreeing review produces no
 report. Semantic acceptance is necessary but not sufficient for a future
 launch decision; deterministic, cost, authority, provider, and release gates
 remain independent.
+
+## Provider-free capture integration
+
+`evaluation-output-semantic-private-capture.v1` operationalizes this contract
+without changing its decision rules. A trusted in-memory capture handle anchors
+the run ID, approved-plan hash, complete private case/run-set hash, and full
+capture-binding hash outside the mutable `0700` directory. Every manifest read
+must match those anchors, so removing a case/run and recomputing all local
+hashes cannot authorize a subset. Exact raw response bytes remain in canonical
+opaque `0600` files and are rehashed before review and publication.
+The capability is module-authenticated and valid only in the issuing process;
+plain reconstructed or serialized handles are rejected. Its retention expiry
+is also anchored and stops capture, finalization, and completion. Explicit or
+expired cleanup relies on the issued capability rather than mutable manifest
+content, so a corrupt manifest cannot prevent deletion.
+
+Two content-free `evaluation-output-semantic-execution-receipt.v1` receipts
+from actual distinct agent executions are bound by a separately supplied
+`evaluation-output-semantic-trusted-executions.v1` operator/orchestrator
+authority. These hashes authenticate the trusted caller's observed scope; the
+constructor is not independent cryptographic proof that an execution occurred.
+Reviewer-authored artifacts cannot serve as that authority.
+
+Only a passing SAV-251 adjudication may emit
+`evaluation-output-semantic-capture-report.v1`. Publication is sanitized and
+precedes deletion with a truthful pending-deletion state; successful cleanup
+atomically advances that state. Failed validation emits nothing, and failed
+publication preserves private bytes for bounded retention or explicit cleanup.
+None of these contracts grants provider, spend, Production, customer-data,
+v3-run, or launch authority.
