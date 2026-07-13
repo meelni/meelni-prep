@@ -190,14 +190,14 @@ export function buildRefreshedEnv({
 }
 
 export function validateRefreshedEnv(env, environment) {
+  const runtimeKeys =
+    environment === "preview"
+      ? [...REQUIRED_RUNTIME_KEYS, "MEELNI_PREVIEW_LIVEKIT_URL"]
+      : REQUIRED_RUNTIME_KEYS;
   const requiredKeys =
     environment === "production"
-      ? [
-          ...REQUIRED_RUNTIME_KEYS,
-          ...REQUIRED_BILLING_KEYS,
-          "NEXT_PUBLIC_APP_URL",
-        ]
-      : [...REQUIRED_RUNTIME_KEYS, ...REQUIRED_BILLING_KEYS];
+      ? [...runtimeKeys, ...REQUIRED_BILLING_KEYS, "NEXT_PUBLIC_APP_URL"]
+      : [...runtimeKeys, ...REQUIRED_BILLING_KEYS];
   const missing = requiredKeys.filter((key) =>
     isBlankOrPlaceholder(readEnvValue(env, key))
   );
@@ -682,11 +682,16 @@ function validateLiveKitIdentity(env, environment) {
   const productionOrigin = canonicalLiveKitCloudOrigin(
     readEnvValue(env, "MEELNI_PRODUCTION_LIVEKIT_URL")
   );
+  const previewValue = readEnvValue(env, "MEELNI_PREVIEW_LIVEKIT_URL");
+  const previewOrigin = previewValue
+    ? canonicalLiveKitCloudOrigin(previewValue)
+    : undefined;
   if (
     !selectedOrigin ||
     (publicValue && !publicOrigin) ||
     (serverValue && !serverOrigin) ||
-    !productionOrigin
+    !productionOrigin ||
+    (previewValue && !previewOrigin)
   ) {
     throw new Error(
       `Vercel ${environment} LiveKit project identity is invalid. The existing file was kept.`
@@ -697,13 +702,20 @@ function validateLiveKitIdentity(env, environment) {
       `Vercel ${environment} LiveKit URLs identify different projects. The existing file was kept.`
     );
   }
+  if (previewOrigin === productionOrigin) {
+    throw new Error(
+      `Vercel ${environment} Preview and Production LiveKit identity anchors conflict. The existing file was kept.`
+    );
+  }
   const matchesProduction = selectedOrigin === productionOrigin;
-  if (
-    (environment === "production" && !matchesProduction) ||
-    (environment === "preview" && matchesProduction)
-  ) {
+  if (environment === "production" && !matchesProduction) {
     throw new Error(
       `Vercel ${environment} LiveKit project violates the Production identity boundary. The existing file was kept.`
+    );
+  }
+  if (environment === "preview" && selectedOrigin !== previewOrigin) {
+    throw new Error(
+      `Vercel ${environment} LiveKit project does not match the Preview identity anchor. The existing file was kept.`
     );
   }
 }

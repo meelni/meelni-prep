@@ -44,6 +44,7 @@ test("livekit env contract captures server keys and websocket URL alternatives",
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
     "MEELNI_PRODUCTION_LIVEKIT_URL",
+    "MEELNI_PREVIEW_LIVEKIT_URL",
     "LIVEKIT_INTERVIEW_AGENT_NAME",
     "LIVEKIT_DEMO_AGENT_NAME",
     "NEXT_PUBLIC_LIVEKIT_URL",
@@ -138,6 +139,7 @@ test("getLiveKitEnvironment accepts public or server websocket URL", () => {
     LIVEKIT_API_KEY: "key",
     LIVEKIT_API_SECRET: "secret",
     LIVEKIT_URL: "wss://server.livekit.cloud",
+    MEELNI_PREVIEW_LIVEKIT_URL: "wss://server.livekit.cloud",
     MEELNI_PRODUCTION_LIVEKIT_URL: "wss://production.livekit.cloud",
   });
 
@@ -221,6 +223,7 @@ test("LiveKit environment canonicalizes and isolates shared project origins", ()
     VERCEL_ENV: "preview",
     LIVEKIT_API_KEY: "key",
     LIVEKIT_API_SECRET: "secret",
+    MEELNI_PREVIEW_LIVEKIT_URL: "wss://PREVIEW.livekit.cloud/",
     MEELNI_PRODUCTION_LIVEKIT_URL: "wss://PROD.livekit.cloud.:443/",
   };
   assert.equal(
@@ -259,6 +262,52 @@ test("LiveKit environment canonicalizes and isolates shared project origins", ()
       ...base,
       LIVEKIT_URL: "wss://one.livekit.cloud",
       NEXT_PUBLIC_LIVEKIT_URL: "wss://two.livekit.cloud",
+    }).ok,
+    false
+  );
+  assert.equal(
+    getLiveKitEnvironment({
+      ...base,
+      LIVEKIT_URL: "wss://other-preview.livekit.cloud",
+    }).ok,
+    false
+  );
+  assert.equal(
+    getLiveKitEnvironment({
+      ...base,
+      MEELNI_PREVIEW_LIVEKIT_URL: "wss://prod.livekit.cloud",
+      LIVEKIT_URL: "wss://preview.livekit.cloud",
+    }).ok,
+    false
+  );
+});
+
+test("development stays off Production and may reuse the Preview project", () => {
+  const base = {
+    VERCEL_ENV: "development",
+    LIVEKIT_API_KEY: "key",
+    LIVEKIT_API_SECRET: "secret",
+    MEELNI_PRODUCTION_LIVEKIT_URL: "wss://production.livekit.cloud",
+  };
+  assert.equal(
+    getLiveKitEnvironment({
+      ...base,
+      LIVEKIT_URL: "wss://preview.livekit.cloud",
+      MEELNI_PREVIEW_LIVEKIT_URL: "wss://preview.livekit.cloud",
+    }).ok,
+    true
+  );
+  assert.equal(
+    getLiveKitEnvironment({
+      ...base,
+      LIVEKIT_URL: "wss://development.livekit.cloud",
+    }).ok,
+    true
+  );
+  assert.equal(
+    getLiveKitEnvironment({
+      ...base,
+      LIVEKIT_URL: "wss://production.livekit.cloud",
     }).ok,
     false
   );

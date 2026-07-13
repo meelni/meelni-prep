@@ -42,9 +42,12 @@ Vercel can return a present but blank value for an encrypted secret. In that
 case the refresh preserves a usable value already present in the same
 environment file only when that file is already marked for the requested
 environment. Public Supabase URL and anon-key values always come from the
-current scoped pull and are never restored from an older file. The refresh
-also requires the Supabase, LiveKit, and OpenAI values needed by local runtime;
-Production must supply its own application URL. It never borrows database,
+current scoped pull and are never restored from an older file. Preview also
+requires a fresh nonblank `MEELNI_PREVIEW_LIVEKIT_URL`; it is never restored
+from an older file and must exactly identify the pulled LiveKit project while
+differing from `MEELNI_PRODUCTION_LIVEKIT_URL`. The refresh also requires the
+Supabase, LiveKit, and OpenAI values needed by local runtime; Production must
+supply its own application URL. It never borrows database,
 Supabase, Stripe, or provider credentials from Development or Production, and
 a key absent from Vercel is treated as removed rather than silently
 resurrected.

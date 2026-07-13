@@ -27,13 +27,16 @@ LiveKit Preview requires:
 
 - `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`;
 - `NEXT_PUBLIC_LIVEKIT_URL` or `LIVEKIT_URL` for a dedicated Preview project;
+- `MEELNI_PREVIEW_LIVEKIT_URL`, a fresh non-secret Preview project anchor;
 - `MEELNI_PRODUCTION_LIVEKIT_URL`, a non-secret Production project anchor;
 - the appropriate `LIVEKIT_INTERVIEW_AGENT_NAME` and
   `LIVEKIT_DEMO_AGENT_NAME` values.
 
-Production must match the canonical Production LiveKit origin. Preview and
-Development must differ from it. If both LiveKit URL variables exist, they must
-canonicalize to the same credential-free `wss://*.livekit.cloud` origin.
+Production must match the canonical Production LiveKit origin. Preview must
+match the canonical Preview anchor, and those anchors must differ. Development
+must differ from Production and may use Preview when its anchor is present. If
+both LiveKit URL variables exist, they must canonicalize to the same
+credential-free `wss://*.livekit.cloud` origin.
 The web runtime, internal transcript authentication, and both Python voice
 workers enforce this identity before provider initialization or transcript
 mutation. The Production anchor is scoped identity metadata and is never
@@ -42,12 +45,15 @@ Docker builds may run the exact provider-free `download-files` agent command
 without runtime credentials. No worker command or room entrypoint receives
 that exception.
 
-LiveKit deploys require an explicit `preview` or `production` argument and the
-matching external environment-and-agent config path documented in
-`agent/README.md`. Before any `lk agent deploy`, the script derives the project
-origin from `[project].subdomain`: Preview must differ from
-`MEELNI_PRODUCTION_LIVEKIT_URL`, while Production must match it. Tracked TOML
-files intentionally contain no project or agent identifiers.
+LiveKit deploys require an explicit `preview` or `production` argument, the
+matching external environment-and-agent config path, both project anchors, and
+the matching expected agent ID documented in `agent/README.md`. Before any
+`lk agent deploy`, the script resolves one absolute config path and uses it for
+both validation and deployment. `[project].subdomain` must match the selected
+environment anchor and `[agent].id` must match the selected worker's expected
+ID. Tracked TOML files intentionally contain no project or agent identifiers.
+Preview-scoped env pulls require a fresh nonblank Preview anchor and never
+restore it from a stale local file.
 
 The Stripe catalog setup command applies the same trusted deployment identity
 and key-mode boundary before constructing a Stripe client. `--dry-run` remains
@@ -85,10 +91,9 @@ any Production-scoped command during this phase.
 - Static Stripe price IDs are opaque. The three configured Preview prices still
   require read-only test-account verification that each exists and reports
   `livemode=false` before Checkout rehearsal.
-- A distinct Preview LiveKit Cloud project, API credentials, and both agent
-  dispatch names must be verified. The URL inequality guard prevents a known
-  Production target but cannot prove that credentials or agent names belong to
-  the declared Preview project.
+- Preview remains fail-closed until its distinct LiveKit project anchor and
+  environment-and-worker agent IDs are configured. API credentials and dispatch
+  names still require read-only provider verification before rehearsal.
 - LiveKit supports multiple individually linked Cloud projects. Usage and
   quotas are project-scoped, while free-project allowances are shared across
   free projects; another project does not increase that allowance. Billing is

@@ -84,6 +84,7 @@ class RuntimeContractTests(unittest.TestCase):
             "LIVEKIT_API_KEY": "key",
             "LIVEKIT_API_SECRET": "secret",
             "LIVEKIT_URL": "wss://preview.livekit.cloud",
+            "MEELNI_PREVIEW_LIVEKIT_URL": "wss://preview.livekit.cloud",
             "MEELNI_PRODUCTION_LIVEKIT_URL": "wss://production.livekit.cloud",
             "NODE_ENV": "production",
         }
@@ -98,6 +99,8 @@ class RuntimeContractTests(unittest.TestCase):
                 "NEXT_PUBLIC_LIVEKIT_URL": "wss://other.livekit.cloud",
             },
             {**base, "LIVEKIT_URL": "https://preview.livekit.cloud"},
+            {**base, "MEELNI_PREVIEW_LIVEKIT_URL": "wss://other.livekit.cloud"},
+            {key: value for key, value in base.items() if key != "MEELNI_PREVIEW_LIVEKIT_URL"},
             {**base, "MEELNI_ENV_PULL_ENVIRONMENT": "production"},
             {key: value for key, value in base.items() if key != "VERCEL_ENV"},
         ]
@@ -120,6 +123,33 @@ class RuntimeContractTests(unittest.TestCase):
         with self.assertRaises(ProviderEnvironmentError):
             validate_livekit_runtime_environment(
                 {**production, "NEXT_PUBLIC_LIVEKIT_URL": "wss://preview.livekit.cloud"}
+            )
+
+    def test_livekit_runtime_development_may_use_preview_but_never_production(self):
+        development = {
+            "VERCEL_ENV": "development",
+            "LIVEKIT_API_KEY": "key",
+            "LIVEKIT_API_SECRET": "secret",
+            "LIVEKIT_URL": "wss://development.livekit.cloud",
+            "MEELNI_PRODUCTION_LIVEKIT_URL": "wss://production.livekit.cloud",
+        }
+        self.assertEqual(
+            validate_livekit_runtime_environment(development).deployment,
+            "development",
+        )
+        self.assertEqual(
+            validate_livekit_runtime_environment(
+                {
+                    **development,
+                    "LIVEKIT_URL": "wss://preview.livekit.cloud",
+                    "MEELNI_PREVIEW_LIVEKIT_URL": "wss://preview.livekit.cloud",
+                }
+            ).url,
+            "wss://preview.livekit.cloud",
+        )
+        with self.assertRaises(ProviderEnvironmentError):
+            validate_livekit_runtime_environment(
+                {**development, "LIVEKIT_URL": "wss://production.livekit.cloud"}
             )
 
     def test_both_workers_validate_identity_before_provider_initialization(self):
@@ -162,41 +192,76 @@ class RuntimeContractTests(unittest.TestCase):
             fake_bin = root / "bin"
             fake_bin.mkdir()
             log_path = root / "lk.log"
+            validator_log = root / "validator.log"
             fake_lk = fake_bin / "lk"
             fake_lk.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$LK_LOG"\n')
             fake_lk.chmod(0o755)
-            preview = root / "preview.toml"
-            production = root / "production.toml"
-            preview.write_text(
-                '[project]\nsubdomain = "preview-project"\n[agent]\nid = "preview-agent"\n'
+            fake_python = fake_bin / "python3"
+            fake_python.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$4" >> "$VALIDATOR_LOG"\n'
+                'exec "$REAL_PYTHON" "$@"\n'
             )
-            production.write_text(
-                '[project]\nsubdomain = "production-project"\n[agent]\nid = "production-agent"\n'
-            )
+            fake_python.chmod(0o755)
+            configs = {}
+            for environment in ("preview", "production"):
+                for kind in ("interview", "demo"):
+                    path = root / f"{environment}-{kind}.toml"
+                    path.write_text(
+                        f'[project]\nsubdomain = "{environment}-project"\n'
+                        f'[agent]\nid = "{environment}-{kind}-agent"\n'
+                    )
+                    configs[(environment, kind)] = path
             env = {
                 **os.environ,
                 "PATH": f"{fake_bin}:{os.environ['PATH']}",
                 "LK_LOG": str(log_path),
+                "VALIDATOR_LOG": str(validator_log),
+                "REAL_PYTHON": sys.executable,
+                "MEELNI_PREVIEW_LIVEKIT_URL": "wss://preview-project.livekit.cloud",
                 "MEELNI_PRODUCTION_LIVEKIT_URL": "wss://production-project.livekit.cloud",
             }
 
             for kind in ("interview", "demo"):
-                for environment, expected in (
-                    ("preview", preview),
-                    ("production", production),
-                ):
+                for environment in ("preview", "production"):
+                    expected = configs[(environment, kind)]
                     selected_env = {
                         **env,
-                        f"MEELNI_LIVEKIT_{environment.upper()}_{kind.upper()}_CONFIG": str(expected),
+                        f"MEELNI_LIVEKIT_{environment.upper()}_{kind.upper()}_CONFIG": f"./{expected.name}",
+                        f"MEELNI_LIVEKIT_{environment.upper()}_{kind.upper()}_AGENT_ID": f"{environment}-{kind}-agent",
                     }
                     subprocess.run(
                         [str(agent_root / kind / "deploy.sh"), environment],
                         check=True,
                         env=selected_env,
+                        cwd=root,
                         capture_output=True,
                         text=True,
                     )
-                    self.assertIn(f"--config {expected} agent deploy .", log_path.read_text())
+                    validated_path = validator_log.read_text().splitlines()[-1]
+                    consumed_path = re.search(
+                        r"--config (.+) agent deploy \.$",
+                        log_path.read_text().splitlines()[-1],
+                    ).group(1)
+                    self.assertEqual(validated_path, str(expected.resolve()))
+                    self.assertEqual(consumed_path, validated_path)
+
+            provider_calls = log_path.read_text().splitlines()
+            validation_calls = validator_log.read_text().splitlines()
+            for kind in ("interview", "demo"):
+                missing_env = {
+                    **env,
+                    f"MEELNI_LIVEKIT_PREVIEW_{kind.upper()}_CONFIG": "./missing.toml",
+                }
+                result = subprocess.run(
+                    [str(agent_root / kind / "deploy.sh"), "preview"],
+                    env=missing_env,
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(log_path.read_text().splitlines(), provider_calls)
+            self.assertEqual(validator_log.read_text().splitlines(), validation_calls)
 
     def test_livekit_deploy_denials_never_invoke_fake_cli(self):
         agent_root = Path(__file__).parent
@@ -210,7 +275,18 @@ class RuntimeContractTests(unittest.TestCase):
             fake_lk.chmod(0o755)
             production = root / "production.toml"
             production.write_text(
-                '[project]\nsubdomain = "production-project"\n[agent]\nid = "production-agent"\n'
+                '[project]\nsubdomain = "production-project"\n'
+                '[agent]\nid = "production-interview-agent"\n'
+            )
+            wrong_preview = root / "wrong-preview.toml"
+            wrong_preview.write_text(
+                '[project]\nsubdomain = "other-preview-project"\n'
+                '[agent]\nid = "preview-interview-agent"\n'
+            )
+            preview_demo = root / "preview-demo.toml"
+            preview_demo.write_text(
+                '[project]\nsubdomain = "preview-project"\n'
+                '[agent]\nid = "preview-demo-agent"\n'
             )
             malformed = root / "malformed.toml"
             malformed.write_text("not toml =")
@@ -218,17 +294,48 @@ class RuntimeContractTests(unittest.TestCase):
                 **os.environ,
                 "PATH": f"{fake_bin}:{os.environ['PATH']}",
                 "LK_LOG": str(log_path),
+                "MEELNI_PREVIEW_LIVEKIT_URL": "wss://preview-project.livekit.cloud",
                 "MEELNI_PRODUCTION_LIVEKIT_URL": "wss://production-project.livekit.cloud",
+                "MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID": "preview-interview-agent",
+                "MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID": "production-interview-agent",
             }
             denied = [
                 (
                     "preview",
                     {
                         **base,
-                        "MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG": str(production),
+                        "MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG": str(wrong_preview),
                     },
                 ),
-                ("production", base),
+                (
+                    "preview",
+                    {
+                        **base,
+                        "MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG": str(preview_demo),
+                    },
+                ),
+                (
+                    "preview",
+                    {
+                        key: value
+                        for key, value in {
+                            **base,
+                            "MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG": str(preview_demo),
+                        }.items()
+                        if key != "MEELNI_PREVIEW_LIVEKIT_URL"
+                    },
+                ),
+                (
+                    "production",
+                    {
+                        key: value
+                        for key, value in {
+                            **base,
+                            "MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG": str(production),
+                        }.items()
+                        if key != "MEELNI_PRODUCTION_LIVEKIT_URL"
+                    },
+                ),
                 (
                     "production",
                     {
@@ -244,6 +351,7 @@ class RuntimeContractTests(unittest.TestCase):
                         "MEELNI_PRODUCTION_LIVEKIT_URL": "not-a-url",
                     },
                 ),
+                ("staging", base),
             ]
             for environment, env in denied:
                 result = subprocess.run(

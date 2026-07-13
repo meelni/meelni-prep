@@ -193,11 +193,16 @@ Operational notes:
 - Voice-agent deploys require `preview` or `production` explicitly and use
   environment-and-agent-specific external config paths: the
   `MEELNI_LIVEKIT_{PREVIEW,PRODUCTION}_{DEMO,INTERVIEW}_CONFIG` variables.
+  Set both `MEELNI_PREVIEW_LIVEKIT_URL` and
+  `MEELNI_PRODUCTION_LIVEKIT_URL`, plus the matching
+  `MEELNI_LIVEKIT_{PREVIEW,PRODUCTION}_{DEMO,INTERVIEW}_AGENT_ID` variables.
   Run `agent/demo/deploy.sh preview|production` or
   `agent/interview/deploy.sh preview|production`. Before invoking `lk`, each
-  script requires an agent ID and proves the selected project differs from the
-  `MEELNI_PRODUCTION_LIVEKIT_URL` anchor for Preview or matches it for
-  Production. Tracked TOML files contain no provider identifiers.
+  script resolves one absolute config path and proves the selected project and
+  agent ID exactly match the selected environment and worker. The Preview and
+  Production anchors must differ. Tracked TOML files contain no provider
+  identifiers. Preview env pulls require a fresh Preview anchor and do not
+  preserve a stale local value.
 
 ## Supabase
 

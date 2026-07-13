@@ -109,6 +109,7 @@ Create a `.env` file in the agent directory:
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=your_api_key
 LIVEKIT_API_SECRET=your_api_secret
+MEELNI_PREVIEW_LIVEKIT_URL=wss://your-preview-project.livekit.cloud
 MEELNI_PRODUCTION_LIVEKIT_URL=wss://your-production-project.livekit.cloud
 VERCEL_ENV=development
 LIVEKIT_INTERVIEW_AGENT_NAME=your_interview_agent_name
@@ -148,9 +149,19 @@ and the correct agent ID. Set the matching config path before deployment:
 - `MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG`
 - `MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG`
 
-`MEELNI_PRODUCTION_LIVEKIT_URL` is required. The deploy scripts reject a
-Preview config targeting that origin and reject a Production config targeting
-anything else before invoking `lk`.
+Also set the non-secret project anchors `MEELNI_PREVIEW_LIVEKIT_URL` and
+`MEELNI_PRODUCTION_LIVEKIT_URL`, plus the expected ID paired with each config:
+
+- `MEELNI_LIVEKIT_PREVIEW_DEMO_AGENT_ID`
+- `MEELNI_LIVEKIT_PRODUCTION_DEMO_AGENT_ID`
+- `MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID`
+- `MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID`
+
+Before invoking `lk`, the deploy scripts resolve the config to one absolute
+file path and pass that exact path through validation and deployment. Preview
+must match the Preview project anchor, Production must match the Production
+anchor, the anchors must differ, and `[agent].id` must equal the selected
+environment-and-worker expected ID.
 
 **Deploy Demo Agent:**
 
@@ -177,6 +188,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instruction
 | `LIVEKIT_URL`                                 | ✅       | LiveKit WebSocket URL                         |
 | `LIVEKIT_API_KEY`                             | ✅       | LiveKit API key                               |
 | `LIVEKIT_API_SECRET`                          | ✅       | LiveKit API secret                            |
+| `MEELNI_PREVIEW_LIVEKIT_URL`                  | Preview  | Non-secret Preview project identity anchor    |
 | `MEELNI_PRODUCTION_LIVEKIT_URL`               | ✅       | Non-secret Production project identity anchor |
 | `VERCEL_ENV` or `MEELNI_ENV_PULL_ENVIRONMENT` | ✅       | Trusted deployment identity                   |
 | `OPENAI_API_KEY`                              | ✅       | OpenAI API key                                |

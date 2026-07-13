@@ -14,6 +14,7 @@ const READY_ENV = {
   LIVEKIT_API_KEY: "key",
   LIVEKIT_API_SECRET: "secret",
   LIVEKIT_URL: "wss://preview.livekit.cloud",
+  MEELNI_PREVIEW_LIVEKIT_URL: "wss://preview.livekit.cloud",
   MEELNI_PRODUCTION_LIVEKIT_URL: "wss://production.livekit.cloud",
   LIVEKIT_INTERVIEW_AGENT_NAME: "interview-agent",
   STRIPE_WEBHOOK_SECRET: "whsec_test",

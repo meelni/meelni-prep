@@ -56,9 +56,19 @@ def validate_livekit_runtime_environment(
     )
     if not production_origin:
         raise ProviderEnvironmentError("livekit_production_identity_missing")
+    preview_value = env.get("MEELNI_PREVIEW_LIVEKIT_URL")
+    preview_origin = canonical_livekit_origin(preview_value) if preview_value else None
+    if preview_value and not preview_origin:
+        raise ProviderEnvironmentError("livekit_preview_identity_invalid")
+    if preview_origin == production_origin:
+        raise ProviderEnvironmentError("livekit_environment_identity_conflict")
     if deployment == "production" and current_origin != production_origin:
         raise ProviderEnvironmentError("livekit_production_identity_mismatch")
-    if deployment != "production" and current_origin == production_origin:
+    if deployment == "preview" and not preview_origin:
+        raise ProviderEnvironmentError("livekit_preview_identity_missing")
+    if deployment == "preview" and current_origin != preview_origin:
+        raise ProviderEnvironmentError("livekit_preview_identity_mismatch")
+    if deployment == "development" and current_origin == production_origin:
         raise ProviderEnvironmentError("livekit_nonproduction_identity_conflict")
 
     return LiveKitRuntimeEnvironment(deployment=deployment, url=current_origin)
