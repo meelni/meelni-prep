@@ -3,19 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { subscription, stripeCustomerMapping } from "@/lib/db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import Stripe from "stripe";
-import {
-  STRIPE_API_VERSION,
-  getStripeCatalogIdForPrice,
-} from "@/lib/billing/stripe-catalog";
+import type Stripe from "stripe";
+import { getStripeCatalogIdForPrice } from "@/lib/billing/stripe-catalog";
+import { createStripeRuntimeClient } from "@/lib/billing/stripe-client";
 import { mayApplyStripeSubscriptionResource } from "@/lib/billing/stripe-subscription-event-order";
 import { cancelObservedMissingStripeSubscription } from "@/lib/db/stripe-subscription-sync";
-
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
-    })
-  : null;
 
 /**
  * POST /api/billing/sync
@@ -46,8 +38,12 @@ export async function POST() {
 
     const userId = user.id;
 
-    // Check if Stripe is configured
-    if (!stripe) {
+    let stripe: Stripe;
+    try {
+      stripe = createStripeRuntimeClient(process.env, undefined, {
+        requireCompleteBillingConfiguration: true,
+      });
+    } catch {
       return NextResponse.json({
         synced: false,
         message: "Payment system not configured",

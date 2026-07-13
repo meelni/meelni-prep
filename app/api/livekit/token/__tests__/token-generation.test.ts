@@ -98,6 +98,31 @@ describe("POST /api/livekit/token", () => {
     expect(mocks.joinInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 
+  it("withholds token workflow calls when LiveKit identity is invalid", async () => {
+    mocks.createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "authenticated-user", email: null } },
+          error: null,
+        }),
+      },
+    });
+    mocks.getLiveKitEnvironment.mockReturnValue({
+      ok: false,
+      provider: "livekit",
+      error: {
+        code: "livekit_nonproduction_identity_conflict",
+        message: "invalid identity",
+        retryable: false,
+      },
+    });
+
+    const response = await POST(createRequest({ sessionId }));
+
+    expect(response.status).toBe(500);
+    expect(mocks.joinInterviewSessionWorkflow).not.toHaveBeenCalled();
+  });
+
   it("passes only the authenticated user and session ID to authorization", async () => {
     mocks.createClient.mockResolvedValue({
       auth: {

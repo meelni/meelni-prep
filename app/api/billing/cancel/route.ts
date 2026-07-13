@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { z } from "zod";
-import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
+import { createStripeRuntimeClient } from "@/lib/billing/stripe-client";
 import {
   BillingAccountBusyError,
   subscriptionMutationIdempotencyKey,
@@ -97,12 +97,11 @@ export async function POST(req: NextRequest) {
 }
 
 function createStripeClient() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  return key
-    ? new Stripe(key, {
-        apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
-      })
-    : null;
+  try {
+    return createStripeRuntimeClient();
+  } catch {
+    return null;
+  }
 }
 
 function cancellationResponse(periodEnd: Date | null, observedAt: Date) {

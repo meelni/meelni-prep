@@ -13,7 +13,8 @@ const NOW = new Date("2026-07-10T20:00:00.000Z");
 const READY_ENV = {
   LIVEKIT_API_KEY: "key",
   LIVEKIT_API_SECRET: "secret",
-  LIVEKIT_URL: "wss://livekit.example.test",
+  LIVEKIT_URL: "wss://preview.livekit.cloud",
+  MEELNI_PRODUCTION_LIVEKIT_URL: "wss://production.livekit.cloud",
   LIVEKIT_INTERVIEW_AGENT_NAME: "interview-agent",
   STRIPE_WEBHOOK_SECRET: "whsec_test",
   INNGEST_EVENT_KEY: "event-key",

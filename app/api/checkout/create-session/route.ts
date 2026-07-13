@@ -3,13 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { stripeCustomerMapping, subscription } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { z } from "zod";
 import {
-  STRIPE_API_VERSION,
   getCheckoutModeForCatalogId,
   getStripePriceIdForCatalogId,
 } from "@/lib/billing/stripe-catalog";
+import { createStripeRuntimeClient } from "@/lib/billing/stripe-client";
 import { obtainCheckoutSessionUnlessDeleting } from "@/lib/billing/account-deletion-guard";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import {
@@ -427,13 +427,7 @@ function billingBusyResponse() {
 }
 
 function getStripe() {
-  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-
-  if (!stripeSecretKey) {
-    throw new Error("STRIPE_SECRET_KEY environment variable is required");
-  }
-
-  return new Stripe(stripeSecretKey, {
-    apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
+  return createStripeRuntimeClient(process.env, undefined, {
+    requireCompleteBillingConfiguration: true,
   });
 }

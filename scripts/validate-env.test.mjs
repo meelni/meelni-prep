@@ -17,6 +17,18 @@ test("environment validation keeps loopback database workflows provider-independ
   assert.match(result.stdout, /All required environment variables are set/);
 });
 
+test("environment validation accepts a restricted Preview Stripe key", () => {
+  const result = validateWith({
+    DATABASE_URL: databaseUrl(previewRef),
+    MEELNI_ENV_PULL_ENVIRONMENT: "preview",
+    MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: productionRef,
+    STRIPE_SECRET_KEY: "rk_test_restricted",
+    VERCEL_ENV: "preview",
+  });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
 test("environment validation requires the Production identity anchor for remote Preview", () => {
   const result = validateWith({
     DATABASE_URL: databaseUrl(previewRef),
@@ -70,10 +82,17 @@ function validateWith(overrides) {
           "postgresql://postgres:postgres@127.0.0.1:5432/meelni_test",
         LIVEKIT_API_KEY: "livekit-api-key",
         LIVEKIT_API_SECRET: "livekit-api-secret",
-        NEXT_PUBLIC_LIVEKIT_URL: "wss://meelni.livekit.cloud",
+        NEXT_PUBLIC_LIVEKIT_URL: "wss://preview.livekit.cloud",
+        MEELNI_PRODUCTION_LIVEKIT_URL: "wss://production.livekit.cloud",
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJvalid",
         NEXT_PUBLIC_SUPABASE_URL: `https://${previewRef}.supabase.co`,
         OPENAI_API_KEY: "sk-valid",
+        STRIPE_SECRET_KEY: "sk_test_valid",
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_test_valid",
+        STRIPE_WEBHOOK_SECRET: "whsec_valid",
+        STRIPE_INTERVIEW_PASS_PRICE_ID: "price_pass",
+        STRIPE_STARTER_MONTHLY_PRICE_ID: "price_starter",
+        STRIPE_PRO_MONTHLY_PRICE_ID: "price_pro",
         ...overrides,
       },
       timeout: 10_000,

@@ -5,6 +5,10 @@
 
 import { isPlaceholderEnvValue } from "./local-env.mjs";
 import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-guard.mjs";
+import {
+  getLiveKitEnvironment,
+  getStripeRuntimeEnvironment,
+} from "@meelni/integrations";
 
 interface EnvVarConfig {
   name: string;
@@ -74,7 +78,7 @@ const envVars: EnvVarConfig[] = [
     name: "STRIPE_SECRET_KEY",
     required: false,
     description: "Stripe secret key for billing",
-    pattern: /^sk_(test|live)_/,
+    pattern: /^(sk|rk)_(test|live)_/,
   },
   {
     name: "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
@@ -182,11 +186,28 @@ function validateEnvironment(): ValidationResult {
     );
   }
 
+  if (environment || vercelEnvironment) {
+    const liveKitEnvironment = getLiveKitEnvironment(process.env);
+    if (!liveKitEnvironment.ok) {
+      errors.push(
+        `❌ Invalid LiveKit environment identity: ${liveKitEnvironment.error.code}`
+      );
+    }
+    const stripeEnvironment = getStripeRuntimeEnvironment(process.env, {
+      requireCompleteBillingConfiguration: true,
+    });
+    if (!stripeEnvironment.ok) {
+      errors.push(
+        `❌ Invalid Stripe environment identity: ${stripeEnvironment.error.code}`
+      );
+    }
+  }
+
   // Additional security checks
-  const productionChecks = process.env.NODE_ENV === "production";
+  const productionChecks = environment === "production";
   if (productionChecks) {
     // Warn if using test Stripe keys in production
-    if (process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
+    if (/^(sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY ?? "")) {
       warnings.push("⚠️  Using Stripe TEST key in production environment");
     }
 
