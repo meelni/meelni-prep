@@ -264,6 +264,10 @@ test("a failed response from an unexpected model preserves identity and known co
 
 test("live reports preserve only allowlisted provider failure categories", async () => {
   for (const failureCode of [
+    "evaluation_provider_refused",
+    "evaluation_provider_incomplete",
+    "evaluation_provider_content_filtered",
+    "evaluation_provider_unexpected_finish",
     "evaluation_provider_returned_no_content",
     "evaluation_provider_returned_invalid_json",
     "evaluation_provider_returned_invalid_feedback",

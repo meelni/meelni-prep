@@ -20,6 +20,12 @@ import {
   getCalibrationProviderRequestFields,
   parseFeedbackProviderCompletion,
 } from "./scorer";
+import {
+  FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION,
+  getFeedbackProviderResponseFormatContractHash,
+  getFeedbackProviderResponseFormat,
+  serializeFeedbackProviderResponseFormat,
+} from "./provider-response-format";
 
 const TEST_API_KEY = "test-only-key-that-never-leaves-process";
 const TEST_TRANSCRIPT = [
@@ -59,7 +65,7 @@ test("provider completion parsing preserves only closed failure categories", () 
           model: CALIBRATION_PRICING_CONTRACT.model,
           service_tier: "default",
           usage: TEST_USAGE,
-          choices: [{ message: { content: null } }],
+          choices: [{ finish_reason: "stop", message: { content: null } }],
         },
         TEST_TRANSCRIPT,
         "full"
@@ -75,7 +81,7 @@ test("provider completion parsing preserves only closed failure categories", () 
           model: CALIBRATION_PRICING_CONTRACT.model,
           service_tier: "default",
           usage: TEST_USAGE,
-          choices: [{ message: { content: malformed } }],
+          choices: [{ finish_reason: "stop", message: { content: malformed } }],
         },
         TEST_TRANSCRIPT,
         "full"
@@ -95,7 +101,9 @@ test("provider completion parsing preserves only closed failure categories", () 
           model: CALIBRATION_PRICING_CONTRACT.model,
           service_tier: "default",
           usage: TEST_USAGE,
-          choices: [{ message: { content: invalidFeedback } }],
+          choices: [
+            { finish_reason: "stop", message: { content: invalidFeedback } },
+          ],
         },
         TEST_TRANSCRIPT,
         "full"
@@ -103,6 +111,159 @@ test("provider completion parsing preserves only closed failure categories", () 
     "evaluation_provider_returned_invalid_feedback",
     "must-not-leak"
   );
+});
+
+test("provider completion parsing distinguishes refusal and terminal finish categories", () => {
+  const cases = [
+    {
+      message: {
+        content: "partial-content-must-not-win",
+        refusal: "raw-refusal-must-not-leak",
+      },
+      finish_reason: "stop" as const,
+      code: "evaluation_provider_refused" as const,
+      forbidden: "raw-refusal-must-not-leak",
+    },
+    {
+      message: { content: "partial-json-must-not-be-parsed" },
+      finish_reason: "length" as const,
+      code: "evaluation_provider_incomplete" as const,
+      forbidden: "partial-json-must-not-be-parsed",
+    },
+    {
+      message: { content: null },
+      finish_reason: "content_filter" as const,
+      code: "evaluation_provider_content_filtered" as const,
+    },
+    {
+      message: { content: null },
+      finish_reason: "tool_calls" as const,
+      code: "evaluation_provider_unexpected_finish" as const,
+    },
+  ];
+
+  for (const fixture of cases) {
+    assertProviderFailure(
+      () =>
+        parseFeedbackProviderCompletion(
+          {
+            model: CALIBRATION_PRICING_CONTRACT.model,
+            service_tier: "default",
+            usage: TEST_USAGE,
+            choices: [fixture],
+          },
+          TEST_TRANSCRIPT,
+          "full"
+        ),
+      fixture.code,
+      fixture.forbidden
+    );
+  }
+
+  for (const finish_reason of [undefined, null, "unknown_runtime_value"]) {
+    assertProviderFailure(
+      () =>
+        parseFeedbackProviderCompletion(
+          {
+            model: CALIBRATION_PRICING_CONTRACT.model,
+            service_tier: "default",
+            usage: TEST_USAGE,
+            choices: [
+              {
+                finish_reason,
+                message: { content: "valid-looking-content-must-not-win" },
+              },
+            ],
+          },
+          TEST_TRANSCRIPT,
+          "full"
+        ),
+      "evaluation_provider_unexpected_finish",
+      "valid-looking-content-must-not-win"
+    );
+  }
+});
+
+test("missing usage remains the fail-closed accounting category before refusal content", () => {
+  const secret = "raw-refusal-must-not-leak";
+  assertProviderFailure(
+    () =>
+      parseFeedbackProviderCompletion(
+        {
+          model: CALIBRATION_PRICING_CONTRACT.model,
+          service_tier: "default",
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: null, refusal: secret },
+            },
+          ],
+        },
+        TEST_TRANSCRIPT,
+        "full"
+      ),
+    "evaluation_provider_usage_missing",
+    secret
+  );
+});
+
+test("feedback provider requests a deterministic strict schema for the exact evaluation state", () => {
+  assert.equal(
+    FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION,
+    "feedback-provider-response-format.v1"
+  );
+  assert.equal(
+    getFeedbackProviderResponseFormatContractHash(),
+    "66605edf2b3cad146671f22afa656d9c01c9abea2e7475a68dbe21738c8e4073"
+  );
+  assert.equal(
+    Buffer.byteLength(serializeFeedbackProviderResponseFormat("full"), "utf8"),
+    2_424
+  );
+  assert.equal(
+    Buffer.byteLength(
+      serializeFeedbackProviderResponseFormat("partial"),
+      "utf8"
+    ),
+    2_430
+  );
+  const full = getFeedbackProviderResponseFormat("full");
+  const partial = getFeedbackProviderResponseFormat("partial");
+  assert.equal(full.type, "json_schema");
+  assert.equal(full.json_schema.strict, true);
+  assert.equal(full.json_schema.name, "meelni_feedback_v2_full");
+  assert.equal(partial.json_schema.name, "meelni_feedback_v2_partial");
+  assert.deepEqual(full.json_schema.schema.properties.evaluationState.enum, [
+    "full",
+  ]);
+  assert.deepEqual(partial.json_schema.schema.properties.evaluationState.enum, [
+    "partial",
+  ]);
+  assert.equal("modelVersion" in full.json_schema.schema.properties, false);
+  assert.equal("overallScore" in full.json_schema.schema.properties, false);
+  assert.equal(
+    serializeFeedbackProviderResponseFormat("full"),
+    serializeFeedbackProviderResponseFormat("full")
+  );
+
+  const assertClosedObjects = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(assertClosedObjects);
+      return;
+    }
+    if (typeof value !== "object" || value === null) return;
+    const record = value as Record<string, unknown>;
+    if (record.type === "object") {
+      const properties = record.properties as Record<string, unknown>;
+      assert.equal(record.additionalProperties, false);
+      assert.deepEqual(
+        new Set(record.required as string[]),
+        new Set(Object.keys(properties))
+      );
+    }
+    Object.values(record).forEach(assertClosedObjects);
+  };
+  assertClosedObjects(full.json_schema.schema);
 });
 
 test("provider completion parsing preserves valid feedback and normalizes recommendation copy", () => {
@@ -113,6 +274,7 @@ test("provider completion parsing preserves valid feedback and normalizes recomm
       usage: TEST_USAGE,
       choices: [
         {
+          finish_reason: "stop",
           message: {
             content: JSON.stringify({
               schemaVersion: "feedback.v2",
@@ -240,12 +402,14 @@ test("paid calibration client cannot be constructed without its direct key", () 
 });
 
 test("paid request policy rejects an unpriced model or output ceiling", () => {
-  assert.doesNotThrow(() =>
-    assertCalibrationProviderRequestPolicy(
-      CALIBRATION_PRICING_CONTRACT.model,
-      2_000,
-      () => undefined
-    )
+  assert.throws(
+    () =>
+      assertCalibrationProviderRequestPolicy(
+        CALIBRATION_PRICING_CONTRACT.model,
+        2_000,
+        () => undefined
+      ),
+    /response_format_requires_new_authorized_plan/
   );
   assert.throws(
     () =>

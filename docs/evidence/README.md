@@ -38,6 +38,13 @@ attempt at $0.015545 with no cap breach. The report is a launch NO-GO: unused
 calls are not reusable, and another paid attempt requires a separately reviewed
 fix and new explicit authorization.
 
+`sav-248-provider-free-mitigation.md` records the strict structured-output
+contract, sanitized terminal categories, deterministic schema hash, exact
+schema byte ceilings, and a provider-free 96-call/$2.8539975 prospective
+calculation. It also records that paid calibration now fails before client
+construction until a fresh authorization and activated plan bind those values.
+It performs no provider call and grants no spend or launch authority.
+
 `sav-226-relaunch-decision.md` is the human-readable release record for the
 exact relaunch candidate. It preserves the passed Preview evidence, the failed
 calibration and unavailable Production-health evidence, the remaining
