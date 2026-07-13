@@ -7,9 +7,62 @@ import {
 } from "@meelni/test-fixtures";
 
 import {
+  buildDelegatedEvaluationAdjudicationApproval,
   getEvaluationAdjudicationHashes,
   parseEvaluationAdjudicationApproval,
 } from "./calibration-approval";
+
+test("delegated product-owner approval records two exact-hash panels without a fabricated human identity", () => {
+  const approval = buildDelegatedEvaluationAdjudicationApproval();
+  assert.equal(approval.reviewer.identityType, "delegated_task_thread");
+  assert.equal(approval.delegatedAuthority?.humanReviewerIdentity, null);
+  assert.equal(approval.delegatedAuthority?.panels.length, 2);
+  assert.equal(approval.decisions.length, 32);
+  assert.ok(
+    approval.decisions.every(({ decision }) => decision === "approved")
+  );
+});
+
+test("delegated approval rejects fabricated identity, duplicate panels, and stale panel hashes", () => {
+  const approval = buildDelegatedEvaluationAdjudicationApproval();
+  assert.throws(
+    () =>
+      parseEvaluationAdjudicationApproval({
+        ...approval,
+        reviewer: { ...approval.reviewer, identity: "invented-human-name" },
+      }),
+    /Invalid delegated approval reviewer identity/
+  );
+  assert.throws(
+    () =>
+      parseEvaluationAdjudicationApproval({
+        ...approval,
+        delegatedAuthority: {
+          ...approval.delegatedAuthority,
+          panels: [
+            approval.delegatedAuthority!.panels[0],
+            approval.delegatedAuthority!.panels[0],
+          ],
+        },
+      }),
+    /must be independent/
+  );
+  assert.throws(
+    () =>
+      parseEvaluationAdjudicationApproval({
+        ...approval,
+        delegatedAuthority: {
+          ...approval.delegatedAuthority,
+          panels: approval.delegatedAuthority!.panels.map((panel, index) =>
+            index === 0
+              ? { ...panel, candidateArtifactHash: "0".repeat(64) }
+              : panel
+          ),
+        },
+      }),
+    /Invalid delegated approval agent-panel signoff/
+  );
+});
 
 test("approval contract covers exactly the 32 scored candidates, not validator negatives", () => {
   const approval = parseEvaluationAdjudicationApproval(testApproval());
