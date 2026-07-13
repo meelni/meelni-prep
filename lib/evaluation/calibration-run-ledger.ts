@@ -96,8 +96,8 @@ export const SAV_198_SPEND_AUTHORIZATION: CalibrationSpendAuthorization = {
 
 export const SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD = 2_754_487_500;
 export const SAV_198_REBASED_PLAN_HASH =
-  "c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1";
-export const SAV_198_REBASED_PLAN_ACCEPTED_AT = "2026-07-13T04:21:30.000Z";
+  "22a0f4da11a7dd5c618f39fdd187b40fe8d17807b0404407c95c5dec16172804";
+export const SAV_198_REBASED_PLAN_ACCEPTED_AT = "2026-07-13T11:14:00.000Z";
 
 export interface CalibrationActivatedPlanCall {
   callKey: string;

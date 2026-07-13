@@ -60,7 +60,9 @@ import {
   type GitHubRuleset,
 } from "./calibration-run-ledger";
 
-const NOW = new Date("2026-07-12T09:00:00.000Z");
+const NOW = new Date(
+  new Date(CALIBRATION_PRICING_CONTRACT.reviewedAt).getTime() + 60 * 60 * 1_000
+);
 
 test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.deepEqual(

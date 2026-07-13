@@ -1,6 +1,6 @@
 {
   "contractVersion": "evaluation-calibration-report.v7",
-  "generatedAt": "2026-07-13T04:07:11.102Z",
+  "generatedAt": "2026-07-13T11:17:24.862Z",
   "execution": {
     "kind": "deterministic_self_test",
     "modelVersion": "deterministic-calibration-self-test.v1",
@@ -8,9 +8,7 @@
     "customerDataUsed": false,
     "paidProviderCalled": false,
     "modelVersionBasis": "deterministic_identifier",
-    "observedModelVersions": [
-      "deterministic-calibration-self-test.v1"
-    ],
+    "observedModelVersions": ["deterministic-calibration-self-test.v1"],
     "observedServiceTiers": [],
     "cost": null
   },
