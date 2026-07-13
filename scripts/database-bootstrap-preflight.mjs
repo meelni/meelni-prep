@@ -74,6 +74,7 @@ export async function inspectDatabaseBootstrapState(tx) {
           AND namespace_dependency.refobjid = namespace.oid
         WHERE namespace.nspname = 'public'
           AND namespace_dependency.deptype = 'n'
+          AND namespace_dependency.classid <> 'pg_extension'::regclass
           AND NOT EXISTS (
             SELECT 1
             FROM pg_depend extension_dependency
@@ -94,5 +95,9 @@ export async function inspectDatabaseBootstrapState(tx) {
     throw new Error(CATALOG_INSPECTION_ERROR);
   }
 
-  return classifyDatabaseBootstrapCatalog(rows?.[0]);
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new Error(CATALOG_INSPECTION_ERROR);
+  }
+
+  return classifyDatabaseBootstrapCatalog(rows[0]);
 }
