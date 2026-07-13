@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Provider-free validation for explicit LiveKit deployment targets."""
 
+import os
 import re
 import sys
 import tomllib
@@ -57,6 +58,15 @@ def validate_deployment_target(
     return target
 
 
+def build_config_argument(config_path: str) -> str:
+    path = Path(config_path).resolve()
+    agent_root = Path(__file__).resolve().parent.parent
+    argument = os.path.relpath(path, agent_root)
+    if (agent_root / argument).resolve() != path:
+        raise ProviderEnvironmentError("livekit_deploy_config_argument_invalid")
+    return argument
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 6:
         print(
@@ -67,9 +77,11 @@ def main(argv: list[str]) -> int:
         return 1
     try:
         validate_deployment_target(*argv)
+        config_argument = build_config_argument(argv[2])
     except ProviderEnvironmentError as error:
         print(str(error), file=sys.stderr)
         return 1
+    print(config_argument)
     return 0
 
 

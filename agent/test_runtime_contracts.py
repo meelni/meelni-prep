@@ -257,7 +257,10 @@ class RuntimeContractTests(unittest.TestCase):
                         log_path.read_text().splitlines()[-1],
                     ).group(1)
                     self.assertEqual(validated_path, str(expected.resolve()))
-                    self.assertEqual(consumed_path, validated_path)
+                    self.assertEqual(
+                        (agent_root / consumed_path).resolve(), expected.resolve()
+                    )
+                    self.assertFalse(Path(consumed_path).is_absolute())
 
             provider_calls = log_path.read_text().splitlines()
             validation_calls = validator_log.read_text().splitlines()
