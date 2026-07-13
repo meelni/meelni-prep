@@ -287,7 +287,7 @@ function isStrictFeedbackItem(value: unknown): value is FeedbackV2Item {
     value.rubricVersion !== FEEDBACK_RUBRIC_VERSION ||
     typeof value.confidence !== "number" ||
     !Number.isFinite(value.confidence) ||
-    value.confidence < 0 ||
+    value.confidence <= 0 ||
     value.confidence > 1 ||
     !Array.isArray(value.transcriptRefs) ||
     value.transcriptRefs.length < 1 ||
