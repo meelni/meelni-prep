@@ -32,10 +32,10 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
 
 ## Evidence That Passed
 
-- Audited runtime head: `efcf1b7d031d712eabd449274f79d545592ba8f9`.
+- Audited runtime head: `e790756c65a3be2d14c3b7ad5a325aa1c885c004`.
 - Exact Vercel Preview deployment:
-  `dpl_xEw713hBckBqixBM6iNsFXNfoFWn` at
-  `meelni-ne5f3bcoe-meelni.vercel.app`.
+  `dpl_ERqGQWD4xp5qAymhNtCQ2pumnqvJ` at
+  `meelni-31k8umyvy-meelni.vercel.app`.
 - A deployment-protection-bypassed Preview health request returned HTTP 200
   with `web`, `database`, core-interview `livekit`, `feedback_dispatch`, and
   `stripe_webhook` healthy. This is infrastructure evidence, not Meelni user
@@ -51,7 +51,8 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
   `01KXDNFH8S2SQZ795G7NSR2FR3` completed, and app-to-provider event
   `01KXDNJAMDW41DW0RV5NC99HVG` was accepted. After credential rotation, an
   exact manual resync succeeded at 2026-07-13 06:44:47 local with all 15
-  functions, SDK 3.54.2, and the exact deployment and commit.
+  functions and SDK 3.54.2. The new exact-head deployment then auto-synced
+  successfully at 06:48:33 local with the same inventory and its exact commit.
 - Dedicated Preview Supabase passed the strict latest-schema preflight with no
   unsafe client billing-table privileges.
 - Stripe test-mode billing acceptance proved invoice-first ownership binding,

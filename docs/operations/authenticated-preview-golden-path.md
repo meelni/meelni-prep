@@ -25,11 +25,12 @@ Use a private, approved synthetic audio fixture through a real LiveKit candidate
 
 ## Observed Preflight Evidence
 
-The provider-free inspection observed the following pre-scaffolding deployment evidence at exact head `efcf1b7d031d712eabd449274f79d545592ba8f9`. Refresh every identity after the next commit or deployment; none of these observations automatically transfers to a later head.
+The latest provider-free inspection observed the following deployment evidence at exact head `e790756c65a3be2d14c3b7ad5a325aa1c885c004`. Refresh every identity after the next commit or deployment; none of these observations automatically transfers to a later head.
 
-- Vercel deployment `dpl_xEw713hBckBqixBM6iNsFXNfoFWn` is Ready at `https://meelni-ne5f3bcoe-meelni.vercel.app`.
+- Vercel deployment `dpl_ERqGQWD4xp5qAymhNtCQ2pumnqvJ` is Ready at `https://meelni-31k8umyvy-meelni.vercel.app`.
 - A fresh authenticated Vercel health observation returned HTTP 200 with web, database, core LiveKit, feedback dispatch, and Stripe webhook healthy. This is configuration evidence only.
 - the dedicated Preview database preflight is reconciled through 23 migrations, has 29/29 RLS tables, zero unsafe policies, zero launch-integrity counts, and all launch-readiness booleans true;
+- branch Inngest auto-synced the exact deployment at 2026-07-13 06:48:33 local with all 15 functions and SDK 3.54.2 through its dedicated rotated bypass;
 - branch-scoped Vercel Preview contains the required LiveKit and Inngest environment names. The encrypted LiveKit values pull blank locally, so the local worktree cannot execute a room;
 - the documented running Preview agent evidence names agent `CA_ZbGxFjfEYwsD`, version `LJ8EHo5sNzu8`, and dispatch `meelni-preview-interview`;
 - the current local LiveKit CLI registry contains only `test` and Production `meelni`. It does not contain `meelni-preview`; an attempted read-only status lookup fell back to unauthorized `test` and returned 401. Re-linking the exact Preview alias is therefore a mandatory preflight, not evidence that the agent is down.
