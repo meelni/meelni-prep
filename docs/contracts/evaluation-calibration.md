@@ -172,6 +172,14 @@ includes valid usage, the report preserves its identity and token totals,
 reconciles known cost, and then stops. Only absent or invalid usage retains an
 unresolved worst-case reservation.
 
+The accepted rebased plan contains exactly 96 calls with a deterministic
+worst-case reservation of 2,754,487,500 nano-USD ($2.7544875), below the
+unchanged $3 hard cap. Its exact plan hash is
+`c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1`.
+The product owner's task-thread delegation accepts this conservative rebased
+value under the existing authorization; it does not change the model, fixture
+set, call limit, spend cap, or one-run scope.
+
 ## Paid-run authorization and ledger contract
 
 The approved spend is one aggregate run, not a reusable per-process allowance.

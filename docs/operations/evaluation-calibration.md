@@ -119,6 +119,21 @@ totals on failed or mismatched responses. Valid in-reservation usage is
 reconciled to known cost before the identity failure stops the run; absent,
 invalid usage retains the reservation.
 
+Generate and verify the delegated acceptance of the exact rebased plan:
+
+```bash
+npm run calibration:plan-acceptance -- \
+  --approval docs/evidence/sav-198-adjudication-approval.json \
+  --output docs/evidence/sav-198-rebased-plan-acceptance.json
+```
+
+The expected plan is 96 physical calls, 2,754,487,500 nano-USD ($2.7544875)
+worst case, and hash
+`c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1`.
+Treat any other value as stale or mismatched. This acceptance is within the
+existing $3 authorization and does not activate the ledger or authorize a
+provider call.
+
 ### Durable single-run GitHub activation
 
 Paid execution remains disabled until repository owners configure the two
