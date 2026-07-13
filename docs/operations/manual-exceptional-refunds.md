@@ -18,26 +18,28 @@ Keep the audit record redacted. Do not copy customer transcripts, interview
 recordings, API keys, webhook secrets, card data, database URLs, or raw provider
 payloads into support notes, Linear, or repository documentation.
 
-## Execution is paused
+## Execution remains paused
 
 A human may approve or reject an exceptional-refund request, but must not
-execute an approved refund for an existing account yet. [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
-must first ship and verify exact payment-to-credit-ledger reconciliation. This
-runbook intentionally does not invent a Dashboard procedure or ledger-adjustment
-procedure while that technical control is absent.
+execute an approved refund for an existing account yet. The inherited
+[SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+billing-truth capability reconciles refund, refund-failure, and dispute
+lifecycle events with exact payment-funded credit allocations. It does not
+create or authorize an exceptional refund, and no cancellation, deletion,
+webhook, or recovery workflow may automatically refund, prorate, compensate, or
+issue a make-good for one.
 
-Current behavior is narrower:
+Execution remains paused until all of these gates are complete:
 
-- `charge.refunded` records refunded status in payment history only; it does not
-  adjust, revoke, or restore credits;
-- dispute events are not supported;
-- no application route, webhook, or background job executes an exceptional
-  payment refund.
+- a human-owned support procedure defines accountable approval, provider action,
+  redacted evidence, and recovery for an uncertain result;
+- an isolated Stripe test-mode rehearsal proves the approved amount and provider
+  object reconcile to the exact payment-funded credit allocation;
+- approval evidence records successful idempotent replay and confirms that no
+  prior refund, proration, or customer-balance credit is duplicated;
+- live-mode execution receives separate, explicit authorization after the
+  test-mode evidence is reviewed.
 
-After SAV-231, this runbook must be revised with verified idempotency, exact
-payment/credit allocation, test/live separation, and redacted evidence before
-exceptional-refund execution can begin. Do not issue a second refund to repair
-uncertain application state.
-
-The support intake channel, SAV-231, and Stripe test-mode rehearsal evidence are
-launch gates outside this repository runbook.
+Do not issue a second refund to repair uncertain application state. Every
+exceptional refund remains a separate manual decision; cancellation and account
+deletion continue to create none automatically.

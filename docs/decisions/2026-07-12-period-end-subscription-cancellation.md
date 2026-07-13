@@ -89,11 +89,15 @@ workflows.
   deletion disconnects participants and is retryable from the tombstone; a
   provider outage cannot roll back deletion acceptance or restore access. Raw
   room names are cleared after provider confirmation, leaving fingerprints.
-- An exceptional-refund decision is human-owned, but execution for an existing
-  account remains paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
-  provides verified payment-to-credit-ledger reconciliation. Today,
-  `charge.refunded` updates payment history only, no refund webhook adjusts
-  credits, and dispute events are unsupported.
+- The inherited [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+  billing-truth work reconciles refund, refund-failure, and dispute lifecycle
+  events with exact payment-funded credit allocations. That shipped capability
+  does not authorize Meelni to create an exceptional refund. Every exceptional
+  refund remains a separate human decision, and execution stays paused pending
+  a human-owned support procedure, isolated Stripe test-mode rehearsal and
+  approval evidence, verified idempotency and exact payment/credit allocation,
+  and separate live-mode authorization. Cancellation and account deletion never
+  create an automatic refund, proration, customer-balance credit, or make-good.
 
 ## Rollout
 
@@ -105,5 +109,7 @@ intent, while provider cancellation remains retryable and non-compensating.
 Confirm separately that an already-connected LiveKit room is disconnected and
 that a retryable room-deletion failure leaves durable cleanup pending without
 restoring product access.
-Manual refund execution additionally requires SAV-231, an updated support
-runbook, and test-mode evidence.
+Manual refund execution remains paused despite the inherited SAV-231
+reconciliation capability. It requires a human-owned support procedure,
+isolated Stripe test-mode rehearsal and approval evidence, verified idempotency
+and exact payment/credit allocation, and separate live-mode authorization.
