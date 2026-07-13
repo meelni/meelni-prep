@@ -94,6 +94,11 @@ export const SAV_198_SPEND_AUTHORIZATION: CalibrationSpendAuthorization = {
   productionDataAllowed: false,
 };
 
+export const SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD = 2_754_487_500;
+export const SAV_198_REBASED_PLAN_HASH =
+  "c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1";
+export const SAV_198_REBASED_PLAN_ACCEPTED_AT = "2026-07-13T04:21:30.000Z";
+
 export interface CalibrationActivatedPlanCall {
   callKey: string;
   inputTokenCeiling: number;
@@ -120,6 +125,69 @@ export interface CalibrationActivatedPlan {
   plannedWorstCaseNanoUsd: number;
   calls: CalibrationActivatedPlanCall[];
   planHash: string;
+}
+
+export function buildSAV198RebasedPlanAcceptance(
+  adjudicationApproval: unknown
+) {
+  const plan = buildCalibrationActivatedPlan({
+    authorization: SAV_198_SPEND_AUTHORIZATION,
+    adjudicationApproval,
+    model: CALIBRATION_PRICING_CONTRACT.model,
+    repetitions: 3,
+    now: new Date(SAV_198_REBASED_PLAN_ACCEPTED_AT),
+  });
+  if (
+    plan.plannedCalls !== 96 ||
+    plan.plannedWorstCaseNanoUsd !== SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD ||
+    plan.planHash !== SAV_198_REBASED_PLAN_HASH
+  ) {
+    throw new Error("sav_198_rebased_plan_acceptance_mismatch");
+  }
+  return {
+    contractVersion: "evaluation-calibration-plan-acceptance.v1" as const,
+    decision: "accepted" as const,
+    decisionSource: "product_owner_task_thread_delegation" as const,
+    humanReviewerIdentity: null,
+    acceptedAt: SAV_198_REBASED_PLAN_ACCEPTED_AT,
+    acceptanceBasis:
+      "conservative_rebased_exact_plan_within_existing_authorization" as const,
+    existingAuthorization: {
+      authorizationId: SAV_198_SPEND_AUTHORIZATION.authorizationId,
+      runId: SAV_198_SPEND_AUTHORIZATION.runId,
+      maximumProviderCalls: SAV_198_SPEND_AUTHORIZATION.maximumProviderCalls,
+      maximumPhysicalHttpAttempts:
+        SAV_198_SPEND_AUTHORIZATION.maximumPhysicalHttpAttempts,
+      maximumSpendUsd: SAV_198_SPEND_AUTHORIZATION.maximumSpendUsd,
+      authorizationChanged: false as const,
+    },
+    acceptedPlan: {
+      planHash: plan.planHash,
+      plannedCalls: plan.plannedCalls,
+      plannedWorstCaseNanoUsd: plan.plannedWorstCaseNanoUsd,
+      plannedWorstCaseUsd: plan.plannedWorstCaseNanoUsd / 1_000_000_000,
+      candidateArtifactHash: plan.candidateArtifactHash,
+      corpusHash: plan.corpusHash,
+      approvalHash: plan.approvalHash,
+      model: plan.model,
+      endpoint: plan.endpoint,
+      serviceTier: plan.serviceTier,
+      repetitions: plan.repetitions,
+      pricingHash: plan.pricingHash,
+    },
+    unchangedControls: {
+      model: true,
+      fixtures: true,
+      maximumCalls: true,
+      maximumSpend: true,
+      semanticApproval: true,
+    },
+    authorityScope: {
+      providerCallsExecuted: false,
+      ledgerActivated: false,
+      launchAuthorized: false,
+    },
+  };
 }
 
 export interface ActivateCalibrationRunOptions {
