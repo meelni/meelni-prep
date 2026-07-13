@@ -10,6 +10,30 @@
     "panelCount": 2,
     "panelOutcome": "changes_required",
     "correctionPolicy": "conservative_17_case_union",
+    "reviewRounds": [
+      {
+        "round": 1,
+        "correctionPolicy": "conservative_17_case_union",
+        "correctedCaseCount": 17
+      },
+      {
+        "round": 2,
+        "reviewedCandidateArtifactHash": "e02ec10f89b0bf83bdd5e1085f2b2250e4c3a79babd0e9f50b53db5b70e844f7",
+        "reviewedCorpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+        "panelOneChangesRequired": [
+          "product_sense:05:language-practice",
+          "strategy:02:regional-expansion",
+          "behavioral:02:failed-launch",
+          "behavioral:07:mentoring"
+        ],
+        "panelTwoChangesRequired": [
+          "product_sense:05:language-practice",
+          "strategy:02:regional-expansion",
+          "behavioral:07:mentoring"
+        ],
+        "correctionPolicy": "conservative_4_case_union"
+      }
+    ],
     "decisions": [
       {
         "caseId": "product_sense:01:caregiver-planning",
@@ -247,7 +271,7 @@
       "improvement": {
         "dimension": "insight",
         "kind": "improvement",
-        "observation": "Assumes psychological safety without explaining the user insight or evidence behind that need.",
+        "observation": "Introduces psychological safety as a product need without explaining what design property would create it or how that safety would be validated.",
         "turnRef": "product_sense:05:language-practice:user:2",
         "quote": "psychologically safe prompt",
         "nextStep": "Describe the prompt mechanics and how safety would be validated with learners."
@@ -523,12 +547,12 @@
       "expectedQuality": "weak",
       "expectedCompletionState": "partial",
       "strength": {
-        "dimension": "insight",
+        "dimension": "structure",
         "kind": "strength",
-        "observation": "Recognizes that unmet customer need must be tested before choosing an expansion strategy.",
+        "observation": "Starts with a customer-need test before deciding whether to expand.",
         "turnRef": "strategy:02:regional-expansion:user:1",
         "quote": "test whether customers have an unmet need",
-        "nextStep": "Define the customer segment and evidence that would confirm the unmet need."
+        "nextStep": "Define the segment and evidence threshold, then compare market size, constraints, and alternatives."
       },
       "improvement": {
         "dimension": "leadership",
@@ -701,10 +725,10 @@
       "strength": {
         "dimension": "communication",
         "kind": "strength",
-        "observation": "Communicates the competing perspectives instead of ignoring the disagreement.",
+        "observation": "Makes the disagreement explicit by summarizing it for the group.",
         "turnRef": "behavioral:02:failed-launch:user:2",
         "quote": "summarized the disagreement",
-        "nextStep": "Use the summary to identify the failed assumption and recommend a decision."
+        "nextStep": "Name each perspective and connect the summary to a recommendation and decision owner."
       },
       "improvement": {
         "dimension": "leadership",
@@ -819,7 +843,7 @@
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "observation": "Asserts success without criteria or evidence of independent decision quality.",
+        "observation": "Reports the review as successful without defining the criteria used to judge success.",
         "turnRef": "behavioral:07:mentoring:user:3",
         "quote": "led the review successfully",
         "nextStep": "Define review success criteria and the threshold for mentor intervention."
