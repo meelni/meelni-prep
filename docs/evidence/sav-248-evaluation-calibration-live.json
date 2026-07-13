@@ -1,0 +1,168 @@
+{
+  "contractVersion": "evaluation-calibration-report.v7",
+  "generatedAt": "2026-07-13T14:18:05.326Z",
+  "execution": {
+    "kind": "live_provider",
+    "modelVersion": "gpt-5.1-2025-11-13",
+    "repetitions": 3,
+    "customerDataUsed": false,
+    "paidProviderCalled": true,
+    "modelVersionBasis": "configured_provider_model",
+    "observedModelVersions": [
+      "gpt-5.1-2025-11-13"
+    ],
+    "observedServiceTiers": [
+      "default"
+    ],
+    "cost": {
+      "contractVersion": "evaluation-calibration-cost-report.v5",
+      "authorizedRunId": "sav-248-authorized-paid-calibration.v2",
+      "authorizationId": "sav-248-user-authorization-2026-07-13.v2",
+      "authorizationHash": "2c5093352dfcdc572124464daa2973cd86844bed6344bf43e5e7531064abd028",
+      "activationCommit": "d0c4fc4c028b10d8616fdde337be150315a7798c",
+      "activatedPlanHash": "354bdc4046b0759e50940127c574abe355ee0754d9a8aaf2c25338b49aca8419",
+      "activatedPlanCalls": 96,
+      "activatedPlanWorstCaseCostUsd": 2.8539975,
+      "maximumCalls": 96,
+      "maximumSpendUsd": 3,
+      "attemptedCalls": 2,
+      "physicalRequestBoundaryAttempts": 2,
+      "physicalHttpAttemptCeiling": 2,
+      "completedCalls": 1,
+      "reservedWorstCaseCostUsd": 0.0589175,
+      "reconciledActualCostUsd": 0.026752,
+      "unreconciledReservedCostUsd": 0,
+      "estimatedCommittedCostUsd": 0.026752,
+      "actualCostComplete": true,
+      "spendCapBreached": false,
+      "observedUsage": {
+        "inputTokens": 3432,
+        "cachedInputTokens": 1536,
+        "outputTokens": 2419,
+        "totalTokens": 5851
+      },
+      "pricingReviewExpiresAt": "2026-07-14T11:13:07.000Z",
+      "stopReason": "provider_failure",
+      "pricing": {
+        "contractVersion": "evaluation-calibration-pricing.v1",
+        "provider": "openai",
+        "model": "gpt-5.1-2025-11-13",
+        "endpoint": "https://api.openai.com/v1",
+        "serviceTier": "default",
+        "maximumSdkRetries": 0,
+        "redirectPolicy": "error",
+        "requestTimeoutMs": 300000,
+        "reviewedAt": "2026-07-13T11:13:07.000Z",
+        "reviewTtlHours": 24,
+        "source": "https://developers.openai.com/api/docs/models/gpt-5.1",
+        "nanoUsdPerMillionTokens": {
+          "input": 1250000000,
+          "cachedInput": 125000000,
+          "output": 10000000000
+        }
+      }
+    }
+  },
+  "versions": {
+    "goldSet": "pm-gold-set.v4",
+    "adjudication": "pm-gold-adjudication-candidates.v4",
+    "schema": "feedback.v2",
+    "prompt": "feedback.prompt.v2",
+    "rubric": "pm-feedback-rubric.v2",
+    "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
+    "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe"
+  },
+  "corpus": {
+    "totalCases": 40,
+    "scoredCases": 32,
+    "insufficientCases": 8,
+    "casesByRound": {
+      "product_sense": 10,
+      "execution": 10,
+      "strategy": 10,
+      "behavioral": 10
+    },
+    "scoredCasesByQuality": {
+      "weak": 8,
+      "average": 8,
+      "strong": 16
+    },
+    "pendingAdjudicationSignoffs": 0,
+    "insufficientFixturesRequireScoredAdjudicationApproval": false,
+    "expectedStateMismatches": 0,
+    "invalidEvidenceAnchors": 0
+  },
+  "metrics": {
+    "evidenceValidityRate": 0.010416666666666666,
+    "adjudicatedEvidenceMatchRate": 0,
+    "insufficientHandlingRate": 1,
+    "scoreBandAgreementRate": 0.010416666666666666,
+    "scoreBandAgreementByDimension": {
+      "structure": 0.010416666666666666,
+      "clarity": 0.010416666666666666,
+      "insight": 0.010416666666666666,
+      "communication": 0.010416666666666666,
+      "leadership": 0.010416666666666666
+    },
+    "scoreBandAgreementByRound": {
+      "product_sense": 0.041666666666666664,
+      "execution": 0,
+      "strategy": 0,
+      "behavioral": 0
+    },
+    "scoreBandAgreementByState": {
+      "full": 0,
+      "partial": 0.011904761904761904
+    },
+    "maximumRepeatedRunScoreRange": null,
+    "modelVersionMatchRate": 0.010416666666666666,
+    "evaluatorCalls": 2,
+    "providerEvaluationCalls": 2
+  },
+  "adjudication": {
+    "approvalProvided": true,
+    "requiredScoredCases": 32,
+    "approvedCases": 32,
+    "changesRequiredCases": 0,
+    "reviewer": {
+      "identity": "product_owner_task_thread_delegation",
+      "role": "product_owner",
+      "identityType": "delegated_task_thread",
+      "reviewedAt": "2026-07-13T04:03:34.000Z"
+    }
+  },
+  "thresholds": {
+    "evidenceValidityRate": 1,
+    "insufficientHandlingRate": 1,
+    "scoreBandAgreementRate": 0.8,
+    "minimumDimensionScoreBandAgreementRate": 0.8,
+    "minimumRoundScoreBandAgreementRate": 0.75,
+    "minimumStateScoreBandAgreementRate": 0.75,
+    "maximumRepeatedRunScoreRange": 1,
+    "modelVersionMatchRate": 1,
+    "minimumProviderRuns": 3,
+    "maximumProviderRuns": 3,
+    "maximumProviderCalls": 96
+  },
+  "gate": {
+    "deterministicHarness": "not_run",
+    "adjudicationAcceptance": "passed",
+    "liveProviderAcceptance": "failed",
+    "launchAcceptance": "failed"
+  },
+  "failures": [
+    {
+      "caseId": "product_sense:01:caregiver-planning",
+      "runIndex": 1,
+      "code": "evaluation_provider_returned_invalid_feedback"
+    },
+    {
+      "caseId": "product_sense:01:caregiver-planning",
+      "runIndex": 0,
+      "code": "adjudicated_evidence_not_matched"
+    }
+  ],
+  "blockers": [
+    "The live provider calibration did not meet every acceptance threshold."
+  ]
+}

@@ -60,6 +60,12 @@ preflight requires all eight to skip evaluation and make zero provider calls.
 
 ## Authorized live-provider run
 
+> **Terminal status:** the SAV-248 v2 authority activated once and failed closed
+> after two synthetic calls. Its protected ref now points to
+> `d0c4fc4c028b10d8616fdde337be150315a7798c`. Do not run the command in this
+> section again for v2; the authority is consumed. Any future provider run
+> requires a distinct reviewed plan and authorization.
+
 Do not run this step without explicit authorization for provider spend and
 confirmation that the intended model/configuration is the one being evaluated.
 The approved run evaluates 32 scored synthetic transcripts three times, for up
