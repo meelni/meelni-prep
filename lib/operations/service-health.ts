@@ -2,6 +2,7 @@ import {
   getLiveKitAgentName,
   getLiveKitEnvironment,
 } from "@/lib/internal/integrations";
+import { getInngestConfigurationStatus } from "@/lib/inngest/config";
 
 export const SERVICE_HEALTH_CHECKS = [
   "web",
@@ -22,6 +23,7 @@ export type ServiceHealthCode =
   | "livekit_unavailable"
   | "feedback_dispatch_ready"
   | "feedback_dispatch_config_missing"
+  | "feedback_dispatch_config_mismatch"
   | "feedback_dispatch_stale"
   | "feedback_dispatch_failed"
   | "feedback_dispatch_dependency_unavailable"
@@ -189,11 +191,15 @@ function feedbackDispatchCheck(
       code: "feedback_dispatch_dependency_unavailable",
     };
   }
-  if (!feedbackDispatchConfigured(env)) {
+  const configuration = getInngestConfigurationStatus(env);
+  if (!configuration.ok) {
     return {
       name: "feedback_dispatch",
       status: "degraded",
-      code: "feedback_dispatch_config_missing",
+      code:
+        configuration.code === "credentials_missing"
+          ? "feedback_dispatch_config_missing"
+          : "feedback_dispatch_config_mismatch",
     };
   }
   if (evidence.feedbackDispatchFailed) {
@@ -254,19 +260,6 @@ function stripeWebhookCheck(
     status: "healthy",
     code: "stripe_webhook_ready",
   };
-}
-
-function feedbackDispatchConfigured(
-  env: Readonly<Record<string, string | undefined>>
-): boolean {
-  const hosted =
-    env.VERCEL === "1" ||
-    env.VERCEL_ENV === "preview" ||
-    env.VERCEL_ENV === "production";
-  if (!hosted) return true;
-  return Boolean(
-    env.INNGEST_EVENT_KEY?.trim() && env.INNGEST_SIGNING_KEY?.trim()
-  );
 }
 
 function aggregateStatus(checks: ServiceHealthCheck[]): ServiceHealthStatus {

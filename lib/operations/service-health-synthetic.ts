@@ -42,6 +42,10 @@ const HEALTH_CODE_CONTRACT: Record<
     name: "feedback_dispatch",
     status: "degraded",
   },
+  feedback_dispatch_config_mismatch: {
+    name: "feedback_dispatch",
+    status: "degraded",
+  },
   feedback_dispatch_stale: {
     name: "feedback_dispatch",
     status: "degraded",

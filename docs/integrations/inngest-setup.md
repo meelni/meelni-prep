@@ -15,7 +15,7 @@ The feedback generation system was stuck in "pending" status because the Inngest
 
 ## How Inngest Works in Development
 
-### Option 1: Inngest Cloud (Recommended for Production)
+### Option 1: Inngest Cloud (Hosted environments)
 
 1. Sign up at https://inngest.com
 2. Get your signing key and event key
@@ -24,7 +24,8 @@ The feedback generation system was stuck in "pending" status because the Inngest
    INNGEST_EVENT_KEY=your_event_key
    INNGEST_SIGNING_KEY=your_signing_key
    ```
-4. Inngest Cloud polls `/api/inngest` endpoint automatically
+4. Inngest Cloud syncs the `/api/inngest` endpoint. The endpoint currently
+   registers 14 function IDs.
 
 ### Option 2: Inngest Dev Server (Local Development)
 
@@ -108,7 +109,11 @@ DATABASE_URL=your_postgres_connection_string
 
 ## Production Deployment
 
-1. Set up Inngest Cloud account
-2. Add environment variables to Vercel/production host
-3. Inngest will automatically discover functions at `https://yourdomain.com/api/inngest`
-4. Background jobs will run in Inngest Cloud infrastructure
+1. Set up the Inngest Cloud account and environment-specific keys.
+2. For Preview, set branch-scoped `INNGEST_ENV` to the exact
+   `VERCEL_GIT_COMMIT_REF`. For Production, deploy `main` with no
+   `INNGEST_ENV` branch override.
+3. Add `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` to the matching Vercel
+   scope, then redeploy.
+4. Confirm all 14 function IDs sync from `/api/inngest` and run an approved
+   synthetic event. Configuration health alone does not prove cloud reachability.

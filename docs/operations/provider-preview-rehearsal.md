@@ -193,10 +193,12 @@ any Production-scoped command during this phase.
   quotas are project-scoped, while free-project allowances are shared across
   free projects; another project does not increase that allowance. Billing is
   usage-based rather than a documented fixed fee per project.
-- Preview currently has no listed `INNGEST_EVENT_KEY`, and its signing
-  configuration has not been independently verified. Feedback handoff remains
-  blocked until a Preview event key and matching signing configuration pass
-  the service-health gate.
+- The relaunch branch now has distinct Preview `INNGEST_EVENT_KEY` and
+  `INNGEST_SIGNING_KEY` values plus branch-scoped `INNGEST_ENV` matching
+  `VERCEL_GIT_COMMIT_REF`. Those configuration checks do not prove provider
+  connectivity. Feedback handoff remains blocked until the exact deployment
+  passes the service-health configuration gate, all 14 functions sync, and an
+  approved synthetic event runs successfully.
 - Route denial tests cover session start and demo token issuance with missing,
   invalid, or conflicting Preview identity and dispatch configuration. Separate
   relaunch-gate behavior tests prove default-off access returns `403` before

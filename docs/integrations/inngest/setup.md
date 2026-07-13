@@ -18,6 +18,9 @@ CONDUCTOR_PORT=3001 npm run dev:local
 
 The startup script points Inngest at the matching SDK URL, such as `http://127.0.0.1:3001/api/inngest`, and derives a separate Inngest UI port.
 
+Pulled Vercel metadata does not change this behavior: any process outside
+`NODE_ENV=production` is forced into Inngest dev mode.
+
 ## Manual Debugging
 
 Use this only when isolating Inngest from the rest of the local stack:
@@ -54,11 +57,16 @@ The error "Cannot read properties of undefined (reading 'triggers')" is likely:
 - Or Inngest SDK version mismatch
 - Local dev server doesn't have this issue
 
-## Production Later
+## Hosted Identity
 
-Once you're ready for production:
+Hosted deployments fail closed unless their Inngest routing identity matches
+their Vercel identity:
 
-1. Deploy to Vercel
-2. Try syncing again with Inngest Cloud (might work with deployed version)
-3. Or contact Inngest support if issue persists
-4. Dev server is perfect for local development anyway!
+- Preview requires `INNGEST_ENV` to exactly equal
+  `VERCEL_GIT_COMMIT_REF`, plus both `INNGEST_EVENT_KEY` and
+  `INNGEST_SIGNING_KEY`.
+- Production requires `VERCEL_GIT_COMMIT_REF=main`, both keys, and no
+  branch-only `INNGEST_ENV` override.
+- `/api/inngest` registers 14 functions and exports a 300-second Vercel
+  duration. Verify the dashboard sync count and a synthetic run; key presence
+  and the service-health response do not prove provider connectivity.
