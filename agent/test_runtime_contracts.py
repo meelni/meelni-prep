@@ -91,6 +91,10 @@ class RuntimeContractTests(unittest.TestCase):
         resolved = validate_livekit_runtime_environment(base)
         self.assertEqual(resolved.deployment, "preview")
         self.assertEqual(resolved.url, "wss://preview.livekit.cloud")
+        hosted = validate_livekit_runtime_environment(
+            {**base, "LIVEKIT_URL": "https://preview.livekit.cloud"}
+        )
+        self.assertEqual(hosted.url, "wss://preview.livekit.cloud")
 
         unsafe = [
             {**base, "LIVEKIT_URL": "wss://production.livekit.cloud"},
@@ -98,7 +102,17 @@ class RuntimeContractTests(unittest.TestCase):
                 **base,
                 "NEXT_PUBLIC_LIVEKIT_URL": "wss://other.livekit.cloud",
             },
-            {**base, "LIVEKIT_URL": "https://preview.livekit.cloud"},
+            {**base, "NEXT_PUBLIC_LIVEKIT_URL": "https://preview.livekit.cloud"},
+            {**base, "LIVEKIT_URL": "http://preview.livekit.cloud"},
+            {**base, "LIVEKIT_URL": "ws://preview.livekit.cloud"},
+            {
+                **base,
+                "MEELNI_PREVIEW_LIVEKIT_URL": "https://preview.livekit.cloud",
+            },
+            {
+                **base,
+                "MEELNI_PRODUCTION_LIVEKIT_URL": "https://production.livekit.cloud",
+            },
             {**base, "MEELNI_PREVIEW_LIVEKIT_URL": "wss://other.livekit.cloud"},
             {key: value for key, value in base.items() if key != "MEELNI_PREVIEW_LIVEKIT_URL"},
             {**base, "MEELNI_ENV_PULL_ENVIRONMENT": "production"},

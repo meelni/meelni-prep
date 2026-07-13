@@ -37,6 +37,12 @@ match the canonical Preview anchor, and those anchors must differ. Development
 must differ from Production and may use Preview when its anchor is present. If
 both LiveKit URL variables exist, they must canonicalize to the same
 credential-free `wss://*.livekit.cloud` origin.
+LiveKit Cloud may inject its server-only `LIVEKIT_URL` as an
+`https://*.livekit.cloud` control-plane URL. The Python workers accept that
+secure server-only form and normalize it to the equivalent `wss://` origin
+before provider initialization. Public URLs and configured Preview/Production
+anchors remain `wss://`-only; `http://`, `ws://`, credentials, paths, queries,
+and non-LiveKit hosts remain denied.
 The web runtime, internal transcript authentication, and both Python voice
 workers enforce this identity before provider initialization or transcript
 mutation. The Production anchor is scoped identity metadata and is never

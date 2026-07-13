@@ -40,7 +40,11 @@ def validate_livekit_runtime_environment(
     public_value = env.get("NEXT_PUBLIC_LIVEKIT_URL")
     server_value = env.get("LIVEKIT_URL")
     public_origin = canonical_livekit_origin(public_value) if public_value else None
-    server_origin = canonical_livekit_origin(server_value) if server_value else None
+    server_origin = (
+        canonical_livekit_origin(server_value, allow_https=True)
+        if server_value
+        else None
+    )
     if public_value and not public_origin:
         raise ProviderEnvironmentError("livekit_url_invalid")
     if server_value and not server_origin:
@@ -102,7 +106,9 @@ def _required(env: Mapping[str, str], name: str) -> str:
     return value.strip()
 
 
-def canonical_livekit_origin(value: Optional[str]) -> Optional[str]:
+def canonical_livekit_origin(
+    value: Optional[str], *, allow_https: bool = False
+) -> Optional[str]:
     if not value or value != value.strip():
         return None
     try:
@@ -111,7 +117,7 @@ def canonical_livekit_origin(value: Optional[str]) -> Optional[str]:
     except ValueError:
         return None
     if (
-        parsed.scheme != "wss"
+        parsed.scheme not in ({"wss", "https"} if allow_https else {"wss"})
         or parsed.username
         or parsed.password
         or (port is not None and port != 443)
