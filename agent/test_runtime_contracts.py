@@ -8,7 +8,9 @@ import hmac
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
@@ -20,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from shared.config import parse_room_metadata
 from shared.provider_environment import (
     ProviderEnvironmentError,
+    run_livekit_worker,
     validate_livekit_runtime_environment,
 )
 from shared.utils.prompt_builder import build_agent_prompt
@@ -123,10 +126,7 @@ class RuntimeContractTests(unittest.TestCase):
         for relative_path in ("interview/agent.py", "demo/agent.py"):
             source = (Path(__file__).parent / relative_path).read_text()
             run_worker = source[source.index("def run_worker()") :]
-            self.assertLess(
-                run_worker.index("validate_livekit_runtime_environment(os.environ)"),
-                run_worker.index("cli.run_app("),
-            )
+            self.assertIn("run_livekit_worker(os.environ, sys.argv[1:], initialize)", run_worker)
             entrypoint = source[source.index("async def entrypoint") :]
             self.assertLess(
                 entrypoint.index("validate_livekit_runtime_environment(os.environ)"),
@@ -134,6 +134,126 @@ class RuntimeContractTests(unittest.TestCase):
                 if "ctx.connect(" in entrypoint
                 else entrypoint.index("AgentSession("),
             )
+
+    def test_only_download_files_bypasses_runtime_identity_before_cli(self):
+        calls = []
+        result = run_livekit_worker(
+            {}, ["download-files"], lambda: calls.append("cli") or "complete"
+        )
+        self.assertEqual(result, "complete")
+        self.assertEqual(calls, ["cli"])
+
+        calls.clear()
+        with self.assertRaises(ProviderEnvironmentError):
+            run_livekit_worker({}, ["start"], lambda: calls.append("cli"))
+        self.assertEqual(calls, [])
+        with self.assertRaises(ProviderEnvironmentError):
+            run_livekit_worker({}, ["download-files", "extra"], lambda: calls.append("cli"))
+        self.assertEqual(calls, [])
+
+        for relative_path in ("interview/Dockerfile", "demo/Dockerfile", "Dockerfile"):
+            source = (Path(__file__).parent / relative_path).read_text()
+            self.assertIn("RUN python agent.py download-files", source)
+
+    def test_livekit_deploy_scripts_select_validated_config_before_fake_cli(self):
+        agent_root = Path(__file__).parent
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            log_path = root / "lk.log"
+            fake_lk = fake_bin / "lk"
+            fake_lk.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$LK_LOG"\n')
+            fake_lk.chmod(0o755)
+            preview = root / "preview.toml"
+            production = root / "production.toml"
+            preview.write_text(
+                '[project]\nsubdomain = "preview-project"\n[agent]\nid = "preview-agent"\n'
+            )
+            production.write_text(
+                '[project]\nsubdomain = "production-project"\n[agent]\nid = "production-agent"\n'
+            )
+            env = {
+                **os.environ,
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "LK_LOG": str(log_path),
+                "MEELNI_PRODUCTION_LIVEKIT_URL": "wss://production-project.livekit.cloud",
+            }
+
+            for kind in ("interview", "demo"):
+                for environment, expected in (
+                    ("preview", preview),
+                    ("production", production),
+                ):
+                    selected_env = {
+                        **env,
+                        f"MEELNI_LIVEKIT_{environment.upper()}_{kind.upper()}_CONFIG": str(expected),
+                    }
+                    subprocess.run(
+                        [str(agent_root / kind / "deploy.sh"), environment],
+                        check=True,
+                        env=selected_env,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertIn(f"--config {expected} agent deploy .", log_path.read_text())
+
+    def test_livekit_deploy_denials_never_invoke_fake_cli(self):
+        agent_root = Path(__file__).parent
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            log_path = root / "lk.log"
+            fake_lk = fake_bin / "lk"
+            fake_lk.write_text('#!/bin/sh\nprintf invoked >> "$LK_LOG"\n')
+            fake_lk.chmod(0o755)
+            production = root / "production.toml"
+            production.write_text(
+                '[project]\nsubdomain = "production-project"\n[agent]\nid = "production-agent"\n'
+            )
+            malformed = root / "malformed.toml"
+            malformed.write_text("not toml =")
+            base = {
+                **os.environ,
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "LK_LOG": str(log_path),
+                "MEELNI_PRODUCTION_LIVEKIT_URL": "wss://production-project.livekit.cloud",
+            }
+            denied = [
+                (
+                    "preview",
+                    {
+                        **base,
+                        "MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG": str(production),
+                    },
+                ),
+                ("production", base),
+                (
+                    "production",
+                    {
+                        **base,
+                        "MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG": str(malformed),
+                    },
+                ),
+                (
+                    "production",
+                    {
+                        **base,
+                        "MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG": str(production),
+                        "MEELNI_PRODUCTION_LIVEKIT_URL": "not-a-url",
+                    },
+                ),
+            ]
+            for environment, env in denied:
+                result = subprocess.run(
+                    [str(agent_root / "interview" / "deploy.sh"), environment],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(log_path.exists())
 
     def test_runtime_provider_error_codes_are_allowlisted_and_payload_free(self):
         self.assertEqual(provider_failure_code("stt_error"), "stt_provider_failed")

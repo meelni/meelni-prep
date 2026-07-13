@@ -1,13 +1,19 @@
 #!/bin/bash
-# Deploy Demo Agent to LiveKit Cloud
-set -e
+set -euo pipefail
 
-echo "🚀 Deploying Demo Agent to LiveKit Cloud..."
-echo "Using LiveKit demo agent name: ${LIVEKIT_DEMO_AGENT_NAME:-not set}"
+environment="${1:-}"
+case "$environment" in
+  preview) config_path="${MEELNI_LIVEKIT_PREVIEW_DEMO_CONFIG:-}" ;;
+  production) config_path="${MEELNI_LIVEKIT_PRODUCTION_DEMO_CONFIG:-}" ;;
+  *) echo "Usage: ./deploy.sh preview|production" >&2; exit 1 ;;
+esac
 
-# Deploy from parent directory (agent/) with demo-specific Dockerfile
-# This allows the Dockerfile to access both shared/ and demo/ directories
-cd "$(dirname "$0")/.."  # Go to agent/ directory
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+agent_dir="$(cd "$script_dir/.." && pwd)"
+python3 "$agent_dir/shared/validate_livekit_deploy.py" \
+  "$environment" "$config_path" "${MEELNI_PRODUCTION_LIVEKIT_URL:-}"
+
+cd "$agent_dir"
 
 tmp_dockerfile="$(mktemp)"
 cp Dockerfile "$tmp_dockerfile"
@@ -18,7 +24,4 @@ restore_dockerfile() {
 trap restore_dockerfile EXIT
 
 cp demo/Dockerfile Dockerfile
-lk --config demo/livekit.toml agent deploy .
-
-echo "✅ Demo Agent deployed successfully!"
-echo "Agent name: ${LIVEKIT_DEMO_AGENT_NAME:-set in LiveKit Cloud secrets}"
+lk --config "$config_path" agent deploy .

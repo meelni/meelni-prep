@@ -139,18 +139,31 @@ python agent.py dev
 
 Both agents are deployed to LiveKit Cloud.
 
+Keep project/agent TOML files outside the repository and select the target
+explicitly. Each config must contain its environment's `[project].subdomain`
+and the correct agent ID. Set the matching config path before deployment:
+
+- `MEELNI_LIVEKIT_PREVIEW_DEMO_CONFIG`
+- `MEELNI_LIVEKIT_PRODUCTION_DEMO_CONFIG`
+- `MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG`
+- `MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG`
+
+`MEELNI_PRODUCTION_LIVEKIT_URL` is required. The deploy scripts reject a
+Preview config targeting that origin and reject a Production config targeting
+anything else before invoking `lk`.
+
 **Deploy Demo Agent:**
 
 ```bash
 cd demo
-./deploy.sh
+./deploy.sh preview # or production
 ```
 
 **Deploy Interview Agent:**
 
 ```bash
 cd interview
-./deploy.sh
+./deploy.sh preview # or production
 ```
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instructions.
@@ -171,6 +184,9 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instruction
 | `CARTESIA_API_KEY`                            | ❌       | **Not required** when using LiveKit Inference |
 
 **Note:** If running outside of Conductor, create a `.env` file in the `agent/` directory.
+The exact `download-files` CLI command is the only provider-free startup path
+that does not require runtime identity; worker commands and job entrypoints
+remain fail-closed.
 
 ---
 

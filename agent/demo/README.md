@@ -27,7 +27,7 @@ This agent provides a short, engaging demo experience for prospective users on t
 - `agent.py` - Main demo agent entrypoint
 - `Dockerfile` - Docker configuration for Cloud deployment
 - `.dockerignore` - Files to exclude from Docker build
-- `livekit.toml` - LiveKit agent configuration
+- `livekit.toml` - tracked safety stub; deployment config stays external
 - `deploy.sh` - Deployment script for LiveKit Cloud
 
 ## Local Development
@@ -49,7 +49,7 @@ Deploy to LiveKit Cloud:
 
 ```bash
 cd demo
-./deploy.sh
+./deploy.sh preview # or production
 ```
 
 **Dispatch name**: `LIVEKIT_DEMO_AGENT_NAME`

@@ -38,6 +38,16 @@ The web runtime, internal transcript authentication, and both Python voice
 workers enforce this identity before provider initialization or transcript
 mutation. The Production anchor is scoped identity metadata and is never
 restored from an older local env file when a Vercel pull omits it.
+Docker builds may run the exact provider-free `download-files` agent command
+without runtime credentials. No worker command or room entrypoint receives
+that exception.
+
+LiveKit deploys require an explicit `preview` or `production` argument and the
+matching external environment-and-agent config path documented in
+`agent/README.md`. Before any `lk agent deploy`, the script derives the project
+origin from `[project].subdomain`: Preview must differ from
+`MEELNI_PRODUCTION_LIVEKIT_URL`, while Production must match it. Tracked TOML
+files intentionally contain no project or agent identifiers.
 
 The Stripe catalog setup command applies the same trusted deployment identity
 and key-mode boundary before constructing a Stripe client. `--dry-run` remains

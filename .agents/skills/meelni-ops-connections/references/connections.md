@@ -190,6 +190,14 @@ Operational notes:
 - Vercel sensitive values can pull into `.env.local` as blank strings. `npm run env:pull` preserves existing nonblank local LiveKit values when Vercel returns blanks.
 - If Vercel env values are questionable, use the authenticated `meelni` LiveKit CLI project as the source of truth and overwrite Vercel Development, Preview, and Production envs.
 - After changing Vercel envs, redeploy affected Vercel environments. After changing agent code/secrets, redeploy the corresponding LiveKit Cloud agent.
+- Voice-agent deploys require `preview` or `production` explicitly and use
+  environment-and-agent-specific external config paths: the
+  `MEELNI_LIVEKIT_{PREVIEW,PRODUCTION}_{DEMO,INTERVIEW}_CONFIG` variables.
+  Run `agent/demo/deploy.sh preview|production` or
+  `agent/interview/deploy.sh preview|production`. Before invoking `lk`, each
+  script requires an agent ID and proves the selected project differs from the
+  `MEELNI_PRODUCTION_LIVEKIT_URL` anchor for Preview or matches it for
+  Production. Tracked TOML files contain no provider identifiers.
 
 ## Supabase
 

@@ -1,7 +1,7 @@
 """Fail-closed deployment identity checks shared by both LiveKit workers."""
 
 from dataclasses import dataclass
-from typing import Mapping, Optional
+from typing import Callable, Mapping, MutableMapping, Optional, Sequence, TypeVar
 from urllib.parse import urlsplit
 
 
@@ -15,18 +15,32 @@ class LiveKitRuntimeEnvironment:
     url: str
 
 
+Result = TypeVar("Result")
+
+
+def run_livekit_worker(
+    env: MutableMapping[str, str],
+    argv: Sequence[str],
+    initialize: Callable[[], Result],
+) -> Result:
+    """Run only the provider-free asset download without deployment identity."""
+    if list(argv) != ["download-files"]:
+        runtime = validate_livekit_runtime_environment(env)
+        env["LIVEKIT_URL"] = runtime.url
+    return initialize()
+
+
 def validate_livekit_runtime_environment(
     env: Mapping[str, str],
 ) -> LiveKitRuntimeEnvironment:
     deployment = resolve_deployment_environment(env)
-    api_key = _required(env, "LIVEKIT_API_KEY")
-    api_secret = _required(env, "LIVEKIT_API_SECRET")
-    del api_key, api_secret
+    _required(env, "LIVEKIT_API_KEY")
+    _required(env, "LIVEKIT_API_SECRET")
 
     public_value = env.get("NEXT_PUBLIC_LIVEKIT_URL")
     server_value = env.get("LIVEKIT_URL")
-    public_origin = _canonical_livekit_origin(public_value) if public_value else None
-    server_origin = _canonical_livekit_origin(server_value) if server_value else None
+    public_origin = canonical_livekit_origin(public_value) if public_value else None
+    server_origin = canonical_livekit_origin(server_value) if server_value else None
     if public_value and not public_origin:
         raise ProviderEnvironmentError("livekit_url_invalid")
     if server_value and not server_origin:
@@ -37,7 +51,7 @@ def validate_livekit_runtime_environment(
     current_origin = public_origin or server_origin
     if not current_origin:
         raise ProviderEnvironmentError("livekit_url_missing")
-    production_origin = _canonical_livekit_origin(
+    production_origin = canonical_livekit_origin(
         env.get("MEELNI_PRODUCTION_LIVEKIT_URL")
     )
     if not production_origin:
@@ -78,7 +92,7 @@ def _required(env: Mapping[str, str], name: str) -> str:
     return value.strip()
 
 
-def _canonical_livekit_origin(value: Optional[str]) -> Optional[str]:
+def canonical_livekit_origin(value: Optional[str]) -> Optional[str]:
     if not value or value != value.strip():
         return None
     try:

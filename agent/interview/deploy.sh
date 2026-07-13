@@ -1,14 +1,17 @@
 #!/bin/bash
-# Deploy Main Interview Agent to LiveKit Cloud
-set -e
+set -euo pipefail
 
-echo "🚀 Deploying Main Interview Agent to LiveKit Cloud..."
-echo "Using LiveKit interview agent name: ${LIVEKIT_INTERVIEW_AGENT_NAME:-not set}"
+environment="${1:-}"
+case "$environment" in
+  preview) config_path="${MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG:-}" ;;
+  production) config_path="${MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG:-}" ;;
+  *) echo "Usage: ./deploy.sh preview|production" >&2; exit 1 ;;
+esac
 
-# Deploy from parent directory (agent/) with interview-specific Dockerfile
-# This allows the Dockerfile to access both shared/ and interview/ directories
-cd "$(dirname "$0")/.."  # Go to agent/ directory
-lk --config interview/livekit.toml agent deploy .
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+agent_dir="$(cd "$script_dir/.." && pwd)"
+python3 "$agent_dir/shared/validate_livekit_deploy.py" \
+  "$environment" "$config_path" "${MEELNI_PRODUCTION_LIVEKIT_URL:-}"
 
-echo "✅ Main Interview Agent deployed successfully!"
-echo "Agent name: ${LIVEKIT_INTERVIEW_AGENT_NAME:-set in LiveKit Cloud secrets}"
+cd "$agent_dir"
+lk --config "$config_path" agent deploy .

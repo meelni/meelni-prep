@@ -36,7 +36,10 @@ from livekit.plugins.turn_detector.english import EnglishModel
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import parse_room_metadata
-from shared.provider_environment import validate_livekit_runtime_environment
+from shared.provider_environment import (
+    run_livekit_worker,
+    validate_livekit_runtime_environment,
+)
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.runtime_config import get_model_config, get_tts_config
 from shared.runtime_events import (
@@ -790,30 +793,28 @@ async def entrypoint(ctx: JobContext):
 
 
 def run_worker() -> None:
-    runtime_environment = validate_livekit_runtime_environment(os.environ)
-    os.environ["LIVEKIT_URL"] = runtime_environment.url
-    # Detect if running on LiveKit Cloud (Cloud provides LIVEKIT_URL automatically)
-    is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
+    def initialize() -> None:
+        is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
+        if is_cloud:
+            agent_name = get_required_env("LIVEKIT_INTERVIEW_AGENT_NAME")
+            cli.run_app(
+                WorkerOptions(
+                    entrypoint_fnc=entrypoint,
+                    prewarm_fnc=prewarm,
+                    agent_name=agent_name,
+                ),
+            )
+        else:
+            cli.run_app(
+                WorkerOptions(
+                    entrypoint_fnc=entrypoint,
+                    prewarm_fnc=prewarm,
+                    num_idle_processes=2,
+                    load_threshold=0.9,
+                ),
+            )
 
-    # Cloud doesn't support num_idle_processes or load_threshold
-    if is_cloud:
-        agent_name = get_required_env("LIVEKIT_INTERVIEW_AGENT_NAME")
-        cli.run_app(
-            WorkerOptions(
-                entrypoint_fnc=entrypoint,
-                prewarm_fnc=prewarm,
-                agent_name=agent_name,
-            ),
-        )
-    else:
-        cli.run_app(
-            WorkerOptions(
-                entrypoint_fnc=entrypoint,
-                prewarm_fnc=prewarm,
-                num_idle_processes=2,  # Keep 2 idle processes ready for new jobs
-                load_threshold=0.9,  # Increase threshold to accept more jobs (default: 0.7)
-            ),
-        )
+    run_livekit_worker(os.environ, sys.argv[1:], initialize)
 
 
 if __name__ == "__main__":

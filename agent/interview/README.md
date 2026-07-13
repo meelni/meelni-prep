@@ -33,7 +33,7 @@ This is the main interview agent that powers full mock interview sessions. It su
 - `agent.py` - Main interview agent entrypoint
 - `Dockerfile` - Docker configuration for Cloud deployment
 - `.dockerignore` - Files to exclude from Docker build
-- `livekit.toml` - LiveKit agent configuration
+- `livekit.toml` - tracked safety stub; deployment config stays external
 - `deploy.sh` - Deployment script for LiveKit Cloud
 
 ## Local Development
@@ -58,7 +58,7 @@ Deploy to LiveKit Cloud:
 
 ```bash
 cd interview
-./deploy.sh
+./deploy.sh preview # or production
 ```
 
 **Dispatch name**: `LIVEKIT_INTERVIEW_AGENT_NAME`
