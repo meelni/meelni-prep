@@ -10,6 +10,7 @@ import {
   findMissingRequiredEnv,
   getLiveKitAgentName,
   getLiveKitEnvironment,
+  getStripeRuntimeEnvironment,
   getProviderEnvContract,
   INTEGRATION_PROVIDERS,
   isProviderFailure,
@@ -19,6 +20,7 @@ import {
   listProviderEnvVars,
   providerFailure,
   providerSuccess,
+  resolveDeploymentEnvironment,
   terminateInterviewRoom,
   type LiveKitInterviewProvider,
 } from "./index";
@@ -41,6 +43,7 @@ test("livekit env contract captures server keys and websocket URL alternatives",
   assert.deepEqual(listProviderEnvVars("livekit"), [
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
+    "MEELNI_PRODUCTION_LIVEKIT_URL",
     "LIVEKIT_INTERVIEW_AGENT_NAME",
     "LIVEKIT_DEMO_AGENT_NAME",
     "NEXT_PUBLIC_LIVEKIT_URL",
@@ -131,9 +134,11 @@ test("getLiveKitEnvironment reports missing required LiveKit config", () => {
 
 test("getLiveKitEnvironment accepts public or server websocket URL", () => {
   const result = getLiveKitEnvironment({
+    VERCEL_ENV: "preview",
     LIVEKIT_API_KEY: "key",
     LIVEKIT_API_SECRET: "secret",
     LIVEKIT_URL: "wss://server.livekit.cloud",
+    MEELNI_PRODUCTION_LIVEKIT_URL: "wss://production.livekit.cloud",
   });
 
   assert.equal(result.ok, true);
@@ -145,6 +150,135 @@ test("getLiveKitEnvironment accepts public or server websocket URL", () => {
     });
   }
 });
+
+test("deployment identity uses trusted markers and never NODE_ENV", () => {
+  assert.deepEqual(
+    resolveDeploymentEnvironment({
+      NODE_ENV: "production",
+      VERCEL_ENV: "preview",
+      MEELNI_ENV_PULL_ENVIRONMENT: "preview",
+    }),
+    { ok: true, environment: "preview" }
+  );
+  assert.equal(
+    resolveDeploymentEnvironment({
+      VERCEL_ENV: "preview",
+      MEELNI_ENV_PULL_ENVIRONMENT: "production",
+    }).ok,
+    false
+  );
+  for (const value of ["", "Preview", " preview", "staging"]) {
+    assert.equal(resolveDeploymentEnvironment({ VERCEL_ENV: value }).ok, false);
+  }
+});
+
+test("Stripe runtime rejects live or incomplete Preview configuration", () => {
+  const preview = stripeEnvironment("preview", "test");
+  assert.equal(getStripeRuntimeEnvironment(preview).ok, true);
+  assert.equal(
+    getStripeRuntimeEnvironment({
+      ...preview,
+      STRIPE_SECRET_KEY: "rk_test_key",
+    }).ok,
+    true
+  );
+  assert.equal(
+    getStripeRuntimeEnvironment({
+      ...preview,
+      STRIPE_SECRET_KEY: "sk_live_key",
+    }).ok,
+    false
+  );
+  assert.equal(
+    getStripeRuntimeEnvironment(
+      { ...preview, STRIPE_PRO_MONTHLY_PRICE_ID: "" },
+      { requireCompleteBillingConfiguration: true }
+    ).ok,
+    false
+  );
+  assert.equal(
+    getStripeRuntimeEnvironment({
+      ...preview,
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_live_key",
+    }).ok,
+    false
+  );
+});
+
+test("Stripe runtime requires live mode in Production", () => {
+  assert.equal(
+    getStripeRuntimeEnvironment(stripeEnvironment("production", "live")).ok,
+    true
+  );
+  assert.equal(
+    getStripeRuntimeEnvironment(stripeEnvironment("production", "test")).ok,
+    false
+  );
+});
+
+test("LiveKit environment canonicalizes and isolates shared project origins", () => {
+  const base = {
+    VERCEL_ENV: "preview",
+    LIVEKIT_API_KEY: "key",
+    LIVEKIT_API_SECRET: "secret",
+    MEELNI_PRODUCTION_LIVEKIT_URL: "wss://PROD.livekit.cloud.:443/",
+  };
+  assert.equal(
+    getLiveKitEnvironment({
+      ...base,
+      LIVEKIT_URL: "wss://preview.livekit.cloud",
+      NEXT_PUBLIC_LIVEKIT_URL: "wss://PREVIEW.livekit.cloud/",
+    }).ok,
+    true
+  );
+  for (const candidate of [
+    "wss://prod.livekit.cloud",
+    "wss://PROD.livekit.cloud./",
+    "wss://prod.livekit.cloud:443/",
+  ]) {
+    assert.equal(
+      getLiveKitEnvironment({ ...base, LIVEKIT_URL: candidate }).ok,
+      false
+    );
+  }
+  for (const candidate of [
+    "https://preview.livekit.cloud",
+    "wss://preview.livekit.cloud/path",
+    "wss://preview.livekit.cloud?target=prod",
+    "wss://user@preview.livekit.cloud",
+    "wss://preview.livekit.cloud.evil",
+    "wss://preview.livekit.cloud:444",
+  ]) {
+    assert.equal(
+      getLiveKitEnvironment({ ...base, LIVEKIT_URL: candidate }).ok,
+      false
+    );
+  }
+  assert.equal(
+    getLiveKitEnvironment({
+      ...base,
+      LIVEKIT_URL: "wss://one.livekit.cloud",
+      NEXT_PUBLIC_LIVEKIT_URL: "wss://two.livekit.cloud",
+    }).ok,
+    false
+  );
+});
+
+function stripeEnvironment(
+  environment: "preview" | "production",
+  mode: "test" | "live"
+) {
+  return {
+    VERCEL_ENV: environment,
+    MEELNI_ENV_PULL_ENVIRONMENT: environment,
+    STRIPE_SECRET_KEY: `sk_${mode}_key`,
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: `pk_${mode}_key`,
+    STRIPE_WEBHOOK_SECRET: "whsec_fixture",
+    STRIPE_INTERVIEW_PASS_PRICE_ID: "price_pass",
+    STRIPE_STARTER_MONTHLY_PRICE_ID: "price_starter",
+    STRIPE_PRO_MONTHLY_PRICE_ID: "price_pro",
+  };
+}
 
 test("getLiveKitAgentName reads per-account dispatch names", () => {
   const result = getLiveKitAgentName("interview", {

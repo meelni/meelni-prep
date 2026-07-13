@@ -264,9 +264,14 @@ describe("POST /api/webhooks/stripe", () => {
     state.tombstoneFingerprints.clear();
     state.signatureCalls = 0;
     state.currentEvent = null;
+    process.env.VERCEL_ENV = "preview";
+    process.env.MEELNI_ENV_PULL_ENVIRONMENT = "preview";
     process.env.STRIPE_SECRET_KEY = "sk_test_route";
+    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_route";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_route";
+    process.env.STRIPE_INTERVIEW_PASS_PRICE_ID = "price_pass_route";
     process.env.STRIPE_STARTER_MONTHLY_PRICE_ID = "price_starter_route";
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro_route";
   });
 
   it("replays and acknowledges distinct Event IDs for one logical transition", async () => {

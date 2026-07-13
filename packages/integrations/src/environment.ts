@@ -21,6 +21,19 @@ export interface ProviderEnvContract {
   atLeastOne?: EnvAlternativeGroup[];
 }
 
+export type DeploymentEnvironment = "development" | "preview" | "production";
+
+export type DeploymentEnvironmentResolution =
+  | { ok: true; environment: DeploymentEnvironment }
+  | {
+      ok: false;
+      code:
+        | "deployment_environment_missing"
+        | "deployment_environment_invalid"
+        | "deployment_environment_conflict";
+      message: string;
+    };
+
 export const PROVIDER_ENV_CONTRACTS: Record<
   IntegrationProvider,
   ProviderEnvContract
@@ -74,6 +87,12 @@ export const PROVIDER_ENV_CONTRACTS: Record<
       ),
     ],
     optional: [
+      env(
+        "MEELNI_PRODUCTION_LIVEKIT_URL",
+        "Non-secret Production LiveKit Cloud URL used to isolate shared environments.",
+        "server",
+        false
+      ),
       env(
         "LIVEKIT_INTERVIEW_AGENT_NAME",
         "LiveKit dispatch name for the full interview agent.",
@@ -256,6 +275,76 @@ export function findMissingRequiredEnv(
   }
 
   return missing;
+}
+
+export function resolveDeploymentEnvironment(
+  envSource: Record<string, string | undefined> = process.env
+): DeploymentEnvironmentResolution {
+  const vercelPresent = Object.prototype.hasOwnProperty.call(
+    envSource,
+    "VERCEL_ENV"
+  );
+  const markerPresent = Object.prototype.hasOwnProperty.call(
+    envSource,
+    "MEELNI_ENV_PULL_ENVIRONMENT"
+  );
+  const rawVercelEnvironment = envSource.VERCEL_ENV;
+  const rawMarker = envSource.MEELNI_ENV_PULL_ENVIRONMENT;
+
+  if (vercelPresent && !isDeploymentEnvironment(rawVercelEnvironment)) {
+    return invalidEnvironment("VERCEL_ENV");
+  }
+  if (markerPresent && !isPulledDeploymentEnvironment(rawMarker)) {
+    return invalidEnvironment("MEELNI_ENV_PULL_ENVIRONMENT");
+  }
+  const vercelEnvironment =
+    vercelPresent && isDeploymentEnvironment(rawVercelEnvironment)
+      ? rawVercelEnvironment
+      : undefined;
+  const marker =
+    markerPresent && isPulledDeploymentEnvironment(rawMarker)
+      ? rawMarker
+      : undefined;
+  if (vercelEnvironment && marker && vercelEnvironment !== marker) {
+    return {
+      ok: false,
+      code: "deployment_environment_conflict",
+      message:
+        "VERCEL_ENV and MEELNI_ENV_PULL_ENVIRONMENT identify different environments.",
+    };
+  }
+
+  const environment = vercelEnvironment ?? marker;
+  if (!environment) {
+    return {
+      ok: false,
+      code: "deployment_environment_missing",
+      message: "A trusted deployment environment identity is required.",
+    };
+  }
+  return { ok: true, environment };
+}
+
+function isDeploymentEnvironment(
+  value: string | undefined
+): value is DeploymentEnvironment {
+  return (
+    value === "development" || value === "preview" || value === "production"
+  );
+}
+
+function isPulledDeploymentEnvironment(
+  value: string | undefined
+): value is Exclude<DeploymentEnvironment, "development"> {
+  return value === "preview" || value === "production";
+}
+
+function invalidEnvironment(name: string): DeploymentEnvironmentResolution {
+  return {
+    ok: false,
+    code: "deployment_environment_invalid",
+    message: `${name} is not a recognized deployment environment.`,
+  };
 }
 
 function env(

@@ -84,16 +84,9 @@ export async function assessServiceHealth(
     { name: "web", status: "healthy", code: "web_ready" },
   ];
 
-  const liveKitEnv = {
-    LIVEKIT_API_KEY: dependencies.env.LIVEKIT_API_KEY,
-    LIVEKIT_API_SECRET: dependencies.env.LIVEKIT_API_SECRET,
-    LIVEKIT_URL: dependencies.env.LIVEKIT_URL,
-    NEXT_PUBLIC_LIVEKIT_URL: dependencies.env.NEXT_PUBLIC_LIVEKIT_URL,
-    LIVEKIT_INTERVIEW_AGENT_NAME: dependencies.env.LIVEKIT_INTERVIEW_AGENT_NAME,
-  };
   const liveKitReady =
-    getLiveKitEnvironment(liveKitEnv).ok &&
-    getLiveKitAgentName("interview", liveKitEnv).ok;
+    getLiveKitEnvironment(dependencies.env).ok &&
+    getLiveKitAgentName("interview", dependencies.env).ok;
 
   checks.push(
     liveKitReady

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const stripeMocks = vi.hoisted(() => ({
+  constructions: 0,
   list: vi.fn(),
   subscriptionList: vi.fn(),
   create: vi.fn(),
@@ -17,6 +18,9 @@ const dbMocks = vi.hoisted(() => ({
 
 vi.mock("stripe", () => ({
   default: class StripeMock {
+    constructor() {
+      stripeMocks.constructions += 1;
+    }
     checkout = { sessions: stripeMocks };
     subscriptions = { list: stripeMocks.subscriptionList };
     customers = { create: stripeMocks.customerCreate };
@@ -68,9 +72,9 @@ import { POST } from "./route";
 describe("POST /api/checkout/create-session deletion guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stripeMocks.constructions = 0;
+    setPreviewStripeEnvironment();
     process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
-    process.env.STRIPE_INTERVIEW_PASS_PRICE_ID = "price_test_pass";
-    process.env.STRIPE_STARTER_MONTHLY_PRICE_ID = "price_test_starter";
     vi.mocked(createClient).mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -109,6 +113,18 @@ describe("POST /api/checkout/create-session deletion guard", () => {
       error: "account_deletion_pending",
     });
     expect(stripeMocks.list).not.toHaveBeenCalled();
+    expect(stripeMocks.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects live Stripe mode in Preview before client construction", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(false);
+    process.env.STRIPE_SECRET_KEY = "sk_live_forbidden";
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect(stripeMocks.constructions).toBe(0);
     expect(stripeMocks.create).not.toHaveBeenCalled();
   });
 
@@ -198,6 +214,17 @@ describe("POST /api/checkout/create-session deletion guard", () => {
     expect(stripeMocks.create).not.toHaveBeenCalled();
   });
 });
+
+function setPreviewStripeEnvironment() {
+  process.env.VERCEL_ENV = "preview";
+  process.env.MEELNI_ENV_PULL_ENVIRONMENT = "preview";
+  process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_fixture";
+  process.env.STRIPE_WEBHOOK_SECRET = "whsec_fixture";
+  process.env.STRIPE_INTERVIEW_PASS_PRICE_ID = "price_test_pass";
+  process.env.STRIPE_STARTER_MONTHLY_PRICE_ID = "price_test_starter";
+  process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_test_pro";
+}
 
 function request(catalogId = "interview_pass") {
   return new NextRequest("http://localhost/api/checkout/create-session", {

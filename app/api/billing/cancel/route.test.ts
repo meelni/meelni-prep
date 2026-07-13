@@ -30,7 +30,14 @@ const OBSERVED_AT = new Date("2026-07-12T00:00:00.000Z");
 describe("period-end subscription cancellation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.VERCEL_ENV = "preview";
+    process.env.MEELNI_ENV_PULL_ENVIRONMENT = "preview";
     process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
+    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_fixture";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_fixture";
+    process.env.STRIPE_INTERVIEW_PASS_PRICE_ID = "price_fixture_pass";
+    process.env.STRIPE_STARTER_MONTHLY_PRICE_ID = "price_fixture_starter";
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_fixture_pro";
     vi.mocked(createClient).mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({

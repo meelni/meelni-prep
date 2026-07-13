@@ -5,7 +5,10 @@ import {
   TrackSource,
 } from "livekit-server-sdk";
 
-import { findMissingRequiredEnv } from "./environment";
+import {
+  findMissingRequiredEnv,
+  resolveDeploymentEnvironment,
+} from "./environment";
 import {
   providerFailure,
   providerSuccess,
@@ -181,13 +184,103 @@ export function getLiveKitEnvironment(
     });
   }
 
-  const url = envSource.NEXT_PUBLIC_LIVEKIT_URL || envSource.LIVEKIT_URL;
+  const deployment = resolveDeploymentEnvironment(envSource);
+  if (!deployment.ok) {
+    return providerFailure("livekit", {
+      code: deployment.code,
+      message: deployment.message,
+      retryable: false,
+    });
+  }
+
+  const publicUrl = envSource.NEXT_PUBLIC_LIVEKIT_URL;
+  const serverUrl = envSource.LIVEKIT_URL;
+  const publicOrigin = publicUrl
+    ? canonicalLiveKitCloudOrigin(publicUrl)
+    : undefined;
+  const serverOrigin = serverUrl
+    ? canonicalLiveKitCloudOrigin(serverUrl)
+    : undefined;
+  if ((publicUrl && !publicOrigin) || (serverUrl && !serverOrigin)) {
+    return liveKitIdentityFailure(
+      "livekit_url_invalid",
+      "LiveKit URLs must be credential-free wss://*.livekit.cloud origins."
+    );
+  }
+  if (publicOrigin && serverOrigin && publicOrigin !== serverOrigin) {
+    return liveKitIdentityFailure(
+      "livekit_url_mismatch",
+      "Public and server LiveKit URLs identify different projects."
+    );
+  }
+
+  const url = publicUrl || serverUrl;
+  const currentOrigin = publicOrigin || serverOrigin;
+  const productionAnchor = canonicalLiveKitCloudOrigin(
+    envSource.MEELNI_PRODUCTION_LIVEKIT_URL
+  );
+  if (!productionAnchor) {
+    return liveKitIdentityFailure(
+      "livekit_production_identity_missing",
+      "MEELNI_PRODUCTION_LIVEKIT_URL must identify the Production project."
+    );
+  }
+  if (
+    deployment.environment === "production" &&
+    currentOrigin !== productionAnchor
+  ) {
+    return liveKitIdentityFailure(
+      "livekit_production_identity_mismatch",
+      "Production LiveKit URL does not match the Production identity anchor."
+    );
+  }
+  if (
+    deployment.environment !== "production" &&
+    currentOrigin === productionAnchor
+  ) {
+    return liveKitIdentityFailure(
+      "livekit_nonproduction_identity_conflict",
+      "A non-Production deployment cannot target the Production LiveKit project."
+    );
+  }
 
   return providerSuccess("livekit", {
     apiKey: envSource.LIVEKIT_API_KEY!,
     apiSecret: envSource.LIVEKIT_API_SECRET!,
     url: url!,
   });
+}
+
+function canonicalLiveKitCloudOrigin(
+  value: string | undefined
+): string | undefined {
+  if (!value || value !== value.trim()) return undefined;
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "wss:" ||
+      url.username ||
+      url.password ||
+      url.port ||
+      (url.pathname !== "/" && url.pathname !== "") ||
+      url.search ||
+      url.hash
+    ) {
+      return undefined;
+    }
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+    if (!hostname.endsWith(".livekit.cloud")) return undefined;
+    return `wss://${hostname}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function liveKitIdentityFailure(
+  code: string,
+  message: string
+): ProviderResult<never> {
+  return providerFailure("livekit", { code, message, retryable: false });
 }
 
 export function getLiveKitAgentName(

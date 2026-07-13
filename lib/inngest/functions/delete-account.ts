@@ -1,10 +1,9 @@
-import Stripe from "stripe";
 import {
   createLiveKitInterviewProvider,
   getLiveKitEnvironment,
 } from "@meelni/integrations";
 import { deletedBillingIdempotencyKey } from "@/lib/billing/account-deletion-guard";
-import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
+import { createStripeRuntimeClient } from "@/lib/billing/stripe-client";
 import {
   deleteUserApplicationData,
   getAccountDeletionRequest,
@@ -202,15 +201,13 @@ export const recoverAccountDeletions = inngest.createFunction(
 );
 
 function createStripeClient() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) {
+  try {
+    return createStripeRuntimeClient();
+  } catch {
     throw Object.assign(new Error("Stripe is not configured"), {
       code: "stripe_not_configured",
     });
   }
-  return new Stripe(key, {
-    apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
-  });
 }
 
 function safeProviderError(code: string) {

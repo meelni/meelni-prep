@@ -3,8 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { subscription } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import Stripe from "stripe";
-import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
+import { createStripeRuntimeClient } from "@/lib/billing/stripe-client";
 import { isStripeLiveServerKey } from "@/lib/billing/stripe-key-mode";
 
 /**
@@ -136,13 +135,5 @@ function getErrorMessage(error: unknown): string {
 }
 
 function getStripe() {
-  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-
-  if (!stripeSecretKey) {
-    throw new Error("STRIPE_SECRET_KEY environment variable is required");
-  }
-
-  return new Stripe(stripeSecretKey, {
-    apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
-  });
+  return createStripeRuntimeClient();
 }

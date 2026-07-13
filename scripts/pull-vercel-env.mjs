@@ -47,6 +47,7 @@ export const PRESERVE_WHEN_ENCRYPTED_KEYS = [
   "LIVEKIT_DEMO_AGENT_NAME",
   "LIVEKIT_INTERVIEW_AGENT_NAME",
   "LIVEKIT_URL",
+  "MEELNI_PRODUCTION_LIVEKIT_URL",
   "MEELNI_REACTIVATION_DEFAULT",
   "NEXT_PUBLIC_LIVEKIT_URL",
   "NEXT_PUBLIC_POSTHOG_KEY",
@@ -68,10 +69,20 @@ const REQUIRED_RUNTIME_KEYS = [
   "DATABASE_URL",
   "LIVEKIT_API_KEY",
   "LIVEKIT_API_SECRET",
+  "MEELNI_PRODUCTION_LIVEKIT_URL",
   "MEELNI_PRODUCTION_SUPABASE_PROJECT_REF",
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "OPENAI_API_KEY",
+];
+
+const REQUIRED_BILLING_KEYS = [
+  "STRIPE_SECRET_KEY",
+  "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "STRIPE_INTERVIEW_PASS_PRICE_ID",
+  "STRIPE_STARTER_MONTHLY_PRICE_ID",
+  "STRIPE_PRO_MONTHLY_PRICE_ID",
 ];
 
 const DEFAULTABLE_PUBLIC_KEYS = [
@@ -182,8 +193,12 @@ export function buildRefreshedEnv({
 export function validateRefreshedEnv(env, environment) {
   const requiredKeys =
     environment === "production"
-      ? [...REQUIRED_RUNTIME_KEYS, "NEXT_PUBLIC_APP_URL"]
-      : REQUIRED_RUNTIME_KEYS;
+      ? [
+          ...REQUIRED_RUNTIME_KEYS,
+          ...REQUIRED_BILLING_KEYS,
+          "NEXT_PUBLIC_APP_URL",
+        ]
+      : [...REQUIRED_RUNTIME_KEYS, ...REQUIRED_BILLING_KEYS];
   const missing = requiredKeys.filter((key) =>
     isBlankOrPlaceholder(readEnvValue(env, key))
   );
@@ -261,9 +276,11 @@ export function validateRefreshedEnv(env, environment) {
     );
   }
 
+  validateLiveKitIdentity(env, environment);
+  validateStripeMode(env, environment);
+
   if (environment === "production") {
     validateProductionAppUrl(readEnvValue(env, "NEXT_PUBLIC_APP_URL"));
-    validateProductionStripeMode(env);
   }
 }
 
@@ -634,21 +651,84 @@ function validateProductionAppUrl(value) {
   }
 }
 
-function validateProductionStripeMode(env) {
+function validateStripeMode(env, environment) {
   const secretKey = readEnvValue(env, "STRIPE_SECRET_KEY");
   const publishableKey = readEnvValue(
     env,
     "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
   );
-  if (secretKey && !/^(?:sk|rk)_live_[A-Za-z0-9]+$/.test(secretKey)) {
+  const mode = environment === "production" ? "live" : "test";
+  if (!new RegExp(`^(?:sk|rk)_${mode}_[A-Za-z0-9]+$`).test(secretKey)) {
     throw new Error(
-      "Vercel production STRIPE_SECRET_KEY is not a valid live-mode key. The existing file was kept."
+      `Vercel ${environment} STRIPE_SECRET_KEY is not a valid ${mode}-mode key. The existing file was kept.`
     );
   }
-  if (publishableKey && !/^pk_live_[A-Za-z0-9]+$/.test(publishableKey)) {
+  if (!new RegExp(`^pk_${mode}_[A-Za-z0-9]+$`).test(publishableKey)) {
     throw new Error(
-      "Vercel production NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not a valid live-mode key. The existing file was kept."
+      `Vercel ${environment} NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not a valid ${mode}-mode key. The existing file was kept.`
     );
+  }
+}
+
+function validateLiveKitIdentity(env, environment) {
+  const publicValue = readEnvValue(env, "NEXT_PUBLIC_LIVEKIT_URL");
+  const serverValue = readEnvValue(env, "LIVEKIT_URL");
+  const publicOrigin = publicValue
+    ? canonicalLiveKitCloudOrigin(publicValue)
+    : undefined;
+  const serverOrigin = serverValue
+    ? canonicalLiveKitCloudOrigin(serverValue)
+    : undefined;
+  const selectedOrigin = publicOrigin ?? serverOrigin;
+  const productionOrigin = canonicalLiveKitCloudOrigin(
+    readEnvValue(env, "MEELNI_PRODUCTION_LIVEKIT_URL")
+  );
+  if (
+    !selectedOrigin ||
+    (publicValue && !publicOrigin) ||
+    (serverValue && !serverOrigin) ||
+    !productionOrigin
+  ) {
+    throw new Error(
+      `Vercel ${environment} LiveKit project identity is invalid. The existing file was kept.`
+    );
+  }
+  if (serverOrigin && serverOrigin !== publicOrigin) {
+    throw new Error(
+      `Vercel ${environment} LiveKit URLs identify different projects. The existing file was kept.`
+    );
+  }
+  const matchesProduction = selectedOrigin === productionOrigin;
+  if (
+    (environment === "production" && !matchesProduction) ||
+    (environment === "preview" && matchesProduction)
+  ) {
+    throw new Error(
+      `Vercel ${environment} LiveKit project violates the Production identity boundary. The existing file was kept.`
+    );
+  }
+}
+
+function canonicalLiveKitCloudOrigin(value) {
+  if (!value || value !== value.trim()) return undefined;
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "wss:" ||
+      url.username ||
+      url.password ||
+      url.port ||
+      (url.pathname !== "/" && url.pathname !== "") ||
+      url.search ||
+      url.hash
+    ) {
+      return undefined;
+    }
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+    if (!hostname.endsWith(".livekit.cloud")) return undefined;
+    return `wss://${hostname}`;
+  } catch {
+    return undefined;
   }
 }
 

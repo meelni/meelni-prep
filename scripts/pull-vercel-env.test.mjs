@@ -432,7 +432,9 @@ test("database project matching does not adopt unrelated provider secrets", () =
 });
 
 test("explicit adoption requires project alignment before preserving provider secrets", () => {
-  const previous = `${scopedEnv(previewRef).replace("VERCEL_ENV=preview\n", "")}STRIPE_SECRET_KEY=sk_test_preview\n`;
+  const previous = scopedEnv(previewRef, {
+    STRIPE_SECRET_KEY: "sk_test_preview",
+  }).replace("VERCEL_ENV=preview\n", "");
   const pulled = scopedEnv(previewRef, {
     DATABASE_URL: '""',
     OPENAI_API_KEY: '""',
@@ -655,6 +657,87 @@ test("Production accepts a least-privilege restricted live Stripe key", () => {
   assert.doesNotThrow(() => validateRefreshedEnv(restrictedLive, "production"));
 });
 
+test("Preview rejects live Stripe keys and incomplete billing config", () => {
+  assert.throws(
+    () =>
+      validateRefreshedEnv(
+        scopedEnv(previewRef, {
+          STRIPE_SECRET_KEY: "rk_live_forbidden",
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_live_forbidden",
+        }),
+        "preview"
+      ),
+    /valid test-mode key/
+  );
+  assert.throws(
+    () =>
+      validateRefreshedEnv(
+        scopedEnv(previewRef, { STRIPE_PRO_MONTHLY_PRICE_ID: "" }),
+        "preview"
+      ),
+    /did not provide usable/
+  );
+});
+
+test("Preview rejects the canonical Production LiveKit project", () => {
+  assert.throws(
+    () =>
+      validateRefreshedEnv(
+        scopedEnv(previewRef, {
+          NEXT_PUBLIC_LIVEKIT_URL: "wss://PRODUCTION.livekit.cloud.:443/",
+        }),
+        "preview"
+      ),
+    /Production identity boundary/
+  );
+});
+
+test("unsafe Preview provider pulls keep the prior target byte-for-byte", async (t) => {
+  const unsafePulls = [
+    {
+      name: "live Stripe credentials",
+      pulled: scopedEnv(previewRef, {
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_live_forbidden",
+        STRIPE_SECRET_KEY: "sk_live_forbidden",
+      }),
+      pattern: /valid test-mode key/,
+    },
+    {
+      name: "the Production LiveKit project",
+      pulled: scopedEnv(previewRef, {
+        NEXT_PUBLIC_LIVEKIT_URL: "wss://production.livekit.cloud",
+      }),
+      pattern: /Production identity boundary/,
+    },
+    {
+      name: "conflicting public and server LiveKit projects",
+      pulled: scopedEnv(previewRef, {
+        LIVEKIT_URL: "wss://another-preview.livekit.cloud",
+      }),
+      pattern: /LiveKit URLs identify different projects/,
+    },
+  ];
+
+  for (const unsafe of unsafePulls) {
+    const root = await fixtureRoot(t);
+    const target = resolve(root, ".env.local");
+    const previous = `${scopedEnv(previewRef)}# prior-${unsafe.name}\n`;
+    await writeFile(target, previous);
+
+    await assert.rejects(
+      refreshEnvironment({
+        environment: "preview",
+        logger: { log: () => {} },
+        pull: () => unsafe.pulled,
+        root,
+        target: ".env.local",
+      }),
+      unsafe.pattern
+    );
+    assert.equal(await readFile(target, "utf8"), previous);
+  }
+});
+
 test("symlink targets are rejected", async (t) => {
   const root = await mkdtemp(resolve(tmpdir(), "meelni-env-symlink-"));
   t.after(async () =>
@@ -688,16 +771,28 @@ async function fixtureRoot(t) {
 }
 
 function scopedEnv(ref, overrides = {}, environment = "preview") {
+  const stripeMode = environment === "production" ? "live" : "test";
+  const liveKitUrl =
+    environment === "production"
+      ? "wss://production.livekit.cloud"
+      : "wss://preview.livekit.cloud";
   return (
     Object.entries({
       DATABASE_URL: databaseUrl(ref, "secret"),
       LIVEKIT_API_KEY: "livekit-api-key",
       LIVEKIT_API_SECRET: "livekit-api-secret",
+      MEELNI_PRODUCTION_LIVEKIT_URL: "wss://production.livekit.cloud",
       MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: productionRef,
-      NEXT_PUBLIC_LIVEKIT_URL: "wss://meelni.livekit.cloud",
+      NEXT_PUBLIC_LIVEKIT_URL: liveKitUrl,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: anonJwt(ref),
       NEXT_PUBLIC_SUPABASE_URL: `https://${ref}.supabase.co`,
       OPENAI_API_KEY: "openai-api-key",
+      STRIPE_SECRET_KEY: `sk_${stripeMode}_example`,
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: `pk_${stripeMode}_example`,
+      STRIPE_WEBHOOK_SECRET: "whsec_example",
+      STRIPE_INTERVIEW_PASS_PRICE_ID: "price_pass",
+      STRIPE_STARTER_MONTHLY_PRICE_ID: "price_starter",
+      STRIPE_PRO_MONTHLY_PRICE_ID: "price_pro",
       VERCEL_ENV: environment,
       ...overrides,
     })

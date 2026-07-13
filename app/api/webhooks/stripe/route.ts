@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import {
   accountDeletionRequest,
@@ -62,10 +62,10 @@ import {
   shouldApplyAuthoritativeProviderSnapshot,
 } from "@/lib/billing/subscription-state";
 import {
-  STRIPE_API_VERSION,
   getStripeCatalogIdForPrice,
   isStripeCheckoutCatalogId,
 } from "@/lib/billing/stripe-catalog";
+import { createStripeRuntimeClient } from "@/lib/billing/stripe-client";
 import { reconcileStripeBillingAdjustment } from "@/lib/billing/stripe-billing-adjustment";
 import { normalizeStripeBillingAdjustmentEvent } from "@/lib/billing/stripe-adjustment-events";
 import { getStripeLogicalEventKey } from "@/lib/billing/stripe-event-identity";
@@ -458,14 +458,8 @@ export async function POST(req: NextRequest) {
 }
 
 function getStripe() {
-  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-
-  if (!stripeSecretKey) {
-    throw new Error("STRIPE_SECRET_KEY environment variable is required");
-  }
-
-  return new Stripe(stripeSecretKey, {
-    apiVersion: STRIPE_API_VERSION as Stripe.LatestApiVersion,
+  return createStripeRuntimeClient(process.env, undefined, {
+    requireCompleteBillingConfiguration: true,
   });
 }
 

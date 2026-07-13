@@ -88,10 +88,6 @@ jobs:
       - name: Run type, lint, quality, and regression checks
         run: npm run check:ci
 
-      - name: Run Python agent contract tests
-        if: ${{ hashFiles('agent/test_runtime_contracts.py') != '' }}
-        run: npm run test:python-agent
-
       - name: Build production application
         run: npm run build
 

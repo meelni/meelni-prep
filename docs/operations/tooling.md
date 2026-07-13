@@ -351,3 +351,7 @@ rejects non-loopback databases.
 
 The read-only deployment preflight and rollout sequence are documented in
 [Database Migrations](./database-migrations.md).
+
+Stripe and LiveKit environment isolation, provider-free validation, and the
+remaining Preview operational blockers are documented in
+[Stripe And LiveKit Preview Rehearsal](./provider-preview-rehearsal.md).
