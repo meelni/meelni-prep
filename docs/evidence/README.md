@@ -18,6 +18,15 @@ authority is the deterministic genesis and protected payload-free activation
 ref in the canonical GitHub repository described in the calibration contract.
 Local remotes, reports, and caches are never budget authority.
 
+`sav-198-rebased-plan-acceptance.json` records the product owner's delegated,
+conservative acceptance of the exact rebased plan within that existing
+authorization: 96 calls, 2,754,487,500 nano-USD ($2.7544875) deterministic
+worst case, and plan hash
+`c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1`.
+This is not a new or expanded authorization. The $3 cap, model, fixtures,
+semantic approval, and one-run boundary are unchanged; the artifact performs
+no provider call or ledger activation and grants no launch authority.
+
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are local evidence only and deliberately keep live-provider launch acceptance
 pending.

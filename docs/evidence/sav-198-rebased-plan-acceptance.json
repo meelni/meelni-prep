@@ -1,0 +1,42 @@
+{
+  "contractVersion": "evaluation-calibration-plan-acceptance.v1",
+  "decision": "accepted",
+  "decisionSource": "product_owner_task_thread_delegation",
+  "humanReviewerIdentity": null,
+  "acceptedAt": "2026-07-13T04:21:30.000Z",
+  "acceptanceBasis": "conservative_rebased_exact_plan_within_existing_authorization",
+  "existingAuthorization": {
+    "authorizationId": "sav-198-user-authorization-2026-07-12.v1",
+    "runId": "sav-198-authorized-paid-calibration.v1",
+    "maximumProviderCalls": 96,
+    "maximumPhysicalHttpAttempts": 96,
+    "maximumSpendUsd": 3,
+    "authorizationChanged": false
+  },
+  "acceptedPlan": {
+    "planHash": "c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1",
+    "plannedCalls": 96,
+    "plannedWorstCaseNanoUsd": 2754487500,
+    "plannedWorstCaseUsd": 2.7544875,
+    "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
+    "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+    "approvalHash": "78cd5e73f6c9ee869ea5c2686fd28269c8c6c80041602a5715518a5ed2451ec9",
+    "model": "gpt-5.1-2025-11-13",
+    "endpoint": "https://api.openai.com/v1",
+    "serviceTier": "default",
+    "repetitions": 3,
+    "pricingHash": "6a31e91d4b47e3aa57c794adab0bc29410ea62dcfb9587cbca10066670a0f568"
+  },
+  "unchangedControls": {
+    "model": true,
+    "fixtures": true,
+    "maximumCalls": true,
+    "maximumSpend": true,
+    "semanticApproval": true
+  },
+  "authorityScope": {
+    "providerCallsExecuted": false,
+    "ledgerActivated": false,
+    "launchAuthorized": false
+  }
+}

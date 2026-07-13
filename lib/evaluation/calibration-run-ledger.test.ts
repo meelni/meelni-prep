@@ -19,7 +19,10 @@ import {
   evaluationCalibrationCases,
 } from "@meelni/test-fixtures";
 
-import { getEvaluationAdjudicationHashes } from "./calibration-approval";
+import {
+  buildDelegatedEvaluationAdjudicationApproval,
+  getEvaluationAdjudicationHashes,
+} from "./calibration-approval";
 import {
   assertCalibrationLiveStartupState,
   CALIBRATION_LIVE_DISALLOWED_ENV,
@@ -43,6 +46,9 @@ import {
   SAV_198_GIT_LEDGER_REF,
   SAV_198_IMMUTABLE_RULESET_NAME,
   SAV_198_SPEND_AUTHORIZATION,
+  SAV_198_REBASED_PLAN_HASH,
+  SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD,
+  buildSAV198RebasedPlanAcceptance,
   buildCalibrationActivatedPlan,
   calibrationAuthorizationCommitMessage,
   calibrationRunLedgerTestSeam,
@@ -80,7 +86,10 @@ test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.equal(plan.runId, SAV_198_APPROVED_RUN_ID);
   assert.equal(plan.plannedCalls, 96);
   assert.equal(plan.calls.length, CALIBRATION_MAX_PROVIDER_CALLS);
-  assert.equal(plan.plannedWorstCaseNanoUsd, 2_754_487_500);
+  assert.equal(
+    plan.plannedWorstCaseNanoUsd,
+    SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD
+  );
   assert.ok(plan.plannedWorstCaseNanoUsd <= CALIBRATION_MAX_SPEND_NANO_USD);
   assert.equal(plan.planHash.length, 64);
   assert.equal(plan.corpusHash.length, 64);
@@ -88,6 +97,24 @@ test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.equal(plan.pricingHash.length, 64);
   assert.equal(new Set(plan.calls.map(({ callKey }) => callKey)).size, 96);
   assert.equal(deterministicGenesisOid(), SAV_198_GENESIS_COMMIT_OID);
+});
+
+test("delegated product owner accepts the exact conservative rebased plan within the existing cap", () => {
+  const acceptance = buildSAV198RebasedPlanAcceptance(
+    buildDelegatedEvaluationAdjudicationApproval()
+  );
+  assert.equal(acceptance.existingAuthorization.authorizationChanged, false);
+  assert.equal(acceptance.existingAuthorization.maximumProviderCalls, 96);
+  assert.equal(acceptance.existingAuthorization.maximumSpendUsd, 3);
+  assert.equal(acceptance.acceptedPlan.planHash, SAV_198_REBASED_PLAN_HASH);
+  assert.equal(
+    acceptance.acceptedPlan.plannedWorstCaseNanoUsd,
+    SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD
+  );
+  assert.equal(acceptance.acceptedPlan.plannedWorstCaseUsd, 2.7544875);
+  assert.equal(acceptance.authorityScope.providerCallsExecuted, false);
+  assert.equal(acceptance.authorityScope.ledgerActivated, false);
+  assert.equal(acceptance.authorityScope.launchAuthorized, false);
 });
 
 test("canonical repository and activation actor identities are immutable", async () => {
