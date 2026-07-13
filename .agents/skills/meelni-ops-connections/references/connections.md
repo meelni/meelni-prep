@@ -439,6 +439,7 @@ Canonical target:
 - App ID: `meelni`
 - Local dev server UI/API: `http://127.0.0.1:8288`
 - Next.js function endpoint: `/api/inngest`
+- Registered function count: `14`
 
 Local development:
 
@@ -463,8 +464,20 @@ Env and secrets:
 Operational notes:
 
 - `.env.local` can include `VERCEL` and `VERCEL_ENV` metadata from `npm run env:pull`; do not let those make local code infer Inngest cloud mode.
+- Preview env pulls use the active Git branch scope. Hosted Preview requires
+  `INNGEST_ENV` to exactly equal `VERCEL_GIT_COMMIT_REF`; hosted Production
+  requires `VERCEL_GIT_COMMIT_REF=main` with no branch-only `INNGEST_ENV`
+  override.
+- Key and identity checks do not prove provider connectivity. Require all 14
+  function IDs to sync and an approved synthetic event to run before treating
+  Inngest as rehearsed.
 - Vercel encrypted/sensitive values pull as blanks. Preserve existing local `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, and `OPENAI_API_KEY` values when refreshing envs.
-- As of 2026-06-29, Vercel had `OPENAI_API_KEY` for Preview/Production and `INNGEST_SIGNING_KEY` for Preview/Production, but no `INNGEST_EVENT_KEY` listed. Production/Preview event dispatch should not be considered ready until a real event key is added.
+- Historical note: as of 2026-06-29, Vercel had `OPENAI_API_KEY` and
+  `INNGEST_SIGNING_KEY` for Preview/Production but no listed
+  `INNGEST_EVENT_KEY`. The relaunch branch now has distinct branch-scoped
+  Preview event/signing credentials. Preview dispatch is still unverified until
+  the exact deployment syncs all 14 function IDs and an approved synthetic
+  event runs successfully; this note does not assert Production readiness.
 
 ## Linear
 

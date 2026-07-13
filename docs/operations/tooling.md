@@ -39,6 +39,9 @@ If an older `agent/venv` uses symlinked Python binaries, setup recreates it with
 `.env.local`. `npm run env:pull:production` pulls only Vercel Production into
 `.env.production.local`. The command rejects swapped filenames, symlinked
 targets, concurrent refreshes, and Supabase database/public project mismatches.
+Preview pulls include the current Git branch through Vercel's `--git-branch`
+scope so branch-specific provider values are not silently replaced by generic
+Preview values. Detached worktrees fall back to the generic Preview scope.
 It pulls into a private temporary file, validates the result, and atomically
 replaces the destination with mode `0600`; a failed pull leaves the existing
 file unchanged.
@@ -208,6 +211,12 @@ npx inngest-cli@latest dev
 ```
 
 The app explicitly uses Inngest dev mode outside `NODE_ENV=production`, so copied Vercel metadata in `.env.local` does not require `INNGEST_EVENT_KEY` for local event sends. Feedback evaluation still requires a nonblank `OPENAI_API_KEY` in `.env.local`.
+
+Hosted Preview requires `INNGEST_ENV` to exactly equal
+`VERCEL_GIT_COMMIT_REF`; hosted Production requires the `main` Git ref and no
+branch-only `INNGEST_ENV` override. Both hosted environments require event and
+signing keys. These checks prove configuration identity, not provider
+connectivity; require an Inngest app sync or synthetic run before launch.
 
 ## Evaluation Calibration
 

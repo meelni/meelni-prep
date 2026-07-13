@@ -10,6 +10,18 @@ Go to your Inngest dashboard → Functions tab
 
 - `feedback-generate` (Generate Interview Feedback)
 - `insights-update` (Update User Insights)
+- `account-deletion` (Delete Account)
+- `account-deletion-recovery` (Recover Account Deletions)
+- `interview-deadline-enforce` (Enforce Interview Deadline)
+- `interview-deadline-recovery` (Recover Interview Deadlines)
+- `interview-reconnect-enforce` (Enforce Interview Reconnect Grace)
+- `interview-reconnect-recovery` (Recover Interview Reconnect Schedules)
+- `interview-room-cleanup` (Clean Terminal Interview Room)
+- `interview-room-cleanup-recovery` (Recover Terminal Interview Room Cleanup)
+- `interview-presence-reconciliation` (Reconcile Interview Participant Presence)
+- `interview-presence-reconciliation-recovery` (Recover Interview Presence Reconciliation)
+- `interview-start-recovery` (Recover Stale Interview Starts)
+- `interview-credit-recovery` (Recover Interview Credits)
 
 **If functions are missing:**
 
@@ -52,13 +64,16 @@ Check:
 
 - Last sync time (should be recent)
 - Sync status (should be "Connected")
-- Function count (should show 2 functions)
+- Function count (should show 14 functions)
 
 **If not synced or shows 0 functions:**
 
 - Click "Sync Now" or "Re-sync"
 - Check webhook URL is correct: `https://yourdomain.com/api/inngest`
 - Verify INNGEST_SIGNING_KEY is set correctly in your deployment
+- For Preview, verify `INNGEST_ENV` exactly equals
+  `VERCEL_GIT_COMMIT_REF`. Production must deploy from `main` without an
+  `INNGEST_ENV` branch override.
 
 ## 5. Common Issues
 
@@ -95,7 +110,7 @@ Test if functions are accessible:
 # Check if endpoint is accessible (replace with your domain)
 curl -X GET https://yourdomain.com/api/inngest
 
-# Should return function discovery JSON
+# Should return discovery JSON for all 14 function IDs
 ```
 
 ## 7. Local Testing Alternative
@@ -116,4 +131,7 @@ Please check in your Inngest dashboard:
 2. When you click on an event, does it show "Triggered Functions"?
 3. Are there any error logs in the function execution history?
 
-Share what you find and we can debug from there!
+The service-health response proves only that identity, credentials, and the
+durable backlog checks are acceptable. It does not prove that Inngest Cloud can
+reach the deployment; require a successful app sync or synthetic event run for
+that evidence.

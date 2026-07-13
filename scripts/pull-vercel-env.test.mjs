@@ -13,6 +13,7 @@ import test from "node:test";
 import { parse as parseDotenv } from "dotenv";
 
 import {
+  buildVercelEnvPullArgs,
   buildRefreshedEnv,
   inferSupabaseAnonProjectRef,
   normalizeEnvValue,
@@ -24,6 +25,38 @@ import {
 
 const previewRef = "previewprojectref123";
 const productionRef = "productionproject123";
+
+test("Preview env pulls include the active Git branch scope", () => {
+  assert.deepEqual(
+    buildVercelEnvPullArgs({
+      environment: "preview",
+      gitBranch: "codex/sav-226-provider-isolation",
+      target: "/private/pulled.env",
+    }),
+    [
+      "--yes",
+      "vercel@55.0.0",
+      "env",
+      "pull",
+      "/private/pulled.env",
+      "--environment=preview",
+      "--git-branch",
+      "codex/sav-226-provider-isolation",
+      "--yes",
+    ]
+  );
+});
+
+test("Production env pulls never inherit a branch scope", () => {
+  assert.doesNotMatch(
+    buildVercelEnvPullArgs({
+      environment: "production",
+      gitBranch: "codex/ignored",
+      target: "/private/pulled.env",
+    }).join(" "),
+    /git-branch/
+  );
+});
 
 test("normalizeEnvValue only strips matched quote pairs", () => {
   assert.equal(

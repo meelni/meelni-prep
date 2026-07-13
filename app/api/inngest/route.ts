@@ -30,6 +30,8 @@ import {
 import { recoverInterviewStarts } from "@/lib/inngest/functions/recover-interview-starts";
 import { recoverInterviewCredits } from "@/lib/inngest/functions/recover-interview-credits";
 
+export const maxDuration = 300;
+
 /**
  * Serve Inngest functions via Next.js API route
  *

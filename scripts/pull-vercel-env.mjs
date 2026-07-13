@@ -369,23 +369,48 @@ function pullVercelEnvironment({ environment, root }) {
   const tempTarget = resolve(tempDir, "pulled.env");
 
   try {
+    const gitBranch =
+      environment === "preview" ? readCurrentGitBranch(root) : undefined;
     execFileSync(
       "npx",
-      [
-        "--yes",
-        "vercel@55.0.0",
-        "env",
-        "pull",
-        tempTarget,
-        `--environment=${environment}`,
-        "--yes",
-      ],
+      buildVercelEnvPullArgs({ environment, gitBranch, target: tempTarget }),
       { cwd: root, stdio: "inherit", timeout: 120_000 }
     );
     chmodSync(tempTarget, 0o600);
     return readFileSync(tempTarget, "utf8");
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+export function buildVercelEnvPullArgs({ environment, gitBranch, target }) {
+  const args = [
+    "--yes",
+    "vercel@55.0.0",
+    "env",
+    "pull",
+    target,
+    `--environment=${environment}`,
+  ];
+  if (environment === "preview" && gitBranch) {
+    args.push("--git-branch", gitBranch);
+  }
+  args.push("--yes");
+  return args;
+}
+
+function readCurrentGitBranch(root) {
+  try {
+    const branch = execFileSync("git", ["branch", "--show-current"], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5_000,
+    }).trim();
+    if (!branch || /[\u0000-\u001f\u007f]/.test(branch)) return undefined;
+    return branch;
+  } catch {
+    return undefined;
   }
 }
 

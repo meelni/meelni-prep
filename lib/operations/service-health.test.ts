@@ -20,8 +20,11 @@ const READY_ENV = {
   STRIPE_WEBHOOK_SECRET: "whsec_test",
   INNGEST_EVENT_KEY: "event-key",
   INNGEST_SIGNING_KEY: "signing-key",
+  INNGEST_ENV: "codex/sav-226-provider-isolation",
+  NODE_ENV: "production",
   VERCEL: "1",
   VERCEL_ENV: "preview",
+  VERCEL_GIT_COMMIT_REF: "codex/sav-226-provider-isolation",
 };
 const CLEAR_EVIDENCE: ServiceHealthEvidence = {
   feedbackDispatchStale: false,
@@ -91,6 +94,36 @@ test("configuration and backlog failures degrade without leaking details", async
     },
   ]);
   assert.doesNotMatch(JSON.stringify(report), /secret|event-key|signing-key/i);
+});
+
+test("feedback dispatch fails closed on hosted environment identity mismatch", async () => {
+  const report = await assessServiceHealth(
+    dependencies(store(CLEAR_EVIDENCE), {
+      ...READY_ENV,
+      INNGEST_ENV: "codex/another-branch",
+    })
+  );
+
+  assert.deepEqual(report.checks[3], {
+    name: "feedback_dispatch",
+    status: "degraded",
+    code: "feedback_dispatch_config_mismatch",
+  });
+});
+
+test("keys and identity only prove configuration, not provider connectivity", async () => {
+  const report = await assessServiceHealth(
+    dependencies(
+      store({ ...CLEAR_EVIDENCE, feedbackDispatchStale: true }),
+      READY_ENV
+    )
+  );
+
+  assert.deepEqual(report.checks[3], {
+    name: "feedback_dispatch",
+    status: "degraded",
+    code: "feedback_dispatch_stale",
+  });
 });
 
 test("database and LiveKit failures make practice unavailable", async () => {
