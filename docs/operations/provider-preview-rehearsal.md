@@ -55,6 +55,64 @@ ID. Tracked TOML files intentionally contain no project or agent identifiers.
 Preview-scoped env pulls require a fresh nonblank Preview anchor and never
 restore it from a stale local file.
 
+### First Preview Agent Creation
+
+The installed LiveKit CLI can link existing Cloud projects but cannot create a
+Cloud project. Create `meelni-preview` in the LiveKit dashboard, then run
+`lk cloud auth` and select only that project. Keep the canonical `meelni`
+Production project as the CLI default and pass the Preview alias explicitly.
+Do not reuse the locally configured generic `test` alias: its current agent
+inventory request returns `401`, so ownership, access, and emptiness are not
+proved.
+
+Never print raw `lk project list --json`; that payload includes API keys and
+secrets. The one shared bootstrap captures and projects it internally, proves
+exactly one `meelni-preview` alias has a valid project ID and the expected
+Preview URL, and never relays provider stdout or stderr:
+
+```bash
+python3 agent/shared/bootstrap_livekit_preview.py demo
+python3 agent/shared/bootstrap_livekit_preview.py interview
+```
+
+The bootstrap is Preview-only and fixed to `us-east`. It refuses relative,
+non-canonical, repository-local, symlinked, or pre-existing config targets. It
+requires a private (`0700`) external parent directory and separate worker
+secrets files with mode `0600`, no duplicate or extra names,
+`MEELNI_ENV_PULL_ENVIRONMENT=preview`,
+both exact URL anchors, the fixed matching dispatch name, and a non-placeholder
+`OPENAI_API_KEY`. `ANTHROPIC_API_KEY` and every other extra name are denied.
+The CLI subprocess environment is rebuilt from a tight allowlist for auth
+config location, locale, and temporary files, so unknown ambient application
+or provider credentials and TLS trust-root overrides are not forwarded. Both
+inventory and create have bounded timeouts; only the validated secrets file is
+passed to agent creation.
+
+After all local validation and the read-only alias inventory, the only allowed
+mutation is equivalent to:
+
+```bash
+lk --project meelni-preview \
+  --config <new-external-worker-config> \
+  agent create --region us-east \
+  --secrets-file <mode-0600-worker-secrets> \
+  --silent .
+```
+
+The command runs from `agent/`. The demo Dockerfile is selected only during the
+subprocess and is restored on all handled exits. The generated config is made
+private, then must positively match the Preview subdomain and a `CA_*` agent
+ID. Record the printed ID in
+`MEELNI_LIVEKIT_PREVIEW_DEMO_AGENT_ID` or
+`MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID`; later versions must use the
+ordinary guarded deploy scripts.
+
+If create returns failure or post-create validation fails, do not retry
+blindly: inspect `lk agent list --project meelni-preview` and the dashboard for
+a partially created agent. Delete only the positively identified Preview
+agent, or preserve it and regenerate its external config, before retrying.
+The relaunch flag stays off throughout.
+
 The Stripe catalog setup command applies the same trusted deployment identity
 and key-mode boundary before constructing a Stripe client. `--dry-run` remains
 provider-free; Production live-mode setup additionally requires
@@ -102,6 +160,11 @@ any Production-scoped command during this phase.
 - Preview remains fail-closed until its distinct LiveKit project anchor and
   environment-and-worker agent IDs are configured. API credentials and dispatch
   names still require read-only provider verification before rehearsal.
+- The currently running Production agents predate the environment guard. Before
+  deploying guarded worker code to Production, add
+  `MEELNI_ENV_PULL_ENVIRONMENT=production` and the canonical
+  `MEELNI_PRODUCTION_LIVEKIT_URL` to each agent. A missing marker or anchor is
+  an intentional no-go.
 - LiveKit supports multiple individually linked Cloud projects. Usage and
   quotas are project-scoped, while free-project allowances are shared across
   free projects; another project does not increase that allowance. Billing is

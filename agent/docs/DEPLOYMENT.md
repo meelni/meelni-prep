@@ -7,6 +7,9 @@ This directory contains two separate LiveKit agents:
 
 ## Quick Deployment
 
+These commands update agents that already have an external TOML and expected
+agent ID. They are not safe first-deployment commands.
+
 ### Deploy Demo Agent
 
 ```bash
@@ -43,7 +46,27 @@ The historical `CA_*` IDs from the previous account should not be reused for
 the reboot. Create/deploy agents in the new LiveKit account and set the matching
 dispatch names in app and agent environments.
 
+For the first isolated Preview deployment, use the shared bootstrap from the
+repository root:
+
+```bash
+python3 agent/shared/bootstrap_livekit_preview.py demo
+python3 agent/shared/bootstrap_livekit_preview.py interview
+```
+
+It requires the fixed `meelni-preview` CLI alias, canonical and distinct
+Preview/Production project anchors, an absent external config path, and a
+mode-`0600` external secrets file containing only the required Preview marker,
+both anchors, the fixed worker dispatch name, and `OPENAI_API_KEY`. It performs
+the exact project inventory and `agent create` boundary documented in
+`docs/operations/provider-preview-rehearsal.md`. Do not run a manual first
+`lk agent create` around this guard.
+
 ## Manual Deployment
+
+This historical section applies only to already-created agents whose external
+config and expected ID have passed the current deploy validator. It must not be
+used for first Preview creation.
 
 If you prefer to deploy manually:
 

@@ -177,6 +177,69 @@ cd interview
 ./deploy.sh preview # or production
 ```
 
+### First Preview Deployment
+
+LiveKit Cloud projects are created in the dashboard; `lk cloud auth` links an
+existing project but does not create one. The isolated project must use the
+CLI alias `meelni-preview`. Do not reuse a generic or unauthorized local alias,
+and do not change the `meelni` Production default.
+
+The first deployment has no agent ID or TOML to validate, so it uses the one
+shared fail-closed bootstrap instead of either deploy script:
+
+```bash
+python3 agent/shared/bootstrap_livekit_preview.py demo
+python3 agent/shared/bootstrap_livekit_preview.py interview
+```
+
+Before either command, set both canonical URL anchors plus the worker-specific
+external paths:
+
+- `MEELNI_PREVIEW_LIVEKIT_URL`
+- `MEELNI_PRODUCTION_LIVEKIT_URL`
+- `MEELNI_LIVEKIT_PREVIEW_DEMO_CONFIG`
+- `MEELNI_LIVEKIT_PREVIEW_DEMO_SECRETS_FILE`
+- `MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG`
+- `MEELNI_LIVEKIT_PREVIEW_INTERVIEW_SECRETS_FILE`
+
+Each config path must be absolute, canonical, outside the repository, and
+absent. Its parent directory must be private (`0700`). Each secrets file must
+be an absolute, canonical, external regular file with mode `0600` inside that
+private directory. The demo file contains exactly:
+
+```dotenv
+MEELNI_ENV_PULL_ENVIRONMENT=preview
+MEELNI_PREVIEW_LIVEKIT_URL=wss://<preview-subdomain>.livekit.cloud
+MEELNI_PRODUCTION_LIVEKIT_URL=wss://<production-subdomain>.livekit.cloud
+LIVEKIT_DEMO_AGENT_NAME=meelni-preview-demo
+OPENAI_API_KEY=<preview-approved-key>
+```
+
+The interview file replaces the dispatch line with:
+
+```dotenv
+LIVEKIT_INTERVIEW_AGENT_NAME=meelni-preview-interview
+```
+
+The bootstrap parses `lk project list --json` internally without printing its
+credential-bearing payload. It positively proves the alias URL equals the
+Preview anchor and differs from Production before running the single allowed
+mutation with explicit project, config, region, secrets file, and silent mode.
+Both CLI subprocesses have bounded timeouts, and receive only the small
+allowlist of process variables needed to locate CLI auth/config, locale, and
+temporary files; ambient application/provider credentials and TLS trust-root
+overrides are not forwarded.
+The generated TOML is forced to mode `0600` and must identify the Preview
+subdomain plus a syntactic `CA_*` agent ID. Only that safe ID and the next
+`MEELNI_LIVEKIT_PREVIEW_{DEMO,INTERVIEW}_AGENT_ID` assignment are printed.
+
+The demo Dockerfile is swapped only for the create subprocess and restored on
+success, denial, subprocess failure, post-create validation failure, normal
+exit, and handled termination. A shared lock prevents concurrent demo and
+interview bootstraps. Remove a stale
+`agent/.livekit-preview-bootstrap.lock` only after proving no bootstrap process
+is running.
+
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instructions.
 
 ---
