@@ -156,6 +156,19 @@ Canonical target:
 - Interview Cloud agent: `CA_yawKG67rCMG4`
 - Demo Cloud agent: `CA_t3sKQEihMQ7x`
 
+Preview isolation target:
+
+- Required CLI alias: `meelni-preview`
+- Project creation: LiveKit Cloud dashboard; the CLI only links an existing
+  Cloud project
+- Project ID and WebSocket URL: capture after dashboard creation; Preview must
+  differ from `p_419fgt1pbkp` and `wss://meelni-ek4vaisp.livekit.cloud`
+- Fixed dispatch names: `meelni-preview-demo` and
+  `meelni-preview-interview`
+- A generic local `test` alias (`p_4yfzjfvvpjy`) was observed, but its agent
+  inventory returned `401`. Do not use, revoke, or delete it until dashboard
+  ownership and resource emptiness are proved.
+
 Auth:
 
 ```bash
@@ -170,6 +183,17 @@ lk project list
 lk agent status --id CA_yawKG67rCMG4 --project meelni
 lk agent status --id CA_t3sKQEihMQ7x --project meelni
 ```
+
+Link and safely inventory the dashboard-created Preview project:
+
+```bash
+lk cloud auth
+lk project list --json | jq '[.[] | {name: .Name, project_id: .ProjectId, url: .URL}]'
+lk agent list --project meelni-preview
+```
+
+The raw JSON project list includes API keys and secrets. Always project only
+safe fields before allowing command output into logs or chat.
 
 Docs MCP:
 
@@ -203,6 +227,18 @@ Operational notes:
   Production anchors must differ. Tracked TOML files contain no provider
   identifiers. Preview env pulls require a fresh Preview anchor and do not
   preserve a stale local value.
+- First Preview agent creation must use
+  `python3 agent/shared/bootstrap_livekit_preview.py demo|interview`; the normal
+  deploy wrappers require an existing config and agent ID. The bootstrap uses
+  separate absolute external config and mode-`0600` secrets paths from
+  `MEELNI_LIVEKIT_PREVIEW_{DEMO,INTERVIEW}_{CONFIG,SECRETS_FILE}`, validates
+  the fixed Preview alias internally without printing credentials, uses a
+  tight child-environment allowlist and bounded CLI timeouts, and emits only
+  the safe created agent ID and next expected-ID env name.
+- Before the guarded worker version is deployed to the existing Production
+  agents, add `MEELNI_ENV_PULL_ENVIRONMENT=production` and
+  `MEELNI_PRODUCTION_LIVEKIT_URL`; current secret-name inventory does not show
+  either value, so deploying first would fail closed.
 
 ## Supabase
 
