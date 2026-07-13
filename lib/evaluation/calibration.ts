@@ -96,7 +96,7 @@ export interface CalibrationFailure {
 }
 
 export interface EvaluationCalibrationReport {
-  contractVersion: "evaluation-calibration-report.v7";
+  contractVersion: "evaluation-calibration-report.v8";
   generatedAt: string;
   execution: {
     kind: CalibrationExecutionKind;
@@ -164,7 +164,7 @@ export interface EvaluationCalibrationReport {
     deterministicHarness: "passed" | "failed" | "not_run";
     adjudicationAcceptance: "passed" | "pending_product_owner_pm_signoff";
     liveProviderAcceptance: "passed" | "failed" | "pending";
-    launchAcceptance:
+    calibrationEvidenceAcceptance:
       | "passed"
       | "failed"
       | "pending_live_provider_run"
@@ -665,7 +665,7 @@ export async function runEvaluationCalibration(
   const adjudicationPassed = pendingAdjudicationSignoffs === 0;
 
   return {
-    contractVersion: "evaluation-calibration-report.v7",
+    contractVersion: "evaluation-calibration-report.v8",
     generatedAt: now.toISOString(),
     execution: {
       kind: options.executionKind,
@@ -749,7 +749,7 @@ export async function runEvaluationCalibration(
           ? "passed"
           : "failed"
         : "pending",
-      launchAcceptance:
+      calibrationEvidenceAcceptance:
         liveProvider && !executionPassed
           ? "failed"
           : !adjudicationPassed

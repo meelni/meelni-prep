@@ -67,7 +67,7 @@ gold-set preflight and 100% insufficient-handling threshold.
 
 ## Report contract
 
-Every command emits `evaluation-calibration-report.v7` JSON with:
+Every current command emits `evaluation-calibration-report.v8` JSON with:
 
 - execution kind, evaluator model, repetition count, and paid-provider status;
 - gold-set, adjudication, schema, prompt, and rubric versions;
@@ -77,7 +77,7 @@ Every command emits `evaluation-calibration-report.v7` JSON with:
 - configured expected model identity and the model identities observed in
   evaluator results;
 - the thresholds used for that report;
-- separate deterministic, live-provider, and launch gate states;
+- separate deterministic, live-provider, and calibration-evidence gate states;
 - case-level failure codes and unresolved blockers.
 
 Live reports also include `execution.cost`, an
@@ -94,6 +94,19 @@ pricing contract. Preflight and deterministic self-test reports set
 Reports contain aggregate metrics, case IDs, version identifiers, and failure
 codes only. They never contain prompts, transcript text, provider response
 content, API keys, or provider error bodies.
+
+Version 8 renames the combined automated field from `launchAcceptance` to
+`calibrationEvidenceAcceptance`. The state values and thresholds are unchanged:
+`passed`, `failed`, `pending_live_provider_run`, and
+`pending_adjudication_signoff` retain their version-7 behavior. This field says
+only whether the complete calibration evidence contract passed. It neither
+records nor authorizes the product owner's launch decision.
+
+The committed version-7 reports under `docs/evidence/` are immutable historical
+receipts and remain byte-for-byte unchanged. When reading a v7 report, interpret
+its `gate.launchAcceptance` value as the historical name for v8
+`gate.calibrationEvidenceAcceptance`; never interpret it as owner launch GO or
+NO-GO. Current writers must emit v8 and must not recreate the v7 field.
 
 An `evaluation_provider_returned_invalid_feedback` failure additionally carries
 `feedbackRejectionCode`, a member of the closed
@@ -303,8 +316,9 @@ remain consumed historical evidence and are never accepted as v2 authority.
 The SAV-248 v2 ref is also terminal historical evidence after activation
 `d0c4fc4c028b10d8616fdde337be150315a7798c`. Its sanitized report records two
 attempted synthetic calls, one completed call, $0.026752 exact reconciled cost,
-zero unresolved reservation, `provider_failure`, and failed live/launch gates.
-The v2 authority cannot resume or authorize a retry.
+zero unresolved reservation, `provider_failure`, and failed live-provider and
+calibration-evidence gates. The v2 authority cannot resume or authorize a
+retry.
 
 The production authority uses Node HTTPS directly against the fixed
 `api.github.com:443` endpoint. It accepts only `GITHUB_TOKEN`, uses Node's
@@ -360,28 +374,28 @@ agent-panel approvals of the final candidate. It uses no fabricated human
 identity and is scoped only to semantic adjudication. Paid execution, authority
 activation, pricing freshness, provider acceptance, and launch remain separate
 gates.
-The live CLI likewise returns a failure unless the combined calibration
-evidence gate passes; provider acceptance alone is never a successful command
-outcome. In the version-7 report, the historical field name for this technical
-gate is `launchAcceptance`. It never represents or authorizes the human product
-owner's launch GO/NO-GO.
+The live CLI likewise returns a failure unless
+`calibrationEvidenceAcceptance` passes; provider acceptance alone is never a
+successful command outcome. CLI success means only that the complete
+calibration evidence contract passed. It never represents or authorizes the
+human product owner's launch GO/NO-GO.
 
 ## Gate semantics
 
 `preflight` validates the corpus and workflow skip path without an evaluator.
 `deterministic_self_test` proves the harness math and contracts with a local,
-predictable evaluator. Neither can pass `liveProviderAcceptance` or the legacy
-technical `launchAcceptance` evidence field.
+predictable evaluator. Neither can pass `liveProviderAcceptance` or
+`calibrationEvidenceAcceptance`.
 
 Only an explicitly authorized `live_provider` execution can pass calibration
 evidence acceptance. A deterministic report must retain an unresolved evidence
 gate even when every harness metric is perfect. Until the candidate manifest
-receives product-owner/PM signoff, the legacy `launchAcceptance` field remains
+receives product-owner/PM signoff, `calibrationEvidenceAcceptance` remains
 `pending_adjudication_signoff`. A validated all-approved artifact moves a
-non-live report only to `pending_live_provider_run`; a passing live run is still
-required. A live execution that misses any threshold must fail rather than
-downgrade itself to a self-test. Even a passing evidence field cannot make the
-human product owner's launch decision.
+non-live report only to `pending_live_provider_run`; a passing live run is
+still required. A live execution that misses any threshold must fail rather
+than downgrade itself to a self-test. Even a passing evidence field cannot make
+the human product owner's launch decision.
 
 The evaluated modes accept exactly three repetitions. The run budget is
 validated before evaluator work and rejects any plan above 96 calls. Live mode

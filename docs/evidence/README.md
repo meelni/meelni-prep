@@ -34,14 +34,16 @@ One completed result also missed its adjudicated evidence anchor. Exact
 reconciled spend was $0.026752, unresolved reservation was zero, the cap was
 not breached, and both live-provider acceptance and the legacy technical
 `launchAcceptance` evidence field failed. That legacy field is not a human
-launch decision. The v2 authority is consumed and must not be retried.
+launch decision. In current v8 reports, the equivalent evidence-only field is
+`calibrationEvidenceAcceptance`; the historical v7 receipt remains unchanged.
+The v2 authority is consumed and must not be retried.
 
 `sav-250-adjudicated-evidence-anchor-audit.md` records the provider-free review
 of all 32 scored cases and 64 canonical anchors. It finds every canonical pair
 plausible but non-exhaustive, fixes only whole-anchor quote-span brittleness,
 and preserves fail-closed treatment for arbitrary alternative evidence. It
 does not reinterpret the discarded SAV-248 response, alter historical reports,
-authorize spend, or grant launch acceptance.
+authorize spend, or authorize launch.
 
 `sav-250-agent-panel-signoffs.json` binds two distinct agent-panel attestations
 to the exact candidate, corpus, and SAV-250 audit hashes. Its scope is
@@ -74,8 +76,8 @@ contract, sanitized terminal categories, deterministic schema hash, exact
 schema byte ceilings, and a provider-free 96-call/$2.8539975 prospective
 calculation. The fresh v2 authorization and accepted plan now bind those values;
 execution remains closed until the distinct v2 protected ledger authority is
-provisioned. The mitigation work performed no provider call and grants no
-provider or launch acceptance.
+provisioned. The mitigation work performed no provider call and grants neither
+provider acceptance nor launch authorization.
 
 `sav-226-relaunch-decision.md` is the human-readable readiness record for the
 exact relaunch candidate. It preserves the passed Preview evidence, the failed
@@ -92,4 +94,4 @@ hashes, three review rounds, and two named independent agent-panel signoffs.
 The delegated authority is represented as a non-human identity with a null
 human reviewer identity; no person's identity is inferred or fabricated. The
 approval is limited to the 32-case semantic adjudication. It does not authorize
-provider calls, spend, ledger mutation, Production data, or launch acceptance.
+provider calls, spend, ledger mutation, Production data, or launch.
