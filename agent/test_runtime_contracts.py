@@ -236,34 +236,58 @@ class RuntimeContractTests(unittest.TestCase):
             }
 
             for kind in ("interview", "demo"):
-                for environment in ("preview", "production"):
-                    expected = configs[(environment, kind)]
-                    selected_env = {
-                        **env,
-                        f"MEELNI_LIVEKIT_{environment.upper()}_{kind.upper()}_CONFIG": f"./{expected.name}",
-                        f"MEELNI_LIVEKIT_{environment.upper()}_{kind.upper()}_AGENT_ID": f"{environment}-{kind}-agent",
-                    }
-                    subprocess.run(
-                        [str(agent_root / kind / "deploy.sh"), environment],
-                        check=True,
-                        env=selected_env,
-                        cwd=root,
-                        capture_output=True,
-                        text=True,
-                    )
-                    validated_path = validator_log.read_text().splitlines()[-1]
-                    consumed_path = re.search(
-                        r"--config (.+) agent deploy \.$",
-                        log_path.read_text().splitlines()[-1],
-                    ).group(1)
-                    self.assertEqual(validated_path, str(expected.resolve()))
-                    self.assertEqual(
-                        (agent_root / consumed_path).resolve(), expected.resolve()
-                    )
-                    self.assertFalse(Path(consumed_path).is_absolute())
+                expected = configs[("preview", kind)]
+                selected_env = {
+                    **env,
+                    f"MEELNI_LIVEKIT_PREVIEW_{kind.upper()}_CONFIG": f"./{expected.name}",
+                    f"MEELNI_LIVEKIT_PREVIEW_{kind.upper()}_AGENT_ID": f"preview-{kind}-agent",
+                }
+                subprocess.run(
+                    [str(agent_root / kind / "deploy.sh"), "preview"],
+                    check=True,
+                    env=selected_env,
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                )
+                validated_path = validator_log.read_text().splitlines()[-1]
+                consumed_path = re.search(
+                    r"--config (.+) agent deploy \.$",
+                    log_path.read_text().splitlines()[-1],
+                ).group(1)
+                self.assertEqual(validated_path, str(expected.resolve()))
+                self.assertEqual(
+                    (agent_root / consumed_path).resolve(), expected.resolve()
+                )
+                self.assertFalse(Path(consumed_path).is_absolute())
+
+                production = configs[("production", kind)]
+                production_env = {
+                    **env,
+                    "NODE_OPTIONS": "--require /tmp/meelni-forbidden-node-injection.cjs",
+                    f"MEELNI_LIVEKIT_PRODUCTION_{kind.upper()}_CONFIG": f"./{production.name}",
+                    f"MEELNI_LIVEKIT_PRODUCTION_{kind.upper()}_AGENT_ID": f"production-{kind}-agent",
+                }
+                denied = subprocess.run(
+                    [str(agent_root / kind / "deploy.sh"), "production"],
+                    env=production_env,
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertNotEqual(denied.returncode, 0)
+                self.assertTrue(
+                    "authorization_file_path_invalid" in denied.stderr
+                    or "fixed system Node runtime" in denied.stderr
+                )
 
             provider_calls = log_path.read_text().splitlines()
             validation_calls = validator_log.read_text().splitlines()
+            self.assertEqual(len(provider_calls), 2)
+            for kind in ("interview", "demo"):
+                source = (agent_root / kind / "deploy.sh").read_text()
+                self.assertIn(f"livekit-production-{kind}-deploy", source)
+                self.assertIn('readonly production_node="/usr/local/bin/node"', source)
             for kind in ("interview", "demo"):
                 missing_env = {
                     **env,
@@ -317,6 +341,13 @@ class RuntimeContractTests(unittest.TestCase):
                 "MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID": "production-interview-agent",
             }
             denied = [
+                (
+                    "production",
+                    {
+                        **base,
+                        "MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG": str(production),
+                    },
+                ),
                 (
                     "preview",
                     {

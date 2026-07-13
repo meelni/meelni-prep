@@ -79,6 +79,13 @@ The server emits a `question_sync_audit` JSON event containing trigger, dry-run 
 
 The concurrency rehearsal and live data verification require an approved environment and operator authority; local automated tests cover the fail-closed and overlap branches without touching a provider or remote database.
 
+Repository enforcement for first Production activation and manual live sync is
+still pending SAV-254 Phase 2. Until it lands, do not enable the Production
+schedule or run a manual Production live sync; the long-lived bearer secrets
+alone are not owner authorization. Routine scheduled sync after an explicitly
+authorized activation remains a runtime operation and will not require a new
+launch decision for every schedule tick.
+
 ## Rollback and rotation
 
 To stop sync immediately, disable the deployment schedule and unset or replace both route credentials, then redeploy. Both routes will fail closed. No database rollback is required for the advisory lock because it creates no schema object. If a credential may have been exposed, rotate only that environment's credential, update the authorized caller, redeploy, and verify the old credential receives `401`.

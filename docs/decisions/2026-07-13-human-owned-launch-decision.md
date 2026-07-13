@@ -48,6 +48,10 @@ agent, automated gate, reviewer panel, provider, or release workflow.
   GO/NO-GO or that technical test success automatically authorizes launch.
 - The feature flag remains default-off until an explicit owner GO and a
   separately authorized launch action are recorded for the exact candidate.
+- Production action authorization applies only to release and maintenance
+  entrypoints. It must not block ordinary authenticated or provider-signed
+  customer/runtime transactions such as cancellation, deletion, webhooks,
+  Checkout, or interview sessions.
 
 ## Validation
 

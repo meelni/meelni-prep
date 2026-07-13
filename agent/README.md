@@ -181,6 +181,16 @@ cd interview
 ./deploy.sh preview # or production
 ```
 
+Production deploys additionally require
+`MEELNI_PRODUCTION_ACTION_AUTHORIZATION` to point to a signed external artifact
+for the exact worker, config bytes, target project/agent, Git candidate, and
+executor. They invoke the fixed, root-owned system Node runtime at
+`/usr/local/bin/node`; caller-controlled `PATH` and runtime variables cannot
+substitute the verifier. The wrapper consumes the authorization before invoking
+`lk`. Preview deploys are unchanged. No owner public key is enrolled yet, so
+Production deploys currently fail closed; see
+`../docs/operations/production-action-authorization.md`.
+
 ### First Preview Deployment
 
 LiveKit Cloud projects are created in the dashboard; `lk cloud auth` links an

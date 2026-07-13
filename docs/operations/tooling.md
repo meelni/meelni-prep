@@ -203,6 +203,12 @@ explicit product-owner GO and separately authorized launch action for the exact
 candidate. Rollback changes the Statsig gate and this fallback
 together so a Statsig outage cannot invert the intended product state.
 
+The controlled `relaunch-default-on` workflow remains pending SAV-254 Phase 2.
+Do not change the Statsig global gate or `MEELNI_REACTIVATION_DEFAULT` to true
+directly. Unlike other Production action artifacts, default-on must contain the
+owner's explicit `GO` bound to the exact candidate. Default-off and emergency
+disable remain available without GO.
+
 In local development, the feature-flag menu stores an on/off cookie and reloads the page so the server-rendered body, metadata, and client controls use the same state.
 
 ## Local Inngest Feedback

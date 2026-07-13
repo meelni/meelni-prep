@@ -48,6 +48,12 @@ deployment from the `meelni/meelni` project. The retired local deployment
 script and bare `vercel --prod` path are not approved because they did not prove
 the linked project/account before mutating Production.
 
+Production promotion remains unsupported until SAV-254 adds the controlled
+wrapper for `vercel-production-promote`. A checklist pass or readiness
+recommendation is insufficient. Promotion will require a signed exact-candidate
+Production action artifact; relaunch default-on is a separate action that also
+requires the product owner's explicit GO for that candidate.
+
 ### Step 4: Configure Environment Variables
 
 After the first deployment, you need to add environment variables in the Vercel Dashboard.

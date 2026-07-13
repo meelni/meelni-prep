@@ -3,7 +3,15 @@
 import Stripe from "stripe";
 import { pathToFileURL } from "node:url";
 
+import {
+  canonicalJson,
+  consumeProductionActionAuthorization,
+  PRODUCTION_ACTIONS,
+  sha256,
+} from "../lib/operations/production-action-authorization.mjs";
+
 const STRIPE_API_VERSION = "2026-02-25.clover";
+const STRIPE_ACCOUNT_ID = "acct_1SSreECdoT5hfbsF";
 
 const catalog = [
   {
@@ -42,9 +50,21 @@ export async function runStripeCatalogSetup({
   argv = process.argv.slice(2),
   env = process.env,
   StripeClient = Stripe,
+  authorizeProductionAction = consumeProductionActionAuthorization,
   log = console.log,
 } = {}) {
   const args = new Set(argv);
+  if (
+    args.size !== argv.length ||
+    [...args].some(
+      (argument) => !["--dry-run", "--confirm-live"].includes(argument)
+    ) ||
+    (args.has("--dry-run") && args.has("--confirm-live"))
+  ) {
+    throw new Error(
+      "Catalog setup accepts --dry-run or --confirm-live, not both."
+    );
+  }
   if (args.has("--dry-run")) {
     printCatalogPlan(log);
     return { disposition: "dry_run" };
@@ -68,10 +88,27 @@ export async function runStripeCatalogSetup({
       "Live key detected. Re-run with --confirm-live after reviewing docs/STRIPE_LIVE_MODE_CHECKLIST.md."
     );
   }
+  if (keyMode === "live") {
+    await authorizeProductionAction({
+      authorizationPath: env.MEELNI_PRODUCTION_ACTION_AUTHORIZATION,
+      expected: {
+        action: PRODUCTION_ACTIONS.STRIPE_LIVE_CATALOG,
+        provider: "stripe",
+        configurationSha256: STRIPE_LIVE_CATALOG_CONFIGURATION_SHA256,
+        targetFingerprint: STRIPE_LIVE_TARGET_FINGERPRINT,
+      },
+    });
+  }
 
   const stripe = new StripeClient(secretKey, {
     apiVersion: STRIPE_API_VERSION,
   });
+  if (keyMode === "live") {
+    const account = await stripe.accounts.retrieve();
+    if (account.deleted || account.id !== STRIPE_ACCOUNT_ID) {
+      throw new Error("Stripe live key does not match the authorized account.");
+    }
+  }
   const createdPrices = [];
   for (const item of catalog) {
     const price = await findOrCreatePrice(stripe, item, log);
@@ -84,6 +121,18 @@ export async function runStripeCatalogSetup({
   }
   return { disposition: "ready", createdPrices };
 }
+
+export const STRIPE_LIVE_CATALOG_CONFIGURATION_SHA256 = sha256(
+  canonicalJson({
+    accountId: STRIPE_ACCOUNT_ID,
+    apiVersion: STRIPE_API_VERSION,
+    catalog,
+  })
+);
+
+export const STRIPE_LIVE_TARGET_FINGERPRINT = sha256(
+  `stripe-account:${STRIPE_ACCOUNT_ID}`
+);
 
 async function findOrCreatePrice(stripe, item, log) {
   const existingPrices = await stripe.prices.list({
