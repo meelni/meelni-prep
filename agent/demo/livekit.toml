@@ -1,5 +1,3 @@
-[project]
-  subdomain = "meelni-ek4vaisp"
-
-[agent]
-  id = "CA_t3sKQEihMQ7x"
+# Project and agent identities are intentionally not tracked.
+# Use MEELNI_LIVEKIT_PREVIEW_DEMO_CONFIG or
+# MEELNI_LIVEKIT_PRODUCTION_DEMO_CONFIG.

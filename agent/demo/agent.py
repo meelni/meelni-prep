@@ -26,7 +26,10 @@ from livekit.plugins.turn_detector.english import EnglishModel
 # Add parent directory to path for shared module imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shared.provider_environment import validate_livekit_runtime_environment
+from shared.provider_environment import (
+    run_livekit_worker,
+    validate_livekit_runtime_environment,
+)
 
 load_dotenv()
 
@@ -364,19 +367,20 @@ async def entrypoint(ctx: JobContext):
 
 
 def run_worker() -> None:
-    runtime_environment = validate_livekit_runtime_environment(os.environ)
-    os.environ["LIVEKIT_URL"] = runtime_environment.url
-    is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
-    agent_name = get_required_env("LIVEKIT_DEMO_AGENT_NAME") if is_cloud else None
+    def initialize() -> None:
+        is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
+        agent_name = get_required_env("LIVEKIT_DEMO_AGENT_NAME") if is_cloud else None
 
-    options = {
-        "entrypoint_fnc": entrypoint,
-        "prewarm_fnc": prewarm,
-    }
-    if agent_name:
-        options["agent_name"] = agent_name
+        options = {
+            "entrypoint_fnc": entrypoint,
+            "prewarm_fnc": prewarm,
+        }
+        if agent_name:
+            options["agent_name"] = agent_name
 
-    cli.run_app(WorkerOptions(**options))
+        cli.run_app(WorkerOptions(**options))
+
+    run_livekit_worker(os.environ, sys.argv[1:], initialize)
 
 
 if __name__ == "__main__":

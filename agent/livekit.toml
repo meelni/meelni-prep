@@ -1,5 +1,2 @@
-[project]
-  subdomain = "meelni-ek4vaisp"
-
-[agent]
-  id = "CA_yawKG67rCMG4"
+# Project and agent identities are intentionally not tracked.
+# Use the environment-and-agent-specific config variables documented in agent/README.md.
