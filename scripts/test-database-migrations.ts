@@ -32,6 +32,7 @@ import { stripeSubscriptionCursorIsNewer } from "../lib/db/stripe-subscription-e
 import { subscription } from "../lib/db/schema";
 
 import {
+  BILLING_TRUTH_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
@@ -41,11 +42,14 @@ import {
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
   INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT,
+  INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT,
   getStableStartDatabaseSchemaContract,
   SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
+  SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
+  WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
 const ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
@@ -191,6 +195,12 @@ async function run() {
     runPreflight(cleanUrl, true, "ready_to_reconcile");
     runCliMigration(cleanUrl);
     runPreflight(cleanUrl, true, "reconciled");
+    const latestStrictPreflight = runStrictPreflight(cleanUrl);
+    assert.equal(
+      latestStrictPreflight.status,
+      0,
+      `Latest strict preflight failed: ${latestStrictPreflight.stderr || latestStrictPreflight.stdout}`
+    );
     await seedAuthorizationFixtures(clean);
     await verifyDatabase(clean);
     await verifyCleanLifecycleDefaults(clean);
@@ -223,7 +233,10 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, FEEDBACK_V2_SCHEMA_FINGERPRINT);
+    assert.equal(
+      cleanFingerprint,
+      SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
+    );
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -370,13 +383,12 @@ async function run() {
         await rm(billingFolder, { recursive: true, force: true });
       }
       await verifyRuntimeWriterBackfill(upgrade);
-      const billingPreflight = runPreflight(
-        upgradeUrl,
-        true,
-        "reconciled"
-      )!;
+      const billingPreflight = runPreflight(upgradeUrl, true, "reconciled")!;
       assert.equal(billingPreflight.startingContract, "billing_truth");
-
+      assert.equal(
+        billingPreflight.schemaContract,
+        BILLING_TRUTH_SCHEMA_FINGERPRINT
+      );
       const preInvoiceFolder = await createMigrationFolderThrough(17);
       try {
         await migrate(drizzle(upgrade), {
@@ -387,6 +399,10 @@ async function run() {
       }
       await seedLegacyInvoiceDuplicateFixtures(upgrade);
       const duplicatePreview = runPreflight(upgradeUrl, true, "reconciled")!;
+      assert.equal(
+        duplicatePreview.schemaContract,
+        WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
+      );
       assert.equal(duplicatePreview.invoice_status_duplicate_rows, 1);
       await seedDivergentLegacyInvoiceDuplicate(upgrade);
       await assert.rejects(
@@ -397,23 +413,46 @@ async function run() {
         DELETE FROM payment_history
         WHERE stripe_event_id = 'evt_legacy_invoice_conflict'
       `;
-      const invoiceFolder = await createMigrationFolderThrough(18);
-      try {
-        await migrate(drizzle(upgrade), {
-          migrationsFolder: invoiceFolder,
-        });
-      } finally {
-        await rm(invoiceFolder, { recursive: true, force: true });
+      const rollingContracts = [
+        INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT,
+        SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT,
+        DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
+        FEEDBACK_V2_SCHEMA_FINGERPRINT,
+        SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
+      ];
+      let reconnectApplied: MigrationPreflightResult | null = null;
+      for (let maxIndex = 18; maxIndex <= 22; maxIndex += 1) {
+        const rollingFolder = await createMigrationFolderThrough(maxIndex);
+        try {
+          await migrate(drizzle(upgrade), {
+            migrationsFolder: rollingFolder,
+          });
+        } finally {
+          await rm(rollingFolder, { recursive: true, force: true });
+        }
+        reconnectApplied = runPreflight(upgradeUrl, true, "reconciled");
+        assert.equal(reconnectApplied?.migrationCount, maxIndex + 1);
+        assert.equal(
+          reconnectApplied?.schemaContract,
+          rollingContracts[maxIndex - 18]
+        );
+        if (maxIndex === 21) {
+          const strictRollingPreflight = runStrictPreflight(upgradeUrl);
+          assert.equal(strictRollingPreflight.status, 1);
+          assert.match(
+            `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
+            /Strict launch preflight requires the exact latest migration count 23; found 22/
+          );
+          await upgrade.unsafe(`
+            GRANT ALL ON TABLE
+              billing_adjustment,
+              billing_payment_state,
+              credit_rollover_lot,
+              credit_rollover_lot_allocation
+            TO anon, authenticated, service_role
+          `);
+        }
       }
-      const invoicePreflight = runPreflight(
-        upgradeUrl,
-        true,
-        "reconciled"
-      )!;
-      assert.equal(invoicePreflight.startingContract, "invoice_convergence");
-
-      await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
-      const reconnectApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
       assert.deepEqual(
         await protectedRowCounts(upgrade),
@@ -1117,6 +1156,8 @@ interface MigrationPreflightCount {
 }
 
 interface MigrationPreflightResult {
+  migrationCount: number;
+  schemaContract: string;
   startingContract: string;
   invoice_status_duplicate_rows: number;
   lifecycleBackfill: {
@@ -5377,7 +5418,10 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(refundedPreflight.startingContract, "feedback_v2");
+    assert.equal(
+      refundedPreflight.startingContract,
+      "server_owned_billing_privileges"
+    );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -5665,7 +5709,7 @@ async function verifyProviderCreditRecovery(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 22);
+  assert.equal(await migrationCount(sql), 23);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -6224,6 +6268,45 @@ async function verifyDatabase(sql: postgres.Sql) {
     anon_limiter_insert: false,
     service_limiter_execute: true,
   });
+
+  const serverOwnedBillingPrivileges = await sql<
+    { table_name: string; grantee: string; privileges: string[] }[]
+  >`
+    SELECT table_name, grantee,
+      array_agg(privilege_type ORDER BY privilege_type) AS privileges
+    FROM information_schema.table_privileges
+    WHERE table_schema = 'public'
+      AND table_name IN (
+        'billing_adjustment',
+        'billing_payment_state',
+        'credit_rollover_lot',
+        'credit_rollover_lot_allocation'
+      )
+      AND grantee IN ('PUBLIC', 'anon', 'authenticated', 'service_role')
+    GROUP BY table_name, grantee
+    ORDER BY table_name, grantee
+  `;
+  assert.deepEqual(
+    serverOwnedBillingPrivileges.map((grant) => ({ ...grant })),
+    [
+      "billing_adjustment",
+      "billing_payment_state",
+      "credit_rollover_lot",
+      "credit_rollover_lot_allocation",
+    ].map((table_name) => ({
+      table_name,
+      grantee: "service_role",
+      privileges: [
+        "DELETE",
+        "INSERT",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE",
+      ],
+    }))
+  );
 }
 
 async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
@@ -6335,6 +6418,29 @@ async function verifyAuthorization(sql: postgres.Sql) {
       ),
     /permission denied/
   );
+
+  const serverOwnedBillingTables = [
+    "billing_adjustment",
+    "billing_payment_state",
+    "credit_rollover_lot",
+    "credit_rollover_lot_allocation",
+  ] as const;
+  for (const table of serverOwnedBillingTables) {
+    await assert.rejects(
+      () =>
+        asRole(sql, "authenticated", (tx) =>
+          tx.unsafe(`SELECT * FROM ${table}`)
+        ),
+      /permission denied/
+    );
+    await assert.rejects(
+      () => asRole(sql, "anon", (tx) => tx.unsafe(`SELECT * FROM ${table}`)),
+      /permission denied/
+    );
+    await asRole(sql, "service_role", (tx) =>
+      tx.unsafe(`SELECT * FROM ${table} LIMIT 0`)
+    );
+  }
 }
 
 async function verifySharedLimiter(sql: postgres.Sql) {

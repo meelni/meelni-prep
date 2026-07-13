@@ -28,10 +28,11 @@
 |    19 | `0019_subscription_resource_convergence` |
 |    20 | `0020_durable_livekit_deletion`          |
 |    21 | `0021_feedback_v2`                       |
+|    22 | `0022_server_owned_billing_privileges`   |
 
 <!-- migration-journal:end -->
 
-This twenty-two-entry inventory is generated from the same ordered contract as
+This twenty-three-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
