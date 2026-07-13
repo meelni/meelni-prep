@@ -72,6 +72,21 @@ test("fails closed when the bootstrap catalog query fails or is ambiguous", asyn
     inspectDatabaseBootstrapState(catalogTransaction({})),
     new Error("Database preflight could not inspect bootstrap catalog")
   );
+  await assert.rejects(
+    inspectDatabaseBootstrapState(async () => [
+      {
+        migration_ledger_present: false,
+        public_application_relations: 0,
+        public_application_objects: 0,
+      },
+      {
+        migration_ledger_present: true,
+        public_application_relations: 1,
+        public_application_objects: 1,
+      },
+    ]),
+    new Error("Database preflight could not inspect bootstrap catalog")
+  );
 });
 
 test("Preview preflight rejects a Production-marked canonical env file before connecting", async () => {
