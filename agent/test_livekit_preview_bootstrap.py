@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import multiprocessing
 import os
 import signal
 import stat
@@ -22,6 +23,7 @@ from bootstrap_livekit_preview import (  # noqa: E402
     PREVIEW_PROJECT_ALIAS,
     PreviewBootstrapError,
     PreviewBootstrapResult,
+    _external_destination_lock,
     _selected_dockerfile,
     bootstrap_preview_agent,
     main,
@@ -56,7 +58,6 @@ class BootstrapFixture:
         self.dockerfile_log = self.operator_root / "dockerfile.log"
         self.environment_log = self.operator_root / "environment.log"
         self.create_target_log = self.operator_root / "create-target.log"
-        self.list_count = self.operator_root / "list-count"
         self.source_home = self.operator_root / "source-home"
         (self.source_home / ".livekit").mkdir(parents=True)
         self.source_registry = self.source_home / ".livekit" / "cli-config.yaml"
@@ -95,7 +96,6 @@ class BootstrapFixture:
             "FAKE_LK_DOCKERFILE_LOG": str(self.dockerfile_log),
             "FAKE_LK_ENVIRONMENT_LOG": str(self.environment_log),
             "FAKE_LK_CREATE_TARGET_LOG": str(self.create_target_log),
-            "FAKE_LK_LIST_COUNT": str(self.list_count),
             "FAKE_LK_SOURCE_REGISTRY": str(self.source_registry),
             "FAKE_LK_CREATED_TOML": (
                 '[project]\nsubdomain = "meelni-preview-abc"\n'
@@ -209,6 +209,7 @@ class BootstrapFixture:
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 arguments = sys.argv[1:]
@@ -232,14 +233,13 @@ if arguments == ["--version"]:
 if arguments == ["--project", "meelni-preview", "project", "list", "--json"]:
     with open(os.environ["FAKE_LK_READ_LOG"], "a", encoding="utf-8") as handle:
         handle.write(json.dumps(arguments) + "\\n")
-    count_path = Path(os.environ["FAKE_LK_LIST_COUNT"])
-    count = int(count_path.read_text()) if count_path.exists() else 0
-    count_path.write_text(str(count + 1))
-    if count == 0 and os.environ.get("FAKE_LK_MUTATE_SECRETS_ON_LIST") == "1":
+    home = Path(os.environ["HOME"])
+    snapshot_inventory = home.parent.name.startswith(".meelni-livekit-bootstrap-")
+    if not snapshot_inventory and os.environ.get("FAKE_LK_MUTATE_SECRETS_ON_LIST") == "1":
         Path(os.environ["FAKE_LK_SECRETS_PATH"]).write_text("changed\\n")
-    if count == 0 and os.environ.get("FAKE_LK_CREATE_CONFIG_ON_LIST") == "1":
+    if not snapshot_inventory and os.environ.get("FAKE_LK_CREATE_CONFIG_ON_LIST") == "1":
         Path(os.environ["FAKE_LK_CONFIG_PATH"]).write_text("raced\\n")
-    if count == 0:
+    if not snapshot_inventory:
         payload = json.loads(os.environ.get("FAKE_LK_PROJECTS_JSON", "[]"))
         if os.environ.get("FAKE_LK_MUTATE_SOURCE_REGISTRY_ON_LIST") == "1":
             Path(os.environ["FAKE_LK_SOURCE_REGISTRY"]).write_text(
@@ -277,6 +277,7 @@ if arguments == ["--project", "meelni-preview", "project", "list", "--json"]:
 
 with open(os.environ["FAKE_LK_CREATE_LOG"], "a", encoding="utf-8") as handle:
     handle.write(json.dumps(arguments) + "\\n")
+time.sleep(float(os.environ.get("FAKE_LK_CREATE_DELAY_SECONDS", "0")))
 if os.environ.get("FAKE_LK_RACE_EXTERNAL_CONFIG_ON_CREATE") == "1":
     Path(os.environ["FAKE_LK_CONFIG_PATH"]).write_text("raced during create\\n")
 registry = json.loads(
@@ -307,7 +308,51 @@ raise SystemExit(exit_code)
 """
 
 
+def _run_bootstrap_in_process(
+    kind: str,
+    environment: dict[str, str],
+    agent_root: str,
+    lk_executable: str,
+    queue,
+) -> None:
+    try:
+        result = bootstrap_preview_agent(
+            kind,
+            env=environment,
+            agent_root=Path(agent_root),
+            lk_executable=Path(lk_executable),
+            _test_child_environment={
+                name: value
+                for name, value in environment.items()
+                if name.startswith("FAKE_LK_")
+            },
+        )
+        queue.put(("ok", result.agent_id))
+    except PreviewBootstrapError as error:
+        queue.put(("denied", str(error)))
+
+
 class LiveKitPreviewBootstrapTests(unittest.TestCase):
+    def test_external_destination_lock_is_private_and_exclusive(self):
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp)
+            parent.chmod(0o700)
+            config_path = parent / "interview.toml"
+
+            with _external_destination_lock(config_path):
+                locks = list(parent.glob(".meelni-livekit-bootstrap-*.lock"))
+                self.assertEqual(len(locks), 1)
+                self.assertEqual(stat.S_IMODE(os.lstat(locks[0]).st_mode), 0o600)
+                with self.assertRaisesRegex(
+                    PreviewBootstrapError, "livekit_preview_destination_locked"
+                ):
+                    with _external_destination_lock(config_path):
+                        self.fail("nested destination lock unexpectedly acquired")
+
+            self.assertEqual(
+                list(parent.glob(".meelni-livekit-bootstrap-*.lock")), []
+            )
+
     def test_local_denials_invoke_no_livekit_command(self):
         def missing_preview(fixture: BootstrapFixture) -> None:
             fixture.env.pop("MEELNI_PREVIEW_LIVEKIT_URL")
@@ -532,6 +577,70 @@ class LiveKitPreviewBootstrapTests(unittest.TestCase):
 
             self.assertEqual(fixture.read_calls(), [])
             self.assertEqual(fixture.create_calls(), [])
+
+    def test_distinct_worktrees_share_one_external_create_reservation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            first = BootstrapFixture(root / "first", kind="interview")
+            second = BootstrapFixture(root / "second", kind="interview")
+            self.assertNotEqual(first.agent_root, second.agent_root)
+
+            shared_fake_paths = {
+                "FAKE_LK_READ_LOG": first.read_log,
+                "FAKE_LK_CREATE_LOG": first.create_log,
+                "FAKE_LK_DOCKERFILE_LOG": first.dockerfile_log,
+                "FAKE_LK_ENVIRONMENT_LOG": first.environment_log,
+                "FAKE_LK_CREATE_TARGET_LOG": first.create_target_log,
+                "FAKE_LK_CONFIG_PATH": first.config_path,
+                "FAKE_LK_SECRETS_PATH": first.secrets_path,
+            }
+            second.env[second.config_env] = str(first.config_path)
+            second.env[second.secrets_env] = str(first.secrets_path)
+            for name, path in shared_fake_paths.items():
+                first.env[name] = str(path)
+                second.env[name] = str(path)
+            first.env["FAKE_LK_CREATE_DELAY_SECONDS"] = "0.4"
+            second.env["FAKE_LK_CREATE_DELAY_SECONDS"] = "0.4"
+
+            context = multiprocessing.get_context("fork")
+            queue = context.Queue()
+            processes = [
+                context.Process(
+                    target=_run_bootstrap_in_process,
+                    args=(
+                        fixture.kind,
+                        fixture.env,
+                        str(fixture.agent_root),
+                        str(fixture.fake_lk),
+                        queue,
+                    ),
+                )
+                for fixture in (first, second)
+            ]
+            for process in processes:
+                process.start()
+            for process in processes:
+                process.join(15)
+                self.assertFalse(process.is_alive())
+                self.assertEqual(process.exitcode, 0)
+
+            outcomes = [queue.get(timeout=2) for _ in processes]
+            self.assertEqual(sum(status == "ok" for status, _ in outcomes), 1)
+            self.assertEqual(sum(status == "denied" for status, _ in outcomes), 1)
+            denial = next(detail for status, detail in outcomes if status == "denied")
+            self.assertIn(
+                denial,
+                {
+                    "livekit_preview_destination_locked",
+                    "livekit_preview_config_already_exists",
+                },
+            )
+            self.assertEqual(len(first.create_calls()), 1)
+            self.assertTrue(first.config_path.is_file())
+            self.assertEqual(
+                list(first.operator_root.glob(".meelni-livekit-bootstrap-*.lock")),
+                [],
+            )
 
     def test_interview_success_uses_exact_scoped_create_and_private_config(self):
         with tempfile.TemporaryDirectory() as temp:

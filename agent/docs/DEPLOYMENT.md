@@ -65,6 +65,10 @@ operator target with no-clobber semantics. This boundary is documented in
 `docs/operations/provider-preview-rehearsal.md`. Do not run a manual first
 `lk agent create` around this guard.
 
+A deterministic mode-`0600` reservation beside the canonical external config
+is acquired before the absence check and held through publication. Separate
+worktrees pointed at the same destination cannot both reach `agent create`.
+
 ## Manual Deployment
 
 This historical section applies only to already-created agents whose external

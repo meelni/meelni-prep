@@ -239,9 +239,15 @@ Operational notes:
   v2.12.8 joins `--config` to the agent working directory even for an absolute
   value, so the bootstrap passes a derived relative path that must resolve to
   its private external workspace. The bootstrap pins exactly v2.12.8 and must
-  be re-audited before that version changes. It uses a tight child-environment allowlist,
-  a `0077` child umask, and bounded CLI timeouts, and emits only the safe created
-  agent ID and next expected-ID env name.
+  be re-audited before that version changes. It uses a tight child-environment
+  allowlist, a `0077` child umask, and bounded CLI timeouts, and emits only the
+  safe created agent ID and next expected-ID env name.
+- First-create concurrency is guarded twice: the repository-local lock protects
+  one worktree's Dockerfile, while a deterministic mode-`0600`
+  `.meelni-livekit-bootstrap-*.lock` beside the canonical external config is
+  acquired before absence validation and held through publication. The latter
+  is the cross-worktree provider-mutation reservation. Remove a stale lock only
+  after proving no matching bootstrap process is running.
 - Before the guarded worker version is deployed to the existing Production
   agents, add `MEELNI_ENV_PULL_ENVIRONMENT=production` and
   `MEELNI_PRODUCTION_LIVEKIT_URL`; current secret-name inventory does not show
