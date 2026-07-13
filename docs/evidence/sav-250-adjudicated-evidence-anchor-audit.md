@@ -108,11 +108,11 @@ inferred from a missing threshold, owner, comparison, or decision rule.
 The 100% canonical-anchor gate remains fail closed. No fixture, score band,
 gold-set version, adjudication version, approval artifact, or historical report
 was changed. The containment fix does not reclassify the historical SAV-248
-failure; that report remains terminal NO-GO evidence produced by the earlier
-code.
+failure; that report remains failed calibration evidence supporting a `not
+ready` recommendation under the earlier code.
 
-Before any v3 run is considered launch evidence, arbitrary alternative findings
-need a separately designed review path. The safest option is a private,
+Before any v3 run is considered calibration evidence, arbitrary alternative
+findings need a separately designed review path. The safest option is a private,
 synthetic-only, hash-bound output-adjudication artifact reviewed by two
 independent panels, with a public report containing only closed decisions and
 hashes. Until that exists, an output that omits a canonical anchor must fail

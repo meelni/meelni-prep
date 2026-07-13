@@ -50,9 +50,9 @@ This calculation is now bound by authorization
 `sav-248-user-authorization-2026-07-13.v2` and accepted plan hash
 `354bdc4046b0759e50940127c574abe355ee0754d9a8aaf2c25338b49aca8419`.
 This provider-free work performed no ledger activation or provider call and
-grants no provider or launch acceptance. The one observed SAV-198 response used
-1,392 output tokens but is not sufficient alone to prove corpus-wide
-completion.
+grants neither provider acceptance nor launch authorization. The one observed
+SAV-198 response used 1,392 output tokens but is not sufficient alone to prove
+corpus-wide completion.
 
 ## Validation
 

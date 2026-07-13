@@ -4,18 +4,18 @@ import test from "node:test";
 import { getCalibrationCliExitCode } from "./calibration-cli";
 import type { EvaluationCalibrationReport } from "./calibration";
 
-test("live CLI fails when provider passes but human approval keeps launch pending", () => {
+test("live CLI fails when provider passes but adjudication keeps evidence pending", () => {
   const report = reportWithGate({
     liveProviderAcceptance: "passed",
-    launchAcceptance: "pending_adjudication_signoff",
+    calibrationEvidenceAcceptance: "pending_adjudication_signoff",
   });
   assert.equal(getCalibrationCliExitCode("live_provider", report), 1);
 });
 
-test("live CLI succeeds only for combined launch acceptance", () => {
+test("live CLI succeeds only for combined calibration evidence acceptance", () => {
   const report = reportWithGate({
     liveProviderAcceptance: "passed",
-    launchAcceptance: "passed",
+    calibrationEvidenceAcceptance: "passed",
   });
   assert.equal(getCalibrationCliExitCode("live_provider", report), 0);
 });
@@ -23,7 +23,7 @@ test("live CLI succeeds only for combined launch acceptance", () => {
 function reportWithGate(
   gate: Pick<
     EvaluationCalibrationReport["gate"],
-    "liveProviderAcceptance" | "launchAcceptance"
+    "liveProviderAcceptance" | "calibrationEvidenceAcceptance"
   >
 ): EvaluationCalibrationReport {
   return {

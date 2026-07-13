@@ -84,7 +84,8 @@ not an inferred product-owner NO-GO.
    cases, reconciled $0.015545, stayed below the $3 cap, and recorded
    `liveProviderAcceptance: failed` and legacy
    `launchAcceptance: failed`. The latter is a historical technical calibration
-   evidence field, not a human launch decision. The
+   evidence field, not a human launch decision; current v8 reports call the
+   equivalent field `calibrationEvidenceAcceptance`. The
    one-time authority is consumed. The sanitized receipt reports
    `evaluation_failed`; it does not establish the exact semantic subcause.
    SAV-248 then used a distinct v2 authorization and accepted immutable plan.
@@ -101,7 +102,8 @@ not an inferred product-owner NO-GO.
    Exact reconciled spend was `$0.026752`, unresolved reservation was zero,
    and the cap was not breached. `liveProviderAcceptance` and the legacy
    `launchAcceptance` technical evidence field both failed. The v2 authority is
-   consumed and will not be
+   consumed; those values remain immutable v7 evidence and are not rewritten as
+   v8. The authority will not be
    retried without a distinct reviewed authorization.
 2. **The exact authenticated golden path is incomplete.** There is no current
    reproducible receipt for synthetic authentication through interview,
