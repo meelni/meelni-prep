@@ -462,7 +462,7 @@ async function activateCalibrationRunWithClient(
     planHash: plan.planHash,
     activationId,
   });
-  const activationDate = now.toISOString();
+  const activationDate = toGitHubCommitTimestamp(now);
   const activation = await github.createCommit({
     message: activationMessage,
     treeSha: SAV_198_EMPTY_TREE_OID,
@@ -1184,6 +1184,16 @@ function normalizeTimestamp(value: string): string {
     throw new Error("calibration_github_commit_date_invalid");
   }
   return parsed.toISOString();
+}
+
+function toGitHubCommitTimestamp(value: Date): string {
+  const milliseconds = value.getTime();
+  if (!Number.isFinite(milliseconds)) {
+    throw new Error("calibration_github_commit_date_invalid");
+  }
+  return new Date(Math.floor(milliseconds / 1_000) * 1_000)
+    .toISOString()
+    .replace(".000Z", "Z");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
