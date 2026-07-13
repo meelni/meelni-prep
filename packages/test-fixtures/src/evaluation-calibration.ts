@@ -7,9 +7,9 @@ import {
 } from "@meelni/core";
 import { SCORED_ADJUDICATIONS } from "./evaluation-calibration-adjudications";
 
-export const EVALUATION_GOLD_SET_VERSION = "pm-gold-set.v3" as const;
+export const EVALUATION_GOLD_SET_VERSION = "pm-gold-set.v4" as const;
 export const EVALUATION_ADJUDICATION_VERSION =
-  "pm-gold-adjudication-candidates.v3" as const;
+  "pm-gold-adjudication-candidates.v4" as const;
 
 export const EVALUATION_CALIBRATION_THRESHOLDS = {
   evidenceValidityRate: 1,
@@ -35,6 +35,26 @@ export const CALIBRATION_ROUND_TYPES = [
 export type CalibrationRoundType = (typeof CALIBRATION_ROUND_TYPES)[number];
 export type CalibrationCompletionState = "full" | "partial" | "insufficient";
 export type CalibrationQuality = "weak" | "average" | "strong";
+
+const DELEGATED_CORRECTION_CASE_IDS = new Set([
+  "product_sense:01:caregiver-planning",
+  "product_sense:02:accessible-transit",
+  "product_sense:04:community-kitchens",
+  "product_sense:05:language-practice",
+  "execution:02:search-latency",
+  "execution:04:mobile-migration",
+  "execution:07:warehouse-pilot",
+  "strategy:01:creator-market",
+  "strategy:02:regional-expansion",
+  "strategy:04:open-platform",
+  "strategy:05:education-entry",
+  "strategy:07:ai-positioning",
+  "behavioral:01:roadmap-conflict",
+  "behavioral:02:failed-launch",
+  "behavioral:04:customer-escalation",
+  "behavioral:05:team-disagreement",
+  "behavioral:07:mentoring",
+]);
 
 export interface CalibrationTranscriptTurn {
   contractVersion: 2;
@@ -453,6 +473,17 @@ const SCORED_SEEDS: Record<CalibrationRoundType, readonly ScoredSeed[]> = {
   ],
 };
 
+const NORMALIZED_SCORE_PROFILE_INDEX: Readonly<Record<string, 0 | 2>> = {
+  "product_sense:02:accessible-transit": 0,
+  "product_sense:04:community-kitchens": 2,
+  "execution:02:search-latency": 0,
+  "execution:04:mobile-migration": 2,
+  "strategy:02:regional-expansion": 0,
+  "strategy:04:open-platform": 2,
+  "behavioral:02:failed-launch": 0,
+  "behavioral:04:customer-escalation": 2,
+};
+
 export const evaluationCalibrationCases: readonly EvaluationCalibrationCase[] =
   CALIBRATION_ROUND_TYPES.flatMap((roundType) => [
     ...SCORED_SEEDS[roundType].map((caseSeed, index) =>
@@ -464,11 +495,26 @@ export const evaluationCalibrationCases: readonly EvaluationCalibrationCase[] =
 
 export function buildEvaluationAdjudicationReviewManifest() {
   return {
-    contractVersion: "evaluation-adjudication-review.v1" as const,
+    contractVersion: "evaluation-adjudication-review.v2" as const,
     goldSetVersion: EVALUATION_GOLD_SET_VERSION,
     adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
     provenance: "agent_authored_synthetic_candidate" as const,
     approvalRequired: true as const,
+    reviewStatus: "pending_independent_exact_hash_review" as const,
+    delegatedReview: {
+      delegationSource: "product_owner_task_thread" as const,
+      panelCount: 2 as const,
+      panelOutcome: "changes_required" as const,
+      correctionPolicy: "conservative_17_case_union" as const,
+      decisions: evaluationCalibrationCases
+        .filter(({ expectedQuality }) => expectedQuality !== null)
+        .map(({ id }) => ({
+          caseId: id,
+          decision: DELEGATED_CORRECTION_CASE_IDS.has(id)
+            ? ("corrected_pending_independent_review" as const)
+            : ("preserved_after_unanimous_panel_approval" as const),
+        })),
+    },
     scoredCaseCount: evaluationCalibrationCases.filter(
       ({ expectedQuality }) => expectedQuality !== null
     ).length,
@@ -546,7 +592,11 @@ function buildScoredCase(
     expectedQuality,
     transcript,
     scoreBands: toBands(
-      scoresForQuality(caseSeed.scores, expectedQuality, index)
+      scoresForQuality(
+        caseSeed.scores,
+        expectedQuality,
+        NORMALIZED_SCORE_PROFILE_INDEX[id] ?? index
+      )
     ),
     evidenceAnchors: [
       {

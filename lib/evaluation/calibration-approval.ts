@@ -8,7 +8,7 @@ import {
 } from "@meelni/test-fixtures";
 
 export interface EvaluationAdjudicationApproval {
-  contractVersion: "evaluation-adjudication-approval.v1";
+  contractVersion: "evaluation-adjudication-approval.v2";
   candidateArtifactHash: string;
   corpusHash: string;
   goldSetVersion: typeof EVALUATION_GOLD_SET_VERSION;
@@ -16,6 +16,10 @@ export interface EvaluationAdjudicationApproval {
   reviewer: {
     identity: string;
     role: "product_owner" | "pm_reviewer";
+  };
+  reviewBasis: {
+    candidateManifestVersion: "evaluation-adjudication-review.v2";
+    independentExactHashReview: true;
   };
   reviewedAt: string;
   decisions: Array<{
@@ -56,7 +60,7 @@ export function parseEvaluationAdjudicationApproval(
 ): EvaluationAdjudicationApproval {
   const record = requireRecord(input, "approval");
   const hashes = getEvaluationAdjudicationHashes();
-  if (record.contractVersion !== "evaluation-adjudication-approval.v1") {
+  if (record.contractVersion !== "evaluation-adjudication-approval.v2") {
     throw new Error("Invalid adjudication approval contractVersion");
   }
   if (record.candidateArtifactHash !== hashes.candidateArtifactHash) {
@@ -83,6 +87,14 @@ export function parseEvaluationAdjudicationApproval(
   }
   if (!Array.isArray(record.decisions)) {
     throw new Error("Invalid adjudication approval decisions");
+  }
+  const reviewBasis = requireRecord(record.reviewBasis, "reviewBasis");
+  if (
+    reviewBasis.candidateManifestVersion !==
+      "evaluation-adjudication-review.v2" ||
+    reviewBasis.independentExactHashReview !== true
+  ) {
+    throw new Error("Invalid adjudication approval reviewBasis");
   }
 
   const requiredCaseIds = evaluationCalibrationCases
@@ -115,11 +127,15 @@ export function parseEvaluationAdjudicationApproval(
   }
 
   return {
-    contractVersion: "evaluation-adjudication-approval.v1",
+    contractVersion: "evaluation-adjudication-approval.v2",
     ...hashes,
     goldSetVersion: EVALUATION_GOLD_SET_VERSION,
     adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
     reviewer: { identity, role: reviewer.role },
+    reviewBasis: {
+      candidateManifestVersion: "evaluation-adjudication-review.v2",
+      independentExactHashReview: true,
+    },
     reviewedAt,
     decisions,
   };

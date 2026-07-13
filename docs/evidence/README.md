@@ -24,6 +24,8 @@ pending.
 
 Its adjudication review manifest contains agent-authored synthetic candidates,
 not approved ground truth. It carries no approval flag or reviewer identity.
-Product-owner/PM signoff requires a separate validated hash-bound artifact,
-which is intentionally absent while review remains pending and cannot be
-satisfied by a model run.
+It records the task-thread product-owner delegation, two independent agent
+panel decisions, and the conservative 17-case correction union, while keeping
+independent exact-hash review visibly pending. Product-owner/PM signoff requires
+a separate validated hash-bound artifact, which is intentionally absent while
+review remains pending and cannot be satisfied by an agent panel or model run.

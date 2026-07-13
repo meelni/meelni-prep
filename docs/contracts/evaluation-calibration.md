@@ -22,7 +22,7 @@ No calibration path connects to the application database.
 ## Gold-set contract
 
 `packages/test-fixtures/src/evaluation-calibration.ts` owns
-`pm-gold-set.v3` and `pm-gold-adjudication-candidates.v3`. This version contains
+`pm-gold-set.v4` and `pm-gold-adjudication-candidates.v4`. This version contains
 40
 fully synthetic cases:
 
@@ -67,7 +67,7 @@ gold-set preflight and 100% insufficient-handling threshold.
 
 ## Report contract
 
-Every command emits `evaluation-calibration-report.v6` JSON with:
+Every command emits `evaluation-calibration-report.v7` JSON with:
 
 - execution kind, evaluator model, repetition count, and paid-provider status;
 - gold-set, adjudication, schema, prompt, and rubric versions;
@@ -229,9 +229,11 @@ payload. Local files are never spend authority.
 
 ## Approval artifact contract
 
-Approval is a separate `evaluation-adjudication-approval.v1` JSON artifact. The
+Approval is a separate `evaluation-adjudication-approval.v2` JSON artifact. The
 runtime parses it before evaluator work and requires:
 
+- an independent exact-hash review attestation for
+  `evaluation-adjudication-review.v2`;
 - the exact candidate-manifest SHA-256 and substantive-corpus SHA-256;
 - matching gold-set and adjudication versions;
 - reviewer identity and `product_owner` or `pm_reviewer` role;
@@ -240,8 +242,12 @@ runtime parses it before evaluator work and requires:
   scored candidate IDs.
 
 Missing, stale, malformed, duplicate, or incomplete approval fails closed. The
-candidate source and manifest cannot declare themselves approved. The current
-repository intentionally commits no approval artifact or reviewer identity.
+candidate source and manifest cannot declare themselves approved. The v4
+manifest records the product-owner-delegated two-panel review, its
+`changes_required` result, and the conservative 17-case correction union. That
+provenance is not human approval and remains pending independent review of the
+exact regenerated hashes. The current repository intentionally commits no
+approval artifact or reviewer identity.
 The live CLI likewise returns a failure unless the combined launch gate passes;
 provider acceptance alone is never a successful command outcome.
 

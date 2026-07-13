@@ -89,7 +89,7 @@ export interface CalibrationFailure {
 }
 
 export interface EvaluationCalibrationReport {
-  contractVersion: "evaluation-calibration-report.v6";
+  contractVersion: "evaluation-calibration-report.v7";
   generatedAt: string;
   execution: {
     kind: CalibrationExecutionKind;
@@ -658,7 +658,7 @@ export async function runEvaluationCalibration(
   const adjudicationPassed = pendingAdjudicationSignoffs === 0;
 
   return {
-    contractVersion: "evaluation-calibration-report.v6",
+    contractVersion: "evaluation-calibration-report.v7",
     generatedAt: now.toISOString(),
     execution: {
       kind: options.executionKind,
@@ -848,6 +848,7 @@ async function runCaseThroughGenerationWorkflow(input: {
   const deps: GenerateFeedbackWorkflowDeps = {
     store,
     now: () => input.now,
+    isDeletionPending: async () => false,
     steps: {
       run: (_name, work) => work(),
       sendInsights: async () => undefined,
