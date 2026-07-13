@@ -2,6 +2,7 @@ import type { Inngest } from "inngest";
 
 export type InngestEnv = {
   NODE_ENV?: string;
+  NEXT_PHASE?: string;
   INNGEST_ENV?: string;
   INNGEST_EVENT_KEY?: string;
   INNGEST_SIGNING_KEY?: string;
@@ -15,7 +16,7 @@ type InngestClientOptions = ConstructorParameters<typeof Inngest>[0];
 export type InngestConfigurationStatus =
   | {
       ok: true;
-      mode: "local" | "cloud" | "preview" | "production";
+      mode: "local" | "build" | "cloud" | "preview" | "production";
       options: InngestClientOptions;
     }
   | {
@@ -25,6 +26,7 @@ export type InngestConfigurationStatus =
     };
 
 const PRODUCTION_GIT_BRANCH = "main";
+const NEXT_PRODUCTION_BUILD_PHASE = "phase-production-build";
 
 export function getInngestClientOptions(
   env: InngestEnv = process.env
@@ -51,6 +53,18 @@ export function getInngestConfigurationStatus(
         ...options,
         isDev: true,
       },
+    };
+  }
+
+  // Vercel excludes sensitive runtime credentials while Next.js evaluates
+  // modules during page-data collection. Server modules are evaluated again
+  // with runtime environment variables when a function starts, where the
+  // hosted identity and credential checks below remain mandatory.
+  if (env.NEXT_PHASE === NEXT_PRODUCTION_BUILD_PHASE) {
+    return {
+      ok: true,
+      mode: "build",
+      options,
     };
   }
 
