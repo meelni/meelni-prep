@@ -156,6 +156,7 @@ async function run() {
 
   try {
     await installSupabaseTestSurface(clean);
+    await clean`CREATE EXTENSION hstore SCHEMA public`;
     runPreflight(cleanUrl, true, "ready_for_clean_bootstrap");
     await clean`CREATE TABLE public.bootstrap_partial_probe (id integer)`;
     runBlockedBootstrapPreflight(cleanUrl);
@@ -166,6 +167,8 @@ async function run() {
     `;
     runBlockedBootstrapPreflight(cleanUrl);
     await clean`DROP FUNCTION public.bootstrap_unexpected_probe()`;
+    runPreflight(cleanUrl, true, "ready_for_clean_bootstrap");
+    await clean`DROP EXTENSION hstore`;
     runPreflight(cleanUrl, true, "ready_for_clean_bootstrap");
     const pristineStrictPreflight = runStrictPreflight(cleanUrl);
     assert.equal(pristineStrictPreflight.status, 1);
