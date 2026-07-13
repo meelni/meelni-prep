@@ -74,8 +74,8 @@ The server emits a `question_sync_audit` JSON event containing trigger, dry-run 
 2. Generate independent Preview credentials and configure the Preview cron and operator secrets.
 3. Deploy to Preview. Verify unauthenticated and ordinary signed-in manual requests fail, then run a manual dry run with the operator credential.
 4. Run one Preview live sync in a disposable or approved non-production dataset. Start a second request concurrently and confirm it receives `409` before database work; confirm a sequential retry converges without duplicate composite identities and an inactive exact identity is reactivated.
-5. Generate new, independent Production credentials, configure the Production schedule, deploy, and run a Production dry run. Review only aggregate counts before enabling the schedule.
-6. Monitor the first scheduled Production outcome and question-bank quality. Turn on the relaunch feature gate only after the broader launch checklist is complete.
+5. After explicit product-owner authorization for the exact Production action, generate new, independent Production credentials, configure the Production schedule, deploy, and run a Production dry run. Review only aggregate counts before enabling the schedule.
+6. Monitor the first scheduled Production outcome and question-bank quality. Treat the broader launch checklist as readiness evidence; turn on the relaunch feature gate only after an explicit owner GO and separately authorized launch action.
 
 The concurrency rehearsal and live data verification require an approved environment and operator authority; local automated tests cover the fail-closed and overlap branches without touching a provider or remote database.
 

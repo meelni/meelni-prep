@@ -1,19 +1,23 @@
-# SAV-226 Relaunch Decision
+# SAV-226 Relaunch Readiness Recommendation
 
-Decision: **NO-GO**  
+Agent recommendation: **NOT READY**
+
+Human product-owner launch decision: **PENDING / NOT ISSUED**
+
 Recorded: 2026-07-13  
 Scope: Meelni relaunch, including the default-off interview experience
 
-This decision is fail-closed. It does not authorize a Production promotion,
+This recommendation is fail-closed. It does not authorize a Production promotion,
 live-mode provider mutation, customer-data use, any paid calibration outside
 the exact SAV-248 v2 authorization, or enabling the relaunch feature gate.
 
-## Executive Decision
+## Executive Recommendation
 
 Keep the relaunch feature gate off and keep PR 302 in draft. The isolated
-Preview infrastructure is substantially ready, but launch acceptance has
+Preview infrastructure is substantially ready, but calibration evidence has
 failed and the remaining end-to-end evidence is incomplete. Missing, stale,
-ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
+ambiguous, or inaccessible evidence produces a `not ready` recommendation,
+not an inferred product-owner NO-GO.
 
 ## Delegated Operating Decisions
 
@@ -25,10 +29,11 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
   fixture is synthetic/approved, the provider identities are positively
   non-Production, mutations and cost are bounded, cleanup is defined, and no
   customer or Production data is used.
-- Agents own the relaunch go/no-go recommendation. Live mode remains NO-GO
-  unless every reconsideration criterion below has fresh exact evidence,
-  bounded rollback, and an explicit release record. Missing or conflicting
-  evidence always resolves to NO-GO.
+- Agents own the relaunch-readiness recommendation, not the launch GO/NO-GO.
+  Live mode and the feature flag remain unchanged unless every reconsideration
+  criterion below has fresh exact evidence, bounded rollback, an explicit
+  release record, and separate product-owner authorization. Missing or
+  conflicting evidence always resolves to a `not ready` recommendation.
 
 ## Evidence That Passed
 
@@ -72,12 +77,14 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
   workflow (58), and selected API (60) tests. Hosted exact-head publication
   checks remain unavailable as recorded below.
 
-## Launch Blockers
+## Readiness Blockers
 
 1. **SAV-198 and SAV-248 calibration failed.** The original SAV-198 run stopped on
    the first synthetic case after one physical HTTP attempt. It completed zero
    cases, reconciled $0.015545, stayed below the $3 cap, and recorded
-   `liveProviderAcceptance: failed` and `launchAcceptance: failed`. The
+   `liveProviderAcceptance: failed` and legacy
+   `launchAcceptance: failed`. The latter is a historical technical calibration
+   evidence field, not a human launch decision. The
    one-time authority is consumed. The sanitized receipt reports
    `evaluation_failed`; it does not establish the exact semantic subcause.
    SAV-248 then used a distinct v2 authorization and accepted immutable plan.
@@ -92,8 +99,9 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
    attempted: one completed response missed its adjudicated evidence anchor;
    the second stopped on `evaluation_provider_returned_invalid_feedback`.
    Exact reconciled spend was `$0.026752`, unresolved reservation was zero,
-   and the cap was not breached. `liveProviderAcceptance` and
-   `launchAcceptance` both failed. The v2 authority is consumed and will not be
+   and the cap was not breached. `liveProviderAcceptance` and the legacy
+   `launchAcceptance` technical evidence field both failed. The v2 authority is
+   consumed and will not be
    retried without a distinct reviewed authorization.
 2. **The exact authenticated golden path is incomplete.** There is no current
    reproducible receipt for synthetic authentication through interview,
@@ -130,9 +138,11 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
    Migration Collision Publisher fail before executing because of the
    repository billing/spending-limit condition. Draft PR CI remains skipped.
 
-## Reconsideration Criteria
+## Ready-Recommendation Criteria
 
-A later GO decision requires all of the following on the release candidate:
+A later `ready` recommendation requires all of the following on the release
+candidate. Satisfying them does not issue GO; only the human product owner can
+make the final launch GO/NO-GO for the exact candidate:
 
 - A separately reviewed future calibration plan addresses the v2 semantic and
   diagnostic failures, receives distinct authorization, and passes every

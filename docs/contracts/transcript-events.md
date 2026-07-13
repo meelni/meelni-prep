@@ -115,8 +115,10 @@ columns so historical rows remain readable.
 5. Verify completed speech, mid-sentence interruption, and zero-prefix
    interruption against the pinned runtime contract.
 
-The public relaunch gate remains off until the downstream transcript privacy,
-ingest, evaluation, and launch-rehearsal slices pass.
+The public relaunch gate remains off while the downstream transcript privacy,
+ingest, evaluation, and launch-rehearsal evidence is incomplete. Passing those
+slices supports a readiness recommendation but does not make the launch
+decision; only the human product owner can issue GO/NO-GO.
 
 ## Durable Ingest
 

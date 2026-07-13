@@ -32,8 +32,9 @@ for that one-time v2 authority. The protected ref activated at
 attempted, one completed, and the run stopped fail closed on invalid feedback.
 One completed result also missed its adjudicated evidence anchor. Exact
 reconciled spend was $0.026752, unresolved reservation was zero, the cap was
-not breached, and both live-provider and launch acceptance failed. The v2
-authority is consumed and must not be retried.
+not breached, and both live-provider acceptance and the legacy technical
+`launchAcceptance` evidence field failed. That legacy field is not a human
+launch decision. The v2 authority is consumed and must not be retried.
 
 `sav-250-adjudicated-evidence-anchor-audit.md` records the provider-free review
 of all 32 scored cases and 64 canonical anchors. It finds every canonical pair
@@ -57,15 +58,16 @@ That v1 authority is consumed immutable history. It cannot authorize the v2
 run and is not silently rebased.
 
 SAV-198 includes a calibration preflight and deterministic harness report. Both
-are local evidence only and deliberately keep live-provider launch acceptance
-pending.
+are local evidence only and deliberately keep live-provider and calibration
+evidence acceptance pending.
 
 `sav-198-evaluation-calibration-live.json` records the single authorized live
 attempt. The protected ledger activated once, the first synthetic case stopped
 on a sanitized provider/evaluation failure, and the run reconciled one physical
-attempt at $0.015545 with no cap breach. The report is a launch NO-GO: unused
-calls are not reusable, and another paid attempt requires a separately reviewed
-fix and new explicit authorization.
+attempt at $0.015545 with no cap breach. The report is failed calibration
+evidence and supports a `not ready` recommendation; it is not a human
+product-owner NO-GO. Unused calls are not reusable, and another paid attempt
+requires a separately reviewed fix and new explicit authorization.
 
 `sav-248-provider-free-mitigation.md` records the strict structured-output
 contract, sanitized terminal categories, deterministic schema hash, exact
@@ -75,12 +77,13 @@ execution remains closed until the distinct v2 protected ledger authority is
 provisioned. The mitigation work performed no provider call and grants no
 provider or launch acceptance.
 
-`sav-226-relaunch-decision.md` is the human-readable release record for the
+`sav-226-relaunch-decision.md` is the human-readable readiness record for the
 exact relaunch candidate. It preserves the passed Preview evidence, the failed
 calibration and unavailable Production-health evidence, the remaining
 deployment-specific Stripe and golden-path gaps, and the criteria required to
-reconsider the current NO-GO decision. It grants no Production or paid-provider
-authority.
+reconsider the current `not ready` recommendation. The human product owner's
+launch decision remains pending. The record grants no Production,
+paid-provider, default-on, or launch authority.
 
 Its adjudication review manifest contains agent-authored synthetic candidates.
 The separate `sav-198-adjudication-approval.json` records the product owner's

@@ -4,7 +4,7 @@
 
 - User request: autonomously complete the isolated synthetic Preview rehearsal without using customer or Production data.
 - Product/user outcome: a fresh candidate can activate the canonical trial, practice one selected PM question with the LiveKit interviewer, retain a durable transcript, end in one terminal state, and receive completed asynchronous feedback.
-- Why now: this is a release-blocking evidence gap in the SAV-226 NO-GO decision.
+- Why now: this is a release-blocking evidence gap behind the current `not ready` recommendation; the product owner's launch decision remains pending.
 
 ## Slice
 
@@ -49,4 +49,4 @@
 - Risk level: high because the slice crosses authentication, entitlements, realtime providers, durable evidence, and paid evaluation.
 - Backward compatibility: no customer-facing change; the feature gate remains default-off before and after the rehearsal.
 - Metrics/events to watch: start-to-active latency, one dispatch, durable transcript count, terminal outcome, feedback dispatch/completion, credit settlement, room cleanup, and provider-call cost.
-- Follow-up slice: publish the sanitized exact-head receipt, update SAV-226, and retain NO-GO unless every other release gate also passes.
+- Follow-up slice: publish the sanitized exact-head receipt, update SAV-226, and retain a `not ready` recommendation unless every other release gate also passes. Only the human product owner can make the final GO/NO-GO.

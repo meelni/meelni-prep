@@ -47,10 +47,11 @@ npm run db:preflight:production
 
 These commands are diagnostic and continue to exit successfully for supported
 rolling migration states when the schema is valid but launch-readiness counts
-are nonzero. The relaunch decision must use strict mode, which prints the same
-redacted report and exits nonzero unless the ledger has the exact latest
-committed migration count and all stable-start, credit-recovery, and billing
-adjustment readiness checks are clean:
+are nonzero. The launch-readiness assessment must use strict mode, which prints
+the same redacted report and exits nonzero unless the ledger has the exact
+latest committed migration count and all stable-start, credit-recovery, and
+billing adjustment readiness checks are clean. This assessment is evidence for
+the human product owner's launch decision; it does not make that decision:
 
 ```bash
 MEELNI_LAUNCH_STRICT=1 npm run db:preflight:preview
