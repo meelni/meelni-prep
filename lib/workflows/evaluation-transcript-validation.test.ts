@@ -112,6 +112,39 @@ test("repetitive filler does not qualify as substantive user speech", () => {
   assert.equal(validation.stats.substantiveResponses, 0);
 });
 
+test("legacy rows without canonical event identity retain the compatibility statistics path", () => {
+  const validation = calculateValidatedSessionFromTurns(
+    [
+      turn(1, "interviewer", "Choose a segment.", 0),
+      turn(
+        2,
+        "user",
+        "I would start with working parents and define the recurring planning problem before considering solutions.",
+        60
+      ),
+      turn(3, "interviewer", "How would you prioritize it?", 150),
+      turn(
+        4,
+        "user",
+        "I would compare reach severity frequency strategic alignment confidence and implementation effort before prioritizing.",
+        240
+      ),
+      turn(5, "interviewer", "How would you measure it?", 320),
+      turn(
+        6,
+        "user",
+        "I would measure retained customer value with adoption quality and operational guardrail metrics over time.",
+        370
+      ),
+    ].map(
+      ({ eventId: _eventId, contractVersion: _version, ...legacy }) => legacy
+    )
+  );
+
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
+});
+
 function turn(
   sequence: number,
   speaker: "user" | "interviewer",
