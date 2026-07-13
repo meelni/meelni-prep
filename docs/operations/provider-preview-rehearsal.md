@@ -182,10 +182,14 @@ any Production-scoped command during this phase.
   history manually, or create an alternate repair chain.
 - Preview now has a distinct Stripe test-mode webhook endpoint and verified
   test-mode catalog prices. The final exact-deployment receipt is still open:
-  rotate the temporary Vercel protection bypass, update every authorized
-  Preview consumer atomically, refresh the test endpoint, and send one signed
-  synthetic event. A webhook secret has no test/live prefix, so health and
-  static configuration alone do not replace that receipt.
+  use separate named Vercel protection bypasses for Stripe and Inngest, refresh
+  each consumer independently, revoke every shared or superseded bypass, and
+  accept one signed synthetic Stripe event. A webhook secret has no test/live
+  prefix, so health and static configuration alone do not replace that receipt.
+- Treat the keys of Vercel's `protectionBypass` response map and the query value
+  rendered by provider dashboards as secrets. Project these responses through a
+  sanitizer before tool output, and verify consumer updates with booleans,
+  timestamps, counts, and exact deployment IDs rather than raw URLs.
 - Preview uses the distinct `meelni-preview` LiveKit project with one running
   core interview agent and the expected dispatch name. The de-scoped demo is
   not included in LiveKit health or launch evidence. Preserve the one-agent
@@ -204,8 +208,8 @@ any Production-scoped command during this phase.
   `VERCEL_GIT_COMMIT_REF`. The exact deployment synced all 14 named source
   function IDs plus exactly one generated feedback failure handler. A
   provider-to-app recovery run completed and an app-to-provider synthetic event
-  was accepted. Preserve those receipts when rotating the shared deployment
-  protection bypass.
+  was accepted. Preserve those receipts when rotating Inngest's dedicated
+  deployment-protection bypass; Stripe must use a different bypass.
 - Route denial tests prove the de-scoped demo endpoint returns `404` before
   request parsing or provider work. Separate relaunch-gate behavior tests cover
   missing, invalid, and conflicting Preview identity and prove default-off

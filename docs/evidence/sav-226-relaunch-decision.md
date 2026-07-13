@@ -32,10 +32,10 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
 
 ## Evidence That Passed
 
-- Audited runtime head: `ec4fcc79e3f56c46abc1e175078915a1450fe8bd`.
+- Audited runtime head: `efcf1b7d031d712eabd449274f79d545592ba8f9`.
 - Exact Vercel Preview deployment:
-  `dpl_Fqgy74xSn3ePBpLmu3Y7ynJVNdvx` at
-  `meelni-fjuq1ehp3-meelni.vercel.app`.
+  `dpl_xEw713hBckBqixBM6iNsFXNfoFWn` at
+  `meelni-ne5f3bcoe-meelni.vercel.app`.
 - A deployment-protection-bypassed Preview health request returned HTTP 200
   with `web`, `database`, core-interview `livekit`, `feedback_dispatch`, and
   `stripe_webhook` healthy. This is infrastructure evidence, not Meelni user
@@ -49,7 +49,9 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
   the SDK-generated feedback failure handler in environment
   `codex-sav-226-provider-isolation-d1d0d66b`. Provider-to-app recovery run
   `01KXDNFH8S2SQZ795G7NSR2FR3` completed, and app-to-provider event
-  `01KXDNJAMDW41DW0RV5NC99HVG` was accepted.
+  `01KXDNJAMDW41DW0RV5NC99HVG` was accepted. After credential rotation, an
+  exact manual resync succeeded at 2026-07-13 06:44:47 local with all 15
+  functions, SDK 3.54.2, and the exact deployment and commit.
 - Dedicated Preview Supabase passed the strict latest-schema preflight with no
   unsafe client billing-table privileges.
 - Stripe test-mode billing acceptance proved invoice-first ownership binding,
@@ -57,11 +59,13 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
   credits and no automatic proration or refund.
 - Product language and public UI no longer frame interview practice as a gym,
   workout, or reps experience.
-- Exact audited runtime head validations included API (158), product-language
-  (20), operations (24), and calibration (78) tests, application and test
-  typechecks, targeted lint/format checks, and a production build. Earlier
-  provider-isolation and billing commits also passed their full targeted suites;
-  hosted exact-head publication checks remain unavailable as recorded below.
+- Exact audited runtime head validations included calibration (86), core (87),
+  and product-language (20) tests, application and test typechecks, targeted
+  lint/format checks, and a production build with 68 generated pages and 81
+  routes. The authenticated-Preview receipt guard then passed 5 dedicated tests
+  plus local-script (305), agent (29), integration (39), Python (87), selected
+  workflow (58), and selected API (60) tests. Hosted exact-head publication
+  checks remain unavailable as recorded below.
 
 ## Launch Blockers
 
@@ -75,21 +79,28 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
    terminal categories, a deterministic response-format hash, and exact schema
    byte ceilings without a provider call. Paid calibration is disabled before
    client construction because the consumed plan did not bind this new format.
-   A fresh exact plan and bounded authorization remain required before another
-   synthetic provider run.
+   A fresh immutable exact plan bound to the new response-format hash, current
+   pricing, synthetic-only corpus, at most 96 calls, and a hard total cap at or
+   below $3 remains required before another provider call. The product owner
+   delegated this bounded go/no-go decision to agents; no additional
+   conversational approval is required, but missing audit proof is a hard stop.
 2. **The exact authenticated golden path is incomplete.** There is no current
    reproducible receipt for synthetic authentication through interview,
-   transcript persistence, and feedback delivery on the exact deployment. No
-   synthetic credential or approved enrollment path was available, so the
-   audit did not weaken authentication or enable the feature gate to fabricate
-   a pass.
+   transcript persistence, and feedback delivery on the exact deployment. The
+   provider-free runbook and content-free receipt verifier are implemented and
+   passing, but the hosted run still requires a fresh synthetic account,
+   candidate-only gate rule, positively linked Preview LiveKit CLI identity,
+   approved synthetic audio, terminal settlement, feedback, rollback, and
+   cleanup. The audit does not weaken authentication or fabricate transcript
+   rows to create a pass.
 3. **The final exact-deployment Stripe delivery receipt is incomplete.** The
-   test webhook still requires a safe URL refresh and signed synthetic delivery
-   on the exact deployment. The connected Stripe API session returned an
-   explicit reauthentication requirement, the browser dashboard was logged out,
-   and placing the Vercel protection-bypass secret in an external tool request
-   would expose it. Earlier billing acceptance remains valid for the behavior
-   it proved, but it is not substituted for this deployment-specific receipt.
+   test endpoint now uses its own dedicated Vercel bypass, targets the exact
+   branch alias and commit, and an unsigned diagnostic reaches the application-
+   owned HTTP 400 on the exact deployment. Exactly one approved synthetic event
+   resend first encountered the stale prior endpoint and remains
+   `pending_webhooks=1`; no second resend was submitted. Preview database state
+   remains unchanged and idempotent. The gate stays open until Stripe's existing
+   retry receives HTTP 2xx and the provider pending count returns to zero.
 4. **Production health is unavailable.** At `2026-07-13T12:18:07.956Z`, a
    read-only request to
    `https://www.meelni.com/api/health` returned HTTP 503: `web` and core
@@ -120,6 +131,11 @@ A later GO decision requires all of the following on the release candidate:
 - Hosted required checks execute and pass, or an explicitly approved equivalent
   control is recorded.
 - Temporary credentials and bypasses used for rehearsal are removed or rotated.
+
+Credential cleanup currently retains exactly three named, separated bypasses:
+`Codex Preview Automation Final`, `Inngest Preview Final`, and
+`Stripe Preview Final`. Every exposed, shared, or superseded bypass was revoked,
+and both provider consumers were reverified after cleanup.
 
 Until then, ordinary period-end cancellation and immediate account-deletion
 cutoff remain the accepted billing behavior, but neither implies launch
