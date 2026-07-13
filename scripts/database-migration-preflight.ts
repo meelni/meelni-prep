@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { config } from "dotenv";
 import postgres from "postgres";
 
+import { inspectDatabaseBootstrapState } from "./database-bootstrap-preflight.mjs";
 import {
   ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
@@ -100,6 +101,19 @@ async function run(url: string, environmentIdentity: string) {
   try {
     const result = await sql.begin(async (tx) => {
       await tx.unsafe("SET TRANSACTION READ ONLY");
+
+      const bootstrapState = await inspectDatabaseBootstrapState(tx);
+      if (bootstrapState.status === "ready_for_clean_bootstrap") {
+        return {
+          status: bootstrapState.status,
+          connectionMode: "direct_or_session",
+          environmentIdentity,
+          migrationCount: 0,
+          startingContract: "pristine",
+          schemaContract: "pending",
+          lifecycleBackfill: { phase: "not_ready", counts: [] },
+        };
+      }
 
       const migrations = await tx<
         {
@@ -567,15 +581,21 @@ async function run(url: string, environmentIdentity: string) {
     });
 
     console.log(JSON.stringify(result, null, 2));
-    if (
-      process.env.MEELNI_LAUNCH_STRICT === "1" &&
-      (!result.stableStartLaunchReady ||
+    if (process.env.MEELNI_LAUNCH_STRICT === "1") {
+      if (!("stableStartLaunchReady" in result)) {
+        throw new Error(
+          "Clean database bootstrap is not launch ready; apply the canonical migration chain and rerun preflight"
+        );
+      }
+      if (
+        !result.stableStartLaunchReady ||
         (result.migrationCount >= 14 && !result.creditRecoveryLaunchReady) ||
-        (result.migrationCount >= 15 && !result.billingAdjustmentLaunchReady))
-    ) {
-      throw new Error(
-        "Interview credit launch readiness checks are not clean; inspect stableStartIntegrity, creditRecoveryIntegrity, and billingAdjustmentIntegrity"
-      );
+        (result.migrationCount >= 15 && !result.billingAdjustmentLaunchReady)
+      ) {
+        throw new Error(
+          "Interview credit launch readiness checks are not clean; inspect stableStartIntegrity, creditRecoveryIntegrity, and billingAdjustmentIntegrity"
+        );
+      }
     }
   } finally {
     await sql.end();
