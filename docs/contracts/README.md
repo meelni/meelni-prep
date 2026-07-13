@@ -13,6 +13,7 @@ Good candidates:
 - [deterministic drill recommendations from validated Feedback v2](./drill-recommendations.md);
 - [feedback generation state, event fencing, and retry recovery](./feedback-generation.md);
 - [evaluation calibration gold set and report](./evaluation-calibration.md);
+- [synthetic calibration output semantic adjudication](./evaluation-output-semantic-adjudication.md);
 - [dashboard progress evidence](./dashboard-progress.md);
 - [question-bank records, taxonomy, and pagination](./question-bank.md);
 - [service health and readiness](./service-health.md);

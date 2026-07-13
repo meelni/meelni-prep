@@ -26,6 +26,30 @@ npm run calibration:self-test -- --output /tmp/meelni-calibration-self-test.json
 These modes make no model or database calls. A green deterministic self-test
 proves only the harness; its live-provider and launch gates remain pending.
 
+## Future synthetic-output semantic review
+
+Before any future v3 plan or authorization is considered, use the provider-free
+contract in
+`docs/contracts/evaluation-output-semantic-adjudication.md`. The private-run
+boundary must hash raw synthetic output byte-for-byte and emit only the trusted
+hash manifest. Separately, a trusted operator/orchestrator must construct the
+authority envelope from the approved plan, complete expected opaque case/run
+inventory, and two verified panel execution receipts. Reviewer artifacts
+cannot construct or replace this out-of-band authority. Keep raw output outside
+the repository and public evidence.
+
+Two independently receipted agent task paths must review the same manifest and
+record only closed per-output decisions. Pass the manifest, both panel
+artifacts, and the separately trusted authority envelope to
+`validateSemanticAdjudication`; publish only its sanitized report. Stop
+without a report if it rejects a hash, coverage, identity, prose, consistency,
+alternative-review, or agreement invariant. A report with `gate: failed` is
+terminal rejection evidence for that response set.
+
+This review is not wired into the paid launcher. It grants no provider access
+or spend authority. A future live run requires a distinct reviewed plan and
+owner authorization after this gate is operationally integrated.
+
 Review the agent-authored candidate adjudications separately:
 
 ```bash
