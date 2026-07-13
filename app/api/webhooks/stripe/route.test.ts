@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   lastSelectResponse: [] as Array<Record<string, unknown>>,
   tombstoneFingerprints: new Set<string>(),
   signatureCalls: 0,
+  currentEvent: null as Record<string, unknown> | null,
 }));
 
 vi.mock("stripe", () => ({
@@ -20,8 +21,18 @@ vi.mock("stripe", () => ({
     webhooks = {
       constructEvent(body: string) {
         state.signatureCalls += 1;
-        return JSON.parse(body);
+        state.currentEvent = JSON.parse(body);
+        return state.currentEvent;
       },
+    };
+    subscriptions = {
+      retrieve: vi.fn(async () => {
+        const data = state.currentEvent?.data as
+          | { object?: Record<string, unknown> }
+          | undefined;
+        if (!data?.object) throw new Error("missing subscription fixture");
+        return data.object;
+      }),
     };
     invoicePayments = {
       list: vi.fn(async () => ({ data: [] })),
@@ -96,6 +107,9 @@ vi.mock("@/lib/db", () => ({
     ) => {
       let selectCount = 0;
       return work({
+        execute: async () => [
+          { currentTime: new Date("2026-07-12T00:00:00Z") },
+        ],
         select: () => ({
           from: () => ({
             where: () => ({
@@ -186,6 +200,7 @@ vi.mock("@/lib/billing/credits", () => ({
 
 vi.mock("@/lib/billing/credit-ledger-store", () => ({
   createDrizzleCreditLedgerStore: vi.fn(() => ({})),
+  createDrizzleCreditLedgerStoreForLockedTransaction: vi.fn(() => ({})),
 }));
 
 vi.mock("@/lib/billing/stripe-customer-ownership", async (importOriginal) => {
@@ -248,6 +263,7 @@ describe("POST /api/webhooks/stripe", () => {
     state.lastSelectResponse = [];
     state.tombstoneFingerprints.clear();
     state.signatureCalls = 0;
+    state.currentEvent = null;
     process.env.STRIPE_SECRET_KEY = "sk_test_route";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_route";
     process.env.STRIPE_STARTER_MONTHLY_PRICE_ID = "price_starter_route";
@@ -463,10 +479,18 @@ describe("POST /api/webhooks/stripe", () => {
       if (order === "failure_then_success") {
         state.selectResponses.push([], [], [], [failedPayment]);
         expect((await POST(request(failed))).status).toBe(200);
-        state.selectResponses.push([], [succeededPayment]);
+        state.selectResponses.push(
+          [],
+          [invoiceSubscriptionRow(1_001)],
+          [succeededPayment]
+        );
         expect((await POST(request(succeeded))).status).toBe(200);
       } else {
-        state.selectResponses.push([], [succeededPayment]);
+        state.selectResponses.push(
+          [],
+          [invoiceSubscriptionRow(1_001)],
+          [succeededPayment]
+        );
         expect((await POST(request(succeeded))).status).toBe(200);
         state.selectResponses.push([], [succeededPayment]);
         expect((await POST(request(failed))).status).toBe(200);
@@ -709,8 +733,23 @@ describe("POST /api/webhooks/stripe", () => {
       stripeResourceCreatedEventTimestamp: new Date(900_000),
       stripeResourceCreatedEventId: "evt_old_created",
     });
-    state.transactionUpdateResults.push(false);
-    state.selectResponses.push([], [], [old]);
+    const winner = subscriptionRow({
+      stripeSubscriptionId: "sub_first_winner",
+      status: "active",
+      version: 2,
+      stripeResourceCreatedAt: new Date(1_001_000),
+      stripeResourceCreatedEventTimestamp: new Date(1_001_000),
+      stripeResourceCreatedEventId: "evt_first_winner_created",
+      retiredStripeSubscriptionIds: ["sub_old"],
+    });
+    state.transactionUpdateResults.push(false, true);
+    state.selectResponses.push(
+      [],
+      [{ version: 1 }],
+      [old],
+      [{ version: 2 }],
+      [winner]
+    );
 
     const candidate = subscriptionCreatedEvent(
       "evt_maximal_created",
@@ -718,31 +757,8 @@ describe("POST /api/webhooks/stripe", () => {
       1_002,
       1_002
     );
-    const conflicted = await POST(request(candidate));
-    expect(conflicted.status).toBe(500);
-    expect(state.logs[0]).toMatchObject({
-      status: "failed",
-      lastError: "stripe_subscription_version_conflict",
-    });
-
-    state.selectResponses.push(
-      [state.logs[0]!],
-      [],
-      [
-        subscriptionRow({
-          stripeSubscriptionId: "sub_first_winner",
-          status: "active",
-          version: 2,
-          stripeResourceCreatedAt: new Date(1_001_000),
-          stripeResourceCreatedEventTimestamp: new Date(1_001_000),
-          stripeResourceCreatedEventId: "evt_first_winner_created",
-          retiredStripeSubscriptionIds: ["sub_old"],
-        }),
-      ]
-    );
-    const retried = await POST(request(candidate));
-
-    expect(retried.status).toBe(200);
+    const reconciled = await POST(request(candidate));
+    expect(reconciled.status).toBe(200);
     expect(state.subscriptionWrites.at(-1)).toMatchObject({
       stripeSubscriptionId: "sub_maximal",
       status: "active",
@@ -863,6 +879,7 @@ function failedInvoiceEvent(
         customer,
         metadata: { userId: "invoice_user" },
         amount_due: 900,
+        billing_reason: "subscription_cycle",
         currency: "usd",
         parent: {
           type: "subscription_details",
@@ -880,6 +897,16 @@ function failedInvoiceEvent(
       },
     },
   };
+}
+
+function invoiceSubscriptionRow(periodStart: number) {
+  return subscriptionRow({
+    userId: "invoice_user",
+    stripeSubscriptionId: "sub_route_test",
+    currentPeriodStart: new Date(periodStart * 1000),
+    currentPeriodEnd: new Date((periodStart + 2_592_000) * 1000),
+    lastEventTimestamp: new Date((periodStart - 1) * 1000),
+  });
 }
 
 function succeededInvoiceEvent(id: string, created: number) {

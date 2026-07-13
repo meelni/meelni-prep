@@ -15,7 +15,9 @@ export interface DeleteAccountWorkflowDeps {
     cancellation: AccountDeletionSubscriptionCancellation
   ): Promise<void>;
   deleteCustomer(customerId: string): Promise<void>;
-  terminateLiveKitRoom(roomName: string): Promise<{ terminated: boolean }>;
+  terminateLiveKitRoom(
+    roomName: string
+  ): Promise<{ disposition: "deleted" | "already_absent" }>;
   redactProviderLogs(request: AccountDeletionRecord): Promise<void>;
   deleteApplicationData(userId: string): Promise<void>;
   deleteAuthUser(userId: string): Promise<void>;
@@ -63,11 +65,12 @@ export async function deleteAccountWorkflow(
       fingerprint: room.fingerprint,
       generation: room.generation,
     };
+    const terminated = result.disposition === "deleted";
     const provisioningLeaseExpired =
       room.provisioning &&
-      !result.terminated &&
+      !terminated &&
       (await deps.isProvisioningLeaseExpired(request.userId, roomIdentity));
-    if (result.terminated || !room.provisioning || provisioningLeaseExpired) {
+    if (terminated || !room.provisioning || provisioningLeaseExpired) {
       processedLiveKitRooms.push(roomIdentity);
     } else if (room.provisioningExpiresAt !== null) {
       retainedProvisioningExpiries.push(room.provisioningExpiresAt);

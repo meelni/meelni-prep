@@ -72,10 +72,6 @@ test("durable deletion runs providers and application cleanup in retry-safe orde
     `auth:${REQUEST.userId}`,
     "livekit:interview-active-room",
     "subscription:sub_test",
-    "payment:payment_intent:pi_test",
-    "payment:payment_intent:pi_tombstone_only",
-    "payment:charge:ch_tombstone_only",
-    "invoice:in_test",
     "customer:cus_test",
     "customer:cus_second",
     `completed:${REQUEST.userId}`,
@@ -232,7 +228,7 @@ test("LiveKit cleanup failure remains retryable after irreversible local accepta
 test("an ahead application clock cannot override the database lease predicate", async () => {
   const processedRooms: unknown[][] = [];
   const deps = createDeps([]);
-  deps.terminateLiveKitRoom = async () => ({ terminated: false });
+  deps.terminateLiveKitRoom = async () => ({ disposition: "already_absent" });
   deps.markCompleted = async (_userId, _fingerprints, rooms) => {
     processedRooms.push(rooms);
   };
@@ -256,7 +252,7 @@ test("a behind application clock cannot retain a database-expired lease", async 
   const processedRooms: unknown[][] = [];
   const deps = createDeps([]);
   deps.isProvisioningLeaseExpired = async () => true;
-  deps.terminateLiveKitRoom = async () => ({ terminated: false });
+  deps.terminateLiveKitRoom = async () => ({ disposition: "already_absent" });
   deps.markCompleted = async (_userId, _fingerprints, rooms) => {
     processedRooms.push(rooms);
   };
@@ -286,7 +282,7 @@ test("a behind application clock cannot retain a database-expired lease", async 
 test("database clock failure retains the provisioning target for job retry", async () => {
   const deps = createDeps([]);
   let completed = false;
-  deps.terminateLiveKitRoom = async () => ({ terminated: false });
+  deps.terminateLiveKitRoom = async () => ({ disposition: "already_absent" });
   deps.isProvisioningLeaseExpired = async () => {
     throw new Error("private database endpoint");
   };
@@ -317,7 +313,9 @@ test("a room that appears after the first missing check remains durable and is t
   const deps = createDeps([]);
   deps.terminateLiveKitRoom = async () => {
     calls.push(roomExists ? "terminate:late-room" : "terminate:missing");
-    return { terminated: roomExists };
+    return {
+      disposition: roomExists ? "deleted" : "already_absent",
+    } as const;
   };
   deps.markCompleted = async (_userId, _fingerprints, rooms) => {
     processedRooms.push(rooms);
@@ -402,7 +400,7 @@ function createDeps(calls: string[]): DeleteAccountWorkflowDeps {
     },
     terminateLiveKitRoom: async (roomName) => {
       calls.push(`livekit:${roomName}`);
-      return { terminated: true };
+      return { disposition: "deleted" };
     },
     redactProviderLogs: async (request) => {
       calls.push(`redact:${request.userId}`);

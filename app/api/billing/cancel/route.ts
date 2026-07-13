@@ -40,7 +40,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse and validate request body
-    const body = await req.json().catch(() => null);
+    let body: unknown = null;
+    try {
+      body = await req.json();
+    } catch {
+      body = null;
+    }
     const result = cancelSchema.safeParse(body);
 
     if (!result.success) {
@@ -58,30 +63,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    try {
-      return await mutateCancellationState({
+    const mutation = await settleMutation(() =>
+      mutateCancellationState({
         userId: user.id,
         stripe,
         desiredCancelAtPeriodEnd: true,
-      });
-    } catch (error) {
-      if (error instanceof BillingAccountBusyError)
-        return billingBusyResponse();
-      if (isSubscriptionNotFoundError(error)) {
-        return NextResponse.json(
-          { error: "No subscription found" },
-          { status: 404 }
-        );
-      }
-      console.error("billing_cancel_provider_failed");
+      })
+    );
+    if (mutation.ok) return mutation.value;
+    if (mutation.error instanceof BillingAccountBusyError)
+      return billingBusyResponse();
+    if (isSubscriptionNotFoundError(mutation.error)) {
       return NextResponse.json(
-        {
-          error:
-            "Failed to cancel subscription. Please try again or contact support.",
-        },
-        { status: 500 }
+        { error: "No subscription found" },
+        { status: 404 }
       );
     }
+    console.error("billing_cancel_provider_failed");
+    return NextResponse.json(
+      {
+        error:
+          "Failed to cancel subscription. Please try again or contact support.",
+      },
+      { status: 500 }
+    );
   } catch {
     console.error("billing_cancel_unexpected");
     return NextResponse.json(
@@ -155,27 +160,27 @@ export async function DELETE() {
       );
     }
 
-    try {
-      return await mutateCancellationState({
+    const mutation = await settleMutation(() =>
+      mutateCancellationState({
         userId: user.id,
         stripe,
         desiredCancelAtPeriodEnd: false,
-      });
-    } catch (error) {
-      if (error instanceof BillingAccountBusyError)
-        return billingBusyResponse();
-      if (isSubscriptionNotFoundError(error)) {
-        return NextResponse.json(
-          { error: "No subscription found" },
-          { status: 404 }
-        );
-      }
-      console.error("billing_reactivate_provider_failed");
+      })
+    );
+    if (mutation.ok) return mutation.value;
+    if (mutation.error instanceof BillingAccountBusyError)
+      return billingBusyResponse();
+    if (isSubscriptionNotFoundError(mutation.error)) {
       return NextResponse.json(
-        { error: "Failed to reactivate subscription. Please contact support." },
-        { status: 500 }
+        { error: "No subscription found" },
+        { status: 404 }
       );
     }
+    console.error("billing_reactivate_provider_failed");
+    return NextResponse.json(
+      { error: "Failed to reactivate subscription. Please contact support." },
+      { status: 500 }
+    );
   } catch {
     console.error("billing_reactivate_unexpected");
     return NextResponse.json(
@@ -281,6 +286,13 @@ function billingBusyResponse() {
 function isSubscriptionNotFoundError(error: unknown) {
   return (
     error instanceof Error && error.message === "billing_subscription_not_found"
+  );
+}
+
+async function settleMutation<T>(operation: () => Promise<T>) {
+  return operation().then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error })
   );
 }
 

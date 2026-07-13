@@ -124,7 +124,11 @@ export const deleteAccount = inngest.createFunction(
                 }
                 const result =
                   await createLiveKitInterviewProvider().terminateInterviewRoom(
-                    { roomName, env: environment.data }
+                    {
+                      roomName,
+                      participantIdentity: userId,
+                      env: environment.data,
+                    }
                   );
                 if (!result.ok) {
                   throw safeProviderError("livekit_provider_error");

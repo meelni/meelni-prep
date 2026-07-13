@@ -111,11 +111,16 @@ export function buildStripeDeletionSubjects(input: {
       providerId,
     })),
   ];
+  const kindOrder: Record<StripeDeletionSubject["kind"], number> = {
+    subscription: 0,
+    customer: 1,
+    invoice: 2,
+    payment_intent: 3,
+    charge: 4,
+  };
   candidates.sort((left, right) => {
-    const kindOrder = left.kind === "subscription" ? 0 : 1;
-    const otherKindOrder = right.kind === "subscription" ? 0 : 1;
     return (
-      kindOrder - otherKindOrder ||
+      kindOrder[left.kind] - kindOrder[right.kind] ||
       (left.providerId ?? "").localeCompare(right.providerId ?? "")
     );
   });

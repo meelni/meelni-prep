@@ -2166,7 +2166,6 @@ test("subscription renewal respects the rollover cap and 60 day expiration", asy
 test("period-end policy bounds only subscription-derived credits and reactivation preserves expiry", async () => {
   let currentTime = new Date("2026-08-01T11:59:59.999Z");
   const periodEnd = new Date("2026-08-01T12:00:00.000Z");
-  const rolloverExpiry = new Date("2026-09-01T12:00:00.000Z");
   const store = createMemoryCreditLedgerStore();
   const ledger = createCreditLedgerService({
     store,
@@ -2179,15 +2178,14 @@ test("period-end policy bounds only subscription-derived credits and reactivatio
     source: "subscription_renewal",
     includedCredits: 1,
     expiresAt: null,
-    idempotencyKey: "renewal:period-boundary",
+    idempotencyKey: "renewal:period-boundary:prior",
   });
-  await ledger.grantCredits({
+  const renewal = await ledger.renewSubscriptionCredits({
     userId: "user-1",
     catalogId: "starter",
-    source: "rollover",
-    includedCredits: 1,
-    expiresAt: rolloverExpiry,
-    idempotencyKey: "rollover:period-boundary",
+    sourceId: "renewal:period-boundary:current",
+    renewalIdempotencyKey: "renewal:period-boundary:current",
+    rolloverIdempotencyKey: "rollover:period-boundary",
   });
   for (const [source, catalogId] of [
     ["trial", "trial"],
@@ -2210,7 +2208,7 @@ test("period-end policy bounds only subscription-derived credits and reactivatio
     restricted: true,
     availableThrough: periodEnd,
   });
-  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 7);
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 10);
 
   currentTime = periodEnd;
   store.setCurrentTime(periodEnd);
@@ -2242,17 +2240,17 @@ test("period-end policy bounds only subscription-derived credits and reactivatio
     restricted: false,
     availableThrough: null,
   });
-  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 2);
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 5);
   const grants = await store.listUserGrants("user-1");
-  assert.equal(
-    grants.find(({ source }) => source === "subscription_renewal")?.expiresAt,
-    null
+  assert.deepEqual(
+    grants.find(({ id }) => id === renewal.grant.id)?.expiresAt,
+    renewal.grant.expiresAt
   );
   assert.equal(
     grants
-      .find(({ source }) => source === "rollover")
+      .find(({ id }) => id === renewal.rolloverGrant?.id)
       ?.expiresAt?.toISOString(),
-    rolloverExpiry.toISOString()
+    renewal.rolloverGrant?.expiresAt?.toISOString()
   );
 });
 
