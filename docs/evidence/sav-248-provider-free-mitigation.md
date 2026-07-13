@@ -76,7 +76,9 @@ remove malformed JSON and structural drift as failure classes. The local tests
 do not prove provider compatibility. Structured output also cannot prove exact
 quote grounding, user-speaker provenance,
 reference/evidence equality, or cross-finding evidence uniqueness. The core
-parser continues to enforce those invariants. The separately authorized
-synthetic-only provider run is still required to identify or clear any
-remaining semantic failure and to pass all calibration thresholds, but it must
-not begin until the v2 ledger activation controls pass.
+parser continues to enforce those invariants. The separately authorized v2 run
+subsequently attempted two synthetic calls and failed: one completed response
+missed its adjudicated anchor and the second returned invalid feedback. The
+terminal sanitized receipt is
+`docs/evidence/sav-248-evaluation-calibration-live.json`. The v2 authority is
+consumed; any future run requires a distinct reviewed plan and authorization.

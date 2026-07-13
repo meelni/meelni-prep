@@ -26,6 +26,15 @@ strict-format hash and serialized-schema identities, and a 1,800-token output
 ceiling. It performs no provider call or ledger activation and grants no launch
 authority.
 
+`sav-248-evaluation-calibration-live.json` is the sanitized terminal receipt
+for that one-time v2 authority. The protected ref activated at
+`d0c4fc4c028b10d8616fdde337be150315a7798c`; two synthetic provider calls were
+attempted, one completed, and the run stopped fail closed on invalid feedback.
+One completed result also missed its adjudicated evidence anchor. Exact
+reconciled spend was $0.026752, unresolved reservation was zero, the cap was
+not breached, and both live-provider and launch acceptance failed. The v2
+authority is consumed and must not be retried.
+
 `sav-198-paid-run-authorization.json` and
 `sav-198-rebased-plan-acceptance.json` record the product owner's prior,
 conservative acceptance of the exact rebased plan within that existing

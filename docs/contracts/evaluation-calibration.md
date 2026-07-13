@@ -261,6 +261,12 @@ The prior SAV-198 v1 ref, genesis
 `22a0f4da11a7dd5c618f39fdd187b40fe8d17807b0404407c95c5dec16172804`
 remain consumed historical evidence and are never accepted as v2 authority.
 
+The SAV-248 v2 ref is also terminal historical evidence after activation
+`d0c4fc4c028b10d8616fdde337be150315a7798c`. Its sanitized report records two
+attempted synthetic calls, one completed call, $0.026752 exact reconciled cost,
+zero unresolved reservation, `provider_failure`, and failed live/launch gates.
+The v2 authority cannot resume or authorize a retry.
+
 The production authority uses Node HTTPS directly against the fixed
 `api.github.com:443` endpoint. It accepts only `GITHUB_TOKEN`, uses Node's
 bundled TLS roots with standard hostname verification and SNI, disables

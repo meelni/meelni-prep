@@ -74,22 +74,27 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
 
 ## Launch Blockers
 
-1. **SAV-198 calibration failed.** The single authorized paid run stopped on
+1. **SAV-198 and SAV-248 calibration failed.** The original SAV-198 run stopped on
    the first synthetic case after one physical HTTP attempt. It completed zero
    cases, reconciled $0.015545, stayed below the $3 cap, and recorded
    `liveProviderAcceptance: failed` and `launchAcceptance: failed`. The
    one-time authority is consumed. The sanitized receipt reports
    `evaluation_failed`; it does not establish the exact semantic subcause.
-   SAV-248 now has a distinct v2 authorization and accepted immutable plan. It
-   binds strict structured output, response-format hash
+   SAV-248 then used a distinct v2 authorization and accepted immutable plan.
+   It bound strict structured output, response-format hash
    `66605edf2b3cad146671f22afa656d9c01c9abea2e7475a68dbe21738c8e4073`,
    the exact full/partial serialized schemas, 96 synthetic-only calls, a
    1,800-token output ceiling, and deterministic worst-case spend of
    `$2.8539975` under the hard `$3` cap. Its plan hash is
    `354bdc4046b0759e50940127c574abe355ee0754d9a8aaf2c25338b49aca8419`.
-   Provider-free validation passes, but the distinct v2 rulesets, genesis, and
-   protected ledger ref are not yet provisioned and no v2 provider call has
-   occurred. Missing authority proof remains a hard stop.
+   The protected v2 ref activated once at
+   `d0c4fc4c028b10d8616fdde337be150315a7798c`. Two synthetic calls were
+   attempted: one completed response missed its adjudicated evidence anchor;
+   the second stopped on `evaluation_provider_returned_invalid_feedback`.
+   Exact reconciled spend was `$0.026752`, unresolved reservation was zero,
+   and the cap was not breached. `liveProviderAcceptance` and
+   `launchAcceptance` both failed. The v2 authority is consumed and will not be
+   retried without a distinct reviewed authorization.
 2. **The exact authenticated golden path is incomplete.** There is no current
    reproducible receipt for synthetic authentication through interview,
    transcript persistence, and feedback delivery on the exact deployment. The
@@ -129,8 +134,9 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
 
 A later GO decision requires all of the following on the release candidate:
 
-- The authorized SAV-248 v2 calibration run passes every launch threshold
-  within its exact 96-call and $3 hard caps.
+- A separately reviewed future calibration plan addresses the v2 semantic and
+  diagnostic failures, receives distinct authorization, and passes every
+  launch threshold within new exact call and spend caps.
 - The exact Preview first proves default-off denial, then temporarily enables
   only the isolated candidate, completes the authenticated synthetic golden
   path, restores default-off, and proves denial again.
