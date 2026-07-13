@@ -1,6 +1,7 @@
 import type { EvaluationCalibrationCase } from "@meelni/test-fixtures";
 
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
+import { serializeFeedbackProviderResponseFormat } from "./provider-response-format";
 
 export const CALIBRATION_MAX_PROVIDER_CALLS = 96;
 export const CALIBRATION_MAX_SPEND_NANO_USD = 3_000_000_000;
@@ -580,6 +581,23 @@ export function calibrationInputTokenCeiling(
     Buffer.byteLength(EVALUATION_SYSTEM_PROMPT, "utf8") +
     Buffer.byteLength(userPrompt, "utf8") +
     REQUEST_FRAMING_TOKEN_CEILING
+  );
+}
+
+/**
+ * Prospective ceiling for strict structured-output plans. SAV-198's consumed
+ * activation used calibrationInputTokenCeiling and remains immutable history.
+ */
+export function structuredCalibrationInputTokenCeiling(
+  fixture: EvaluationCalibrationCase
+): number {
+  const state = fixture.expectedCompletionState;
+  if (state !== "full" && state !== "partial") {
+    throw new Error("insufficient_fixture_cannot_reserve_provider_spend");
+  }
+  return (
+    calibrationInputTokenCeiling(fixture) +
+    Buffer.byteLength(serializeFeedbackProviderResponseFormat(state), "utf8")
   );
 }
 

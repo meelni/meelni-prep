@@ -17,6 +17,7 @@ import {
   CALIBRATION_PRICING_CONTRACT,
   CALIBRATION_REQUEST_TIMEOUT_MS,
 } from "./calibration-budget";
+import { getFeedbackProviderResponseFormat } from "./provider-response-format";
 
 export interface FeedbackProviderUsage {
   inputTokens: number;
@@ -32,6 +33,10 @@ export interface FeedbackProviderResult {
 }
 
 export const FEEDBACK_PROVIDER_FAILURE_CODES = [
+  "evaluation_provider_refused",
+  "evaluation_provider_incomplete",
+  "evaluation_provider_content_filtered",
+  "evaluation_provider_unexpected_finish",
   "evaluation_provider_returned_no_content",
   "evaluation_provider_returned_invalid_json",
   "evaluation_provider_returned_invalid_feedback",
@@ -64,7 +69,10 @@ export interface FeedbackProviderCompletion {
     total_tokens?: number;
     prompt_tokens_details?: { cached_tokens?: number } | null;
   } | null;
-  choices: Array<{ message: { content?: string | null } }>;
+  choices: Array<{
+    finish_reason?: string | null;
+    message: { content?: string | null; refusal?: string | null };
+  }>;
 }
 
 /**
@@ -131,7 +139,7 @@ export async function generateFeedbackWithUsage(
         },
       ],
       temperature: 0.2,
-      response_format: { type: "json_object" },
+      response_format: getFeedbackProviderResponseFormat(evaluationState),
       ...(options.calibrationPaidMode
         ? getCalibrationProviderRequestFields()
         : options.maxCompletionTokens === undefined
@@ -167,7 +175,52 @@ export function parseFeedbackProviderCompletion(
     completion.model,
     observedServiceTier
   );
-  const responseText = completion.choices[0]?.message.content;
+  const choice = completion.choices[0];
+  const refusal = choice?.message.refusal;
+  if (typeof refusal === "string" && refusal.trim()) {
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_refused",
+      usage,
+      completion.model,
+      observedServiceTier
+    );
+  }
+  if (choice?.finish_reason === "length") {
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_incomplete",
+      usage,
+      completion.model,
+      observedServiceTier
+    );
+  }
+  if (choice?.finish_reason === "content_filter") {
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_content_filtered",
+      usage,
+      completion.model,
+      observedServiceTier
+    );
+  }
+  if (
+    choice?.finish_reason === "tool_calls" ||
+    choice?.finish_reason === "function_call"
+  ) {
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_unexpected_finish",
+      usage,
+      completion.model,
+      observedServiceTier
+    );
+  }
+  if (choice?.finish_reason !== "stop") {
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_unexpected_finish",
+      usage,
+      completion.model,
+      observedServiceTier
+    );
+  }
+  const responseText = choice?.message.content;
   if (!responseText) {
     throw new FeedbackProviderInvocationError(
       "evaluation_provider_returned_no_content",
@@ -280,6 +333,9 @@ export function assertCalibrationProviderRequestPolicy(
   ) {
     throw new Error("calibration_provider_request_policy_mismatch");
   }
+  throw new Error(
+    "calibration_provider_response_format_requires_new_authorized_plan"
+  );
 }
 
 export function getCalibrationProviderRequestFields(): {

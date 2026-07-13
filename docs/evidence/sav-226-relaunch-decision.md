@@ -15,6 +15,21 @@ Preview infrastructure is substantially ready, but launch acceptance has
 failed and the remaining end-to-end evidence is incomplete. Missing, stale,
 ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
 
+## Delegated Operating Decisions
+
+- The 32 scored calibration cases do not require a fabricated human reviewer.
+  The accepted artifact uses the product owner's task-thread delegation plus
+  two independent 32/32 exact-hash agent-panel signoffs and a null human
+  identity.
+- Agents may run isolated Stripe and LiveKit Preview rehearsals when every
+  fixture is synthetic/approved, the provider identities are positively
+  non-Production, mutations and cost are bounded, cleanup is defined, and no
+  customer or Production data is used.
+- Agents own the relaunch go/no-go recommendation. Live mode remains NO-GO
+  unless every reconsideration criterion below has fresh exact evidence,
+  bounded rollback, and an explicit release record. Missing or conflicting
+  evidence always resolves to NO-GO.
+
 ## Evidence That Passed
 
 - Audited runtime head: `ec4fcc79e3f56c46abc1e175078915a1450fe8bd`.
@@ -55,10 +70,13 @@ ambiguous, or inaccessible evidence is a NO-GO rather than an inferred pass.
    cases, reconciled $0.015545, stayed below the $3 cap, and recorded
    `liveProviderAcceptance: failed` and `launchAcceptance: failed`. The
    one-time authority is consumed. The sanitized receipt reports
-   `evaluation_failed`; it does not establish whether transport, response
-   validation, or evaluation parsing caused the failure. SAV-248 must diagnose
-   the first-call failure without paid calls and obtain a new, explicit bounded
-   authorization before another live run.
+   `evaluation_failed`; it does not establish the exact semantic subcause.
+   SAV-248 now adds strict structured output, distinct sanitized provider
+   terminal categories, a deterministic response-format hash, and exact schema
+   byte ceilings without a provider call. Paid calibration is disabled before
+   client construction because the consumed plan did not bind this new format.
+   A fresh exact plan and bounded authorization remain required before another
+   synthetic provider run.
 2. **The exact authenticated golden path is incomplete.** There is no current
    reproducible receipt for synthetic authentication through interview,
    transcript persistence, and feedback delivery on the exact deployment. No

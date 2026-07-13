@@ -10,6 +10,8 @@ import {
   CALIBRATION_PRICING_REVIEW_TTL_MS,
   CalibrationSpendGuard,
   calibrationInputTokenCeiling,
+  calculateWorstCaseNanoUsd,
+  structuredCalibrationInputTokenCeiling,
   validateCalibrationPricingFreshness,
   type CalibrationProviderUsage,
 } from "./calibration-budget";
@@ -21,6 +23,42 @@ const SCORED_FIXTURE = evaluationCalibrationCases.find(
   ({ expectedCompletionState }) =>
     expectedCompletionState === "full" || expectedCompletionState === "partial"
 )!;
+
+test("prospective structured-output ceilings include the exact serialized response format", async () => {
+  const { serializeFeedbackProviderResponseFormat } = await import(
+    "./provider-response-format"
+  );
+  const state = SCORED_FIXTURE.expectedCompletionState;
+  assert.ok(state === "full" || state === "partial");
+  assert.equal(
+    structuredCalibrationInputTokenCeiling(SCORED_FIXTURE),
+    calibrationInputTokenCeiling(SCORED_FIXTURE) +
+      Buffer.byteLength(serializeFeedbackProviderResponseFormat(state), "utf8")
+  );
+});
+
+test("a prospective 96-call strict-output plan fits the unchanged $3 hard cap at 1,800 output tokens", () => {
+  const plannedWorstCaseNanoUsd = evaluationCalibrationCases
+    .filter(
+      ({ expectedCompletionState }) =>
+        expectedCompletionState === "full" ||
+        expectedCompletionState === "partial"
+    )
+    .reduce(
+      (total, fixture) =>
+        total +
+        3 *
+          calculateWorstCaseNanoUsd(
+            structuredCalibrationInputTokenCeiling(fixture),
+            1_800,
+            CALIBRATION_PRICING_CONTRACT
+          ),
+      0
+    );
+
+  assert.equal(plannedWorstCaseNanoUsd, 2_853_997_500);
+  assert.ok(plannedWorstCaseNanoUsd <= CALIBRATION_MAX_SPEND_NANO_USD);
+});
 
 test("the exact $3 reservation boundary is allowed and another call is refused", () => {
   const guard = createGuard();

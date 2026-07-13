@@ -1115,6 +1115,10 @@ function getSanitizedEvaluationFailureCode(
   }
   const code: string = error.code;
   switch (code) {
+    case "evaluation_provider_refused":
+    case "evaluation_provider_incomplete":
+    case "evaluation_provider_content_filtered":
+    case "evaluation_provider_unexpected_finish":
     case "evaluation_provider_returned_no_content":
     case "evaluation_provider_returned_invalid_json":
     case "evaluation_provider_returned_invalid_feedback":

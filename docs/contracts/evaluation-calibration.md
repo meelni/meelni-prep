@@ -98,13 +98,19 @@ content, API keys, or provider error bodies.
 Live provider adapters may preserve only these closed, sanitized response
 failure categories in `failures[].code`:
 
+- `evaluation_provider_refused`;
+- `evaluation_provider_incomplete`;
+- `evaluation_provider_content_filtered`;
+- `evaluation_provider_unexpected_finish`;
 - `evaluation_provider_returned_no_content`;
 - `evaluation_provider_returned_invalid_json`;
 - `evaluation_provider_returned_invalid_feedback`;
 - `evaluation_provider_usage_missing`;
 - `evaluation_provider_invocation_failed`.
 
-No-content, invalid-JSON, and invalid-feedback responses carry provider usage,
+Refusal and non-stop finish categories are inspected before response content;
+their raw refusal or partial content is never persisted. These categories,
+no-content, invalid-JSON, and invalid-feedback responses carry provider usage,
 model, and service-tier identity when those values were returned, so their
 known cost is reconciled before the run stops. Missing-usage and invocation
 failures retain the uncertain reservation and use the fail-closed
@@ -112,6 +118,27 @@ failures retain the uncertain reservation and use the fail-closed
 forged, mutable, provider-supplied, or otherwise unrecognized error value maps
 to `evaluation_failed`. Raw messages, causes, response content, and parser
 details never enter the report.
+
+The OpenAI adapter requests `feedback-provider-response-format.v1` through
+strict JSON Schema structured output. Every object is closed and requires all
+declared fields. The schema constrains exact contract versions, the requested
+evaluation state, scalar types, and finding shape using a conservative strict
+subset. The adapter accepts content only when the provider returns the exact
+`stop` finish reason; missing, null, unknown, or other terminal values fail into
+a closed sanitized category.
+The provider-neutral parser remains authoritative for transcript ownership,
+exact quote grounding, reference/evidence equality, cross-finding uniqueness,
+version/state checks, non-empty strings, collection bounds, score/confidence
+ranges, score arithmetic, and customer-language normalization.
+The format version plus its exact full/partial serialization has a deterministic
+SHA-256 contract identity for binding into any future activated plan.
+
+SAV-198's one-time activation is consumed and predates this strict response
+format. It remains immutable historical evidence and is not silently rebased.
+Paid calibration now fails before client construction until a new bounded
+authorization and activated plan bind the strict-format hash, include the exact
+serialized schema bytes in every input ceiling, and choose an output ceiling
+whose complete worst-case plan remains within its spend cap.
 
 Evaluator calls and paid-provider calls are separate metrics. A deterministic
 self-test reports its local evaluator invocations but must always report zero
