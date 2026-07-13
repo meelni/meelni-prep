@@ -228,7 +228,7 @@ test("malformed findings cannot authorize personalization", () => {
   }> = [
     {
       improvement: { ...baseFinding, confidence: 0 },
-      reason: "missing_grounded_improvement",
+      reason: "missing_validated_feedback",
     },
     {
       improvement: { ...baseFinding, confidence: Number.NaN },
@@ -322,6 +322,39 @@ test("malformed findings cannot authorize personalization", () => {
       assert.equal(result.reason, reason);
     }
   }
+});
+
+test("zero-confidence findings invalidate the complete feedback root", () => {
+  const mixedImprovements = recommend({
+    feedback: feedback({
+      improvements: [
+        { ...baseFinding, confidence: 0 },
+        {
+          ...baseFinding,
+          transcriptRefs: ["writer:3"],
+          evidence: [{ turnRef: "writer:3", quote: "another gap" }],
+        },
+      ],
+    }),
+  });
+  assert.deepEqual(mixedImprovements, {
+    state: "unavailable",
+    contractVersion: DRILL_RECOMMENDATION_CONTRACT_VERSION,
+    templateVersion: DRILL_TEMPLATE_VERSION,
+    reason: "missing_validated_feedback",
+  });
+
+  const zeroConfidenceStrength = feedback();
+  zeroConfidenceStrength.strengths = [
+    { ...zeroConfidenceStrength.strengths[0], confidence: 0 },
+  ];
+  const strengthResult = recommend({ feedback: zeroConfidenceStrength });
+  assert.deepEqual(strengthResult, {
+    state: "unavailable",
+    contractVersion: DRILL_RECOMMENDATION_CONTRACT_VERSION,
+    templateVersion: DRILL_TEMPLATE_VERSION,
+    reason: "missing_validated_feedback",
+  });
 });
 
 test("mixed, incomplete, extra-key, and duplicate-evidence payloads fail closed", () => {
