@@ -45,10 +45,12 @@ npm run db:preflight:preview
 npm run db:preflight:production
 ```
 
-These commands are diagnostic and continue to exit successfully when the
-schema is valid but launch-readiness counts are nonzero. The relaunch decision
-must use strict mode, which prints the same redacted report and exits nonzero
-unless `stableStartLaunchReady` is true:
+These commands are diagnostic and continue to exit successfully for supported
+rolling migration states when the schema is valid but launch-readiness counts
+are nonzero. The relaunch decision must use strict mode, which prints the same
+redacted report and exits nonzero unless the ledger has the exact latest
+committed migration count and all stable-start, credit-recovery, and billing
+adjustment readiness checks are clean:
 
 ```bash
 MEELNI_LAUNCH_STRICT=1 npm run db:preflight:preview
@@ -75,14 +77,16 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with thirteen
-ledger entries, 25 RLS-enabled tables, three unique contracts, zero unsafe
+six ledger entries. Expected post-migration status is `reconciled` with 23
+ledger entries, 29 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
-ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect, and
-transcript-privacy and runtime-settlement contract fingerprint.
-Preflight keeps distinct accepted fingerprints for the 12-migration privacy
-state and the 13-migration runtime-settlement state so a rolling deployment is
-diagnosable without weakening either contract.
+ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect,
+transcript-privacy, runtime-settlement, billing, and feedback contract
+fingerprint. The four server-owned billing provenance tables must expose zero
+table privileges to `PUBLIC`, `anon`, and `authenticated`, while `service_role`
+retains all seven PostgreSQL table privileges on each table. Preflight keeps
+distinct accepted fingerprints for every supported migration state so a
+rolling deployment is diagnosable without weakening an earlier contract.
 
 ## Rehearsal
 
