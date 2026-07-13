@@ -6,7 +6,7 @@ The events are reaching Inngest Cloud, but functions aren't executing. Here's wh
 
 Go to your Inngest dashboard → Functions tab
 
-**Expected functions:**
+**Expected source-defined functions (14):**
 
 - `feedback-generate` (Generate Interview Feedback)
 - `insights-update` (Update User Insights)
@@ -22,6 +22,14 @@ Go to your Inngest dashboard → Functions tab
 - `interview-presence-reconciliation-recovery` (Recover Interview Presence Reconciliation)
 - `interview-start-recovery` (Recover Stale Interview Starts)
 - `interview-credit-recovery` (Recover Interview Credits)
+
+**Expected SDK-generated handler (1):**
+
+- `Generate Interview Feedback (failure)`, generated from the
+  `feedback-generate` function's `onFailure` callback
+
+The dashboard inventory should therefore contain exactly 15 entries. Do not
+treat the generated failure handler as an unexpected duplicate.
 
 **If functions are missing:**
 
@@ -64,7 +72,8 @@ Check:
 
 - Last sync time (should be recent)
 - Sync status (should be "Connected")
-- Function count (should show 14 functions)
+- Function count (should show exactly 15 entries: the 14 named source functions
+  plus one generated feedback failure handler)
 
 **If not synced or shows 0 functions:**
 
@@ -110,7 +119,7 @@ Test if functions are accessible:
 # Check if endpoint is accessible (replace with your domain)
 curl -X GET https://yourdomain.com/api/inngest
 
-# Should return discovery JSON for all 14 function IDs
+# Should describe the 14 source functions plus one generated failure handler
 ```
 
 ## 7. Local Testing Alternative

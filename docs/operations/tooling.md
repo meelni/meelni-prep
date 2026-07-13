@@ -189,13 +189,15 @@ Set `MEELNI_DISABLE_LOCAL_CREDIT_BYPASS=1` in `.env.local` to test the real cred
 ## Relaunch Gate Fallback
 
 The relaunch gate is resolved on the server with disabled event logging. Public
-surfaces and demo-token issuance use a non-identifying operational Statsig user;
-authenticated interview start, reconnect-token issuance, and Checkout creation
-use the signed-in Statsig user. Disabled access is rejected before any
-LiveKit room/dispatch, Stripe Checkout, application database, session/credit,
-or participant-token mutation. Cancellation, billing-portal access, account
-deletion, and existing account data remain available while the launch gate is
-off. `MEELNI_REACTIVATION_DEFAULT` is the explicit provider-outage
+surfaces use a non-identifying operational Statsig user; authenticated interview
+start, reconnect-token issuance, and Checkout creation use the signed-in Statsig
+user. The de-scoped demo-token compatibility endpoint always returns `404`
+before parsing a request or constructing a provider client. Disabled relaunch
+access is rejected before any LiveKit room/dispatch, Stripe Checkout,
+application database, session/credit, or participant-token mutation.
+Cancellation, billing-portal access, account deletion, and existing account data
+remain available while the launch gate is off. `MEELNI_REACTIVATION_DEFAULT` is
+the explicit provider-outage
 fallback: keep it `false` before relaunch and change it to `true` only as part of
 the rehearsed launch flip. Rollback changes the Statsig gate and this fallback
 together so a Statsig outage cannot invert the intended product state.

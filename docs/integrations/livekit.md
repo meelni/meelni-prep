@@ -10,7 +10,9 @@ configuration, not source-owned constants.
 - The route authenticates with Supabase, validates LiveKit env, calls
   `startInterviewSessionWorkflow`, creates the room, explicitly dispatches the
   interview agent, and returns the participant token.
-- Public demos start through `POST /api/livekit/demo-token`.
+- The public voice demo is de-scoped from relaunch. Its retained
+  `POST /api/livekit/demo-token` route and `agent/demo` worker are dormant
+  compatibility code and are not advertised or covered by launch readiness.
 - `POST /api/livekit/token` is an authenticated reconnect-token endpoint. It
   accepts only a session ID and derives the LiveKit room, participant identity,
   and participant name from the authenticated user and stored session. Token
@@ -37,6 +39,7 @@ NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud
 MEELNI_PREVIEW_LIVEKIT_URL=wss://your-preview-project.livekit.cloud
 MEELNI_PRODUCTION_LIVEKIT_URL=wss://your-production-project.livekit.cloud
 LIVEKIT_INTERVIEW_AGENT_NAME=...
+# Optional only if the public demo is separately reintroduced:
 LIVEKIT_DEMO_AGENT_NAME=...
 ```
 
@@ -52,11 +55,11 @@ chat; use Vercel env pull scripts or the provider dashboards.
    identity anchors. Preview must exactly match its anchor; the anchors differ.
 4. Keep each environment-and-worker TOML outside the repository and set its
    `MEELNI_LIVEKIT_*_CONFIG` path and matching `MEELNI_LIVEKIT_*_AGENT_ID`.
-5. Deploy the interview and demo agents with an explicit `preview` or
-   `production` argument. The script binds one absolute config path to exact
-   project and agent identities before invoking `lk`.
-6. Set `LIVEKIT_INTERVIEW_AGENT_NAME` and `LIVEKIT_DEMO_AGENT_NAME` to the names
-   used by those deployed agents.
+5. Deploy the interview agent with an explicit `preview` or `production`
+   argument. The script binds one absolute config path to exact project and
+   agent identities before invoking `lk`.
+6. Set `LIVEKIT_INTERVIEW_AGENT_NAME` to the deployed interview dispatch name.
+   Do not treat a demo dispatch name as proof of a running demo agent.
 7. In Vercel, set the same LiveKit server env vars for Preview and Production.
 8. In LiveKit Cloud agent secrets, set the agent-name env var that matches each
    worker plus model provider keys.
@@ -72,8 +75,8 @@ npm run typecheck
 
 ## Operational Rules
 
-- Keep explicit dispatch. Demo and full interview agents should not compete for
-  the same room jobs.
+- Keep explicit dispatch. If the demo is separately reintroduced, demo and full
+  interview agents must not compete for the same room jobs.
 - Keep browser participant grants minimal: room join, publish, subscribe.
 - Do not expose model/provider strings as end-user controls unless product
   strategy accepts it.

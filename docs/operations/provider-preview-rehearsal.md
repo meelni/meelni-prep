@@ -29,8 +29,11 @@ LiveKit Preview requires:
 - `NEXT_PUBLIC_LIVEKIT_URL` or `LIVEKIT_URL` for a dedicated Preview project;
 - `MEELNI_PREVIEW_LIVEKIT_URL`, a fresh non-secret Preview project anchor;
 - `MEELNI_PRODUCTION_LIVEKIT_URL`, a non-secret Production project anchor;
-- the appropriate `LIVEKIT_INTERVIEW_AGENT_NAME` and
-  `LIVEKIT_DEMO_AGENT_NAME` values.
+- `LIVEKIT_INTERVIEW_AGENT_NAME` for the core interview agent.
+
+The public voice demo is de-scoped from relaunch. A demo dispatch name or
+retained demo route is not a launch prerequisite and must not be represented as
+proof that a demo agent is deployed or usable.
 
 Production must match the canonical Production LiveKit origin. Preview must
 match the canonical Preview anchor, and those anchors must differ. Development
@@ -79,9 +82,12 @@ freezes only that entry into a private one-run CLI home, and re-verifies the
 snapshot without relaying provider stdout or stderr:
 
 ```bash
-python3 agent/shared/bootstrap_livekit_preview.py demo
 python3 agent/shared/bootstrap_livekit_preview.py interview
 ```
+
+The bootstrap still supports `demo` for a separately approved future
+reintroduction, but the current relaunch rehearsal must not create or require a
+demo agent.
 
 The bootstrap is Preview-only and fixed to `us-east`. It refuses relative,
 non-canonical, repository-local, symlinked, or pre-existing config targets. It
@@ -182,8 +188,9 @@ any Production-scoped command during this phase.
   require read-only test-account verification that each exists and reports
   `livemode=false` before Checkout rehearsal.
 - Preview remains fail-closed until its distinct LiveKit project anchor and
-  environment-and-worker agent IDs are configured. API credentials and dispatch
-  names still require read-only provider verification before rehearsal.
+  interview-agent ID are configured. API credentials and the interview dispatch
+  name still require read-only provider verification before rehearsal. The
+  de-scoped demo is not included in LiveKit health or launch evidence.
 - The currently running Production agents predate the environment guard. Before
   deploying guarded worker code to Production, add
   `MEELNI_ENV_PULL_ENVIRONMENT=production` and the canonical
@@ -197,14 +204,15 @@ any Production-scoped command during this phase.
   `INNGEST_SIGNING_KEY` values plus branch-scoped `INNGEST_ENV` matching
   `VERCEL_GIT_COMMIT_REF`. Those configuration checks do not prove provider
   connectivity. Feedback handoff remains blocked until the exact deployment
-  passes the service-health configuration gate, all 14 functions sync, and an
-  approved synthetic event runs successfully.
-- Route denial tests cover session start and demo token issuance with missing,
-  invalid, or conflicting Preview identity and dispatch configuration. Separate
-  relaunch-gate behavior tests prove default-off access returns `403` before
-  demo room/dispatch, Stripe Checkout, or application-database mutation. The gate
-  does not disable cancellation, billing-portal access, account deletion, or
-  existing account data.
+  passes the service-health configuration gate, all 14 named source function
+  IDs plus exactly one generated feedback failure handler sync, and an approved
+  synthetic event runs successfully.
+- Route denial tests prove the de-scoped demo endpoint returns `404` before
+  request parsing or provider work. Separate relaunch-gate behavior tests cover
+  missing, invalid, and conflicting Preview identity and prove default-off
+  access returns `403` before interview room/dispatch, Stripe Checkout, or
+  application-database mutation. The gate does not disable cancellation,
+  billing-portal access, account deletion, or existing account data.
   Session start performs the required Supabase authentication read before
   runtime configuration validation; no application database, session, credit,
   or provider mutation begins, and no LiveKit client, room, token, or dispatch
@@ -216,5 +224,6 @@ any Production-scoped command during this phase.
 Proceed to a separately authorized provider-connected rehearsal only when all
 provider-free checks pass, Preview Stripe uses test mode with a distinct
 webhook endpoint, the three test prices are verified, LiveKit uses a distinct
-project with deployed matching agents, Inngest is ready, and the feature gate
-remains off. Any identity ambiguity is a no-go.
+project with a deployed matching interview agent, Inngest is ready, and the
+feature gate remains off. Any identity ambiguity is a no-go. Do not infer demo
+availability from `livekit_ready`; the relaunch UI has no public demo action.

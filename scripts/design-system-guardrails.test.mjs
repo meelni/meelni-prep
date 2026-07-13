@@ -2162,6 +2162,28 @@ test("landing hero display type uses a named responsive utility", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("landing hero exposes only the launch-supported interview action", async () => {
+  const file = "components/sections/hero.tsx";
+  const hero = await readFile(file, "utf8");
+  const violations = [];
+
+  if (!hero.includes('href="/dashboard/new-interview"')) {
+    violations.push(`${file}:canonical-interview-action`);
+  }
+
+  for (const unsupportedDemoSurface of [
+    "DemoModal",
+    "Try voice demo",
+    "/api/livekit/demo-token",
+  ]) {
+    if (hero.includes(unsupportedDemoSurface)) {
+      violations.push(`${file}:${unsupportedDemoSurface}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("explore question surfaces use shared form and action primitives", async () => {
   const checkboxSource = await readFile(
     "components/ui/checkbox.tsx",

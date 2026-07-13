@@ -3,7 +3,7 @@
 import { FeedbackSectionCard } from "@/components/feedback/feedback-surface";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dumbbell, Lightbulb, ArrowRight } from "lucide-react";
+import { Target, Lightbulb, ArrowRight } from "lucide-react";
 import type { DrillSuggestion } from "@/lib/types/feedback";
 
 interface DrillListProps {
@@ -29,7 +29,7 @@ export function DrillList({ drills: recommendations }: DrillListProps) {
     <FeedbackSectionCard
       title="Practice Recommendations"
       description="Targeted exercises to improve your weakest areas"
-      icon={<Dumbbell className="h-5 w-5" />}
+      icon={<Target className="h-5 w-5" />}
       tone="info"
       contentClassName="space-y-3"
     >

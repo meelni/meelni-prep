@@ -439,7 +439,9 @@ Canonical target:
 - App ID: `meelni`
 - Local dev server UI/API: `http://127.0.0.1:8288`
 - Next.js function endpoint: `/api/inngest`
-- Registered function count: `14`
+- Source-defined function IDs: `14`
+- Expected dashboard inventory: `15` entries: the 14 source-defined functions
+  plus the SDK-generated `Generate Interview Feedback (failure)` handler
 
 Local development:
 
@@ -469,15 +471,17 @@ Operational notes:
   requires `VERCEL_GIT_COMMIT_REF=main` with no branch-only `INNGEST_ENV`
   override.
 - Key and identity checks do not prove provider connectivity. Require all 14
-  function IDs to sync and an approved synthetic event to run before treating
-  Inngest as rehearsed.
+  named source function IDs plus exactly one SDK-generated
+  `Generate Interview Feedback (failure)` handler to sync, and require an
+  approved synthetic event to run before treating Inngest as rehearsed.
 - Vercel encrypted/sensitive values pull as blanks. Preserve existing local `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, and `OPENAI_API_KEY` values when refreshing envs.
 - Historical note: as of 2026-06-29, Vercel had `OPENAI_API_KEY` and
   `INNGEST_SIGNING_KEY` for Preview/Production but no listed
   `INNGEST_EVENT_KEY`. The relaunch branch now has distinct branch-scoped
   Preview event/signing credentials. Preview dispatch is still unverified until
-  the exact deployment syncs all 14 function IDs and an approved synthetic
-  event runs successfully; this note does not assert Production readiness.
+  the exact deployment syncs all 14 named source function IDs plus exactly one
+  generated feedback failure handler and an approved synthetic event runs
+  successfully; this note does not assert Production readiness.
 
 ## Linear
 

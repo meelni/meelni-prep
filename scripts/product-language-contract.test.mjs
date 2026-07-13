@@ -136,7 +136,7 @@ async function customerContentFiles(directory) {
 function stripExactCompatibilityIdentifiers(source) {
   return source
     .replace(/(["'])drills\1(?=\s*:)/g, '"compatibilityField"')
-    .replace(/\bdrills(?=\s*:)/g, "compatibilityField")
+    .replace(/(^[\t ]*|[{,][\t ]*)drills(?=\s*:)/gm, "$1compatibilityField")
     .replace(/\.drills\b/g, ".compatibilityField")
     .replace(/\[\s*(["'])drills\1\s*\]/g, ".compatibilityField")
     .replace(
@@ -447,6 +447,12 @@ test("compatibility fields are ignored without hiding customer-facing copy", () 
   assert.match(
     stripExactCompatibilityIdentifiers(
       'console.log("Practice drills", feedback.drills);'
+    ),
+    FITNESS_LANGUAGE
+  );
+  assert.match(
+    stripExactCompatibilityIdentifiers(
+      'console.log("Practice drills:", feedback.drills);'
     ),
     FITNESS_LANGUAGE
   );

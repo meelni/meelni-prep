@@ -52,6 +52,11 @@ exception messages, provider payloads, environment-variable names, or secrets.
 - `unavailable`: the database, LiveKit interview readiness, or a dependency
   needed to evaluate durable workflow evidence is unavailable.
 
+`livekit_ready` means the configured core interview agent passes the static
+environment boundary. It does not claim that the de-scoped public voice demo is
+deployed, configured, or usable. Demo availability is outside version 1 of this
+contract.
+
 The HTTP response is exactly `200` for healthy or degraded and exactly `503`
 for unavailable. Consumers must evaluate the JSON status; the synthetic rejects
 any HTTP/body-status mismatch and treats degraded as failed during relaunch. It

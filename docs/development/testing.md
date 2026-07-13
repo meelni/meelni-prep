@@ -132,15 +132,15 @@ curl -X POST ${BASE_URL}/api/livekit/token \
   }'
 ```
 
-#### Generate Demo Token
+#### Verify Retired Demo Endpoint
 
 ```bash
 curl -X POST ${BASE_URL}/api/livekit/demo-token \
-  -H "Content-Type: application/json" \
-  -d '{
-    "participantName": "Guest"
-  }'
+  -H "Content-Type: application/json"
 ```
+
+The response is `404 voice_demo_unavailable`, and no LiveKit room, dispatch, or
+token is created.
 
 #### List Cartesia Voices
 
