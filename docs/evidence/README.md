@@ -42,6 +42,11 @@ and preserves fail-closed treatment for arbitrary alternative evidence. It
 does not reinterpret the discarded SAV-248 response, alter historical reports,
 authorize spend, or grant launch acceptance.
 
+`sav-250-agent-panel-signoffs.json` binds two distinct agent-panel attestations
+to the exact candidate, corpus, and SAV-250 audit hashes. Its scope is
+provider-free closure only: it authorizes no provider call or v3 run and keeps
+semantic output adjudication required.
+
 `sav-198-paid-run-authorization.json` and
 `sav-198-rebased-plan-acceptance.json` record the product owner's prior,
 conservative acceptance of the exact rebased plan within that existing

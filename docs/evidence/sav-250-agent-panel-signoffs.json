@@ -1,0 +1,39 @@
+{
+  "version": "sav-250-anchor-audit-panel-signoffs.v1",
+  "recordedAt": "2026-07-13T14:48:29Z",
+  "reviewedHead": "ca8df134f18ffcadbc08db7951d6c7995bddd5f3",
+  "scope": "provider_free_anchor_audit_closure_only",
+  "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
+  "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+  "auditArtifact": {
+    "path": "docs/evidence/sav-250-adjudicated-evidence-anchor-audit.md",
+    "sha256": "45ea8acc8649bcdd8e62b52ad81d7b63648067573b3f8b57bed4feca1e0b2eca"
+  },
+  "panels": [
+    {
+      "taskPath": "/root/sav250_anchor_audit",
+      "verdict": "approved_provider_free",
+      "reviewedCases": 32,
+      "reviewedAnchors": 64,
+      "changesRequiredCases": 0,
+      "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
+      "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+      "auditArtifactHash": "45ea8acc8649bcdd8e62b52ad81d7b63648067573b3f8b57bed4feca1e0b2eca"
+    },
+    {
+      "taskPath": "/root/sav250_second_panel",
+      "verdict": "approved_provider_free",
+      "reviewedCases": 32,
+      "reviewedAnchors": 64,
+      "changesRequiredCases": 0,
+      "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
+      "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+      "auditArtifactHash": "45ea8acc8649bcdd8e62b52ad81d7b63648067573b3f8b57bed4feca1e0b2eca"
+    }
+  ],
+  "humanReviewer": null,
+  "providerCallMade": false,
+  "paidCallAuthorized": false,
+  "v3Authorized": false,
+  "semanticOutputAdjudicationStillRequired": true
+}
