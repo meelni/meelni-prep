@@ -591,7 +591,7 @@ test("approved adjudication and live-pass satisfy the combined gate", async () =
   assert.equal(report.gate.liveProviderAcceptance, "passed");
   assert.equal(report.gate.launchAcceptance, "passed");
   assert.equal(report.execution.cost?.attemptedCalls, 96);
-  assert.equal(report.execution.cost?.authorizedRunId, SAV_198_APPROVED_RUN_ID);
+  assert.equal(report.execution.cost?.authorizedRunId, SAV_248_APPROVED_RUN_ID);
   assert.equal(report.execution.cost?.authorizationHash?.length, 64);
   assert.equal(report.execution.cost?.physicalHttpAttemptCeiling, 96);
   assert.equal(report.execution.cost?.completedCalls, 96);
@@ -628,7 +628,7 @@ function withProviderUsage(
 
 function liveGuard(): CalibrationSpendGuard {
   const plan = buildCalibrationActivatedPlan({
-    authorization: SAV_198_SPEND_AUTHORIZATION,
+    authorization: SAV_248_SPEND_AUTHORIZATION,
     adjudicationApproval: approvalFixture(),
     model: LIVE_MODEL,
     repetitions: 3,
@@ -637,8 +637,8 @@ function liveGuard(): CalibrationSpendGuard {
   let spend = createEmptyCalibrationSpendState();
   const persistence: CalibrationSpendPersistence = {
     durable: true,
-    runId: SAV_198_APPROVED_RUN_ID,
-    authorizationId: SAV_198_SPEND_AUTHORIZATION.authorizationId,
+    runId: SAV_248_APPROVED_RUN_ID,
+    authorizationId: SAV_248_SPEND_AUTHORIZATION.authorizationId,
     authorizationHash: plan.authorizationHash,
     activationCommit: "test-activation-commit",
     planHash: plan.planHash,
