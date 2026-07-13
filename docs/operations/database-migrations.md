@@ -61,6 +61,15 @@ Production checks must use the scoped aliases above so ambient credentials
 cannot redirect the check. Successful output includes the verified
 `environmentIdentity` (`local`, `preview`, or `production`).
 
+An environment with no Drizzle migration ledger is eligible for the diagnostic
+`ready_for_clean_bootstrap` status only when the catalog also proves that the
+public application schema has exactly zero non-extension objects. A partial
+schema, an unexpected public object, an ambiguous catalog result, or a catalog
+query failure blocks preflight. A present but empty migration ledger stays on
+the normal ledger path and is not treated as pristine. Clean-bootstrap status
+does not mean launch-ready: strict mode remains red until the canonical chain
+has been applied and all post-migration integrity checks pass.
+
 Expected pre-migration status is `ready_to_reconcile` with two ledger entries,
 zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
@@ -111,7 +120,9 @@ deadline.
 3. Run `npm run db:preflight:preview` or
    `npm run db:preflight:production` and retain its redacted output in the
    Linear issue. These commands explicitly select the file so an ambient shell
-   `DATABASE_URL` cannot redirect the check.
+   `DATABASE_URL` cannot redirect the check. For a truly pristine dedicated
+   environment, retain the `ready_for_clean_bootstrap` result; do not seed the
+   ledger manually or introduce a separate reconciliation history.
 4. Confirm the provider backup/point-in-time recovery window and capture a
    schema-only dump outside the repository.
 5. Rehearse the upgrade against a disposable clone or the migration test.
