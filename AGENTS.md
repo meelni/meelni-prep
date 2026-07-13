@@ -20,6 +20,9 @@ Only the human product owner makes the final launch GO/NO-GO. Agents and
 automated gates may provide evidence and a readiness recommendation, but they
 must not infer the owner's decision or authorize default-on, Production, or
 live-mode action. Follow the accepted human-owned launch decision.
+Use the Production action authorization contract only at release and
+maintenance entrypoints. Do not apply it to ordinary authenticated or
+provider-signed customer/runtime transactions.
 
 Primary product surfaces:
 
