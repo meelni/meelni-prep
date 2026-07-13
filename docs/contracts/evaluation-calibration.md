@@ -95,6 +95,24 @@ Reports contain aggregate metrics, case IDs, version identifiers, and failure
 codes only. They never contain prompts, transcript text, provider response
 content, API keys, or provider error bodies.
 
+Live provider adapters may preserve only these closed, sanitized response
+failure categories in `failures[].code`:
+
+- `evaluation_provider_returned_no_content`;
+- `evaluation_provider_returned_invalid_json`;
+- `evaluation_provider_returned_invalid_feedback`;
+- `evaluation_provider_usage_missing`;
+- `evaluation_provider_invocation_failed`.
+
+No-content, invalid-JSON, and invalid-feedback responses carry provider usage,
+model, and service-tier identity when those values were returned, so their
+known cost is reconciled before the run stops. Missing-usage and invocation
+failures retain the uncertain reservation and use the fail-closed
+`missing_provider_usage` spend stop. At the report boundary, any unknown,
+forged, mutable, provider-supplied, or otherwise unrecognized error value maps
+to `evaluation_failed`. Raw messages, causes, response content, and parser
+details never enter the report.
+
 Evaluator calls and paid-provider calls are separate metrics. A deterministic
 self-test reports its local evaluator invocations but must always report zero
 provider calls.

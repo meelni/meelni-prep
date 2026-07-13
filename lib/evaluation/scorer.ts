@@ -31,17 +31,40 @@ export interface FeedbackProviderResult {
   observedServiceTier: string | null;
 }
 
+export const FEEDBACK_PROVIDER_FAILURE_CODES = [
+  "evaluation_provider_returned_no_content",
+  "evaluation_provider_returned_invalid_json",
+  "evaluation_provider_returned_invalid_feedback",
+  "evaluation_provider_usage_missing",
+  "evaluation_provider_invocation_failed",
+] as const;
+
+export type FeedbackProviderFailureCode =
+  (typeof FEEDBACK_PROVIDER_FAILURE_CODES)[number];
+
 export class FeedbackProviderInvocationError extends Error {
   constructor(
-    message: string,
+    readonly code: FeedbackProviderFailureCode,
     readonly usage?: FeedbackProviderUsage,
     readonly observedModel?: string,
     readonly observedServiceTier?: string | null,
     options?: ErrorOptions
   ) {
-    super(message, options);
+    super(code, options);
     this.name = "FeedbackProviderInvocationError";
   }
+}
+
+export interface FeedbackProviderCompletion {
+  model: string;
+  service_tier?: string | null;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number } | null;
+  } | null;
+  choices: Array<{ message: { content?: string | null } }>;
 }
 
 /**
@@ -116,61 +139,11 @@ export async function generateFeedbackWithUsage(
           : { max_completion_tokens: options.maxCompletionTokens }),
     });
 
-    const observedServiceTier = completion.service_tier ?? null;
-    const usage = parseProviderUsage(
-      completion.usage,
-      completion.model,
-      observedServiceTier
+    return parseFeedbackProviderCompletion(
+      completion,
+      prepared.transcript,
+      evaluationState
     );
-
-    const responseText = completion.choices[0]?.message.content;
-    if (!responseText) {
-      throw new FeedbackProviderInvocationError(
-        "evaluation_provider_returned_no_content",
-        usage,
-        completion.model,
-        observedServiceTier
-      );
-    }
-
-    let unknownResponse: unknown;
-    try {
-      unknownResponse = JSON.parse(responseText);
-    } catch (error) {
-      throw new FeedbackProviderInvocationError(
-        "evaluation_provider_returned_invalid_json",
-        usage,
-        completion.model,
-        observedServiceTier,
-        { cause: error }
-      );
-    }
-
-    // Preserve the model identity reported by the provider, which may resolve a
-    // configured alias to a dated snapshot.
-    try {
-      const evaluation = parseFeedbackV2(unknownResponse, {
-        transcript: prepared.transcript,
-        evaluationState,
-        modelVersion: completion.model,
-      });
-      return {
-        evaluation: {
-          ...evaluation,
-          drills: normalizePracticeRecommendations(evaluation.drills),
-        },
-        usage,
-        observedServiceTier,
-      };
-    } catch (error) {
-      throw new FeedbackProviderInvocationError(
-        "evaluation_provider_returned_invalid_feedback",
-        usage,
-        completion.model,
-        observedServiceTier,
-        { cause: error }
-      );
-    }
   } catch (error) {
     if (error instanceof FeedbackProviderInvocationError) throw error;
     throw new FeedbackProviderInvocationError(
@@ -178,6 +151,65 @@ export async function generateFeedbackWithUsage(
       undefined,
       undefined,
       undefined,
+      { cause: error }
+    );
+  }
+}
+
+export function parseFeedbackProviderCompletion(
+  completion: FeedbackProviderCompletion,
+  transcript: FeedbackTranscriptTurn[],
+  evaluationState: FeedbackEvaluationState
+): FeedbackProviderResult {
+  const observedServiceTier = completion.service_tier ?? null;
+  const usage = parseProviderUsage(
+    completion.usage,
+    completion.model,
+    observedServiceTier
+  );
+  const responseText = completion.choices[0]?.message.content;
+  if (!responseText) {
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_returned_no_content",
+      usage,
+      completion.model,
+      observedServiceTier
+    );
+  }
+
+  let unknownResponse: unknown;
+  try {
+    unknownResponse = JSON.parse(responseText);
+  } catch (error) {
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_returned_invalid_json",
+      usage,
+      completion.model,
+      observedServiceTier,
+      { cause: error }
+    );
+  }
+
+  try {
+    const evaluation = parseFeedbackV2(unknownResponse, {
+      transcript,
+      evaluationState,
+      modelVersion: completion.model,
+    });
+    return {
+      evaluation: {
+        ...evaluation,
+        drills: normalizePracticeRecommendations(evaluation.drills),
+      },
+      usage,
+      observedServiceTier,
+    };
+  } catch (error) {
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_returned_invalid_feedback",
+      usage,
+      completion.model,
+      observedServiceTier,
       { cause: error }
     );
   }

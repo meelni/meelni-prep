@@ -42,6 +42,7 @@ import {
   type CalibrationCostReport,
   type CalibrationProviderUsage,
 } from "./calibration-budget";
+import { FeedbackProviderInvocationError } from "./scorer";
 
 export type CalibrationExecutionKind =
   | "preflight"
@@ -430,11 +431,14 @@ export async function runEvaluationCalibration(
             continue;
           }
           caseOutputs.push({ runIndex, evaluation: result.evaluation });
-        } catch {
+        } catch (error) {
           failures.push({
             caseId: fixture.id,
             runIndex,
-            code: "evaluation_failed",
+            code: getSanitizedEvaluationFailureCode(
+              error,
+              options.executionKind
+            ),
           });
         }
         if (
@@ -1097,4 +1101,27 @@ function getObservedServiceTierFromError(
   const value = (error as { observedServiceTier?: unknown })
     .observedServiceTier;
   return value === null || typeof value === "string" ? value : undefined;
+}
+
+function getSanitizedEvaluationFailureCode(
+  error: unknown,
+  executionKind: CalibrationExecutionKind
+): string {
+  if (
+    executionKind !== "live_provider" ||
+    !(error instanceof FeedbackProviderInvocationError)
+  ) {
+    return "evaluation_failed";
+  }
+  const code: string = error.code;
+  switch (code) {
+    case "evaluation_provider_returned_no_content":
+    case "evaluation_provider_returned_invalid_json":
+    case "evaluation_provider_returned_invalid_feedback":
+    case "evaluation_provider_usage_missing":
+    case "evaluation_provider_invocation_failed":
+      return code;
+    default:
+      return "evaluation_failed";
+  }
 }
