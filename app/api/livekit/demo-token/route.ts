@@ -70,9 +70,29 @@ import {
   getLiveKitAgentName,
   getLiveKitEnvironment,
 } from "@/lib/internal/integrations";
+import { resolveReactivationAccess } from "@/lib/feature-flags/reactivation-access";
+import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 
 export async function POST(req: NextRequest) {
   try {
+    const gateName = FEATURE_GATES.meelniReactivationAccess;
+    const access = await resolveReactivationAccess({
+      user: null,
+      localOverride: req.cookies.get(
+        `meelni_feature_flag_${encodeURIComponent(gateName)}`
+      )?.value,
+    });
+    if (!access.value) {
+      return NextResponse.json(
+        {
+          error: "interview_practice_unavailable",
+          message: "Interview practice is not open yet.",
+          retryable: false,
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const { participantName } = body;
 

@@ -49,7 +49,7 @@ User → Next.js UI → LiveKit Room → Python Agent
 
 ### Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 22.22.0 and npm (`fnm use` or `nvm use` selects the pinned version)
 - Python 3.10+
 - Supabase account (database)
 - LiveKit Cloud account

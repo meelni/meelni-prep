@@ -22,6 +22,8 @@ import {
   BillingAccountBusyError,
   tryLockBillingUserUnlessDeleting,
 } from "@/lib/billing/subscription-state";
+import { resolveReactivationAccess } from "@/lib/feature-flags/reactivation-access";
+import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 
 const SUBSCRIPTION_CHECKOUT_PROVIDER_DEADLINE_MS = 90_000;
 const SUBSCRIPTION_CHECKOUT_PROVIDER_CALL_TIMEOUT_MS = 10_000;
@@ -34,11 +36,7 @@ const checkoutSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Parse and validate request body
-    const body = await req.json();
-    const { catalogId } = checkoutSchema.parse(body);
-
-    // 2. Check if user is authenticated (optional)
+    // 1. Authenticate before evaluating the user-scoped relaunch gate.
     const supabase = await createClient();
     const {
       data: { user },
@@ -54,6 +52,28 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
+
+    const gateName = FEATURE_GATES.meelniReactivationAccess;
+    const access = await resolveReactivationAccess({
+      user,
+      localOverride: req.cookies.get(
+        `meelni_feature_flag_${encodeURIComponent(gateName)}`
+      )?.value,
+    });
+    if (!access.value) {
+      return NextResponse.json(
+        {
+          error: "interview_practice_unavailable",
+          message: "New purchases are unavailable before relaunch.",
+          retryable: false,
+        },
+        { status: 403 }
+      );
+    }
+
+    // 2. Parse request input only after the disabled boundary is resolved.
+    const body = await req.json();
+    const { catalogId } = checkoutSchema.parse(body);
 
     if (await hasAccountDeletionTombstone(userId)) {
       return accountDeletionPendingResponse();
