@@ -223,14 +223,23 @@ LIVEKIT_INTERVIEW_AGENT_NAME=meelni-preview-interview
 
 The bootstrap parses `lk project list --json` internally without printing its
 credential-bearing payload. It positively proves the alias URL equals the
-Preview anchor and differs from Production before running the single allowed
-mutation with explicit project, config, region, secrets file, and silent mode.
+Preview anchor and differs from Production, then freezes only that verified
+project into a bootstrap-owned private CLI home and re-verifies the snapshot.
+The single allowed mutation uses that frozen home, a frozen copy of the
+validated secrets, and an internal config target; it never re-resolves the
+operator's mutable alias or reads the operator secrets path during create.
 Both CLI subprocesses have bounded timeouts, and receive only the small
 allowlist of process variables needed to locate CLI auth/config, locale, and
 temporary files; ambient application/provider credentials and TLS trust-root
 overrides are not forwarded.
-The generated TOML is forced to mode `0600` and must identify the Preview
-subdomain plus a syntactic `CA_*` agent ID. Only that safe ID and the next
+LiveKit CLI v2.12.8 rebases its config filename under the working directory, so
+the bootstrap passes an internally derived relative path that resolves exactly
+to its private external workspace. The bootstrap requires exactly v2.12.8
+before inventory; re-audit and update the guard before upgrading the CLI. The
+generated TOML is forced to mode `0600`
+and must identify the Preview subdomain plus a syntactic `CA_*` agent ID. Its
+validated bytes are installed at the operator target with no-clobber creation;
+an existing file or symlink is never overwritten. Only that safe ID and the next
 `MEELNI_LIVEKIT_PREVIEW_{DEMO,INTERVIEW}_AGENT_ID` assignment are printed.
 
 The demo Dockerfile is swapped only for the create subprocess and restored on

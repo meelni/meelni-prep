@@ -66,9 +66,10 @@ inventory request returns `401`, so ownership, access, and emptiness are not
 proved.
 
 Never print raw `lk project list --json`; that payload includes API keys and
-secrets. The one shared bootstrap captures and projects it internally, proves
-exactly one `meelni-preview` alias has a valid project ID and the expected
-Preview URL, and never relays provider stdout or stderr:
+secrets. The one shared bootstrap captures it internally, proves exactly one
+`meelni-preview` alias has a valid project ID and the expected Preview URL,
+freezes only that entry into a private one-run CLI home, and re-verifies the
+snapshot without relaying provider stdout or stderr:
 
 ```bash
 python3 agent/shared/bootstrap_livekit_preview.py demo
@@ -82,27 +83,35 @@ secrets files with mode `0600`, no duplicate or extra names,
 `MEELNI_ENV_PULL_ENVIRONMENT=preview`,
 both exact URL anchors, the fixed matching dispatch name, and a non-placeholder
 `OPENAI_API_KEY`. `ANTHROPIC_API_KEY` and every other extra name are denied.
+It also requires exactly LiveKit CLI v2.12.8 before reading the registry;
+upgrade only after re-auditing registry resolution and config-path behavior.
 The CLI subprocess environment is rebuilt from a tight allowlist for auth
 config location, locale, and temporary files, so unknown ambient application
-or provider credentials and TLS trust-root overrides are not forwarded. Both
-inventory and create have bounded timeouts; only the validated secrets file is
-passed to agent creation.
+or provider credentials and TLS trust-root overrides are not forwarded. The
+create subprocess uses the bootstrap-owned CLI home containing only the
+verified Preview project. Both inventory calls and create have bounded
+timeouts; create receives only a private frozen copy of the validated secrets.
 
 After all local validation and the read-only alias inventory, the only allowed
 mutation is equivalent to:
 
 ```bash
 lk --project meelni-preview \
-  --config <new-external-worker-config> \
+  --config <relative-bootstrap-config> \
   agent create --region us-east \
-  --secrets-file <mode-0600-worker-secrets> \
+  --secrets-file <mode-0600-frozen-secrets> \
   --silent .
 ```
 
-The command runs from `agent/`. The demo Dockerfile is selected only during the
-subprocess and is restored on all handled exits. The generated config is made
-private, then must positively match the Preview subdomain and a `CA_*` agent
-ID. Record the printed ID in
+The command runs from `agent/`. In LiveKit CLI v2.12.8, the config filename is
+joined to the working directory even when it looks absolute. The bootstrap
+therefore derives a relative path and rejects it unless that join resolves
+exactly to its random private workspace outside the repository. The demo
+Dockerfile is selected only during the subprocess and is restored on all
+handled exits. The generated config is made private, then must positively
+match the Preview subdomain and a `CA_*` agent ID. Those validated bytes are
+fsynced to a private file and atomically linked to the operator target; a
+pre-existing file or symlink causes a no-clobber denial. Record the printed ID in
 `MEELNI_LIVEKIT_PREVIEW_DEMO_AGENT_ID` or
 `MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID`; later versions must use the
 ordinary guarded deploy scripts.

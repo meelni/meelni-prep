@@ -232,9 +232,16 @@ Operational notes:
   deploy wrappers require an existing config and agent ID. The bootstrap uses
   separate absolute external config and mode-`0600` secrets paths from
   `MEELNI_LIVEKIT_PREVIEW_{DEMO,INTERVIEW}_{CONFIG,SECRETS_FILE}`, validates
-  the fixed Preview alias internally without printing credentials, uses a
-  tight child-environment allowlist and bounded CLI timeouts, and emits only
-  the safe created agent ID and next expected-ID env name.
+  the fixed Preview alias internally without printing credentials, freezes
+  only that verified project into a private one-run CLI home, and uses the same
+  snapshot for a second inventory and create. It also snapshots the validated
+  secrets and installs the generated TOML with no-clobber creation. LiveKit CLI
+  v2.12.8 joins `--config` to the agent working directory even for an absolute
+  value, so the bootstrap passes a derived relative path that must resolve to
+  its private external workspace. The bootstrap pins exactly v2.12.8 and must
+  be re-audited before that version changes. It uses a tight child-environment allowlist,
+  a `0077` child umask, and bounded CLI timeouts, and emits only the safe created
+  agent ID and next expected-ID env name.
 - Before the guarded worker version is deployed to the existing Production
   agents, add `MEELNI_ENV_PULL_ENVIRONMENT=production` and
   `MEELNI_PRODUCTION_LIVEKIT_URL`; current secret-name inventory does not show
