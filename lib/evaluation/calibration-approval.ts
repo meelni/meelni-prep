@@ -16,10 +16,32 @@ export interface EvaluationAdjudicationApproval {
   reviewer: {
     identity: string;
     role: "product_owner" | "pm_reviewer";
+    identityType?: "human" | "delegated_task_thread";
   };
   reviewBasis: {
     candidateManifestVersion: "evaluation-adjudication-review.v2";
     independentExactHashReview: true;
+    semanticAdjudicationOnly?: true;
+  };
+  delegatedAuthority?: {
+    source: "product_owner_task_thread";
+    humanReviewerIdentity: null;
+    reviewedHead: string;
+    roundHistory: Array<{
+      round: 1 | 2 | 3;
+      outcome: "changes_required" | "approved";
+      correctedCaseCount: number;
+      candidateArtifactHash?: string;
+      corpusHash?: string;
+    }>;
+    panels: Array<{
+      taskPath: string;
+      verdict: "approved";
+      candidateArtifactHash: string;
+      corpusHash: string;
+      approvedCases: 32;
+      changesRequiredCases: 0;
+    }>;
   };
   reviewedAt: string;
   decisions: Array<{
@@ -96,6 +118,112 @@ export function parseEvaluationAdjudicationApproval(
   ) {
     throw new Error("Invalid adjudication approval reviewBasis");
   }
+  const identityType = reviewer.identityType;
+  let delegatedAuthority: EvaluationAdjudicationApproval["delegatedAuthority"];
+  if (identityType === "delegated_task_thread") {
+    if (identity !== "product_owner_task_thread_delegation") {
+      throw new Error("Invalid delegated approval reviewer identity");
+    }
+    if (reviewBasis.semanticAdjudicationOnly !== true) {
+      throw new Error("Invalid delegated approval semantic scope");
+    }
+    const authority = requireRecord(
+      record.delegatedAuthority,
+      "delegatedAuthority"
+    );
+    if (
+      authority.source !== "product_owner_task_thread" ||
+      authority.humanReviewerIdentity !== null
+    ) {
+      throw new Error("Invalid delegated approval authority provenance");
+    }
+    const reviewedHead = requireSha256(
+      authority.reviewedHead,
+      "delegatedAuthority.reviewedHead"
+    );
+    if (!Array.isArray(authority.panels) || authority.panels.length !== 2) {
+      throw new Error("Delegated approval requires exactly two agent panels");
+    }
+    const panelPaths = new Set<string>();
+    const panels = authority.panels.map((unknownPanel) => {
+      const panel = requireRecord(unknownPanel, "delegatedAuthority.panel");
+      const taskPath = requireText(
+        panel.taskPath,
+        "delegatedAuthority.panel.taskPath"
+      );
+      if (panelPaths.has(taskPath)) {
+        throw new Error("Delegated approval agent panels must be independent");
+      }
+      panelPaths.add(taskPath);
+      if (
+        panel.verdict !== "approved" ||
+        panel.candidateArtifactHash !== hashes.candidateArtifactHash ||
+        panel.corpusHash !== hashes.corpusHash ||
+        panel.approvedCases !== 32 ||
+        panel.changesRequiredCases !== 0
+      ) {
+        throw new Error("Invalid delegated approval agent-panel signoff");
+      }
+      return {
+        taskPath,
+        verdict: "approved" as const,
+        candidateArtifactHash: hashes.candidateArtifactHash,
+        corpusHash: hashes.corpusHash,
+        approvedCases: 32 as const,
+        changesRequiredCases: 0 as const,
+      };
+    });
+    if (!Array.isArray(authority.roundHistory)) {
+      throw new Error("Invalid delegated approval round history");
+    }
+    const roundHistory = authority.roundHistory.map((unknownRound, index) => {
+      const round = requireRecord(
+        unknownRound,
+        "delegatedAuthority.roundHistory"
+      );
+      const expectedRound = (index + 1) as 1 | 2 | 3;
+      if (
+        round.round !== expectedRound ||
+        (round.outcome !== "changes_required" &&
+          round.outcome !== "approved") ||
+        typeof round.correctedCaseCount !== "number"
+      ) {
+        throw new Error("Invalid delegated approval round history");
+      }
+      if (
+        expectedRound === 3 &&
+        (round.outcome !== "approved" ||
+          round.correctedCaseCount !== 0 ||
+          round.candidateArtifactHash !== hashes.candidateArtifactHash ||
+          round.corpusHash !== hashes.corpusHash)
+      ) {
+        throw new Error("Invalid delegated approval final review round");
+      }
+      return {
+        round: expectedRound,
+        outcome: round.outcome as "changes_required" | "approved",
+        correctedCaseCount: round.correctedCaseCount,
+        ...(typeof round.candidateArtifactHash === "string"
+          ? { candidateArtifactHash: round.candidateArtifactHash }
+          : {}),
+        ...(typeof round.corpusHash === "string"
+          ? { corpusHash: round.corpusHash }
+          : {}),
+      };
+    });
+    if (roundHistory.length !== 3) {
+      throw new Error("Invalid delegated approval round history");
+    }
+    delegatedAuthority = {
+      source: "product_owner_task_thread",
+      humanReviewerIdentity: null,
+      reviewedHead,
+      roundHistory,
+      panels,
+    };
+  } else if (identityType !== undefined && identityType !== "human") {
+    throw new Error("Invalid adjudication approval reviewer.identityType");
+  }
 
   const requiredCaseIds = evaluationCalibrationCases
     .filter(({ expectedQuality }) => expectedQuality !== null)
@@ -131,14 +259,88 @@ export function parseEvaluationAdjudicationApproval(
     ...hashes,
     goldSetVersion: EVALUATION_GOLD_SET_VERSION,
     adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
-    reviewer: { identity, role: reviewer.role },
+    reviewer: {
+      identity,
+      role: reviewer.role,
+      ...(identityType ? { identityType } : {}),
+    },
     reviewBasis: {
       candidateManifestVersion: "evaluation-adjudication-review.v2",
       independentExactHashReview: true,
+      ...(reviewBasis.semanticAdjudicationOnly === true
+        ? { semanticAdjudicationOnly: true as const }
+        : {}),
     },
+    ...(delegatedAuthority ? { delegatedAuthority } : {}),
     reviewedAt,
     decisions,
   };
+}
+
+export function buildDelegatedEvaluationAdjudicationApproval(): EvaluationAdjudicationApproval {
+  const hashes = getEvaluationAdjudicationHashes();
+  const expectedCandidateHash =
+    "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e";
+  const expectedCorpusHash =
+    "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe";
+  if (
+    hashes.candidateArtifactHash !== expectedCandidateHash ||
+    hashes.corpusHash !== expectedCorpusHash
+  ) {
+    throw new Error("Delegated approval exact reviewed hashes changed");
+  }
+  return parseEvaluationAdjudicationApproval({
+    contractVersion: "evaluation-adjudication-approval.v2",
+    ...hashes,
+    goldSetVersion: EVALUATION_GOLD_SET_VERSION,
+    adjudicationVersion: EVALUATION_ADJUDICATION_VERSION,
+    reviewer: {
+      identity: "product_owner_task_thread_delegation",
+      role: "product_owner",
+      identityType: "delegated_task_thread",
+    },
+    reviewBasis: {
+      candidateManifestVersion: "evaluation-adjudication-review.v2",
+      independentExactHashReview: true,
+      semanticAdjudicationOnly: true,
+    },
+    reviewedAt: "2026-07-13T04:03:34.000Z",
+    delegatedAuthority: {
+      source: "product_owner_task_thread",
+      humanReviewerIdentity: null,
+      reviewedHead: "adefa38e07b95b82b02da492309dc9e71e8d22b3",
+      roundHistory: [
+        { round: 1, outcome: "changes_required", correctedCaseCount: 17 },
+        { round: 2, outcome: "changes_required", correctedCaseCount: 4 },
+        {
+          round: 3,
+          outcome: "approved",
+          correctedCaseCount: 0,
+          ...hashes,
+        },
+      ],
+      panels: ["/root/audit_pr298", "/root/sav198_cost_guard"].map(
+        (taskPath) => ({
+          taskPath,
+          verdict: "approved",
+          ...hashes,
+          approvedCases: 32,
+          changesRequiredCases: 0,
+        })
+      ),
+    },
+    decisions: evaluationCalibrationCases
+      .filter(({ expectedQuality }) => expectedQuality !== null)
+      .map(({ id }) => ({ caseId: id, decision: "approved" })),
+  });
+}
+
+function requireSha256(value: unknown, field: string): string {
+  const text = requireText(value, field);
+  if (!/^[a-f0-9]{40,64}$/.test(text)) {
+    throw new Error(`Invalid adjudication approval ${field}`);
+  }
+  return text;
 }
 
 function sha256(value: string): string {

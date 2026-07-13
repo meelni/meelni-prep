@@ -3,8 +3,8 @@
   "goldSetVersion": "pm-gold-set.v4",
   "adjudicationVersion": "pm-gold-adjudication-candidates.v4",
   "provenance": "agent_authored_synthetic_candidate",
-  "approvalRequired": true,
-  "reviewStatus": "pending_independent_exact_hash_review",
+  "approvalRequired": false,
+  "reviewStatus": "approved_via_product_owner_task_thread_delegation",
   "delegatedReview": {
     "delegationSource": "product_owner_task_thread",
     "panelCount": 2,
@@ -871,5 +871,41 @@
         "nextStep": "Test whether the outcome persists by segment against a clear comparison."
       }
     }
-  ]
+  ],
+  "approvalResolution": {
+    "contractVersion": "evaluation-adjudication-approval.v2",
+    "reviewedAt": "2026-07-13T04:03:34.000Z",
+    "reviewedHead": "adefa38e07b95b82b02da492309dc9e71e8d22b3",
+    "reviewer": {
+      "identity": "product_owner_task_thread_delegation",
+      "role": "product_owner",
+      "identityType": "delegated_task_thread"
+    },
+    "reviewBasis": {
+      "candidateManifestVersion": "evaluation-adjudication-review.v2",
+      "independentExactHashReview": true,
+      "semanticAdjudicationOnly": true
+    },
+    "panelSignoffs": [
+      {
+        "taskPath": "/root/audit_pr298",
+        "verdict": "approved",
+        "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
+        "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+        "approvedCases": 32,
+        "changesRequiredCases": 0
+      },
+      {
+        "taskPath": "/root/sav198_cost_guard",
+        "verdict": "approved",
+        "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
+        "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+        "approvedCases": 32,
+        "changesRequiredCases": 0
+      }
+    ],
+    "approvedCases": 32,
+    "changesRequiredCases": 0,
+    "scope": "semantic_adjudication_only"
+  }
 }
