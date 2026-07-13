@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { getLiveKitEnvironment } from "@meelni/integrations";
 
 import {
   createDrizzleTranscriptIngestStore,
@@ -59,11 +60,15 @@ export async function POST(req: NextRequest) {
     return response({ error: "runtime_transcript_request_aborted" }, 400);
   }
   const rawBody = body.rawBody;
+  const liveKitEnvironment = getLiveKitEnvironment(process.env);
+  if (!liveKitEnvironment.ok) {
+    return response({ error: "runtime_transcript_ingest_unavailable" }, 503);
+  }
   const authorization = authorizeRuntimeTranscriptRequest({
     rawBody,
     timestampHeader: req.headers.get("x-meelni-timestamp"),
     signatureHeader: req.headers.get("x-meelni-signature"),
-    livekitApiSecret: process.env.LIVEKIT_API_SECRET,
+    livekitApiSecret: liveKitEnvironment.data.apiSecret,
   });
   if (!authorization.authorized) {
     const configurationFailure =

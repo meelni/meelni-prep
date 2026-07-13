@@ -109,6 +109,8 @@ Create a `.env` file in the agent directory:
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=your_api_key
 LIVEKIT_API_SECRET=your_api_secret
+MEELNI_PRODUCTION_LIVEKIT_URL=wss://your-production-project.livekit.cloud
+VERCEL_ENV=development
 LIVEKIT_INTERVIEW_AGENT_NAME=your_interview_agent_name
 LIVEKIT_DEMO_AGENT_NAME=your_demo_agent_name
 OPENAI_API_KEY=your_openai_key
@@ -157,14 +159,16 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instruction
 
 ## 🔐 Environment Variables
 
-| Variable             | Required | Description                                   |
-| -------------------- | -------- | --------------------------------------------- |
-| `LIVEKIT_URL`        | ✅       | LiveKit WebSocket URL                         |
-| `LIVEKIT_API_KEY`    | ✅       | LiveKit API key                               |
-| `LIVEKIT_API_SECRET` | ✅       | LiveKit API secret                            |
-| `OPENAI_API_KEY`     | ✅       | OpenAI API key                                |
-| `DEEPGRAM_API_KEY`   | ✅       | Deepgram API key (for Nova-3 ASR)             |
-| `CARTESIA_API_KEY`   | ❌       | **Not required** when using LiveKit Inference |
+| Variable                                      | Required | Description                                   |
+| --------------------------------------------- | -------- | --------------------------------------------- |
+| `LIVEKIT_URL`                                 | ✅       | LiveKit WebSocket URL                         |
+| `LIVEKIT_API_KEY`                             | ✅       | LiveKit API key                               |
+| `LIVEKIT_API_SECRET`                          | ✅       | LiveKit API secret                            |
+| `MEELNI_PRODUCTION_LIVEKIT_URL`               | ✅       | Non-secret Production project identity anchor |
+| `VERCEL_ENV` or `MEELNI_ENV_PULL_ENVIRONMENT` | ✅       | Trusted deployment identity                   |
+| `OPENAI_API_KEY`                              | ✅       | OpenAI API key                                |
+| `DEEPGRAM_API_KEY`                            | ✅       | Deepgram API key (for Nova-3 ASR)             |
+| `CARTESIA_API_KEY`                            | ❌       | **Not required** when using LiveKit Inference |
 
 **Note:** If running outside of Conductor, create a `.env` file in the `agent/` directory.
 

@@ -692,6 +692,18 @@ test("Preview rejects the canonical Production LiveKit project", () => {
   );
 });
 
+test("LiveKit pull validation accepts a server-only project URL", () => {
+  assert.doesNotThrow(() =>
+    validateRefreshedEnv(
+      scopedEnv(previewRef, {
+        NEXT_PUBLIC_LIVEKIT_URL: undefined,
+        LIVEKIT_URL: "wss://preview.livekit.cloud",
+      }),
+      "preview"
+    )
+  );
+});
+
 test("unsafe Preview provider pulls keep the prior target byte-for-byte", async (t) => {
   const unsafePulls = [
     {
@@ -736,6 +748,31 @@ test("unsafe Preview provider pulls keep the prior target byte-for-byte", async 
     );
     assert.equal(await readFile(target, "utf8"), previous);
   }
+});
+
+test("a blank pulled Production LiveKit anchor cannot inherit stale Preview identity", async (t) => {
+  const root = await fixtureRoot(t);
+  const target = resolve(root, ".env.local");
+  const previous = scopedEnv(previewRef, {
+    MEELNI_PRODUCTION_LIVEKIT_URL: "wss://stale-production.livekit.cloud",
+  });
+  await writeFile(target, previous);
+
+  await assert.rejects(
+    refreshEnvironment({
+      environment: "preview",
+      logger: { log: () => {} },
+      pull: () =>
+        scopedEnv(previewRef, {
+          MEELNI_PRODUCTION_LIVEKIT_URL: '""',
+          NEXT_PUBLIC_LIVEKIT_URL: "wss://production.livekit.cloud",
+        }),
+      root,
+      target: ".env.local",
+    }),
+    /MEELNI_PRODUCTION_LIVEKIT_URL/
+  );
+  assert.equal(await readFile(target, "utf8"), previous);
 });
 
 test("symlink targets are rejected", async (t) => {
@@ -796,6 +833,7 @@ function scopedEnv(ref, overrides = {}, environment = "preview") {
       VERCEL_ENV: environment,
       ...overrides,
     })
+      .filter(([, value]) => value !== undefined)
       .map(([key, value]) => `${key}=${value}`)
       .join("\n") + "\n"
   );

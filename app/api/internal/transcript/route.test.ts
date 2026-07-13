@@ -44,7 +44,31 @@ const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 describe("POST /api/internal/transcript", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.VERCEL_ENV = "preview";
+    delete process.env.MEELNI_ENV_PULL_ENVIRONMENT;
+    process.env.LIVEKIT_API_KEY = "livekit-key";
     process.env.LIVEKIT_API_SECRET = SECRET;
+    process.env.LIVEKIT_URL = "wss://preview.livekit.cloud";
+    delete process.env.NEXT_PUBLIC_LIVEKIT_URL;
+    process.env.MEELNI_PRODUCTION_LIVEKIT_URL =
+      "wss://production.livekit.cloud";
+  });
+
+  it("rejects an unsafe LiveKit identity before transcript mutation", async () => {
+    process.env.LIVEKIT_URL = "wss://production.livekit.cloud";
+
+    const denied = await POST(
+      request({ sessionId: SESSION_ID, event: { event_id: "event-denied" } })
+    );
+
+    expect(denied.status).toBe(503);
+    await expect(denied.json()).resolves.toEqual({
+      error: "runtime_transcript_ingest_unavailable",
+    });
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+    expect(ingestTranscriptInterruptionMarker).not.toHaveBeenCalled();
+    expect(ingestTranscriptRuntimeSettlement).not.toHaveBeenCalled();
+    expect(ingestInterviewRuntimeEvent).not.toHaveBeenCalled();
   });
 
   it("fails closed when service authentication is unavailable or invalid", async () => {

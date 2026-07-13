@@ -26,26 +26,12 @@ from livekit.plugins.turn_detector.english import EnglishModel
 # Add parent directory to path for shared module imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from shared.provider_environment import validate_livekit_runtime_environment
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def configure_livekit_worker_env() -> None:
-    """Allow local agents to reuse the browser LiveKit URL from root env files."""
-    livekit_url = os.getenv("LIVEKIT_URL")
-    public_livekit_url = os.getenv("NEXT_PUBLIC_LIVEKIT_URL")
-
-    if (
-        (not livekit_url or not livekit_url.strip())
-        and public_livekit_url
-        and public_livekit_url.strip()
-    ):
-        os.environ["LIVEKIT_URL"] = public_livekit_url.strip()
-
-
-configure_livekit_worker_env()
 
 
 def get_required_env(name: str) -> str:
@@ -287,6 +273,7 @@ async def monitor_session_time(ctx: JobContext, demo_agent: DemoAgent, session: 
 
 async def entrypoint(ctx: JobContext):
     """Entrypoint for demo agent"""
+    validate_livekit_runtime_environment(os.environ)
 
     logger.info(f"Demo agent starting for room: {ctx.room.name}")
 
@@ -376,7 +363,9 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"Monitoring task error: {e}", exc_info=True)
 
 
-if __name__ == "__main__":
+def run_worker() -> None:
+    runtime_environment = validate_livekit_runtime_environment(os.environ)
+    os.environ["LIVEKIT_URL"] = runtime_environment.url
     is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
     agent_name = get_required_env("LIVEKIT_DEMO_AGENT_NAME") if is_cloud else None
 
@@ -388,3 +377,7 @@ if __name__ == "__main__":
         options["agent_name"] = agent_name
 
     cli.run_app(WorkerOptions(**options))
+
+
+if __name__ == "__main__":
+    run_worker()

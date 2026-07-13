@@ -47,7 +47,6 @@ export const PRESERVE_WHEN_ENCRYPTED_KEYS = [
   "LIVEKIT_DEMO_AGENT_NAME",
   "LIVEKIT_INTERVIEW_AGENT_NAME",
   "LIVEKIT_URL",
-  "MEELNI_PRODUCTION_LIVEKIT_URL",
   "MEELNI_REACTIVATION_DEFAULT",
   "NEXT_PUBLIC_LIVEKIT_URL",
   "NEXT_PUBLIC_POSTHOG_KEY",
@@ -693,7 +692,7 @@ function validateLiveKitIdentity(env, environment) {
       `Vercel ${environment} LiveKit project identity is invalid. The existing file was kept.`
     );
   }
-  if (serverOrigin && serverOrigin !== publicOrigin) {
+  if (publicOrigin && serverOrigin && serverOrigin !== publicOrigin) {
     throw new Error(
       `Vercel ${environment} LiveKit URLs identify different projects. The existing file was kept.`
     );
