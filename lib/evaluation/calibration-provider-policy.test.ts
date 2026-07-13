@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { evaluationCalibrationCases } from "@meelni/test-fixtures";
+import type { FeedbackV2RejectionCode } from "@meelni/core";
 
 import {
   CALIBRATION_MAX_SDK_RETRIES,
@@ -44,11 +45,13 @@ const TEST_USAGE = {
 function assertProviderFailure(
   run: () => unknown,
   expectedCode: FeedbackProviderInvocationError["code"],
-  forbiddenText?: string
+  forbiddenText?: string,
+  expectedFeedbackRejectionCode?: FeedbackV2RejectionCode
 ): void {
   assert.throws(run, (error) => {
     assert.ok(error instanceof FeedbackProviderInvocationError);
     assert.equal(error.code, expectedCode);
+    assert.equal(error.feedbackRejectionCode, expectedFeedbackRejectionCode);
     if (forbiddenText) {
       assert.equal(String(error).includes(forbiddenText), false);
       assert.equal(JSON.stringify(error).includes(forbiddenText), false);
@@ -109,7 +112,87 @@ test("provider completion parsing preserves only closed failure categories", () 
         "full"
       ),
     "evaluation_provider_returned_invalid_feedback",
-    "must-not-leak"
+    "must-not-leak",
+    "response_unknown_field"
+  );
+});
+
+test("invalid feedback preserves accounting identity but not parser details or model content", () => {
+  const secret = "provider-evidence-must-not-be-retained";
+  assert.throws(
+    () =>
+      parseFeedbackProviderCompletion(
+        {
+          model: CALIBRATION_PRICING_CONTRACT.model,
+          service_tier: "default",
+          usage: TEST_USAGE,
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  schemaVersion: "feedback.v2",
+                  promptVersion: "feedback.prompt.v2",
+                  rubricVersion: "pm-feedback-rubric.v2",
+                  evaluationState: "full",
+                  scores: {
+                    structure: 8,
+                    clarity: 7,
+                    insight: 7,
+                    communication: 8,
+                    leadership: 7,
+                  },
+                  strengths: [
+                    {
+                      dimension: "structure",
+                      observation: secret,
+                      transcriptRefs: ["user-1"],
+                      evidence: [{ turnRef: "user-1", quote: secret }],
+                      nextStep: secret,
+                      rubricVersion: "pm-feedback-rubric.v2",
+                      confidence: 0.9,
+                    },
+                  ],
+                  improvements: [
+                    {
+                      dimension: "insight",
+                      observation: secret,
+                      transcriptRefs: ["user-1"],
+                      evidence: [
+                        { turnRef: "user-1", quote: "priority caregiver" },
+                      ],
+                      nextStep: secret,
+                      rubricVersion: "pm-feedback-rubric.v2",
+                      confidence: 0.8,
+                    },
+                  ],
+                  drills: [secret],
+                  summary: secret,
+                }),
+              },
+            },
+          ],
+        },
+        TEST_TRANSCRIPT,
+        "full"
+      ),
+    (error) => {
+      assert.ok(error instanceof FeedbackProviderInvocationError);
+      assert.equal(error.code, "evaluation_provider_returned_invalid_feedback");
+      assert.equal(error.feedbackRejectionCode, "evidence_quote_not_grounded");
+      assert.deepEqual(error.usage, {
+        inputTokens: 100,
+        cachedInputTokens: 0,
+        outputTokens: 100,
+        totalTokens: 200,
+      });
+      assert.equal(error.observedModel, CALIBRATION_PRICING_CONTRACT.model);
+      assert.equal(error.observedServiceTier, "default");
+      assert.equal(error.cause, undefined);
+      assert.equal(String(error).includes(secret), false);
+      assert.equal(JSON.stringify(error).includes(secret), false);
+      return true;
+    }
   );
 });
 

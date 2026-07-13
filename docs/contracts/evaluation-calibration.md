@@ -95,6 +95,20 @@ Reports contain aggregate metrics, case IDs, version identifiers, and failure
 codes only. They never contain prompts, transcript text, provider response
 content, API keys, or provider error bodies.
 
+An `evaluation_provider_returned_invalid_feedback` failure additionally carries
+`feedbackRejectionCode`, a member of the closed
+`feedback-v2-rejection.v1` taxonomy. This field identifies the rejected parser
+invariant without retaining the parser error, object path, unknown key,
+evidence text, or provider response. Missing, forged, mutable, or unrecognized
+values normalize to `parser_internal_failure`.
+
+The provider adapter authenticates this diagnostic with a module-private
+error-to-code association and exposes it through a non-configurable accessor.
+Constructing or mutating an exported provider error cannot mint an allowlisted
+parser classification. The report boundary queries the private association
+directly rather than trusting public property access, so a proxy cannot mint a
+classification either.
+
 Live provider adapters may preserve only these closed, sanitized response
 failure categories in `failures[].code`:
 
@@ -117,7 +131,9 @@ failures retain the uncertain reservation and use the fail-closed
 `missing_provider_usage` spend stop. At the report boundary, any unknown,
 forged, mutable, provider-supplied, or otherwise unrecognized error value maps
 to `evaluation_failed`. Raw messages, causes, response content, and parser
-details never enter the report.
+details other than the closed rejection code never enter the report. The
+rejection code does not change usage reconciliation, observed model/service-tier
+identity, or the fail-closed stop.
 
 The OpenAI adapter requests `feedback-provider-response-format.v1` through
 strict JSON Schema structured output. Every object is closed and requires all
@@ -167,6 +183,18 @@ separately from basic evidence validity so a provider cannot pass merely by
 citing some valid but irrelevant transcript text. Per-dimension floors prevent
 a scorer from sacrificing one entire rubric dimension while passing the pooled
 80% boundary. Round and completion-state floors expose localized regressions.
+
+Anchor agreement requires the same finding kind, rubric dimension, and user
+turn reference. The returned exact transcript quote must contain the complete
+approved anchor, so quoting the surrounding source sentence does not create a
+false mismatch. A different grounded phrase, a shorter fragment that omits any
+part of the anchor, another kind, another dimension, or another turn does not
+match. This is deliberately a canonical regression gate, not proof that the
+approved pair exhausts every semantically legitimate finding. The provider-free
+SAV-250 audit in `docs/evidence/sav-250-adjudicated-evidence-anchor-audit.md`
+found defensible alternative feedback in all 32 transcripts. Arbitrary
+alternatives remain review-required rather than being accepted as “any grounded
+quote.”
 
 Every out-of-band score records case, run, dimension, actual score, and expected
 band. Every unstable dimension records case, run, dimension, actual score, and

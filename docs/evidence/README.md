@@ -35,6 +35,13 @@ reconciled spend was $0.026752, unresolved reservation was zero, the cap was
 not breached, and both live-provider and launch acceptance failed. The v2
 authority is consumed and must not be retried.
 
+`sav-250-adjudicated-evidence-anchor-audit.md` records the provider-free review
+of all 32 scored cases and 64 canonical anchors. It finds every canonical pair
+plausible but non-exhaustive, fixes only whole-anchor quote-span brittleness,
+and preserves fail-closed treatment for arbitrary alternative evidence. It
+does not reinterpret the discarded SAV-248 response, alter historical reports,
+authorize spend, or grant launch acceptance.
+
 `sav-198-paid-run-authorization.json` and
 `sav-198-rebased-plan-acceptance.json` record the product owner's prior,
 conservative acceptance of the exact rebased plan within that existing

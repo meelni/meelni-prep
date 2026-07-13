@@ -1,9 +1,11 @@
 import OpenAI from "openai";
 import {
+  FeedbackV2ParseError,
   parseFeedbackV2,
   prepareFeedbackTranscript,
   type FeedbackEvaluationState,
   type FeedbackTranscriptTurn,
+  type FeedbackV2RejectionCode,
   type FeedbackV2Result,
 } from "@meelni/core";
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
@@ -47,7 +49,14 @@ export const FEEDBACK_PROVIDER_FAILURE_CODES = [
 export type FeedbackProviderFailureCode =
   (typeof FEEDBACK_PROVIDER_FAILURE_CODES)[number];
 
+const feedbackRejectionCodesByError = new WeakMap<
+  FeedbackProviderInvocationError,
+  FeedbackV2RejectionCode
+>();
+
 export class FeedbackProviderInvocationError extends Error {
+  declare readonly feedbackRejectionCode: FeedbackV2RejectionCode | undefined;
+
   constructor(
     readonly code: FeedbackProviderFailureCode,
     readonly usage?: FeedbackProviderUsage,
@@ -57,7 +66,34 @@ export class FeedbackProviderInvocationError extends Error {
   ) {
     super(code, options);
     this.name = "FeedbackProviderInvocationError";
+    Object.defineProperty(this, "feedbackRejectionCode", {
+      configurable: false,
+      enumerable: false,
+      get: () => feedbackRejectionCodesByError.get(this),
+    });
   }
+}
+
+export function getAuthenticatedFeedbackRejectionCode(
+  error: FeedbackProviderInvocationError
+): FeedbackV2RejectionCode | undefined {
+  return feedbackRejectionCodesByError.get(error);
+}
+
+function createInvalidFeedbackProviderError(
+  usage: FeedbackProviderUsage,
+  observedModel: string,
+  observedServiceTier: string | null,
+  feedbackRejectionCode: FeedbackV2RejectionCode
+): FeedbackProviderInvocationError {
+  const error = new FeedbackProviderInvocationError(
+    "evaluation_provider_returned_invalid_feedback",
+    usage,
+    observedModel,
+    observedServiceTier
+  );
+  feedbackRejectionCodesByError.set(error, feedbackRejectionCode);
+  return error;
 }
 
 export interface FeedbackProviderCompletion {
@@ -243,29 +279,31 @@ export function parseFeedbackProviderCompletion(
     );
   }
 
+  let evaluation: FeedbackV2Result;
   try {
-    const evaluation = parseFeedbackV2(unknownResponse, {
+    evaluation = parseFeedbackV2(unknownResponse, {
       transcript,
       evaluationState,
       modelVersion: completion.model,
     });
-    return {
-      evaluation: {
-        ...evaluation,
-        drills: normalizePracticeRecommendations(evaluation.drills),
-      },
-      usage,
-      observedServiceTier,
-    };
   } catch (error) {
-    throw new FeedbackProviderInvocationError(
-      "evaluation_provider_returned_invalid_feedback",
+    throw createInvalidFeedbackProviderError(
       usage,
       completion.model,
       observedServiceTier,
-      { cause: error }
+      error instanceof FeedbackV2ParseError
+        ? error.code
+        : "parser_internal_failure"
     );
   }
+  return {
+    evaluation: {
+      ...evaluation,
+      drills: normalizePracticeRecommendations(evaluation.drills),
+    },
+    usage,
+    observedServiceTier,
+  };
 }
 
 function parseProviderUsage(

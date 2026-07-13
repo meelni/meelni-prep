@@ -2,10 +2,12 @@ import {
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
+  isFeedbackV2RejectionCode,
   parseFeedbackV2,
   prepareFeedbackTranscript,
   type FeedbackDimension,
   type FeedbackEvaluationState,
+  type FeedbackV2RejectionCode,
   type FeedbackV2Result,
   type FeedbackV2Scores,
 } from "@meelni/core";
@@ -42,7 +44,10 @@ import {
   type CalibrationCostReport,
   type CalibrationProviderUsage,
 } from "./calibration-budget";
-import { FeedbackProviderInvocationError } from "./scorer";
+import {
+  FeedbackProviderInvocationError,
+  getAuthenticatedFeedbackRejectionCode,
+} from "./scorer";
 
 export type CalibrationExecutionKind =
   | "preflight"
@@ -87,6 +92,7 @@ export interface CalibrationFailure {
   observedScoreRange?: number;
   observedModelVersion?: string;
   expectedModelVersion?: string;
+  feedbackRejectionCode?: FeedbackV2RejectionCode;
 }
 
 export interface EvaluationCalibrationReport {
@@ -435,10 +441,7 @@ export async function runEvaluationCalibration(
           failures.push({
             caseId: fixture.id,
             runIndex,
-            code: getSanitizedEvaluationFailureCode(
-              error,
-              options.executionKind
-            ),
+            ...getSanitizedEvaluationFailure(error, options.executionKind),
           });
         }
         if (
@@ -1034,7 +1037,7 @@ function matchesAdjudicatedEvidence(
         item.evidence.some(
           (evidence) =>
             evidence.turnRef === anchor.turnRef &&
-            evidence.quote === anchor.quote
+            evidence.quote.includes(anchor.quote)
         )
     )
   );
@@ -1103,15 +1106,15 @@ function getObservedServiceTierFromError(
   return value === null || typeof value === "string" ? value : undefined;
 }
 
-function getSanitizedEvaluationFailureCode(
+function getSanitizedEvaluationFailure(
   error: unknown,
   executionKind: CalibrationExecutionKind
-): string {
+): Pick<CalibrationFailure, "code" | "feedbackRejectionCode"> {
   if (
     executionKind !== "live_provider" ||
     !(error instanceof FeedbackProviderInvocationError)
   ) {
-    return "evaluation_failed";
+    return { code: "evaluation_failed" };
   }
   const code: string = error.code;
   switch (code) {
@@ -1121,11 +1124,20 @@ function getSanitizedEvaluationFailureCode(
     case "evaluation_provider_unexpected_finish":
     case "evaluation_provider_returned_no_content":
     case "evaluation_provider_returned_invalid_json":
-    case "evaluation_provider_returned_invalid_feedback":
     case "evaluation_provider_usage_missing":
     case "evaluation_provider_invocation_failed":
-      return code;
+      return { code };
+    case "evaluation_provider_returned_invalid_feedback": {
+      const feedbackRejectionCode: unknown =
+        getAuthenticatedFeedbackRejectionCode(error);
+      return {
+        code,
+        feedbackRejectionCode: isFeedbackV2RejectionCode(feedbackRejectionCode)
+          ? feedbackRejectionCode
+          : "parser_internal_failure",
+      };
+    }
     default:
-      return "evaluation_failed";
+      return { code: "evaluation_failed" };
   }
 }
