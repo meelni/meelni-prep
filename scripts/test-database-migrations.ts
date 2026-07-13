@@ -158,6 +158,23 @@ async function run() {
 
   try {
     await installSupabaseTestSurface(clean);
+    runPreflight(cleanUrl, true, "ready_for_clean_bootstrap");
+    await clean`CREATE TABLE public.bootstrap_partial_probe (id integer)`;
+    runBlockedBootstrapPreflight(cleanUrl);
+    await clean`DROP TABLE public.bootstrap_partial_probe`;
+    await clean`
+      CREATE FUNCTION public.bootstrap_unexpected_probe()
+      RETURNS integer LANGUAGE sql IMMUTABLE AS 'SELECT 1'
+    `;
+    runBlockedBootstrapPreflight(cleanUrl);
+    await clean`DROP FUNCTION public.bootstrap_unexpected_probe()`;
+    runPreflight(cleanUrl, true, "ready_for_clean_bootstrap");
+    const pristineStrictPreflight = runStrictPreflight(cleanUrl);
+    assert.equal(pristineStrictPreflight.status, 1);
+    assert.match(
+      pristineStrictPreflight.stderr,
+      /Clean database bootstrap is not launch ready/
+    );
     const cleanInitialFolder = await createInitialMigrationFolder();
     try {
       await migrate(drizzle(clean), { migrationsFolder: cleanInitialFolder });
@@ -1065,6 +1082,16 @@ function runPreflight(
     assert.match(result.stderr, /accepted pre-migration schema contract/);
     return null;
   }
+}
+
+function runBlockedBootstrapPreflight(databaseUrl: string) {
+  const result = spawnSync("npm", ["run", "db:preflight"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: { ...process.env, DATABASE_URL: databaseUrl },
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /public application schema is not empty/);
 }
 
 function runStrictPreflight(databaseUrl: string) {
