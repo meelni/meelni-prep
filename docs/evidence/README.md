@@ -31,6 +31,13 @@ SAV-198 includes a calibration preflight and deterministic harness report. Both
 are local evidence only and deliberately keep live-provider launch acceptance
 pending.
 
+`sav-198-evaluation-calibration-live.json` records the single authorized live
+attempt. The protected ledger activated once, the first synthetic case stopped
+on a sanitized provider/evaluation failure, and the run reconciled one physical
+attempt at $0.015545 with no cap breach. The report is a launch NO-GO: unused
+calls are not reusable, and another paid attempt requires a separately reviewed
+fix and new explicit authorization.
+
 Its adjudication review manifest contains agent-authored synthetic candidates.
 The separate `sav-198-adjudication-approval.json` records the product owner's
 explicit task-thread delegation, the exact reviewed head and candidate/corpus
