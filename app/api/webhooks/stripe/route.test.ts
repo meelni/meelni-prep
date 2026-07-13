@@ -8,6 +8,11 @@ const state = vi.hoisted(() => ({
   subscriptionWrites: [] as Array<Record<string, unknown>>,
   mappingWrites: [] as Array<Record<string, unknown>>,
   grantCalls: [] as Array<Record<string, unknown>>,
+  invoiceLineListCalls: [] as Array<{
+    invoiceId: string;
+    params: Record<string, unknown>;
+  }>,
+  invoiceLinePages: [] as Array<Record<string, unknown>>,
   transactionUpdateResults: [] as boolean[],
   selectResponses: [] as Array<Array<Record<string, unknown>>>,
   lastSelectResponse: [] as Array<Record<string, unknown>>,
@@ -36,6 +41,16 @@ vi.mock("stripe", () => ({
     };
     invoicePayments = {
       list: vi.fn(async () => ({ data: [] })),
+    };
+    invoices = {
+      listLineItems: vi.fn(
+        async (invoiceId: string, params: Record<string, unknown>) => {
+          state.invoiceLineListCalls.push({ invoiceId, params });
+          const page = state.invoiceLinePages.shift();
+          if (!page) throw new Error("missing invoice line page fixture");
+          return page;
+        }
+      ),
     };
   },
 }));
@@ -258,6 +273,8 @@ describe("POST /api/webhooks/stripe", () => {
     state.subscriptionWrites.length = 0;
     state.mappingWrites.length = 0;
     state.grantCalls.length = 0;
+    state.invoiceLineListCalls.length = 0;
+    state.invoiceLinePages.length = 0;
     state.transactionUpdateResults.length = 0;
     state.selectResponses.length = 0;
     state.lastSelectResponse = [];
@@ -511,6 +528,263 @@ describe("POST /api/webhooks/stripe", () => {
       ).toHaveLength(1);
     }
   );
+
+  it("grants subscription credits from the modern line service period when the top-level invoice period is zero-length", async () => {
+    const periodStart = 1_783_932_163;
+    const periodEnd = 1_786_610_563;
+    const succeeded = succeededInvoiceEvent(
+      "evt_invoice_modern_period",
+      periodStart
+    );
+    succeeded.data.object.period_end = periodStart;
+    (succeeded.data.object.lines.data as Array<Record<string, unknown>>)[0] = {
+      parent: {
+        type: "subscription_item_details",
+        subscription_item_details: {
+          proration: false,
+          subscription: "sub_route_test",
+          subscription_item: "si_route_test",
+        },
+      },
+      period: { start: periodStart, end: periodEnd },
+      pricing: { price_details: { price: "price_starter_route" } },
+      subscription: "sub_route_test",
+    };
+    const persistedPayment = {
+      userId: "invoice_user",
+      stripePaymentIntentId: "pi_invoice",
+      stripeInvoiceId: "in_failed",
+      stripeChargeId: "ch_invoice",
+      creditGrantId: "grant_renewal_route",
+      catalogId: "starter",
+      amountInCents: 900,
+      currency: "usd",
+      status: "succeeded",
+    };
+    state.selectResponses.push(
+      [],
+      [
+        subscriptionRow({
+          userId: "invoice_user",
+          stripeSubscriptionId: "sub_route_test",
+          currentPeriodStart: new Date(periodStart * 1000),
+          currentPeriodEnd: new Date(periodEnd * 1000),
+          lastEventTimestamp: new Date((periodStart - 1) * 1000),
+        }),
+      ],
+      [persistedPayment]
+    );
+
+    expect((await POST(request(succeeded))).status).toBe(200);
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({
+        creditGrantId: "grant_renewal_route",
+        periodStart: new Date(periodStart * 1000),
+        periodEnd: new Date(periodEnd * 1000),
+      })
+    );
+    expect(state.subscriptionWrites).toContainEqual(
+      expect.objectContaining({
+        currentPeriodStart: new Date(periodStart * 1000),
+        currentPeriodEnd: new Date(periodEnd * 1000),
+      })
+    );
+  });
+
+  it("acknowledges a paid subscription-update proration without granting credits or moving entitlement state", async () => {
+    const periodStart = 1_783_932_163;
+    const succeeded = succeededInvoiceEvent(
+      "evt_invoice_subscription_update",
+      periodStart
+    );
+    succeeded.data.object.billing_reason = "subscription_update";
+    (succeeded.data.object.lines.data as Array<Record<string, unknown>>)[0] = {
+      parent: {
+        type: "subscription_item_details",
+        subscription_item_details: {
+          proration: true,
+          subscription: "sub_route_test",
+        },
+      },
+      period: { start: periodStart, end: periodStart },
+      pricing: { price_details: { price: "price_starter_route" } },
+      subscription: "sub_route_test",
+    };
+    const persistedPayment = {
+      userId: "invoice_user",
+      stripePaymentIntentId: "pi_invoice",
+      stripeInvoiceId: "in_failed",
+      stripeChargeId: "ch_invoice",
+      creditGrantId: null,
+      catalogId: "starter",
+      amountInCents: 900,
+      currency: "usd",
+      status: "succeeded",
+    };
+    state.selectResponses.push(
+      [],
+      [invoiceSubscriptionRow(periodStart)],
+      [persistedPayment]
+    );
+
+    const response = await POST(request(succeeded));
+
+    expect(response.status).toBe(200);
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({
+        creditGrantId: null,
+        catalogId: "starter",
+        status: "succeeded",
+      })
+    );
+    expect(state.subscriptionWrites).toHaveLength(0);
+  });
+
+  it("grants a legacy pre-Basil subscription-cycle replay without weakening subscription binding", async () => {
+    const periodStart = 1_783_932_163;
+    const periodEnd = periodStart + 2_592_000;
+    const succeeded = succeededInvoiceEvent(
+      "evt_invoice_legacy_period",
+      periodStart
+    );
+    delete (succeeded.data.object as Record<string, unknown>).parent;
+    (succeeded.data.object as Record<string, unknown>).subscription =
+      "sub_route_test";
+    (succeeded.data.object.lines.data as Array<Record<string, unknown>>)[0] = {
+      id: "il_legacy_route",
+      price: { id: "price_starter_route" },
+      proration: false,
+      period: { start: periodStart, end: periodEnd },
+      subscription: "sub_route_test",
+    };
+    const persistedPayment = {
+      userId: "invoice_user",
+      stripePaymentIntentId: "pi_invoice",
+      stripeInvoiceId: "in_failed",
+      stripeChargeId: "ch_invoice",
+      creditGrantId: "grant_renewal_route",
+      catalogId: "starter",
+      amountInCents: 900,
+      currency: "usd",
+      status: "succeeded",
+    };
+    state.selectResponses.push(
+      [],
+      [invoiceSubscriptionRow(periodStart)],
+      [persistedPayment]
+    );
+
+    expect((await POST(request(succeeded))).status).toBe(200);
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({ creditGrantId: "grant_renewal_route" })
+    );
+  });
+
+  it("fails a renewal invoice when paid service-period evidence is invalid", async () => {
+    const periodStart = 1_783_932_163;
+    const succeeded = succeededInvoiceEvent(
+      "evt_invoice_invalid_renewal_period",
+      periodStart
+    );
+    succeeded.data.object.period_end = periodStart;
+    (succeeded.data.object.lines.data as Array<Record<string, unknown>>)[0] = {
+      parent: {
+        type: "subscription_item_details",
+        subscription_item_details: {
+          proration: false,
+          subscription: "sub_route_test",
+        },
+      },
+      period: { start: periodStart, end: periodStart },
+      pricing: { price_details: { price: "price_starter_route" } },
+      subscription: "sub_route_test",
+    };
+    state.selectResponses.push([]);
+
+    expect((await POST(request(succeeded))).status).toBe(500);
+    expect(state.payments).toHaveLength(0);
+    expect(state.grantCalls).toHaveLength(0);
+    expect(state.logs[0]).toMatchObject({ status: "failed" });
+  });
+
+  it("retrieves all invoice line pages before granting subscription credits", async () => {
+    const periodStart = 1_783_932_163;
+    const periodEnd = periodStart + 2_592_000;
+    const succeeded = succeededInvoiceEvent(
+      "evt_invoice_paginated_lines",
+      periodStart
+    );
+    (succeeded.data.object as Record<string, unknown>).lines = {
+      data: [{ id: "il_embedded_partial" }],
+      has_more: true,
+    };
+    state.invoiceLinePages.push(
+      {
+        data: [
+          {
+            id: "il_proration_route",
+            parent: {
+              type: "subscription_item_details",
+              subscription_item_details: {
+                proration: true,
+                subscription: "sub_route_test",
+              },
+            },
+            period: { start: periodStart, end: periodEnd },
+            pricing: { price_details: { price: "price_starter_route" } },
+            subscription: "sub_route_test",
+          },
+        ],
+        has_more: true,
+      },
+      {
+        data: [
+          {
+            id: "il_renewal_route",
+            parent: {
+              type: "subscription_item_details",
+              subscription_item_details: {
+                proration: false,
+                subscription: "sub_route_test",
+              },
+            },
+            period: { start: periodStart, end: periodEnd },
+            pricing: { price_details: { price: "price_starter_route" } },
+            subscription: "sub_route_test",
+          },
+        ],
+        has_more: false,
+      }
+    );
+    const persistedPayment = {
+      userId: "invoice_user",
+      stripePaymentIntentId: "pi_invoice",
+      stripeInvoiceId: "in_failed",
+      stripeChargeId: "ch_invoice",
+      creditGrantId: "grant_renewal_route",
+      catalogId: "starter",
+      amountInCents: 900,
+      currency: "usd",
+      status: "succeeded",
+    };
+    state.selectResponses.push(
+      [],
+      [invoiceSubscriptionRow(periodStart)],
+      [persistedPayment]
+    );
+
+    expect((await POST(request(succeeded))).status).toBe(200);
+    expect(state.invoiceLineListCalls).toEqual([
+      { invoiceId: "in_failed", params: { limit: 100 } },
+      {
+        invoiceId: "in_failed",
+        params: { limit: 100, starting_after: "il_proration_route" },
+      },
+    ]);
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({ creditGrantId: "grant_renewal_route" })
+    );
+  });
 
   it("rejects a declared oversized body before signature verification", async () => {
     const response = await POST(
