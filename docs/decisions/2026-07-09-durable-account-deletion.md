@@ -49,11 +49,15 @@ report success while the authentication account remained active.
   captured customer resources, and does not create payment, invoice,
   customer-balance, or card refunds. Historical financial records remain subject
   to Stripe and legal retention. An exceptional refund is a separate manual
-  support decision, never a deletion-workflow side effect. Execution for an
-  existing account is paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
-  provides verified payment-to-credit-ledger reconciliation; current
-  `charge.refunded` handling changes payment history only and disputes are not
-  supported.
+  support decision, never a deletion-workflow side effect. The inherited
+  [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+  billing-truth work reconciles refund, refund-failure, and dispute lifecycle
+  events with exact payment-funded credit allocations, but does not authorize
+  refund creation. Exceptional-refund execution remains paused pending a
+  human-owned support procedure, isolated Stripe test-mode rehearsal and
+  approval evidence, verified idempotency and exact payment/credit allocation,
+  and separate live-mode authorization. Deletion never creates an automatic
+  refund, proration, customer-balance credit, or make-good.
 - Once irreversible deletion intent is durably persisted, product access ends
   immediately. Existing and newly presented sessions are denied by the durable
   tombstone; local identity and entitlement data are then removed. Captured
