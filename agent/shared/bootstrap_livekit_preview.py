@@ -137,65 +137,67 @@ def bootstrap_preview_agent(
     )
     executable = _resolve_lk_executable(lk_executable, source)
 
-    with _exclusive_bootstrap_lock(resolved_agent_root):
-        with _handled_bootstrap_termination():
-            initial_child_environment = _sanitized_child_environment(
-                source, _test_child_environment
-            )
-            _verify_lk_version(
-                executable, resolved_agent_root, initial_child_environment
-            )
-            verified_project = _verify_preview_project(
-                executable,
-                resolved_agent_root,
-                preview_origin,
-                production_origin,
-                initial_child_environment,
-            )
-            _assert_output_absent(config_path)
-            _assert_file_unchanged(secrets_path, secrets_identity)
-
-            with _private_bootstrap_workspace(config_path.parent) as workspace:
-                frozen_home = workspace / "home"
-                frozen_registry = frozen_home / ".livekit" / "cli-config.yaml"
-                frozen_secrets = workspace / "agent.env"
-                generated_config = workspace / "livekit.toml"
-                frozen_home.mkdir(mode=0o700)
-                frozen_registry.parent.mkdir(mode=0o700)
-                _write_private_new(
-                    frozen_registry, _project_registry_snapshot(verified_project)
+    with _external_destination_lock(config_path):
+        _assert_output_absent(config_path)
+        with _exclusive_bootstrap_lock(resolved_agent_root):
+            with _handled_bootstrap_termination():
+                initial_child_environment = _sanitized_child_environment(
+                    source, _test_child_environment
                 )
-                _write_private_new(frozen_secrets, secrets_text.encode("utf-8"))
-
-                bound_child_environment = dict(initial_child_environment)
-                bound_child_environment["HOME"] = str(frozen_home)
-                bound_child_environment.pop("XDG_CONFIG_HOME", None)
-                snapshot_project = _verify_preview_project(
+                _verify_lk_version(
+                    executable, resolved_agent_root, initial_child_environment
+                )
+                verified_project = _verify_preview_project(
                     executable,
                     resolved_agent_root,
                     preview_origin,
                     production_origin,
-                    bound_child_environment,
+                    initial_child_environment,
                 )
-                if snapshot_project != verified_project:
-                    raise PreviewBootstrapError(
-                        "livekit_preview_project_snapshot_mismatch"
-                    )
-
                 _assert_output_absent(config_path)
-                with _selected_dockerfile(kind, resolved_agent_root):
-                    _create_agent(
+                _assert_file_unchanged(secrets_path, secrets_identity)
+
+                with _private_bootstrap_workspace(config_path.parent) as workspace:
+                    frozen_home = workspace / "home"
+                    frozen_registry = frozen_home / ".livekit" / "cli-config.yaml"
+                    frozen_secrets = workspace / "agent.env"
+                    generated_config = workspace / "livekit.toml"
+                    frozen_home.mkdir(mode=0o700)
+                    frozen_registry.parent.mkdir(mode=0o700)
+                    _write_private_new(
+                        frozen_registry, _project_registry_snapshot(verified_project)
+                    )
+                    _write_private_new(frozen_secrets, secrets_text.encode("utf-8"))
+
+                    bound_child_environment = dict(initial_child_environment)
+                    bound_child_environment["HOME"] = str(frozen_home)
+                    bound_child_environment.pop("XDG_CONFIG_HOME", None)
+                    snapshot_project = _verify_preview_project(
                         executable,
                         resolved_agent_root,
-                        generated_config,
-                        frozen_secrets,
+                        preview_origin,
+                        production_origin,
                         bound_child_environment,
                     )
+                    if snapshot_project != verified_project:
+                        raise PreviewBootstrapError(
+                            "livekit_preview_project_snapshot_mismatch"
+                        )
 
-                agent_id, config_bytes = _validate_generated_config(
-                    generated_config, preview_origin
-                )
-                _install_generated_config(config_bytes, config_path, workspace)
+                    _assert_output_absent(config_path)
+                    with _selected_dockerfile(kind, resolved_agent_root):
+                        _create_agent(
+                            executable,
+                            resolved_agent_root,
+                            generated_config,
+                            frozen_secrets,
+                            bound_child_environment,
+                        )
+
+                    agent_id, config_bytes = _validate_generated_config(
+                        generated_config, preview_origin
+                    )
+                    _install_generated_config(config_bytes, config_path, workspace)
 
     return PreviewBootstrapResult(
         kind=kind,
@@ -215,9 +217,7 @@ def _required_canonical_anchor(source: Mapping[str, str], name: str) -> str:
 def _required_external_output_path(
     value: Optional[str], repo_root: Path, env_name: str
 ) -> Path:
-    path = _canonical_operator_path(value, repo_root, env_name)
-    _assert_output_absent(path)
-    return path
+    return _canonical_operator_path(value, repo_root, env_name)
 
 
 def _canonical_operator_path(
@@ -652,6 +652,51 @@ def _livekit_subdomain(origin: str) -> str:
     if not hostname.endswith(suffix):
         raise PreviewBootstrapError("livekit_preview_anchor_invalid")
     return hostname[: -len(suffix)]
+
+
+@contextmanager
+def _external_destination_lock(config_path: Path) -> Iterator[None]:
+    lock_digest = hashlib.sha256(os.fsencode(config_path)).hexdigest()
+    lock_path = config_path.parent / f".meelni-livekit-bootstrap-{lock_digest}.lock"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(lock_path, flags, 0o600)
+    except FileExistsError as error:
+        raise PreviewBootstrapError(
+            "livekit_preview_destination_locked"
+        ) from error
+    except OSError as error:
+        raise PreviewBootstrapError(
+            "livekit_preview_destination_lock_failed"
+        ) from error
+    try:
+        os.fchmod(descriptor, 0o600)
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o600:
+            raise PreviewBootstrapError(
+                "livekit_preview_destination_lock_failed"
+            )
+        identity = _file_identity(metadata, b"")
+    except (OSError, PreviewBootstrapError) as error:
+        try:
+            lock_path.unlink()
+        except OSError:
+            pass
+        if isinstance(error, PreviewBootstrapError):
+            raise
+        raise PreviewBootstrapError(
+            "livekit_preview_destination_lock_failed"
+        ) from error
+    finally:
+        os.close(descriptor)
+    try:
+        yield
+    finally:
+        try:
+            if _file_identity(os.lstat(lock_path), b"") == identity:
+                lock_path.unlink()
+        except OSError:
+            pass
 
 
 @contextmanager

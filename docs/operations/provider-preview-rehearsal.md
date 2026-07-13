@@ -116,6 +116,14 @@ pre-existing file or symlink causes a no-clobber denial. Record the printed ID i
 `MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID`; later versions must use the
 ordinary guarded deploy scripts.
 
+The bootstrap acquires a deterministic mode-`0600`
+`.meelni-livekit-bootstrap-*.lock` in the canonical config parent before its
+first absence check and holds it through config publication. This reservation
+is shared across repository worktrees, so two processes targeting one config
+cannot both mutate LiveKit. The repository-local lock separately protects the
+demo Dockerfile within one worktree. Remove either stale lock only after proving
+no matching bootstrap process is running.
+
 If create returns failure or post-create validation fails, do not retry
 blindly: inspect `lk agent list --project meelni-preview` and the dashboard for
 a partially created agent. Delete only the positively identified Preview
