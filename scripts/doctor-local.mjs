@@ -8,13 +8,17 @@ import {
   requiredEnvAlternativesStatus,
   requiredEnvStatus,
 } from "./local-env.mjs";
+import { validateNodeRuntime } from "./node-runtime.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const results = [];
 const packageJson = readJson("package.json");
 const conductorJson = readJson("conductor.json", { optional: true });
 
-check("Node", () => pass(`Node ${process.version} is available.`));
+check("Node", () => {
+  const runtime = validateNodeRuntime();
+  return runtime.ok ? pass(runtime.message) : fail(runtime.message);
+});
 
 check("npm", () => {
   const version = execFileSync("npm", ["--version"], {

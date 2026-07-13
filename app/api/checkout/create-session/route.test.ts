@@ -15,6 +15,9 @@ const dbMocks = vi.hoisted(() => ({
   insertValues: vi.fn(),
   tryLock: vi.fn(),
 }));
+const gateMocks = vi.hoisted(() => ({
+  resolveReactivationAccess: vi.fn(),
+}));
 
 vi.mock("stripe", () => ({
   default: class StripeMock {
@@ -63,6 +66,9 @@ vi.mock("@/lib/billing/subscription-state", async (importOriginal) => {
 vi.mock("@/lib/db/account-deletions", () => ({
   hasAccountDeletionTombstone: vi.fn(),
 }));
+vi.mock("@/lib/feature-flags/reactivation-access", () => ({
+  resolveReactivationAccess: gateMocks.resolveReactivationAccess,
+}));
 
 import { createClient } from "@/lib/supabase/server";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
@@ -73,6 +79,10 @@ describe("POST /api/checkout/create-session deletion guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stripeMocks.constructions = 0;
+    gateMocks.resolveReactivationAccess.mockResolvedValue({
+      source: "statsig",
+      value: true,
+    });
     setPreviewStripeEnvironment();
     process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
     vi.mocked(createClient).mockResolvedValue({
@@ -101,6 +111,66 @@ describe("POST /api/checkout/create-session deletion guard", () => {
     dbMocks.transactionRows.length = 0;
     dbMocks.insertValues.mockResolvedValue(undefined);
     dbMocks.tryLock.mockResolvedValue(undefined);
+  });
+
+  it("returns 403 before database or Stripe work when relaunch is disabled", async () => {
+    gateMocks.resolveReactivationAccess.mockResolvedValue({
+      source: "configured-default",
+      value: false,
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "interview_practice_unavailable",
+      message: "New purchases are unavailable before relaunch.",
+      retryable: false,
+    });
+    expect(gateMocks.resolveReactivationAccess).toHaveBeenCalledWith({
+      user: expect.objectContaining({
+        id: "11111111-1111-4111-8111-111111111111",
+      }),
+      localOverride: undefined,
+    });
+    expect(hasAccountDeletionTombstone).not.toHaveBeenCalled();
+    expect(dbMocks.selectLimit).not.toHaveBeenCalled();
+    expect(dbMocks.tryLock).not.toHaveBeenCalled();
+    expect(stripeMocks.constructions).toBe(0);
+    expect(stripeMocks.list).not.toHaveBeenCalled();
+    expect(stripeMocks.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "malformed JSON",
+      body: "{",
+    },
+    {
+      name: "an invalid catalog",
+      body: JSON.stringify({ catalogId: "enterprise" }),
+    },
+  ])("returns the same disabled boundary for $name", async ({ body }) => {
+    gateMocks.resolveReactivationAccess.mockResolvedValue({
+      source: "configured-default",
+      value: false,
+    });
+    const disabledRequest = new NextRequest(
+      "http://localhost/api/checkout/create-session",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      }
+    );
+
+    const response = await POST(disabledRequest);
+
+    expect(response.status).toBe(403);
+    expect(hasAccountDeletionTombstone).not.toHaveBeenCalled();
+    expect(dbMocks.selectLimit).not.toHaveBeenCalled();
+    expect(stripeMocks.constructions).toBe(0);
+    expect(stripeMocks.create).not.toHaveBeenCalled();
   });
 
   it("makes no Stripe request when the deletion tombstone already exists", async () => {

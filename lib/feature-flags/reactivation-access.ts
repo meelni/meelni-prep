@@ -15,7 +15,7 @@ interface ReactivationUser {
 }
 
 export async function resolveReactivationAccess(input: {
-  user: ReactivationUser;
+  user: ReactivationUser | null;
   localOverride?: string;
   env?: NodeJS.ProcessEnv;
   resolveGate?: (input: {
@@ -42,9 +42,11 @@ export async function resolveReactivationAccess(input: {
     clientKey: config.enabled ? config.clientKey : "",
     gateName: FEATURE_GATES.meelniReactivationAccess,
     fallbackValue,
-    user: buildStatsigUser({
-      anonymousId: `authenticated:${input.user.id}`,
-      user: input.user,
-    }),
+    user: input.user
+      ? buildStatsigUser({
+          anonymousId: `authenticated:${input.user.id}`,
+          user: input.user,
+        })
+      : { userID: "public-launch-state" },
   });
 }

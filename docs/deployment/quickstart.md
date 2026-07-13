@@ -264,4 +264,5 @@ After successful deployment:
 ---
 
 **Last Updated**: 2025-11-12
-**Tested On**: Vercel (Node.js 18.x), LiveKit Cloud, Supabase
+**Tested On**: Vercel (managed Node.js 22.x), LiveKit Cloud, Supabase. Local and
+GitHub CI validation use the exact Node.js 22.22.0 repository pin.

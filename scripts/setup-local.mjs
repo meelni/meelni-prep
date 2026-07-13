@@ -10,6 +10,14 @@ import {
   requiredEnvAlternativesStatus,
   requiredEnvStatus,
 } from "./local-env.mjs";
+import { assertNodeRuntime } from "./node-runtime.mjs";
+
+try {
+  assertNodeRuntime();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const npmCachePath = resolve(repoRoot, ".context/npm-cache");

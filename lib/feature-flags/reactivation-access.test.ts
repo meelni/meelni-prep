@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { StatsigUser } from "@statsig/js-client";
 
 import { resolveReactivationAccess } from "./reactivation-access";
 
@@ -31,4 +32,22 @@ test("development override controls the same server-side gate", async () => {
     env: { NODE_ENV: "development" },
   });
   assert.equal(result.value, true);
+});
+
+test("public relaunch access uses the non-identifying launch-state actor", async () => {
+  let receivedUser: StatsigUser | undefined;
+  const result = await resolveReactivationAccess({
+    user: null,
+    env: {
+      NODE_ENV: "production",
+      NEXT_PUBLIC_STATSIG_CLIENT_KEY: "client-test-key",
+    },
+    resolveGate: async (input) => {
+      receivedUser = input.user;
+      return { source: "statsig", value: true };
+    },
+  });
+
+  assert.deepEqual(result, { source: "statsig", value: true });
+  assert.deepEqual(receivedUser, { userID: "public-launch-state" });
 });

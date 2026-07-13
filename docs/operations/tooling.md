@@ -1,5 +1,17 @@
 # Tooling
 
+## Node Runtime
+
+Meelni uses exactly Node.js 22.22.0 for local development and CI. Both
+`.node-version` and `.nvmrc` declare the version; run `fnm use` or `nvm use`
+from the repository root before setup. Vercel manages the latest supported
+Node 22.x patch, so `package.json` publishes `22.x` for hosted builds while the
+repository guard keeps local and CI evidence reproducible.
+
+`npm run setup:local` stops before installing dependencies or changing local
+environment files when the active Node version differs. `npm run doctor`
+reports the same mismatch as a failure with the version-selection command.
+
 ## Local Setup
 
 Run:
@@ -174,10 +186,13 @@ Set `MEELNI_DISABLE_LOCAL_CREDIT_BYPASS=1` in `.env.local` to test the real cred
 ## Relaunch Gate Fallback
 
 The relaunch gate is resolved on the server with disabled event logging. Public
-surfaces use a non-identifying operational Statsig user; authenticated interview
-start and reconnect-token issuance use the signed-in Statsig user. Disabled
-access is rejected before any session/credit mutation or participant-token
-issuance. `MEELNI_REACTIVATION_DEFAULT` is the explicit provider-outage
+surfaces and demo-token issuance use a non-identifying operational Statsig user;
+authenticated interview start, reconnect-token issuance, and Checkout creation
+use the signed-in Statsig user. Disabled access is rejected before any
+LiveKit room/dispatch, Stripe Checkout, application database, session/credit,
+or participant-token mutation. Cancellation, billing-portal access, account
+deletion, and existing account data remain available while the launch gate is
+off. `MEELNI_REACTIVATION_DEFAULT` is the explicit provider-outage
 fallback: keep it `false` before relaunch and change it to `true` only as part of
 the rehearsed launch flip. Rollback changes the Statsig gate and this fallback
 together so a Statsig outage cannot invert the intended product state.

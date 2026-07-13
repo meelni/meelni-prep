@@ -198,7 +198,11 @@ any Production-scoped command during this phase.
   blocked until a Preview event key and matching signing configuration pass
   the service-health gate.
 - Route denial tests cover session start and demo token issuance with missing,
-  invalid, or conflicting Preview identity and dispatch configuration.
+  invalid, or conflicting Preview identity and dispatch configuration. Separate
+  relaunch-gate behavior tests prove default-off access returns `403` before
+  demo room/dispatch, Stripe Checkout, or application-database mutation. The gate
+  does not disable cancellation, billing-portal access, account deletion, or
+  existing account data.
   Session start performs the required Supabase authentication read before
   runtime configuration validation; no application database, session, credit,
   or provider mutation begins, and no LiveKit client, room, token, or dispatch

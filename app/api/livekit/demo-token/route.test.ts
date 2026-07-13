@@ -7,7 +7,12 @@ const mocks = vi.hoisted(() => ({
   roomClientConstructions: 0,
   createDispatch: vi.fn(),
   createRoom: vi.fn(),
+  resolveReactivationAccess: vi.fn(),
   toJwt: vi.fn(),
+}));
+
+vi.mock("@/lib/feature-flags/reactivation-access", () => ({
+  resolveReactivationAccess: mocks.resolveReactivationAccess,
 }));
 
 vi.mock("livekit-server-sdk", () => ({
@@ -62,8 +67,49 @@ describe("POST /api/livekit/demo-token provider isolation", () => {
     mocks.accessTokenConstructions = 0;
     mocks.dispatchClientConstructions = 0;
     mocks.roomClientConstructions = 0;
+    mocks.resolveReactivationAccess.mockResolvedValue({
+      source: "statsig",
+      value: true,
+    });
+    mocks.createRoom.mockResolvedValue({});
+    mocks.createDispatch.mockResolvedValue({ id: "dispatch-preview" });
+    mocks.toJwt.mockResolvedValue("signed-preview-token");
     setValidPreviewLiveKitEnvironment();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  it("returns 403 before any provider work when relaunch is disabled", async () => {
+    mocks.resolveReactivationAccess.mockResolvedValue({
+      source: "configured-default",
+      value: false,
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "interview_practice_unavailable",
+      message: "Interview practice is not open yet.",
+      retryable: false,
+    });
+    expect(mocks.resolveReactivationAccess).toHaveBeenCalledWith({
+      user: null,
+      localOverride: undefined,
+    });
+    expectNoLiveKitProviderWork();
+  });
+
+  it("creates and dispatches a demo room when relaunch is enabled", async () => {
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      token: "signed-preview-token",
+      url: "wss://preview-route-test.livekit.cloud",
+    });
+    expect(mocks.createRoom).toHaveBeenCalledOnce();
+    expect(mocks.createDispatch).toHaveBeenCalledOnce();
+    expect(mocks.toJwt).toHaveBeenCalledOnce();
   });
 
   afterEach(() => {
