@@ -240,6 +240,29 @@ test("concurrent sibling activation CAS permits exactly one winner", async () =>
   assertPayloadFreeActivation(state, winner.activationCommit);
 });
 
+test("activation canonicalizes fractional clocks to GitHub whole-second timestamps", async () => {
+  const state = createCanonicalState();
+  const client = new GitHubSecondsClient(state);
+  const fractionalNow = new Date(NOW.getTime() + 789);
+  const options = activationOptions("fractional-activation-clock");
+  options.now = fractionalNow;
+
+  const authority = await calibrationRunLedgerTestSeam.activateWithClient(
+    options,
+    client
+  );
+
+  const expectedTimestamp = fractionalNow
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "Z");
+  assert.equal(client.submittedDate, expectedTimestamp);
+  assert.equal(state.refSha, authority.activationCommit);
+  const commit = state.commits.get(authority.activationCommit)!;
+  assert.equal(commit.author.date, expectedTimestamp);
+  assert.equal(commit.committer.date, expectedTimestamp);
+  authority.release();
+});
+
 test("an activated crash and local Git configuration cannot reopen authority", async () => {
   const state = createCanonicalState();
   const first = await activate(new FakeGitHubClient(state), "activation-one");
@@ -757,6 +780,26 @@ class FakeGitHubClient implements CalibrationGitHubCasClient {
     }
     this.state.refSha = input.sha;
     return this.getRef();
+  }
+}
+
+class GitHubSecondsClient extends FakeGitHubClient {
+  submittedDate: string | undefined;
+
+  override createCommit(input: {
+    message: string;
+    treeSha: string;
+    parents: string[];
+    date: string;
+  }): GitHubCommit {
+    this.submittedDate = input.date;
+    const commit = super.createCommit(input);
+    const normalizedDate = new Date(input.date)
+      .toISOString()
+      .replace(/\.\d{3}Z$/, "Z");
+    commit.author.date = normalizedDate;
+    commit.committer.date = normalizedDate;
+    return commit;
   }
 }
 
