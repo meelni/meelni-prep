@@ -35,20 +35,21 @@ import {
   CALIBRATION_PRICING_CONTRACT,
 } from "./calibration-budget";
 import {
-  SAV_198_ACTOR_RULESET_NAME,
-  SAV_198_APPROVED_RUN_ID,
-  SAV_198_EMPTY_TREE_OID,
-  SAV_198_GENESIS_COMMIT_OID,
-  SAV_198_GENESIS_DATE,
-  SAV_198_GITHUB_ACTIVATION_ACTOR_ID,
-  SAV_198_GITHUB_ACTIVATION_ACTOR_LOGIN,
-  SAV_198_GITHUB_REPOSITORY_ID,
-  SAV_198_GIT_LEDGER_REF,
-  SAV_198_IMMUTABLE_RULESET_NAME,
-  SAV_198_SPEND_AUTHORIZATION,
-  SAV_198_REBASED_PLAN_HASH,
-  SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD,
-  buildSAV198RebasedPlanAcceptance,
+  SAV_198_CONSUMED_HISTORY,
+  SAV_248_ACTOR_RULESET_NAME,
+  SAV_248_APPROVED_RUN_ID,
+  SAV_248_EMPTY_TREE_OID,
+  SAV_248_GENESIS_COMMIT_OID,
+  SAV_248_GENESIS_DATE,
+  SAV_248_GITHUB_ACTIVATION_ACTOR_ID,
+  SAV_248_GITHUB_ACTIVATION_ACTOR_LOGIN,
+  SAV_248_GITHUB_REPOSITORY_ID,
+  SAV_248_GIT_LEDGER_REF,
+  SAV_248_IMMUTABLE_RULESET_NAME,
+  SAV_248_SPEND_AUTHORIZATION,
+  SAV_248_PLAN_HASH,
+  SAV_248_PLAN_WORST_CASE_NANO_USD,
+  buildSAV248PlanAcceptance as buildSAV198RebasedPlanAcceptance,
   buildCalibrationActivatedPlan,
   calibrationAuthorizationCommitMessage,
   calibrationRunLedgerTestSeam,
@@ -65,6 +66,13 @@ const NOW = new Date(
 );
 
 test("authorization pre-reserves one exact approved aggregate plan", () => {
+  assert.equal(SAV_198_CONSUMED_HISTORY.status, "consumed");
+  assert.deepEqual(
+    JSON.parse(
+      readFileSync("docs/evidence/sav-248-paid-run-authorization.json", "utf8")
+    ),
+    SAV_198_SPEND_AUTHORIZATION
+  );
   assert.deepEqual(
     parseCalibrationSpendAuthorization(SAV_198_SPEND_AUTHORIZATION),
     SAV_198_SPEND_AUTHORIZATION
@@ -101,22 +109,55 @@ test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.equal(deterministicGenesisOid(), SAV_198_GENESIS_COMMIT_OID);
 });
 
-test("delegated product owner accepts the exact conservative rebased plan within the existing cap", () => {
+test("activation rejects an approved artifact outside the exact accepted v2 plan", async () => {
+  const state = createCanonicalState();
+  await assert.rejects(
+    calibrationRunLedgerTestSeam.activateWithClient(
+      {
+        ...activationOptions("non-accepted-approval"),
+        adjudicationApproval: approvalFixture(),
+      },
+      new FakeGitHubClient(state)
+    ),
+    /activation_plan_hash_mismatch/
+  );
+  assert.equal(state.refSha, SAV_198_GENESIS_COMMIT_OID);
+});
+
+test("delegated product owner accepts the fresh exact strict-format plan within the cap", () => {
   const acceptance = buildSAV198RebasedPlanAcceptance(
     buildDelegatedEvaluationAdjudicationApproval()
   );
-  assert.equal(acceptance.existingAuthorization.authorizationChanged, false);
-  assert.equal(acceptance.existingAuthorization.maximumProviderCalls, 96);
-  assert.equal(acceptance.existingAuthorization.maximumSpendUsd, 3);
+  assert.equal(acceptance.authorization.distinctFromConsumedV1, true);
+  assert.equal(acceptance.authorization.maximumProviderCalls, 96);
+  assert.equal(acceptance.authorization.maximumSpendUsd, 3);
   assert.equal(acceptance.acceptedPlan.planHash, SAV_198_REBASED_PLAN_HASH);
   assert.equal(
     acceptance.acceptedPlan.plannedWorstCaseNanoUsd,
     SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD
   );
-  assert.equal(acceptance.acceptedPlan.plannedWorstCaseUsd, 2.7544875);
+  assert.equal(acceptance.acceptedPlan.plannedWorstCaseUsd, 2.8539975);
+  assert.equal(acceptance.acceptedPlan.outputTokenCeiling, 1_800);
+  assert.equal(
+    acceptance.acceptedPlan.responseFormat.serialized.full.bytes,
+    2424
+  );
+  assert.equal(
+    acceptance.acceptedPlan.responseFormat.serialized.partial.bytes,
+    2430
+  );
   assert.equal(acceptance.authorityScope.providerCallsExecuted, false);
   assert.equal(acceptance.authorityScope.ledgerActivated, false);
   assert.equal(acceptance.authorityScope.launchAuthorized, false);
+  assert.deepEqual(
+    JSON.parse(
+      readFileSync(
+        "docs/evidence/sav-248-strict-format-plan-acceptance.json",
+        "utf8"
+      )
+    ),
+    acceptance
+  );
 });
 
 test("canonical repository and activation actor identities are immutable", async () => {
@@ -818,7 +859,7 @@ function activationOptions(
 ): ActivateCalibrationRunOptions {
   return {
     authorization: SAV_198_SPEND_AUTHORIZATION,
-    adjudicationApproval: approvalFixture(),
+    adjudicationApproval: buildDelegatedEvaluationAdjudicationApproval(),
     model: CALIBRATION_PRICING_CONTRACT.model,
     repetitions: 3,
     now: NOW,

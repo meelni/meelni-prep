@@ -9,23 +9,31 @@ record only sanitized case-level diagnostics plus aggregate call/cost
 accounting. Spend authorization does not satisfy the separately required PM or
 product-owner adjudication approval.
 
-`sav-198-paid-run-authorization.json` records the explicit product-owner spend
-boundary for one fixed aggregate paid run: at most 96 provider calls/physical
-attempts and $3, using synthetic or separately approved fixtures only. It is
-code-bound authorization evidence, not a reusable per-process budget, a live
-run result, or semantic approval of the gold-set candidates. Its one-time spend
-authority is the deterministic genesis and protected payload-free activation
-ref in the canonical GitHub repository described in the calibration contract.
-Local remotes, reports, and caches are never budget authority.
+`sav-248-paid-run-authorization.json` records the fresh, explicit product-owner
+spend boundary for one distinct aggregate v2 paid run: at most 96 provider
+calls/physical attempts and $3, using synthetic or separately approved fixtures
+only. It is code-bound authorization evidence, not a reusable per-process
+budget, a live run result, or semantic approval of the gold-set candidates. Its
+one-time spend authority is the deterministic genesis and protected
+payload-free activation ref in the canonical GitHub repository described in the
+calibration contract. Local remotes, reports, and caches are never budget
+authority.
 
-`sav-198-rebased-plan-acceptance.json` records the product owner's delegated,
+`sav-248-strict-format-plan-acceptance.json` records the exact v2 plan: 96
+calls, 2,853,997,500 nano-USD ($2.8539975) deterministic worst case, plan hash
+`354bdc4046b0759e50940127c574abe355ee0754d9a8aaf2c25338b49aca8419`,
+strict-format hash and serialized-schema identities, and a 1,800-token output
+ceiling. It performs no provider call or ledger activation and grants no launch
+authority.
+
+`sav-198-paid-run-authorization.json` and
+`sav-198-rebased-plan-acceptance.json` record the product owner's prior,
 conservative acceptance of the exact rebased plan within that existing
 authorization: 96 calls, 2,754,487,500 nano-USD ($2.7544875) deterministic
 worst case, and plan hash
 `22a0f4da11a7dd5c618f39fdd187b40fe8d17807b0404407c95c5dec16172804`.
-This is not a new or expanded authorization. The $3 cap, model, fixtures,
-semantic approval, and one-run boundary are unchanged; the artifact performs
-no provider call or ledger activation and grants no launch authority.
+That v1 authority is consumed immutable history. It cannot authorize the v2
+run and is not silently rebased.
 
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are local evidence only and deliberately keep live-provider launch acceptance
@@ -41,9 +49,10 @@ fix and new explicit authorization.
 `sav-248-provider-free-mitigation.md` records the strict structured-output
 contract, sanitized terminal categories, deterministic schema hash, exact
 schema byte ceilings, and a provider-free 96-call/$2.8539975 prospective
-calculation. It also records that paid calibration now fails before client
-construction until a fresh authorization and activated plan bind those values.
-It performs no provider call and grants no spend or launch authority.
+calculation. The fresh v2 authorization and accepted plan now bind those values;
+execution remains closed until the distinct v2 protected ledger authority is
+provisioned. The mitigation work performed no provider call and grants no
+provider or launch acceptance.
 
 `sav-226-relaunch-decision.md` is the human-readable release record for the
 exact relaunch candidate. It preserves the passed Preview evidence, the failed

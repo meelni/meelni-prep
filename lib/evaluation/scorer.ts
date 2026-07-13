@@ -333,13 +333,10 @@ export function assertCalibrationProviderRequestPolicy(
   ) {
     throw new Error("calibration_provider_request_policy_mismatch");
   }
-  throw new Error(
-    "calibration_provider_response_format_requires_new_authorized_plan"
-  );
 }
 
 export function getCalibrationProviderRequestFields(): {
-  max_completion_tokens: 2_000;
+  max_completion_tokens: 1_800;
   service_tier: "default";
 } {
   return {

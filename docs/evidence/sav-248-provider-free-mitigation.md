@@ -15,10 +15,11 @@ content filtering, and unexpected tool/function finishes receive distinct
 closed failure codes; raw refusal text and partial output remain excluded from
 reports.
 
-The consumed SAV-198 plan is immutable history. Because it did not bind the new
-response format or reserve its serialized bytes, paid calibration is disabled
-before client construction until a fresh authorization and activated plan bind
-the new contract.
+The consumed SAV-198 plan is immutable history. The fresh SAV-248 v2
+authorization and accepted plan now bind the new response format, its exact
+serialized bytes, and the reduced output ceiling. Paid calibration still
+cannot start until the new protected v2 ledger authority is provisioned and
+verified.
 
 ## Exact Provider-Format Evidence
 
@@ -45,12 +46,13 @@ prospective 1,800-token output ceiling produces:
 - deterministic worst case: 2,853,997,500 nano-USD ($2.8539975);
 - hard-cap comparison: below $3.
 
-This is provider-free planning evidence, not spend authorization, ledger
-activation, provider acceptance, or launch acceptance. Pricing must be refreshed
-and the exact new plan hash reviewed before any future authorization. The
-1,800-token ceiling also needs acceptance in the new immutable plan; the one
-observed SAV-198 response used 1,392 output tokens but is not sufficient alone
-to prove corpus-wide completion.
+This calculation is now bound by authorization
+`sav-248-user-authorization-2026-07-13.v2` and accepted plan hash
+`354bdc4046b0759e50940127c574abe355ee0754d9a8aaf2c25338b49aca8419`.
+This provider-free work performed no ledger activation or provider call and
+grants no provider or launch acceptance. The one observed SAV-198 response used
+1,392 output tokens but is not sufficient alone to prove corpus-wide
+completion.
 
 ## Validation
 
@@ -74,6 +76,7 @@ remove malformed JSON and structural drift as failure classes. The local tests
 do not prove provider compatibility. Structured output also cannot prove exact
 quote grounding, user-speaker provenance,
 reference/evidence equality, or cross-finding evidence uniqueness. The core
-parser continues to enforce those invariants. A newly authorized synthetic-only
-provider run is still required to identify or clear any remaining semantic
-failure and to pass all calibration thresholds.
+parser continues to enforce those invariants. The separately authorized
+synthetic-only provider run is still required to identify or clear any
+remaining semantic failure and to pass all calibration thresholds, but it must
+not begin until the v2 ledger activation controls pass.

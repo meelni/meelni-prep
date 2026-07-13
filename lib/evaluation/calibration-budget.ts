@@ -5,7 +5,7 @@ import { serializeFeedbackProviderResponseFormat } from "./provider-response-for
 
 export const CALIBRATION_MAX_PROVIDER_CALLS = 96;
 export const CALIBRATION_MAX_SPEND_NANO_USD = 3_000_000_000;
-export const CALIBRATION_MAX_COMPLETION_TOKENS = 2_000;
+export const CALIBRATION_MAX_COMPLETION_TOKENS = 1_800;
 export const CALIBRATION_OFFICIAL_OPENAI_ENDPOINT = "https://api.openai.com/v1";
 export const CALIBRATION_SERVICE_TIER = "default";
 export const CALIBRATION_MAX_SDK_RETRIES = 0;
@@ -216,7 +216,7 @@ export class CalibrationSpendGuard {
       return null;
     }
 
-    const inputTokenCeiling = calibrationInputTokenCeiling(fixture);
+    const inputTokenCeiling = structuredCalibrationInputTokenCeiling(fixture);
     const worstCaseNanoUsd = calculateWorstCaseNanoUsd(
       inputTokenCeiling,
       CALIBRATION_MAX_COMPLETION_TOKENS,
@@ -585,7 +585,7 @@ export function calibrationInputTokenCeiling(
 }
 
 /**
- * Prospective ceiling for strict structured-output plans. SAV-198's consumed
+ * Active v2 ceiling for strict structured-output plans. SAV-198's consumed
  * activation used calibrationInputTokenCeiling and remains immutable history.
  */
 export function structuredCalibrationInputTokenCeiling(

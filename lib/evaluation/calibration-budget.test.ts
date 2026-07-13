@@ -62,7 +62,7 @@ test("a prospective 96-call strict-output plan fits the unchanged $3 hard cap at
 
 test("the exact $3 reservation boundary is allowed and another call is refused", () => {
   const guard = createGuard();
-  const fixture = fixtureWithInputTokenCeiling(2_384_000);
+  const fixture = fixtureWithInputTokenCeiling(2_385_600);
 
   const reservation = guard.reserve(fixture);
   assert.ok(reservation);
@@ -104,7 +104,7 @@ test("unknown or moving model identity fails before reservation", () => {
 
 test("an over-budget next call is stopped without increasing attempted calls", () => {
   const guard = createGuard();
-  assert.equal(guard.reserve(fixtureWithInputTokenCeiling(2_384_001)), null);
+  assert.equal(guard.reserve(fixtureWithInputTokenCeiling(2_385_601)), null);
   assert.equal(guard.report().attemptedCalls, 0);
   assert.equal(guard.report().stopReason, "spend_cap_before_next_call");
 });
@@ -250,14 +250,14 @@ test("identity mismatch preserves exact usage and reconciled cost", async () => 
 
 test("valid over-ceiling usage records the exact actual $3 breach", async () => {
   const guard = createGuard();
-  const fixture = fixtureWithInputTokenCeiling(2_384_000);
+  const fixture = fixtureWithInputTokenCeiling(2_385_600);
   const reservation = guard.reserve(fixture)!;
   await guard.assertPhysicalRequestAllowed(reservation);
   const usage = {
-    inputTokens: 2_384_000,
+    inputTokens: 2_385_600,
     cachedInputTokens: 0,
-    outputTokens: 2_001,
-    totalTokens: 2_386_001,
+    outputTokens: 1_801,
+    totalTokens: 2_387_401,
   };
 
   assert.equal(guard.settleSuccess(reservation, usage), false);
@@ -273,15 +273,15 @@ test("valid over-ceiling usage records the exact actual $3 breach", async () => 
 
 test("an exact $3 actual settles but cannot authorize another request", async () => {
   const guard = createGuard();
-  const fixture = fixtureWithInputTokenCeiling(2_384_000);
+  const fixture = fixtureWithInputTokenCeiling(2_385_600);
   const reservation = guard.reserve(fixture)!;
   await guard.assertPhysicalRequestAllowed(reservation);
   assert.equal(
     guard.settleSuccess(reservation, {
-      inputTokens: 2_384_000,
+      inputTokens: 2_385_600,
       cachedInputTokens: 0,
-      outputTokens: 2_000,
-      totalTokens: 2_386_000,
+      outputTokens: 1_800,
+      totalTokens: 2_387_400,
     }),
     true
   );
@@ -310,10 +310,10 @@ function fixtureWithInputTokenCeiling(target: number) {
   const userTurn = fixture.transcript.find(
     ({ speaker }) => speaker === "user"
   )!;
-  const current = calibrationInputTokenCeiling(fixture);
+  const current = structuredCalibrationInputTokenCeiling(fixture);
   assert.ok(target >= current);
   userTurn.text += "x".repeat(target - current);
-  assert.equal(calibrationInputTokenCeiling(fixture), target);
+  assert.equal(structuredCalibrationInputTokenCeiling(fixture), target);
   return fixture;
 }
 

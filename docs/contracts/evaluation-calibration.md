@@ -135,10 +135,12 @@ SHA-256 contract identity for binding into any future activated plan.
 
 SAV-198's one-time activation is consumed and predates this strict response
 format. It remains immutable historical evidence and is not silently rebased.
-Paid calibration now fails before client construction until a new bounded
-authorization and activated plan bind the strict-format hash, include the exact
-serialized schema bytes in every input ceiling, and choose an output ceiling
-whose complete worst-case plan remains within its spend cap.
+The distinct SAV-248 v2 authorization and accepted plan bind the strict-format
+hash and both exact serialized schemas, include the applicable serialized
+schema bytes in every input ceiling, and set a 1,800-token output ceiling. The
+complete 96-call worst case is 2,853,997,500 nano-USD ($2.8539975), below the
+$3 hard cap. Paid execution remains fail closed until the separate v2 protected
+ledger ref and both exact no-bypass rulesets are provisioned and verified.
 
 Evaluator calls and paid-provider calls are separate metrics. A deterministic
 self-test reports its local evaluator invocations but must always report zero
@@ -189,7 +191,8 @@ service-tier identity, including identities returned with invalid or failed
 responses. Deterministic runs use an explicit local identifier.
 
 Before call one, the runner computes all 96 or fewer permitted case/run keys,
-their conservative input ceilings, and their 2,000-token completion ceilings.
+their conservative strict-format input ceilings, and their 1,800-token
+completion ceilings.
 It validates that the complete plan's worst-case cost is at most $3 and binds
 that plan to the approved corpus, adjudication, model, endpoint, tier, and
 pricing hashes in a one-time Git activation. Activation burns the whole plan;
@@ -217,19 +220,20 @@ includes valid usage, the report preserves its identity and token totals,
 reconciles known cost, and then stops. Only absent or invalid usage retains an
 unresolved worst-case reservation.
 
-The accepted rebased plan contains exactly 96 calls with a deterministic
-worst-case reservation of 2,754,487,500 nano-USD ($2.7544875), below the
-unchanged $3 hard cap. Its exact plan hash is
-`22a0f4da11a7dd5c618f39fdd187b40fe8d17807b0404407c95c5dec16172804`.
-The product owner's task-thread delegation accepts this conservative rebased
-value under the existing authorization; it does not change the model, fixture
-set, call limit, spend cap, or one-run scope.
+The accepted v2 plan contains exactly 96 calls with a deterministic worst-case
+reservation of 2,853,997,500 nano-USD ($2.8539975), below the $3 hard cap. Its
+exact plan hash is
+`354bdc4046b0759e50940127c574abe355ee0754d9a8aaf2c25338b49aca8419`.
+It binds response-format contract hash
+`66605edf2b3cad146671f22afa656d9c01c9abea2e7475a68dbe21738c8e4073`,
+the exact full/partial serialized formats (2,424/2,430 bytes), their individual
+SHA-256 identities, and the 1,800-token output ceiling.
 
 ## Paid-run authorization and ledger contract
 
 The approved spend is one aggregate run, not a reusable per-process allowance.
-`docs/evidence/sav-198-paid-run-authorization.json` binds it to
-`sav-198-authorized-paid-calibration.v1`, at most 96 provider calls and physical
+`docs/evidence/sav-248-paid-run-authorization.json` binds it to
+`sav-248-authorized-paid-calibration.v2`, at most 96 provider calls and physical
 attempts, and at most $3 of committed spend using synthetic or separately
 approved fixtures only. The live CLI accepts neither an arbitrary run ID nor an
 operator-selected ledger path, so a new process cannot mint another budget.
@@ -238,9 +242,9 @@ adjudication approval described below.
 
 The durable authority is the protected payload-free Git ref in the fixed
 private GitHub repository `saviii/meelni-prep` (repository ID `1089904588`):
-`refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1`. Before call
+`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v2`. Before call
 one, the CLI requires that ref to point to deterministic genesis commit
-`5db3fdc9a4d9bd8b57619db03f4a4193d1b9637a`, whose zero-parent tree is empty
+`9a5b2209f049d575e8edef35ce5fd18d916d6c9b`, whose zero-parent tree is empty
 and whose complete message and identity encode this authorization. It creates
 a unique empty-tree activation
 child containing only authorization, plan-hash, and activation metadata, then
@@ -250,6 +254,12 @@ refuses execution.
 An activated head is terminal: a restart, crash, missing local cache, or local
 state reset cannot reopen it. Any additional run requires a new owner
 authorization and reviewed code change.
+
+The prior SAV-198 v1 ref, genesis
+`5db3fdc9a4d9bd8b57619db03f4a4193d1b9637a`, activation
+`4acdf549eecad5fe88d685c28fbc98d7475b8f05`, and plan hash
+`22a0f4da11a7dd5c618f39fdd187b40fe8d17807b0404407c95c5dec16172804`
+remain consumed historical evidence and are never accepted as v2 authority.
 
 The production authority uses Node HTTPS directly against the fixed
 `api.github.com:443` endpoint. It accepts only `GITHUB_TOKEN`, uses Node's
