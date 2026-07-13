@@ -1,7 +1,8 @@
 # Stripe And LiveKit Preview Rehearsal
 
-Status: synthetic guard implementation complete; provider-connected Preview
-rehearsal remains blocked pending isolated provider configuration.
+Status: isolated Preview providers are configured and their bounded rehearsals
+are partially complete. The current release decision is NO-GO; see
+`../evidence/sav-226-relaunch-decision.md` for exact evidence and blockers.
 
 Keep the relaunch feature gate off throughout this rehearsal. This runbook does
 not authorize Production access, provider provisioning, deployment, catalog
@@ -179,18 +180,16 @@ any Production-scoped command during this phase.
   clean postflight result. Any partial schema, unexpected object, or catalog
   ambiguity remains a hard stop; do not copy Production data, seed migration
   history manually, or create an alternate repair chain.
-- The current Vercel metadata shows one `STRIPE_WEBHOOK_SECRET` entry scoped to
-  both Preview and Production. A webhook secret has no test/live prefix, so
-  static validation cannot prove endpoint identity. Preview needs its own test
-  webhook endpoint and secret, followed by a synthetic signed-webhook smoke
-  test, before the golden path can pass.
-- Static Stripe price IDs are opaque. The three configured Preview prices still
-  require read-only test-account verification that each exists and reports
-  `livemode=false` before Checkout rehearsal.
-- Preview remains fail-closed until its distinct LiveKit project anchor and
-  interview-agent ID are configured. API credentials and the interview dispatch
-  name still require read-only provider verification before rehearsal. The
-  de-scoped demo is not included in LiveKit health or launch evidence.
+- Preview now has a distinct Stripe test-mode webhook endpoint and verified
+  test-mode catalog prices. The final exact-deployment receipt is still open:
+  rotate the temporary Vercel protection bypass, update every authorized
+  Preview consumer atomically, refresh the test endpoint, and send one signed
+  synthetic event. A webhook secret has no test/live prefix, so health and
+  static configuration alone do not replace that receipt.
+- Preview uses the distinct `meelni-preview` LiveKit project with one running
+  core interview agent and the expected dispatch name. The de-scoped demo is
+  not included in LiveKit health or launch evidence. Preserve the one-agent
+  scope unless a separate product and capacity decision reintroduces the demo.
 - The currently running Production agents predate the environment guard. Before
   deploying guarded worker code to Production, add
   `MEELNI_ENV_PULL_ENVIRONMENT=production` and the canonical
@@ -200,13 +199,13 @@ any Production-scoped command during this phase.
   quotas are project-scoped, while free-project allowances are shared across
   free projects; another project does not increase that allowance. Billing is
   usage-based rather than a documented fixed fee per project.
-- The relaunch branch now has distinct Preview `INNGEST_EVENT_KEY` and
+- The relaunch branch has distinct Preview `INNGEST_EVENT_KEY` and
   `INNGEST_SIGNING_KEY` values plus branch-scoped `INNGEST_ENV` matching
-  `VERCEL_GIT_COMMIT_REF`. Those configuration checks do not prove provider
-  connectivity. Feedback handoff remains blocked until the exact deployment
-  passes the service-health configuration gate, all 14 named source function
-  IDs plus exactly one generated feedback failure handler sync, and an approved
-  synthetic event runs successfully.
+  `VERCEL_GIT_COMMIT_REF`. The exact deployment synced all 14 named source
+  function IDs plus exactly one generated feedback failure handler. A
+  provider-to-app recovery run completed and an app-to-provider synthetic event
+  was accepted. Preserve those receipts when rotating the shared deployment
+  protection bypass.
 - Route denial tests prove the de-scoped demo endpoint returns `404` before
   request parsing or provider work. Separate relaunch-gate behavior tests cover
   missing, invalid, and conflicting Preview identity and prove default-off
