@@ -86,4 +86,4 @@ A recommended result contains the stable drill ID, canonical round, selected dim
 
 ## Scope and rollout
 
-SAV-201 adds only the provider-neutral package contract, fixtures, tests, and documentation. It does not change model prompts, feedback generation, APIs, UI, database records, credits, analytics, or feature flags. A later explicitly scoped slice may integrate the stable ID with a drill catalog or product surface.
+SAV-201 adds only the provider-neutral package contract, fixtures, tests, and documentation. It does not change model prompts, feedback generation, APIs, UI, database records, credits, analytics, or feature flags. SAV-202 Phase 1 consumes the stable internal identity through the separate [focused-practice plan contract](./focused-practice-plans.md); product-surface and persistence integration remain explicitly out of scope for both contracts.
