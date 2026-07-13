@@ -1,0 +1,59 @@
+{
+  "contractVersion": "evaluation-calibration-plan-acceptance.v2",
+  "decision": "accepted",
+  "decisionSource": "product_owner_task_thread_delegation",
+  "humanReviewerIdentity": null,
+  "acceptedAt": "2026-07-13T13:56:00.000Z",
+  "acceptanceBasis": "fresh_exact_strict_format_plan_within_delegated_authorization",
+  "authorization": {
+    "authorizationId": "sav-248-user-authorization-2026-07-13.v2",
+    "runId": "sav-248-authorized-paid-calibration.v2",
+    "maximumProviderCalls": 96,
+    "maximumPhysicalHttpAttempts": 96,
+    "maximumSpendUsd": 3,
+    "distinctFromConsumedV1": true
+  },
+  "acceptedPlan": {
+    "planHash": "354bdc4046b0759e50940127c574abe355ee0754d9a8aaf2c25338b49aca8419",
+    "plannedCalls": 96,
+    "plannedWorstCaseNanoUsd": 2853997500,
+    "plannedWorstCaseUsd": 2.8539975,
+    "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
+    "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+    "approvalHash": "78cd5e73f6c9ee869ea5c2686fd28269c8c6c80041602a5715518a5ed2451ec9",
+    "model": "gpt-5.1-2025-11-13",
+    "endpoint": "https://api.openai.com/v1",
+    "serviceTier": "default",
+    "repetitions": 3,
+    "pricingHash": "aac74c59eb1a5e04d1601033796c83e533b6144e72926c21f2f7bb2b65a4b7eb",
+    "responseFormat": {
+      "version": "feedback-provider-response-format.v1",
+      "contractHash": "66605edf2b3cad146671f22afa656d9c01c9abea2e7475a68dbe21738c8e4073",
+      "serialized": {
+        "full": {
+          "sha256": "b849c99150c10c53fc25ba086f5284f77698130297204902d57233b48539b20e",
+          "bytes": 2424
+        },
+        "partial": {
+          "sha256": "6eafc192c73fc753a5de490586111c2a903372a75fbf8a539356c699b480cce9",
+          "bytes": 2430
+        }
+      }
+    },
+    "outputTokenCeiling": 1800
+  },
+  "unchangedControls": {
+    "model": true,
+    "fixtures": true,
+    "maximumCalls": true,
+    "maximumSpend": true,
+    "semanticApproval": true,
+    "strictResponseFormat": true,
+    "syntheticFixturesOnly": true
+  },
+  "authorityScope": {
+    "providerCallsExecuted": false,
+    "ledgerActivated": false,
+    "launchAuthorized": false
+  }
+}

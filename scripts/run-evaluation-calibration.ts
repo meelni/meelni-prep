@@ -19,7 +19,7 @@ import {
 } from "@/lib/evaluation/scorer";
 import {
   activateCalibrationRun,
-  SAV_198_SPEND_AUTHORIZATION,
+  SAV_248_SPEND_AUTHORIZATION,
 } from "@/lib/evaluation/calibration-run-ledger";
 import { getCalibrationCliExitCode } from "@/lib/evaluation/calibration-cli";
 import {
@@ -84,7 +84,7 @@ async function main() {
     }
     runAuthority = await activateCalibrationRun(
       {
-        authorization: SAV_198_SPEND_AUTHORIZATION,
+        authorization: SAV_248_SPEND_AUTHORIZATION,
         adjudicationApproval,
         model: modelVersion,
         repetitions,

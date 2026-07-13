@@ -22,8 +22,8 @@ import {
   type CalibrationSpendPersistence,
 } from "./calibration-budget";
 import {
-  SAV_198_APPROVED_RUN_ID,
-  SAV_198_SPEND_AUTHORIZATION,
+  SAV_248_APPROVED_RUN_ID,
+  SAV_248_SPEND_AUTHORIZATION,
   buildCalibrationActivatedPlan,
 } from "./calibration-run-ledger";
 import { FeedbackProviderInvocationError } from "./scorer";

@@ -364,7 +364,7 @@ test("paid calibration client pins official endpoint and disables SDK retries", 
   assert.equal(CALIBRATION_PRICING_CONTRACT.serviceTier, "default");
   assert.equal(CALIBRATION_SERVICE_TIER, "default");
   assert.deepEqual(getCalibrationProviderRequestFields(), {
-    max_completion_tokens: 2_000,
+    max_completion_tokens: 1_800,
     service_tier: "default",
   });
 });
@@ -401,19 +401,17 @@ test("paid calibration client cannot be constructed without its direct key", () 
   );
 });
 
-test("paid request policy rejects an unpriced model or output ceiling", () => {
-  assert.throws(
-    () =>
-      assertCalibrationProviderRequestPolicy(
-        CALIBRATION_PRICING_CONTRACT.model,
-        2_000,
-        () => undefined
-      ),
-    /response_format_requires_new_authorized_plan/
+test("paid request policy accepts only the exact v2 model, output ceiling, and transport guard", () => {
+  assert.doesNotThrow(() =>
+    assertCalibrationProviderRequestPolicy(
+      CALIBRATION_PRICING_CONTRACT.model,
+      1_800,
+      () => undefined
+    )
   );
   assert.throws(
     () =>
-      assertCalibrationProviderRequestPolicy("gpt-5.1", 2_000, () => undefined),
+      assertCalibrationProviderRequestPolicy("gpt-5.1", 1_800, () => undefined),
     /request_policy_mismatch/
   );
   assert.throws(
@@ -429,7 +427,7 @@ test("paid request policy rejects an unpriced model or output ceiling", () => {
     () =>
       assertCalibrationProviderRequestPolicy(
         CALIBRATION_PRICING_CONTRACT.model,
-        2_000,
+        1_800,
         undefined
       ),
     /request_policy_mismatch/

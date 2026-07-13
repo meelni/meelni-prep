@@ -68,9 +68,9 @@ model calls. Three repetitions, 96 calls, and $3 total estimated committed
 spend are hard maximums. The runner stops before any call whose worst-case
 reservation could exceed the remaining spend cap.
 
-The explicit SAV-198 spend approval is committed as
-`docs/evidence/sav-198-paid-run-authorization.json`. It authorizes exactly one
-aggregate run, `sav-198-authorized-paid-calibration.v1`; it is not a renewable
+The explicit SAV-248 v2 spend approval is committed as
+`docs/evidence/sav-248-paid-run-authorization.json`. It authorizes exactly one
+aggregate run, `sav-248-authorized-paid-calibration.v2`; it is not a renewable
 96-call allowance for each invocation. The CLI has no run-ID or ledger-path
 override. Spend authorization permits the bounded paid run only after the
 separate candidate adjudication is approved; it does not approve those semantic
@@ -100,7 +100,8 @@ five-minute request timeout. Each reserved logical call therefore permits at
 most one physical HTTP attempt.
 
 Before activation, the CLI precomputes every permitted call's conservative
-input ceiling plus at most 2,000 completion tokens and refuses unless the whole
+input ceiling, including the exact serialized strict response format, plus at
+most 1,800 completion tokens and refuses unless the whole
 plan is at most 96 calls and $3 worst-case. The one-time Git activation burns
 that complete plan. A custom guarded fetch revalidates the fixed GitHub
 repository, effective protection, activated ref, and pricing immediately at
@@ -119,20 +120,22 @@ totals on failed or mismatched responses. Valid in-reservation usage is
 reconciled to known cost before the identity failure stops the run; absent,
 invalid usage retains the reservation.
 
-Generate and verify the delegated acceptance of the exact rebased plan:
+Generate and verify the delegated acceptance of the exact v2 plan:
 
 ```bash
 npm run calibration:plan-acceptance -- \
   --approval docs/evidence/sav-198-adjudication-approval.json \
-  --output docs/evidence/sav-198-rebased-plan-acceptance.json
+  --output docs/evidence/sav-248-strict-format-plan-acceptance.json
 ```
 
-The expected plan is 96 physical calls, 2,754,487,500 nano-USD ($2.7544875)
+The expected plan is 96 physical calls, 2,853,997,500 nano-USD ($2.8539975)
 worst case, and hash
-`22a0f4da11a7dd5c618f39fdd187b40fe8d17807b0404407c95c5dec16172804`.
-Treat any other value as stale or mismatched. This acceptance is within the
-existing $3 authorization and does not activate the ledger or authorize a
-provider call.
+`354bdc4046b0759e50940127c574abe355ee0754d9a8aaf2c25338b49aca8419`.
+It must also bind strict-format hash
+`66605edf2b3cad146671f22afa656d9c01c9abea2e7475a68dbe21738c8e4073`,
+2,424/2,430 serialized bytes, and the 1,800-token ceiling. Treat any other value
+as stale or mismatched. This acceptance does not activate the ledger or execute
+a provider call.
 
 ### Durable single-run GitHub activation
 
@@ -140,13 +143,13 @@ Paid execution remains disabled until repository owners configure the two
 exact active repository rulesets below for:
 
 ```text
-refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1
+refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v2
 ```
 
-1. `Meelni SAV-198 calibration ledger immutable`: exact ref include, no
+1. `Meelni SAV-248 calibration ledger immutable`: exact ref include, no
    excludes, no bypass actors, with `deletion` and `non_fast_forward` rules.
    With no bypass, administrators remain subject to both invariants.
-2. `Meelni SAV-198 calibration activation actor`: the same exact ref include,
+2. `Meelni SAV-248 calibration activation actor`: the same exact ref include,
    no excludes, `creation` and `update` restrictions, and exactly one `always`
    bypass actor: GitHub user `saviii` (`24397508`). The independent immutable
    ruleset still prevents that actor from deleting or force-updating the ref.
@@ -164,9 +167,9 @@ repository: saviii/meelni-prep (1089904588)
 tree: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
 parents: []
 author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
-author/committer date: 2026-07-12T08:00:00.000Z
+author/committer date: 2026-07-13T14:00:00.000Z
 message: exact calibrationAuthorizationCommitMessage() output
-expected commit: 5db3fdc9a4d9bd8b57619db03f4a4193d1b9637a
+expected commit: 9a5b2209f049d575e8edef35ce5fd18d916d6c9b
 ```
 
 Use `gh api --hostname github.com` against the fixed repository to create only
@@ -277,7 +280,8 @@ secrets or provider responses containing sensitive data.
 - The report contains no prompt text, transcript text, provider body, secret,
   or Production/customer-data payload.
 
-If a live run fails or crashes, keep the launch gate closed. Inspect available
+If the v2 live run fails or crashes, keep the launch gate closed. Inspect available
 case/run/dimension failure records, update the evaluator or adjudication
 deliberately, and obtain a separate new authorization before any paid retry.
-The activated SAV-198 run never resumes.
+The activated SAV-248 v2 run never resumes. The consumed SAV-198 v1 run is
+historical only and is never a fallback authority.
