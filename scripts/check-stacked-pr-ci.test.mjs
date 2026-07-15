@@ -60,7 +60,7 @@ function fixture() {
     `${JSON.stringify(
       {
         version: 2,
-        repository: "saviii/meelni-prep",
+        repository: "meelni/meelni-prep",
         stacks: [
           {
             pr: 999,
@@ -94,7 +94,7 @@ function githubApiFor(state, overrides = {}) {
         head: {
           ref: "child",
           sha: head,
-          repo: { full_name: "saviii/meelni-prep" },
+          repo: { full_name: "meelni/meelni-prep" },
         },
         base: { ref: "parent" },
         ...overrides.child,
@@ -113,7 +113,7 @@ function githubApiFor(state, overrides = {}) {
         head: {
           ref: "parent",
           sha: parent,
-          repo: { full_name: "saviii/meelni-prep" },
+          repo: { full_name: "meelni/meelni-prep" },
         },
         base: { ref: "main" },
         ...overrides.parent,
@@ -140,7 +140,7 @@ function event(state, overrides = {}) {
     head: {
       ref: "child",
       sha: state.head,
-      repo: { full_name: "saviii/meelni-prep" },
+      repo: { full_name: "meelni/meelni-prep" },
     },
     base: { ref: "parent" },
     ...overrides.pull_request,
@@ -148,7 +148,7 @@ function event(state, overrides = {}) {
   return {
     number: pullRequest.number,
     repository: {
-      full_name: "saviii/meelni-prep",
+      full_name: "meelni/meelni-prep",
       default_branch: "main",
     },
     pull_request: pullRequest,
@@ -418,7 +418,7 @@ test("an undeclared non-default PR fails the triggering stable context", async (
         head: {
           ref: "undeclared-child",
           sha: state.head,
-          repo: { full_name: "saviii/meelni-prep" },
+          repo: { full_name: "meelni/meelni-prep" },
         },
         base: { ref: "parent" },
       }),
@@ -430,7 +430,7 @@ test("an undeclared non-default PR fails the triggering stable context", async (
     classifyRevalidationOutcome({
       results: [result],
       triggerPr: 123,
-      manifest: { version: 2, repository: "saviii/meelni-prep", stacks: [] },
+      manifest: { version: 2, repository: "meelni/meelni-prep", stacks: [] },
     }),
     "fail"
   );
@@ -562,7 +562,7 @@ test("closed, wrong-repository, and wrong-ref parents fail through the real publ
         head: {
           ref: "different-parent",
           sha: state.parent,
-          repo: { full_name: "saviii/meelni-prep" },
+          repo: { full_name: "meelni/meelni-prep" },
         },
       },
       "parent_head_differs_from_manifest_entry",
@@ -627,7 +627,7 @@ test("git transport failure remains infrastructure error and fails every mode", 
 test("stable outcome fails only for the triggering child or infrastructure errors", () => {
   const manifest = {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [{ pr: 10, parentPr: 9, headRef: "child", parentRef: "parent" }],
   };
   assert.equal(
@@ -670,7 +670,7 @@ test("scheduled revalidation is not capped at one GitHub page", async () => {
     headRef: `child-${index}`,
     parentRef: "parent",
   }));
-  const manifest = { version: 2, repository: "saviii/meelni-prep", stacks };
+  const manifest = { version: 2, repository: "meelni/meelni-prep", stacks };
   const results = await revalidateRegisteredStacks({
     manifest,
     api: async ({ path }) => {
@@ -700,7 +700,7 @@ test("scheduled revalidation is not capped at one GitHub page", async () => {
 test("scheduled revalidation fans out from the trusted current manifest", async () => {
   const manifest = {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [
       {
         pr: 10,
@@ -750,7 +750,7 @@ test("scheduled revalidation fans out from the trusted current manifest", async 
 test("a same-repository parent event revalidates itself and every open registered child", async () => {
   const manifest = {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [
       {
         pr: 999,
@@ -827,7 +827,7 @@ test("a same-repository parent event revalidates itself and every open registere
 test("a closed parent event still refreshes every open registered child", async () => {
   const manifest = {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [
       {
         pr: 999,
@@ -889,7 +889,7 @@ test("a closed event fails an open child when the parent branch was deleted", as
     eventContent: JSON.stringify({
       action: "closed",
       repository: {
-        full_name: "saviii/meelni-prep",
+        full_name: "meelni/meelni-prep",
         default_branch: "main",
       },
       pull_request: {
@@ -897,7 +897,7 @@ test("a closed event fails an open child when the parent branch was deleted", as
         head: {
           ref: "parent",
           sha: state.parent,
-          repo: { full_name: "saviii/meelni-prep" },
+          repo: { full_name: "meelni/meelni-prep" },
         },
         base: { ref: "main" },
       },
@@ -917,7 +917,7 @@ test("a closed event fails an open child when the parent branch was deleted", as
           head: {
             ref: "parent",
             sha: state.parent,
-            repo: { full_name: "saviii/meelni-prep" },
+            repo: { full_name: "meelni/meelni-prep" },
           },
           base: { ref: "main" },
         };
@@ -966,7 +966,7 @@ test("scheduled revalidation replaces stale success after parent movement", asyn
 test("scheduled revalidation records API failure and continues to later PRs", async () => {
   const manifest = {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [
       {
         pr: 20,
@@ -1090,11 +1090,38 @@ test("the authoritative workflow checks out default-branch code and never PR cod
     workflow,
     /verify-migrations:[^]*?permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
   );
-  assert.match(workflow, /cron: "\*\/5 \* \* \* \*"/);
+  assert.doesNotMatch(workflow, /\bschedule:/);
+  assert.doesNotMatch(workflow, /\bcron:/);
   assert.match(workflow, /group: stack-topology-publisher/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /queue: max/);
   assert.match(workflow, /pull_request_target:[^]*types:[^]*closed/);
+  assert.match(workflow, /push:[^]*branches: \[main\][^]*stacked-prs\.json/);
+  assert.match(
+    workflow,
+    /verify-stack:[^]*?github\.event\.pull_request\.draft == false[^]*?github\.event\.changes\.body != null[^]*?github\.event\.changes\.base != null/
+  );
+  assert.match(
+    workflow,
+    /verify-migrations:[^]*?github\.event\.pull_request\.draft == false[^]*?github\.event\.changes\.base != null/
+  );
+  assert.match(
+    workflow,
+    /audit-draft-impact:[^]*?github\.event\.pull_request\.draft == true[^]*?github\.event\.action == 'synchronize'[^]*?github\.event\.changes\.base != null/
+  );
+  assert.match(
+    workflow,
+    /revalidate-all:[^]*?github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'push'/
+  );
+  assert.equal(workflow.match(/continue-on-error: true/g)?.length, 4);
+  assert.match(
+    workflow,
+    /audit-draft-impact:[^]*?steps\.stack_audit\.outcome != 'success'[^]*?steps\.migration_audit\.outcome != 'success'/
+  );
+  assert.match(
+    workflow,
+    /revalidate-all:[^]*?steps\.stack_audit\.outcome != 'success'[^]*?steps\.migration_audit\.outcome != 'success'/
+  );
   assert.match(workflow, /persist-credentials: true/);
   assert.match(
     workflow,

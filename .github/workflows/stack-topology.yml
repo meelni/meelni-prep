@@ -12,8 +12,17 @@ on:
         converted_to_draft,
         ready_for_review,
       ]
-  schedule:
-    - cron: "*/5 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - ".github/stacked-prs.json"
+      - ".github/workflows/stack-topology.yml"
+      - "scripts/check-stacked-pr.mjs"
+      - "scripts/check-stacked-pr-ci.mjs"
+      - "scripts/revalidate-stacked-prs-ci.mjs"
+      - "scripts/check-migration-collisions.mjs"
+      - "scripts/check-migration-collisions-ci.mjs"
+      - "scripts/check-migration-collisions-event-ci.mjs"
   workflow_dispatch:
 
 permissions:
@@ -21,14 +30,19 @@ permissions:
 
 concurrency:
   # A parent event must not overtake a child publication. Every event and
-  # scheduled fan-out shares one non-cancelling publisher queue.
+  # explicit/default-branch fan-out shares one non-cancelling publisher queue.
   group: stack-topology-publisher
   cancel-in-progress: false
   queue: max
 
 jobs:
   verify-stack:
-    if: github.event_name == 'pull_request_target'
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      (github.event.action == 'closed' ||
+      (github.event.pull_request.draft == false &&
+      (github.event.action != 'edited' ||
+      github.event.changes.body != null || github.event.changes.base != null)))
     # Classic protection requires this stable GitHub Actions job context.
     name: Trusted Publisher
     runs-on: ubuntu-latest
@@ -59,7 +73,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
   verify-migrations:
-    if: github.event_name == 'pull_request_target'
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      (github.event.action == 'closed' ||
+      (github.event.pull_request.draft == false &&
+      (github.event.action != 'edited' || github.event.changes.base != null)))
     # Classic protection requires this stable GitHub Actions job context.
     name: Migration Collision Publisher
     runs-on: ubuntu-latest
@@ -89,11 +107,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-  revalidate-stacks:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    name: Revalidate Open Stacks
+  audit-draft-impact:
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.draft == true &&
+      (github.event.action == 'opened' || github.event.action == 'reopened' ||
+      github.event.action == 'synchronize' ||
+      (github.event.action == 'edited' && github.event.changes.base != null))
+    name: Draft Dependency Audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: migration-collision-audit
+      cancel-in-progress: false
     permissions:
       contents: read
       checks: write
@@ -111,15 +137,31 @@ jobs:
         with:
           node-version: 22
 
-      - name: Revalidate every open registered stack
-        run: node scripts/revalidate-stacked-prs-ci.mjs
+      - id: stack_audit
+        name: Refresh affected stack evidence
+        continue-on-error: true
+        run: node scripts/revalidate-stacked-prs-ci.mjs --event-path "$GITHUB_EVENT_PATH"
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
-  revalidate-migrations:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    name: Revalidate Migration Ownership
+      - id: migration_audit
+        name: Refresh migration ownership
+        if: always()
+        continue-on-error: true
+        run: node scripts/check-migration-collisions-event-ci.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Fail incomplete draft dependency audit
+        if: >-
+          always() &&
+          (steps.stack_audit.outcome != 'success' ||
+          steps.migration_audit.outcome != 'success')
+        run: exit 1
+
+  revalidate-all:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    name: Revalidate Open Pull Requests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -133,8 +175,8 @@ jobs:
       - name: Check out trusted default-branch verifier
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          fetch-depth: 1
-          persist-credentials: false
+          fetch-depth: 0
+          persist-credentials: true
           ref: ${{ github.event.repository.default_branch }}
 
       - name: Set up Node.js
@@ -142,8 +184,26 @@ jobs:
         with:
           node-version: 22
 
-      - name: Revalidate open migration owners
+      - id: stack_audit
+        name: Revalidate every open registered stack
+        continue-on-error: true
+        run: node scripts/revalidate-stacked-prs-ci.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - id: migration_audit
+        name: Revalidate open migration owners
+        if: always()
+        continue-on-error: true
         run: node scripts/check-migration-collisions-ci.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Fail incomplete full revalidation
+        if: >-
+          always() &&
+          (steps.stack_audit.outcome != 'success' ||
+          steps.migration_audit.outcome != 'success')
+        run: exit 1

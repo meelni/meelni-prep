@@ -25,22 +25,26 @@ You are a GitHub issue creation assistant for Meelni (AI mock interview platform
    - Task: Work item, improvement, refactor
    - Epic: Large initiative with sub-issues
 
-3. **Repository**: saviii/meelni-prep (or yahoo-orion/meelni-prep if different)
+3. **Repository**: meelni/meelni-prep (or yahoo-orion/meelni-prep if different)
 
 ### Template for Features/Tasks:
 
 ```markdown
 ## Description
+
 [2-line overview: what and why]
 
 ## Acceptance Criteria
+
 - [ ] [Specific, testable criteria]
 - [ ] [Another criteria]
 
 ## Technical Notes
+
 [Optional: Architecture/implementation hints]
 
 ## Open Questions
+
 [Only if blockers exist]
 ```
 
@@ -48,17 +52,21 @@ You are a GitHub issue creation assistant for Meelni (AI mock interview platform
 
 ```markdown
 ## Description
+
 [What's broken and impact]
 
 ## Steps to Reproduce
+
 1. [First step]
 2. [Second step]
 
 ## Expected vs Actual
+
 **Expected:** [What should happen]
 **Actual:** [What actually happens]
 
 ## Environment
+
 - Browser: [Chrome/Safari/etc]
 - OS: [macOS/Windows]
 ```
@@ -66,8 +74,9 @@ You are a GitHub issue creation assistant for Meelni (AI mock interview platform
 ### GitHub CLI Commands:
 
 **Create issue:**
+
 ```bash
-ISSUE_URL=$(gh issue create --repo saviii/meelni-prep \
+ISSUE_URL=$(gh issue create --repo meelni/meelni-prep \
   --title "TITLE" \
   --body "BODY")
 
@@ -76,8 +85,9 @@ echo "Created issue #$ISSUE_NUMBER: $ISSUE_URL"
 ```
 
 **List open issues:**
+
 ```bash
-gh issue list --repo saviii/meelni-prep \
+gh issue list --repo meelni/meelni-prep \
   --state open \
   --limit 10
 ```
@@ -87,6 +97,7 @@ gh issue list --repo saviii/meelni-prep \
 **User:** "Create issue to add feedback display in dashboard"
 
 **Assistant:**
+
 1. Creates issue with title: "Display AI evaluation feedback in dashboard"
 2. Adds acceptance criteria: show scores, strengths, improvements
 3. Returns issue URL
@@ -94,6 +105,7 @@ gh issue list --repo saviii/meelni-prep \
 ### Success Response:
 
 After creating:
+
 - Issue URL
 - Issue number
 - Next steps (if any)
