@@ -1296,6 +1296,80 @@ async function verifyRoomProvisioningAndPresenceFences(
     assert.equal(recovered.current.state, "active");
     assert.equal(recovered.current.reconnectDeadlineAt, null);
   }
+
+  const [dueClock] = await sql<{ observed_at: Date }[]>`
+    SELECT date_trunc('milliseconds', clock_timestamp()) AS observed_at
+  `;
+  assert.ok(dueClock?.observed_at);
+  const dueObservedAt = new Date(dueClock.observed_at);
+  const dueDeadlineAt = new Date(dueObservedAt.getTime() - 1_000);
+  await sql`
+    UPDATE interview_session
+    SET lifecycle_state = 'reconnecting', lifecycle_version = 7,
+      reconnect_deadline_at = ${dueDeadlineAt.toISOString()}::timestamptz,
+      reconnect_deadline_owner = 'hard_deadline'
+    WHERE id = ${SESSION_PRESENCE_RECOVERY}::uuid
+  `;
+
+  const hardDeadlineOwned = await store.recoverFromDuePresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 7,
+    deadlineAt: dueDeadlineAt,
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(hardDeadlineOwned.applied, false);
+
+  await sql`
+    UPDATE interview_session
+    SET reconnect_deadline_owner = 'reconnect_grace'
+    WHERE id = ${SESSION_PRESENCE_RECOVERY}::uuid
+  `;
+  const staleDueVersion = await store.recoverFromDuePresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 6,
+    deadlineAt: dueDeadlineAt,
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(staleDueVersion.applied, false);
+  const preCutoffOnly = await store.recoverFromPresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 7,
+    deadlineAt: dueDeadlineAt,
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(preCutoffOnly.applied, false);
+  const staleDueDeadline = await store.recoverFromDuePresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 7,
+    deadlineAt: new Date(dueDeadlineAt.getTime() + 1),
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(staleDueDeadline.applied, false);
+  const dueRecovered = await store.recoverFromDuePresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 7,
+    deadlineAt: dueDeadlineAt,
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(dueRecovered.applied, true);
+  if (dueRecovered.applied) {
+    assert.equal(dueRecovered.current.state, "active");
+    assert.equal(dueRecovered.current.version, 8);
+    assert.equal(dueRecovered.current.reconnectDeadlineAt, null);
+  }
+  const dueReplay = await store.recoverFromDuePresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 7,
+    deadlineAt: dueDeadlineAt,
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(dueReplay.applied, false);
 }
 
 async function verifyReconnectTransportOrdering(

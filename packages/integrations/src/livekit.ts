@@ -58,7 +58,6 @@ export interface IssuedInterviewParticipantToken {
 export interface TerminateInterviewRoomInput {
   roomName: string;
   participantIdentity: string;
-  revokedAt?: Date;
   env: LiveKitEnvironment;
 }
 
@@ -387,7 +386,6 @@ export async function terminateInterviewRoom(
   {
     roomServiceClientFactory = (url, apiKey, apiSecret) =>
       new RoomServiceClient(url, apiKey, apiSecret),
-    now = () => new Date(),
   }: LiveKitProviderDependencies = {}
 ): Promise<ProviderResult<TerminatedInterviewRoom>> {
   const roomClient = roomServiceClientFactory(
@@ -404,11 +402,7 @@ export async function terminateInterviewRoom(
     });
   }
 
-  const revokedAt = input.revokedAt ?? now();
-  if (
-    !input.participantIdentity.trim() ||
-    !Number.isFinite(revokedAt.getTime())
-  ) {
+  if (!input.participantIdentity.trim()) {
     return providerFailure("livekit", {
       code: "livekit_participant_revoke_invalid",
       message: "The LiveKit participant revocation input is invalid.",
@@ -417,10 +411,11 @@ export async function terminateInterviewRoom(
   }
 
   try {
+    // Omitting revokeTokenTs makes LiveKit Cloud own the cutoff. A missing
+    // participant still has its cached tokens revoked before the 404 response.
     await roomClient.removeParticipant(
       input.roomName,
-      input.participantIdentity,
-      { revokeTokenTs: BigInt(Math.floor(revokedAt.getTime() / 1_000) + 1) }
+      input.participantIdentity
     );
   } catch (error) {
     if (!isLiveKitNotFoundError(error)) {
