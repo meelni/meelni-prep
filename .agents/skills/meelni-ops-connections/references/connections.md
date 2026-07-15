@@ -28,8 +28,11 @@ Skip capture only when the work used an already-documented path and nothing new 
 
 Canonical target:
 
-- Scope/account observed: `meelnis`
-- Project: `meelni/meelni`
+- Team scope: `meelni`
+- Account login: `contact@meelni.com`
+- Project: `meelni/meelni` (`prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4`)
+- Dashboard: `https://vercel.com/meelni/meelni`
+- GitHub repository: `meelni/meelni-prep`
 - App repo: `/Users/savi/Desktop/Github/meelni-prep`
 
 Auth:
@@ -44,11 +47,31 @@ Verify:
 
 ```bash
 npx vercel@55.0.0 whoami
-npx vercel@55.0.0 link --yes --project meelni
+npx vercel@55.0.0 teams ls
+npx vercel@55.0.0 project inspect meelni --scope meelni
+npx vercel@55.0.0 link --yes --project meelni --scope meelni
 npx vercel@55.0.0 env ls
 ```
 
-For local Codex worktrees, link the repo with `npx vercel@55.0.0 link --yes --project meelni`. The observed `meelnis` account behaves as the current personal scope, so passing `--scope meelnis` can be rejected by the Vercel CLI.
+The personal CLI identity `meelnis` is not authoritative for Meelni operations.
+Do not inspect or mutate the project through that identity even if it can see the
+project. Authenticate as `contact@meelni.com`, verify the `meelni` team scope and
+dashboard URL, and then link local worktrees with
+`npx vercel@55.0.0 link --yes --project meelni --scope meelni`.
+
+After a GitHub repository ownership transfer, inspect the Vercel project's Git
+link before assuming the integration followed the repository. A retained link
+to the former owner or a `sourceless` link must be reconnected from the verified
+`meelni` team session; do not create a duplicate Vercel project.
+
+Private repositories owned by a GitHub organization require a Vercel Pro team.
+On the `Meelni` Hobby team, Vercel can install its GitHub App for only
+`meelni/meelni-prep` and can list the repository, but the import/reconnect flow
+blocks before project creation with a Pro-plan requirement. Do not work around
+this by creating a duplicate project, moving the repository back to a personal
+account, making it public, or upgrading the Vercel team without explicit spend
+authorization. Keep the existing project and domains unchanged until the team
+is upgraded or Vercel confirms another supported reconnect path.
 
 Fresh worktree setup should run `npm run setup:local`; when Vercel CLI auth is available, that setup path links the worktree and runs `npm run env:pull` if required env values are missing or still placeholders.
 
@@ -140,6 +163,12 @@ Repository transfer and CI recovery:
 - After a transfer, update the shared Git remote and verify open PRs, branch
   protection, rulesets, environments, webhooks, and GitHub App checks before
   re-enabling hosted publication.
+- Install third-party GitHub Apps with `Only select repositories` and select
+  only `meelni/meelni-prep`. Verify the organization installation with
+  `gh api orgs/meelni/installations`; `repository_selection` must be `selected`
+  and `suspended_at` must be null. Repository enumeration may require an
+  additional `read:user` OAuth scope, so the GitHub installation settings page
+  is the authoritative fallback for confirming the selected repository.
 
 Production guardrails:
 
@@ -197,9 +226,13 @@ Operational notes:
 
 Canonical target:
 
-- Project name: `Meelni`
-- Project ref: `rarrrwkjuhfyfatcmrkw`
-- Project host: `rarrrwkjuhfyfatcmrkw.supabase.co`
+- Production project: `Meelni`
+- Production project ref: `rarrrwkjuhfyfatcmrkw`
+- Production project host: `rarrrwkjuhfyfatcmrkw.supabase.co`
+- Preview project: `meelni-preview`
+- Preview project ref: `kxpvidtxznllfosfemdl`
+- Preview GitHub integration: `meelni/meelni-prep`, working directory `.`,
+  production branch `main`
 - Region: `East US (Ohio)`
 - Local browser auth redirects through Supabase OAuth and returns to `http://localhost:3000/auth/callback`.
 
@@ -244,6 +277,16 @@ Operational notes:
   declared Production ref. Their Production counterparts require an exact
   match. Loopback PostgreSQL URLs bypass the shared-environment identity check
   so disposable local migration tests and local development remain usable.
+- The GitHub App must be installed with access only to
+  `meelni/meelni-prep`. Enable the GitHub integration from the
+  `meelni-preview` project, never from the Production `Meelni` project during
+  Preview-only connection work. Supabase labels the preview project's own
+  `main` database as "Production" inside that project; verify the project ref
+  `kxpvidtxznllfosfemdl` before accepting that label.
+- On Supabase Free, automatic per-PR database branching is unavailable. The
+  repository integration can still sync `main` migrations to the Preview
+  database, but do not claim isolated PR databases or a Supabase PR check until
+  a fresh event proves those behaviors.
 - Check provider restore coverage without exposing credentials:
 
   ```bash
@@ -381,12 +424,48 @@ Canonical target:
 
 - Product work should use the product project/work tracked under `SAV-*` unless the user says otherwise.
 - Stripe/Vercel operations ticket from this billing work: `SAV-126`.
+- Workspace URL slug: `saviiii`
+- GitHub organization: `meelni`
+- GitHub repository: `meelni/meelni-prep`
 
 Guidelines:
 
 - Use Linear tools rather than browser scraping when available.
 - Put durable operational blockers and account/project discoveries into the relevant issue as comments.
 - When creating new issues for this area, include links to PRs, Vercel project/environment targets, Stripe object IDs, and explicit production guardrails.
+- The current GitHub connection flow installs the `linear-code` GitHub App;
+  install it with access only to `meelni/meelni-prep`. The legacy `linear` app
+  can also appear during callback/setup flows. Do not assume the workspace link
+  is complete merely because either app is installed: verify `meelni` appears
+  under Settings -> Integrations -> GitHub -> Connected organizations, then
+  prove a fresh `SAV-*` pull request links back to its Linear issue.
+
+## GitGuardian
+
+Canonical target:
+
+- Workspace ID: `839712`
+- GitHub organization: `meelni`
+- GitHub repository: `meelni/meelni-prep`
+
+Auth and connection:
+
+- Install the `gitguardian` GitHub App on `meelni`.
+- Choose `Only select repositories` and select only `meelni-prep`.
+- Authenticate GitGuardian with the existing GitHub operator account, then link
+  the `meelni` organization to the existing GitGuardian workspace. Do not
+  create a second workspace when an existing workspace is available.
+
+Verify:
+
+```bash
+gh api orgs/meelni/installations \
+  --jq '.installations[] | select(.app_slug == "gitguardian") | {id, repository_selection, suspended_at}'
+```
+
+The result must report `repository_selection: selected` and
+`suspended_at: null`. A fresh draft PR is the end-to-end proof that GitGuardian
+can publish its security check for the transferred repository.
 
 ## MCP And Future Providers
 
