@@ -23,9 +23,9 @@ import {
 import { ACCOUNT_IDENTITY_LOCK_NAMESPACE } from "../lib/db/account-identity-lock";
 
 import {
-  ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
+  DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
@@ -47,6 +47,11 @@ const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const SESSION_DEADLINE_BACKFILL = "cccccccc-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const SESSION_DEADLINE_INSUFFICIENT = "dddddddd-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const SESSION_DEADLINE_USER_END = "eeeeeeee-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const SESSION_DEADLINE_DISPATCH_RECOVERY =
+  "ffffffff-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
@@ -106,7 +111,7 @@ async function run() {
     await verifyDatabase(clean);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
-    await verifyAtomicSessionCompletion(clean, cleanUrl);
+    await verifyAtomicSessionCompletion(clean, cleanUrl, true);
     await verifyAuthorization(clean);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
@@ -118,10 +123,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -178,14 +180,24 @@ async function run() {
       );
       assertLegacyCreditLedgerIntegrity(lifecyclePreview!);
       const countsBefore = await protectedRowCounts(upgrade);
-      await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
+      const throughAtomicCompletion = await createMigrationFolderThrough(7);
+      try {
+        await migrate(drizzle(upgrade), {
+          migrationsFolder: throughAtomicCompletion,
+        });
+      } finally {
+        await rm(throughAtomicCompletion, { recursive: true, force: true });
+      }
       const lifecycleApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLifecycleBackfillCountsMatch(lifecyclePreview!, lifecycleApplied!);
       assertLegacyCreditLedgerIntegrity(lifecycleApplied!);
       assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
+      await seedDeadlineCleanupBackfillFixture(upgrade);
+      await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
+      await verifyDeadlineCleanupBackfill(upgrade);
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
-      await verifyAtomicSessionCompletion(upgrade, upgradeUrl);
+      await verifyAtomicSessionCompletion(upgrade, upgradeUrl, false);
       await verifyAuthorization(upgrade);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
       assertLegacyCreditLedgerIntegrity(
@@ -828,17 +840,30 @@ async function verifyLifecycleConcurrency(sql: postgres.Sql) {
 
 async function verifyAtomicSessionCompletion(
   sql: postgres.Sql,
-  databaseUrl: string
+  databaseUrl: string,
+  runDeadlineCleanupComposition: boolean
 ) {
   process.env.DATABASE_URL = databaseUrl;
   const [
     { finalizeInterviewSession },
     { createDrizzleFeedbackDispatchStore },
+    {
+      acknowledgeInterviewDeadlineRoomCleanup,
+      getInterviewDeadlineSession,
+      listInterviewDeadlineSchedules,
+    },
+    { enforceInterviewDeadlineWorkflow },
+    { dispatchFeedbackGenerationWorkflow },
+    { dispatchInterviewSessionSettlement, settleInterviewSessionWorkflow },
     { SessionTier },
     schema,
   ] = await Promise.all([
     import("../lib/db/end-interview-session"),
     import("../lib/db/feedback-dispatch"),
+    import("../lib/db/session-deadlines"),
+    import("../lib/workflows/enforce-interview-deadline"),
+    import("../lib/workflows/dispatch-feedback-generation"),
+    import("../lib/workflows/end-interview-session"),
     import("../lib/evaluation/session-validator"),
     import("../lib/db/schema"),
   ]);
@@ -878,13 +903,21 @@ async function verifyAtomicSessionCompletion(
 
   try {
     const results = await Promise.all(
-      databases.map((database) =>
+      databases.map((database, index) =>
         finalizeInterviewSession(
-          {
-            sessionId: SESSION_ATOMIC_END,
-            userId: USER_ONE,
-            validation,
-          },
+          index % 2 === 0
+            ? {
+                sessionId: SESSION_ATOMIC_END,
+                actor: { type: "user", userId: USER_ONE },
+                requestedTerminalReason: "user_end",
+                validation,
+              }
+            : {
+                sessionId: SESSION_ATOMIC_END,
+                actor: { type: "system", source: "hard_deadline" },
+                requestedTerminalReason: "time_limit",
+                validation,
+              },
           database
         )
       )
@@ -908,7 +941,10 @@ async function verifyAtomicSessionCompletion(
     );
     assert.equal(signatures[0]?.state, "completed");
     assert.equal(signatures[0]?.version, 3);
-    assert.equal(signatures[0]?.reason, "user_end");
+    assert.ok(
+      signatures[0]?.reason === "user_end" ||
+        signatures[0]?.reason === "time_limit"
+    );
 
     const feedbackRows = await sql<
       { rows: number; event_ids: number; dispatch_attempts: number }[]
@@ -929,7 +965,7 @@ async function verifyAtomicSessionCompletion(
       createDrizzleFeedbackDispatchStore(database)
     );
     const now = new Date("2026-07-09T22:00:00.000Z");
-    const claims = await Promise.all(
+    let claims = await Promise.all(
       stores.map((store) =>
         store.claim({
           sessionId: SESSION_ATOMIC_END,
@@ -938,6 +974,28 @@ async function verifyAtomicSessionCompletion(
         })
       )
     );
+    if (signatures[0]?.reason === "time_limit") {
+      assert.equal(
+        claims.every((claim) => claim === null),
+        true
+      );
+      await sql`
+        UPDATE interview_session
+        SET deadline_room_cleanup_status = 'already_absent',
+          deadline_room_cleanup_acknowledged_at = now()
+        WHERE id = ${SESSION_ATOMIC_END}::uuid
+          AND deadline_room_cleanup_status = 'pending'
+      `;
+      claims = await Promise.all(
+        stores.map((store) =>
+          store.claim({
+            sessionId: SESSION_ATOMIC_END,
+            now,
+            staleBefore: new Date(now.getTime() - 120_000),
+          })
+        )
+      );
+    }
     const winners = claims.filter((claim) => claim !== null);
     assert.equal(winners.length, 1);
     assert.equal(winners[0]?.attempts, 1);
@@ -981,7 +1039,8 @@ async function verifyAtomicSessionCompletion(
       true
     );
 
-    await sql`
+    if (runDeadlineCleanupComposition) {
+      await sql`
       INSERT INTO interview_session (
         id, user_id, round_type, mode, status, lifecycle_state,
         lifecycle_version, terminal_reason, ended_at, last_transition_at
@@ -998,24 +1057,495 @@ async function verifyAtomicSessionCompletion(
         now()
       )
     `;
-    const repaired = await finalizeInterviewSession(
-      {
-        sessionId: SESSION_REPAIR,
-        userId: USER_ONE,
-        validation,
-      },
-      databases[0]!
-    );
-    assert.equal(repaired.ok, true);
-    if (repaired.ok) {
-      assert.equal(repaired.disposition, "repaired");
-      assert.equal(repaired.lifecycle.version, 9);
-      assert.equal(repaired.lifecycle.terminalReason, "legacy_unknown");
-      assert.equal(repaired.feedback.sessionId, SESSION_REPAIR);
+      const repaired = await finalizeInterviewSession(
+        {
+          sessionId: SESSION_REPAIR,
+          actor: { type: "user", userId: USER_ONE },
+          requestedTerminalReason: "user_end",
+          validation,
+        },
+        databases[0]!
+      );
+      assert.equal(repaired.ok, true);
+      if (repaired.ok) {
+        assert.equal(repaired.disposition, "repaired");
+        assert.equal(repaired.lifecycle.version, 9);
+        assert.equal(repaired.lifecycle.terminalReason, "legacy_unknown");
+        assert.equal(repaired.feedback.sessionId, SESSION_REPAIR);
+      }
+
+      await sql`
+      INSERT INTO interview_session (
+        id, user_id, round_type, mode, status, lifecycle_state,
+        lifecycle_version, activated_at, started_at, livekit_room_name
+      ) VALUES (
+        ${SESSION_DEADLINE_INSUFFICIENT}::uuid,
+        ${USER_ONE}::uuid,
+        'product_sense',
+        'voice_video',
+        'in_progress',
+        'active',
+        3,
+        '2026-07-10T06:01:00.000Z'::timestamptz,
+        '2026-07-10T06:00:00.000Z'::timestamptz,
+        'interview-deadline-insufficient-room'
+      )
+    `;
+      const insufficientValidation = {
+        tier: SessionTier.INSUFFICIENT,
+        isValid: false,
+        stats: {
+          totalTurns: 2,
+          userTurns: 1,
+          totalWords: 12,
+          durationSeconds: 30,
+          substantiveResponses: 0,
+        },
+        reasons: ["Insufficient durable interview signal"],
+        recommendations: ["Complete another interview."],
+      };
+      let roomDeleteAttempts = 0;
+      let feedbackEvents = 0;
+      let signalDeleteStarted: (() => void) | undefined;
+      let resolveDeferredDelete:
+        | ((result: {
+            ok: false;
+            provider: "livekit";
+            error: {
+              code: string;
+              message: string;
+              retryable: boolean;
+            };
+          }) => void)
+        | undefined;
+      const deleteStarted = new Promise<void>((resolve) => {
+        signalDeleteStarted = resolve;
+      });
+      const deferredDelete = new Promise<{
+        ok: false;
+        provider: "livekit";
+        error: { code: string; message: string; retryable: boolean };
+      }>((resolve) => {
+        resolveDeferredDelete = resolve;
+      });
+      const deadlineDeps = {
+        getSession: getInterviewDeadlineSession,
+        settleSession: () =>
+          settleInterviewSessionWorkflow(
+            {
+              sessionId: SESSION_DEADLINE_INSUFFICIENT,
+              actor: {
+                type: "system" as const,
+                source: "hard_deadline" as const,
+              },
+              requestedTerminalReason: "time_limit" as const,
+            },
+            {
+              authorize: async () => true,
+              validate: async () => insufficientValidation,
+              finalize: (
+                input: Parameters<typeof finalizeInterviewSession>[0]
+              ) => finalizeInterviewSession(input, databases[0]!),
+              updateMotivation: async () => {},
+            }
+          ),
+        settleInvalidSession: async () => ({
+          ok: false as const,
+          reason: "not_found" as const,
+        }),
+        dispatchSettlement: (
+          completion: Parameters<typeof dispatchInterviewSessionSettlement>[0]
+        ) =>
+          dispatchInterviewSessionSettlement(completion, {
+            dispatch: async () => {
+              feedbackEvents += 1;
+              throw new Error("Skipped feedback must not dispatch");
+            },
+          }),
+        terminateRoom: async ({ roomName }: { roomName: string }) => {
+          roomDeleteAttempts += 1;
+          if (roomDeleteAttempts === 1) {
+            signalDeleteStarted?.();
+            return deferredDelete;
+          }
+          return {
+            ok: true as const,
+            provider: "livekit" as const,
+            data: { roomName, disposition: "already_absent" as const },
+          };
+        },
+        acknowledgeRoomCleanup: acknowledgeInterviewDeadlineRoomCleanup,
+        now: () => new Date("2026-07-10T06:30:00.000Z"),
+      };
+      const deferredDeadline = enforceInterviewDeadlineWorkflow(
+        {
+          sessionId: SESSION_DEADLINE_INSUFFICIENT,
+          deadlineAt: "2026-07-10T06:30:00.000Z",
+          env: {
+            apiKey: "test",
+            apiSecret: "test",
+            url: "wss://test.invalid",
+          },
+        },
+        deadlineDeps
+      );
+      await deleteStarted;
+      const concurrentUserEnd = await finalizeInterviewSession(
+        {
+          sessionId: SESSION_DEADLINE_INSUFFICIENT,
+          actor: { type: "user", userId: USER_ONE },
+          requestedTerminalReason: "user_end",
+          validation,
+        },
+        databases[1]!
+      );
+      assert.equal(concurrentUserEnd.ok, true);
+      if (concurrentUserEnd.ok) {
+        assert.equal(concurrentUserEnd.disposition, "existing");
+        assert.equal(
+          concurrentUserEnd.lifecycle.terminalReason,
+          "insufficient_signal"
+        );
+        assert.equal(
+          concurrentUserEnd.deadlineRoomCleanupStatus,
+          "pending"
+        );
+      }
+      resolveDeferredDelete?.({
+        ok: false,
+        provider: "livekit",
+        error: {
+          code: "livekit_room_delete_failed",
+          message: "provider unavailable",
+          retryable: true,
+        },
+      });
+      await assert.rejects(deferredDeadline);
+      const [pendingInsufficient] = await sql<
+        {
+          terminal_reason: string;
+          deadline_room_cleanup_status: string | null;
+          feedback_status: string;
+          dispatch_status: string;
+        }[]
+      >`
+      SELECT session.terminal_reason,
+        session.deadline_room_cleanup_status,
+        feedback.status AS feedback_status,
+        feedback.dispatch_status
+      FROM interview_session session
+      JOIN feedback ON feedback.session_id = session.id
+      WHERE session.id = ${SESSION_DEADLINE_INSUFFICIENT}::uuid
+    `;
+      assert.deepEqual(pendingInsufficient, {
+        terminal_reason: "insufficient_signal",
+        deadline_room_cleanup_status: "pending",
+        feedback_status: "skipped",
+        dispatch_status: "not_required",
+      });
+      assert.equal(
+        (await listInterviewDeadlineSchedules()).some(
+          (item) => item.sessionId === SESSION_DEADLINE_INSUFFICIENT
+        ),
+        true
+      );
+      const recoveredInsufficient = await enforceInterviewDeadlineWorkflow(
+        {
+          sessionId: SESSION_DEADLINE_INSUFFICIENT,
+          deadlineAt: "2026-07-10T06:30:00.000Z",
+          env: { apiKey: "test", apiSecret: "test", url: "wss://test.invalid" },
+        },
+        deadlineDeps
+      );
+      assert.equal(recoveredInsufficient.ok, true);
+      assert.equal(feedbackEvents, 0);
+      const acknowledgedInsufficient = await getInterviewDeadlineSession(
+        SESSION_DEADLINE_INSUFFICIENT
+      );
+      assert.equal(
+        acknowledgedInsufficient?.deadlineRoomCleanupStatus,
+        "already_absent"
+      );
+
+      await sql`
+      INSERT INTO interview_session (
+        id, user_id, round_type, mode, status, lifecycle_state,
+        lifecycle_version, activated_at, started_at, livekit_room_name,
+        config
+      ) VALUES (
+        ${SESSION_DEADLINE_DISPATCH_RECOVERY}::uuid,
+        ${USER_ONE}::uuid,
+        'product_sense',
+        'voice_video',
+        'in_progress',
+        'active',
+        3,
+        '2026-07-10T06:01:00.000Z'::timestamptz,
+        '2026-07-10T06:00:00.000Z'::timestamptz,
+        'interview-deadline-dispatch-recovery-room',
+        '{"duration":30}'::jsonb
+      )
+    `;
+      const eligibleDeadline = await finalizeInterviewSession(
+        {
+          sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
+          actor: { type: "system", source: "hard_deadline" },
+          requestedTerminalReason: "time_limit",
+          validation,
+        },
+        databases[0]!
+      );
+      assert.equal(eligibleDeadline.ok, true);
+      if (eligibleDeadline.ok) {
+        assert.equal(eligibleDeadline.lifecycle.terminalReason, "time_limit");
+        assert.equal(eligibleDeadline.deadlineRoomCleanupStatus, "pending");
+        assert.equal(eligibleDeadline.feedback.status, "pending");
+        assert.equal(eligibleDeadline.feedback.dispatchStatus, "pending");
+      }
+
+      const concurrentEligibleUserEnd = await finalizeInterviewSession(
+        {
+          sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
+          actor: { type: "user", userId: USER_ONE },
+          requestedTerminalReason: "user_end",
+          validation,
+        },
+        databases[1]!
+      );
+      assert.equal(concurrentEligibleUserEnd.ok, true);
+      if (concurrentEligibleUserEnd.ok) {
+        assert.equal(concurrentEligibleUserEnd.disposition, "existing");
+        assert.equal(
+          concurrentEligibleUserEnd.deadlineRoomCleanupStatus,
+          "pending"
+        );
+      }
+
+      const dispatchRecoveryStores = databases.map((database) =>
+        createDrizzleFeedbackDispatchStore(database)
+      );
+      const dispatchRecoveryNow = new Date("2026-07-10T06:31:00.000Z");
+      const blockedClaims = await Promise.all(
+        dispatchRecoveryStores.map((store) =>
+          store.claim({
+            sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
+            now: dispatchRecoveryNow,
+            staleBefore: new Date(dispatchRecoveryNow.getTime() - 120_000),
+          })
+        )
+      );
+      assert.equal(blockedClaims.every((claim) => claim === null), true);
+
+      await acknowledgeInterviewDeadlineRoomCleanup(
+        SESSION_DEADLINE_DISPATCH_RECOVERY,
+        "already_absent"
+      );
+      const acknowledgedClaims = await Promise.all(
+        dispatchRecoveryStores.map((store) =>
+          store.claim({
+            sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
+            now: dispatchRecoveryNow,
+            staleBefore: new Date(dispatchRecoveryNow.getTime() - 120_000),
+          })
+        )
+      );
+      const acknowledgedWinners = acknowledgedClaims.filter(
+        (claim) => claim !== null
+      );
+      assert.equal(acknowledgedWinners.length, 1);
+      const failedDispatch = acknowledgedWinners[0]!;
+      assert.equal(failedDispatch.attempts, 1);
+      assert.ok(failedDispatch.eventId);
+      assert.equal(
+        await dispatchRecoveryStores[0]!.markFailed({
+          sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
+          eventId: failedDispatch.eventId,
+          attempt: failedDispatch.attempts,
+          errorCode: "test_dispatch_failure",
+        }),
+        true
+      );
+      assert.equal(
+        (await listInterviewDeadlineSchedules()).some(
+          (item) => item.sessionId === SESSION_DEADLINE_DISPATCH_RECOVERY
+        ),
+        true
+      );
+
+      let dispatchRecoveryRoomDeletes = 0;
+      let recoveredFeedbackEvents = 0;
+      const recoveredEligible = await enforceInterviewDeadlineWorkflow(
+        {
+          sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
+          deadlineAt: "2026-07-10T06:30:00.000Z",
+          env: { apiKey: "test", apiSecret: "test", url: "wss://test.invalid" },
+        },
+        {
+          getSession: getInterviewDeadlineSession,
+          settleSession: () =>
+            settleInterviewSessionWorkflow(
+              {
+                sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
+                actor: { type: "system", source: "hard_deadline" },
+                requestedTerminalReason: "time_limit",
+              },
+              {
+                authorize: async () => true,
+                validate: async () => validation,
+                finalize: (
+                  input: Parameters<typeof finalizeInterviewSession>[0]
+                ) => finalizeInterviewSession(input, databases[0]!),
+                updateMotivation: async () => {},
+              }
+            ),
+          settleInvalidSession: async () => ({
+            ok: false as const,
+            reason: "not_found" as const,
+          }),
+          dispatchSettlement: (completion) =>
+            dispatchInterviewSessionSettlement(completion, {
+              dispatch: (input) =>
+                dispatchFeedbackGenerationWorkflow(input, {
+                  store: dispatchRecoveryStores[1]!,
+                  now: () => new Date("2026-07-10T06:32:00.000Z"),
+                  send: async () => {
+                    recoveredFeedbackEvents += 1;
+                  },
+                }),
+            }),
+          terminateRoom: async () => {
+            dispatchRecoveryRoomDeletes += 1;
+            throw new Error("Acknowledged cleanup must not delete again");
+          },
+          acknowledgeRoomCleanup: async () => {
+            throw new Error("Acknowledged cleanup must not acknowledge again");
+          },
+          now: () => new Date("2026-07-10T06:32:00.000Z"),
+        }
+      );
+      assert.equal(recoveredEligible.ok, true);
+      assert.equal(dispatchRecoveryRoomDeletes, 0);
+      assert.equal(recoveredFeedbackEvents, 1);
+      const [recoveredDispatchRow] = await sql<
+        {
+          cleanup_status: string;
+          dispatch_status: string;
+          dispatch_attempts: number;
+          dispatch_event_id: string;
+        }[]
+      >`
+      SELECT session.deadline_room_cleanup_status AS cleanup_status,
+        feedback.dispatch_status,
+        feedback.dispatch_attempts,
+        feedback.dispatch_event_id
+      FROM interview_session session
+      JOIN feedback ON feedback.session_id = session.id
+      WHERE session.id = ${SESSION_DEADLINE_DISPATCH_RECOVERY}::uuid
+    `;
+      assert.deepEqual(recoveredDispatchRow, {
+        cleanup_status: "already_absent",
+        dispatch_status: "sent",
+        dispatch_attempts: 2,
+        dispatch_event_id: `feedback/generate.requested:${SESSION_DEADLINE_DISPATCH_RECOVERY}:2`,
+      });
+      assert.equal(
+        (await listInterviewDeadlineSchedules()).some(
+          (item) => item.sessionId === SESSION_DEADLINE_DISPATCH_RECOVERY
+        ),
+        false
+      );
+
+      await sql`
+      INSERT INTO interview_session (
+        id, user_id, round_type, mode, status, lifecycle_state,
+        lifecycle_version, activated_at, started_at, livekit_room_name
+      ) VALUES (
+        ${SESSION_DEADLINE_USER_END}::uuid,
+        ${USER_ONE}::uuid,
+        'product_sense',
+        'voice_video',
+        'in_progress',
+        'active',
+        3,
+        '2026-07-10T06:01:00.000Z'::timestamptz,
+        '2026-07-10T06:00:00.000Z'::timestamptz,
+        'interview-deadline-user-end-room'
+      )
+    `;
+      const userEndWinner = await finalizeInterviewSession(
+        {
+          sessionId: SESSION_DEADLINE_USER_END,
+          actor: { type: "user", userId: USER_ONE },
+          requestedTerminalReason: "user_end",
+          validation,
+        },
+        databases[0]!
+      );
+      assert.equal(userEndWinner.ok, true);
+      const deadlineLoser = await finalizeInterviewSession(
+        {
+          sessionId: SESSION_DEADLINE_USER_END,
+          actor: { type: "system", source: "hard_deadline" },
+          requestedTerminalReason: "time_limit",
+          validation: insufficientValidation,
+        },
+        databases[1]!
+      );
+      assert.equal(deadlineLoser.ok, true);
+      if (deadlineLoser.ok) {
+        assert.equal(deadlineLoser.lifecycle.terminalReason, "user_end");
+        assert.equal(deadlineLoser.deadlineRoomCleanupStatus, null);
+      }
+      await assert.rejects(() =>
+        acknowledgeInterviewDeadlineRoomCleanup(
+          SESSION_DEADLINE_USER_END,
+          "already_absent"
+        )
+      );
     }
   } finally {
     await Promise.all(clients.map((client) => client.end()));
   }
+}
+
+async function seedDeadlineCleanupBackfillFixture(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      lifecycle_version, terminal_reason, ended_at, last_transition_at,
+      livekit_room_name
+    ) VALUES (
+      ${SESSION_DEADLINE_BACKFILL}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'completed',
+      'completed',
+      4,
+      'time_limit',
+      now(),
+      now(),
+      'interview-deadline-backfill-room'
+    )
+  `;
+}
+
+async function verifyDeadlineCleanupBackfill(sql: postgres.Sql) {
+  const rows = await sql<
+    {
+      deadline_room_cleanup_status: string | null;
+      deadline_room_cleanup_acknowledged_at: Date | null;
+    }[]
+  >`
+    SELECT deadline_room_cleanup_status,
+      deadline_room_cleanup_acknowledged_at
+    FROM interview_session
+    WHERE id = ${SESSION_DEADLINE_BACKFILL}::uuid
+  `;
+  assert.deepEqual(rows[0], {
+    deadline_room_cleanup_status: "pending",
+    deadline_room_cleanup_acknowledged_at: null,
+  });
 }
 
 function deepEqual(left: unknown, right: unknown): boolean {
@@ -1040,7 +1570,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 8);
+  assert.equal(await migrationCount(sql), 9);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -1065,11 +1595,13 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND table_name = 'interview_session'
       AND column_name IN (
         'lifecycle_state', 'lifecycle_version', 'terminal_reason',
-        'activated_at', 'ending_at', 'last_transition_at'
+        'activated_at', 'ending_at', 'last_transition_at',
+        'deadline_room_cleanup_status',
+        'deadline_room_cleanup_acknowledged_at'
       )
     ORDER BY column_name
   `;
-  assert.equal(lifecycleColumns.length, 6);
+  assert.equal(lifecycleColumns.length, 8);
 
   const lifecycleIndexes = await sql<{ indexname: string }[]>`
     SELECT indexname

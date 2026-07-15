@@ -61,3 +61,19 @@ The migration adds database checks for tier values, dispatch identity,
 nonnegative attempts, active claims, and sent acknowledgements. See the
 [session completion runbook](./interview-session-completion.md) for Preview
 rehearsal and recovery.
+
+## Deadline room cleanup acknowledgement
+
+`0008_deadline_room_cleanup_ack` adds durable room-cleanup ownership and
+acknowledgement state for server-enforced interview deadlines. It records the
+cleanup status and acknowledgement time independently from terminal reason,
+backfills existing explicit `time_limit` outcomes to `pending`, and indexes the
+recovery selector used to find cleanup work after exact-event retries are
+exhausted.
+
+Database constraints keep pending and acknowledged states consistent: pending
+cleanup has no acknowledgement timestamp, while `deleted` and
+`already_absent` require one. Application code must not expose or dispatch
+feedback until a deadline-owned cleanup claim is acknowledged. See the
+[deadline operations runbook](./interview-session-deadline.md) for failure,
+recovery, and rollback behavior.

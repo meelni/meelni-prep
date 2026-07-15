@@ -45,6 +45,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
       return {
         id: productFixture.session.id,
         config: input.config,
+        startedAt: productFixture.session.startedAt,
       };
     },
     getQuestionById: async (questionId) => {
@@ -87,6 +88,11 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
         `interview-start:${user.id}:${liveKitFixture.input.roomName}`
       );
     },
+    scheduleDeadline: async (input) => {
+      calls.push("scheduleDeadline");
+      assert.equal(input.sessionId, productFixture.session.id);
+      assert.equal(input.deadlineAt.toISOString(), "2026-06-27T18:15:00.000Z");
+    },
     recordQuestionUsage: async (sessionId, questionId) => {
       calls.push("recordQuestionUsage");
       assert.equal(sessionId, productFixture.session.id);
@@ -104,6 +110,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
           metadata.question?.askedAt,
           productFixture.session.startedAt.toISOString()
         );
+        assert.equal(metadata.deadline_at, "2026-06-27T18:15:00.000Z");
         return {
           ok: true,
           provider: "livekit",
@@ -136,6 +143,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
       roomName: liveKitFixture.input.roomName,
       token: liveKitFixture.expectedStartedRoom.token,
       url: liveKitFixture.expectedStartedRoom.url,
+      deadlineAt: "2026-06-27T18:15:00.000Z",
       config: {
         difficulty: "intermediate",
         duration: 45,
@@ -157,6 +165,7 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
     "createSession",
     "recordQuestionUsage",
     "transition:connecting",
+    "scheduleDeadline",
     "consumeReservation",
   ]);
 });
@@ -203,9 +212,16 @@ test("selected question converges conflicting round identities before persistenc
         assert.equal(input.roundType, "product_sense");
         assert.ok(input.config);
         for (const key of roundIdentityKeys) {
-          assert.equal((input.config as Record<string, unknown>)[key], undefined);
+          assert.equal(
+            (input.config as Record<string, unknown>)[key],
+            undefined
+          );
         }
-        return { id: productFixture.session.id, config: input.config };
+        return {
+          id: productFixture.session.id,
+          config: input.config,
+          startedAt: productFixture.session.startedAt,
+        };
       },
       livekitProvider: {
         startInterviewRoom: async (input) => {
@@ -273,7 +289,11 @@ test("startInterviewSessionWorkflow rejects an unmappable selected question befo
       },
       createSession: async (input) => {
         calls.push("createSession");
-        return { id: fixture.session.id, config: input.config };
+        return {
+          id: fixture.session.id,
+          config: input.config,
+          startedAt: fixture.session.startedAt,
+        };
       },
     })
   );
@@ -347,6 +367,7 @@ test("startInterviewSessionWorkflow carries hint mode through session config", a
         return {
           id: productFixture.session.id,
           config: input.config,
+          startedAt: productFixture.session.startedAt,
         };
       },
     })
@@ -400,6 +421,7 @@ test("startInterviewSessionWorkflow strips legacy and malicious runtime controls
         return {
           id: createProductSenseInterviewFixture().session.id,
           config: input.config,
+          startedAt: createProductSenseInterviewFixture().session.startedAt,
         };
       },
       livekitProvider: {
@@ -470,6 +492,7 @@ test("startInterviewSessionWorkflow rejects non-canonical roles before side effe
         return {
           id: createProductSenseInterviewFixture().session.id,
           config: input.config,
+          startedAt: createProductSenseInterviewFixture().session.startedAt,
         };
       },
     })
@@ -502,6 +525,7 @@ test("startInterviewSessionWorkflow allows all PM round types when a credit is a
         return {
           id: createProductSenseInterviewFixture().session.id,
           config: input.config,
+          startedAt: createProductSenseInterviewFixture().session.startedAt,
         };
       },
     })
@@ -525,6 +549,7 @@ test("startInterviewSessionWorkflow returns no-credit response before session wo
         return {
           id: createProductSenseInterviewFixture().session.id,
           config: input.config,
+          startedAt: createProductSenseInterviewFixture().session.startedAt,
         };
       },
       livekitProvider: {
@@ -614,6 +639,7 @@ test("startInterviewSessionWorkflow fails closed before reservation when trial a
         return {
           id: createProductSenseInterviewFixture().session.id,
           config: input.config,
+          startedAt: createProductSenseInterviewFixture().session.startedAt,
         };
       },
     })
@@ -682,6 +708,93 @@ test("startInterviewSessionWorkflow maps retryable LiveKit failures to service u
   ]);
   assert.equal(lifecycle.current().state, "failed");
   assert.equal(lifecycle.current().terminalReason, "provider_failure");
+});
+
+test("deadline scheduling failure closes the room, terminalizes, and releases credit", async () => {
+  const calls: string[] = [];
+  const lifecycle = createStatefulLifecycleHarness();
+  const result = await startInterviewSessionWorkflow(
+    {
+      user,
+      body: { roundType: "product_sense" },
+      env: createLiveKitStartFixture().input.env,
+      interviewAgentName: createLiveKitStartFixture().input.agentName,
+    },
+    createDeps({
+      scheduleDeadline: async () => {
+        calls.push("schedule");
+        throw new Error("deadline provider unavailable");
+      },
+      terminateRoom: async () => {
+        calls.push("terminate-room");
+      },
+      transitionLifecycle: async (input) => {
+        calls.push(`transition:${input.to}`);
+        return lifecycle.transition(input);
+      },
+      releaseReservation: async () => {
+        calls.push("release");
+      },
+      consumeReservation: async () => {
+        calls.push("consume");
+      },
+    })
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.status, 503);
+    assert.equal(result.body.error, "service_unavailable");
+  }
+  assert.deepEqual(calls, [
+    "transition:connecting",
+    "schedule",
+    "terminate-room",
+    "transition:failed",
+    "release",
+  ]);
+  assert.equal(lifecycle.current().state, "failed");
+});
+
+test("missing persisted start time fails closed before room creation and releases credit", async () => {
+  const calls: string[] = [];
+  await assert.rejects(
+    () =>
+      startInterviewSessionWorkflow(
+        {
+          user,
+          body: { roundType: "product_sense" },
+          env: createLiveKitStartFixture().input.env,
+          interviewAgentName: createLiveKitStartFixture().input.agentName,
+        },
+        createDeps({
+          createSession: async (input) => ({
+            id: createProductSenseInterviewFixture().session.id,
+            config: input.config,
+            startedAt: null,
+          }),
+          transitionLifecycle: async (input) => {
+            calls.push(`transition:${input.to}`);
+            return createTransitionResult(input);
+          },
+          releaseReservation: async () => {
+            calls.push("release");
+          },
+          livekitProvider: {
+            startInterviewRoom: async () => {
+              calls.push("start-room");
+              return {
+                ok: true,
+                provider: "livekit",
+                data: createLiveKitStartFixture().expectedStartedRoom,
+              };
+            },
+          },
+        })
+      ),
+    /missing its server start time/
+  );
+  assert.deepEqual(calls, ["transition:failed", "release"]);
 });
 
 test("provider failure releases credit even when lifecycle persistence fails", async () => {
@@ -794,6 +907,7 @@ function createDeps(
     createSession: async (input) => ({
       id: productFixture.session.id,
       config: input.config,
+      startedAt: productFixture.session.startedAt,
     }),
     getQuestionById: async () => question,
     getRandomQuestion: async () => question,
@@ -805,6 +919,8 @@ function createDeps(
     }),
     consumeReservation: async () => {},
     releaseReservation: async () => {},
+    scheduleDeadline: async () => {},
+    terminateRoom: async () => {},
     livekitProvider: {
       startInterviewRoom: async () => ({
         ok: true,

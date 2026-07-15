@@ -1,6 +1,6 @@
 # Interview Session Lifecycle Contract
 
-Status: canonical contract, persistence/CAS foundation, start-path failure handling, and metadata validation implemented; terminal workflow adoption remains in rollout
+Status: canonical contract, persistence/CAS foundation, atomic completion, start-path failure handling, metadata validation, and server/client/voice-runtime hard-deadline enforcement are implemented; Preview rollout evidence remains open
 
 ## Purpose
 
@@ -107,9 +107,54 @@ This first-valid-claim rule makes concurrent end, deadline, disconnect, and prov
 
 ## Room Metadata And Correlation
 
-Canonical room metadata contract version 1 requires `contract_version: 1` and `session_id`. The runtime reference, selected question, transcript events, logs, and feedback request must remain correlated to the same session ID.
+Canonical room metadata contract version 1 requires `contract_version: 1` and `session_id`. New SAV-189 writers also supply one canonical UTC `deadline_at`; missing values remain readable only during the staged rollout. The runtime reference, selected question, transcript events, logs, and feedback request must remain correlated to the same session ID.
 
 Room metadata does not own lifecycle state. Provider-native room or participant statuses are adapter inputs only. See [LiveKit Room Metadata And Transcript Contract](./livekit-room-metadata.md).
+
+## Hard Deadline Boundary
+
+The provider-neutral duration/deadline policy lives in
+`packages/core/src/session-deadline.ts`. It accepts only 15, 30, or 45 minutes,
+uses 30 minutes as the one compatibility default, derives an absolute deadline
+from the server-owned start instant, and treats the exact deadline as expired.
+Serialized timestamps use canonical millisecond UTC ISO form.
+
+The voice runtime consumes `deadline_at` as a defensive stop boundary. It
+rejects already-expired jobs before starting an agent session, closes audio I/O
+immediately without draining queued agent speech, and terminates the room once
+through the acknowledged room-service API even if duplicate watchdog tasks
+fire. A normal early close cancels the pending watchdog. That provider action
+prevents listening or speaking past the deadline but does not select or persist
+a terminal reason.
+
+The server deadline worker remains the sole owner of the durable `time_limit`
+command. It schedules the absolute deadline with a future Inngest event,
+atomically settles terminal truth and a pending cleanup claim before attempting
+room deletion, then acknowledges deletion before entering the separate
+idempotent dispatch boundary. Terminal truth and completion-time
+motivation may commit when deletion fails, but feedback dispatch remains
+deferred until deletion is acknowledged as `deleted` or `already_absent`.
+The hard-deadline winner persists a separate `pending` cleanup claim, including
+when validation refines lifecycle truth to `insufficient_signal` and skips
+feedback. A concurrent ordinary end never creates that claim. A provider
+acknowledgement changes it to `deleted` or `already_absent`; concurrent ordinary
+ends preserve a claim already owned by the deadline worker, and the central
+outbox cannot claim feedback while it remains pending. Only then can the client hand off. Retries preserve the first
+terminal claim and dispatch at most once. A five-minute recovery scan
+prioritizes overdue open sessions, terminal pending-cleanup claims, and
+acknowledged deadline-owned sessions whose eligible feedback outbox remains
+retryable. Recovery never repeats room deletion after acknowledgement and uses
+a unique delivery identity per recovery run.
+
+The client countdown reflects this deadline but never claims `time_limit`. At
+zero it mutes local input, removes voluntary controls, presents a non-dismissible
+saving state, and polls stored terminal truth plus feedback readiness before
+navigating to feedback. Direct feedback polling reports `settling` until room
+cleanup is acknowledged. After acknowledgement, polling exposes the durable
+dispatch state and direct retry uses the same idempotent outbox claim as
+scheduled recovery; it cannot bypass unacknowledged hard-deadline room cleanup.
+The relaunch gate remains off until Preview timing evidence and rollback are
+verified.
 
 ## Legacy Compatibility And Backfill
 

@@ -23,7 +23,9 @@
  * @response.roomName {string} - LiveKit room name (format: interview-{timestamp}-{random})
  * @response.token {string} - JWT access token for LiveKit room
  * @response.url {string} - LiveKit server WebSocket URL
+ * @response.deadlineAt {string} - Server-derived absolute UTC interview deadline
  * @response.config {Object} - Validated client-safe preferences; runtime provider settings are never returned
+ * @response.question {Object|null} - Selected question snapshot when present
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
  * @throws {402} Payment Required - No interview credits remaining
@@ -58,6 +60,7 @@
  *   "roomName": "interview-1699999999999-abc123",
  *   "token": "eyJhbGciOiJIUzI1NiIs...",
  *   "url": "wss://meelni-ek4vaisp.livekit.cloud",
+ *   "deadlineAt": "2026-07-11T20:30:00.000Z",
  *   "config": {
  *     "difficulty": "intermediate",
  *     "duration": 45,
@@ -66,7 +69,8 @@
  *       "recency": "very_recent",
  *       "recentDays": 365
  *     }
- *   }
+ *   },
+ *   "question": null
  * }
  *
  * // Error Response (400 Bad Request)

@@ -7,14 +7,17 @@ import {
   type InterviewRuntimeConfig,
 } from "@/lib/internal/agent";
 import {
+  deriveInterviewDeadlineAt,
   isValidRoundType,
   normalizeQuestionRound,
   questionTypeStorageAliasesForRound,
+  serializeInterviewDeadlineAt,
   type RoundType,
 } from "@/lib/internal/core";
 import {
   buildInterviewRoomName,
   createLiveKitInterviewProvider,
+  terminateInterviewRoom,
   type LiveKitEnvironment,
   type LiveKitInterviewProvider,
 } from "@/lib/internal/integrations";
@@ -44,6 +47,7 @@ import {
   type TransitionInterviewSessionInput,
   type TransitionInterviewSessionResult,
 } from "./transition-interview-session";
+import { scheduleInterviewDeadline } from "./schedule-interview-deadline";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   behavioral: [...questionTypeStorageAliasesForRound("behavioral")],
@@ -80,7 +84,7 @@ export interface StartInterviewSessionDeps {
   buildRoomName(): string;
   createSession(
     input: CreateSessionInput
-  ): Promise<{ id: string; config: unknown }>;
+  ): Promise<{ id: string; config: unknown; startedAt: Date | null }>;
   getQuestionById(questionId: string): Promise<QuestionBankRecord | null>;
   getRandomQuestion(
     questionTypes: string[]
@@ -93,6 +97,14 @@ export interface StartInterviewSessionDeps {
   reserveCredit(input: ReserveCreditInput): Promise<ReserveCreditResult>;
   consumeReservation(input: CompleteReservationInput): Promise<unknown>;
   releaseReservation(input: CompleteReservationInput): Promise<unknown>;
+  scheduleDeadline(input: {
+    sessionId: string;
+    deadlineAt: Date;
+  }): Promise<unknown>;
+  terminateRoom(input: {
+    roomName: string;
+    env: LiveKitEnvironment;
+  }): Promise<unknown>;
   livekitProvider: LiveKitInterviewProvider;
   transitionLifecycle(
     input: TransitionInterviewSessionInput
@@ -116,6 +128,7 @@ export type StartInterviewSessionResult =
         roomName: string;
         token: string;
         url: string;
+        deadlineAt: string;
         config: InterviewClientPreferences;
         question: {
           id: string;
@@ -187,6 +200,7 @@ export async function startInterviewSessionWorkflow(
   let session:
     | Awaited<ReturnType<StartInterviewSessionDeps["createSession"]>>
     | undefined;
+  let deadlineAt: Date | undefined;
 
   try {
     session = await deps.createSession({
@@ -196,6 +210,10 @@ export async function startInterviewSessionWorkflow(
       mode,
       livekitRoomName: roomName,
       config: { ...runtimeConfig },
+    });
+    deadlineAt = deriveInterviewDeadlineAt({
+      startedAt: requireSessionStartedAt(session.startedAt),
+      durationMinutes: runtimeConfig.duration,
     });
 
     if (question.value) {
@@ -219,10 +237,15 @@ export async function startInterviewSessionWorkflow(
     throw error;
   }
 
+  if (!deadlineAt) {
+    throw new Error("Interview session deadline was not established");
+  }
+
   const roomMetadata = buildInterviewRoomMetadata({
     session_id: session.id,
     round_type: resolvedRoundType,
     mode,
+    deadline_at: serializeInterviewDeadlineAt(deadlineAt),
     config: runtimeConfig,
     question: question.value
       ? {
@@ -259,12 +282,34 @@ export async function startInterviewSessionWorkflow(
   }
 
   try {
+    await deps.scheduleDeadline({ sessionId: session.id, deadlineAt });
+  } catch (error) {
+    console.error("Interview deadline schedule error:", getErrorMessage(error));
+    await safelyTerminateInterviewRoom(roomName, input.env, deps);
+    await safelyTerminalizeProviderFailureAndRelease(
+      session.id,
+      reservationKey,
+      deps
+    );
+    return {
+      ok: false,
+      status: 503,
+      body: {
+        error: "service_unavailable",
+        message:
+          "Unable to establish the interview time limit. Please try again in a moment.",
+      },
+    };
+  }
+
+  try {
     await deps.consumeReservation({
       reservationKey,
       idempotencyKey: `consume:${reservationKey}`,
     });
   } catch (error) {
     console.error("Credit consume error:", getErrorMessage(error));
+    await safelyTerminateInterviewRoom(roomName, input.env, deps);
     await safelyTerminalizeProviderFailureAndRelease(
       session.id,
       reservationKey,
@@ -288,6 +333,7 @@ export async function startInterviewSessionWorkflow(
       roomName,
       token: livekitResult.data.token,
       url: livekitResult.data.url,
+      deadlineAt: serializeInterviewDeadlineAt(deadlineAt),
       config: preferences,
       question: question.value
         ? {
@@ -323,6 +369,12 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
     reserveCredit: creditLedger.reserveCredit,
     consumeReservation: creditLedger.consumeReservation,
     releaseReservation: creditLedger.releaseReservation,
+    scheduleDeadline: scheduleInterviewDeadline,
+    terminateRoom: async (input) => {
+      const result = await terminateInterviewRoom(input);
+      if (!result.ok) throw new Error(result.error.code);
+      return result;
+    },
     livekitProvider: createLiveKitInterviewProvider(),
     transitionLifecycle: transitionInterviewSessionWorkflow,
     recordQuestionUsage,
@@ -353,6 +405,25 @@ async function ensureTrialGrantForStart(
           "Unable to activate interview credits. Please try again in a moment.",
       },
     };
+  }
+}
+
+function requireSessionStartedAt(startedAt: Date | null): Date {
+  if (!startedAt) {
+    throw new Error("Interview session is missing its server start time");
+  }
+  return startedAt;
+}
+
+async function safelyTerminateInterviewRoom(
+  roomName: string,
+  env: LiveKitEnvironment,
+  deps: StartInterviewSessionDeps
+): Promise<void> {
+  try {
+    await deps.terminateRoom({ roomName, env });
+  } catch (error) {
+    console.error("Interview room cleanup error:", getErrorMessage(error));
   }
 }
 

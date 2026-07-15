@@ -93,6 +93,10 @@ import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
 import { isInterviewTerminalState } from "@meelni/core";
+import {
+  hasInterviewDeadlineRoomCleanupClaim,
+  isInterviewDeadlineRoomCleanupAcknowledged,
+} from "@/lib/db/session-deadlines";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 
 // Estimated total processing time (seconds)
@@ -125,11 +129,12 @@ export async function GET(
       );
     }
 
+    const session = await getSessionById(sessionId);
+
     // Get feedback
     const feedbackRecord = await getFeedbackBySessionId(sessionId);
 
     if (!feedbackRecord) {
-      const session = await getSessionById(sessionId);
       if (session && isInterviewTerminalState(session.lifecycleState)) {
         return NextResponse.json(
           {
@@ -150,6 +155,22 @@ export async function GET(
           status: 409,
           headers: { "Cache-Control": "private, no-store" },
         }
+      );
+    }
+
+    if (
+      session &&
+      hasInterviewDeadlineRoomCleanupClaim(session) &&
+      !isInterviewDeadlineRoomCleanupAcknowledged(session)
+    ) {
+      return NextResponse.json(
+        {
+          status: "settling",
+          retryable: false,
+          message:
+            "The interview is saved and its room is still being closed safely.",
+        },
+        { headers: { "Cache-Control": "private, no-store" } }
       );
     }
 
@@ -339,9 +360,27 @@ export async function POST(
       );
     }
 
+    if (
+      hasInterviewDeadlineRoomCleanupClaim(session) &&
+      !isInterviewDeadlineRoomCleanupAcknowledged(session)
+    ) {
+      return NextResponse.json(
+        {
+          error: "deadline_settlement_pending",
+          message:
+            "The interview room is still being closed safely. Feedback will start automatically.",
+        },
+        {
+          status: 409,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
+    }
+
     const result = await endInterviewSessionWorkflow({
       sessionId,
-      userId: user.id,
+      actor: { type: "user", userId: user.id },
+      requestedTerminalReason: "user_end",
     });
     if (!result.ok) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });

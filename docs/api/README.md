@@ -320,6 +320,7 @@ controls. They are stripped or rejected before persistence and room creation.
   "roomName": "interview-1699999999999-abc123",
   "token": "eyJhbGciOiJIUzI1NiIs...",
   "url": "wss://meelni-ek4vaisp.livekit.cloud",
+  "deadlineAt": "2026-07-11T20:30:00.000Z",
   "config": {
     "difficulty": "intermediate",
     "duration": 45,
@@ -328,9 +329,14 @@ controls. They are stripped or rejected before persistence and room creation.
       "recency": "very_recent",
       "recentDays": 365
     }
-  }
+  },
+  "question": null
 }
 ```
+
+`deadlineAt` is the server-owned absolute cutoff used by the browser,
+reconnect authorization, LiveKit room metadata, the voice runtime, and the
+durable completion workflow. Clients must not recompute or extend it.
 
 **Errors**:
 
@@ -340,9 +346,12 @@ controls. They are stripped or rejected before persistence and room creation.
 
 ---
 
-### POST /api/session/end
+### POST /api/interview/end
 
-Marks an interview session as completed by setting the `endedAt` timestamp. User must own the session to end it.
+Atomically claims terminal session truth, creates or repairs the feedback row,
+and reports whether feedback dispatch is queued, retryable, or unnecessary.
+Equivalent replays return the stored terminal result; they do not overwrite the
+first terminal reason.
 
 **Authentication**: Required (Supabase Auth JWT)
 
@@ -364,37 +373,40 @@ Marks an interview session as completed by setting the `endedAt` timestamp. User
 
 ```json
 {
-  "success": true,
+  "status": "queued",
   "session": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "userId": "user-123",
-    "roundType": "product_sense",
-    "mode": "voice_video",
-    "role": "pm",
-    "startedAt": "2025-11-05T10:30:00Z",
+    "lifecycleState": "completed",
+    "terminalReason": "user_end",
     "endedAt": "2025-11-05T11:15:00Z",
-    "livekitRoomName": "interview-1699999999-abc123",
-    "config": { ... }
-  }
-}
-```
-
-**Response (Already Ended)**:
-
-```json
-{
-  "success": true,
-  "session": { ... },
-  "message": "Session was already ended"
+    "disposition": "applied"
+  },
+  "feedback": {
+    "id": "650e8400-e29b-41d4-a716-446655440000",
+    "status": "pending",
+    "dispatchStatus": "sent",
+    "retryable": false
+  },
+  "feedbackId": "650e8400-e29b-41d4-a716-446655440000",
+  "tier": "full",
+  "stats": {
+    "totalTurns": 20,
+    "userTurns": 10,
+    "totalWords": 800,
+    "durationSeconds": 1200,
+    "substantiveResponses": 8
+  },
+  "recommendations": [],
+  "nextHref": "/feedback/550e8400-e29b-41d4-a716-446655440000/loading"
 }
 ```
 
 **Errors**:
 
 - `401 Unauthorized` - Missing or invalid authentication token
-- `400 Bad Request` - Missing `sessionId`
-- `403 Forbidden` - User does not own this session
-- `500 Internal Server Error` - Database error
+- `400 Bad Request` - Missing or malformed `sessionId`
+- `404 Not Found` - Session is absent or belongs to another user
+- `429 Too Many Requests` - End-attempt budget exceeded
+- `500 Internal Server Error` - Terminal truth was not confirmed
 
 ---
 
@@ -421,6 +433,8 @@ Retrieves complete information about a specific interview session including conf
     "mode": "voice_video",
     "role": "pm",
     "startedAt": "2025-11-05T10:30:00Z",
+    "deadlineAt": "2025-11-05T11:15:00Z",
+    "feedbackReady": true,
     "endedAt": "2025-11-05T11:15:00Z",
     "livekitRoomName": "interview-1699999999-abc123",
     "config": {
@@ -436,11 +450,20 @@ Retrieves complete information about a specific interview session including conf
 }
 ```
 
+`feedbackReady` is server-owned handoff truth. The hard-deadline interview UI
+does not navigate to feedback until the session is terminal and this value is
+`true`, which requires any persisted hard-deadline room-cleanup claim to be
+acknowledged, followed by feedback dispatch (`sent`) or a finalized skipped
+result (`not_required`). Cleanup provenance is persisted independently of the
+refined terminal reason, so `not_required` cannot make a still-live room visible
+as ready.
+
 **Errors**:
 
 - `401 Unauthorized` - Missing or invalid authentication token
 - `403 Forbidden` - User does not own this session
 - `404 Not Found` - Session does not exist
+- `409 Conflict` - Session has no valid server-owned deadline and cannot resume safely
 - `500 Internal Server Error` - Database query failed
 
 ---
@@ -736,7 +759,10 @@ Analyzes an interview session transcript and generates comprehensive feedback. I
 
 ### GET /api/feedback/:sessionId
 
-Retrieves the AI-generated feedback for a completed interview session. User must own the session to access feedback. Feedback must have been previously generated via `POST /api/feedback/generate`.
+Retrieves the feedback state or completed feedback for an owned terminal
+interview session. A hard-deadline session returns `settling` until room
+cleanup is acknowledged. After acknowledgement it returns the durable feedback
+and dispatch state, including retryable pending or failed dispatch.
 
 **Authentication**: Required (Supabase Auth JWT)
 
@@ -746,7 +772,7 @@ Retrieves the AI-generated feedback for a completed interview session. User must
 | ----------- | ------ | ------------------- |
 | `sessionId` | string | UUID of the session |
 
-**Response** (200 OK):
+**Response** (200 OK - completed):
 
 ```json
 {
@@ -777,11 +803,28 @@ Retrieves the AI-generated feedback for a completed interview session. User must
 }
 ```
 
+**Response** (200 OK - hard deadline settling):
+
+```json
+{
+  "status": "settling",
+  "retryable": false,
+  "message": "The interview is saved and its room is still being closed safely."
+}
+```
+
+Authenticated `POST /api/feedback/:sessionId` cannot bypass this boundary. It
+returns `409 deadline_settlement_pending` until the deadline consumer has
+acknowledged room cleanup. Feedback starts automatically after cleanup; later
+generation retries and direct retry preserve the existing idempotent dispatch
+behavior.
+
 **Errors**:
 
 - `401 Unauthorized` - Missing or invalid authentication token
 - `403 Forbidden` - User does not own this session
 - `404 Not Found` - Feedback not found for this session (hasn't been generated yet)
+- `409 Conflict` - Direct retry attempted while hard-deadline cleanup is pending
 - `500 Internal Server Error` - Database query failed
 
 ---
@@ -1131,7 +1174,7 @@ async function runFullInterviewFlow() {
   ]);
 
   // 4. End session
-  await fetch("/api/session/end", {
+  await fetch("/api/interview/end", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -1173,7 +1216,7 @@ Planned webhook events:
 **Added**:
 
 - Initial API release
-- Session management endpoints (`POST /api/session/start`, `POST /api/session/end`, `GET /api/session/:sessionId`, `GET /api/sessions`)
+- Session management endpoints (`POST /api/session/start`, `POST /api/interview/end`, `GET /api/session/:sessionId`, `GET /api/sessions`)
 - Transcript storage endpoints (`POST /api/session/transcript`, `GET /api/session/:sessionId/transcript`)
 - Feedback generation endpoints (`POST /api/feedback/generate`, `GET /api/feedback/:sessionId`)
 - LiveKit token generation (`POST /api/livekit/token`, `POST /api/livekit/demo-token`)

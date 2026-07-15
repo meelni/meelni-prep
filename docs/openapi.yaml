@@ -103,12 +103,12 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /api/session/end:
+  /api/interview/end:
     post:
       tags:
         - Sessions
       summary: End interview session
-      description: Marks an interview session as completed by setting the endedAt timestamp
+      description: Atomically claims terminal session truth, creates or repairs the feedback result, and reports feedback dispatch state.
       security:
         - BearerAuth: []
       requestBody:
@@ -128,27 +128,19 @@ paths:
               sessionId: "550e8400-e29b-41d4-a716-446655440000"
       responses:
         "200":
-          description: Session ended successfully
+          description: Terminal session truth was committed or returned idempotently
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  session:
-                    $ref: "#/components/schemas/Session"
-                  message:
-                    type: string
-                    nullable: true
-                    example: "Session was already ended"
+                $ref: "#/components/schemas/EndInterviewSessionResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -184,6 +176,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -410,6 +404,19 @@ paths:
               schema:
                 type: object
                 properties:
+                  status:
+                    type: string
+                    enum:
+                      [
+                        missing,
+                        session_not_ended,
+                        settling,
+                        pending,
+                        processing,
+                        completed,
+                        failed,
+                        skipped,
+                      ]
                   feedback:
                     $ref: "#/components/schemas/Feedback"
         "401":
@@ -418,6 +425,32 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags:
+        - Feedback
+      summary: Retry terminal feedback dispatch
+      description: Retries an owned terminal session's feedback dispatch. Hard-deadline cleanup must already be acknowledged.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Dispatch is queued, in progress, sent, or not required
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Session is not terminal or hard-deadline room cleanup is still pending
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -623,6 +656,7 @@ components:
 
     StartSessionResponse:
       type: object
+      required: [sessionId, roomName, token, url, deadlineAt, config, question]
       properties:
         sessionId:
           type: string
@@ -638,8 +672,124 @@ components:
           type: string
           format: uri
           description: LiveKit server WebSocket URL
+        deadlineAt:
+          type: string
+          format: date-time
+          description: Server-derived absolute UTC interview deadline
         config:
           $ref: "#/components/schemas/InterviewPreferences"
+        question:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            text:
+              type: string
+            company:
+              type: string
+              nullable: true
+
+    EndInterviewSessionResponse:
+      type: object
+      required:
+        [
+          status,
+          session,
+          feedback,
+          feedbackId,
+          tier,
+          stats,
+          recommendations,
+          nextHref,
+        ]
+      properties:
+        status:
+          type: string
+          enum: [queued, pending_dispatch, skipped]
+        session:
+          type: object
+          required: [lifecycleState, terminalReason, endedAt, disposition]
+          properties:
+            lifecycleState:
+              type: string
+              enum: [completed, abandoned, failed]
+            terminalReason:
+              type: string
+              enum:
+                [
+                  user_end,
+                  time_limit,
+                  disconnect_timeout,
+                  provider_failure,
+                  insufficient_signal,
+                  legacy_unknown,
+                ]
+            endedAt:
+              type: string
+              format: date-time
+            disposition:
+              type: string
+              enum: [applied, existing, repaired]
+        feedback:
+          type: object
+          required: [id, status, dispatchStatus, retryable]
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [pending, processing, completed, failed, skipped]
+            dispatchStatus:
+              type: string
+              enum: [not_required, pending, sending, sent, failed]
+            retryable:
+              type: boolean
+        feedbackId:
+          type: string
+          format: uuid
+        tier:
+          type: string
+          enum: [full, partial, insufficient, abandoned]
+        stats:
+          $ref: "#/components/schemas/InterviewCompletionStats"
+        recommendations:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+        nextHref:
+          type: string
+          pattern: ^/feedback/
+
+    InterviewCompletionStats:
+      type: object
+      required:
+        [
+          totalTurns,
+          userTurns,
+          totalWords,
+          durationSeconds,
+          substantiveResponses,
+        ]
+      properties:
+        totalTurns:
+          type: integer
+          minimum: 0
+        userTurns:
+          type: integer
+          minimum: 0
+        totalWords:
+          type: integer
+          minimum: 0
+        durationSeconds:
+          type: integer
+          minimum: 0
+        substantiveResponses:
+          type: integer
+          minimum: 0
 
     Session:
       type: object
@@ -664,6 +814,12 @@ components:
         startedAt:
           type: string
           format: date-time
+        deadlineAt:
+          type: string
+          format: date-time
+        feedbackReady:
+          type: boolean
+          description: True only when any persisted hard-deadline room-cleanup claim is acknowledged and feedback dispatch is sent or not required
         endedAt:
           type: string
           format: date-time
@@ -890,6 +1046,24 @@ components:
             $ref: "#/components/schemas/Error"
           example:
             error: "Session not found"
+
+    Conflict:
+      description: Conflict - Stored session state cannot be used safely
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "session_deadline_unavailable"
+
+    TooManyRequests:
+      description: Too Many Requests - Attempt budget exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "rate_limit_exceeded"
 
     InternalServerError:
       description: Internal Server Error - Unexpected error occurred
