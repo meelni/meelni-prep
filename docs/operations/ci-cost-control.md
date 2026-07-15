@@ -37,24 +37,26 @@ active before treating the workflow as an enforced merge gate.
 
 ## Main protection
 
-The live `main` branch protection requires the GitHub Actions `Validate` and
-`Trusted Publisher` contexts with strict, up-to-date head enforcement. Protection applies to admins,
-blocks force pushes, and blocks branch deletion. It does not currently require
-an approving review; independent agent audit evidence is tracked in the PR and
-Linear workflow instead. This is classic branch protection; no repository
-ruleset is currently configured.
+The live `main` branch protection requires the GitHub Actions `Validate`,
+`Trusted Publisher`, and `Migration Collision Publisher` contexts with strict,
+up-to-date head enforcement. Protection applies to admins, blocks force pushes,
+and blocks branch deletion. It does not currently require an approving review;
+independent agent audit evidence is tracked in the PR and Linear workflow
+instead. This is classic branch protection; no general repository ruleset is
+currently configured.
 
 Verify the live configuration before a merge window:
 
 ```bash
-gh api repos/saviii/meelni-prep/branches/main/protection \
+gh api repos/meelni/meelni-prep/branches/main/protection \
   --jq '{required_status_checks,enforce_admins,allow_force_pushes,allow_deletions}'
 ```
 
 Expected invariants:
 
 - `required_status_checks.strict` is `true`.
-- The required checks are `Validate` and `Trusted Publisher` from GitHub Actions.
+- The required checks are `Validate`, `Trusted Publisher`, and
+  `Migration Collision Publisher` from GitHub Actions.
 - Admin enforcement is enabled.
 - Force pushes and deletion are disabled.
 
@@ -67,19 +69,30 @@ configuration immediately after the emergency action and verify it through the
 API above.
 
 To roll back the cost-control workflow itself, revert its commit through a PR;
-keep `Validate` and `Trusted Publisher` required and restore the previous trigger
-policy only long enough to prove the replacement workflow. Never leave a skipped
-lifecycle context named `Validate`.
+keep `Validate`, `Trusted Publisher`, and `Migration Collision Publisher`
+required and restore the previous trigger policy only long enough to prove the
+replacement workflow. Never leave a skipped lifecycle context named `Validate`.
 
 Vercel, GitGuardian, and local results remain complementary evidence; none
 replaces hosted Validate.
 
+## Trusted publisher cost control
+
+The stack and migration publishers use their two required contexts for
+merge-ready PR events and closes that can invalidate dependent evidence. Draft
+branch movement and base changes use one combined dependency audit; draft body
+and title edits allocate no runner. There is no unattended schedule. Manual and
+trusted-checker/default-branch full revalidation run topology and migration
+publication in one hosted job.
+
 ## Budget operations
 
-The repository owner should configure a monthly GitHub Actions budget suitable
-for the relaunch cadence (initially $5–$10) and enable “stop usage when budget
-limit is reached.” Budget mutation is an owner action. When a billing rejection
-occurs, record it as infrastructure failure and do not label it a code failure.
+The Enterprise Cloud owner should enable included-usage alerts and configure a
+small paid-overage budget with “stop usage when budget limit is reached.” The
+larger enterprise allowance is not permission to restore unattended
+high-frequency workflows. Budget mutation remains an owner action. When a
+billing rejection occurs, record it as infrastructure failure and do not label
+it a code failure.
 
 Expected impact: removing duplicate feature-push runs cuts the common two-run
 pattern roughly in half. Suppressing full runs during iterative draft work saves
