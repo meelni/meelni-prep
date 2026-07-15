@@ -99,3 +99,19 @@ use PostgreSQL time and treat equality with the stored cutoff as expired.
 
 See the [reconnect operations runbook](./interview-session-reconnect.md) for
 provider recovery, exact-boundary verification, and rollback behavior.
+
+## Transcript ingest identity and ordering
+
+`0011_transcript_ingest` adds the canonical version-2 transcript identity,
+writer sequence, measured timing, section, and delivery-state fields. The
+canonical tuple is all-or-nothing, event IDs are globally unique, and
+`(session_id, writer_id, sequence)` prevents a writer from assigning one
+sequence to multiple events. Historical transcript rows remain readable with
+all canonical fields null.
+
+Transcript insertion and terminalization serialize through the interview
+session row so feedback eligibility is calculated from one durable transcript
+snapshot and new distinct turns cannot race a terminal claim. Rehearse clean,
+legacy-upgrade, idempotent replay, exact lock-interleaving, and post-claim
+rejection paths with `npm run test:database-migrations` before applying the
+migration remotely.

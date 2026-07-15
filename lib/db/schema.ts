@@ -4,6 +4,7 @@ import {
   text,
   timestamp,
   integer,
+  bigint,
   numeric,
   jsonb,
   check,
@@ -290,6 +291,11 @@ export const transcriptTurn = pgTable(
     sessionId: uuid("session_id")
       .references(() => interviewSession.id)
       .notNull(),
+    contractVersion: integer("contract_version"),
+    eventId: text("event_id"),
+    writerId: text("writer_id"),
+    sequence: bigint("sequence", { mode: "number" }),
+    roomName: text("room_name"),
     speaker: text("speaker").notNull(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
@@ -297,11 +303,63 @@ export const transcriptTurn = pgTable(
     audioMs: integer("audio_ms"),
     latencyMs: integer("latency_ms"),
     section: text("section"),
+    deliveryState: text("delivery_state"),
   },
   (table) => ({
     speakerCheck: check(
       "speaker_check",
       sql`${table.speaker} IN ('user', 'interviewer')`
+    ),
+    contractVersionCheck: check(
+      "transcript_turn_contract_version_check",
+      sql`${table.contractVersion} IS NULL OR ${table.contractVersion} = 2`
+    ),
+    sequenceCheck: check(
+      "transcript_turn_sequence_check",
+      sql`${table.sequence} IS NULL OR ${table.sequence} > 0`
+    ),
+    deliveryStateCheck: check(
+      "transcript_turn_delivery_state_check",
+      sql`${table.deliveryState} IS NULL OR ${table.deliveryState} IN ('delivered', 'partially_delivered')`
+    ),
+    canonicalIdentityCheck: check(
+      "transcript_turn_canonical_identity_check",
+      sql`(
+        ${table.contractVersion} IS NULL AND
+        ${table.eventId} IS NULL AND
+        ${table.writerId} IS NULL AND
+        ${table.sequence} IS NULL AND
+        ${table.roomName} IS NULL AND
+        ${table.deliveryState} IS NULL
+      ) OR (
+        ${table.contractVersion} = 2 AND
+        ${table.eventId} IS NOT NULL AND
+        ${table.writerId} IS NOT NULL AND
+        ${table.sequence} IS NOT NULL AND
+        ${table.roomName} IS NOT NULL AND
+        ${table.startedAt} IS NOT NULL AND
+        ${table.endedAt} IS NOT NULL AND
+        ${table.text} IS NOT NULL AND
+        ${table.audioMs} IS NOT NULL AND
+        ${table.section} IS NOT NULL AND
+        ${table.deliveryState} IS NOT NULL
+      )`
+    ),
+    eventIdUnique: uniqueIndex("transcript_turn_event_id_idx")
+      .on(table.eventId)
+      .where(sql`${table.eventId} IS NOT NULL`),
+    sessionWriterSequenceUnique: uniqueIndex(
+      "transcript_turn_session_writer_sequence_idx"
+    )
+      .on(table.sessionId, table.writerId, table.sequence)
+      .where(
+        sql`${table.writerId} IS NOT NULL AND ${table.sequence} IS NOT NULL`
+      ),
+    chronologicalIdx: index("transcript_turn_chronological_idx").on(
+      table.sessionId,
+      table.startedAt,
+      table.writerId,
+      table.sequence
     ),
   })
 );

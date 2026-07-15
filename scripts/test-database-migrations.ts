@@ -31,6 +31,7 @@ import {
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
   INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
+  TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -66,6 +67,10 @@ const SESSION_DEADLINE_DISPATCH_RECOVERY =
   "ffffffff-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const USER_CORRUPT_DELETION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const USER_RECREATION_RACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const SESSION_TRANSCRIPT_TWO = "b1000000-0000-4000-8000-000000000001";
+const SESSION_TRANSCRIPT_DEADLINE = "b2000000-0000-4000-8000-000000000002";
+const SESSION_TRANSCRIPT_DEADLINE_INVALID =
+  "b3000000-0000-4000-8000-000000000003";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -128,6 +133,7 @@ async function run() {
     await verifyRoomRecoveryFairness(clean, cleanUrl);
     await verifyReconnectTransportOrdering(clean, cleanUrl);
     await verifyAtomicSessionCompletion(clean, cleanUrl, true);
+    await verifyTranscriptIngest(clean, cleanUrl);
     await verifyAuthorization(clean);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
@@ -139,7 +145,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -236,14 +242,28 @@ async function run() {
       );
       await seedReconnectCutoffOwnerFixtures(upgrade);
       const countsBefore = await protectedRowCounts(upgrade);
+      const reconnectFinalFolder = await createMigrationFolderThrough(10);
+      try {
+        await migrate(drizzle(upgrade), {
+          migrationsFolder: reconnectFinalFolder,
+        });
+      } finally {
+        await rm(reconnectFinalFolder, { recursive: true, force: true });
+      }
+      await verifyReconnectCutoffOwnerBackfill(upgrade);
+      assert.equal(
+        databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
+        INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+      );
+
       await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
       const reconnectApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
       assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
-      await verifyReconnectCutoffOwnerBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl, false);
+      await verifyTranscriptIngest(upgrade, upgradeUrl);
       await verifyAuthorization(upgrade);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
       assertLegacyCreditLedgerIntegrity(
@@ -1568,10 +1588,7 @@ async function verifyAtomicSessionCompletion(
     { createDrizzleInterviewReconnectStore },
     { enforceInterviewDeadlineWorkflow },
     { dispatchFeedbackGenerationWorkflow },
-    {
-      dispatchInterviewSessionSettlement,
-      settleInterviewSessionWithValidationWorkflow,
-    },
+    { dispatchInterviewSessionSettlement, settleInterviewSessionWorkflow },
     { SessionTier },
     schema,
   ] = await Promise.all([
@@ -1628,13 +1645,13 @@ async function verifyAtomicSessionCompletion(
                 sessionId: SESSION_ATOMIC_END,
                 actor: { type: "user", userId: USER_ONE },
                 requestedTerminalReason: "user_end",
-                validation,
+                validationOverride: validation,
               }
             : {
                 sessionId: SESSION_ATOMIC_END,
                 actor: { type: "system", source: "hard_deadline" },
                 requestedTerminalReason: "time_limit",
-                validation,
+                validationOverride: validation,
               },
           database
         )
@@ -1780,7 +1797,7 @@ async function verifyAtomicSessionCompletion(
           sessionId: SESSION_REPAIR,
           actor: { type: "user", userId: USER_ONE },
           requestedTerminalReason: "user_end",
-          validation,
+          validationOverride: validation,
         },
         databases[0]!
       );
@@ -1854,12 +1871,8 @@ async function verifyAtomicSessionCompletion(
         claimDue: (input: Parameters<typeof claimInterviewDeadline>[0]) =>
           claimInterviewDeadline(input, databases[0]!),
         scheduleDeadline: async () => undefined,
-        validateSession: async () => insufficientValidation,
-        settleSession: (
-          _sessionId: string,
-          sessionValidation: typeof insufficientValidation
-        ) =>
-          settleInterviewSessionWithValidationWorkflow(
+        settleSession: () =>
+          settleInterviewSessionWorkflow(
             {
               sessionId: SESSION_DEADLINE_INSUFFICIENT,
               actor: {
@@ -1868,7 +1881,6 @@ async function verifyAtomicSessionCompletion(
               },
               requestedTerminalReason: "time_limit" as const,
             },
-            sessionValidation,
             {
               authorize: async () => true,
               finalize: (
@@ -1924,7 +1936,7 @@ async function verifyAtomicSessionCompletion(
           sessionId: SESSION_DEADLINE_INSUFFICIENT,
           actor: { type: "user", userId: USER_ONE },
           requestedTerminalReason: "user_end",
-          validation,
+          validationOverride: validation,
         },
         databases[1]!
       );
@@ -2017,7 +2029,7 @@ async function verifyAtomicSessionCompletion(
           sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
           actor: { type: "system", source: "hard_deadline" },
           requestedTerminalReason: "time_limit",
-          validation,
+          validationOverride: validation,
         },
         databases[0]!
       );
@@ -2034,7 +2046,7 @@ async function verifyAtomicSessionCompletion(
           sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
           actor: { type: "user", userId: USER_ONE },
           requestedTerminalReason: "user_end",
-          validation,
+          validationOverride: validation,
         },
         databases[1]!
       );
@@ -2114,15 +2126,13 @@ async function verifyAtomicSessionCompletion(
           claimDue: (input: Parameters<typeof claimInterviewDeadline>[0]) =>
             claimInterviewDeadline(input, databases[0]!),
           scheduleDeadline: async () => undefined,
-          validateSession: async () => validation,
-          settleSession: (_sessionId, sessionValidation) =>
-            settleInterviewSessionWithValidationWorkflow(
+          settleSession: () =>
+            settleInterviewSessionWorkflow(
               {
                 sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
                 actor: { type: "system", source: "hard_deadline" },
                 requestedTerminalReason: "time_limit",
               },
-              sessionValidation,
               {
                 authorize: async () => true,
                 finalize: (
@@ -2211,7 +2221,7 @@ async function verifyAtomicSessionCompletion(
           sessionId: SESSION_DEADLINE_USER_END,
           actor: { type: "user", userId: USER_ONE },
           requestedTerminalReason: "user_end",
-          validation,
+          validationOverride: validation,
         },
         databases[0]!
       );
@@ -2221,7 +2231,7 @@ async function verifyAtomicSessionCompletion(
           sessionId: SESSION_DEADLINE_USER_END,
           actor: { type: "system", source: "hard_deadline" },
           requestedTerminalReason: "time_limit",
-          validation: insufficientValidation,
+          validationOverride: insufficientValidation,
         },
         databases[1]!
       );
@@ -2240,6 +2250,424 @@ async function verifyAtomicSessionCompletion(
   } finally {
     await Promise.all(clients.map((client) => client.end()));
   }
+}
+
+async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    { createDrizzleTranscriptIngestStore },
+    { finalizeInterviewSession },
+    { claimInterviewDeadline },
+    { createTranscriptEvent },
+    { calculateSessionStatsFromTurns, validateSessionStats },
+    schema,
+  ] = await Promise.all([
+    import("../lib/db/transcripts"),
+    import("../lib/db/end-interview-session"),
+    import("../lib/db/session-deadlines"),
+    import("@meelni/agent"),
+    import("../lib/evaluation/session-validator"),
+    import("../lib/db/schema"),
+  ]);
+
+  await sql`
+    UPDATE interview_session
+    SET livekit_room_name = 'transcript-room-one',
+        lifecycle_state = 'active',
+        started_at = '2026-07-10T04:59:00.000Z'::timestamptz,
+        activated_at = COALESCE(activated_at, now())
+    WHERE id = ${SESSION_ONE}::uuid
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      lifecycle_version, livekit_room_name, config, started_at, activated_at
+    ) VALUES
+      (
+        ${SESSION_TRANSCRIPT_DEADLINE}::uuid,
+        ${USER_ONE}::uuid,
+        'product_sense',
+        'voice_video',
+        'in_progress',
+        'active',
+        1,
+        'transcript-deadline-room',
+        '{"duration":30}'::jsonb,
+        '2026-07-10T05:00:00.000Z'::timestamptz,
+        now()
+      ),
+      (
+        ${SESSION_TRANSCRIPT_DEADLINE_INVALID}::uuid,
+        ${USER_ONE}::uuid,
+        'product_sense',
+        'voice_video',
+        'in_progress',
+        'active',
+        1,
+        'transcript-deadline-invalid-room',
+        '{"duration":30}'::jsonb,
+        '2026-07-10T05:00:00.000Z'::timestamptz,
+        now()
+      )
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      livekit_room_name, started_at, activated_at
+    ) VALUES (
+      ${SESSION_TRANSCRIPT_TWO}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      'transcript-room-two',
+      '2026-07-10T04:59:00.000Z'::timestamptz,
+      now()
+    ) ON CONFLICT (id) DO UPDATE
+      SET livekit_room_name = EXCLUDED.livekit_room_name,
+          lifecycle_state = 'active',
+          started_at = EXCLUDED.started_at,
+          activated_at = COALESCE(interview_session.activated_at, now())
+  `;
+
+  const clients = Array.from({ length: 10 }, () =>
+    postgres(databaseUrl, { max: 1, prepare: false })
+  );
+  const stores = clients.map((client) =>
+    createDrizzleTranscriptIngestStore(drizzle(client, { schema }))
+  );
+  const event = createTranscriptEvent({
+    event_id: "migration-writer:message-1",
+    writer_id: "migration-writer",
+    sequence: 1,
+    session_id: SESSION_ONE,
+    room_name: "transcript-room-one",
+    speaker: "user",
+    text: "Identical text must remain distinct when event identity differs.",
+    started_at: "2026-07-10T05:00:00.000Z",
+    ended_at: "2026-07-10T05:00:04.000Z",
+    audio_duration_ms: 4_000,
+    section: "product_sense",
+    delivery_state: "delivered",
+  });
+
+  try {
+    const concurrent = await Promise.all(
+      stores.map((store) => store.persist({ userId: USER_ONE, event }))
+    );
+    assert.equal(
+      concurrent.filter(
+        (result) => result.ok && result.disposition === "created"
+      ).length,
+      1
+    );
+    assert.equal(
+      concurrent.filter(
+        (result) => result.ok && result.disposition === "existing"
+      ).length,
+      9
+    );
+
+    const second = createTranscriptEvent({
+      ...event,
+      event_id: "migration-writer:message-2",
+      sequence: Number.MAX_SAFE_INTEGER,
+      started_at: "2026-07-10T05:00:05.000Z",
+      ended_at: "2026-07-10T05:00:09.000Z",
+    });
+    assert.deepEqual(
+      await stores[0]!
+        .persist({ userId: USER_ONE, event: second })
+        .then((result) => result.ok && result.disposition),
+      "created"
+    );
+
+    const crossSession = createTranscriptEvent({
+      ...event,
+      session_id: SESSION_TRANSCRIPT_TWO,
+      room_name: "transcript-room-two",
+    });
+    assert.deepEqual(
+      await stores[0]!.persist({ userId: USER_ONE, event: crossSession }),
+      { ok: false, reason: "event_conflict" }
+    );
+
+    const sequenceConflict = createTranscriptEvent({
+      ...event,
+      event_id: "migration-writer:other-message",
+    });
+    assert.deepEqual(
+      await stores[0]!.persist({ userId: USER_ONE, event: sequenceConflict }),
+      { ok: false, reason: "writer_sequence_conflict" }
+    );
+
+    const stored = await sql<
+      { event_id: string; text: string; sequence: string }[]
+    >`
+      SELECT event_id, text, sequence::text
+      FROM transcript_turn
+      WHERE session_id = ${SESSION_ONE}::uuid AND event_id IS NOT NULL
+      ORDER BY started_at, writer_id, sequence, event_id, id
+    `;
+    assert.deepEqual(
+      stored.map(({ event_id }) => event_id),
+      ["migration-writer:message-1", "migration-writer:message-2"]
+    );
+    assert.equal(stored[0]?.text, stored[1]?.text);
+    assert.equal(stored[1]?.sequence, String(Number.MAX_SAFE_INTEGER));
+
+    const terminalRaceEvent = createTranscriptEvent({
+      ...event,
+      event_id: "terminal-race-writer:message-1",
+      writer_id: "terminal-race-writer",
+      session_id: SESSION_TRANSCRIPT_TWO,
+      room_name: "transcript-room-two",
+    });
+    const [ingestResult, completionResult] = await Promise.all([
+      stores[0]!.persist({ userId: USER_ONE, event: terminalRaceEvent }),
+      finalizeInterviewSession(
+        {
+          sessionId: SESSION_TRANSCRIPT_TWO,
+          actor: { type: "user", userId: USER_ONE },
+          requestedTerminalReason: "user_end",
+        },
+        drizzle(clients[1]!, { schema })
+      ),
+    ]);
+    assert.equal(completionResult.ok, true);
+    const terminalRaceRows = await sql<{ rows: number }[]>`
+      SELECT count(*)::int AS rows
+      FROM transcript_turn
+      WHERE session_id = ${SESSION_TRANSCRIPT_TWO}::uuid
+    `;
+    const durableRows = terminalRaceRows[0]?.rows ?? 0;
+    assert.ok(
+      (ingestResult.ok && ingestResult.disposition === "created") ||
+        (!ingestResult.ok && ingestResult.reason === "session_closed")
+    );
+    if (completionResult.ok) {
+      assert.equal(completionResult.stats.totalTurns, durableRows);
+    }
+
+    const deadlineEvents = [
+      {
+        speaker: "user" as const,
+        text: "I would clarify the customer problem, target segment, constraints, and measurable outcome first.",
+        started_at: "2026-07-10T05:00:00.000Z",
+        ended_at: "2026-07-10T05:00:01.000Z",
+      },
+      {
+        speaker: "interviewer" as const,
+        text: "Please continue.",
+        started_at: "2026-07-10T05:01:00.000Z",
+        ended_at: "2026-07-10T05:01:01.000Z",
+      },
+      {
+        speaker: "user" as const,
+        text: "I would compare reach, severity, strategic fit, confidence, and implementation effort before prioritizing.",
+        started_at: "2026-07-10T05:03:00.000Z",
+        ended_at: "2026-07-10T05:03:01.000Z",
+      },
+      {
+        speaker: "interviewer" as const,
+        text: "What would you measure?",
+        started_at: "2026-07-10T05:04:00.000Z",
+        ended_at: "2026-07-10T05:04:01.000Z",
+      },
+      {
+        speaker: "user" as const,
+        text: "The primary metric would reflect retained customer value, with adoption and guardrail metrics diagnosing movement.",
+        started_at: "2026-07-10T05:05:01.000Z",
+        ended_at: "2026-07-10T05:05:02.000Z",
+      },
+    ].map((input, index) =>
+      createTranscriptEvent({
+        event_id: `deadline-writer:message-${index + 1}`,
+        writer_id: "deadline-writer",
+        sequence: index + 1,
+        session_id: SESSION_TRANSCRIPT_DEADLINE,
+        room_name: "transcript-deadline-room",
+        speaker: input.speaker,
+        text: input.text,
+        started_at: input.started_at,
+        ended_at: input.ended_at,
+        audio_duration_ms: 1_000,
+        section: "product_sense",
+        delivery_state: "delivered",
+      })
+    );
+    for (const deadlineEvent of deadlineEvents.slice(0, 4)) {
+      const persisted = await stores[2]!.persist({
+        userId: USER_ONE,
+        event: deadlineEvent,
+      });
+      assert.equal(persisted.ok, true);
+    }
+    const preClaimTurns = await sql<
+      {
+        speaker: string;
+        text: string | null;
+        started_at: Date | null;
+        ended_at: Date | null;
+      }[]
+    >`
+      SELECT speaker, text, started_at, ended_at
+      FROM transcript_turn
+      WHERE session_id = ${SESSION_TRANSCRIPT_DEADLINE}::uuid
+    `;
+    const preClaimValidation = validateSessionStats(
+      calculateSessionStatsFromTurns(
+        preClaimTurns.map((turn) => ({
+          speaker: turn.speaker,
+          text: turn.text,
+          startedAt: turn.started_at ? new Date(turn.started_at) : null,
+          endedAt: turn.ended_at ? new Date(turn.ended_at) : null,
+        }))
+      )
+    );
+    assert.equal(preClaimValidation.isValid, false);
+    assert.equal(preClaimValidation.stats.totalTurns, 4);
+
+    let thresholdIngest!: ReturnType<(typeof stores)[number]["persist"]>;
+    let deadlineClaim!: ReturnType<typeof claimInterviewDeadline>;
+    const ingestClient = clients[3]!;
+    const claimClient = clients[4]!;
+    const [ingestBackend] = await ingestClient<{ pid: number }[]>`
+      SELECT pg_backend_pid()::int AS pid
+    `;
+    const [claimBackend] = await claimClient<{ pid: number }[]>`
+      SELECT pg_backend_pid()::int AS pid
+    `;
+    await clients[8]!.begin(async (locked) => {
+      await locked`
+        SELECT id FROM interview_session
+        WHERE id = ${SESSION_TRANSCRIPT_DEADLINE}::uuid
+        FOR UPDATE
+      `;
+      thresholdIngest = stores[3]!.persist({
+        userId: USER_ONE,
+        event: deadlineEvents[4]!,
+      });
+      await waitForDatabaseLock(sql, ingestBackend.pid);
+      deadlineClaim = claimInterviewDeadline(
+        {
+          sessionId: SESSION_TRANSCRIPT_DEADLINE,
+          expectedState: "active",
+          expectedVersion: 1,
+          deadlineAt: new Date("2026-07-10T05:30:00.000Z"),
+          terminalReason: "time_limit",
+        },
+        drizzle(clients[4]!, { schema })
+      );
+      await waitForDatabaseLock(sql, claimBackend.pid);
+    });
+    const thresholdIngestResult = await thresholdIngest;
+    assert.equal(
+      thresholdIngestResult.ok && thresholdIngestResult.disposition,
+      "created"
+    );
+    assert.equal(await deadlineClaim, true);
+
+    const postClaimEvent = createTranscriptEvent({
+      ...deadlineEvents[4]!,
+      event_id: "deadline-writer:message-6",
+      sequence: 6,
+      speaker: "interviewer",
+      text: "This event arrived after the hard-deadline fence.",
+      started_at: "2026-07-10T05:06:00.000Z",
+      ended_at: "2026-07-10T05:06:01.000Z",
+    });
+    assert.deepEqual(
+      await stores[5]!.persist({ userId: USER_ONE, event: postClaimEvent }),
+      { ok: false, reason: "session_closed" }
+    );
+
+    const deadlineCompletion = await finalizeInterviewSession(
+      {
+        sessionId: SESSION_TRANSCRIPT_DEADLINE,
+        actor: { type: "system", source: "hard_deadline" },
+        requestedTerminalReason: "time_limit",
+      },
+      drizzle(clients[6]!, { schema })
+    );
+    assert.equal(deadlineCompletion.ok, true);
+    if (deadlineCompletion.ok) {
+      assert.equal(deadlineCompletion.lifecycle.state, "completed");
+      assert.equal(deadlineCompletion.lifecycle.terminalReason, "time_limit");
+      assert.equal(deadlineCompletion.stats.totalTurns, 5);
+      assert.equal(deadlineCompletion.tier, "partial");
+      assert.equal(deadlineCompletion.feedback.status, "pending");
+      const replay = await stores[7]!.persist({
+        userId: USER_ONE,
+        event: deadlineEvents[4]!,
+      });
+      assert.equal(replay.ok && replay.disposition, "existing");
+      const retry = await finalizeInterviewSession(
+        {
+          sessionId: SESSION_TRANSCRIPT_DEADLINE,
+          actor: { type: "system", source: "hard_deadline" },
+          requestedTerminalReason: "time_limit",
+        },
+        drizzle(clients[7]!, { schema })
+      );
+      assert.equal(retry.ok, true);
+      if (retry.ok) {
+        assert.equal(retry.disposition, "existing");
+        assert.deepEqual(retry.lifecycle, deadlineCompletion.lifecycle);
+        assert.deepEqual(retry.stats, deadlineCompletion.stats);
+        assert.equal(retry.feedback.id, deadlineCompletion.feedback.id);
+      }
+    }
+
+    assert.equal(
+      await claimInterviewDeadline(
+        {
+          sessionId: SESSION_TRANSCRIPT_DEADLINE_INVALID,
+          expectedState: "active",
+          expectedVersion: 1,
+          deadlineAt: new Date("2026-07-10T05:30:00.000Z"),
+          terminalReason: "time_limit",
+        },
+        drizzle(clients[4]!, { schema })
+      ),
+      true
+    );
+    const invalidCompletion = await finalizeInterviewSession(
+      {
+        sessionId: SESSION_TRANSCRIPT_DEADLINE_INVALID,
+        actor: { type: "system", source: "hard_deadline" },
+        requestedTerminalReason: "time_limit",
+      },
+      drizzle(clients[6]!, { schema })
+    );
+    assert.equal(invalidCompletion.ok, true);
+    if (invalidCompletion.ok) {
+      assert.equal(invalidCompletion.lifecycle.state, "abandoned");
+      assert.equal(
+        invalidCompletion.lifecycle.terminalReason,
+        "insufficient_signal"
+      );
+      assert.equal(invalidCompletion.lifecycle.version, 4);
+      assert.equal(invalidCompletion.feedback.status, "skipped");
+    }
+  } finally {
+    await Promise.all(clients.map((client) => client.end()));
+  }
+}
+
+async function waitForDatabaseLock(sql: postgres.Sql, pid: number) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const [activity] = await sql<{ wait_event_type: string | null }[]>`
+      SELECT wait_event_type
+      FROM pg_stat_activity
+      WHERE pid = ${pid}
+    `;
+    if (activity?.wait_event_type === "Lock") return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`database backend ${pid} did not wait for the session-row lock`);
 }
 
 async function seedDeadlineCleanupBackfillFixture(sql: postgres.Sql) {
@@ -2304,7 +2732,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 11);
+  assert.equal(await migrationCount(sql), 12);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -2430,6 +2858,45 @@ async function verifyDatabase(sql: postgres.Sql) {
     ORDER BY indexname
   `;
   assert.equal(completionIndexes.length, 2);
+
+  const transcriptColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'transcript_turn'
+      AND column_name IN (
+        'contract_version', 'event_id', 'writer_id', 'sequence',
+        'room_name', 'delivery_state'
+      )
+    ORDER BY column_name
+  `;
+  assert.equal(transcriptColumns.length, 6);
+
+  const transcriptConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname IN (
+      'transcript_turn_contract_version_check',
+      'transcript_turn_sequence_check',
+      'transcript_turn_delivery_state_check',
+      'transcript_turn_canonical_identity_check'
+    )
+    ORDER BY conname
+  `;
+  assert.equal(transcriptConstraints.length, 4);
+
+  const transcriptIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'transcript_turn_event_id_idx',
+        'transcript_turn_session_writer_sequence_idx',
+        'transcript_turn_chronological_idx'
+      )
+    ORDER BY indexname
+  `;
+  assert.equal(transcriptIndexes.length, 3);
 
   const tierConstraint = await sql<{ definition: string }[]>`
     SELECT pg_get_constraintdef(oid) AS definition
