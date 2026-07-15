@@ -66,11 +66,15 @@ to the former owner or a `sourceless` link must be reconnected from the verified
 
 Private repositories owned by a GitHub organization require a Vercel Pro team.
 After the `Meelni` team was upgraded to Pro on 2026-07-15, the existing
-`meelni` project's Git settings again identified `meelni/meelni-prep` as its
-connected repository. Preserve that project and its domains; do not work around
-connection problems by creating a duplicate project, moving the repository
-back to a personal account, or making it public. Prove the connection with a
-fresh non-Production pull-request event before relying on Preview checks.
+`meelni` project's retained Git link still targeted the repository's former
+owner URL even though its label showed `meelni/meelni-prep`. Disconnect and
+reconnect Git from that existing project's Git settings, select the `meelni`
+GitHub namespace, and connect `meelni-prep`; the resulting link must resolve to
+`https://github.com/meelni/meelni-prep`. Preserve the project and its domains;
+do not work around connection problems by creating a duplicate project, moving
+the repository back to a personal account, or making it public. Prove the
+connection with a fresh non-Production pull-request event before relying on
+Preview checks.
 
 Fresh worktree setup should run `npm run setup:local`; when Vercel CLI auth is available, that setup path links the worktree and runs `npm run env:pull` if required env values are missing or still placeholders.
 
