@@ -467,6 +467,200 @@ test("two queue instances retain disjoint events across canonical clobber and ho
   }
 });
 
+test("writer shards keep many maximum-size events within bounded storage amplification", async () => {
+  const storage = new MemoryStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  globalThis.fetch = async () =>
+    Response.json({ error: "unavailable" }, { status: 503 });
+
+  const queues = Array.from({ length: 64 }, () => new TranscriptQueue());
+  try {
+    for (const queue of queues) {
+      queue.bindOwner("user-1");
+      queue.stop();
+    }
+    for (const [index, queue] of queues.entries()) {
+      assert.equal(
+        queue.add(
+          request({
+            eventId: `writer-${index}:message-${index}`,
+            text: "x".repeat(10_000),
+          })
+        ),
+        true
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const canonicalBytes = byteLength(
+      storage.getItem("transcript_queue_v2") ?? ""
+    );
+    const shardBytes = storage
+      .entries()
+      .filter(([key]) => key.startsWith("transcript_queue_v2:writer:"))
+      .reduce((total, [, value]) => total + byteLength(value), 0);
+    const totalBytes = storage
+      .entries()
+      .reduce(
+        (total, [key, value]) => total + byteLength(key) + byteLength(value),
+        0
+      );
+
+    assert.equal(
+      storage
+        .entries()
+        .filter(([key]) => key.startsWith("transcript_queue_v2:writer:"))
+        .length,
+      64
+    );
+    assert.ok(canonicalBytes > 600_000);
+    assert.ok(
+      shardBytes <= canonicalBytes * 1.15,
+      `writer shards amplified ${shardBytes} bytes over ${canonicalBytes} canonical bytes`
+    );
+    assert.ok(
+      totalBytes <= canonicalBytes * 2.2,
+      `total storage amplified ${totalBytes} bytes over ${canonicalBytes} canonical bytes`
+    );
+
+    const restored = new TranscriptQueue();
+    restored.stop();
+    assert.equal(restored.getStatus().queueLength, 64);
+  } finally {
+    for (const queue of queues) queue.stop();
+    globalThis.fetch = originalFetch;
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
+test("quota failures cannot claim retry durability from add or save", async () => {
+  const storage = new QuotaStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  globalThis.fetch = async () =>
+    Response.json({ error: "unavailable" }, { status: 503 });
+  console.error = () => undefined;
+
+  const queue = boundQueue();
+  queue.stop();
+  storage.rejectWrites = true;
+  try {
+    const added = request({
+      eventId: "writer-1:quota-add",
+      text: "Private quota add payload.",
+    });
+    assert.equal(queue.add(added), false);
+    assert.equal(queue.getStatus().queueLength, 0);
+    assert.deepEqual(await queue.flush("user-1", SESSION_ID, 20), {
+      settled: false,
+      pending: 0,
+      failed: 1,
+    });
+
+    const saved = request({
+      eventId: "writer-1:quota-save",
+      text: "Private quota save payload.",
+    });
+    assert.deepEqual(await queue.save(saved), {
+      success: false,
+      error: "transcript_retry_queue_unavailable",
+    });
+    assert.equal(queue.getStatus().queueLength, 0);
+    assert.doesNotMatch(
+      storage
+        .entries()
+        .map(([, value]) => value)
+        .join("\n"),
+      /Private quota (add|save) payload/
+    );
+  } finally {
+    storage.rejectWrites = false;
+    queue.stop();
+    console.error = originalConsoleError;
+    globalThis.fetch = originalFetch;
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
+test("quota during a permanent-failure transition preserves the prior durable retry", async () => {
+  const storage = new QuotaStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  const durableRequest = request({ eventId: "writer-1:durable-before-quota" });
+  storage.setItem(
+    "transcript_queue_v2",
+    JSON.stringify({
+      items: [serializedQueueItem(durableRequest)],
+      generation: 0,
+      ownerId: "user-1",
+      revision: 1,
+    })
+  );
+  storage.setItem(
+    "transcript_queue_v2:generation",
+    JSON.stringify({ generation: 0, ownerId: "user-1" })
+  );
+  globalThis.fetch = async () =>
+    Response.json({ error: "unavailable" }, { status: 503 });
+  console.error = () => undefined;
+
+  const queue = boundQueue();
+  queue.stop();
+  storage.rejectWrites = true;
+  globalThis.fetch = async () =>
+    Response.json(
+      { error: "transcript_event_identity_conflict" },
+      { status: 409 }
+    );
+  try {
+    assert.deepEqual(await queue.save(durableRequest), {
+      success: false,
+      error: "identity_conflict",
+    });
+    assert.deepEqual(queue.getStatus(), {
+      queueLength: 0,
+      isProcessing: false,
+      failed: 1,
+    });
+
+    storage.rejectWrites = false;
+    const restored = new TranscriptQueue();
+    restored.stop();
+    assert.equal(restored.getStatus().queueLength, 1);
+    assert.equal(restored.getStatus().failed, 0);
+  } finally {
+    storage.rejectWrites = false;
+    queue.stop();
+    console.error = originalConsoleError;
+    globalThis.fetch = originalFetch;
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
 test("a never-resolving old-owner retry cannot block a new owner's flush", async () => {
   const storage = new MemoryStorage();
   const originalStorage = Object.getOwnPropertyDescriptor(
@@ -784,4 +978,22 @@ class MemoryStorage implements Storage {
   setItem(key: string, value: string) {
     this.values.set(key, value);
   }
+
+  entries() {
+    return [...this.values.entries()];
+  }
+}
+
+class QuotaStorage extends MemoryStorage {
+  rejectWrites = false;
+
+  override setItem(key: string, value: string) {
+    if (this.rejectWrites)
+      throw new DOMException("Quota exceeded", "QuotaExceededError");
+    super.setItem(key, value);
+  }
+}
+
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }
