@@ -155,6 +155,19 @@ Use the GitHub app connector for structured PR and issue operations when
 available, and local `git`/`gh` for branch-aware workflows, authentication
 checks, pushes, and GitHub Actions logs.
 
+Billing and Actions policy:
+
+- The `meelni` Enterprise account was activated as paid on 2026-07-15. Verify
+  paid state from Enterprise -> Billing and licensing; the organization API's
+  `enterprise` plan label alone does not distinguish a trial from paid billing.
+- The plan includes 50,000 Actions minutes per billing cycle. Do not treat that
+  allowance as permission to restore unattended schedules or duplicate runs.
+- `meelni/meelni-prep` has a repository-scoped Actions product budget of $10 per
+  month, with usage stopped at the limit and owner alerts at 75%, 90%, and 100%.
+  Keep included-usage alerts enabled. Change this cap only with owner approval.
+- Draft PR synchronization should allocate at most the one combined dependency
+  audit. Full hosted Validate remains merge-ready or manually dispatched work.
+
 Repository transfer and CI recovery:
 
 - Disable `Relaunch Integration Gates` before any ownership or billing migration.
