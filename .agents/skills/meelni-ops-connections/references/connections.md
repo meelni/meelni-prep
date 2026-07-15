@@ -101,9 +101,10 @@ Guidelines:
 
 Canonical target:
 
-- Account: `saviii`
-- App repo: `saviii/meelni-prep`
-- Local remote: `https://github.com/saviii/meelni-prep.git`
+- Authenticated operator account: `saviii`
+- Enterprise Cloud organization: `meelni`
+- App repo: `meelni/meelni-prep`
+- Local remote: `https://github.com/meelni/meelni-prep.git`
 
 Install, authenticate, and upgrade:
 
@@ -122,7 +123,23 @@ gh auth status
 gh repo view --json nameWithOwner,url,viewerPermission
 ```
 
-The active account should be `saviii`; the Meelni repository should resolve to `saviii/meelni-prep`. Use the GitHub app connector for structured PR and issue operations when available, and local `git`/`gh` for branch-aware workflows, authentication checks, pushes, and GitHub Actions logs.
+The active operator account should be `saviii`; the Meelni repository should
+resolve to `meelni/meelni-prep`, whose organization plan reports `enterprise`.
+Use the GitHub app connector for structured PR and issue operations when
+available, and local `git`/`gh` for branch-aware workflows, authentication
+checks, pushes, and GitHub Actions logs.
+
+Repository transfer and CI recovery:
+
+- Disable `Relaunch Integration Gates` before any ownership or billing migration.
+- Keep it disabled until `.github/stacked-prs.json` names the current repository
+  owner and the default branch contains the cost-controlled trigger policy.
+- Do not restore unattended schedules. Draft body/title edits must not allocate
+  hosted publisher runners; draft branch/base movement uses one combined
+  dependency audit. Use `workflow_dispatch` for a deliberate full sweep.
+- After a transfer, update the shared Git remote and verify open PRs, branch
+  protection, rulesets, environments, webhooks, and GitHub App checks before
+  re-enabling hosted publication.
 
 Production guardrails:
 
