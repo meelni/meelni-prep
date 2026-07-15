@@ -62,8 +62,16 @@ export interface StartSessionResponse {
   token: string;
   /** LiveKit server URL */
   url: string;
+  /** Server-derived absolute UTC deadline for this interview */
+  deadlineAt: string;
   /** Validated client-safe preferences; runtime settings remain server-owned */
   config: InterviewPreferences;
+  /** Selected question snapshot, or null when no question was selected */
+  question: {
+    id: string;
+    text: string;
+    company: string | null;
+  } | null;
 }
 
 /**
@@ -75,7 +83,7 @@ export type SessionConfig = Record<string, unknown>;
 /**
  * Request body for ending a session
  */
-export interface EndSessionRequest {
+export interface EndInterviewSessionRequest {
   /** UUID of the session to end */
   sessionId: string;
 }
@@ -83,13 +91,38 @@ export interface EndSessionRequest {
 /**
  * Response from ending a session
  */
-export interface EndSessionResponse {
-  /** Success status */
-  success: boolean;
-  /** UUID of the ended session */
-  sessionId: string;
-  /** ISO 8601 timestamp when session ended */
-  endedAt: string;
+export interface EndInterviewSessionResponse {
+  status: "queued" | "pending_dispatch" | "skipped";
+  session: {
+    lifecycleState: "completed" | "abandoned" | "failed";
+    terminalReason:
+      | "user_end"
+      | "time_limit"
+      | "disconnect_timeout"
+      | "provider_failure"
+      | "insufficient_signal"
+      | "legacy_unknown";
+    endedAt: string;
+    disposition: "applied" | "existing" | "repaired";
+  };
+  feedback: {
+    id: string;
+    status: "pending" | "processing" | "completed" | "failed" | "skipped";
+    dispatchStatus: "not_required" | "pending" | "sending" | "sent" | "failed";
+    retryable: boolean;
+  };
+  feedbackId: string;
+  tier: "full" | "partial" | "insufficient" | "abandoned";
+  stats: {
+    totalTurns: number;
+    userTurns: number;
+    totalWords: number;
+    durationSeconds: number;
+    substantiveResponses: number;
+  };
+  recommendations: string[];
+  reason?: string;
+  nextHref: string;
 }
 
 /**
@@ -110,6 +143,10 @@ export interface Session {
   persona?: string;
   /** ISO 8601 timestamp when session started */
   startedAt: Date | string;
+  /** Canonical server-derived absolute deadline */
+  deadlineAt: string;
+  /** Whether feedback is safe to show after terminal provider cleanup */
+  feedbackReady: boolean;
   /** ISO 8601 timestamp when session ended (null if active) */
   endedAt?: Date | string | null;
   /** LiveKit room name */

@@ -77,6 +77,7 @@ Uses shared modules from `../shared/`:
    - `config`: accepted preferences plus the web server's runtime snapshot
    - `question`: optional question from question bank
    - `session_id`: Supabase session ID for transcript saving
+   - `deadline_at`: absolute server-owned UTC hard deadline
 3. Agent receives `JobContext` with room metadata
 4. Agent parses metadata with `parse_room_metadata()`
 5. Agent builds dynamic prompt with `build_agent_prompt()` using:
@@ -89,6 +90,11 @@ Uses shared modules from `../shared/`:
 8. Final transcript events are published to the room; the authenticated browser persists them through the transcript API and retry queue
 9. The web session workflow owns the terminal outcome; provider disconnect and runtime shutdown are normalized inputs, not terminal truth
 
+The runtime uses `deadline_at` to close `AgentSession` immediately without
+draining queued speech and to terminate the room. Missing deadlines remain
+readable only for rolling compatibility; new sessions require the server-side
+SAV-189 writer and durable deadline workflow before relaunch.
+
 ## Room Metadata Schema
 
 ```json
@@ -96,6 +102,7 @@ Uses shared modules from `../shared/`:
   "contract_version": 1,
   "round_type": "product_sense",
   "session_id": "uuid-from-supabase",
+  "deadline_at": "2026-07-09T20:30:00.000Z",
   "question": {
     "id": "question-uuid",
     "text": "How would you improve Spotify?",

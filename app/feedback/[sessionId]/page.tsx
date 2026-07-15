@@ -44,6 +44,7 @@ interface FeedbackResponse {
   status:
     | "missing"
     | "session_not_ended"
+    | "settling"
     | "pending"
     | "processing"
     | "completed"
@@ -185,7 +186,11 @@ export default function FeedbackPage() {
         setFeedbackData(data);
 
         // If still processing, poll again
-        if (data.status === "pending" || data.status === "processing") {
+        if (
+          data.status === "settling" ||
+          data.status === "pending" ||
+          data.status === "processing"
+        ) {
           setTimeout(fetchFeedback, 3000); // Poll every 3 seconds
         }
       } catch (err) {
@@ -298,6 +303,7 @@ export default function FeedbackPage() {
 
   // Processing state
   if (
+    feedbackData?.status === "settling" ||
     feedbackData?.status === "pending" ||
     feedbackData?.status === "processing"
   ) {
@@ -305,11 +311,16 @@ export default function FeedbackPage() {
       <FeedbackStatusPage
         icon={<Loader2 className="h-8 w-8 animate-spin" />}
         title={
-          feedbackData.status === "pending"
-            ? "Preparing Feedback"
-            : "Generating Feedback"
+          feedbackData.status === "settling"
+            ? "Closing Interview Safely"
+            : feedbackData.status === "pending"
+              ? "Preparing Feedback"
+              : "Generating Feedback"
         }
-        description="Our AI is analyzing your interview performance..."
+        description={
+          feedbackData.message ||
+          "Our AI is analyzing your interview performance..."
+        }
       />
     );
   }

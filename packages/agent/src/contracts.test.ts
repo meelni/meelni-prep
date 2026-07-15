@@ -29,6 +29,7 @@ test("buildInterviewRoomMetadata serializes the production room metadata shape",
   const metadata = buildInterviewRoomMetadata(fixture.roomMetadata);
 
   assert.equal(metadata.round_type, "product_sense");
+  assert.equal(metadata.deadline_at, fixture.roomMetadata.deadline_at);
   assert.equal(metadata.question?.id, fixture.question.questionId);
   assert.equal(metadata.config.difficulty, "intermediate");
 });
@@ -70,6 +71,54 @@ test("parseInterviewRoomMetadata keeps question and config defaults", () => {
   assert.equal(metadata.question?.text, "Should Notion build native mobile?");
   assert.equal(metadata.config.difficulty, "advanced");
   assert.equal(metadata.config.stt_model, "deepgram/nova-3");
+  assert.equal(metadata.deadline_at, null);
+});
+
+test("room metadata normalizes the absolute deadline to canonical UTC", () => {
+  const fromDate = buildInterviewRoomMetadata({
+    session_id: "session-deadline-date",
+    deadline_at: new Date("2026-07-09T12:30:00.123Z"),
+    round_type: "product_sense",
+    config: normalizeInterviewRuntimeConfig({ duration: 30 }),
+    question: null,
+  });
+  const fromJson = parseInterviewRoomMetadata(
+    JSON.stringify({
+      contract_version: 1,
+      session_id: "session-deadline-json",
+      deadline_at: "2026-07-09T12:30:00.123Z",
+      round_type: "product_sense",
+      config: { duration: 30 },
+    })
+  );
+
+  assert.equal(fromDate.deadline_at, "2026-07-09T12:30:00.123Z");
+  assert.equal(fromJson.deadline_at, "2026-07-09T12:30:00.123Z");
+});
+
+test("room metadata fails closed for an explicitly malformed deadline", () => {
+  for (const deadline_at of [
+    "",
+    "2026-07-09T12:30:00Z",
+    "2026-07-09T12:30:00.000+00:00",
+    "not-a-date",
+    1783600200000,
+  ]) {
+    assert.throws(
+      () =>
+        parseInterviewRoomMetadata(
+          JSON.stringify({
+            contract_version: 1,
+            session_id: "session-invalid-deadline",
+            deadline_at,
+            round_type: "product_sense",
+            config: {},
+          })
+        ),
+      /invalid_deadline/,
+      String(deadline_at)
+    );
+  }
 });
 
 test("room parsing preserves the web server's resolved runtime snapshot", () => {
@@ -201,6 +250,7 @@ test("runtime config normalizes invalid cross-runtime values consistently", () =
     speed: Number.NaN,
     volume: "loud" as never,
     emotion: "" as never,
+    duration: 60,
   });
 
   assert.equal(config.feedback_mode, "end_only");
@@ -208,6 +258,7 @@ test("runtime config normalizes invalid cross-runtime values consistently", () =
   assert.equal(config.speed, 1);
   assert.equal(config.volume, 1);
   assert.equal(config.emotion, "professional");
+  assert.equal(config.duration, 30);
 
   const metadata = parseInterviewRoomMetadata(
     JSON.stringify({

@@ -13,18 +13,33 @@ import { feedbackGenerationEventId } from "./feedback-event-id";
 import { db } from "./index";
 import { feedback, interviewSession } from "./schema";
 
-export interface FinalizeInterviewSessionInput {
-  sessionId: string;
-  userId: string;
+export type EndInterviewSessionCommand = { sessionId: string } & (
+  | {
+      actor: { type: "user"; userId: string };
+      requestedTerminalReason: "user_end";
+    }
+  | {
+      actor: { type: "system"; source: "hard_deadline" };
+      requestedTerminalReason: "time_limit";
+    }
+  | {
+      actor: { type: "system"; source: "invalid_session_recovery" };
+      requestedTerminalReason: "provider_failure";
+    }
+);
+
+export type FinalizeInterviewSessionInput = EndInterviewSessionCommand & {
   validation: SessionValidation;
   now?: Date;
-}
+};
 
 export type FinalizeInterviewSessionResult =
   | { ok: false; reason: "not_found" }
   | {
       ok: true;
       disposition: "applied" | "existing" | "repaired";
+      userId: string;
+      roomName: string | null;
       lifecycle: {
         state: InterviewLifecycleState;
         version: number;
@@ -32,12 +47,37 @@ export type FinalizeInterviewSessionResult =
         endedAt: Date;
       };
       feedback: typeof feedback.$inferSelect;
+      deadlineRoomCleanupStatus:
+        | "pending"
+        | "deleted"
+        | "already_absent"
+        | null;
       stats: SessionValidation["stats"];
       tier: SessionValidation["tier"];
       recommendations: string[];
     };
 
 export type EndInterviewSessionDatabase = Pick<typeof db, "transaction">;
+export type AuthorizeInterviewSessionEndDatabase = Pick<typeof db, "select">;
+
+export async function authorizeInterviewSessionEnd(
+  input: EndInterviewSessionCommand,
+  database: AuthorizeInterviewSessionEndDatabase = db
+): Promise<boolean> {
+  const authorizationCondition =
+    input.actor.type === "user"
+      ? and(
+          eq(interviewSession.id, input.sessionId),
+          eq(interviewSession.userId, input.actor.userId)
+        )
+      : eq(interviewSession.id, input.sessionId);
+  const rows = await database
+    .select({ id: interviewSession.id })
+    .from(interviewSession)
+    .where(authorizationCondition)
+    .limit(1);
+  return Boolean(rows[0]);
+}
 
 export async function finalizeInterviewSession(
   input: FinalizeInterviewSessionInput,
@@ -46,15 +86,17 @@ export async function finalizeInterviewSession(
   const now = input.now ?? new Date();
 
   return database.transaction(async (tx) => {
+    const ownershipCondition =
+      input.actor.type === "user"
+        ? and(
+            eq(interviewSession.id, input.sessionId),
+            eq(interviewSession.userId, input.actor.userId)
+          )
+        : eq(interviewSession.id, input.sessionId);
     const rows = await tx
       .select()
       .from(interviewSession)
-      .where(
-        and(
-          eq(interviewSession.id, input.sessionId),
-          eq(interviewSession.userId, input.userId)
-        )
-      )
+      .where(ownershipCondition)
       .limit(1)
       .for("update");
     const stored = rows[0];
@@ -67,6 +109,11 @@ export async function finalizeInterviewSession(
     let endingAt = stored.endingAt;
     let endedAt = stored.endedAt;
     const wasTerminal = isInterviewTerminalState(state);
+    const hardDeadlineOwnsCleanup =
+      !wasTerminal &&
+      input.actor.type === "system" &&
+      input.actor.source === "hard_deadline" &&
+      stored.terminalReason === null;
 
     const advance = async (
       nextState: InterviewLifecycleState,
@@ -137,10 +184,10 @@ export async function finalizeInterviewSession(
       }
 
       if (state !== "ending") {
-        const requestedReason: InterviewTerminalReason = input.validation
-          .isValid
-          ? "user_end"
-          : "insufficient_signal";
+        const requestedReason = resolveInterviewTerminalReason(
+          input.validation,
+          input.requestedTerminalReason
+        );
         await advance("ending", requestedReason);
       }
 
@@ -160,6 +207,13 @@ export async function finalizeInterviewSession(
 
     if (!isInterviewTerminalState(state) || !terminalReason || !endedAt) {
       throw new Error("Interview completion did not reach a terminal outcome");
+    }
+
+    if (hardDeadlineOwnsCleanup && stored.deadlineRoomCleanupStatus === null) {
+      await tx
+        .update(interviewSession)
+        .set({ deadlineRoomCleanupStatus: "pending" })
+        .where(eq(interviewSession.id, input.sessionId));
     }
 
     if (!wasTerminal) {
@@ -216,8 +270,13 @@ export async function finalizeInterviewSession(
           ? "repaired"
           : "existing"
         : "applied",
+      userId: stored.userId,
+      roomName: stored.livekitRoomName,
       lifecycle: { state, version, terminalReason, endedAt },
       feedback: feedbackRecord,
+      deadlineRoomCleanupStatus: hardDeadlineOwnsCleanup
+        ? (stored.deadlineRoomCleanupStatus ?? "pending")
+        : stored.deadlineRoomCleanupStatus,
       stats: feedbackRecord.completionStats ?? input.validation.stats,
       tier:
         (feedbackRecord.completionTier as SessionValidation["tier"] | null) ??
@@ -227,4 +286,14 @@ export async function finalizeInterviewSession(
         input.validation.recommendations,
     } as const;
   });
+}
+
+export function resolveInterviewTerminalReason(
+  validation: Pick<SessionValidation, "isValid">,
+  requestedTerminalReason: "user_end" | "time_limit" | "provider_failure"
+): InterviewTerminalReason {
+  if (requestedTerminalReason === "provider_failure") {
+    return "provider_failure";
+  }
+  return validation.isValid ? requestedTerminalReason : "insufficient_signal";
 }

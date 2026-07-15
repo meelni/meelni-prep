@@ -118,6 +118,7 @@ const productSenseInterviewFixture: ProductSenseInterviewFixture = {
   roomMetadata: {
     contract_version: 1,
     session_id: "fixture-session-product-sense-1",
+    deadline_at: FIXTURE_CLOCK.endedAt.toISOString(),
     round_type: "product_sense",
     mode: "voice_video",
     question: {

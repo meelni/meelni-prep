@@ -57,6 +57,13 @@
       "when": 1783636529232,
       "tag": "0007_atomic_session_completion",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783885451880,
+      "tag": "0008_deadline_room_cleanup_ack",
+      "breakpoints": true
     }
   ]
 }

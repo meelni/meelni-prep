@@ -66,7 +66,7 @@ curl -X POST ${BASE_URL}/api/session/start \
 #### End Interview Session
 
 ```bash
-curl -X POST ${BASE_URL}/api/session/end \
+curl -X POST ${BASE_URL}/api/interview/end \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -288,7 +288,7 @@ async function testFullInterviewFlow() {
 
     // 3. End session
     console.log("Ending session...");
-    await fetch(`${BASE_URL}/api/session/end`, {
+    await fetch(`${BASE_URL}/api/interview/end`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -506,7 +506,7 @@ def test_full_interview_flow():
 
     # 3. End session
     print('3️⃣ Ending session...')
-    url = f'{BASE_URL}/api/session/end'
+    url = f'{BASE_URL}/api/interview/end'
     payload = {'sessionId': session_id}
     response = requests.post(url, json=payload, headers=get_headers())
     response.raise_for_status()
@@ -631,9 +631,9 @@ if __name__ == '__main__':
               "raw": "{\n  \"sessionId\": \"{{SESSION_ID}}\"\n}"
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/session/end",
+              "raw": "{{BASE_URL}}/api/interview/end",
               "host": ["{{BASE_URL}}"],
-              "path": ["api", "session", "end"]
+              "path": ["api", "interview", "end"]
             }
           }
         },
@@ -775,7 +775,7 @@ describe("Session API", () => {
   });
 
   it("should end a session", async () => {
-    const response = await fetch(`${BASE_URL}/api/session/end`, {
+    const response = await fetch(`${BASE_URL}/api/interview/end`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${authToken}`,

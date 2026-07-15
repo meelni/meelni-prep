@@ -24,10 +24,7 @@ test("dispatch failure does not turn committed completion into end failure", asy
       dispatch: null,
     }),
   });
-  const result = await endInterviewSessionWorkflow(
-    { sessionId: SESSION_ID, userId: USER_ID },
-    deps
-  );
+  const result = await endInterviewSessionWorkflow(userEndInput(), deps);
 
   assert.equal(result.ok, true);
   if (result.ok) {
@@ -38,7 +35,7 @@ test("dispatch failure does not turn committed completion into end failure", asy
 
 test("dispatch infrastructure exceptions preserve committed completion", async () => {
   const result = await endInterviewSessionWorkflow(
-    { sessionId: SESSION_ID, userId: USER_ID },
+    userEndInput(),
     createDeps({
       dispatch: async () => {
         throw new Error("dispatch store unavailable");
@@ -64,9 +61,28 @@ test("skipped feedback never dispatches", async () => {
     }),
   });
   const result = await endInterviewSessionWorkflow(
-    { sessionId: SESSION_ID, userId: USER_ID },
+    userEndInput(),
     createDeps({
       finalize: async () => skipped,
+      dispatch: async () => {
+        dispatches += 1;
+        return sentDispatch();
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(dispatches, 0);
+  if (result.ok) assert.equal(result.dispatch, null);
+});
+
+test("pending deadline cleanup blocks feedback dispatch", async () => {
+  let dispatches = 0;
+  const pendingCleanup = completion({ deadlineRoomCleanupStatus: "pending" });
+  const result = await endInterviewSessionWorkflow(
+    userEndInput(),
+    createDeps({
+      finalize: async () => pendingCleanup,
       dispatch: async () => {
         dispatches += 1;
         return sentDispatch();
@@ -90,7 +106,7 @@ test("failed generation can redispatch its stored event identity", async () => {
   });
 
   const result = await endInterviewSessionWorkflow(
-    { sessionId: SESSION_ID, userId: USER_ID },
+    userEndInput(),
     createDeps({
       finalize: async () => failed,
       dispatch: async () => {
@@ -108,7 +124,7 @@ test("failed generation can redispatch its stored event identity", async () => {
 test("not-found completion is returned without dispatch", async () => {
   let dispatches = 0;
   const result = await endInterviewSessionWorkflow(
-    { sessionId: SESSION_ID, userId: USER_ID },
+    userEndInput(),
     createDeps({
       finalize: async () => ({ ok: false, reason: "not_found" }),
       dispatch: async () => {
@@ -122,13 +138,153 @@ test("not-found completion is returned without dispatch", async () => {
   assert.equal(dispatches, 0);
 });
 
+test("authorization runs before transcript validation", async () => {
+  let validations = 0;
+  let finalizations = 0;
+  const result = await endInterviewSessionWorkflow(
+    userEndInput(),
+    createDeps({
+      authorize: async () => false,
+      validate: async () => {
+        validations += 1;
+        return validation();
+      },
+      finalize: async () => {
+        finalizations += 1;
+        return completion();
+      },
+    })
+  );
+
+  assert.deepEqual(result, { ok: false, reason: "not_found" });
+  assert.equal(validations, 0);
+  assert.equal(finalizations, 0);
+});
+
+test("hard deadline sends a system time-limit command and dispatches for the stored owner", async () => {
+  const finalized: Parameters<EndInterviewSessionDeps["finalize"]>[0][] = [];
+  const dispatched: Parameters<EndInterviewSessionDeps["dispatch"]>[0][] = [];
+  const motivated: string[] = [];
+  const result = await endInterviewSessionWorkflow(
+    {
+      sessionId: SESSION_ID,
+      actor: { type: "system", source: "hard_deadline" },
+      requestedTerminalReason: "time_limit",
+    },
+    createDeps({
+      finalize: async (input) => {
+        finalized.push(input);
+        return completion({
+          lifecycle: {
+            state: "completed",
+            version: 3,
+            terminalReason: "time_limit",
+            endedAt: new Date("2026-07-09T22:00:00.000Z"),
+          },
+        });
+      },
+      dispatch: async (input) => {
+        dispatched.push(input);
+        return sentDispatch();
+      },
+      updateMotivation: async (userId) => {
+        motivated.push(userId);
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(finalized[0]?.requestedTerminalReason, "time_limit");
+  assert.deepEqual(finalized[0]?.actor, {
+    type: "system",
+    source: "hard_deadline",
+  });
+  assert.equal(dispatched[0]?.userId, USER_ID);
+  assert.deepEqual(motivated, [USER_ID]);
+});
+
+test("manual completion updates motivation for the stored owner", async () => {
+  const motivated: string[] = [];
+  const result = await endInterviewSessionWorkflow(
+    userEndInput(),
+    createDeps({
+      updateMotivation: async (userId) => {
+        motivated.push(userId);
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(motivated, [USER_ID]);
+});
+
+test("abandoned and existing completion results do not update motivation", async () => {
+  const motivated: string[] = [];
+  const updateMotivation = async (userId: string) => {
+    motivated.push(userId);
+  };
+  const skippedFeedback = feedbackRecord({
+    status: "skipped",
+    dispatchStatus: "not_required",
+    dispatchEventId: null,
+  });
+
+  await endInterviewSessionWorkflow(
+    userEndInput(),
+    createDeps({
+      finalize: async () =>
+        completion({
+          lifecycle: {
+            state: "abandoned",
+            version: 3,
+            terminalReason: "insufficient_signal",
+            endedAt: new Date("2026-07-09T22:00:00.000Z"),
+          },
+          feedback: skippedFeedback,
+        }),
+      updateMotivation,
+    })
+  );
+  await endInterviewSessionWorkflow(
+    userEndInput(),
+    createDeps({
+      finalize: async () => completion({ disposition: "existing" }),
+      updateMotivation,
+    })
+  );
+
+  assert.deepEqual(motivated, []);
+});
+
+test("motivation failure preserves committed completion and feedback dispatch", async () => {
+  let dispatches = 0;
+  const result = await endInterviewSessionWorkflow(
+    userEndInput(),
+    createDeps({
+      dispatch: async () => {
+        dispatches += 1;
+        return sentDispatch();
+      },
+      updateMotivation: async () => {
+        throw new Error("motivation unavailable");
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(dispatches, 1);
+  if (result.ok) assert.equal(result.completion.lifecycle.state, "completed");
+});
+
 function createDeps(
   overrides: Partial<EndInterviewSessionDeps> = {}
 ): EndInterviewSessionDeps {
   return {
+    authorize: async () => true,
     validate: async () => validation(),
     finalize: async () => completion(),
     dispatch: async () => sentDispatch(),
+    updateMotivation: async () => undefined,
     ...overrides,
   };
 }
@@ -155,6 +311,8 @@ function completion(
   return {
     ok: true,
     disposition: "applied",
+    userId: USER_ID,
+    roomName: "interview-deadline-room",
     lifecycle: {
       state: "completed",
       version: 3,
@@ -162,10 +320,19 @@ function completion(
       endedAt: new Date("2026-07-09T22:00:00.000Z"),
     },
     feedback: feedbackRecord(),
+    deadlineRoomCleanupStatus: null,
     stats: validation().stats,
     tier: SessionTier.FULL,
     recommendations: [],
     ...overrides,
+  };
+}
+
+function userEndInput() {
+  return {
+    sessionId: SESSION_ID,
+    actor: { type: "user" as const, userId: USER_ID },
+    requestedTerminalReason: "user_end" as const,
   };
 }
 
