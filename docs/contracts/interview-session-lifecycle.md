@@ -117,6 +117,27 @@ This first-valid-claim rule makes concurrent end, deadline, disconnect, and prov
   transcript-ingest contract; lifecycle code must not invent a second
   transcript identity rule.
 
+## Browser Ownership And Explicit End
+
+The authenticated browser owner is part of the mounted room boundary. A sign
+out or direct account A-to-B replacement immediately makes the existing room
+render-ineligible, unmounts its LiveKit connection, aborts and removes the
+prior owner's transcript queue through the queue owner binding, clears all
+session credentials and local transcript/end state, and fences late async
+callbacks. The replacement account is sent to the dashboard instead of
+requesting credentials for the prior account's session URL.
+
+An explicit end first closes browser transcript acceptance and settles the
+authenticated queue. A definitive non-success HTTP response proves that the
+browser received a rejection, so it reopens transcript acceptance and keeps
+the connected retry experience. A transport exception after the request was
+written is ambiguous: the command may already have committed. In that case the
+browser unmounts the room and presents a non-dismissible frozen state. It polls
+owned durable lifecycle and feedback truth and, only while the stored session
+is still joinable, retries the same idempotent `user_end` command at a bounded
+cadence. It neither resumes packet acceptance nor clears queued transcript
+state until terminal handoff is confirmed.
+
 ## Room Metadata And Correlation
 
 Canonical room metadata contract version 1 requires `contract_version: 1` and `session_id`. New SAV-189 writers also supply one canonical UTC `deadline_at`; missing values remain readable only during the staged rollout. The runtime reference, selected question, transcript events, logs, and feedback request must remain correlated to the same session ID.

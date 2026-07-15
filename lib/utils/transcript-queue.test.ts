@@ -58,6 +58,37 @@ test("retryable failures remain queued until explicit settlement succeeds", asyn
   }
 });
 
+test("a hung retry in session A cannot head-of-line block session B flush", async () => {
+  const queue = boundQueue();
+  const originalFetch = globalThis.fetch;
+  const requestedSessions: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { sessionId: string };
+    requestedSessions.push(body.sessionId);
+    if (body.sessionId === SESSION_ID) return new Promise<Response>(() => {});
+    return Response.json({ disposition: "created" });
+  };
+
+  try {
+    assert.equal(queue.add(request()), true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(queue.add(request({ sessionId: SECOND_SESSION_ID })), true);
+
+    assert.deepEqual(await queue.flush("user-1", SECOND_SESSION_ID, 1_000), {
+      settled: true,
+      pending: 0,
+      failed: 0,
+    });
+    assert.ok(requestedSessions.includes(SESSION_ID));
+    assert.ok(requestedSessions.includes(SECOND_SESSION_ID));
+    assert.equal(queue.getStatus().queueLength, 1);
+  } finally {
+    queue.clearSession("user-1", SESSION_ID);
+    queue.stop();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("identity conflicts are permanent and block transcript settlement", async () => {
   const queue = boundQueue();
   const originalFetch = globalThis.fetch;
@@ -231,6 +262,62 @@ test("expired retry entries are purged instead of retaining transcript text inde
   }
 });
 
+test("legacy overflow markers migrate to timestamped bounded state and expired markers are pruned", () => {
+  const storage = new MemoryStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  storage.setItem(
+    "transcript_queue_v2",
+    JSON.stringify({
+      items: [],
+      overflowedSessions: Array.from(
+        { length: 1_005 },
+        (_, index) => `user-1:legacy-session-${index}`
+      ),
+      overflowMarkers: [
+        {
+          id: `user-1:${SECOND_SESSION_ID}`,
+          recordedAt: "2020-01-01T00:00:00.000Z",
+        },
+      ],
+    })
+  );
+
+  try {
+    const queue = new TranscriptQueue();
+    queue.bindOwner("user-1");
+    queue.stop();
+    assert.equal(queue.getStatus().failed, 1_000);
+    const persisted = JSON.parse(
+      storage.getItem("transcript_queue_v2") ?? "{}"
+    ) as {
+      overflowedSessions?: string[];
+      overflowMarkers?: Array<{ id: string; recordedAt: string }>;
+    };
+    assert.equal(persisted.overflowedSessions, undefined);
+    assert.equal(persisted.overflowMarkers?.length, 1_000);
+    assert.ok(
+      persisted.overflowMarkers?.every((marker) =>
+        Number.isFinite(new Date(marker.recordedAt).getTime())
+      )
+    );
+    assert.equal(
+      persisted.overflowMarkers?.some(
+        (marker) => marker.id === `user-1:${SECOND_SESSION_ID}`
+      ),
+      false
+    );
+  } finally {
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
 test("malformed storage is deleted instead of retaining unknown raw text", () => {
   const storage = new MemoryStorage();
   const originalStorage = Object.getOwnPropertyDescriptor(
@@ -303,6 +390,78 @@ test("an unresolved old-owner save cannot rebind or delete the new owner's queue
     assert.equal(queue.getStatus().queueLength, 1);
   } finally {
     queue.stop();
+    globalThis.fetch = originalFetch;
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
+test("two queue instances retain disjoint events across canonical clobber and honor cross-instance removal", async () => {
+  const storage = new MemoryStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  globalThis.fetch = async () =>
+    Response.json({ error: "unavailable" }, { status: 503 });
+
+  const first = new TranscriptQueue();
+  const second = new TranscriptQueue();
+  first.bindOwner("user-1");
+  second.bindOwner("user-1");
+  first.stop();
+  second.stop();
+  try {
+    const firstEvent = request({
+      eventId: "writer-1:message-a",
+      text: "Private event from tab A.",
+    });
+    const secondEvent = request({
+      sessionId: SECOND_SESSION_ID,
+      eventId: "writer-1:message-b",
+      text: "Private event from tab B.",
+    });
+    assert.equal(first.add(firstEvent), true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(second.add(secondEvent), true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const clobbered = JSON.parse(
+      storage.getItem("transcript_queue_v2") ?? "{}"
+    ) as { items: Array<{ id: string }> };
+    clobbered.items = clobbered.items.filter(
+      (item) => item.id === queueItemId(secondEvent)
+    );
+    storage.setItem("transcript_queue_v2", JSON.stringify(clobbered));
+
+    const restored = new TranscriptQueue();
+    restored.stop();
+    assert.equal(restored.getStatus().queueLength, 2);
+
+    first.clearSession("user-1", SESSION_ID);
+    second.add(
+      request({
+        sessionId: SECOND_SESSION_ID,
+        eventId: "writer-1:message-c",
+        text: "A later private event from tab B.",
+      })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const afterRemoval = new TranscriptQueue();
+    afterRemoval.stop();
+    assert.equal(afterRemoval.getStatus().queueLength, 2);
+    const reconciled = storage.getItem("transcript_queue_v2") ?? "";
+    assert.doesNotMatch(reconciled, /Private event from tab A/);
+    assert.match(reconciled, /Private event from tab B/);
+    assert.match(reconciled, /A later private event from tab B/);
+  } finally {
+    first.stop();
+    second.stop();
     globalThis.fetch = originalFetch;
     restoreGlobal("localStorage", originalStorage);
   }
@@ -488,6 +647,9 @@ test("sign-out or deletion cleanup fences in-flight failure and stale callbacks"
 
   const queue = getTranscriptQueue();
   queue.bindOwner("user-1");
+  const staleTab = new TranscriptQueue();
+  staleTab.bindOwner("user-1");
+  staleTab.stop();
   try {
     const inFlight = queue.save(request());
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -499,6 +661,15 @@ test("sign-out or deletion cleanup fences in-flight failure and stale callbacks"
       error: "transcript_owner_changed",
     });
     assert.equal(storage.getItem("transcript_queue_v2"), null);
+    assert.equal(
+      staleTab.add(
+        request({
+          eventId: "writer-1:stale-after-clear",
+          text: "This stale-tab event must never be restored.",
+        })
+      ),
+      false
+    );
 
     let staleRequests = 0;
     globalThis.fetch = async () => {
@@ -511,7 +682,17 @@ test("sign-out or deletion cleanup fences in-flight failure and stale callbacks"
     });
     assert.equal(staleRequests, 0);
     assert.equal(storage.getItem("transcript_queue_v2"), null);
+    assert.doesNotMatch(
+      [...Array(storage.length)]
+        .map((_, index) => {
+          const key = storage.key(index);
+          return key ? (storage.getItem(key) ?? "") : "";
+        })
+        .join("\n"),
+      /This stale-tab event must never be restored/
+    );
   } finally {
+    staleTab.stop();
     queue.stop();
     globalThis.fetch = originalFetch;
     restoreGlobal("localStorage", originalStorage);
@@ -557,6 +738,10 @@ function serializedQueueItem(value: ReturnType<typeof request>) {
     enqueuedAt: queuedAt,
     lastAttempt: queuedAt,
   };
+}
+
+function queueItemId(value: ReturnType<typeof request>) {
+  return `${value.ownerId}:${value.sessionId}:${value.event.event_id}`;
 }
 
 function boundQueue(ownerId = "user-1") {
