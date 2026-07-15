@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AccessToken } from "livekit-server-sdk";
 
 import { createLiveKitStartFixture } from "@meelni/test-fixtures";
 
@@ -13,6 +14,8 @@ import {
   INTEGRATION_PROVIDERS,
   isProviderFailure,
   issueInterviewParticipantToken,
+  inspectInterviewParticipantPresence,
+  receiveLiveKitParticipantWebhook,
   listProviderEnvVars,
   providerFailure,
   providerSuccess,
@@ -178,6 +181,7 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
   const calls: string[] = [];
   const constructorCalls: unknown[] = [];
   const grants: unknown[] = [];
+  const roomInputs: unknown[] = [];
   const provider: LiveKitInterviewProvider = createLiveKitInterviewProvider({
     accessTokenFactory: class {
       constructor(...args: unknown[]) {
@@ -200,7 +204,8 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
       },
     }),
     roomServiceClientFactory: () => ({
-      createRoom: async () => {
+      createRoom: async (input) => {
+        roomInputs.push(input);
         calls.push("room");
       },
     }),
@@ -216,7 +221,16 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
       url: fixture.input.env.url,
     });
   }
-  assert.deepEqual(calls, ["room", "dispatch", "grant", "jwt"]);
+  assert.deepEqual(calls, ["grant", "jwt", "room", "dispatch"]);
+  assert.deepEqual(roomInputs, [
+    {
+      name: fixture.input.roomName,
+      metadata: JSON.stringify(fixture.input.metadata),
+      emptyTimeout: 3600,
+      maxParticipants: 2,
+      departureTimeout: 60,
+    },
+  ]);
   assert.deepEqual(constructorCalls, [
     [
       fixture.input.env.apiKey,
@@ -240,15 +254,151 @@ test("LiveKit provider creates room, dispatches agent, and mints token", async (
   ]);
 });
 
+test("LiveKit token signing failure occurs before room or dispatch side effects", async () => {
+  const fixture = createLiveKitStartFixture();
+  const calls: string[] = [];
+  const provider = createLiveKitInterviewProvider({
+    accessTokenFactory: class {
+      addGrant() {
+        calls.push("grant");
+      }
+
+      async toJwt() {
+        calls.push("jwt");
+        throw new Error("signing unavailable");
+      }
+    } as never,
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        calls.push("room");
+      },
+    }),
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        calls.push("dispatch");
+      },
+    }),
+  });
+
+  const result = await provider.startInterviewRoom(fixture.input);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "livekit_token_issue_failed");
+  assert.deepEqual(calls, ["grant", "jwt"]);
+});
+
+test("LiveKit participant webhooks normalize signed provider correlation", async () => {
+  const result = await receiveLiveKitParticipantWebhook(
+    {
+      body: "signed-body",
+      authorization: "Bearer signed",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      receive: async (body, authorization) => {
+        assert.equal(body, "signed-body");
+        assert.equal(authorization, "Bearer signed");
+        return {
+          id: "event-1",
+          event: "participant_joined",
+          createdAt: BigInt(1783670400),
+          room: { name: "interview-room" },
+          participant: {
+            identity: "candidate-id",
+            joinedAtMs: BigInt(1783670400123),
+            kind: 0,
+          },
+        };
+      },
+    }
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.deepEqual(result.data, {
+      eventId: "event-1",
+      eventName: "participant_joined",
+      roomName: "interview-room",
+      participantIdentity: "candidate-id",
+      participantKind: 0,
+      occurredAt: new Date(1783670400123),
+    });
+  }
+});
+
+test("LiveKit participant webhook signature failures are rejected", async () => {
+  const result = await receiveLiveKitParticipantWebhook(
+    {
+      body: "tampered",
+      authorization: null,
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      receive: async () => {
+        throw new Error("invalid signature");
+      },
+    }
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_webhook_signature_invalid");
+  }
+});
+
+test("LiveKit leave ordering stays after the participant join within one provider second", async () => {
+  const result = await receiveLiveKitParticipantWebhook(
+    {
+      body: "signed-body",
+      authorization: "Bearer signed",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      receive: async () => ({
+        id: "event-left",
+        event: "participant_left",
+        createdAt: BigInt(1783670400),
+        room: { name: "interview-room" },
+        participant: {
+          identity: "candidate-id",
+          joinedAtMs: BigInt(1783670400500),
+          kind: 0,
+        },
+      }),
+    }
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.data?.occurredAt.getTime(), 1783670400501);
+  }
+});
+
 test("LiveKit reconnect tokens use a short TTL and the authorized room grant", async () => {
   const constructorCalls: unknown[] = [];
   const grants: unknown[] = [];
+  const signingAt = new Date("2026-07-10T08:00:00.000Z");
+  const expiresAt = new Date("2026-07-10T08:05:00.000Z");
   const result = await issueInterviewParticipantToken(
     {
       identity: "authenticated-user-id",
       participantName: "owner@example.com",
       roomName: "interview-server-owned-room",
       ttlSeconds: 300,
+      observedAt: signingAt,
+      expiresAt,
       env: {
         apiKey: "key",
         apiSecret: "secret",
@@ -266,9 +416,10 @@ test("LiveKit reconnect tokens use a short TTL and the authorized room grant", a
         }
 
         async toJwt() {
-          return "short-lived-token";
+          return jwtWithExpiration(Math.floor(expiresAt.getTime() / 1_000));
         }
       },
+      now: () => signingAt,
     }
   );
 
@@ -296,29 +447,187 @@ test("LiveKit reconnect tokens use a short TTL and the authorized room grant", a
   ]);
 });
 
-test("LiveKit room termination deletes once and treats missing rooms as success", async () => {
-  const deleted: string[] = [];
+test("a delayed real LiveKit token is withheld when its actual exp crosses the authorization deadline", async () => {
+  let signedToken = "";
+  class DelayedAccessToken extends AccessToken {
+    override async toJwt() {
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      signedToken = await super.toJwt();
+      return signedToken;
+    }
+  }
+
+  const expiresAt = new Date(Date.now() + 2_500);
+  const observedAt = new Date();
+  const result = await issueInterviewParticipantToken(
+    {
+      identity: "authenticated-user-id",
+      participantName: "Candidate",
+      roomName: "interview-server-owned-room",
+      ttlSeconds: 300,
+      observedAt,
+      expiresAt,
+      env: {
+        apiKey: "key",
+        apiSecret: "test-secret-with-enough-entropy-for-hs256",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    { accessTokenFactory: DelayedAccessToken }
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_token_expiry_invalid");
+  }
+  assert.ok(signedToken);
+  assert.ok(
+    decodeJwtExpiration(signedToken) > Math.floor(expiresAt.getTime() / 1_000)
+  );
+});
+
+test("a real LiveKit token is bounded by the absolute authorization deadline", async () => {
+  const issuedAtSeconds = Math.floor(Date.now() / 1_000);
+  const observedAt = new Date(issuedAtSeconds * 1_000);
+  const expiresAt = new Date((issuedAtSeconds + 90) * 1_000);
+  const result = await issueInterviewParticipantToken({
+    identity: "authenticated-user-id",
+    participantName: "Candidate",
+    roomName: "interview-server-owned-room",
+    ttlSeconds: 300,
+    observedAt,
+    expiresAt,
+    env: {
+      apiKey: "key",
+      apiSecret: "test-secret-with-enough-entropy-for-hs256",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    const actualExpiration = decodeJwtExpiration(result.data.token);
+    assert.ok(actualExpiration <= Math.floor(expiresAt.getTime() / 1_000));
+    assert.ok(actualExpiration <= issuedAtSeconds + 300);
+  }
+});
+
+test("LiveKit reconnect token TTL compensates for a slow signer clock", async () => {
+  const databaseNow = new Date("2026-07-10T08:00:00.000Z");
+  const signerNow = new Date("2026-07-10T07:50:00.000Z");
+  const expiresAt = new Date("2026-07-10T08:00:30.000Z");
+  let ttl = 0;
+  const result = await issueInterviewParticipantToken(
+    {
+      identity: "authenticated-user-id",
+      participantName: "Candidate",
+      roomName: "interview-server-owned-room",
+      ttlSeconds: 30,
+      observedAt: databaseNow,
+      expiresAt,
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      now: () => signerNow,
+      accessTokenFactory: class {
+        constructor(
+          _apiKey: string,
+          _apiSecret: string,
+          options: { ttl?: number }
+        ) {
+          ttl = options.ttl ?? 0;
+        }
+        addGrant() {}
+        async toJwt() {
+          return jwtWithExpiration(Math.floor(expiresAt.getTime() / 1_000));
+        }
+      },
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(ttl, 630);
+  if (result.ok)
+    assert.equal(result.data.expiresAt.getTime(), expiresAt.getTime());
+});
+
+test("LiveKit reconnect token issuance fails closed for a signer past the canonical cutoff", async () => {
+  let constructed = false;
+  const result = await issueInterviewParticipantToken(
+    {
+      identity: "authenticated-user-id",
+      participantName: "Candidate",
+      roomName: "interview-server-owned-room",
+      ttlSeconds: 30,
+      observedAt: new Date("2026-07-10T08:00:00.000Z"),
+      expiresAt: new Date("2026-07-10T08:00:30.000Z"),
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      now: () => new Date("2026-07-10T08:10:00.000Z"),
+      accessTokenFactory: class {
+        constructor() {
+          constructed = true;
+        }
+        addGrant() {}
+        async toJwt() {
+          return jwtWithExpiration(0);
+        }
+      },
+    }
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(constructed, false);
+  if (!result.ok)
+    assert.equal(result.error.code, "livekit_token_expiry_invalid");
+});
+
+test("LiveKit room termination uses provider-time revocation before deleting the room", async () => {
+  const calls: string[] = [];
   const env = {
     apiKey: "key",
     apiSecret: "secret",
     url: "wss://test.livekit.cloud",
   };
   const deletedResult = await terminateInterviewRoom(
-    { roomName: "interview-deadline-room", env },
     {
+      roomName: "interview-deadline-room",
+      participantIdentity: "candidate-id",
+      env,
+    },
+    {
+      now: () => new Date("1970-01-01T00:00:00.000Z"),
       roomServiceClientFactory: () => ({
         createRoom: async () => undefined,
+        removeParticipant: async (roomName, identity, options) => {
+          assert.equal(options, undefined);
+          calls.push(`revoke:${roomName}:${identity}:provider-time`);
+        },
         deleteRoom: async (roomName) => {
-          deleted.push(roomName);
+          calls.push(`delete:${roomName}`);
         },
       }),
     }
   );
   const absentResult = await terminateInterviewRoom(
-    { roomName: "interview-deadline-room", env },
+    {
+      roomName: "interview-deadline-room",
+      participantIdentity: "candidate-id",
+      env,
+    },
     {
       roomServiceClientFactory: () => ({
         createRoom: async () => undefined,
+        removeParticipant: async () => undefined,
         deleteRoom: async () => {
           throw Object.assign(new Error("room not found"), {
             code: "not_found",
@@ -329,7 +638,10 @@ test("LiveKit room termination deletes once and treats missing rooms as success"
     }
   );
 
-  assert.deepEqual(deleted, ["interview-deadline-room"]);
+  assert.deepEqual(calls, [
+    "revoke:interview-deadline-room:candidate-id:provider-time",
+    "delete:interview-deadline-room",
+  ]);
   assert.deepEqual(deletedResult, {
     ok: true,
     provider: "livekit",
@@ -352,6 +664,7 @@ test("LiveKit room termination normalizes retryable provider failures", async ()
   const result = await terminateInterviewRoom(
     {
       roomName: "interview-deadline-room",
+      participantIdentity: "candidate-id",
       env: {
         apiKey: "key",
         apiSecret: "secret",
@@ -361,6 +674,7 @@ test("LiveKit room termination normalizes retryable provider failures", async ()
     {
       roomServiceClientFactory: () => ({
         createRoom: async () => undefined,
+        removeParticipant: async () => undefined,
         deleteRoom: async () => {
           throw new Error("provider unavailable");
         },
@@ -374,3 +688,288 @@ test("LiveKit room termination normalizes retryable provider failures", async ()
     assert.equal(result.error.retryable, true);
   }
 });
+
+test("LiveKit room deletion never runs when token revocation fails", async () => {
+  let deleted = false;
+  const result = await terminateInterviewRoom(
+    {
+      roomName: "interview-deadline-room",
+      participantIdentity: "candidate-id",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        removeParticipant: async () => {
+          throw new Error("revocation unavailable");
+        },
+        deleteRoom: async () => {
+          deleted = true;
+        },
+      }),
+    }
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_participant_revoke_failed");
+    assert.equal(result.error.retryable, true);
+  }
+  assert.equal(deleted, false);
+});
+
+test("LiveKit room termination remains idempotent after the room disappears", async () => {
+  let deleteAttempts = 0;
+  const result = await terminateInterviewRoom(
+    {
+      roomName: "interview-deadline-room",
+      participantIdentity: "candidate-id",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        removeParticipant: async () => {
+          throw Object.assign(new Error("participant not found"), {
+            code: "not_found",
+          });
+        },
+        deleteRoom: async () => {
+          deleteAttempts += 1;
+          throw Object.assign(new Error("room not found"), {
+            code: "not_found",
+          });
+        },
+      }),
+    }
+  );
+
+  assert.deepEqual(result, {
+    ok: true,
+    provider: "livekit",
+    data: {
+      roomName: "interview-deadline-room",
+      disposition: "already_absent",
+    },
+  });
+  assert.equal(deleteAttempts, 1);
+});
+
+test("LiveKit room termination fails closed for invalid revocation input", async () => {
+  let touchedProvider = false;
+  const result = await terminateInterviewRoom(
+    {
+      roomName: "interview-deadline-room",
+      participantIdentity: " ",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        removeParticipant: async () => {
+          touchedProvider = true;
+        },
+        deleteRoom: async () => {
+          touchedProvider = true;
+        },
+      }),
+    }
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_participant_revoke_invalid");
+    assert.equal(result.error.retryable, false);
+  }
+  assert.equal(touchedProvider, false);
+});
+
+test("LiveKit presence normalizes candidate connection states", async () => {
+  const env = {
+    apiKey: "key",
+    apiSecret: "secret",
+    url: "wss://test.livekit.cloud",
+  };
+  for (const state of [0, 1, 2]) {
+    const result = await inspectInterviewParticipantPresence(
+      {
+        roomName: "interview-presence-room",
+        participantIdentity: "candidate-id",
+        env,
+      },
+      {
+        roomServiceClientFactory: () => ({
+          createRoom: async () => undefined,
+          listParticipants: async () => [
+            {
+              identity: "candidate-id",
+              state,
+              joinedAtMs: BigInt(1_783_670_430_000),
+              kind: 0,
+            },
+          ],
+        }),
+      }
+    );
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.data.present, true);
+      assert.equal(result.data.joined, state !== 0);
+      assert.equal(
+        result.data.joinedAt?.toISOString(),
+        "2026-07-10T08:00:30.000Z"
+      );
+      assert.equal(result.data.agent, null);
+    }
+  }
+
+  const disconnected = await inspectInterviewParticipantPresence(
+    {
+      roomName: "interview-presence-room",
+      participantIdentity: "candidate-id",
+      env,
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        listParticipants: async () => [
+          {
+            identity: "candidate-id",
+            state: 3,
+            joinedAtMs: BigInt(0),
+            kind: 0,
+          },
+        ],
+      }),
+    }
+  );
+  assert.deepEqual(disconnected, {
+    ok: true,
+    provider: "livekit",
+    data: { present: false, joined: false, joinedAt: null, agent: null },
+  });
+});
+
+test("LiveKit presence requires the exact standard candidate and provider agent kind", async () => {
+  const result = await inspectInterviewParticipantPresence(
+    {
+      roomName: "interview-presence-room",
+      participantIdentity: "candidate-id",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        listParticipants: async () => [
+          {
+            identity: "candidate-id",
+            state: 2,
+            joinedAtMs: BigInt(1_783_670_430_000),
+            kind: 4,
+          },
+          {
+            identity: "random-standard-participant",
+            state: 2,
+            joinedAtMs: BigInt(1_783_670_430_001),
+            kind: 0,
+          },
+          {
+            identity: "agent-joining",
+            state: 0,
+            joinedAtMs: BigInt(1_783_670_430_001),
+            kind: 4,
+          },
+          {
+            identity: "agent-worker",
+            state: 2,
+            joinedAtMs: BigInt(1_783_670_430_002),
+            kind: 4,
+          },
+        ],
+      }),
+    }
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.data.present, false);
+    assert.equal(result.data.joined, false);
+    assert.equal(result.data.joinedAt, null);
+    assert.equal(result.data.agent?.identity, "agent-worker");
+  }
+});
+
+test("LiveKit presence treats an absent room as absent and other failures as retryable", async () => {
+  const input = {
+    roomName: "interview-presence-room",
+    participantIdentity: "candidate-id",
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  };
+  const absent = await inspectInterviewParticipantPresence(input, {
+    roomServiceClientFactory: () => ({
+      createRoom: async () => undefined,
+      listParticipants: async () => {
+        throw Object.assign(new Error("room not found"), { status: 404 });
+      },
+    }),
+  });
+  const failed = await inspectInterviewParticipantPresence(input, {
+    roomServiceClientFactory: () => ({
+      createRoom: async () => undefined,
+      listParticipants: async () => {
+        throw new Error("provider unavailable");
+      },
+    }),
+  });
+
+  assert.deepEqual(absent, {
+    ok: true,
+    provider: "livekit",
+    data: { present: false, joined: false, joinedAt: null, agent: null },
+  });
+  assert.equal(failed.ok, false);
+  if (!failed.ok) {
+    assert.equal(failed.error.code, "livekit_participant_presence_failed");
+    assert.equal(failed.error.retryable, true);
+  }
+});
+
+function jwtWithExpiration(exp: number): string {
+  return [
+    Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
+      "base64url"
+    ),
+    Buffer.from(JSON.stringify({ exp })).toString("base64url"),
+    "signature",
+  ].join(".");
+}
+
+function decodeJwtExpiration(token: string): number {
+  const payload = token.split(".")[1];
+  assert.ok(payload);
+  const parsed = JSON.parse(
+    Buffer.from(payload, "base64url").toString("utf8")
+  ) as { exp?: unknown };
+  assert.equal(typeof parsed.exp, "number");
+  return parsed.exp as number;
+}

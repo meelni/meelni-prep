@@ -1,7 +1,108 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
-import { buildInterviewDeadlineSchedules } from "./session-deadlines";
+import {
+  buildInterviewDeadlineSchedules,
+  claimInterviewDeadline,
+  listInterviewDeadlineSchedules,
+} from "./session-deadlines";
+
+test("hard deadline claim is one atomic database-time state/version/deadline CAS", async () => {
+  let values: Record<string, unknown> = {};
+  let predicate: SQL | null = null;
+  const database = {
+    update() {
+      const builder = {
+        set(input: Record<string, unknown>) {
+          values = input;
+          return builder;
+        },
+        where(input: SQL) {
+          predicate = input;
+          return builder;
+        },
+        async returning() {
+          return [{ id: "session-1" }];
+        },
+      };
+      return builder;
+    },
+  } as never;
+
+  const claimed = await claimInterviewDeadline(
+    {
+      sessionId: "session-1",
+      expectedState: "reconnecting",
+      expectedVersion: 4,
+      deadlineAt: new Date("2026-07-10T08:00:30.000Z"),
+      terminalReason: "time_limit",
+    },
+    database
+  );
+
+  assert.equal(claimed, true);
+  assert.equal(values.lifecycleState, "ending");
+  assert.equal(values.terminalReason, "time_limit");
+  assert.equal(values.deadlineRoomCleanupStatus, "pending");
+  const query = new PgDialect().sqlToQuery(predicate!);
+  assert.match(query.sql, /lifecycle_state/);
+  assert.match(query.sql, /lifecycle_version/);
+  assert.match(query.sql, /started_at/);
+  assert.match(query.sql, /config/);
+  assert.match(query.sql, /interval '1 minute'/);
+  assert.match(query.sql, /clock_timestamp\(\)/);
+});
+
+test("recovery eligibility and ordering are computed in PostgreSQL time", async () => {
+  let predicate: SQL | null = null;
+  let requestedLimit = 0;
+  const database = {
+    select() {
+      const builder = {
+        from() {
+          return builder;
+        },
+        leftJoin() {
+          return builder;
+        },
+        where(input: SQL) {
+          predicate = input;
+          return builder;
+        },
+        orderBy() {
+          return builder;
+        },
+        async limit(input: number) {
+          requestedLimit = input;
+          return [
+            {
+              id: "due",
+              startedAt: new Date("2026-07-10T06:00:00.000Z"),
+              deadlineAt: new Date("2026-07-10T06:30:00.000Z"),
+            },
+          ];
+        },
+      };
+      return builder;
+    },
+  } as never;
+
+  const schedules = await listInterviewDeadlineSchedules(25, database);
+
+  assert.equal(requestedLimit, 25);
+  assert.deepEqual(schedules, [
+    {
+      kind: "deadline",
+      sessionId: "due",
+      deadlineAt: "2026-07-10T06:30:00.000Z",
+    },
+  ]);
+  const query = new PgDialect().sqlToQuery(predicate!);
+  assert.match(query.sql, /clock_timestamp\(\)/);
+  assert.match(query.sql, /interval '1 minute'/);
+});
 
 test("recovery prioritizes absolute deadlines across mixed durations", () => {
   const schedules = buildInterviewDeadlineSchedules(

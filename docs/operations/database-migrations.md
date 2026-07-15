@@ -56,11 +56,11 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with nine
+six ledger entries. Expected post-migration status is `reconciled` with eleven
 ledger entries, 23 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, and
-deadline-room-cleanup contract fingerprint.
+deadline-room-cleanup and reconnect contract fingerprint.
 
 ## Rehearsal
 
@@ -78,7 +78,13 @@ least-privilege RLS, and shared limiter concurrency.
 It also runs ten real completion transactions over independent connections,
 proves one feedback/event identity, verifies one dispatch lease winner with
 fenced acknowledgements, and repairs terminal-without-feedback state without
-changing terminal truth.
+changing terminal truth. The reconnect migration rehearsal additionally proves
+database-clock provisioning and timeout fences, exact cutoff ownership for rows
+staged between migrations 0008 and 0009, and fair progress beyond a 250-row
+poison recovery page. The 0009 upgrade mirrors runtime duration normalization:
+only numeric JSON values `15`, `30`, and `45` are canonical; missing or legacy
+config shapes use the 30-minute fallback, and equality belongs to the hard
+deadline.
 
 ## Preview and Production rollout
 

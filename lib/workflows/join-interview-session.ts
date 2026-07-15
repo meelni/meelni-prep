@@ -27,6 +27,10 @@ export interface JoinableInterviewSession {
   endedAt: Date | null;
   status: string;
   lifecycleState: InterviewLifecycleState;
+  lifecycleVersion: number;
+  reconnectDeadlineAt?: Date | null;
+  reconnectDeadlineOwner?: "reconnect_grace" | "hard_deadline" | null;
+  databaseNow: Date;
 }
 
 export interface JoinInterviewSessionInput {
@@ -58,15 +62,22 @@ export interface JoinInterviewSessionDeps {
     participantName: string;
     roomName: string;
     ttlSeconds: number;
+    observedAt: Date;
+    expiresAt: Date;
     env: LiveKitEnvironment;
   }): ReturnType<typeof issueInterviewParticipantToken>;
-  now(): Date;
 }
 
 export type JoinInterviewSessionResult =
   | {
       ok: true;
-      body: { token: string; url: string; roomName: string };
+      body: {
+        token: string;
+        url: string;
+        roomName: string;
+        authorizationVersion: number;
+        expiresAt: string;
+      };
     }
   | {
       ok: false;
@@ -151,7 +162,8 @@ export async function joinInterviewSessionWorkflow(
   // Session creation already reserved and consumed one interview credit. The
   // owned, active voice session is the reconnect entitlement; checking the
   // user's remaining balance here would reject the credit they just consumed.
-  if (!isJoinableSession(session, deps.now())) {
+  const authorization = deriveJoinAuthorization(session, session.databaseNow);
+  if (!authorization) {
     deps.audit({
       outcome: "denied",
       reason: "session_not_joinable",
@@ -172,7 +184,9 @@ export async function joinInterviewSessionWorkflow(
     identity: input.user.id,
     participantName: "Candidate",
     roomName: session.livekitRoomName!,
-    ttlSeconds: PARTICIPANT_TOKEN_TTL_SECONDS,
+    ttlSeconds: authorization.ttlSeconds,
+    observedAt: session.databaseNow,
+    expiresAt: authorization.expiresAt,
     env: input.env,
   });
 
@@ -190,6 +204,60 @@ export async function joinInterviewSessionWorkflow(
     };
   }
 
+  const current = await deps.getSession(input.sessionId);
+  const currentAuthorization = current
+    ? deriveJoinAuthorization(current, current.databaseNow)
+    : null;
+  if (
+    !current ||
+    current.userId !== input.user.id ||
+    current.livekitRoomName !== session.livekitRoomName ||
+    current.lifecycleVersion !== authorization.lifecycleVersion ||
+    current.reconnectDeadlineOwner !== authorization.reconnectDeadlineOwner ||
+    !sameInstant(
+      current.reconnectDeadlineAt ?? null,
+      authorization.reconnectDeadlineAt
+    ) ||
+    !currentAuthorization ||
+    !sameInstant(currentAuthorization.expiresAt, authorization.expiresAt)
+  ) {
+    deps.audit({
+      outcome: "denied",
+      reason: "reconnect_authorization_changed",
+      sessionId: input.sessionId,
+      userId: input.user.id,
+    });
+    return {
+      ok: false,
+      status: 409,
+      body: {
+        error: "session_not_joinable",
+        message: "This interview session is no longer active.",
+      },
+    };
+  }
+
+  const tokenExpirationMs = tokenResult.data.expiresAt.getTime();
+  const canonicalCutoffMs =
+    Math.floor(currentAuthorization.expiresAt.getTime() / 1_000) * 1_000;
+  if (
+    !Number.isFinite(tokenExpirationMs) ||
+    tokenExpirationMs <= current.databaseNow.getTime() ||
+    tokenExpirationMs > canonicalCutoffMs
+  ) {
+    deps.audit({
+      outcome: "failed",
+      reason: "livekit_token_expiry_invalid_after_authorization",
+      sessionId: input.sessionId,
+      userId: input.user.id,
+    });
+    return {
+      ok: false,
+      status: 503,
+      body: { error: "livekit_token_unavailable" },
+    };
+  }
+
   deps.audit({
     outcome: "allowed",
     reason: "reconnect_token_issued",
@@ -199,7 +267,11 @@ export async function joinInterviewSessionWorkflow(
 
   return {
     ok: true,
-    body: tokenResult.data,
+    body: {
+      ...tokenResult.data,
+      authorizationVersion: authorization.lifecycleVersion,
+      expiresAt: authorization.expiresAt.toISOString(),
+    },
   };
 }
 
@@ -235,14 +307,19 @@ export function createJoinInterviewSessionDeps(): JoinInterviewSessionDeps {
     consumeRateLimit: consumeReconnectRateLimit,
     getSession: getSessionForLiveKitJoin,
     issueToken: issueInterviewParticipantToken,
-    now: () => new Date(),
   };
 }
 
-function isJoinableSession(
+function deriveJoinAuthorization(
   session: JoinableInterviewSession,
   now: Date
-): boolean {
+): {
+  lifecycleVersion: number;
+  reconnectDeadlineAt: Date | null;
+  reconnectDeadlineOwner: "reconnect_grace" | "hard_deadline" | null;
+  expiresAt: Date;
+  ttlSeconds: number;
+} | null {
   if (
     session.mode !== "voice_video" ||
     !["connecting", "active", "reconnecting"].includes(
@@ -252,7 +329,15 @@ function isJoinableSession(
     !session.livekitRoomName ||
     !session.startedAt
   ) {
-    return false;
+    return null;
+  }
+
+  if (
+    session.lifecycleState === "reconnecting" &&
+    (!session.reconnectDeadlineAt ||
+      now.getTime() >= session.reconnectDeadlineAt.getTime())
+  ) {
+    return null;
   }
 
   const durationMinutes = getSessionDurationMinutes(session.config);
@@ -261,7 +346,29 @@ function isJoinableSession(
     durationMinutes,
   });
 
-  return !isInterviewDeadlineReached({ deadlineAt, now });
+  if (isInterviewDeadlineReached({ deadlineAt, now })) return null;
+
+  const expiresAt =
+    session.lifecycleState === "reconnecting"
+      ? new Date(
+          Math.min(session.reconnectDeadlineAt!.getTime(), deadlineAt.getTime())
+        )
+      : deadlineAt;
+  const remainingSeconds = Math.floor(
+    (expiresAt.getTime() - now.getTime()) / 1_000
+  );
+  if (remainingSeconds < 1) return null;
+  return {
+    lifecycleVersion: session.lifecycleVersion,
+    reconnectDeadlineAt: session.reconnectDeadlineAt ?? null,
+    reconnectDeadlineOwner: session.reconnectDeadlineOwner ?? null,
+    expiresAt,
+    ttlSeconds: Math.min(PARTICIPANT_TOKEN_TTL_SECONDS, remainingSeconds),
+  };
+}
+
+function sameInstant(left: Date | null, right: Date | null): boolean {
+  return left?.getTime() === right?.getTime();
 }
 
 function getSessionDurationMinutes(config: unknown): number {

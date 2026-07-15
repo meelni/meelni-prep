@@ -28,6 +28,8 @@ import {
   DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
+  INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
+  INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
@@ -47,6 +49,16 @@ const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const SESSION_RECONNECT_ORDER = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const SESSION_PROVIDER_START_FAILURE = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const SESSION_PROVISIONING_COMPLETE = "a1000000-0000-4000-8000-000000000001";
+const SESSION_PROVISIONING_STALE = "a2000000-0000-4000-8000-000000000002";
+const SESSION_PRESENCE_RECOVERY = "a3000000-0000-4000-8000-000000000003";
+const SESSION_RECONNECT_BACKFILL_GRACE = "a4000000-0000-4000-8000-000000000004";
+const SESSION_RECONNECT_BACKFILL_HARD = "a5000000-0000-4000-8000-000000000005";
+const SESSION_RECONNECT_BACKFILL_TIE = "a6000000-0000-4000-8000-000000000006";
+const SESSION_RECONNECT_BACKFILL_LEGACY =
+  "a7000000-0000-4000-8000-000000000007";
 const SESSION_DEADLINE_BACKFILL = "cccccccc-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SESSION_DEADLINE_INSUFFICIENT = "dddddddd-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SESSION_DEADLINE_USER_END = "eeeeeeee-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -111,6 +123,10 @@ async function run() {
     await verifyDatabase(clean);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
+    await verifyProviderStartCleanupOwnership(clean, cleanUrl);
+    await verifyRoomProvisioningAndPresenceFences(clean, cleanUrl);
+    await verifyRoomRecoveryFairness(clean, cleanUrl);
+    await verifyReconnectTransportOrdering(clean, cleanUrl);
     await verifyAtomicSessionCompletion(clean, cleanUrl, true);
     await verifyAuthorization(clean);
     await verifyDeletionTombstone(clean);
@@ -123,7 +139,7 @@ async function run() {
     const cleanContract = await getDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -179,7 +195,6 @@ async function run() {
         "ready_for_session_lifecycle"
       );
       assertLegacyCreditLedgerIntegrity(lifecyclePreview!);
-      const countsBefore = await protectedRowCounts(upgrade);
       const throughAtomicCompletion = await createMigrationFolderThrough(7);
       try {
         await migrate(drizzle(upgrade), {
@@ -191,12 +206,43 @@ async function run() {
       const lifecycleApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLifecycleBackfillCountsMatch(lifecyclePreview!, lifecycleApplied!);
       assertLegacyCreditLedgerIntegrity(lifecycleApplied!);
-      assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
+
       await seedDeadlineCleanupBackfillFixture(upgrade);
-      await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
+      const throughDeadlineCleanup = await createMigrationFolderThrough(8);
+      try {
+        await migrate(drizzle(upgrade), {
+          migrationsFolder: throughDeadlineCleanup,
+        });
+      } finally {
+        await rm(throughDeadlineCleanup, { recursive: true, force: true });
+      }
       await verifyDeadlineCleanupBackfill(upgrade);
+      assert.equal(
+        databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
+        DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+      );
+
+      const reconnectV1Folder = await createMigrationFolderThrough(9);
+      try {
+        await migrate(drizzle(upgrade), {
+          migrationsFolder: reconnectV1Folder,
+        });
+      } finally {
+        await rm(reconnectV1Folder, { recursive: true, force: true });
+      }
+      assert.equal(
+        databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
+        INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+      );
+      await seedReconnectCutoffOwnerFixtures(upgrade);
+      const countsBefore = await protectedRowCounts(upgrade);
+      await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
+      const reconnectApplied = runPreflight(upgradeUrl, true, "reconciled");
+      assertLegacyCreditLedgerIntegrity(reconnectApplied!);
+      assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
+      await verifyReconnectCutoffOwnerBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl, false);
       await verifyAuthorization(upgrade);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
@@ -447,6 +493,97 @@ async function seedAuthorizationFixtures(sql: postgres.Sql) {
     )
     ON CONFLICT (id) DO NOTHING
   `;
+}
+
+async function seedReconnectCutoffOwnerFixtures(sql: postgres.Sql) {
+  const startedAt = "2026-07-10T08:00:00.000Z";
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, livekit_room_name, config,
+      started_at, lifecycle_state, lifecycle_version, reconnect_deadline_at,
+      last_transport_event_at, last_transport_event_id,
+      last_transport_event_name
+    ) VALUES
+      (
+        ${SESSION_RECONNECT_BACKFILL_GRACE}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'reconnect-backfill-grace-room', '{"duration": 15}'::jsonb,
+        ${startedAt}::timestamptz, 'reconnecting', 4,
+        ${startedAt}::timestamptz + interval '5 minutes',
+        ${startedAt}::timestamptz + interval '4 minutes 30 seconds',
+        'backfill-grace-loss', 'participant_left'
+      ),
+      (
+        ${SESSION_RECONNECT_BACKFILL_HARD}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'reconnect-backfill-hard-room', '{"duration": 15}'::jsonb,
+        ${startedAt}::timestamptz, 'reconnecting', 5,
+        ${startedAt}::timestamptz + interval '15 minutes',
+        ${startedAt}::timestamptz + interval '14 minutes 50 seconds',
+        'backfill-hard-loss', 'participant_left'
+      ),
+      (
+        ${SESSION_RECONNECT_BACKFILL_TIE}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'reconnect-backfill-tie-room', '{"duration": 45}'::jsonb,
+        ${startedAt}::timestamptz, 'reconnecting', 6,
+        ${startedAt}::timestamptz + interval '45 minutes',
+        ${startedAt}::timestamptz + interval '44 minutes 30 seconds',
+        'backfill-tie-loss', 'participant_left'
+      ),
+      (
+        ${SESSION_RECONNECT_BACKFILL_LEGACY}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'reconnect-backfill-legacy-room', '{"duration": "15"}'::jsonb,
+        ${startedAt}::timestamptz, 'reconnecting', 7,
+        ${startedAt}::timestamptz + interval '30 minutes',
+        ${startedAt}::timestamptz + interval '29 minutes 50 seconds',
+        'backfill-legacy-loss', 'participant_left'
+      )
+  `;
+}
+
+async function verifyReconnectCutoffOwnerBackfill(sql: postgres.Sql) {
+  const rows = await sql<
+    Array<{ id: string; reconnect_deadline_owner: string | null }>
+  >`
+    SELECT id::text, reconnect_deadline_owner
+    FROM interview_session
+    WHERE id IN (
+      ${SESSION_RECONNECT_BACKFILL_GRACE}::uuid,
+      ${SESSION_RECONNECT_BACKFILL_HARD}::uuid,
+      ${SESSION_RECONNECT_BACKFILL_TIE}::uuid,
+      ${SESSION_RECONNECT_BACKFILL_LEGACY}::uuid
+    )
+    ORDER BY id
+  `;
+  assert.deepEqual(
+    new Map(rows.map((row) => [row.id, row.reconnect_deadline_owner])),
+    new Map([
+      [SESSION_RECONNECT_BACKFILL_GRACE, "reconnect_grace"],
+      [SESSION_RECONNECT_BACKFILL_HARD, "hard_deadline"],
+      [SESSION_RECONNECT_BACKFILL_TIE, "hard_deadline"],
+      [SESSION_RECONNECT_BACKFILL_LEGACY, "hard_deadline"],
+    ])
+  );
+
+  const { listInterviewReconnectSchedules } = await import(
+    "../lib/db/session-reconnects"
+  );
+  const schedules = await listInterviewReconnectSchedules(250, drizzle(sql));
+  const seededSessionIds = new Set([
+    SESSION_RECONNECT_BACKFILL_GRACE,
+    SESSION_RECONNECT_BACKFILL_HARD,
+    SESSION_RECONNECT_BACKFILL_TIE,
+    SESSION_RECONNECT_BACKFILL_LEGACY,
+  ]);
+  const seededSchedules = schedules.filter((schedule) =>
+    seededSessionIds.has(schedule.sessionId)
+  );
+  assert.deepEqual(
+    seededSchedules.map((schedule) => schedule.sessionId),
+    [SESSION_RECONNECT_BACKFILL_GRACE]
+  );
 }
 
 async function seedLifecycleBackfillFixtures(sql: postgres.Sql) {
@@ -838,6 +975,581 @@ async function verifyLifecycleConcurrency(sql: postgres.Sql) {
   });
 }
 
+async function verifyProviderStartCleanupOwnership(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    { createDrizzleInterviewSessionLifecycleStore },
+    { transitionInterviewSessionWorkflow },
+  ] = await Promise.all([
+    import("../lib/db/session-lifecycle"),
+    import("../lib/workflows/transition-interview-session"),
+  ]);
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, livekit_room_name,
+      lifecycle_state, lifecycle_version
+    ) VALUES (
+      ${SESSION_PROVIDER_START_FAILURE}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'provider-start-failure-room',
+      'created',
+      1
+    )
+  `;
+
+  const [databaseClockBefore] = await sql<{ observed_at: Date }[]>`
+    SELECT clock_timestamp() AS observed_at
+  `;
+  const connecting = await transitionInterviewSessionWorkflow(
+    {
+      sessionId: SESSION_PROVIDER_START_FAILURE,
+      to: "connecting",
+    },
+    {
+      lifecycleStore: createDrizzleInterviewSessionLifecycleStore(drizzle(sql)),
+      now: () => new Date("2026-07-10T07:59:00.000Z"),
+    }
+  );
+  assert.equal(connecting.ok, true);
+  const [databaseClockAfter] = await sql<{ observed_at: Date }[]>`
+    SELECT clock_timestamp() AS observed_at
+  `;
+
+  const provisioned = await sql<
+    {
+      lifecycle_state: string;
+      lifecycle_version: number;
+      room_cleanup_pending: boolean;
+      room_provisioning_pending: boolean;
+      room_provisioning_started_at: Date | null;
+    }[]
+  >`
+    SELECT lifecycle_state, lifecycle_version, room_cleanup_pending,
+      room_provisioning_pending, room_provisioning_started_at
+    FROM interview_session
+    WHERE id = ${SESSION_PROVIDER_START_FAILURE}::uuid
+  `;
+  const provisioningLeaseStartedAt = provisioned[0]
+    ?.room_provisioning_started_at
+    ? new Date(provisioned[0].room_provisioning_started_at)
+    : null;
+  assert.ok(databaseClockBefore?.observed_at);
+  assert.ok(databaseClockAfter?.observed_at);
+  assert.ok(provisioningLeaseStartedAt);
+  assert.ok(
+    provisioningLeaseStartedAt.getTime() >=
+      new Date(databaseClockBefore.observed_at).getTime()
+  );
+  assert.ok(
+    provisioningLeaseStartedAt.getTime() <=
+      new Date(databaseClockAfter.observed_at).getTime()
+  );
+  assert.deepEqual(
+    provisioned[0] && {
+      ...provisioned[0],
+      room_provisioning_started_at: provisioningLeaseStartedAt,
+    },
+    {
+      lifecycle_state: "connecting",
+      lifecycle_version: 2,
+      room_cleanup_pending: true,
+      room_provisioning_pending: true,
+      room_provisioning_started_at: provisioningLeaseStartedAt,
+    }
+  );
+
+  const result = await transitionInterviewSessionWorkflow(
+    {
+      sessionId: SESSION_PROVIDER_START_FAILURE,
+      to: "failed",
+      terminalReason: "provider_failure",
+    },
+    {
+      lifecycleStore: createDrizzleInterviewSessionLifecycleStore(drizzle(sql)),
+      now: () => new Date("2026-07-10T08:00:00.000Z"),
+    }
+  );
+  assert.equal(result.ok, true);
+
+  const stored = await sql<
+    {
+      lifecycle_state: string;
+      terminal_reason: string;
+      room_cleanup_pending: boolean;
+      room_cleanup_attempted_at: Date | null;
+      room_provisioning_pending: boolean;
+      room_provisioning_started_at: Date | null;
+    }[]
+  >`
+    SELECT lifecycle_state, terminal_reason, room_cleanup_pending,
+      room_cleanup_attempted_at, room_provisioning_pending,
+      room_provisioning_started_at
+    FROM interview_session
+    WHERE id = ${SESSION_PROVIDER_START_FAILURE}::uuid
+  `;
+  assert.deepEqual(
+    stored[0] && {
+      ...stored[0],
+      room_provisioning_started_at: stored[0].room_provisioning_started_at
+        ? new Date(stored[0].room_provisioning_started_at)
+        : null,
+    },
+    {
+      lifecycle_state: "failed",
+      terminal_reason: "provider_failure",
+      room_cleanup_pending: true,
+      room_cleanup_attempted_at: null,
+      room_provisioning_pending: true,
+      room_provisioning_started_at: provisioningLeaseStartedAt,
+    }
+  );
+}
+
+async function verifyRoomProvisioningAndPresenceFences(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const { createDrizzleInterviewReconnectStore } = await import(
+    "../lib/db/session-reconnects"
+  );
+  const store = createDrizzleInterviewReconnectStore(drizzle(sql));
+  const [clock] = await sql<{ observed_at: Date }[]>`
+    SELECT clock_timestamp() AS observed_at
+  `;
+  assert.ok(clock?.observed_at);
+  const provisioningStartedAt = new Date(clock.observed_at);
+  const reconnectDeadlineAt = new Date(
+    provisioningStartedAt.getTime() + 5 * 60_000
+  );
+
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, livekit_room_name,
+      lifecycle_state, lifecycle_version, room_cleanup_pending,
+      room_provisioning_pending, room_provisioning_started_at,
+      reconnect_deadline_at, reconnect_deadline_owner
+    ) VALUES
+      (
+        ${SESSION_PROVISIONING_COMPLETE}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'provisioning-complete-room', 'connecting', 2, true, true,
+        ${provisioningStartedAt.toISOString()}, NULL, NULL
+      ),
+      (
+        ${SESSION_PROVISIONING_STALE}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'provisioning-stale-room', 'connecting', 4, true, true,
+        ${provisioningStartedAt.toISOString()}, NULL, NULL
+      ),
+      (
+        ${SESSION_PRESENCE_RECOVERY}::uuid, ${USER_ONE}::uuid,
+        'product_sense', 'voice_video', 'in_progress',
+        'presence-recovery-room', 'reconnecting', 6, false, false,
+        NULL, ${reconnectDeadlineAt.toISOString()}, 'reconnect_grace'
+      )
+  `;
+
+  const wrongCompletion = await store.completeRoomProvisioning({
+    sessionId: SESSION_PROVISIONING_COMPLETE,
+    expectedVersion: 1,
+  });
+  assert.equal(wrongCompletion.applied, false);
+  const completed = await store.completeRoomProvisioning({
+    sessionId: SESSION_PROVISIONING_COMPLETE,
+    expectedVersion: 2,
+  });
+  assert.equal(completed.applied, true);
+  if (completed.applied) {
+    assert.equal(completed.current.roomCleanupPending, false);
+    assert.equal(completed.current.roomProvisioningPending, false);
+    assert.equal(completed.current.roomProvisioningStartedAt, null);
+  }
+
+  const tooFresh = await store.claimStaleProvisioning({
+    sessionId: SESSION_PROVISIONING_STALE,
+    expectedVersion: 4,
+    provisioningStartedAt,
+    transitionedAt: provisioningStartedAt,
+  });
+  assert.equal(tooFresh.applied, false);
+  const [staleLease] = await sql<{ room_provisioning_started_at: Date }[]>`
+    UPDATE interview_session
+    SET room_provisioning_started_at =
+      date_trunc('milliseconds', clock_timestamp())
+        - interval '5 minutes' - interval '1 millisecond'
+    WHERE id = ${SESSION_PROVISIONING_STALE}::uuid
+    RETURNING room_provisioning_started_at
+  `;
+  assert.ok(staleLease?.room_provisioning_started_at);
+  const staleProvisioningStartedAt = new Date(
+    staleLease.room_provisioning_started_at
+  );
+  const wrongVersion = await store.claimStaleProvisioning({
+    sessionId: SESSION_PROVISIONING_STALE,
+    expectedVersion: 3,
+    provisioningStartedAt: staleProvisioningStartedAt,
+    transitionedAt: new Date(),
+  });
+  assert.equal(wrongVersion.applied, false);
+  const claimed = await store.claimStaleProvisioning({
+    sessionId: SESSION_PROVISIONING_STALE,
+    expectedVersion: 4,
+    provisioningStartedAt: staleProvisioningStartedAt,
+    transitionedAt: new Date(),
+  });
+  assert.equal(claimed.applied, true);
+  if (claimed.applied) {
+    assert.equal(claimed.current.state, "failed");
+    assert.equal(claimed.current.version, 5);
+    assert.equal(claimed.current.roomCleanupPending, true);
+    assert.equal(claimed.current.roomProvisioningPending, true);
+  }
+
+  const equalDeadline = await store.recoverFromPresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 6,
+    deadlineAt: reconnectDeadlineAt,
+    joinedAt: reconnectDeadlineAt,
+    transitionedAt: reconnectDeadlineAt,
+  });
+  assert.equal(equalDeadline.applied, false);
+  const staleVersion = await store.recoverFromPresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 5,
+    deadlineAt: reconnectDeadlineAt,
+    joinedAt: new Date(reconnectDeadlineAt.getTime() - 1),
+    transitionedAt: reconnectDeadlineAt,
+  });
+  assert.equal(staleVersion.applied, false);
+  const recovered = await store.recoverFromPresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 6,
+    deadlineAt: reconnectDeadlineAt,
+    joinedAt: new Date(reconnectDeadlineAt.getTime() - 1),
+    transitionedAt: reconnectDeadlineAt,
+  });
+  assert.equal(recovered.applied, true);
+  if (recovered.applied) {
+    assert.equal(recovered.current.state, "active");
+    assert.equal(recovered.current.reconnectDeadlineAt, null);
+  }
+
+  const [dueClock] = await sql<{ observed_at: Date }[]>`
+    SELECT date_trunc('milliseconds', clock_timestamp()) AS observed_at
+  `;
+  assert.ok(dueClock?.observed_at);
+  const dueObservedAt = new Date(dueClock.observed_at);
+  const dueDeadlineAt = new Date(dueObservedAt.getTime() - 1_000);
+  await sql`
+    UPDATE interview_session
+    SET lifecycle_state = 'reconnecting', lifecycle_version = 7,
+      reconnect_deadline_at = ${dueDeadlineAt.toISOString()}::timestamptz,
+      reconnect_deadline_owner = 'hard_deadline'
+    WHERE id = ${SESSION_PRESENCE_RECOVERY}::uuid
+  `;
+
+  const hardDeadlineOwned = await store.recoverFromDuePresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 7,
+    deadlineAt: dueDeadlineAt,
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(hardDeadlineOwned.applied, false);
+
+  await sql`
+    UPDATE interview_session
+    SET reconnect_deadline_owner = 'reconnect_grace'
+    WHERE id = ${SESSION_PRESENCE_RECOVERY}::uuid
+  `;
+  const staleDueVersion = await store.recoverFromDuePresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 6,
+    deadlineAt: dueDeadlineAt,
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(staleDueVersion.applied, false);
+  const preCutoffOnly = await store.recoverFromPresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 7,
+    deadlineAt: dueDeadlineAt,
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(preCutoffOnly.applied, false);
+  const staleDueDeadline = await store.recoverFromDuePresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 7,
+    deadlineAt: new Date(dueDeadlineAt.getTime() + 1),
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(staleDueDeadline.applied, false);
+  const dueRecovered = await store.recoverFromDuePresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 7,
+    deadlineAt: dueDeadlineAt,
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(dueRecovered.applied, true);
+  if (dueRecovered.applied) {
+    assert.equal(dueRecovered.current.state, "active");
+    assert.equal(dueRecovered.current.version, 8);
+    assert.equal(dueRecovered.current.reconnectDeadlineAt, null);
+  }
+  const dueReplay = await store.recoverFromDuePresence({
+    sessionId: SESSION_PRESENCE_RECOVERY,
+    expectedVersion: 7,
+    deadlineAt: dueDeadlineAt,
+    joinedAt: new Date(dueDeadlineAt.getTime() - 1),
+    transitionedAt: dueObservedAt,
+  });
+  assert.equal(dueReplay.applied, false);
+}
+
+async function verifyReconnectTransportOrdering(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    { createDrizzleInterviewReconnectStore },
+    { handleLiveKitInterviewEventWorkflow },
+  ] = await Promise.all([
+    import("../lib/db/session-reconnects"),
+    import("../lib/workflows/handle-livekit-interview-event"),
+  ]);
+  const [databaseClock] = await sql<{ observed_at: Date }[]>`
+    SELECT date_trunc('milliseconds', clock_timestamp()) AS observed_at
+  `;
+  assert.ok(databaseClock?.observed_at);
+  const occurredAt = new Date(databaseClock.observed_at);
+  const startedAt = new Date(occurredAt.getTime() - 15 * 60_000);
+  const roomName = "migration-reconnect-order-room";
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, livekit_room_name, config,
+      lifecycle_state, lifecycle_version, activated_at, runtime_ready_at,
+      started_at
+    ) VALUES (
+      ${SESSION_RECONNECT_ORDER}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      ${roomName},
+      '{"duration": 30}'::jsonb,
+      'active',
+      3,
+      ${new Date(startedAt.getTime() + 2_000).toISOString()}::timestamptz,
+      ${new Date(startedAt.getTime() + 1_000).toISOString()}::timestamptz,
+      ${startedAt.toISOString()}::timestamptz
+    )
+  `;
+
+  const store = createDrizzleInterviewReconnectStore(drizzle(sql));
+  const workflowDeps = {
+    store,
+    scheduleReconnect: async () => undefined,
+    now: () => occurredAt,
+  };
+  const disconnected = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01-left",
+      eventName: "participant_left",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(disconnected.disposition, "reconnecting");
+
+  const joined = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01_Z",
+      eventName: "participant_joined",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(joined.disposition, "recovered");
+  assert.equal(joined.lifecycle?.state, "active");
+  assert.equal(joined.lifecycle?.lastTransportEventName, "participant_joined");
+
+  const ordinalLater = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01_a",
+      eventName: "participant_joined",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(ordinalLater.disposition, "ignored");
+  assert.equal(ordinalLater.lifecycle?.lastTransportEventId, "EV_01_a");
+
+  const ordinalEarlier = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01-A",
+      eventName: "participant_joined",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(ordinalEarlier.disposition, "ignored");
+  assert.equal(ordinalEarlier.lifecycle?.lastTransportEventId, "EV_01_a");
+
+  const exactReplay = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01_a",
+      eventName: "participant_joined",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(exactReplay.disposition, "duplicate");
+
+  const divergentReuse = await handleLiveKitInterviewEventWorkflow(
+    {
+      eventId: "EV_01_a",
+      eventName: "participant_left",
+      roomName,
+      participantIdentity: USER_ONE,
+      participantKind: 0,
+      occurredAt,
+    },
+    workflowDeps
+  );
+  assert.equal(divergentReuse.ok, false);
+  assert.equal(divergentReuse.disposition, "conflict");
+
+  const delayedLeave = await store.applyTransportTransition({
+    sessionId: SESSION_RECONNECT_ORDER,
+    expectedState: "active",
+    expectedVersion: 5,
+    nextState: "reconnecting",
+    reconnectDeadlineAt: new Date(occurredAt.getTime() + 30_000),
+    reconnectDeadlineOwner: "reconnect_grace",
+    transportEventAt: occurredAt,
+    transportEventId: "delayed-left-at-tie",
+    transportEventName: "participant_left",
+    recordTransportEvent: true,
+    transitionedAt: occurredAt,
+  });
+  assert.equal(delayedLeave.applied, false);
+
+  const stored = await store.getById(SESSION_RECONNECT_ORDER);
+  assert.equal(stored?.state, "active");
+  assert.equal(stored?.version, 5);
+  assert.equal(stored?.lastTransportEventName, "participant_joined");
+  assert.equal(stored?.lastTransportEventId, "EV_01_a");
+
+  const [ordinalOrder] = await sql<{ ids: string[] }[]>`
+    SELECT array_agg(value ORDER BY value COLLATE "C") AS ids
+    FROM unnest(ARRAY[
+      'EV_01-A', 'EV_01-Z', 'EV_01_A', 'EV_01_Z', 'EV_01_a', 'EV_01_ä'
+    ]::text[]) AS value
+  `;
+  assert.deepEqual(ordinalOrder?.ids, [
+    "EV_01-A",
+    "EV_01-Z",
+    "EV_01_A",
+    "EV_01_Z",
+    "EV_01_a",
+    "EV_01_ä",
+  ]);
+}
+
+async function verifyRoomRecoveryFairness(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const { listInterviewRoomCleanupSessions } = await import(
+    "../lib/db/session-reconnects"
+  );
+  const database = drizzle(sql);
+  const healthySessionId = "a4000000-0000-4000-8000-000000000004";
+
+  await sql`
+    UPDATE interview_session
+    SET room_cleanup_attempted_at = clock_timestamp()
+    WHERE room_cleanup_pending OR room_provisioning_pending
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      user_id, round_type, mode, status, livekit_room_name,
+      lifecycle_state, lifecycle_version, terminal_reason, ended_at,
+      room_cleanup_pending, room_provisioning_pending,
+      room_provisioning_started_at
+    )
+    SELECT ${USER_ONE}::uuid, 'product_sense', 'voice_video', 'error',
+      'poison-credit-' || sequence, 'failed', 3, 'provider_failure',
+      clock_timestamp(), false, true,
+      clock_timestamp() - interval '10 minutes' -
+        (sequence * interval '1 millisecond')
+    FROM generate_series(1, 251) AS sequence
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, livekit_room_name,
+      lifecycle_state, lifecycle_version, terminal_reason, ended_at,
+      room_cleanup_pending, room_provisioning_pending,
+      room_provisioning_started_at
+    ) VALUES (
+      ${healthySessionId}::uuid, ${USER_ONE}::uuid, 'product_sense',
+      'voice_video', 'error', 'healthy-room-cleanup', 'failed', 3,
+      'provider_failure', clock_timestamp(), true, false, NULL
+    )
+  `;
+
+  const firstPage = await listInterviewRoomCleanupSessions(250, database);
+  assert.equal(firstPage.length, 250);
+  assert.equal(
+    firstPage.some((row) => row.sessionId === healthySessionId),
+    false
+  );
+
+  await sql`
+    UPDATE interview_session
+    SET room_cleanup_attempted_at = clock_timestamp()
+    WHERE id IN ${sql(firstPage.map((row) => row.sessionId))}
+  `;
+  const secondPage = await listInterviewRoomCleanupSessions(250, database);
+  assert.equal(
+    secondPage.some((row) => row.sessionId === healthySessionId),
+    true
+  );
+
+  await sql`
+    DELETE FROM interview_session
+    WHERE livekit_room_name LIKE 'poison-credit-%'
+      OR id = ${healthySessionId}::uuid
+  `;
+}
+
 async function verifyAtomicSessionCompletion(
   sql: postgres.Sql,
   databaseUrl: string,
@@ -849,18 +1561,24 @@ async function verifyAtomicSessionCompletion(
     { createDrizzleFeedbackDispatchStore },
     {
       acknowledgeInterviewDeadlineRoomCleanup,
+      claimInterviewDeadline,
       getInterviewDeadlineSession,
       listInterviewDeadlineSchedules,
     },
+    { createDrizzleInterviewReconnectStore },
     { enforceInterviewDeadlineWorkflow },
     { dispatchFeedbackGenerationWorkflow },
-    { dispatchInterviewSessionSettlement, settleInterviewSessionWorkflow },
+    {
+      dispatchInterviewSessionSettlement,
+      settleInterviewSessionWithValidationWorkflow,
+    },
     { SessionTier },
     schema,
   ] = await Promise.all([
     import("../lib/db/end-interview-session"),
     import("../lib/db/feedback-dispatch"),
     import("../lib/db/session-deadlines"),
+    import("../lib/db/session-reconnects"),
     import("../lib/workflows/enforce-interview-deadline"),
     import("../lib/workflows/dispatch-feedback-generation"),
     import("../lib/workflows/end-interview-session"),
@@ -1128,10 +1846,20 @@ async function verifyAtomicSessionCompletion(
       }>((resolve) => {
         resolveDeferredDelete = resolve;
       });
+      const deadlineReconnectStore = createDrizzleInterviewReconnectStore(
+        databases[0]!
+      );
       const deadlineDeps = {
         getSession: getInterviewDeadlineSession,
-        settleSession: () =>
-          settleInterviewSessionWorkflow(
+        claimDue: (input: Parameters<typeof claimInterviewDeadline>[0]) =>
+          claimInterviewDeadline(input, databases[0]!),
+        scheduleDeadline: async () => undefined,
+        validateSession: async () => insufficientValidation,
+        settleSession: (
+          _sessionId: string,
+          sessionValidation: typeof insufficientValidation
+        ) =>
+          settleInterviewSessionWithValidationWorkflow(
             {
               sessionId: SESSION_DEADLINE_INSUFFICIENT,
               actor: {
@@ -1140,9 +1868,9 @@ async function verifyAtomicSessionCompletion(
               },
               requestedTerminalReason: "time_limit" as const,
             },
+            sessionValidation,
             {
               authorize: async () => true,
-              validate: async () => insufficientValidation,
               finalize: (
                 input: Parameters<typeof finalizeInterviewSession>[0]
               ) => finalizeInterviewSession(input, databases[0]!),
@@ -1175,7 +1903,8 @@ async function verifyAtomicSessionCompletion(
           };
         },
         acknowledgeRoomCleanup: acknowledgeInterviewDeadlineRoomCleanup,
-        now: () => new Date("2026-07-10T06:30:00.000Z"),
+        markRoomCleanupComplete: (sessionId: string) =>
+          deadlineReconnectStore.markRoomCleanupComplete({ sessionId }),
       };
       const deferredDeadline = enforceInterviewDeadlineWorkflow(
         {
@@ -1206,10 +1935,7 @@ async function verifyAtomicSessionCompletion(
           concurrentUserEnd.lifecycle.terminalReason,
           "insufficient_signal"
         );
-        assert.equal(
-          concurrentUserEnd.deadlineRoomCleanupStatus,
-          "pending"
-        );
+        assert.equal(concurrentUserEnd.deadlineRoomCleanupStatus, "pending");
       }
       resolveDeferredDelete?.({
         ok: false,
@@ -1334,7 +2060,10 @@ async function verifyAtomicSessionCompletion(
           })
         )
       );
-      assert.equal(blockedClaims.every((claim) => claim === null), true);
+      assert.equal(
+        blockedClaims.every((claim) => claim === null),
+        true
+      );
 
       await acknowledgeInterviewDeadlineRoomCleanup(
         SESSION_DEADLINE_DISPATCH_RECOVERY,
@@ -1382,16 +2111,20 @@ async function verifyAtomicSessionCompletion(
         },
         {
           getSession: getInterviewDeadlineSession,
-          settleSession: () =>
-            settleInterviewSessionWorkflow(
+          claimDue: (input: Parameters<typeof claimInterviewDeadline>[0]) =>
+            claimInterviewDeadline(input, databases[0]!),
+          scheduleDeadline: async () => undefined,
+          validateSession: async () => validation,
+          settleSession: (_sessionId, sessionValidation) =>
+            settleInterviewSessionWithValidationWorkflow(
               {
                 sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
                 actor: { type: "system", source: "hard_deadline" },
                 requestedTerminalReason: "time_limit",
               },
+              sessionValidation,
               {
                 authorize: async () => true,
-                validate: async () => validation,
                 finalize: (
                   input: Parameters<typeof finalizeInterviewSession>[0]
                 ) => finalizeInterviewSession(input, databases[0]!),
@@ -1420,7 +2153,8 @@ async function verifyAtomicSessionCompletion(
           acknowledgeRoomCleanup: async () => {
             throw new Error("Acknowledged cleanup must not acknowledge again");
           },
-          now: () => new Date("2026-07-10T06:32:00.000Z"),
+          markRoomCleanupComplete: (sessionId) =>
+            deadlineReconnectStore.markRoomCleanupComplete({ sessionId }),
         }
       );
       assert.equal(recoveredEligible.ok, true);
@@ -1570,7 +2304,7 @@ function lifecycleOutcome(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 9);
+  assert.equal(await migrationCount(sql), 11);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -1614,6 +2348,47 @@ async function verifyDatabase(sql: postgres.Sql) {
     ORDER BY indexname
   `;
   assert.equal(lifecycleIndexes.length, 2);
+
+  const reconnectColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'interview_session'
+      AND column_name IN (
+        'reconnect_deadline_at', 'reconnect_deadline_owner',
+        'room_cleanup_pending',
+        'room_cleanup_attempted_at', 'room_provisioning_pending',
+        'room_provisioning_started_at', 'presence_reconciled_at',
+        'runtime_ready_at', 'last_transport_event_at',
+        'last_transport_event_id', 'last_transport_event_name'
+      )
+    ORDER BY column_name
+  `;
+  assert.equal(reconnectColumns.length, 11);
+
+  const reconnectIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'interview_session_reconnect_deadline_idx',
+        'interview_session_presence_reconciliation_idx',
+        'interview_session_room_cleanup_recovery_idx',
+        'interview_session_room_provisioning_recovery_idx'
+      )
+    ORDER BY indexname
+  `;
+  assert.equal(reconnectIndexes.length, 4);
+
+  const reconnectConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname IN (
+      'interview_session_room_provisioning_claim_check',
+      'interview_session_reconnect_deadline_owner_check'
+    )
+  `;
+  assert.equal(reconnectConstraints.length, 2);
 
   const completionColumns = await sql<{ column_name: string }[]>`
     SELECT column_name

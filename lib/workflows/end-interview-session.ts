@@ -70,6 +70,43 @@ export async function settleInterviewSessionWorkflow(
   }
 
   const validation = await deps.validate(input.sessionId);
+  return completeInterviewSession(input, validation, deps);
+}
+
+export async function endInterviewSessionWithValidationWorkflow(
+  input: EndInterviewSessionInput,
+  validation: SessionValidation,
+  deps: EndInterviewSessionDeps = createEndInterviewSessionDeps()
+): Promise<EndInterviewSessionResult> {
+  const settlement = await settleInterviewSessionWithValidationWorkflow(
+    input,
+    validation,
+    deps
+  );
+  if (!settlement.ok) return settlement;
+  return dispatchInterviewSessionSettlement(settlement.completion, deps);
+}
+
+export async function settleInterviewSessionWithValidationWorkflow(
+  input: EndInterviewSessionInput,
+  validation: SessionValidation,
+  deps: Pick<
+    EndInterviewSessionDeps,
+    "authorize" | "finalize" | "updateMotivation"
+  > = createEndInterviewSessionDeps()
+): Promise<SettleInterviewSessionResult> {
+  if (!(await deps.authorize(input))) {
+    return { ok: false, reason: "not_found" };
+  }
+
+  return completeInterviewSession(input, validation, deps);
+}
+
+async function completeInterviewSession(
+  input: EndInterviewSessionInput,
+  validation: SessionValidation,
+  deps: Pick<EndInterviewSessionDeps, "finalize" | "updateMotivation">
+): Promise<SettleInterviewSessionResult> {
   const completion = await deps.finalize({ ...input, validation });
   if (!completion.ok) return completion;
 

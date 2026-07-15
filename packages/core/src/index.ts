@@ -9,3 +9,4 @@ export * from "./session";
 export * from "./session-lifecycle";
 export * from "./account-privacy";
 export * from "./session-deadline";
+export * from "./session-reconnect";

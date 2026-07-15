@@ -77,3 +77,25 @@ cleanup has no acknowledgement timestamp, while `deleted` and
 feedback until a deadline-owned cleanup claim is acknowledged. See the
 [deadline operations runbook](./interview-session-deadline.md) for failure,
 recovery, and rollback behavior.
+
+## Interview session reconnect recovery
+
+`0009_interview_session_reconnect` adds the durable reconnect deadline,
+provider-cleanup and provisioning recovery claims, readiness and presence
+reconciliation timestamps, and last accepted transport-event identity. Its
+indexes support reconnect expiry, presence repair, room cleanup, and stale
+provisioning recovery without scanning unrelated sessions. The provisioning
+constraint requires the pending claim and its lease timestamp to move together.
+
+## Reconnect cutoff ownership
+
+`0010_reconnect_cutoff_owner` records whether each persisted reconnect cutoff
+is owned by reconnect grace or by the immutable hard interview deadline. The
+backfill derives ownership from the stored start time and canonical configured
+duration, using the 30-minute default for missing or legacy duration shapes.
+The database constraint requires every cutoff to have one valid owner and
+forbids an owner when no cutoff exists. Application authorization and recovery
+use PostgreSQL time and treat equality with the stored cutoff as expired.
+
+See the [reconnect operations runbook](./interview-session-reconnect.md) for
+provider recovery, exact-boundary verification, and rollback behavior.

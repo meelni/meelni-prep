@@ -71,6 +71,9 @@ export async function getSessionForLiveKitJoin(sessionId: string) {
       activatedAt: interviewSession.activatedAt,
       endingAt: interviewSession.endingAt,
       lastTransitionAt: interviewSession.lastTransitionAt,
+      reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
+      reconnectDeadlineOwner: interviewSession.reconnectDeadlineOwner,
+      databaseNow: sql<Date>`clock_timestamp()`,
     })
     .from(interviewSession)
     .where(eq(interviewSession.id, sessionId))

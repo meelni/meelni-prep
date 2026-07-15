@@ -97,18 +97,34 @@ export function createDrizzleInterviewSessionLifecycleStore(
           lastTransitionAt: transitionedAt,
           ...(input.nextState === "active"
             ? {
-                activatedAt: sql`COALESCE(${interviewSession.activatedAt}, ${transitionedAt})`,
+                activatedAt: sql`COALESCE(${interviewSession.activatedAt}, ${transitionedAt.toISOString()}::timestamptz)`,
+                reconnectDeadlineAt: null,
+                reconnectDeadlineOwner: null,
+              }
+            : {}),
+          ...(input.nextState === "connecting"
+            ? {
+                roomCleanupPending: sql`${interviewSession.livekitRoomName} IS NOT NULL`,
+                roomCleanupAttemptedAt: null,
+                roomProvisioningPending: sql`${interviewSession.livekitRoomName} IS NOT NULL`,
+                roomProvisioningStartedAt: sql`CASE WHEN ${interviewSession.livekitRoomName} IS NOT NULL THEN date_trunc('milliseconds', clock_timestamp()) ELSE NULL END`,
               }
             : {}),
           ...(input.nextState === "ending"
             ? {
-                endingAt: sql`COALESCE(${interviewSession.endingAt}, ${transitionedAt})`,
+                endingAt: sql`COALESCE(${interviewSession.endingAt}, ${transitionedAt.toISOString()}::timestamptz)`,
+                roomCleanupPending: sql`${interviewSession.livekitRoomName} IS NOT NULL`,
+                roomCleanupAttemptedAt: null,
               }
             : {}),
           ...(isInterviewTerminalState(input.nextState)
             ? {
-                endingAt: sql`COALESCE(${interviewSession.endingAt}, ${transitionedAt})`,
-                endedAt: sql`COALESCE(${interviewSession.endedAt}, ${transitionedAt})`,
+                endingAt: sql`COALESCE(${interviewSession.endingAt}, ${transitionedAt.toISOString()}::timestamptz)`,
+                endedAt: sql`COALESCE(${interviewSession.endedAt}, ${transitionedAt.toISOString()}::timestamptz)`,
+                reconnectDeadlineAt: null,
+                reconnectDeadlineOwner: null,
+                roomCleanupPending: sql`${interviewSession.livekitRoomName} IS NOT NULL`,
+                roomCleanupAttemptedAt: null,
               }
             : {}),
         })

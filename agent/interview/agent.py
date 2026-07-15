@@ -21,6 +21,7 @@ from livekit.agents import (
     JobProcess,
     WorkerOptions,
     cli,
+    room_io,
 )
 from livekit.agents.llm import ChatMessage
 from livekit.plugins import silero, cartesia
@@ -248,7 +249,11 @@ async def entrypoint(ctx: JobContext):
     # Start session and wait for it to be fully ready
     # Note: Do NOT call session.say() before session.start() completes!
     # Calling say() on an uninitialized session breaks the TTS pipeline
-    await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.room)
+    await session.start(
+        agent=InterviewAgent(instructions=instructions),
+        room=ctx.room,
+        room_options=room_io.RoomOptions(close_on_disconnect=False),
+    )
 
     logger.info(f"Voice agent started successfully - {round_type} interview with {config['difficulty']} difficulty")
 

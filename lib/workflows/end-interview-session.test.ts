@@ -9,6 +9,7 @@ import type { FinalizeInterviewSessionResult } from "@/lib/db/end-interview-sess
 import { feedback as feedbackTable } from "@/lib/db/schema";
 import type { DispatchFeedbackGenerationResult } from "./dispatch-feedback-generation";
 import {
+  endInterviewSessionWithValidationWorkflow,
   endInterviewSessionWorkflow,
   type EndInterviewSessionDeps,
 } from "./end-interview-session";
@@ -159,6 +160,30 @@ test("authorization runs before transcript validation", async () => {
   assert.deepEqual(result, { ok: false, reason: "not_found" });
   assert.equal(validations, 0);
   assert.equal(finalizations, 0);
+});
+
+test("a caller-provided validation snapshot is finalized without revalidation", async () => {
+  let validations = 0;
+  let finalizedValidation: SessionValidation | null = null;
+  const snapshot = validation();
+  const result = await endInterviewSessionWithValidationWorkflow(
+    userEndInput(),
+    snapshot,
+    createDeps({
+      validate: async () => {
+        validations += 1;
+        return validation();
+      },
+      finalize: async (input) => {
+        finalizedValidation = input.validation;
+        return completion();
+      },
+    })
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(validations, 0);
+  assert.equal(finalizedValidation, snapshot);
 });
 
 test("hard deadline sends a system time-limit command and dispatches for the stored owner", async () => {
