@@ -63,22 +63,63 @@ test("atomic timeout claim prevents a concurrent restore before room deletion", 
   assert.deepEqual(fixture.calls, ["claim", "terminate", "end"]);
 });
 
-test("deadline enforcement does not revive a join observed at the cutoff", async () => {
-  const fixture = createFixture(new Date(DEADLINE));
-  fixture.deps.inspectPresence = async () =>
-    providerSuccess("livekit", {
-      present: true,
-      joined: true,
+test("due enforcement recovers authoritative presence joined before the cutoff", async () => {
+  const cases = [
+    {
+      label: "JOINED at cutoff minus 1ms",
+      databaseNow: new Date(DEADLINE),
+      joinedAt: new Date("2026-07-10T08:00:29.999Z"),
+    },
+    {
+      label: "ACTIVE at cutoff minus 1s",
+      databaseNow: new Date("2026-07-10T08:00:31.000Z"),
       joinedAt: new Date("2026-07-10T08:00:29.000Z"),
-      agent: null,
-    });
+    },
+  ];
 
-  const result = await run(fixture.deps);
+  for (const { label, databaseNow, joinedAt } of cases) {
+    const fixture = createFixture(databaseNow);
+    fixture.deps.inspectPresence = async () =>
+      providerSuccess("livekit", {
+        present: true,
+        joined: true,
+        joinedAt,
+        agent: null,
+      });
 
-  assert.equal(result.ok, true);
-  if (result.ok) assert.equal(result.disposition, "enforced");
-  assert.equal(fixture.current.state, "completed");
-  assert.deepEqual(fixture.calls, ["claim", "terminate", "end"]);
+    const result = await run(fixture.deps);
+
+    assert.deepEqual(
+      result,
+      {
+        ok: true,
+        disposition: "presence_recovered",
+        completion: null,
+        room: null,
+      },
+      label
+    );
+    assert.equal(fixture.current.state, "active", label);
+    assert.equal(fixture.current.version, 5, label);
+    assert.deepEqual(fixture.calls, [], label);
+  }
+});
+
+test("due presence recovery requires the exact grace generation and cutoff", async () => {
+  const staleCases: Array<Partial<InterviewReconnectSession>> = [
+    { version: 5 },
+    { reconnectDeadlineAt: new Date("2026-07-10T08:00:30.001Z") },
+    { reconnectDeadlineOwner: "hard_deadline" },
+  ];
+
+  for (const overrides of staleCases) {
+    const fixture = createFixture(new Date(DEADLINE), overrides);
+    const result = await run(fixture.deps);
+
+    assert.deepEqual(result, { ok: false, disposition: "stale_event" });
+    assert.equal(fixture.current.state, "reconnecting");
+    assert.deepEqual(fixture.calls, []);
+  }
 });
 
 test("presence provider failure cannot claim or terminate the session", async () => {
@@ -411,6 +452,30 @@ function createFixture(
         ...current,
         state: "active",
         version: current.version + 1,
+        reconnectDeadlineAt: null,
+        reconnectDeadlineOwner: null,
+        lastTransitionAt: input.transitionedAt,
+        presenceReconciledAt: input.transitionedAt,
+      };
+      return { applied: true, current };
+    },
+    recoverFromDuePresence: async (input) => {
+      if (
+        current.state !== "reconnecting" ||
+        current.version !== input.expectedVersion ||
+        current.reconnectDeadlineAt?.getTime() !== input.deadlineAt.getTime() ||
+        current.reconnectDeadlineOwner !== "reconnect_grace" ||
+        now.getTime() < input.deadlineAt.getTime() ||
+        !Number.isFinite(input.joinedAt.getTime()) ||
+        input.joinedAt.getTime() >= input.deadlineAt.getTime()
+      ) {
+        return { applied: false, reason: "conflict", current };
+      }
+      current = {
+        ...current,
+        state: "active",
+        version: current.version + 1,
+        terminalReason: null,
         reconnectDeadlineAt: null,
         reconnectDeadlineOwner: null,
         lastTransitionAt: input.transitionedAt,
