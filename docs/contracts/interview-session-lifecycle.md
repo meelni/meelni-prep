@@ -117,6 +117,27 @@ This first-valid-claim rule makes concurrent end, deadline, disconnect, and prov
   transcript-ingest contract; lifecycle code must not invent a second
   transcript identity rule.
 
+## Browser Ownership And Explicit End
+
+The authenticated browser owner is part of the mounted room boundary. A sign
+out or direct account A-to-B replacement immediately makes the existing room
+render-ineligible, unmounts its LiveKit connection, aborts and removes the
+prior owner's transcript queue through the queue owner binding, clears all
+session credentials and local transcript/end state, and fences late async
+callbacks. The replacement account is sent to the dashboard instead of
+requesting credentials for the prior account's session URL.
+
+An explicit end first closes browser transcript acceptance and settles the
+authenticated queue. A definitive non-success HTTP response proves that the
+browser received a rejection, so it reopens transcript acceptance and keeps
+the connected retry experience. A transport exception after the request was
+written is ambiguous: the command may already have committed. In that case the
+browser unmounts the room and presents a non-dismissible frozen state. It polls
+owned durable lifecycle and feedback truth and, only while the stored session
+is still joinable, retries the same idempotent `user_end` command at a bounded
+cadence. It neither resumes packet acceptance nor clears queued transcript
+state until terminal handoff is confirmed.
+
 ## Room Metadata And Correlation
 
 Canonical room metadata contract version 1 requires `contract_version: 1` and `session_id`. New SAV-189 writers also supply one canonical UTC `deadline_at`; missing values remain readable only during the staged rollout. The runtime reference, selected question, transcript events, logs, and feedback request must remain correlated to the same session ID.
@@ -207,11 +228,17 @@ wins. The grace event carries the version and exact stored cutoff. At expiry the
 worker first checks authoritative candidate presence. Only provider state
 `JOINED` or `ACTIVE` with a finite provider `joinedAt` strictly before the
 stored cutoff may repair a missed join through the same
-lifecycle-version, deadline, and timestamp compare-and-set;
-the database clock must also still be strictly before the cutoff. Equality is
-expired. Fresh token issuance, signed join recovery, presence repair, and the
-timeout claim all use PostgreSQL time as the authorization clock, so an
-application host's slow, fast, or rolled-back clock cannot extend access.
+lifecycle-version, deadline, and timestamp compare-and-set. Ordinary signed
+join and periodic presence repair require PostgreSQL time to remain strictly
+before the cutoff. Once a grace-owned cutoff is due, the enforcement worker may
+instead repair provider-confirmed pre-cutoff presence through a disjoint CAS
+that requires PostgreSQL time at or after the cutoff and the same grace owner,
+state, version, and deadline. This adjudicates a missed join without extending
+access; it cannot recover a hard-deadline-owned generation. A provider
+`joinedAt` equal to the cutoff is expired. Fresh token issuance, both recovery
+CAS paths, and the timeout claim use PostgreSQL time as the authorization
+clock, so an application host's slow, fast, or rolled-back clock cannot extend
+access.
 provider read failure leaves the session reconnecting for retry. Confirmed
 absence allows the worker to atomically claim provisional
 `ending (disconnect_timeout)` only while all three facts still match. The claim
@@ -256,8 +283,10 @@ with deterministic idempotency keys.
 User end attempts cleanup immediately but still returns committed terminal
 truth if the provider is unavailable. Hard-deadline and reconnect workers clear
 the same marker after acknowledged deletion. Cleanup removes the candidate with
-an explicit token-revocation timestamp before deleting the room; room absence
-is idempotent success. A five-minute terminal-room recovery scan fans each
+LiveKit Cloud's provider-owned current-time revocation before deleting the
+room; the app deliberately omits a client timestamp so process-clock skew
+cannot preserve an older token. A missing participant response still revokes
+cached tokens, and room absence is idempotent success. A five-minute terminal-room recovery scan fans each
 pending row into an independently retryable event and prioritizes never-tried,
 then least-recently-tried cleanup, provisioning, and credit-only work,
 preventing one poison row from starving peers

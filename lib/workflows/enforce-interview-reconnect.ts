@@ -122,14 +122,13 @@ export async function enforceInterviewReconnectWorkflow(
       });
     }
     if (
-      (await deps.store.getDatabaseTime()).getTime() < deadlineAt.getTime() &&
       presence.data.present &&
       presence.data.joined &&
       presence.data.joinedAt &&
       Number.isFinite(presence.data.joinedAt.getTime()) &&
       presence.data.joinedAt.getTime() < deadlineAt.getTime()
     ) {
-      const recovered = await deps.store.recoverFromPresence({
+      const recovered = await deps.store.recoverFromDuePresence({
         sessionId: input.sessionId,
         expectedVersion: input.expectedVersion,
         deadlineAt,

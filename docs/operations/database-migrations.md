@@ -56,13 +56,13 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with thirteen
+six ledger entries. Expected post-migration status is `reconciled` with fourteen
 ledger entries, 25 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect, and
 transcript-privacy and runtime-settlement contract fingerprint.
-Preflight keeps distinct accepted fingerprints for the 12-migration privacy
-state and the 13-migration runtime-settlement state so a rolling deployment is
+Preflight keeps distinct accepted fingerprints for the 13-migration privacy
+state and the 14-migration runtime-settlement state so a rolling deployment is
 diagnosable without weakening either contract.
 
 ## Rehearsal

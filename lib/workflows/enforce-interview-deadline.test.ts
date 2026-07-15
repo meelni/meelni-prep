@@ -506,8 +506,7 @@ test("hard deadline claims provisionally before locked validation refines it", a
         claimedReason = input.terminalReason;
         return true;
       },
-      settleSession: async () =>
-        settlement("insufficient_signal", "abandoned"),
+      settleSession: async () => settlement("insufficient_signal", "abandoned"),
     })
   );
 
