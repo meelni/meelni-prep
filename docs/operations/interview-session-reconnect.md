@@ -4,7 +4,9 @@ The product contract is [Interview Session Lifecycle](../contracts/interview-ses
 
 ## Required Configuration
 
-- LiveKit server URL, API key, and API secret.
+- A LiveKit Cloud project, server URL, API key, and API secret. This teardown
+  contract relies on Cloud token revocation; a self-hosted deployment requires
+  a separately reviewed equivalent before use.
 - A LiveKit webhook targeting `POST /api/webhooks/livekit`, with
   `participant_joined`, `participant_left`, and
   `participant_connection_aborted` delivery enabled.
@@ -59,9 +61,11 @@ Never place an intermediary in front of the route that rewrites the body.
   strictly before the stored reconnect deadline,
   revokes candidate tokens before room deletion, waits a bounded two seconds
   for durable transcript delivery, and finalizes from one validation snapshot.
-  Token authorization, signed rejoin, presence repair, stale-provisioning
-  claims, and timeout claims use PostgreSQL time. The cutoff is exclusive:
-  database time or participant `joinedAt` equal to the cutoff is denied.
+  Token authorization, signed rejoin, ordinary presence repair,
+  stale-provisioning claims, and timeout claims use PostgreSQL time. At or after
+  a grace-owned cutoff, only the due-presence CAS may recover the session, and
+  only from exact-generation provider evidence whose `joinedAt` is strictly
+  before the stored cutoff. Equality or later evidence is denied.
 
 ## Preview Rehearsal
 
