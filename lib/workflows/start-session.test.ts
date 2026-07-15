@@ -175,6 +175,68 @@ test("startInterviewSessionWorkflow creates a voice interview from a selected qu
   ]);
 });
 
+test("start-session logs exclude question, company, and unrestricted error content", async () => {
+  const questionSentinel = "QUESTION-CONTENT-SENTINEL";
+  const companySentinel = "COMPANY-CONTENT-SENTINEL";
+  const errorSentinel = "ERROR-CONTENT-SENTINEL";
+  const captured: unknown[][] = [];
+  const consoleLog = console.log;
+  const consoleError = console.error;
+  console.log = (...args: unknown[]) => captured.push(args);
+  console.error = (...args: unknown[]) => captured.push(args);
+
+  const question = {
+    id: "question-safe-correlation-id",
+    company: companySentinel,
+    questionText: questionSentinel,
+    questionType: "Product Sense",
+    askedAt: new Date("2026-06-27T18:00:00.000Z"),
+    isActive: true,
+    createdAt: new Date("2026-06-27T18:00:00.000Z"),
+  };
+
+  try {
+    const success = await startInterviewSessionWorkflow(
+      {
+        user,
+        body: { roundType: "product_sense", questionId: question.id },
+        env: createLiveKitStartFixture().input.env,
+        interviewAgentName: createLiveKitStartFixture().input.agentName,
+      },
+      createDeps({ getQuestionById: async () => question })
+    );
+    assert.equal(success.ok, true);
+
+    const failure = await startInterviewSessionWorkflow(
+      {
+        user,
+        body: { roundType: "product_sense", questionId: question.id },
+        env: createLiveKitStartFixture().input.env,
+        interviewAgentName: createLiveKitStartFixture().input.agentName,
+      },
+      createDeps({
+        getQuestionById: async () => question,
+        livekitProvider: {
+          startInterviewRoom: async () => {
+            throw new Error(errorSentinel);
+          },
+        },
+      })
+    );
+    assert.equal(failure.ok, false);
+
+    const serializedLogs = JSON.stringify(captured);
+    assert.doesNotMatch(serializedLogs, new RegExp(questionSentinel));
+    assert.doesNotMatch(serializedLogs, new RegExp(companySentinel));
+    assert.doesNotMatch(serializedLogs, new RegExp(errorSentinel));
+    assert.match(serializedLogs, /question-safe-correlation-id/);
+    assert.match(serializedLogs, /error_class/);
+  } finally {
+    console.log = consoleLog;
+    console.error = consoleError;
+  }
+});
+
 test("selected question converges conflicting round identities before persistence and LiveKit", async () => {
   const productFixture = createProductSenseInterviewFixture();
   const liveKitFixture = createLiveKitStartFixture();

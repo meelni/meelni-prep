@@ -20,6 +20,7 @@ import {
   interviewSession,
   transcriptInterruptionMarker,
   transcriptRuntimeSettlement,
+  transcriptRuntimeWriter,
   transcriptTurn,
 } from "./schema";
 
@@ -43,7 +44,6 @@ export type EndInterviewSessionCommand = { sessionId: string } & (
 );
 
 export type FinalizeInterviewSessionInput = EndInterviewSessionCommand & {
-  validationOverride?: SessionValidation;
   now?: Date;
 };
 
@@ -116,9 +116,7 @@ export async function finalizeInterviewSession(
     const stored = rows[0];
     if (!stored) return { ok: false, reason: "not_found" } as const;
 
-    let validation = input.validationOverride;
-    if (!validation) {
-      const [turns, interruptionCounts, settlements] = await Promise.all([
+    const [turns, interruptionCounts, writerEvidence] = await Promise.all([
         tx
           .select({
             speaker: transcriptTurn.speaker,
@@ -133,21 +131,41 @@ export async function finalizeInterviewSession(
           .from(transcriptInterruptionMarker)
           .where(eq(transcriptInterruptionMarker.sessionId, input.sessionId)),
         tx
-          .select({ state: transcriptRuntimeSettlement.state })
-          .from(transcriptRuntimeSettlement)
-          .where(eq(transcriptRuntimeSettlement.sessionId, input.sessionId))
-          .limit(1),
-      ]);
-      const baseValidation = validateSessionStats(
-        calculateSessionStatsFromTurns(turns)
-      );
-      validation = applyTranscriptIntegrityValidation({
-        baseValidation,
-        interruptionCount: interruptionCounts[0]?.value ?? 0,
-        runtimeSettlementState:
-          (settlements[0]?.state as "settled" | "degraded" | undefined) ?? null,
-      });
-    }
+          .select({
+            generation: transcriptRuntimeWriter.generation,
+            state: transcriptRuntimeSettlement.state,
+          })
+          .from(transcriptRuntimeWriter)
+          .leftJoin(
+            transcriptRuntimeSettlement,
+            and(
+              eq(
+                transcriptRuntimeSettlement.sessionId,
+                transcriptRuntimeWriter.sessionId
+              ),
+              eq(
+                transcriptRuntimeSettlement.writerGeneration,
+                transcriptRuntimeWriter.generation
+              ),
+              eq(
+                transcriptRuntimeSettlement.writerId,
+                transcriptRuntimeWriter.writerId
+              )
+            )
+          )
+          .where(eq(transcriptRuntimeWriter.sessionId, input.sessionId)),
+    ]);
+    const baseValidation = validateSessionStats(
+      calculateSessionStatsFromTurns(turns)
+    );
+    const validation = applyTranscriptIntegrityValidation({
+      baseValidation,
+      interruptionCount: interruptionCounts[0]?.value ?? 0,
+      runtimeWriterStates: writerEvidence.map((writer) => ({
+        generation: writer.generation,
+        state: writer.state as "settled" | "degraded" | null,
+      })),
+    });
 
     let state = stored.lifecycleState;
     let version = stored.lifecycleVersion;
@@ -416,16 +434,30 @@ export function shouldRefineProvisionalTerminalReason(input: {
 export function applyTranscriptIntegrityValidation(input: {
   baseValidation: SessionValidation;
   interruptionCount: number;
-  runtimeSettlementState: "settled" | "degraded" | null;
+  runtimeWriterStates: Array<{
+    generation: number;
+    state: "settled" | "degraded" | null;
+  }>;
 }): SessionValidation {
+  const writerStates = input.runtimeWriterStates;
+  const degradedWriters = writerStates.filter(
+    (writer) => writer.state === "degraded"
+  );
+  const missingWriters = writerStates.filter((writer) => writer.state === null);
   const integrityReasons = [
-    ...(input.runtimeSettlementState === "settled"
-      ? []
-      : [
-          input.runtimeSettlementState === "degraded"
-            ? "Voice runtime reported degraded transcript integrity"
-            : "Voice runtime transcript settlement was not confirmed",
-        ]),
+    ...(writerStates.length === 0
+      ? ["Voice runtime writer registration was not confirmed"]
+      : []),
+    ...(degradedWriters.length > 0
+      ? [
+          `Voice runtime reported degraded transcript integrity for ${degradedWriters.length} writer generation(s)`,
+        ]
+      : []),
+    ...(missingWriters.length > 0
+      ? [
+          `Voice runtime transcript settlement was not confirmed for ${missingWriters.length} writer generation(s)`,
+        ]
+      : []),
     ...(input.interruptionCount > 0
       ? [
           `Transcript integrity unavailable for ${input.interruptionCount} turn(s)`,

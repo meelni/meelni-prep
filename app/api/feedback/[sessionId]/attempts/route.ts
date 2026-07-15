@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { interviewSession } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getSessionsByInterviewType } from "@/lib/db/queries/session-comparison";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 export async function GET(
   request: NextRequest,
@@ -42,10 +43,7 @@ export async function GET(
       .limit(1);
 
     if (sessions.length === 0) {
-      return NextResponse.json(
-        { error: "Session not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
     const session = sessions[0];
@@ -66,7 +64,10 @@ export async function GET(
       roundType: session.roundType,
     });
   } catch (error) {
-    console.error("Error fetching session attempts:", error);
+    console.error("[Feedback Attempts API] fetch_failed", {
+      code: "feedback_attempts_fetch_failed",
+      ...toSafeErrorLog(error),
+    });
     return NextResponse.json(
       { error: "Failed to fetch attempts" },
       { status: 500 }

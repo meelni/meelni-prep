@@ -9,6 +9,7 @@ from shared.runtime_config import (
     normalize_runtime_config,
 )
 from shared.session_deadline import normalize_deadline_at
+from shared.safe_logging import log_exception_class
 from shared.transcript_ingest import validate_internal_ingest_url
 
 logger = logging.getLogger("agent-config")
@@ -74,12 +75,14 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         )
         question = normalize_question(data.get("question"))
 
-        # Log question info if provided
-        if question:
-            question_text = question.get("text", "")[:50]
-            logger.info(f"Parsed metadata: round_type={round_type}, difficulty={config_with_defaults['difficulty']}, question='{question_text}...'")
-        else:
-            logger.info(f"Parsed metadata: round_type={round_type}, difficulty={config_with_defaults['difficulty']}, question=None")
+        logger.info(
+            "Parsed interview room metadata",
+            extra={
+                "round_type": round_type,
+                "difficulty": config_with_defaults["difficulty"],
+                "has_question": question is not None,
+            },
+        )
 
         return {
             "contract_version": INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
@@ -92,9 +95,14 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
             "config": config_with_defaults,
         }
 
-    except (json.JSONDecodeError, ValueError, TypeError) as e:
-        logger.error(f"Invalid interview room metadata: {e}")
-        raise ValueError("Invalid interview room metadata") from e
+    except (json.JSONDecodeError, ValueError, TypeError) as error:
+        log_exception_class(
+            logger,
+            logging.ERROR,
+            "Invalid interview room metadata",
+            error,
+        )
+        raise ValueError("Invalid interview room metadata") from error
 
 
 def normalize_question(question: Dict[str, Any] | None) -> Dict[str, Any] | None:

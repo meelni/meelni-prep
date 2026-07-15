@@ -172,38 +172,95 @@ test("timeout recovery denies JOINING, missing, invalid, equal, and late join ev
   }
 });
 
-test("timeout drains transcripts before authoritative locked finalization", async () => {
+test("timeout requests writer-scoped settlement before room deletion", async () => {
   const fixture = createFixture(new Date(DEADLINE));
-  fixture.deps.waitUntil = async () => {
-    fixture.calls.push("drain");
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", {
+      present: false,
+      joined: false,
+      joinedAt: null,
+      agent: { identity: "agent-worker", joinedAt: new Date(DEADLINE) },
+    });
+  fixture.deps.getSettlementReadiness = async () => readiness(null, 1);
+  fixture.deps.requestRuntimeSettlement = async ({ request }) => {
+    fixture.calls.push(`request:${request.writer_generation}:${request.cutoff_at}`);
+    assert.match(request.request_id, /:5:2026-07-10T08:00:30.000Z$/);
+    return providerSuccess("livekit", {});
+  };
+  fixture.deps.waitForRuntimeSettlement = async ({ timeoutMs }) => {
+    assert.equal(timeoutMs, 20_000);
+    fixture.calls.push("ack");
+    return readiness("settled");
   };
 
   const result = await run(fixture.deps);
 
   assert.equal(result.ok, true);
-  assert.deepEqual(fixture.calls, ["claim", "terminate", "drain", "end"]);
+  assert.deepEqual(fixture.calls, [
+    "claim",
+    "request:1:2026-07-10T08:00:30.000Z",
+    "ack",
+    "terminate",
+    "end",
+  ]);
 });
 
-test("authoritative finalization stays blocked until transcript drain completes", async () => {
+test("room deletion and finalization wait for the bounded durable acknowledgement", async () => {
   const fixture = createFixture(new Date(DEADLINE));
-  let releaseDrain!: () => void;
-  let endCalls = 0;
-  fixture.deps.waitUntil = () =>
-    new Promise((resolve) => {
-      releaseDrain = resolve;
+  let releaseAcknowledgement!: () => void;
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", {
+      present: false,
+      joined: false,
+      joinedAt: null,
+      agent: { identity: "agent-worker", joinedAt: new Date(DEADLINE) },
     });
-  fixture.deps.endSession = async () => {
-    endCalls += 1;
-    return completion();
-  };
+  fixture.deps.getSettlementReadiness = async () => readiness(null, 1);
+  fixture.deps.requestRuntimeSettlement = async () =>
+    providerSuccess("livekit", {});
+  fixture.deps.waitForRuntimeSettlement = () =>
+    new Promise((resolve) => {
+      releaseAcknowledgement = () => resolve(readiness("settled"));
+    });
 
   const enforcement = run(fixture.deps);
-  await waitFor(() => fixture.calls.includes("terminate"));
-  assert.equal(endCalls, 0);
+  await waitFor(() => fixture.calls.includes("claim"));
+  assert.equal(fixture.calls.includes("terminate"), false);
+  assert.equal(fixture.calls.includes("end"), false);
 
-  releaseDrain();
+  releaseAcknowledgement();
   assert.equal((await enforcement).ok, true);
-  assert.equal(endCalls, 1);
+  assert.deepEqual(fixture.calls, ["claim", "terminate", "end"]);
+});
+
+test("missing acknowledgement still deletes the room and finalizes fail closed", async () => {
+  const fixture = createFixture(new Date(DEADLINE));
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", {
+      present: false,
+      joined: false,
+      joinedAt: null,
+      agent: { identity: "agent-worker", joinedAt: new Date(DEADLINE) },
+    });
+  fixture.deps.getSettlementReadiness = async () => readiness(null, 1);
+  fixture.deps.requestRuntimeSettlement = async () =>
+    providerSuccess("livekit", {});
+  fixture.deps.waitForRuntimeSettlement = async () => readiness(null, 1);
+  fixture.deps.endSession = async () => {
+    fixture.calls.push("end");
+    return completion("insufficient_signal", "skipped");
+  };
+
+  const result = await run(fixture.deps);
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      result.completion?.completion.lifecycle.terminalReason,
+      "insufficient_signal"
+    );
+  }
+  assert.deepEqual(fixture.calls, ["claim", "terminate", "end"]);
 });
 
 test("timeout claims the authorization fence before locked finalization resolves", async () => {
@@ -485,8 +542,26 @@ function createFixture(
         };
         return completion();
       },
-      waitUntil: async () => undefined,
+      getSettlementReadiness: async () => readiness(),
+      requestRuntimeSettlement: async () => providerSuccess("livekit", {}),
+      waitForRuntimeSettlement: async () => readiness(),
     },
+  };
+}
+
+function readiness(
+  state: "settled" | "degraded" | null = null,
+  writerGeneration: number | null = state === null ? null : 1
+) {
+  const writerCount = writerGeneration === null ? 0 : 1;
+  return {
+    writerCount,
+    settledCount: state === "settled" ? 1 : 0,
+    degradedCount: state === "degraded" ? 1 : 0,
+    missingCount: writerCount > 0 && state === null ? 1 : 0,
+    currentWriterGeneration: writerGeneration,
+    currentWriterState: state,
+    ready: state === "settled",
   };
 }
 

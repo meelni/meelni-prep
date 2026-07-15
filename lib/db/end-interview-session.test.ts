@@ -107,9 +107,15 @@ test("runtime settlement and textless interruption own final feedback eligibilit
   };
 
   for (const input of [
-    { runtimeSettlementState: null, interruptionCount: 0 },
-    { runtimeSettlementState: "degraded" as const, interruptionCount: 0 },
-    { runtimeSettlementState: "settled" as const, interruptionCount: 1 },
+    { runtimeWriterStates: [], interruptionCount: 0 },
+    {
+      runtimeWriterStates: [{ generation: 1, state: "degraded" as const }],
+      interruptionCount: 0,
+    },
+    {
+      runtimeWriterStates: [{ generation: 1, state: "settled" as const }],
+      interruptionCount: 1,
+    },
   ]) {
     const result = applyTranscriptIntegrityValidation({
       baseValidation,
@@ -122,8 +128,41 @@ test("runtime settlement and textless interruption own final feedback eligibilit
   assert.deepEqual(
     applyTranscriptIntegrityValidation({
       baseValidation,
-      runtimeSettlementState: "settled",
+      runtimeWriterStates: [{ generation: 1, state: "settled" }],
       interruptionCount: 0,
+    }),
+    baseValidation
+  );
+
+  const replacementMissing = applyTranscriptIntegrityValidation({
+    baseValidation,
+    interruptionCount: 0,
+    runtimeWriterStates: [
+      { generation: 1, state: null },
+      { generation: 2, state: "settled" },
+    ],
+  });
+  assert.equal(replacementMissing.isValid, false);
+  assert.match(replacementMissing.reasons[0] ?? "", /1 writer generation/);
+
+  const replacementDegraded = applyTranscriptIntegrityValidation({
+    baseValidation,
+    interruptionCount: 0,
+    runtimeWriterStates: [
+      { generation: 1, state: "degraded" },
+      { generation: 2, state: "settled" },
+    ],
+  });
+  assert.equal(replacementDegraded.isValid, false);
+
+  assert.deepEqual(
+    applyTranscriptIntegrityValidation({
+      baseValidation,
+      interruptionCount: 0,
+      runtimeWriterStates: [
+        { generation: 1, state: "settled" },
+        { generation: 2, state: "settled" },
+      ],
     }),
     baseValidation
   );

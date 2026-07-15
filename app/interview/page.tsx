@@ -45,6 +45,7 @@ import {
 } from "@/components/interview/session-recovery";
 import { establishTranscriptEndCutoff } from "@/lib/utils/transcript-end-settlement";
 import { reconcileAmbiguousInterviewEnd } from "@/lib/interview/end-reconciliation";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 
@@ -315,7 +316,10 @@ export function InterviewPageContent() {
       });
     } catch (err) {
       if (ownerIdRef.current !== requestOwnerId) return;
-      console.error("Error creating session:", err);
+      console.error("[Interview] session_create_failed", {
+        code: "interview_session_create_failed",
+        ...toSafeErrorLog(err),
+      });
       setError(
         err instanceof Error
           ? err.message
@@ -405,7 +409,10 @@ export function InterviewPageContent() {
       setLoading(false);
     } catch (err) {
       if (ownerIdRef.current !== requestOwnerId) return;
-      console.error("Error fetching session:", err);
+      console.error("[Interview] session_fetch_failed", {
+        code: "interview_session_fetch_failed",
+        ...toSafeErrorLog(err),
+      });
       setError(err instanceof Error ? err.message : "Failed to load interview");
       setLoading(false);
     }
@@ -533,6 +540,7 @@ export function InterviewPageContent() {
             id: string;
             eventId?: string | null;
             writerId?: string | null;
+            writerGeneration?: number | null;
             sequence?: number | null;
             sessionId: string;
             roomName?: string | null;
@@ -558,7 +566,9 @@ export function InterviewPageContent() {
             {
               persistable: Boolean(turn.eventId),
               eventId: turn.eventId ?? turn.id,
+              rowId: turn.id,
               writerId: turn.writerId ?? undefined,
+              writerGeneration: turn.writerGeneration ?? undefined,
               sequence: turn.sequence ?? undefined,
               sessionId: turn.sessionId,
               roomName: turn.roomName ?? undefined,
@@ -630,7 +640,10 @@ export function InterviewPageContent() {
       if (ownerIdRef.current !== requestOwnerId) return;
 
       if (!response.ok) {
-        console.warn("[Interview] Nudge analysis failed:", response.statusText);
+        console.warn("[Interview] nudge_analysis_failed", {
+          code: "nudge_analysis_failed",
+          status: response.status,
+        });
         return;
       }
 
@@ -645,7 +658,10 @@ export function InterviewPageContent() {
         });
       }
     } catch (error) {
-      console.error("[Interview] Error analyzing for nudges:", error);
+      console.error("[Interview] nudge_analysis_failed", {
+        code: "nudge_analysis_failed",
+        ...toSafeErrorLog(error),
+      });
       // Don't show error to user - nudges are optional enhancement
     }
   };
@@ -832,7 +848,10 @@ export function InterviewPageContent() {
           }
         }
       } catch (pollError) {
-        console.warn("[Interview] Waiting for deadline completion:", pollError);
+        console.warn("[Interview] deadline_poll_failed", {
+          code: "deadline_poll_failed",
+          ...toSafeErrorLog(pollError),
+        });
       } finally {
         pollInFlight = false;
       }
@@ -940,12 +959,20 @@ export function InterviewPageContent() {
         );
       }
       setTranscriptIntegrity("retrying");
-      const transcriptSettlement = await establishTranscriptEndCutoff({
-        setEndIntent: (value) => {
-          endIntentRef.current = value;
-        },
-        flush: () => flushRuntimeTranscript(25_000),
-      });
+      let transcriptSettlement: Awaited<ReturnType<FlushRuntimeTranscript>>;
+      try {
+        transcriptSettlement = await establishTranscriptEndCutoff({
+          setEndIntent: (value) => {
+            endIntentRef.current = value;
+          },
+          flush: () => flushRuntimeTranscript(25_000),
+        });
+      } catch (settlementError) {
+        // A rejected settlement request is terminal for this attempt. Do not
+        // leave the interface claiming an active verification is still running.
+        setTranscriptIntegrity("degraded");
+        throw settlementError;
+      }
       if (ownerIdRef.current !== requestOwnerId) return;
       if (!transcriptSettlement.settled) {
         setTranscriptIntegrity("degraded");
@@ -971,10 +998,10 @@ export function InterviewPageContent() {
         });
       } catch (transportError) {
         if (ownerIdRef.current !== requestOwnerId) return;
-        console.warn(
-          "[Interview] End transport result is ambiguous; reconciling stored truth",
-          transportError
-        );
+        console.warn("[Interview] end_transport_ambiguous", {
+          code: "interview_end_transport_ambiguous",
+          ...toSafeErrorLog(transportError),
+        });
         nextEndRetryAtRef.current = Date.now() + 1_000;
         setShowEndModal(false);
         setIsEndingSession(false);
@@ -1022,7 +1049,10 @@ export function InterviewPageContent() {
       router.push(nextHref);
     } catch (error) {
       if (ownerIdRef.current !== requestOwnerId) return;
-      console.error("Failed to end session:", error);
+      console.error("[Interview] session_end_failed", {
+        code: "session_end_failed",
+        ...toSafeErrorLog(error),
+      });
       setEndSessionError(
         error instanceof Error
           ? error.message
@@ -1288,15 +1318,32 @@ function InterviewRoomContent({
             <div>
               <AppSurfaceTitle>Transcript</AppSurfaceTitle>
               <AppSurfaceDescription>
-                Conversation turns are saved as the room runs.
+                {transcriptIntegrity === "healthy"
+                  ? "Conversation turns are saved as the room runs."
+                  : transcriptIntegrity === "retrying"
+                    ? "Checking that the latest turns are stored before the interview closes."
+                    : "Some recent turns could not be verified. Keep the room open and retry ending the interview in a moment."}
               </AppSurfaceDescription>
             </div>
             {transcriptIntegrity !== "healthy" && (
-              <StatusPill tone="warning" className="shrink-0">
-                <AlertCircle className="h-3.5 w-3.5" />
+              <StatusPill
+                tone="warning"
+                className="shrink-0"
+                role={transcriptIntegrity === "retrying" ? "status" : "alert"}
+                aria-live={
+                  transcriptIntegrity === "retrying" ? "polite" : "assertive"
+                }
+                aria-atomic="true"
+              >
+                <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
                 {transcriptIntegrity === "retrying"
                   ? "Verifying"
                   : "Needs recovery"}
+                <span className="sr-only">
+                  {transcriptIntegrity === "retrying"
+                    ? ". Checking that the latest transcript turns are stored."
+                    : ". Some recent transcript turns could not be verified. Keep the room open and retry ending the interview in a moment."}
+                </span>
               </StatusPill>
             )}
           </AppSurfaceHeader>
@@ -1485,10 +1532,10 @@ async function requestInterviewRoomCredentialsWithRetry(
         retryAfterMs,
       };
     } catch (credentialError) {
-      console.warn(
-        "[Interview] Failed to request reconnect credentials",
-        credentialError
-      );
+      console.warn("[Interview] reconnect_credentials_failed", {
+        code: "reconnect_credentials_failed",
+        ...toSafeErrorLog(credentialError),
+      });
       lastFailure = {
         ok: false,
         status: 503,
@@ -1552,6 +1599,8 @@ function mergeTranscriptTurns(
   for (const turn of [...current, ...incoming]) {
     const key = turn.eventId
       ? `event:${turn.eventId}`
+      : turn.rowId
+        ? `row:${turn.rowId}`
       : `legacy:${turn.speaker}:${turn.timestamp.toISOString()}:${turn.text}`;
     turns.set(key, turn);
   }

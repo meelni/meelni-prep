@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -36,7 +37,7 @@ import {
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
-const ROOT = resolve(import.meta.dirname, "..");
+const ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "lib/db/migrations");
 const CLEAN_DATABASE = "meelni_clean_test";
 const UPGRADE_DATABASE = "meelni_upgrade_test";
@@ -83,6 +84,7 @@ const SESSION_RECONNECT_INTEGRITY_INTERRUPTED =
   "c3000000-0000-4000-8000-000000000003";
 const SESSION_RECONNECT_INTEGRITY_VALID =
   "c4000000-0000-4000-8000-000000000004";
+const SESSION_RUNTIME_WRITER_BACKFILL = "c5000000-0000-4000-8000-000000000005";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!configuredBaseUrl) {
@@ -290,11 +292,18 @@ async function run() {
         databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
         TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
       );
+      assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
 
+      await seedRuntimeWriterBackfillFixture(upgrade);
+      const countsBeforeRuntimeSettlement = await protectedRowCounts(upgrade);
       await migrate(drizzle(upgrade), { migrationsFolder: MIGRATIONS });
+      await verifyRuntimeWriterBackfill(upgrade);
       const reconnectApplied = runPreflight(upgradeUrl, true, "reconciled");
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
-      assert.deepEqual(await protectedRowCounts(upgrade), countsBefore);
+      assert.deepEqual(
+        await protectedRowCounts(upgrade),
+        countsBeforeRuntimeSettlement
+      );
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl, false);
@@ -335,7 +344,7 @@ function runCliMigration(databaseUrl: string) {
   assert.equal(
     result.status,
     0,
-    `CLI migration failed: ${result.stderr || result.stdout}`
+    `CLI migration failed:\n${result.stderr}\n${result.stdout}`
   );
   assert.match(result.stdout, /Database target fingerprint:/);
 }
@@ -549,6 +558,164 @@ async function seedAuthorizationFixtures(sql: postgres.Sql) {
     )
     ON CONFLICT (id) DO NOTHING
   `;
+}
+
+async function seedRuntimeWriterBackfillFixture(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      livekit_room_name, started_at, activated_at
+    ) VALUES (
+      ${SESSION_RUNTIME_WRITER_BACKFILL}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      'runtime-writer-backfill-room',
+      '2026-07-10T05:00:00.000Z'::timestamptz,
+      '2026-07-10T05:00:00.000Z'::timestamptz
+    )
+  `;
+  await sql`
+    INSERT INTO transcript_turn (
+      session_id, contract_version, event_id, writer_id, sequence, room_name,
+      speaker, started_at, ended_at, text, audio_ms, section, delivery_state
+    ) VALUES
+      (
+        ${SESSION_RUNTIME_WRITER_BACKFILL}::uuid, 2, 'backfill-a:1',
+        'backfill-writer-a', 1, 'runtime-writer-backfill-room', 'user',
+        '2026-07-10T05:00:01.000Z'::timestamptz,
+        '2026-07-10T05:00:02.000Z'::timestamptz,
+        'Legacy rolling-window event A', 1000, 'answer', 'delivered'
+      ),
+      (
+        ${SESSION_RUNTIME_WRITER_BACKFILL}::uuid, 2, 'backfill-b:1',
+        'backfill-writer-b', 1, 'runtime-writer-backfill-room', 'interviewer',
+        '2026-07-10T05:00:03.000Z'::timestamptz,
+        '2026-07-10T05:00:04.000Z'::timestamptz,
+        'Legacy rolling-window event B', 1000, 'follow_up', 'delivered'
+      )
+  `;
+  await sql`
+    INSERT INTO transcript_interruption_marker (
+      session_id, contract_version, event_id, writer_id, sequence, room_name,
+      speaker, occurred_at, reason
+    ) VALUES (
+      ${SESSION_RUNTIME_WRITER_BACKFILL}::uuid, 1, 'backfill-b:2',
+      'backfill-writer-b', 2, 'runtime-writer-backfill-room', 'interviewer',
+      '2026-07-10T05:00:05.000Z'::timestamptz,
+      'no_provider_confirmed_prefix'
+    )
+  `;
+}
+
+async function seedValidTranscriptIntegrityFixture(
+  sql: postgres.Sql,
+  input: {
+    sessionId: string;
+    roomName: string;
+    writerId: string;
+    startedAt: string;
+    settledAt: string;
+  }
+) {
+  const startedAt = Date.parse(input.startedAt);
+  const at = (offsetMs: number) => new Date(startedAt + offsetMs).toISOString();
+  await sql`
+    INSERT INTO transcript_turn (
+      session_id, speaker, started_at, ended_at, text, audio_ms, section
+    ) VALUES
+      (
+        ${input.sessionId}::uuid, 'user', ${at(0)}::timestamptz,
+        ${at(1_000)}::timestamptz,
+        'I would begin by clarifying the target customer problem and defining the measurable outcome before considering solutions.',
+        1000, 'answer'
+      ),
+      (
+        ${input.sessionId}::uuid, 'interviewer', ${at(60_000)}::timestamptz,
+        ${at(61_000)}::timestamptz,
+        'Which customer segment would you prioritize first and why?',
+        1000, 'follow_up'
+      ),
+      (
+        ${input.sessionId}::uuid, 'user', ${at(180_000)}::timestamptz,
+        ${at(181_000)}::timestamptz,
+        'I would compare reach severity strategic alignment confidence and implementation effort before selecting the first segment.',
+        1000, 'answer'
+      ),
+      (
+        ${input.sessionId}::uuid, 'interviewer', ${at(240_000)}::timestamptz,
+        ${at(241_000)}::timestamptz,
+        'How would you know whether the product change worked?',
+        1000, 'follow_up'
+      ),
+      (
+        ${input.sessionId}::uuid, 'user', ${at(301_000)}::timestamptz,
+        ${at(302_000)}::timestamptz,
+        'I would measure retained customer value with adoption quality and operational guardrail metrics explaining movement in the outcome.',
+        1000, 'answer'
+      )
+  `;
+  await sql`
+    INSERT INTO transcript_runtime_writer (
+      session_id, generation, contract_version, room_name, writer_id,
+      registered_at
+    ) VALUES (
+      ${input.sessionId}::uuid, 1, 1, ${input.roomName}, ${input.writerId},
+      ${input.startedAt}::timestamptz
+    )
+  `;
+  await sql`
+    INSERT INTO transcript_runtime_settlement (
+      session_id, writer_generation, contract_version, room_name, writer_id,
+      state, settled_at
+    ) VALUES (
+      ${input.sessionId}::uuid, 1, 1, ${input.roomName}, ${input.writerId},
+      'settled', ${input.settledAt}::timestamptz
+    )
+  `;
+}
+
+async function verifyRuntimeWriterBackfill(sql: postgres.Sql) {
+  const writers = await sql<
+    { writer_id: string; generation: number; registered_at: Date }[]
+  >`
+    SELECT writer_id, generation, registered_at
+    FROM transcript_runtime_writer
+    WHERE session_id = ${SESSION_RUNTIME_WRITER_BACKFILL}::uuid
+    ORDER BY generation
+  `;
+  assert.deepEqual(
+    writers.map(({ writer_id, generation }) => ({ writer_id, generation })),
+    [
+      { writer_id: "backfill-writer-a", generation: 1 },
+      { writer_id: "backfill-writer-b", generation: 2 },
+    ]
+  );
+  const evidence = await sql<
+    { writer_id: string; writer_generation: number }[]
+  >`
+    SELECT writer_id, writer_generation
+    FROM transcript_turn
+    WHERE session_id = ${SESSION_RUNTIME_WRITER_BACKFILL}::uuid
+    UNION ALL
+    SELECT writer_id, writer_generation
+    FROM transcript_interruption_marker
+    WHERE session_id = ${SESSION_RUNTIME_WRITER_BACKFILL}::uuid
+    ORDER BY writer_id, writer_generation
+  `;
+  assert.deepEqual(
+    evidence.map(({ writer_id, writer_generation }) => ({
+      writer_id,
+      writer_generation,
+    })),
+    [
+      { writer_id: "backfill-writer-a", writer_generation: 1 },
+      { writer_id: "backfill-writer-b", writer_generation: 2 },
+      { writer_id: "backfill-writer-b", writer_generation: 2 },
+    ]
+  );
 }
 
 async function seedReconnectCutoffOwnerFixtures(sql: postgres.Sql) {
@@ -1625,7 +1792,6 @@ async function verifyAtomicSessionCompletion(
     { enforceInterviewDeadlineWorkflow },
     { dispatchFeedbackGenerationWorkflow },
     { dispatchInterviewSessionSettlement, settleInterviewSessionWorkflow },
-    { SessionTier },
     schema,
   ] = await Promise.all([
     import("../lib/db/end-interview-session"),
@@ -1635,13 +1801,13 @@ async function verifyAtomicSessionCompletion(
     import("../lib/workflows/enforce-interview-deadline"),
     import("../lib/workflows/dispatch-feedback-generation"),
     import("../lib/workflows/end-interview-session"),
-    import("../lib/evaluation/session-validator"),
     import("../lib/db/schema"),
   ]);
   await sql`
     INSERT INTO interview_session (
       id, user_id, round_type, mode, status,
-      lifecycle_state, lifecycle_version, activated_at
+      lifecycle_state, lifecycle_version, activated_at, started_at,
+      livekit_room_name
     ) VALUES (
       ${SESSION_ATOMIC_END}::uuid,
       ${USER_ONE}::uuid,
@@ -1650,23 +1816,18 @@ async function verifyAtomicSessionCompletion(
       'in_progress',
       'active',
       1,
-      now()
+      now(),
+      '2026-07-10T05:00:00.000Z'::timestamptz,
+      'atomic-end-room'
     )
   `;
-
-  const validation = {
-    tier: SessionTier.FULL,
-    isValid: true,
-    stats: {
-      totalTurns: 20,
-      userTurns: 10,
-      totalWords: 800,
-      durationSeconds: 1200,
-      substantiveResponses: 8,
-    },
-    reasons: [],
-    recommendations: ["Practice another product-sense response."],
-  };
+  await seedValidTranscriptIntegrityFixture(sql, {
+    sessionId: SESSION_ATOMIC_END,
+    roomName: "atomic-end-room",
+    writerId: "atomic-end-writer",
+    startedAt: "2026-07-10T05:00:00.000Z",
+    settledAt: "2026-07-10T05:45:00.000Z",
+  });
   const clients = Array.from({ length: 10 }, () =>
     postgres(databaseUrl, { max: 1, prepare: false })
   );
@@ -1681,13 +1842,11 @@ async function verifyAtomicSessionCompletion(
                 sessionId: SESSION_ATOMIC_END,
                 actor: { type: "user", userId: USER_ONE },
                 requestedTerminalReason: "user_end",
-                validationOverride: validation,
               }
             : {
                 sessionId: SESSION_ATOMIC_END,
                 actor: { type: "system", source: "hard_deadline" },
                 requestedTerminalReason: "time_limit",
-                validationOverride: validation,
               },
           database
         )
@@ -1833,7 +1992,6 @@ async function verifyAtomicSessionCompletion(
           sessionId: SESSION_REPAIR,
           actor: { type: "user", userId: USER_ONE },
           requestedTerminalReason: "user_end",
-          validationOverride: validation,
         },
         databases[0]!
       );
@@ -1862,19 +2020,6 @@ async function verifyAtomicSessionCompletion(
         'interview-deadline-insufficient-room'
       )
     `;
-      const insufficientValidation = {
-        tier: SessionTier.INSUFFICIENT,
-        isValid: false,
-        stats: {
-          totalTurns: 2,
-          userTurns: 1,
-          totalWords: 12,
-          durationSeconds: 30,
-          substantiveResponses: 0,
-        },
-        reasons: ["Insufficient durable interview signal"],
-        recommendations: ["Complete another interview."],
-      };
       let roomDeleteAttempts = 0;
       let feedbackEvents = 0;
       let signalDeleteStarted: (() => void) | undefined;
@@ -1972,7 +2117,6 @@ async function verifyAtomicSessionCompletion(
           sessionId: SESSION_DEADLINE_INSUFFICIENT,
           actor: { type: "user", userId: USER_ONE },
           requestedTerminalReason: "user_end",
-          validationOverride: validation,
         },
         databases[1]!
       );
@@ -2060,12 +2204,18 @@ async function verifyAtomicSessionCompletion(
         '{"duration":30}'::jsonb
       )
     `;
+      await seedValidTranscriptIntegrityFixture(sql, {
+        sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
+        roomName: "interview-deadline-dispatch-recovery-room",
+        writerId: "deadline-dispatch-recovery-writer",
+        startedAt: "2026-07-10T06:00:00.000Z",
+        settledAt: "2026-07-10T06:30:00.000Z",
+      });
       const eligibleDeadline = await finalizeInterviewSession(
         {
           sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
           actor: { type: "system", source: "hard_deadline" },
           requestedTerminalReason: "time_limit",
-          validationOverride: validation,
         },
         databases[0]!
       );
@@ -2082,7 +2232,6 @@ async function verifyAtomicSessionCompletion(
           sessionId: SESSION_DEADLINE_DISPATCH_RECOVERY,
           actor: { type: "user", userId: USER_ONE },
           requestedTerminalReason: "user_end",
-          validationOverride: validation,
         },
         databases[1]!
       );
@@ -2252,12 +2401,18 @@ async function verifyAtomicSessionCompletion(
         'interview-deadline-user-end-room'
       )
     `;
+      await seedValidTranscriptIntegrityFixture(sql, {
+        sessionId: SESSION_DEADLINE_USER_END,
+        roomName: "interview-deadline-user-end-room",
+        writerId: "deadline-user-end-writer",
+        startedAt: "2026-07-10T06:00:00.000Z",
+        settledAt: "2026-07-10T06:30:00.000Z",
+      });
       const userEndWinner = await finalizeInterviewSession(
         {
           sessionId: SESSION_DEADLINE_USER_END,
           actor: { type: "user", userId: USER_ONE },
           requestedTerminalReason: "user_end",
-          validationOverride: validation,
         },
         databases[0]!
       );
@@ -2267,7 +2422,6 @@ async function verifyAtomicSessionCompletion(
           sessionId: SESSION_DEADLINE_USER_END,
           actor: { type: "system", source: "hard_deadline" },
           requestedTerminalReason: "time_limit",
-          validationOverride: insufficientValidation,
         },
         databases[1]!
       );
@@ -2295,6 +2449,8 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       createDrizzleTranscriptIngestStore,
       createDrizzleTranscriptInterruptionMarkerStore,
       createDrizzleTranscriptRuntimeSettlementStore,
+      createDrizzleTranscriptRuntimeWriterStore,
+      getTranscriptRuntimeSettlementReadiness,
     },
     { finalizeInterviewSession },
     { claimInterviewDeadline },
@@ -2411,9 +2567,48 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
   const settlementStore = createDrizzleTranscriptRuntimeSettlementStore(
     drizzle(clients[0]!, { schema })
   );
+  const writerStore = createDrizzleTranscriptRuntimeWriterStore(
+    drizzle(clients[0]!, { schema })
+  );
+  for (const registration of [
+    {
+      session_id: SESSION_ONE,
+      room_name: "transcript-room-one",
+      writer_id: "migration-writer",
+    },
+    {
+      session_id: SESSION_TRANSCRIPT_TWO,
+      room_name: "transcript-room-two",
+      writer_id: "terminal-race-writer",
+    },
+    {
+      session_id: SESSION_TRANSCRIPT_DEADLINE,
+      room_name: "transcript-deadline-room",
+      writer_id: "deadline-writer",
+    },
+    {
+      session_id: SESSION_TRANSCRIPT_DEADLINE_INVALID,
+      room_name: "transcript-deadline-invalid-room",
+      writer_id: "deadline-invalid-writer",
+    },
+    {
+      session_id: SESSION_TRANSCRIPT_MARKER,
+      room_name: "transcript-marker-room",
+      writer_id: "migration-marker-writer",
+    },
+  ]) {
+    const registered = await writerStore.register({
+      contract_version: 1,
+      event_type: "runtime_writer_registration",
+      ...registration,
+      registered_at: "2026-07-10T05:00:00.000Z",
+    });
+    assert.equal(registered.ok, true);
+  }
   const event = createTranscriptEvent({
     event_id: "migration-writer:message-1",
     writer_id: "migration-writer",
+    writer_generation: 1,
     sequence: 1,
     session_id: SESSION_ONE,
     room_name: "transcript-room-one",
@@ -2496,7 +2691,7 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       SELECT event_id, text, sequence::text
       FROM transcript_turn
       WHERE session_id = ${SESSION_ONE}::uuid AND event_id IS NOT NULL
-      ORDER BY started_at, writer_id, sequence, event_id, id
+      ORDER BY started_at, writer_generation, writer_id, sequence, event_id, id
     `;
     assert.deepEqual(
       stored.map(({ event_id }) => event_id),
@@ -2504,6 +2699,128 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
     );
     assert.equal(stored[0]?.text, stored[1]?.text);
     assert.equal(stored[1]?.sequence, String(Number.MAX_SAFE_INTEGER));
+
+    const replacementRegistration = {
+      contract_version: 1 as const,
+      event_type: "runtime_writer_registration" as const,
+      session_id: SESSION_ONE,
+      room_name: "transcript-room-one",
+      writer_id: "a-replacement-writer",
+      registered_at: "2026-07-10T05:09:00.000Z",
+    };
+    const replacement = await writerStore.register(replacementRegistration);
+    assert.equal(replacement.ok && replacement.disposition, "created");
+    assert.equal(replacement.ok && replacement.writerGeneration, 2);
+    const replacementEvent = createTranscriptEvent({
+      ...event,
+      event_id: "a-replacement-writer:message-1",
+      writer_id: "a-replacement-writer",
+      writer_generation: 2,
+      sequence: 1,
+      started_at: "2026-07-10T05:00:05.000Z",
+      ended_at: "2026-07-10T05:00:09.000Z",
+    });
+    assert.equal(
+      (
+        await stores[0]!.persist({
+          principal: { kind: "voice_runtime" },
+          event: replacementEvent,
+        })
+      ).ok,
+      true
+    );
+    const generationOrdered = await sql<{ event_id: string }[]>`
+      SELECT event_id
+      FROM transcript_turn
+      WHERE session_id = ${SESSION_ONE}::uuid AND event_id IS NOT NULL
+      ORDER BY started_at, writer_generation, writer_id, sequence, event_id, id
+    `;
+    assert.deepEqual(
+      generationOrdered.map(({ event_id }) => event_id),
+      [
+        "migration-writer:message-1",
+        "migration-writer:message-2",
+        "a-replacement-writer:message-1",
+      ]
+    );
+    assert.deepEqual(
+      await writerStore.register({
+        contract_version: 1,
+        event_type: "runtime_writer_registration",
+        session_id: SESSION_ONE,
+        room_name: "transcript-room-one",
+        writer_id: "migration-writer",
+        registered_at: "2026-07-10T05:00:00.000Z",
+      }),
+      { ok: false, reason: "writer_fenced" }
+    );
+    const fencedWriterReplay = await stores[0]!.persist({
+      principal: { kind: "voice_runtime" },
+      event,
+    });
+    assert.equal(
+      fencedWriterReplay.ok && fencedWriterReplay.disposition,
+      "existing"
+    );
+    assert.deepEqual(
+      await stores[0]!.persist({
+        principal: { kind: "voice_runtime" },
+        event: createTranscriptEvent({
+          ...event,
+          event_id: "migration-writer:message-after-replacement",
+          sequence: 3,
+          started_at: "2026-07-10T05:09:01.000Z",
+          ended_at: "2026-07-10T05:09:02.000Z",
+          audio_duration_ms: 1_000,
+        }),
+      }),
+      { ok: false, reason: "writer_fenced" }
+    );
+    assert.equal(
+      (
+        await settlementStore.persist({
+          contract_version: 1,
+          event_type: "runtime_settlement",
+          session_id: SESSION_ONE,
+          room_name: "transcript-room-one",
+          writer_id: "migration-writer",
+          writer_generation: 1,
+          state: "degraded",
+          settled_at: "2026-07-10T05:10:00.000Z",
+        })
+      ).ok,
+      true
+    );
+    assert.equal(
+      (
+        await settlementStore.persist({
+          contract_version: 1,
+          event_type: "runtime_settlement",
+          session_id: SESSION_ONE,
+          room_name: "transcript-room-one",
+          writer_id: "a-replacement-writer",
+          writer_generation: 2,
+          state: "settled",
+          settled_at: "2026-07-10T05:11:00.000Z",
+        })
+      ).ok,
+      true
+    );
+    assert.deepEqual(
+      await getTranscriptRuntimeSettlementReadiness(
+        SESSION_ONE,
+        drizzle(clients[0]!, { schema })
+      ),
+      {
+        writerCount: 2,
+        settledCount: 1,
+        degradedCount: 1,
+        missingCount: 0,
+        currentWriterGeneration: 2,
+        currentWriterState: "settled",
+        ready: false,
+      }
+    );
 
     const terminalRaceEvent = createTranscriptEvent({
       ...event,
@@ -2576,6 +2893,7 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       createTranscriptEvent({
         event_id: `deadline-writer:message-${index + 1}`,
         writer_id: "deadline-writer",
+        writer_generation: 1,
         sequence: index + 1,
         session_id: SESSION_TRANSCRIPT_DEADLINE,
         room_name: "transcript-deadline-room",
@@ -2664,16 +2982,28 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       event_id: "deadline-writer:message-6",
       sequence: 6,
       speaker: "interviewer",
-      text: "This event arrived after the hard-deadline fence.",
+      text: "This pre-cutoff event arrived during bounded deadline cleanup.",
       started_at: "2026-07-10T05:06:00.000Z",
       ended_at: "2026-07-10T05:06:01.000Z",
     });
+    const postClaimIngest = await stores[5]!.persist({
+      principal: { kind: "voice_runtime" },
+      event: postClaimEvent,
+    });
+    assert.equal(postClaimIngest.ok && postClaimIngest.disposition, "created");
     assert.deepEqual(
       await stores[5]!.persist({
         principal: { kind: "voice_runtime" },
-        event: postClaimEvent,
+        event: createTranscriptEvent({
+          ...postClaimEvent,
+          event_id: "deadline-writer:message-7",
+          sequence: 7,
+          started_at: "2026-07-10T05:29:59.500Z",
+          ended_at: "2026-07-10T05:30:00.001Z",
+          audio_duration_ms: 501,
+        }),
       }),
-      { ok: false, reason: "session_closed" }
+      { ok: false, reason: "event_time_out_of_bounds" }
     );
     assert.equal(
       (
@@ -2683,8 +3013,9 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
           session_id: SESSION_TRANSCRIPT_DEADLINE,
           room_name: "transcript-deadline-room",
           writer_id: "deadline-writer",
+          writer_generation: 1,
           state: "settled",
-          settled_at: "2026-07-10T05:05:03.000Z",
+          settled_at: "2026-07-10T05:30:00.000Z",
         })
       ).ok,
       true
@@ -2702,7 +3033,7 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
     if (deadlineCompletion.ok) {
       assert.equal(deadlineCompletion.lifecycle.state, "completed");
       assert.equal(deadlineCompletion.lifecycle.terminalReason, "time_limit");
-      assert.equal(deadlineCompletion.stats.totalTurns, 5);
+      assert.equal(deadlineCompletion.stats.totalTurns, 6);
       assert.equal(deadlineCompletion.tier, "partial");
       assert.equal(deadlineCompletion.feedback.status, "pending");
       const replay = await stores[7]!.persist({
@@ -2735,8 +3066,9 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
           session_id: SESSION_TRANSCRIPT_DEADLINE_INVALID,
           room_name: "transcript-deadline-invalid-room",
           writer_id: "deadline-invalid-writer",
+          writer_generation: 1,
           state: "settled",
-          settled_at: "2026-07-10T05:00:01.000Z",
+          settled_at: "2026-07-10T05:30:00.000Z",
         })
       ).ok,
       true
@@ -2778,6 +3110,7 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       event_type: "integrity_unavailable" as const,
       event_id: "migration-writer:speech-unheard:unavailable",
       writer_id: "migration-marker-writer",
+      writer_generation: 1,
       sequence: 1,
       session_id: SESSION_TRANSCRIPT_MARKER,
       room_name: "transcript-marker-room",
@@ -2816,6 +3149,7 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       session_id: SESSION_TRANSCRIPT_MARKER,
       room_name: "transcript-marker-room",
       writer_id: "migration-marker-writer",
+      writer_generation: 1,
       state: "degraded" as const,
       settled_at: "2026-07-10T05:02:32.000Z",
     };
@@ -2892,12 +3226,14 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
   const [
     { authorizeInterviewSessionEnd, finalizeInterviewSession },
     { createDrizzleInterviewReconnectStore },
+    { getTranscriptRuntimeSettlementReadiness },
     { endInterviewSessionWorkflow },
     { enforceInterviewReconnectWorkflow },
     schema,
   ] = await Promise.all([
     import("../lib/db/end-interview-session"),
     import("../lib/db/session-reconnects"),
+    import("../lib/db/transcripts"),
     import("../lib/workflows/end-interview-session"),
     import("../lib/workflows/enforce-interview-reconnect"),
     import("../lib/db/schema"),
@@ -2989,30 +3325,46 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
           '2026-07-10T07:52:00.000Z'::timestamptz,
           '2026-07-10T07:52:01.000Z'::timestamptz)
     `;
+    await sql`
+      INSERT INTO transcript_runtime_writer (
+        session_id, generation, contract_version, room_name, writer_id,
+        registered_at
+      ) VALUES (
+        ${testCase.sessionId}::uuid,
+        1,
+        1,
+        ${roomName},
+        ${`reconnect-integrity-writer-${caseIndex}`},
+        '2026-07-10T07:45:00.000Z'::timestamptz
+      )
+    `;
     if (testCase.settlement) {
       await sql`
         INSERT INTO transcript_runtime_settlement (
-          session_id, contract_version, room_name, writer_id, state, settled_at
+          session_id, writer_generation, contract_version, room_name,
+          writer_id, state, settled_at
         ) VALUES (
           ${testCase.sessionId}::uuid,
+          1,
           1,
           ${roomName},
           ${`reconnect-integrity-writer-${caseIndex}`},
           ${testCase.settlement},
-          '2026-07-10T08:00:01.000Z'::timestamptz
+          ${deadlineAt.toISOString()}::timestamptz
         )
       `;
     }
     if (testCase.interruption) {
       await sql`
         INSERT INTO transcript_interruption_marker (
-          session_id, contract_version, event_id, writer_id, sequence,
-          room_name, speaker, occurred_at, reason
+          session_id, contract_version, event_id, writer_id,
+          writer_generation, sequence, room_name, speaker, occurred_at, reason
         ) VALUES (
           ${testCase.sessionId}::uuid,
           1,
           ${`reconnect-integrity-marker-${caseIndex}`},
           ${`reconnect-integrity-writer-${caseIndex}`},
+          1,
           99,
           ${roomName},
           'interviewer',
@@ -3042,7 +3394,15 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
           provider: "livekit",
           data: { roomName, disposition: "already_absent" as const },
         }),
-        waitUntil: async () => undefined,
+        getSettlementReadiness: () =>
+          getTranscriptRuntimeSettlementReadiness(testCase.sessionId, database),
+        requestRuntimeSettlement: async () => ({
+          ok: true,
+          provider: "livekit",
+          data: {},
+        }),
+        waitForRuntimeSettlement: () =>
+          getTranscriptRuntimeSettlementReadiness(testCase.sessionId, database),
         endSession: (sessionId) =>
           endInterviewSessionWorkflow(
             {
@@ -3198,7 +3558,7 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 25);
+  assert.equal(tables.length, 26);
   assert.ok(
     tables.some(
       ({ table_name }) => table_name === "transcript_interruption_marker"
@@ -3208,6 +3568,9 @@ async function verifyDatabase(sql: postgres.Sql) {
     tables.some(
       ({ table_name }) => table_name === "transcript_runtime_settlement"
     )
+  );
+  assert.ok(
+    tables.some(({ table_name }) => table_name === "transcript_runtime_writer")
   );
   assert.ok(
     tables.some(
@@ -3333,12 +3696,12 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
       AND table_name = 'transcript_turn'
       AND column_name IN (
-        'contract_version', 'event_id', 'writer_id', 'sequence',
+        'contract_version', 'event_id', 'writer_id', 'writer_generation', 'sequence',
         'room_name', 'delivery_state'
       )
     ORDER BY column_name
   `;
-  assert.equal(transcriptColumns.length, 6);
+  assert.equal(transcriptColumns.length, 7);
 
   const transcriptConstraints = await sql<{ conname: string }[]>`
     SELECT conname
@@ -3347,11 +3710,12 @@ async function verifyDatabase(sql: postgres.Sql) {
       'transcript_turn_contract_version_check',
       'transcript_turn_sequence_check',
       'transcript_turn_delivery_state_check',
-      'transcript_turn_canonical_identity_check'
+      'transcript_turn_canonical_identity_check',
+      'transcript_turn_runtime_writer_fk'
     )
     ORDER BY conname
   `;
-  assert.equal(transcriptConstraints.length, 4);
+  assert.equal(transcriptConstraints.length, 5);
 
   const transcriptIndexes = await sql<{ indexname: string }[]>`
     SELECT indexname
@@ -3373,7 +3737,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND table_name = 'transcript_interruption_marker'
     ORDER BY ordinal_position
   `;
-  assert.equal(markerColumns.length, 11);
+  assert.equal(markerColumns.length, 12);
 
   const markerConstraints = await sql<{ conname: string }[]>`
     SELECT conname
@@ -3382,11 +3746,13 @@ async function verifyDatabase(sql: postgres.Sql) {
       'transcript_interruption_marker_contract_check',
       'transcript_interruption_marker_speaker_check',
       'transcript_interruption_marker_sequence_check',
-      'transcript_interruption_marker_reason_check'
+      'transcript_interruption_marker_reason_check',
+      'transcript_interruption_marker_writer_generation_check',
+      'transcript_interruption_marker_runtime_writer_fk'
     )
     ORDER BY conname
   `;
-  assert.equal(markerConstraints.length, 4);
+  assert.equal(markerConstraints.length, 6);
 
   const markerIndexes = await sql<{ indexname: string }[]>`
     SELECT indexname
@@ -3408,18 +3774,20 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND table_name = 'transcript_runtime_settlement'
     ORDER BY ordinal_position
   `;
-  assert.equal(settlementColumns.length, 7);
+  assert.equal(settlementColumns.length, 8);
 
   const settlementConstraints = await sql<{ conname: string }[]>`
     SELECT conname
     FROM pg_constraint
     WHERE conname IN (
       'transcript_runtime_settlement_contract_check',
-      'transcript_runtime_settlement_state_check'
+      'transcript_runtime_settlement_state_check',
+      'transcript_runtime_settlement_writer_generation_check',
+      'transcript_runtime_settlement_writer_fk'
     )
     ORDER BY conname
   `;
-  assert.equal(settlementConstraints.length, 2);
+  assert.equal(settlementConstraints.length, 4);
 
   const settlementIndexes = await sql<{ indexname: string }[]>`
     SELECT indexname
@@ -3428,6 +3796,41 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND indexname = 'transcript_runtime_settlement_room_settled_at_idx'
   `;
   assert.equal(settlementIndexes.length, 1);
+
+  const writerColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'transcript_runtime_writer'
+    ORDER BY ordinal_position
+  `;
+  assert.equal(writerColumns.length, 7);
+
+  const writerConstraints = await sql<{ conname: string }[]>`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname IN (
+      'transcript_runtime_writer_contract_check',
+      'transcript_runtime_writer_generation_check',
+      'transcript_runtime_writer_pkey',
+      'transcript_runtime_writer_session_id_interview_session_id_fk'
+    )
+    ORDER BY conname
+  `;
+  assert.equal(writerConstraints.length, 4);
+
+  const writerIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'transcript_runtime_writer_session_writer_idx',
+        'transcript_runtime_writer_identity_idx',
+        'transcript_runtime_writer_room_generation_idx'
+      )
+    ORDER BY indexname
+  `;
+  assert.equal(writerIndexes.length, 3);
 
   const tierConstraint = await sql<{ definition: string }[]>`
     SELECT pg_get_constraintdef(oid) AS definition
@@ -3471,7 +3874,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 25);
+  assert.equal(rls.length, 26);
   assert.ok(rls.every((table) => table.enabled));
 
   const unsafePolicies = await sql<{ count: number }[]>`
@@ -3484,6 +3887,11 @@ async function verifyDatabase(sql: postgres.Sql) {
         OR (tablename = 'feedback' AND cmd IN ('INSERT', 'UPDATE', 'ALL')
           AND roles && ARRAY['public', 'anon', 'authenticated']::name[])
         OR (tablename = 'transcript_turn' AND cmd IN ('INSERT', 'UPDATE', 'ALL')
+          AND roles && ARRAY['public', 'anon', 'authenticated']::name[])
+        OR (tablename IN (
+              'transcript_runtime_writer',
+              'transcript_runtime_settlement'
+            ) AND cmd IN ('SELECT', 'INSERT', 'UPDATE', 'ALL')
           AND roles && ARRAY['public', 'anon', 'authenticated']::name[])
       )
   `;
@@ -3500,6 +3908,9 @@ async function verifyDatabase(sql: postgres.Sql) {
       auth_settlement_select: boolean;
       auth_settlement_insert: boolean;
       service_settlement_insert: boolean;
+      auth_writer_select: boolean;
+      auth_writer_insert: boolean;
+      service_writer_insert: boolean;
       auth_limiter_execute: boolean;
       auth_limiter_select: boolean;
       auth_limiter_insert: boolean;
@@ -3545,6 +3956,21 @@ async function verifyDatabase(sql: postgres.Sql) {
         'public.transcript_runtime_settlement',
         'INSERT'
       ) AS service_settlement_insert,
+      has_table_privilege(
+        'authenticated',
+        'public.transcript_runtime_writer',
+        'SELECT'
+      ) AS auth_writer_select,
+      has_table_privilege(
+        'authenticated',
+        'public.transcript_runtime_writer',
+        'INSERT'
+      ) AS auth_writer_insert,
+      has_table_privilege(
+        'service_role',
+        'public.transcript_runtime_writer',
+        'INSERT'
+      ) AS service_writer_insert,
       has_function_privilege(
         'authenticated',
         'public.consume_livekit_reconnect_rate_limit(uuid)',
@@ -3586,6 +4012,9 @@ async function verifyDatabase(sql: postgres.Sql) {
     auth_settlement_select: false,
     auth_settlement_insert: false,
     service_settlement_insert: true,
+    auth_writer_select: false,
+    auth_writer_insert: false,
+    service_writer_insert: true,
     auth_limiter_execute: false,
     auth_limiter_select: false,
     auth_limiter_insert: false,
@@ -4278,14 +4707,28 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     )
   `;
   await sql`
+    INSERT INTO transcript_runtime_writer (
+      session_id, generation, contract_version, room_name, writer_id,
+      registered_at
+    ) VALUES (
+      ${SESSION_DELETION_MARKER}::uuid,
+      1,
+      1,
+      'deletion-marker-room',
+      'deletion-marker-writer',
+      now()
+    )
+  `;
+  await sql`
     INSERT INTO transcript_interruption_marker (
-      session_id, contract_version, event_id, writer_id, sequence,
-      room_name, speaker, occurred_at, reason
+      session_id, contract_version, event_id, writer_id, writer_generation,
+      sequence, room_name, speaker, occurred_at, reason
     ) VALUES (
       ${SESSION_DELETION_MARKER}::uuid,
       1,
       'deletion-marker-event',
       'deletion-marker-writer',
+      1,
       1,
       'deletion-marker-room',
       'interviewer',
@@ -4295,9 +4738,11 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
   `;
   await sql`
     INSERT INTO transcript_runtime_settlement (
-      session_id, contract_version, room_name, writer_id, state, settled_at
+      session_id, writer_generation, contract_version, room_name, writer_id,
+      state, settled_at
     ) VALUES (
       ${SESSION_DELETION_MARKER}::uuid,
+      1,
       1,
       'deletion-marker-room',
       'deletion-marker-writer',
@@ -4457,6 +4902,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       redacted_error: string | null;
       interruption_markers: number;
       runtime_settlements: number;
+      runtime_writers: number;
     }[]
   >`
     SELECT
@@ -4480,6 +4926,9 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       (SELECT count(*)::int FROM transcript_runtime_settlement
         WHERE session_id = ${SESSION_DELETION_MARKER}::uuid)
         AS runtime_settlements,
+      (SELECT count(*)::int FROM transcript_runtime_writer
+        WHERE session_id = ${SESSION_DELETION_MARKER}::uuid)
+        AS runtime_writers,
       (SELECT count(*)::int FROM account_deletion_request
         CROSS JOIN LATERAL jsonb_array_elements(stripe_subjects) subject
         WHERE user_id = ${USER_TWO}::uuid
@@ -4501,6 +4950,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     tombstone_exists: true,
     interruption_markers: 0,
     runtime_settlements: 0,
+    runtime_writers: 0,
     raw_provider_ids: 0,
     provider_fingerprints: 5,
     deletion_status: "completed",

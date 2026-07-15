@@ -391,7 +391,7 @@ This tests all status transitions and edge cases.
 
 - **Feedback**: `GET /api/feedback/[sessionId]` - Polls the terminally scheduled feedback state
 - **Session Status**: `GET /api/session/[id]` - Check if session is ready for feedback
-- **Transcript**: `GET /api/transcript/[sessionId]` - View raw transcript before feedback
+- **Transcript**: `GET /api/session/[sessionId]/transcript` - Read the owner-authorized transcript with private, no-store caching
 
 ---
 

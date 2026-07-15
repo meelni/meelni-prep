@@ -20,10 +20,14 @@ Keep the relaunch feature default-off. With an authenticated Preview account:
 2. Confirm the API response and room metadata carry the same canonical `deadline_at` derived from persisted `started_at`.
 3. Confirm reconnect succeeds one millisecond before the deadline and is denied at the deadline.
 4. Keep the browser visible for one run and background/close it for another.
-5. At the deadline, confirm the session atomically stores terminal truth plus
-   `deadline_room_cleanup_status=pending` before room deletion starts, then room
-   participants are disconnected and cleanup is acknowledged before feedback
-   dispatch. Feedback is queued or skipped according to durable signal.
+5. At semantic cutoff `D`, confirm audio input and output stop, no evidence at
+   `D + 1ms` is accepted, and each registered generation durably records
+   `settled_at = D`. The session atomically stores terminal truth plus
+   `deadline_room_cleanup_status=pending`. Room deletion starts only after
+   durable settlement acknowledgement or the bounded wait records a
+   missing/degraded result; cleanup must be acknowledged before feedback
+   dispatch. Missing or degraded settlement fails closed without retaining the
+   room indefinitely.
 6. Replay the deadline event and confirm the stored terminal result is unchanged.
 7. Exercise a room-delete failure in a safe test environment; confirm terminal
    truth commits, `feedbackReady` remains false, feedback polling reports
@@ -70,6 +74,7 @@ Alert on:
   or remain `feedbackReady=false` after retries are exhausted;
 - `session_deadline_unavailable` reads or invalid-session quarantine events;
 - start failures caused by missing deadline scheduling acknowledgement.
+- deadline-owned rooms deleted before writer-scoped settlement acknowledgement.
 
 Never log tokens, credentials, transcript text, customer identifiers, or room metadata payloads. Use redacted aggregate counts and safe correlation suffixes.
 

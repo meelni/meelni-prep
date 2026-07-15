@@ -3,6 +3,7 @@
 import React from "react";
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   onTranscriptUpdate: null as
     | null
     | ((turn: Record<string, unknown>) => Promise<void> | void),
+  transcriptTurns: [] as Array<Record<string, unknown>>,
   push: vi.fn(),
   replace: vi.fn(),
 }));
@@ -104,7 +106,10 @@ vi.mock("./components/timer-display", () => ({
 }));
 
 vi.mock("./components/transcript-panel", () => ({
-  TranscriptPanel: () => null,
+  TranscriptPanel: ({ turns }: { turns: Array<Record<string, unknown>> }) => {
+    mocks.transcriptTurns = turns;
+    return null;
+  },
 }));
 
 vi.mock("./components/interview-controls", () => ({
@@ -137,6 +142,7 @@ describe("active interview page lifecycle", () => {
     mocks.authUser = { id: "owner-a" };
     mocks.flush.mockResolvedValue({ settled: true, pending: 0, failed: 0 });
     mocks.onTranscriptUpdate = null;
+    mocks.transcriptTurns = [];
     vi.stubGlobal("fetch", vi.fn(createSessionResponse));
   });
 
@@ -182,7 +188,26 @@ describe("active interview page lifecycle", () => {
         const url = String(input);
         if (url === "/api/session/start") return createSessionResponse();
         if (url === `/api/session/${SESSION_ID}/transcript`) {
-          return Response.json({ turns: [] });
+          return Response.json({
+            turns: [
+              {
+                id: "f47ac10b-58cc-4372-a567-0e02b2c3d480",
+                eventId: "event-2",
+                writerId: "writer-a",
+                writerGeneration: 2,
+                sequence: 1,
+                sessionId: SESSION_ID,
+                roomName: "interview-room",
+                speaker: "interviewer",
+                text: "Durable generation two",
+                startedAt: "2099-07-15T21:00:00.000Z",
+                endedAt: "2099-07-15T21:00:01.000Z",
+                audioMs: 1000,
+                section: "product_sense",
+                deliveryState: "delivered",
+              },
+            ],
+          });
         }
         throw new Error(`Unexpected request: ${url} ${init?.method ?? "GET"}`);
       }
@@ -196,25 +221,50 @@ describe("active interview page lifecycle", () => {
     await mocks.onTranscriptUpdate?.({
       persistable: true,
       eventId: "event-1",
+      rowId: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      writerId: "writer-z",
+      writerGeneration: 1,
+      sequence: 1,
       sessionId: SESSION_ID,
       speaker: "interviewer",
       text: "Synthetic fixture",
       timestamp: new Date("2099-07-15T21:00:00.000Z"),
+      startedAt: new Date("2099-07-15T21:00:00.000Z"),
       event: {
-        version: 2,
-        eventId: "event-1",
-        writerId: "writer-1",
+        contract_version: 2,
+        event_id: "event-1",
+        writer_id: "writer-z",
+        writer_generation: 1,
         sequence: 1,
-        sessionId: SESSION_ID,
-        roomName: "interview-room",
+        session_id: SESSION_ID,
+        room_name: "interview-room",
         speaker: "interviewer",
         text: "Synthetic fixture",
-        startedAt: "2099-07-15T21:00:00.000Z",
-        endedAt: "2099-07-15T21:00:01.000Z",
-        audioMs: 1000,
-        deliveryState: "delivered",
+        is_final: true,
+        started_at: "2099-07-15T21:00:00.000Z",
+        ended_at: "2099-07-15T21:00:01.000Z",
+        audio_duration_ms: 1000,
+        section: "product_sense",
+        delivery_state: "delivered",
       },
     });
+
+    await waitFor(() =>
+      expect(mocks.transcriptTurns.map((turn) => turn.text)).toEqual([
+        "Synthetic fixture",
+        "Durable generation two",
+      ])
+    );
+    expect(mocks.transcriptTurns).toEqual([
+      expect.objectContaining({
+        rowId: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        writerGeneration: 1,
+      }),
+      expect.objectContaining({
+        rowId: "f47ac10b-58cc-4372-a567-0e02b2c3d480",
+        writerGeneration: 2,
+      }),
+    ]);
 
     expect(
       request.mock.calls.some(
@@ -250,17 +300,52 @@ describe("active interview page lifecycle", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
 
-    expect(await screen.findByRole("status", { name: "" })).toHaveAttribute(
+    const completionHeading = await screen.findByRole("heading", {
+      name: "Confirming interview completion",
+    });
+    expect(completionHeading.closest('[role="status"]')).toHaveAttribute(
       "aria-busy",
       "true"
     );
-    expect(
-      screen.getByRole("heading", { name: "Confirming interview completion" })
-    ).toBeInTheDocument();
     expect(screen.getByText(/interview cannot resume/i)).toBeInTheDocument();
     expect(screen.queryByTestId("livekit-room")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(mocks.livekitUnmounted).toHaveBeenCalledTimes(1);
+  });
+
+  it("terminates transcript verification as an actionable alert when settlement rejects", async () => {
+    let rejectSettlement: ((reason: Error) => void) | undefined;
+    mocks.flush.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSettlement = reject;
+        })
+    );
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open end confirmation" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
+
+    const verifying = await screen.findByRole("status");
+    expect(verifying).toHaveAttribute("aria-live", "polite");
+    expect(verifying).toHaveTextContent("Verifying");
+    expect(screen.getByText(/checking that the latest turns/i)).toBeVisible();
+
+    await act(async () => {
+      rejectSettlement?.(new Error("synthetic settlement failure"));
+    });
+
+    const degraded = await screen.findByRole("alert");
+    expect(degraded).toHaveAttribute("aria-live", "assertive");
+    expect(degraded).toHaveTextContent("Needs recovery");
+    expect(degraded).toHaveTextContent(/keep the room open and retry ending/i);
+    expect(screen.queryByText("Verifying")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Conversation turns are saved as the room runs.")
+    ).not.toBeInTheDocument();
   });
 });
 

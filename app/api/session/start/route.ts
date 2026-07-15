@@ -123,10 +123,7 @@ export async function POST(req: NextRequest) {
     // Validate required environment variables
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (!livekitEnv.ok) {
-      console.error(
-        "Missing LiveKit environment variables:",
-        livekitEnv.error.message
-      );
+      console.error("LiveKit environment validation failed");
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
@@ -135,10 +132,7 @@ export async function POST(req: NextRequest) {
 
     const interviewAgentName = getLiveKitAgentName("interview", process.env);
     if (!interviewAgentName.ok) {
-      console.error(
-        "Missing LiveKit interview agent name:",
-        interviewAgentName.error.message
-      );
+      console.error("LiveKit interview agent configuration failed");
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
@@ -162,8 +156,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(result.body);
-  } catch (error) {
-    console.error("Error starting session:", error);
+  } catch {
+    console.error("Interview session start failed");
     return NextResponse.json(
       { error: "Failed to start session" },
       { status: 500 }

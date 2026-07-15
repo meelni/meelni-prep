@@ -9,12 +9,22 @@ import {
 } from "@/lib/db/session-reconnects";
 import {
   inspectInterviewParticipantPresence,
+  sendReliableInterviewRoomData,
   terminateInterviewRoom,
   type InterviewParticipantPresence,
   type LiveKitEnvironment,
   type ProviderResult,
   type TerminatedInterviewRoom,
 } from "@/lib/internal/integrations";
+import {
+  TRANSCRIPT_RUNTIME_SETTLEMENT_REQUEST_CONTRACT_VERSION,
+  TRANSCRIPT_RUNTIME_SETTLEMENT_REQUEST_TOPIC,
+  type TranscriptRuntimeSettlementRequest,
+} from "@/lib/internal/agent";
+import {
+  getTranscriptRuntimeSettlementReadiness,
+  type TranscriptRuntimeSettlementReadiness,
+} from "@/lib/db/transcripts";
 import {
   endInterviewSessionWorkflow,
   type EndInterviewSessionResult,
@@ -40,10 +50,23 @@ export interface EnforceInterviewReconnectDeps {
     participantIdentity: string;
     env: LiveKitEnvironment;
   }): Promise<ProviderResult<InterviewParticipantPresence>>;
-  waitUntil(deadlineAt: Date): Promise<void>;
+  getSettlementReadiness(
+    sessionId: string
+  ): Promise<TranscriptRuntimeSettlementReadiness>;
+  requestRuntimeSettlement(input: {
+    roomName: string;
+    agentIdentity: string;
+    request: TranscriptRuntimeSettlementRequest;
+    env: LiveKitEnvironment;
+  }): Promise<ProviderResult<unknown>>;
+  waitForRuntimeSettlement(input: {
+    sessionId: string;
+    writerGeneration: number;
+    timeoutMs: number;
+  }): Promise<TranscriptRuntimeSettlementReadiness>;
 }
 
-export const INTERVIEW_TRANSCRIPT_DRAIN_MS = 2_000;
+export const INTERVIEW_TRANSCRIPT_SETTLEMENT_TIMEOUT_MS = 20_000;
 
 export type EnforceInterviewReconnectResult =
   | {
@@ -87,6 +110,7 @@ export async function enforceInterviewReconnectWorkflow(
     };
   }
 
+  let observedAgentIdentity: string | null = null;
   const isClaimedRetry =
     current.state === "ending" &&
     (current.terminalReason === "disconnect_timeout" ||
@@ -121,6 +145,7 @@ export async function enforceInterviewReconnectWorkflow(
         code: presence.error.code,
       });
     }
+    observedAgentIdentity = presence.data.agent?.identity ?? null;
     if (
       presence.data.present &&
       presence.data.joined &&
@@ -166,6 +191,46 @@ export async function enforceInterviewReconnectWorkflow(
     current = claim.current;
   }
 
+  if (!observedAgentIdentity) {
+    const presence = await deps.inspectPresence({
+      roomName: current.roomName,
+      participantIdentity: current.userId,
+      env: input.env,
+    });
+    if (presence.ok) {
+      observedAgentIdentity = presence.data.agent?.identity ?? null;
+    }
+  }
+
+  const beforeRequest = await deps.getSettlementReadiness(input.sessionId);
+  const writerGeneration = beforeRequest.currentWriterGeneration;
+  if (
+    beforeRequest.currentWriterState === null &&
+    writerGeneration !== null &&
+    observedAgentIdentity
+  ) {
+    const request = buildRuntimeSettlementRequest({
+      sessionId: input.sessionId,
+      roomName: current.roomName,
+      writerGeneration,
+      claimedVersion: current.version,
+      cutoffAt: deadlineAt,
+    });
+    const requested = await deps.requestRuntimeSettlement({
+      roomName: current.roomName,
+      agentIdentity: observedAgentIdentity,
+      request,
+      env: input.env,
+    });
+    if (requested.ok) {
+      await deps.waitForRuntimeSettlement({
+        sessionId: input.sessionId,
+        writerGeneration,
+        timeoutMs: INTERVIEW_TRANSCRIPT_SETTLEMENT_TIMEOUT_MS,
+      });
+    }
+  }
+
   let room: TerminatedInterviewRoom | null = null;
   let roomError: string | null = null;
   const terminated = await deps.terminateRoom({
@@ -175,10 +240,6 @@ export async function enforceInterviewReconnectWorkflow(
   });
   if (terminated.ok) room = terminated.data;
   else roomError = terminated.error.code;
-
-  await deps.waitUntil(
-    new Date(current.lastTransitionAt.getTime() + INTERVIEW_TRANSCRIPT_DRAIN_MS)
-  );
 
   const completion = await deps.endSession(input.sessionId);
   if (!completion.ok) return { ok: false, disposition: "not_found" };
@@ -229,13 +290,62 @@ export function createEnforceInterviewReconnectDeps(): EnforceInterviewReconnect
       }),
     terminateRoom: terminateInterviewRoom,
     inspectPresence: inspectInterviewParticipantPresence,
-    waitUntil: async (deadlineAt) => {
-      const remainingMs = deadlineAt.getTime() - Date.now();
-      if (remainingMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remainingMs));
-      }
-    },
+    getSettlementReadiness: getTranscriptRuntimeSettlementReadiness,
+    requestRuntimeSettlement: ({
+      roomName,
+      agentIdentity,
+      request,
+      env,
+    }) =>
+      sendReliableInterviewRoomData({
+        roomName,
+        destinationIdentity: agentIdentity,
+        topic: TRANSCRIPT_RUNTIME_SETTLEMENT_REQUEST_TOPIC,
+        data: new TextEncoder().encode(JSON.stringify(request)),
+        env,
+      }),
+    waitForRuntimeSettlement: waitForRuntimeSettlement,
   };
+}
+
+export function buildRuntimeSettlementRequest(input: {
+  sessionId: string;
+  roomName: string;
+  writerGeneration: number;
+  claimedVersion: number;
+  cutoffAt: Date;
+}): TranscriptRuntimeSettlementRequest {
+  const cutoffAt = serializeInterviewDeadlineAt(input.cutoffAt);
+  return {
+    contract_version:
+      TRANSCRIPT_RUNTIME_SETTLEMENT_REQUEST_CONTRACT_VERSION,
+    event_type: "runtime_settlement_request",
+    request_id: `reconnect-settlement:${input.sessionId}:${input.claimedVersion}:${cutoffAt}`,
+    session_id: input.sessionId,
+    room_name: input.roomName,
+    writer_generation: input.writerGeneration,
+    cutoff_at: cutoffAt,
+  };
+}
+
+async function waitForRuntimeSettlement(input: {
+  sessionId: string;
+  writerGeneration: number;
+  timeoutMs: number;
+}): Promise<TranscriptRuntimeSettlementReadiness> {
+  const deadline = Date.now() + input.timeoutMs;
+  let readiness = await getTranscriptRuntimeSettlementReadiness(
+    input.sessionId
+  );
+  while (
+    readiness.currentWriterGeneration === input.writerGeneration &&
+    readiness.currentWriterState === null &&
+    Date.now() < deadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    readiness = await getTranscriptRuntimeSettlementReadiness(input.sessionId);
+  }
+  return readiness;
 }
 
 function sameInstant(left: Date | null, right: Date): boolean {

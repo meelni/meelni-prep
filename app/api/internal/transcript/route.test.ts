@@ -9,6 +9,9 @@ vi.mock("@/lib/db/transcripts", () => ({
   createDrizzleTranscriptRuntimeSettlementStore: vi.fn(() => ({
     persist: vi.fn(),
   })),
+  createDrizzleTranscriptRuntimeWriterStore: vi.fn(() => ({
+    register: vi.fn(),
+  })),
 }));
 vi.mock("@/lib/workflows/ingest-transcript-event", () => ({
   ingestTranscriptEvent: vi.fn(),
@@ -19,11 +22,15 @@ vi.mock("@/lib/workflows/ingest-transcript-interruption-marker", () => ({
 vi.mock("@/lib/workflows/ingest-transcript-runtime-settlement", () => ({
   ingestTranscriptRuntimeSettlement: vi.fn(),
 }));
+vi.mock("@/lib/workflows/ingest-transcript-runtime-writer", () => ({
+  ingestTranscriptRuntimeWriter: vi.fn(),
+}));
 
 import { signRuntimeTranscriptBody } from "@/lib/security/transcript-ingest-authorization";
 import { ingestTranscriptEvent } from "@/lib/workflows/ingest-transcript-event";
 import { ingestTranscriptInterruptionMarker } from "@/lib/workflows/ingest-transcript-interruption-marker";
 import { ingestTranscriptRuntimeSettlement } from "@/lib/workflows/ingest-transcript-runtime-settlement";
+import { ingestTranscriptRuntimeWriter } from "@/lib/workflows/ingest-transcript-runtime-writer";
 import { POST } from "./route";
 
 const SECRET = "livekit-secret-with-at-least-thirty-two-characters";
@@ -176,7 +183,10 @@ describe("POST /api/internal/transcript", () => {
     vi.mocked(ingestTranscriptEvent).mockResolvedValue({
       ok: true,
       disposition: "created",
-      turn: { text: "must not leave the server" },
+      turn: {
+        id: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        text: "must not leave the server",
+      },
     });
     const response = await POST(
       request({ sessionId: SESSION_ID, event: { event_id: "event-1" } })
@@ -187,6 +197,7 @@ describe("POST /api/internal/transcript", () => {
       success: true,
       disposition: "created",
       kind: "turn",
+      row_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
     });
     expect(ingestTranscriptEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -237,6 +248,33 @@ describe("POST /api/internal/transcript", () => {
     });
   });
 
+  it("returns the durable server-assigned writer generation before output", async () => {
+    vi.mocked(ingestTranscriptRuntimeWriter).mockResolvedValue({
+      ok: true,
+      disposition: "created",
+      writer: { writerId: "writer-1" },
+      writerGeneration: 2,
+    });
+    const response = await POST(
+      request({
+        sessionId: SESSION_ID,
+        writerRegistration: {
+          event_type: "runtime_writer_registration",
+          writer_id: "writer-1",
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      success: true,
+      disposition: "created",
+      kind: "writer_registration",
+      writer_generation: 2,
+    });
+    expect(ingestTranscriptRuntimeWriter).toHaveBeenCalledOnce();
+  });
+
   it("rejects ambiguous envelopes and maps integrity failures", async () => {
     const ambiguous = await POST(
       request({
@@ -266,13 +304,14 @@ describe("POST /api/internal/transcript", () => {
     expect(capacity.status).toBe(429);
   });
 
-  it("redacts transcript content from unexpected failure logs", async () => {
+  it("redacts transcript content and custom error names from failure logs", async () => {
+    const sentinel = "PRIVATE_TRANSCRIPT_SENTINEL_do_not_log";
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    vi.mocked(ingestTranscriptEvent).mockRejectedValueOnce(
-      new Error("database rejected raw transcript text")
-    );
+    const error = new Error(`database rejected ${sentinel}`);
+    error.name = sentinel;
+    vi.mocked(ingestTranscriptEvent).mockRejectedValueOnce(error);
 
     try {
       const response = await POST(
@@ -281,11 +320,9 @@ describe("POST /api/internal/transcript", () => {
       expect(response.status).toBe(500);
       expect(consoleError).toHaveBeenCalledWith(
         "Runtime transcript ingest failed",
-        { errorType: "Error" }
+        { error_class: "Error" }
       );
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
-        "raw transcript text"
-      );
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(sentinel);
     } finally {
       consoleError.mockRestore();
     }
