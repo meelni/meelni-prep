@@ -1,6 +1,16 @@
 import { db } from "./index";
-import { transcriptTurn } from "./schema";
-import { eq, asc } from "drizzle-orm";
+import { interviewSession, transcriptTurn } from "./schema";
+import { and, asc, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
+import type { TranscriptEvent } from "@meelni/agent";
+import {
+  deriveInterviewDeadlineAt,
+  isInterviewTerminalState,
+  normalizeInterviewDurationMinutes,
+} from "@meelni/core";
+import {
+  isTranscriptEventWithinSessionWindow,
+  type TranscriptIngestStore,
+} from "@/lib/workflows/ingest-transcript-event";
 
 export interface CreateTranscriptTurnInput {
   sessionId: string;
@@ -19,6 +29,216 @@ export interface UpdateTranscriptTurnInput {
   audioMs?: number;
   latencyMs?: number;
   section?: string;
+}
+
+export type PersistedTranscriptTurn = typeof transcriptTurn.$inferSelect;
+export type TranscriptPersistenceDatabase = Pick<typeof db, "transaction">;
+const MAX_CANONICAL_TURNS_PER_SESSION = 1_000;
+
+export function createDrizzleTranscriptIngestStore(
+  database: TranscriptPersistenceDatabase = db
+): TranscriptIngestStore<PersistedTranscriptTurn> {
+  return {
+    async persist({ userId, event }) {
+      return database.transaction(async (tx) => {
+        const sessions = await tx
+          .select({
+            roomName: interviewSession.livekitRoomName,
+            lifecycleState: interviewSession.lifecycleState,
+            startedAt: interviewSession.startedAt,
+            config: interviewSession.config,
+          })
+          .from(interviewSession)
+          .where(
+            and(
+              eq(interviewSession.id, event.session_id),
+              eq(interviewSession.userId, userId)
+            )
+          )
+          .limit(1)
+          .for("update");
+        const session = sessions[0];
+        if (!session) return { ok: false, reason: "not_found" } as const;
+        if (session.roomName !== event.room_name) {
+          return { ok: false, reason: "room_mismatch" } as const;
+        }
+
+        const existingEventRows = await tx
+          .select()
+          .from(transcriptTurn)
+          .where(eq(transcriptTurn.eventId, event.event_id))
+          .limit(1);
+        if (existingEventRows[0]) {
+          if (!storedTurnMatchesEvent(existingEventRows[0], event)) {
+            return { ok: false, reason: "event_conflict" } as const;
+          }
+          return {
+            ok: true,
+            disposition: "existing",
+            turn: existingEventRows[0],
+          } as const;
+        }
+
+        if (
+          !session.startedAt ||
+          !isTranscriptEventWithinSessionWindow(event, {
+            startedAt: session.startedAt,
+            deadlineAt: deriveInterviewDeadlineAt({
+              startedAt: session.startedAt,
+              durationMinutes: normalizeInterviewDurationMinutes(
+                isRecord(session.config) ? session.config.duration : undefined
+              ),
+            }),
+          })
+        ) {
+          return { ok: false, reason: "event_time_out_of_bounds" } as const;
+        }
+
+        if (
+          session.lifecycleState === "ending" ||
+          isInterviewTerminalState(session.lifecycleState)
+        ) {
+          return { ok: false, reason: "session_closed" } as const;
+        }
+
+        const counts = await tx
+          .select({ value: sql<number>`count(*)::int` })
+          .from(transcriptTurn)
+          .where(eq(transcriptTurn.sessionId, event.session_id));
+        if ((counts[0]?.value ?? 0) >= MAX_CANONICAL_TURNS_PER_SESSION) {
+          return { ok: false, reason: "session_capacity_exceeded" } as const;
+        }
+
+        const [previousRows, nextRows] = await Promise.all([
+          tx
+            .select({ startedAt: transcriptTurn.startedAt })
+            .from(transcriptTurn)
+            .where(
+              and(
+                eq(transcriptTurn.sessionId, event.session_id),
+                eq(transcriptTurn.writerId, event.writer_id),
+                lt(transcriptTurn.sequence, event.sequence)
+              )
+            )
+            .orderBy(desc(transcriptTurn.sequence))
+            .limit(1),
+          tx
+            .select({ startedAt: transcriptTurn.startedAt })
+            .from(transcriptTurn)
+            .where(
+              and(
+                eq(transcriptTurn.sessionId, event.session_id),
+                eq(transcriptTurn.writerId, event.writer_id),
+                gt(transcriptTurn.sequence, event.sequence)
+              )
+            )
+            .orderBy(asc(transcriptTurn.sequence))
+            .limit(1),
+        ]);
+        const eventStartedAt = Date.parse(event.started_at);
+        if (
+          (previousRows[0]?.startedAt &&
+            previousRows[0].startedAt.getTime() > eventStartedAt) ||
+          (nextRows[0]?.startedAt &&
+            nextRows[0].startedAt.getTime() < eventStartedAt)
+        ) {
+          return { ok: false, reason: "writer_order_conflict" } as const;
+        }
+
+        const values = transcriptEventValues(event);
+        const inserted = await tx
+          .insert(transcriptTurn)
+          .values(values)
+          .onConflictDoNothing()
+          .returning();
+        if (inserted[0]) {
+          return {
+            ok: true,
+            disposition: "created",
+            turn: inserted[0],
+          } as const;
+        }
+
+        const eventRows = await tx
+          .select()
+          .from(transcriptTurn)
+          .where(eq(transcriptTurn.eventId, event.event_id))
+          .limit(1);
+        if (eventRows[0]) {
+          if (!storedTurnMatchesEvent(eventRows[0], event)) {
+            return { ok: false, reason: "event_conflict" } as const;
+          }
+          return {
+            ok: true,
+            disposition: "existing",
+            turn: eventRows[0],
+          } as const;
+        }
+
+        const writerRows = await tx
+          .select({ id: transcriptTurn.id })
+          .from(transcriptTurn)
+          .where(
+            and(
+              eq(transcriptTurn.sessionId, event.session_id),
+              eq(transcriptTurn.writerId, event.writer_id),
+              eq(transcriptTurn.sequence, event.sequence)
+            )
+          )
+          .limit(1);
+        if (writerRows[0]) {
+          return { ok: false, reason: "writer_sequence_conflict" } as const;
+        }
+
+        throw new Error(
+          "Transcript insert conflicted without a stored identity"
+        );
+      });
+    },
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function transcriptEventValues(event: TranscriptEvent) {
+  return {
+    sessionId: event.session_id,
+    contractVersion: event.contract_version,
+    eventId: event.event_id,
+    writerId: event.writer_id,
+    sequence: event.sequence,
+    roomName: event.room_name,
+    speaker: event.speaker,
+    startedAt: new Date(event.started_at),
+    endedAt: new Date(event.ended_at),
+    text: event.text,
+    audioMs: event.audio_duration_ms,
+    section: event.section,
+    deliveryState: event.delivery_state,
+  };
+}
+
+function storedTurnMatchesEvent(
+  turn: PersistedTranscriptTurn,
+  event: TranscriptEvent
+): boolean {
+  return (
+    turn.contractVersion === event.contract_version &&
+    turn.eventId === event.event_id &&
+    turn.writerId === event.writer_id &&
+    turn.sequence === event.sequence &&
+    turn.sessionId === event.session_id &&
+    turn.roomName === event.room_name &&
+    turn.speaker === event.speaker &&
+    turn.text === event.text &&
+    turn.startedAt?.getTime() === Date.parse(event.started_at) &&
+    turn.endedAt?.getTime() === Date.parse(event.ended_at) &&
+    turn.audioMs === event.audio_duration_ms &&
+    turn.section === event.section &&
+    turn.deliveryState === event.delivery_state
+  );
 }
 
 /**
@@ -52,7 +272,7 @@ export async function updateTranscriptTurn(
   const [turn] = await db
     .update(transcriptTurn)
     .set(input)
-    .where(eq(transcriptTurn.id, turnId))
+    .where(and(eq(transcriptTurn.id, turnId), isNull(transcriptTurn.eventId)))
     .returning();
 
   return turn;
@@ -66,7 +286,13 @@ export async function getSessionTranscript(sessionId: string) {
     .select()
     .from(transcriptTurn)
     .where(eq(transcriptTurn.sessionId, sessionId))
-    .orderBy(asc(transcriptTurn.startedAt));
+    .orderBy(
+      asc(transcriptTurn.startedAt),
+      asc(transcriptTurn.writerId),
+      asc(transcriptTurn.sequence),
+      asc(transcriptTurn.eventId),
+      asc(transcriptTurn.id)
+    );
 
   return turns;
 }
@@ -88,7 +314,9 @@ export async function getTranscriptTurnById(turnId: string) {
  * Delete a transcript turn (for cleanup/corrections)
  */
 export async function deleteTranscriptTurn(turnId: string) {
-  await db.delete(transcriptTurn).where(eq(transcriptTurn.id, turnId));
+  await db
+    .delete(transcriptTurn)
+    .where(and(eq(transcriptTurn.id, turnId), isNull(transcriptTurn.eventId)));
 }
 
 /**
@@ -101,7 +329,10 @@ export async function getSessionTranscriptStats(sessionId: string) {
     totalTurns: turns.length,
     userTurns: turns.filter((t) => t.speaker === "user").length,
     interviewerTurns: turns.filter((t) => t.speaker === "interviewer").length,
-    totalWords: turns.reduce((sum, t) => sum + (t.text?.split(" ").length || 0), 0),
+    totalWords: turns.reduce(
+      (sum, t) => sum + (t.text?.split(" ").length || 0),
+      0
+    ),
     userWords: turns
       .filter((t) => t.speaker === "user")
       .reduce((sum, t) => sum + (t.text?.split(" ").length || 0), 0),

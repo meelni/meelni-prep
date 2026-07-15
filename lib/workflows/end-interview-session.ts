@@ -6,21 +6,17 @@ import {
   type FinalizeInterviewSessionResult,
 } from "@/lib/db/end-interview-session";
 import {
-  validateSessionCompleteness,
-  type SessionValidation,
-} from "@/lib/evaluation/session-validator";
-import {
   dispatchFeedbackGenerationWorkflow,
   type DispatchFeedbackGenerationResult,
 } from "./dispatch-feedback-generation";
 import { checkAndAwardAchievements } from "@/lib/achievements";
 import { updateStreak } from "@/lib/streaks";
+import type { SessionValidation } from "@/lib/evaluation/session-validator";
 
 export type EndInterviewSessionInput = EndInterviewSessionCommand;
 
 export interface EndInterviewSessionDeps {
   authorize(input: EndInterviewSessionInput): Promise<boolean>;
-  validate(sessionId: string): Promise<SessionValidation>;
   finalize(
     input: FinalizeInterviewSessionInput
   ): Promise<FinalizeInterviewSessionResult>;
@@ -62,15 +58,14 @@ export async function settleInterviewSessionWorkflow(
   input: EndInterviewSessionInput,
   deps: Pick<
     EndInterviewSessionDeps,
-    "authorize" | "validate" | "finalize" | "updateMotivation"
+    "authorize" | "finalize" | "updateMotivation"
   > = createEndInterviewSessionDeps()
 ): Promise<SettleInterviewSessionResult> {
   if (!(await deps.authorize(input))) {
     return { ok: false, reason: "not_found" };
   }
 
-  const validation = await deps.validate(input.sessionId);
-  return completeInterviewSession(input, validation, deps);
+  return completeInterviewSession(input, deps);
 }
 
 export async function endInterviewSessionWithValidationWorkflow(
@@ -98,16 +93,15 @@ export async function settleInterviewSessionWithValidationWorkflow(
   if (!(await deps.authorize(input))) {
     return { ok: false, reason: "not_found" };
   }
-
-  return completeInterviewSession(input, validation, deps);
+  return completeInterviewSession(input, deps, validation);
 }
 
 async function completeInterviewSession(
   input: EndInterviewSessionInput,
-  validation: SessionValidation,
-  deps: Pick<EndInterviewSessionDeps, "finalize" | "updateMotivation">
+  deps: Pick<EndInterviewSessionDeps, "finalize" | "updateMotivation">,
+  validationOverride?: SessionValidation
 ): Promise<SettleInterviewSessionResult> {
-  const completion = await deps.finalize({ ...input, validation });
+  const completion = await deps.finalize({ ...input, validationOverride });
   if (!completion.ok) return completion;
 
   if (
@@ -169,7 +163,6 @@ export async function dispatchInterviewSessionSettlement(
 export function createEndInterviewSessionDeps(): EndInterviewSessionDeps {
   return {
     authorize: authorizeInterviewSessionEnd,
-    validate: validateSessionCompleteness,
     finalize: finalizeInterviewSession,
     dispatch: dispatchFeedbackGenerationWorkflow,
     updateMotivation: updateCompletionMotivation,

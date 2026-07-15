@@ -107,10 +107,36 @@ This first-valid-claim rule makes concurrent end, deadline, disconnect, and prov
 
 - Only normalized final transcript events are eligible for durable persistence.
 - Realtime data delivery is not durable storage. A transcript turn counts only after authenticated persistence acknowledges it.
-- `ending` is the bounded drain phase for accepted transcript writes and statistics. Terminalization uses the durable turns available at that boundary.
+- `ending` is the bounded settlement boundary for transcript writes and
+  statistics. Canonical ingest and terminalization serialize on the session
+  row; the terminal transaction calculates eligibility from the durable turns
+  visible after acquiring that lock.
 - Feedback status (`pending`, `processing`, `completed`, `failed`, `skipped`) is a separate workflow. It never substitutes for session lifecycle state.
 - A completed session can have pending or failed feedback. An abandoned session can have skipped feedback. Those combinations are not lifecycle contradictions.
-- Transcript ordering and idempotency are governed by the transcript-ingest contract tracked in SAV-194; lifecycle code must not invent a second transcript identity rule.
+- Transcript ordering and idempotency are governed by the implemented SAV-194
+  transcript-ingest contract; lifecycle code must not invent a second
+  transcript identity rule.
+
+## Browser Ownership And Explicit End
+
+The authenticated browser owner is part of the mounted room boundary. A sign
+out or direct account A-to-B replacement immediately makes the existing room
+render-ineligible, unmounts its LiveKit connection, aborts and removes the
+prior owner's transcript queue through the queue owner binding, clears all
+session credentials and local transcript/end state, and fences late async
+callbacks. The replacement account is sent to the dashboard instead of
+requesting credentials for the prior account's session URL.
+
+An explicit end first closes browser transcript acceptance and settles the
+authenticated queue. A definitive non-success HTTP response proves that the
+browser received a rejection, so it reopens transcript acceptance and keeps
+the connected retry experience. A transport exception after the request was
+written is ambiguous: the command may already have committed. In that case the
+browser unmounts the room and presents a non-dismissible frozen state. It polls
+owned durable lifecycle and feedback truth and, only while the stored session
+is still joinable, retries the same idempotent `user_end` command at a bounded
+cadence. It neither resumes packet acceptance nor clears queued transcript
+state until terminal handoff is confirmed.
 
 ## Room Metadata And Correlation
 

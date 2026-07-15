@@ -6,10 +6,6 @@ import {
   buildInterviewDeadlineSchedules,
   type InterviewDeadlineSession,
 } from "@/lib/db/session-deadlines";
-import {
-  SessionTier,
-  type SessionValidation,
-} from "@/lib/evaluation/session-validator";
 import type {
   EndInterviewSessionResult,
   InterviewSessionSettlement,
@@ -501,25 +497,21 @@ test("reordered deadline events cannot replace another terminal owner", async ()
   assert.equal(terminated, 0);
 });
 
-test("hard deadline claims preserve insufficient-signal validation", async () => {
+test("hard deadline claims provisionally before locked validation refines it", async () => {
   let claimedReason: string | null = null;
   const result = await enforceInterviewDeadlineWorkflow(
     { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
     createDeps({
-      validateSession: async () => validValidation(false),
       claimDue: async (input) => {
         claimedReason = input.terminalReason;
         return true;
       },
-      settleSession: async (_sessionId, validation) => {
-        assert.equal(validation.isValid, false);
-        return settlement("insufficient_signal", "abandoned");
-      },
+      settleSession: async () => settlement("insufficient_signal", "abandoned"),
     })
   );
 
   assert.equal(result.ok, true);
-  assert.equal(claimedReason, "insufficient_signal");
+  assert.equal(claimedReason, "time_limit");
 });
 
 test("recovery closes an open room with no start time and terminalizes provider failure", async () => {
@@ -620,7 +612,6 @@ function createDeps(
     getSession: async () => deadlineSession(new Date(DEADLINE)),
     claimDue: async () => true,
     scheduleDeadline: async () => undefined,
-    validateSession: async () => validValidation(),
     settleSession: async () => settlement(),
     settleInvalidSession: async () => settlement("provider_failure", "failed"),
     dispatchSettlement: async (completion) => completedSettlement(completion),
@@ -647,22 +638,6 @@ function deadlineSession(databaseNow: Date): InterviewDeadlineSession {
     terminalReason: null,
     deadlineRoomCleanupStatus: null,
     databaseNow,
-  };
-}
-
-function validValidation(isValid = true): SessionValidation {
-  return {
-    tier: isValid ? SessionTier.FULL : SessionTier.INSUFFICIENT,
-    isValid,
-    stats: {
-      totalTurns: isValid ? 20 : 0,
-      userTurns: isValid ? 10 : 0,
-      totalWords: isValid ? 800 : 0,
-      durationSeconds: isValid ? 1_200 : 0,
-      substantiveResponses: isValid ? 8 : 0,
-    },
-    reasons: isValid ? [] : ["Insufficient durable signal"],
-    recommendations: [],
   };
 }
 

@@ -19,7 +19,6 @@ import {
 } from "@/lib/db/session-deadlines";
 import {
   dispatchInterviewSessionSettlement,
-  settleInterviewSessionWithValidationWorkflow,
   settleInterviewSessionWorkflow,
   type EndInterviewSessionResult,
   type InterviewSessionSettlement,
@@ -27,10 +26,6 @@ import {
 } from "./end-interview-session";
 import { createDrizzleInterviewReconnectStore } from "@/lib/db/session-reconnects";
 import { scheduleInterviewDeadline } from "./schedule-interview-deadline";
-import {
-  validateSessionCompleteness,
-  type SessionValidation,
-} from "@/lib/evaluation/session-validator";
 import { isFeedbackDispatchReadyForVisibility } from "@/lib/db/feedback-dispatch";
 
 export interface EnforceInterviewDeadlineInput {
@@ -53,11 +48,7 @@ export interface EnforceInterviewDeadlineDeps {
     deadlineAt: Date;
     deliveryId: string;
   }): Promise<unknown>;
-  validateSession(sessionId: string): Promise<SessionValidation>;
-  settleSession(
-    sessionId: string,
-    validation: SessionValidation
-  ): Promise<SettleInterviewSessionResult>;
+  settleSession(sessionId: string): Promise<SettleInterviewSessionResult>;
   settleInvalidSession(
     sessionId: string
   ): Promise<SettleInterviewSessionResult>;
@@ -125,7 +116,6 @@ export async function enforceInterviewDeadlineWorkflow(
   ) {
     return { ok: false, disposition: "stale_event" };
   }
-  let validation: SessionValidation | null = null;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (session.databaseNow.getTime() < storedDeadline.getTime()) {
       await rescheduleCanonicalDeadline(
@@ -151,13 +141,12 @@ export async function enforceInterviewDeadlineWorkflow(
       return { ok: false, disposition: "stale_event" };
     }
 
-    validation ??= await deps.validateSession(input.sessionId);
     const claimed = await deps.claimDue({
       sessionId: input.sessionId,
       expectedState: session.state,
       expectedVersion: session.version,
       deadlineAt: storedDeadline,
-      terminalReason: validation.isValid ? "time_limit" : "insufficient_signal",
+      terminalReason: "time_limit",
     });
     if (claimed) break;
 
@@ -179,8 +168,7 @@ export async function enforceInterviewDeadlineWorkflow(
     }
   }
 
-  validation ??= await deps.validateSession(input.sessionId);
-  const settlement = await deps.settleSession(input.sessionId, validation);
+  const settlement = await deps.settleSession(input.sessionId);
   if (!settlement.ok) {
     return { ok: false, disposition: "not_found" };
   }
@@ -278,16 +266,12 @@ export function createEnforceInterviewDeadlineDeps(): EnforceInterviewDeadlineDe
     getSession: getInterviewDeadlineSession,
     claimDue: claimInterviewDeadline,
     scheduleDeadline: scheduleInterviewDeadline,
-    validateSession: validateSessionCompleteness,
-    settleSession: (sessionId, validation) =>
-      settleInterviewSessionWithValidationWorkflow(
-        {
-          sessionId,
-          actor: { type: "system", source: "hard_deadline" },
-          requestedTerminalReason: "time_limit",
-        },
-        validation
-      ),
+    settleSession: (sessionId) =>
+      settleInterviewSessionWorkflow({
+        sessionId,
+        actor: { type: "system", source: "hard_deadline" },
+        requestedTerminalReason: "time_limit",
+      }),
     settleInvalidSession: (sessionId) =>
       settleInterviewSessionWorkflow({
         sessionId,

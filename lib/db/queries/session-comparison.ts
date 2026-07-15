@@ -4,7 +4,7 @@
 
 import { db } from "@/lib/db";
 import { interviewSession, feedback, transcriptTurn } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, asc, desc } from "drizzle-orm";
 import {
   SessionAttempt,
   SessionComparisonDetail,
@@ -180,6 +180,13 @@ async function fetchSessionDetail(
         eq(transcriptTurn.speaker, "user")
       )
     )
+    .orderBy(
+      asc(transcriptTurn.startedAt),
+      asc(transcriptTurn.writerId),
+      asc(transcriptTurn.sequence),
+      asc(transcriptTurn.eventId),
+      asc(transcriptTurn.id)
+    )
     .limit(20); // Limit to 20 turns
 
   // Extract key quotes (take first 3-4 meaningful user responses)
@@ -203,13 +210,13 @@ async function fetchSessionDetail(
     strengths: Array.isArray(session.strengths)
       ? session.strengths
       : session.strengths
-      ? [String(session.strengths)]
-      : [],
+        ? [String(session.strengths)]
+        : [],
     improvements: Array.isArray(session.improvements)
       ? session.improvements
       : session.improvements
-      ? [String(session.improvements)]
-      : [],
+        ? [String(session.improvements)]
+        : [],
     summary: session.summary,
   };
 
