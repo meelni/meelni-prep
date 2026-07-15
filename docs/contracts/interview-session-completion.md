@@ -17,8 +17,10 @@ For an unclaimed user end, the workflow:
 
 1. authorizes the command without reading transcript content;
 2. locks the session row and rechecks authority;
-3. calculates feedback eligibility from durable transcript turns while holding
-   the same row lock used by canonical ingest;
+3. calculates feedback eligibility from durable transcript turns, integrity
+   markers, registered `writer_generation` records, and writer-scoped settlements while
+   holding the same row lock used by canonical ingest; every registered
+   generation must be settled and none may be missing or degraded;
 4. preserves an existing terminal result or advances a nonterminal session through valid lifecycle edges;
 5. records final statistics;
 6. creates the unique feedback row if it is missing;
@@ -53,13 +55,16 @@ A persisted transcript turn is durable evidence that the session became usable. 
 - An existing `ending` or terminal claim keeps its stored reason and derives only the matching terminal state.
 
 The final stats are calculated inside the terminal transaction after it locks
-the same session row used by canonical transcript ingest. Explicit browser end
-first performs a bounded in-flight/retry flush. Ingests that acquired the row
-first become visible to terminal validation; once terminal truth commits, new
-distinct events are closed while equivalent event-ID replays stay idempotent.
-Hard deadlines first claim `ending` with provisional reason `time_limit`, which
-bars later distinct canonical events. The finalizer then calculates one locked
-transcript snapshot for statistics, feedback eligibility, and outcome. An
+the same session row used by canonical transcript ingest. The browser owns no
+transcript write queue; explicit browser end asks the trusted runtime to drain
+and persist per-generation settlement before terminalization. Ingests that
+acquired the row first become visible to terminal validation; once terminal
+truth commits, new distinct events are closed while equivalent event-ID replays
+stay idempotent. Hard deadlines use semantic cutoff `D`: audio stops at `D`,
+only evidence measured at or before `D` is eligible, and settlement records `D`
+even if its database acknowledgement arrives during cleanup grace. The
+finalizer then calculates one locked transcript snapshot for statistics,
+feedback eligibility, and outcome. An
 invalid snapshot may versionedly refine only that provisional ending reason to
 `insufficient_signal`; user, provider, reconnect, and terminal reasons are not
 rewritten.
@@ -122,6 +127,13 @@ path creates a second feedback row.
 for both terminal lifecycle truth and `feedbackReady=true` before navigating
 away from the interview saving state.
 
+A reconnect-timeout owner must keep the room and agent alive long enough to
+send a reliable trusted metadata-only settlement request targeted to the
+current writer generation and cutoff. It waits for durable database
+acknowledgement or a bounded degraded/missing result before deleting the room
+and finalizing. Passive drain time is not settlement proof, and a replacement
+writer cannot satisfy an earlier registered generation's obligation.
+
 The five-minute deadline recovery scan includes every terminal session whose
 deadline room-cleanup claim is still `pending`, including refined
 `insufficient_signal` outcomes, plus acknowledged deadline-owned sessions with
@@ -138,3 +150,7 @@ therefore cannot strand a live room or an acknowledged feedback dispatch.
 - Clean and upgrade migrations pass with the outbox checks and indexes present.
 - Delete failure commits terminal truth without dispatch; acknowledged retry
   dispatches once; later replay emits no duplicate.
+- Replacement writer B settled while registered writer A is missing or degraded
+  remains feedback-ineligible.
+- Reconnect settlement request and durable acknowledgement occur before room
+  deletion; missing acknowledgement fails closed.

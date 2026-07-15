@@ -88,12 +88,14 @@ server-owned session start instant and serialize it only at room-metadata and
 API boundaries.
 
 The Python voice runtime rejects an already-expired job before `AgentSession`
-starts. For a future deadline it arms one watchdog after the session starts. At
-or after `deadline_at`, it interrupts current playout, persists the exact heard
-prefix or a textless unavailable marker, performs a bounded runtime-outbox
-drain, closes the session, and then uses the acknowledged room-service API to
-terminate the room. Duplicate watchdogs share one enforcement operation. A
-normal session close cancels a watchdog that has not begun enforcement.
+starts. For a future deadline it arms one watchdog after the session starts.
+At semantic cutoff `D = deadline_at`, it stops input and output, persists only
+the exact heard prefix or textless unavailable marker measured at or before
+`D`, performs a bounded per-generation runtime-outbox drain, and records
+`settled_at = D` before acknowledged room termination. Later operational
+acknowledgement does not extend audio or the evidence window. Duplicate
+watchdogs share one enforcement operation. A normal session close cancels a
+watchdog that has not begun enforcement.
 
 This runtime shutdown is a provider-side safety boundary, not canonical session
 terminal truth. The server deadline workflow still owns the versioned
@@ -154,9 +156,19 @@ Rules:
 
 Agents publish finalized transcript turns to LiveKit data topic `transcript`
 using the [versioned transcript event contract](./transcript-events.md). Version
-2 requires stable identity, sequence, session/room correlation, measured
-start/end timing and audio duration, a non-null section, and explicit delivery
-state across TypeScript and Python.
+2 requires stable identity, registered `writer_generation`, sequence,
+session/room correlation, measured start/end timing and audio duration, a
+non-null section, and explicit delivery state across TypeScript and Python.
+
+Each audible runtime first durably registers a metadata-only writer identity.
+Every registered generation must persist its own settled proof; replacement
+writers fence older distinct writes but do not erase older settlement
+obligations. On reconnect expiry, the server uses the trusted
+`meelni.transcript.settlement.request` topic for a reliable metadata-only
+request containing request, session, room, writer-generation, and cutoff
+correlation. It awaits durable acknowledgement before room deletion. This
+control exchange never carries transcript text, provider credentials, or
+question content.
 
 A realtime data packet is a post-persistence display notification. A turn
 counts as durable lifecycle signal only after the signed runtime endpoint

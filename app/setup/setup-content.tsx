@@ -30,6 +30,7 @@ import { validateSessionStart } from "@/lib/validation/setup-schema";
 import { RoundSelector } from "./components/round-selector";
 import { DifficultySelector } from "./components/difficulty-selector";
 import { SelectedQuestionConfirmation } from "./components/selected-question-confirmation";
+import { InterviewDataDisclosure } from "./components/interview-data-disclosure";
 import { useSelectedQuestionIntent } from "./use-selected-question-intent";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import { QuotaExceededModal } from "@/components/dashboard/quota-exceeded-modal";
@@ -44,6 +45,7 @@ import {
   parseInterviewLaunchContext,
 } from "@/lib/navigation/interview-launch";
 import { getCanonicalInterviewHref } from "@/components/interview/session-recovery";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 export function SetupContent() {
   const { user, isLoading: authLoading } = useAuth();
@@ -266,7 +268,10 @@ export function SetupContent() {
           user_authenticated: true,
         });
       } catch (error) {
-        console.error("Error fetching credits:", error);
+        console.error("[Interview Setup] credit_fetch_failed", {
+          code: "credit_fetch_failed",
+          ...toSafeErrorLog(error),
+        });
         setIsLoadingCredits(false);
       }
     }
@@ -323,7 +328,10 @@ export function SetupContent() {
         await navigator.mediaDevices.getUserMedia({ audio: true });
         console.log("[Setup] Microphone permission granted");
       } catch (permError) {
-        console.error("[Setup] Microphone permission denied:", permError);
+        console.error("[Interview Setup] microphone_permission_denied", {
+          code: "microphone_permission_denied",
+          ...toSafeErrorLog(permError),
+        });
         setError(
           "Microphone access is required for voice interviews. Please grant permission and try again."
         );
@@ -420,11 +428,14 @@ export function SetupContent() {
       // authorizes this owned session and mints a fresh short-lived token.
       router.push(getCanonicalInterviewHref(String(sessionId)));
     } catch (err) {
-      console.error("Failed to start session:", err);
+      console.error("[Interview Setup] start_failed", {
+        code: "interview_start_failed",
+        ...toSafeErrorLog(err),
+      });
       const startFailedProperties = {
         interview_type: effectiveRoundType,
         skill_level: difficulty,
-        error: err instanceof Error ? err.message : "unknown",
+        error: "interview_start_failed",
         ...analyticsLaunchContext,
       };
       trackInterviewLaunchEvent(
@@ -673,14 +684,17 @@ export function SetupContent() {
             className="border-dashboard-panel-border bg-dashboard-panel/95 sticky bottom-0 -mx-5 border-t p-5 backdrop-blur sm:-mx-8 sm:px-8"
           >
             <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-dashboard-muted flex items-center gap-3 text-sm">
-                <Mic className="text-primary h-4 w-4" />
-                <span>
-                  {effectiveRoundType &&
-                    INTERVIEW_TYPE_LABELS[effectiveRoundType]}{" "}
-                  · {difficulty && DIFFICULTY_LEVELS[difficulty].label} · hints
-                  off by default
-                </span>
+              <div className="space-y-2">
+                <div className="text-dashboard-muted flex items-center gap-3 text-sm">
+                  <Mic className="text-primary h-4 w-4" aria-hidden="true" />
+                  <span>
+                    {effectiveRoundType &&
+                      INTERVIEW_TYPE_LABELS[effectiveRoundType]}{" "}
+                    · {difficulty && DIFFICULTY_LEVELS[difficulty].label} ·
+                    hints off by default
+                  </span>
+                </div>
+                <InterviewDataDisclosure />
               </div>
               <Button
                 onClick={handleStartInterview}

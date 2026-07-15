@@ -19,6 +19,7 @@ import {
   listProviderEnvVars,
   providerFailure,
   providerSuccess,
+  sendReliableInterviewRoomData,
   terminateInterviewRoom,
   type LiveKitInterviewProvider,
 } from "./index";
@@ -656,6 +657,49 @@ test("LiveKit room termination uses provider-time revocation before deleting the
     data: {
       roomName: "interview-deadline-room",
       disposition: "already_absent",
+    },
+  });
+});
+
+test("LiveKit reliable server data targets only the exact runtime identity and topic", async () => {
+  const payload = new TextEncoder().encode(
+    '{"event_type":"runtime_settlement_request"}'
+  );
+  const result = await sendReliableInterviewRoomData(
+    {
+      roomName: "interview-reconnect-room",
+      destinationIdentity: "agent-worker",
+      topic: "meelni.transcript.settlement.request",
+      data: payload,
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        sendData: async (roomName, data, kind, options) => {
+          assert.equal(roomName, "interview-reconnect-room");
+          assert.deepEqual(data, payload);
+          assert.equal(kind, 0);
+          assert.deepEqual(options, {
+            destinationIdentities: ["agent-worker"],
+            topic: "meelni.transcript.settlement.request",
+          });
+        },
+      }),
+    }
+  );
+
+  assert.deepEqual(result, {
+    ok: true,
+    provider: "livekit",
+    data: {
+      roomName: "interview-reconnect-room",
+      destinationIdentity: "agent-worker",
+      topic: "meelni.transcript.settlement.request",
     },
   });
 });

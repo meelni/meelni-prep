@@ -19,13 +19,10 @@ export interface DashboardSettings {
   defaultInterviewType: DefaultInterviewType;
   defaultDifficulty: DefaultDifficulty;
   questionRecency: QuestionRecency;
-  autoSaveTranscripts: boolean;
   emailNotifications: boolean;
   sessionCompletionEmail: boolean;
   feedbackReadyEmail: boolean;
   weeklyProgressReport: boolean;
-  shareAnonymousData: boolean;
-  saveTranscripts: boolean;
   theme: "light" | "dark" | "system";
 }
 
@@ -58,13 +55,10 @@ export const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
   defaultInterviewType: "product_sense",
   defaultDifficulty: "medium",
   questionRecency: "current",
-  autoSaveTranscripts: true,
   emailNotifications: true,
   sessionCompletionEmail: true,
   feedbackReadyEmail: true,
   weeklyProgressReport: false,
-  shareAnonymousData: true,
-  saveTranscripts: true,
   theme: "system",
 };
 
@@ -92,7 +86,7 @@ export const SETTINGS_DATA_CONTRACT: SettingsContractItem[] = [
   },
   {
     category: "interview-defaults",
-    label: "Round type, difficulty, question recency, transcript storage",
+    label: "Round type, difficulty, and question recency",
     source: "/api/user/settings user_settings columns",
     action: "editable",
     shipsNow: true,
@@ -113,9 +107,9 @@ export const SETTINGS_DATA_CONTRACT: SettingsContractItem[] = [
   },
   {
     category: "data-privacy",
-    label: "Transcript retention and anonymous product improvement",
-    source: "/api/user/settings user_settings columns",
-    action: "editable",
+    label: "Transcript and audio handling disclosure",
+    source: "Canonical interview runtime and transcript persistence contracts",
+    action: "read-only",
     shipsNow: true,
   },
   {
@@ -139,9 +133,27 @@ export function normalizeDashboardSettings(
   fallbackDisplayName = ""
 ): DashboardSettings {
   return {
-    ...DEFAULT_DASHBOARD_SETTINGS,
-    displayName: fallbackDisplayName,
-    ...input,
+    displayName: input?.displayName ?? fallbackDisplayName,
+    defaultInterviewType:
+      input?.defaultInterviewType ??
+      DEFAULT_DASHBOARD_SETTINGS.defaultInterviewType,
+    defaultDifficulty:
+      input?.defaultDifficulty ?? DEFAULT_DASHBOARD_SETTINGS.defaultDifficulty,
+    questionRecency:
+      input?.questionRecency ?? DEFAULT_DASHBOARD_SETTINGS.questionRecency,
+    emailNotifications:
+      input?.emailNotifications ??
+      DEFAULT_DASHBOARD_SETTINGS.emailNotifications,
+    sessionCompletionEmail:
+      input?.sessionCompletionEmail ??
+      DEFAULT_DASHBOARD_SETTINGS.sessionCompletionEmail,
+    feedbackReadyEmail:
+      input?.feedbackReadyEmail ??
+      DEFAULT_DASHBOARD_SETTINGS.feedbackReadyEmail,
+    weeklyProgressReport:
+      input?.weeklyProgressReport ??
+      DEFAULT_DASHBOARD_SETTINGS.weeklyProgressReport,
+    theme: input?.theme ?? DEFAULT_DASHBOARD_SETTINGS.theme,
   };
 }
 

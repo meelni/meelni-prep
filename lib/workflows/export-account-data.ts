@@ -1,5 +1,6 @@
 import {
   ACCOUNT_EXPORT_SCHEMA_VERSION,
+  type AccountExportSettingsV1,
   type AccountDataExportV1,
 } from "@meelni/core";
 
@@ -14,7 +15,20 @@ export interface AccountExportSource {
     streakLongest: number;
     lastPracticeDate: DateValue;
   } | null;
-  settings: ({ userId: string } & Record<string, unknown>) | null;
+  settings: {
+    userId: string;
+    displayName: string | null;
+    defaultInterviewType: string | null;
+    defaultDifficulty: string | null;
+    questionRecency: string | null;
+    emailNotifications: boolean;
+    sessionCompletionEmail: boolean;
+    feedbackReadyEmail: boolean;
+    weeklyProgressReport: boolean;
+    theme: string | null;
+    createdAt: DateValue;
+    updatedAt: DateValue;
+  } | null;
   interviews: Array<{
     userId: string;
     id: string;
@@ -115,7 +129,7 @@ export function createAccountDataExport(input: {
         lastPracticeAt: isoDate(account?.lastPracticeDate),
       },
     },
-    settings: sanitizeOwnedRecord(input.source.settings, userId),
+    settings: createSafeSettingsExport(input.source.settings, userId),
     practice: {
       interviews: input.source.interviews
         .filter((interview) => interview.userId === userId)
@@ -158,6 +172,27 @@ export function createAccountDataExport(input: {
         ),
       },
     },
+  };
+}
+
+function createSafeSettingsExport(
+  settings: AccountExportSource["settings"],
+  userId: string
+): AccountExportSettingsV1 | null {
+  if (!settings || settings.userId !== userId) return null;
+
+  return {
+    displayName: settings.displayName,
+    defaultInterviewType: settings.defaultInterviewType,
+    defaultDifficulty: settings.defaultDifficulty,
+    questionRecency: settings.questionRecency,
+    emailNotifications: settings.emailNotifications,
+    sessionCompletionEmail: settings.sessionCompletionEmail,
+    feedbackReadyEmail: settings.feedbackReadyEmail,
+    weeklyProgressReport: settings.weeklyProgressReport,
+    theme: settings.theme,
+    createdAt: isoDate(settings.createdAt),
+    updatedAt: isoDate(settings.updatedAt),
   };
 }
 

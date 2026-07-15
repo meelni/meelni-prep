@@ -1,5 +1,32 @@
 # Migration History
 
+## Current committed journal
+
+<!-- migration-journal:start -->
+
+| Index | Journal tag                           |
+| ----: | ------------------------------------- |
+|     0 | `0000_many_nocturne`                  |
+|     1 | `0001_panoramic_otto_octavius`        |
+|     2 | `0002_relaunch_reconciliation`        |
+|     3 | `0003_durable_account_deletion`       |
+|     4 | `0004_stripe_deletion_privacy`        |
+|     5 | `0005_multi_subject_account_deletion` |
+|     6 | `0006_interview_session_lifecycle`    |
+|     7 | `0007_atomic_session_completion`      |
+|     8 | `0008_deadline_room_cleanup_ack`      |
+|     9 | `0009_interview_session_reconnect`    |
+|    10 | `0010_reconnect_cutoff_owner`         |
+|    11 | `0011_transcript_ingest`              |
+|    12 | `0012_transcript_privacy_integrity`   |
+|    13 | `0013_runtime_settlement`             |
+
+<!-- migration-journal:end -->
+
+This fourteen-entry inventory is generated from the same ordered contract as
+`lib/db/migrations/meta/_journal.json`; the operations test fails if either the
+count, order, or tag changes without this section being updated.
+
 ## Relaunch reconciliation
 
 The original Drizzle chain recorded only `0000_many_nocturne` and
@@ -26,6 +53,13 @@ idempotent migration that supports both accepted starting states:
 Do not restore or mark the retired files as applied. Run the migration preflight
 and disposable-database verification before applying the reconciliation to an
 environment.
+
+The standalone Supabase helpers `apply_all_rls.sql` and
+`feedback_system_rls.sql` are also retired. They predated the reconciled
+Drizzle journal and could grant authenticated users direct `transcript_turn`
+inserts, bypassing the signed runtime ingest boundary. Git history preserves
+them for audit purposes; no doctor, runbook, rollback, or deployment path may
+execute or restore them.
 
 The journaled `0003_durable_account_deletion`,
 `0004_stripe_deletion_privacy`, and `0005_multi_subject_account_deletion` are
@@ -128,6 +162,16 @@ cannot be scored as complete.
 ## Runtime settlement
 
 `0013_runtime_settlement` adds the service-only
-`transcript_runtime_settlement` table. A trusted metadata-only watermark is
-required before terminal completion can mark transcript evidence eligible for
-feedback; missing or degraded settlement fails closed.
+`transcript_runtime_writer` registry and writer-scoped
+`transcript_runtime_settlement` table. Audible runtimes register before output
+and receive a positive generation; replacement writers are fenced by later
+generations without erasing earlier settlement obligations. The migration adds
+`writer_generation` to canonical turns and interruption markers, backfills
+legacy version-2 writer evidence deterministically, and binds turns, markers,
+and settlements to `(session_id, generation, writer_id)` through composite
+foreign keys.
+
+Terminal feedback eligibility requires a trusted metadata-only `settled`
+watermark for every registered writer generation and no integrity markers.
+Missing or degraded settlement fails closed. Both writer and settlement tables
+enable RLS, revoke browser roles, and grant access only to `service_role`.

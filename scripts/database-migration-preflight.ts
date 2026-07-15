@@ -294,7 +294,7 @@ async function run(url: string, environmentIdentity: string) {
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
-          migrations.length === 14 ? 25 : migrations.length === 13 ? 24 : 23;
+          migrations.length === 14 ? 26 : migrations.length === 13 ? 24 : 23;
         if (
           summary.tables !== expectedTableCount ||
           summary.rls_tables !== expectedTableCount ||

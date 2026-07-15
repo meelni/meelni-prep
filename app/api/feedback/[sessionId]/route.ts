@@ -98,6 +98,7 @@ import {
   isInterviewDeadlineRoomCleanupAcknowledged,
 } from "@/lib/db/session-deadlines";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 // Estimated total processing time (seconds)
 const ESTIMATED_PROCESSING_TIME = 45;
@@ -314,7 +315,10 @@ export async function GET(
       { status: 500 }
     );
   } catch (error) {
-    console.error("Error fetching feedback:", error);
+    console.error("[Feedback API] fetch_failed", {
+      code: "feedback_fetch_failed",
+      ...toSafeErrorLog(error),
+    });
     return NextResponse.json(
       { error: "Failed to fetch feedback" },
       { status: 500 }
@@ -410,7 +414,10 @@ export async function POST(
       { headers: { "Cache-Control": "private, no-store" } }
     );
   } catch (error) {
-    console.error("Error retrying feedback dispatch:", error);
+    console.error("[Feedback API] retry_failed", {
+      code: "feedback_retry_failed",
+      ...toSafeErrorLog(error),
+    });
     return NextResponse.json(
       {
         error: "feedback_retry_failed",

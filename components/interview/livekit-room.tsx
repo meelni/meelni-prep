@@ -21,12 +21,15 @@ import {
   parseTranscriptEvent,
   type TranscriptEvent,
 } from "@meelni/agent";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 export interface TranscriptTurn {
   persistable?: boolean;
   event?: TranscriptEvent;
   eventId?: string;
+  rowId?: string;
   writerId?: string;
+  writerGeneration?: number;
   sequence?: number;
   sessionId?: string;
   roomName?: string;
@@ -128,7 +131,10 @@ export function LiveKitRoomWrapper({
         console.log("Disconnected from LiveKit room");
       }}
       onError={(error) => {
-        console.error("LiveKit error:", error);
+        console.error("[Interview Runtime] livekit_error", {
+          code: "livekit_runtime_error",
+          ...toSafeErrorLog(error),
+        });
       }}
     >
       <RoomContent
@@ -282,7 +288,9 @@ function RoomContent({
               persistable: true,
               event: transcriptData,
               eventId: transcriptData.event_id,
+              rowId: transcriptData.row_id ?? transcriptData.event_id,
               writerId: transcriptData.writer_id,
+              writerGeneration: transcriptData.writer_generation,
               sequence: transcriptData.sequence,
               sessionId: transcriptData.session_id,
               roomName: transcriptData.room_name,
@@ -298,7 +306,10 @@ function RoomContent({
 
         transcriptUpdateRef.current(turn);
       } catch (error) {
-        console.error("[Transcript] Failed to parse transcript data:", error);
+        console.error("[Transcript] parse_failed", {
+          code: "transcript_packet_parse_failed",
+          ...toSafeErrorLog(error),
+        });
       }
     },
     [acceptedTranscriptEvents, roomName, sessionId]

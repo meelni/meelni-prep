@@ -72,6 +72,17 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionTranscript } from "@/lib/db/transcripts";
 import { isSessionOwnedByUser } from "@/lib/db/sessions";
 
+const PRIVATE_NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store",
+};
+
+function transcriptResponse(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: PRIVATE_NO_STORE_HEADERS,
+  });
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
@@ -85,7 +96,7 @@ export async function GET(
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return transcriptResponse({ error: "Unauthorized" }, 401);
     }
 
     const { sessionId } = await params;
@@ -93,21 +104,18 @@ export async function GET(
     // Verify user owns the session
     const isOwner = await isSessionOwnedByUser(sessionId, user.id);
     if (!isOwner) {
-      return NextResponse.json(
+      return transcriptResponse(
         { error: "Session not found or access denied" },
-        { status: 403 }
+        403
       );
     }
 
     // Get transcript
     const turns = await getSessionTranscript(sessionId);
 
-    return NextResponse.json({ turns });
-  } catch (error) {
-    console.error("Error fetching transcript:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch transcript" },
-      { status: 500 }
-    );
+    return transcriptResponse({ turns });
+  } catch {
+    console.error("Transcript read failed");
+    return transcriptResponse({ error: "Failed to fetch transcript" }, 500);
   }
 }

@@ -3,6 +3,10 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
+The current committed journal contains fourteen entries, from
+`0000_many_nocturne` through `0013_runtime_settlement`. The migration-history
+inventory is checked against `_journal.json` in the local operations suite so
+documentation cannot silently drift from the executable chain.
 
 Open PRs do not reserve sequence numbers independently. Before merging a
 migration-bearing PR, require the stable GitHub Actions
@@ -57,7 +61,7 @@ zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
 six ledger entries. Expected post-migration status is `reconciled` with fourteen
-ledger entries, 25 RLS-enabled tables, three unique contracts, zero unsafe
+ledger entries, 26 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect, and
 transcript-privacy and runtime-settlement contract fingerprint.

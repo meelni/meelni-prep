@@ -59,8 +59,13 @@ Never place an intermediary in front of the route that rewrites the body.
 - Reconnect expiry rechecks authoritative presence before claiming timeout,
   accepts only `JOINED`/`ACTIVE` candidate evidence with a finite `joinedAt`
   strictly before the stored reconnect deadline,
-  revokes candidate tokens before room deletion, waits a bounded two seconds
-  for durable transcript delivery, and finalizes from one validation snapshot.
+  fences candidate access, keeps the room and agent alive, and sends a reliable
+  trusted metadata-only settlement request targeted to the current registered
+  writer generation and semantic cutoff. It waits for durable database
+  acknowledgement (settled, degraded, or bounded missing result), then deletes
+  the room and finalizes from one validation snapshot. Passive drain time is not
+  settlement evidence, and transcript data cannot consume the outbox's reserved
+  control slot.
   Token authorization, signed rejoin, ordinary presence repair,
   stale-provisioning claims, and timeout claims use PostgreSQL time. At or after
   a grace-owned cutoff, only the due-presence CAS may recover the session, and
@@ -84,13 +89,16 @@ ready:
 5. Kill the tab and verify the signed webhook starts grace without a browser
    signal.
 6. Stay disconnected through the exact deadline. Confirm one
-   `disconnect_timeout` claim, candidate revocation before room deletion, a
-   two-second transcript drain, one validation snapshot, terminal session, and
-   feedback intent. Replay the event and confirm no duplicate result.
+   `disconnect_timeout` claim, candidate fencing, reliable targeted settlement
+   request while the room remains live, durable per-generation acknowledgement,
+   room deletion only afterward, one validation snapshot, terminal session,
+   and feedback intent. Drop the request and the acknowledgement in separate
+   runs and confirm both fail closed without treating passive delay as proof.
 7. Overlap a drop with the hard deadline. Confirm `time_limit` wins when its
    absolute deadline is earlier or equal.
 8. Exercise a room-delete failure. Confirm the accepted timeout claim remains
-   immutable and a retry completes deletion and settlement.
+   immutable, durable settlement evidence remains intact, and a retry completes
+   deletion without repeating or weakening the settlement obligation.
 9. Race two retries with divergent durable-signal validation. Confirm the first
    completed or abandoned settlement remains immutable and the loser cannot
    rewrite `disconnect_timeout` or `insufficient_signal`.

@@ -33,6 +33,20 @@ export interface AccountExportExclusion {
   reason: string;
 }
 
+export interface AccountExportSettingsV1 {
+  displayName: string | null;
+  defaultInterviewType: string | null;
+  defaultDifficulty: string | null;
+  questionRecency: string | null;
+  emailNotifications: boolean;
+  sessionCompletionEmail: boolean;
+  feedbackReadyEmail: boolean;
+  weeklyProgressReport: boolean;
+  theme: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface AccountDataExportV1 {
   schemaVersion: typeof ACCOUNT_EXPORT_SCHEMA_VERSION;
   exportedAt: string;
@@ -52,7 +66,7 @@ export interface AccountDataExportV1 {
       lastPracticeAt: string | null;
     };
   };
-  settings: Record<string, unknown> | null;
+  settings: AccountExportSettingsV1 | null;
   practice: {
     interviews: Array<Record<string, unknown>>;
     bookmarks: Array<Record<string, unknown>>;
